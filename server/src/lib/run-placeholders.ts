@@ -1,4 +1,5 @@
 import { db } from './db';
+import { aiRunDataColumn } from './ai-data-column';
 import { jsonPath } from './sql-rows';
 import { clearProcessingPlaceholders } from './placeholder-cells';
 
@@ -67,14 +68,15 @@ interface AIRunCols {
   column_name: string;
   use_openrouter_web_search: number;
   output_columns?: string | null; // JSON [{columnName,...}] for structured runs
+  data_column?: string | null;    // structured runs with a web tool (migration 006)
 }
 
 // Columns an AI run targets. Single-column run: the Output column (+ "(Data)"
 // when web search is on). Structured (multi-column) run: column_name is the
-// STATUS column and output_columns lists the N typed columns — all of them hold
-// a '⏳ Processing...' placeholder and must be cleared together, or the extra
-// columns spin forever after a cancel/fail. output_columns and web search are
-// mutually exclusive (parse rejects the combo), so the branches don't overlap.
+// STATUS column and output_columns lists the N typed columns (+ its stored
+// "(Data)" column when it uses a web tool) — all of them hold a
+// '⏳ Processing...' placeholder and must be cleared together, or the extra
+// columns spin forever after a cancel/fail. lib/ai-data-column.ts names "(Data)".
 function aiRunColumns(run: AIRunCols): string[] {
   const columns = [run.column_name];
   if (run.output_columns) {
@@ -83,12 +85,9 @@ function aiRunColumns(run: AIRunCols): string[] {
         if (s && typeof s.columnName === 'string') columns.push(s.columnName);
       }
     } catch { /* malformed spec — clear at least the status column */ }
-  } else if (run.use_openrouter_web_search) {
-    const dataCol = run.column_name.endsWith(' (Output)')
-      ? run.column_name.replace(/ \(Output\)$/, ' (Data)')
-      : `${run.column_name} (Data)`;
-    columns.push(dataCol);
   }
+  const dataColumn = aiRunDataColumn({ ...run, output_columns: run.output_columns ?? null });
+  if (dataColumn) columns.push(dataColumn);
   return columns;
 }
 
@@ -163,7 +162,7 @@ export function resumeRunCleanups(staleMinutes?: number): void {
 // failed, the surviving rows can hold ⏳ cells no live worker will ever clear.
 export async function clearPlaceholdersForSheetRuns(sheetId: string, userId: string): Promise<void> {
   const aiRuns = db.prepare(
-    'SELECT column_name, use_openrouter_web_search, output_columns FROM ai_runs WHERE sheet_id = ? AND user_id = ?',
+    'SELECT column_name, use_openrouter_web_search, output_columns, data_column FROM ai_runs WHERE sheet_id = ? AND user_id = ?',
   ).all(sheetId, userId) as AIRunCols[];
   const httpRuns = db.prepare(
     'SELECT id, master_column_name FROM http_runs WHERE sheet_id = ? AND user_id = ?',

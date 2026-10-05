@@ -7,8 +7,9 @@
 //     column carries the '⏳ Processing...' lifecycle; output_columns lists the
 //     N typed columns for locking/clearing/reconcile.
 //   - No preview-reuse promotion (v1): reuse is single-column only.
-//   - No web search/fetch (rejected at parse time): JSON output + the (Data)
-//     column have separate write/SSE paths not merged yet.
+//   - Web search and web fetch are allowed. Either one adds a "(Data)" column,
+//     stored in ai_runs.data_column, for the sources behind each row's answer:
+//     search citations plus the URLs the model lists (fetch has no citations).
 //   - Rerun is deferred (ai-run-rerun rejects structured runs); start +
 //     pause/resume/cancel are fully supported.
 import { v4 as uuidv4 } from 'uuid';
@@ -57,8 +58,9 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
   const targetCount = targets ? targets.length : span.count;
 
   const statusColumn = `${p.cleanColumnName} (Status)`;
+  const dataColumn = p.useOpenRouterWebSearch || p.useWebFetch ? `${p.cleanColumnName} (Data)` : null;
   const outputNames = specs.map(s => s.columnName);
-  const allColumns = [...outputNames, statusColumn];
+  const allColumns = [...outputNames, statusColumn, ...(dataColumn ? [dataColumn] : [])];
 
   // Every column this run creates must be NEW: no reuse for structured runs in
   // v1. Use the SHARED collision helper, not a hand-rolled lowercase compare —
@@ -111,8 +113,8 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
     INSERT INTO ai_runs (
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
-      status, total_rows, processed_rows, target_rows, output_columns, status_column, placeholder_work
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'pending', ?, 0, ?, ?, ?, 'seeding')
+      status, total_rows, processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding')
   `);
 
   // Cap check + run row + column_order append in ONE immediate txn (two
@@ -127,9 +129,10 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
       if (currentCols + capColsNeeded > MAX_COLUMNS_PER_SHEET) { capExceeded = true; return; }
       insertRun.run(
         runId, p.sheetId, userId, statusColumn, p.prompt, p.systemPrompt || null,
-        resolvedModel, p.safeTemperature, p.safeMaxChars, resolvedConcurrency,
+        resolvedModel, p.safeTemperature, p.useOpenRouterWebSearch ? 1 : 0, p.useWebFetch ? 1 : 0,
+        p.safeMaxChars, resolvedConcurrency,
         targetCount, targets ? JSON.stringify(targets) : null,
-        JSON.stringify(specs), statusColumn,
+        JSON.stringify(specs), statusColumn, dataColumn,
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();
@@ -140,8 +143,8 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
     };
 
     // Every column of a structured run carries the placeholder: the status column
-    // drives resume, and the outputs render "Loading…" and clear together on
-    // cancel/fail (run-placeholders.aiRunColumns).
+    // drives resume, and the outputs (and "(Data)") render "Loading…" and clear
+    // together on cancel/fail (run-placeholders.aiRunColumns).
     seedThenEnqueue({
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns: allColumns,
       targets, lastRow: span.lastRow,
@@ -149,7 +152,7 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
     });
 
     return {
-      ok: { runId, statusColumn, outputColumns: outputNames, reusedRows: 0, targetCount },
+      ok: { runId, statusColumn, outputColumns: outputNames, dataColumn, reusedRows: 0, targetCount },
     };
   });
 }

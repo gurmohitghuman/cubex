@@ -1,12 +1,15 @@
 import OpenAI from 'openai';
-import { processPromptTemplate } from '../lib/prompt';
+import { processPromptTemplate, extractAllowedDomainsFromRow } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { redactSecrets } from '../lib/http-request';
 import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import {
-  buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec,
+  buildMultiOutputInstruction, parseMultiOutput, sourcesFromOutput, type OutputColumnSpec,
 } from '../lib/ai-multi-output';
+import { buildWebTools } from '../lib/ai-web-tools';
+import { citationsFromCompletion, withSourceUrls } from '../lib/ai-citations';
+import { aiDataCellSummary } from '../lib/ai-data-cell';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { STOP_SENTINEL } from './ai-row-writers';
 import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-row-writers-multi';
@@ -14,8 +17,10 @@ import { createCompletionWithConnectRetry, connectionCauseCode } from './openrou
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
 // instruction, call OpenRouter once, parse the JSON object into N typed columns,
-// and hand success/failure to the multi writers. No web tools (parse rejects the
-// combo). Mirrors ai-row.ts's error handling (abort/stop are benign drops).
+// and hand success/failure to the multi writers. With web search or web fetch
+// on, the model gets those tools and also lists the URLs it used; those plus the
+// search citations fill the run's "(Data)" column. Mirrors ai-row.ts's error
+// handling (abort/stop are benign drops).
 export async function processMultiRow(
   runId: string,
   row: SheetRow,
@@ -31,18 +36,26 @@ export async function processMultiRow(
     inputValues: JSON.stringify(row.data), statusColumn, myGeneration,
   };
   const outputNames = specs.map(s => s.columnName);
+  const web = { search: !!run.use_openrouter_web_search, fetch: !!run.use_web_fetch };
+  const dataColumn = run.data_column || null;
+  // Cleared with the outputs on failure, so no cell is stranded on the placeholder.
+  const blankOnFailure = dataColumn ? [...outputNames, dataColumn] : outputNames;
 
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
+    const withSources = web.search || web.fetch;
     const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
     if (run.system_prompt) messages.push({ role: 'system', content: run.system_prompt });
-    messages.push({ role: 'user', content: `${processedPrompt}\n\n${buildMultiOutputInstruction(specs)}` });
+    messages.push({ role: 'user', content: `${processedPrompt}\n\n${buildMultiOutputInstruction(specs, { withSources })}` });
 
     if (!run.model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
+    const completionArgs: Record<string, unknown> = {
+      model: run.model, messages, temperature: run.temperature ?? 0.7, max_tokens: aiMaxTokens(run.max_chars), stream: false,
+    };
+    const tools = buildWebTools(run.prompt, row.data, web);
+    if (tools.length > 0) completionArgs.tools = tools;
     const completion = await createCompletionWithConnectRetry(
-      openai,
-      { model: run.model, messages, temperature: run.temperature ?? 0.7, max_tokens: aiMaxTokens(run.max_chars), stream: false },
-      signal, () => shouldStop(runId, myGeneration),
+      openai, completionArgs as any, signal, () => shouldStop(runId, myGeneration),
     );
 
     // cleanMarkdown:false — this text is JSON, not prose. Cleaning it breaks a
@@ -62,7 +75,7 @@ export async function processMultiRow(
 
     const parsed = parseMultiOutput(rawText, specs);
     if ('error' in parsed) {
-      writeMultiFailure(ctx, outputNames, parsed.error);
+      writeMultiFailure(ctx, blankOnFailure, parsed.error);
       return;
     }
     // Apply the same per-cell input policy as the single-column path: strip
@@ -71,7 +84,18 @@ export async function processMultiRow(
     for (const col of outputNames) {
       values[col] = clampCellChars(stripControlChars(parsed.ok[col] ?? ''), CELL_MAX_ENRICHMENT);
     }
-    writeMultiSuccess(ctx, values, clampCellChars(rawText, CELL_MAX_ENRICHMENT), usage);
+    let sources;
+    if (dataColumn) {
+      // Listed pages count only on hosts this row could reach (ai-citations.ts).
+      const fetchHosts = web.fetch ? extractAllowedDomainsFromRow(run.prompt, row.data) : [];
+      const cited = withSourceUrls(citationsFromCompletion(completion), sourcesFromOutput(rawText), fetchHosts);
+      sources = {
+        column: dataColumn,
+        summary: clampCellChars(stripControlChars(aiDataCellSummary(cited, web.search ? 'Searched' : 'Read')), CELL_MAX_ENRICHMENT),
+        json: cited.length > 0 ? JSON.stringify(cited) : null,
+      };
+    }
+    writeMultiSuccess(ctx, values, clampCellChars(rawText, CELL_MAX_ENRICHMENT), usage, sources);
   } catch (error) {
     if (error === STOP_SENTINEL) return;
     const aborted =
@@ -83,6 +107,6 @@ export async function processMultiRow(
     const rawMsg = (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     const errorMessage = redactSecrets(rawMsg);
     console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
-    writeMultiFailure(ctx, outputNames, errorMessage);
+    writeMultiFailure(ctx, blankOnFailure, errorMessage);
   }
 }

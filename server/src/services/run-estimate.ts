@@ -2,19 +2,18 @@
 // READ — no columns, placeholders, drafts, runs, or DB writes of any kind (risk
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
 // AI (Clay's variable-price shape: honest low/high, "actual depends on usage"),
-// and a row count + no-AI-cost note for HTTP.
+// web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
 import { db } from '../lib/db';
-import {
-  AI_ESTIMATE_SAMPLE_ROWS, AI_ESTIMATE_MIN_HISTORY,
-  AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH,
-} from '../lib/constants-ai';
+import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { resolveAiModel } from '../lib/ai-model-resolve';
 import { fetchModels } from '../lib/openrouter';
-import {
-  parseTokenPrice, estimateTokens, percentile, average, rowCostUsd, roundUsd,
-} from '../lib/ai-cost';
+import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '../lib/ai-cost';
+import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
+import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
+import { targetRowsAndSample } from './run-estimate-rows';
+import { tokenHistory } from './ai-token-history';
 
 export interface AiEstimateInput {
   sheetId: string;
@@ -22,20 +21,26 @@ export interface AiEstimateInput {
   systemPrompt?: string;
   model?: string;
   useOpenRouterWebSearch?: boolean;
+  useWebFetch?: boolean;
+  outputColumns?: OutputColumnSpec[];
   maxChars: number | null;
   targetRowIndexes?: number[];
 }
 
-interface Range { low: number; high: number }
 export interface AiEstimate {
   rows_to_process: number;
   model: string | null;
   pricing_available: boolean;
+  // Tokens plus web fees.
   estimated_cost_usd: Range | null;
   per_row_usd: Range | null;
+  // Web search and fetch fees alone, for the whole run; null without web tools.
+  web_fees_usd: Range | null;
   basis: 'history' | 'heuristic-no-history';
   assumptions: {
     avg_input_tokens: number;
+    // Per row, with what the web tools read added in.
+    input_tokens: Range;
     output_tokens: Range;
     sampled_rows: number;
     history_rows: number;
@@ -46,51 +51,6 @@ export interface AiEstimate {
 export type AiEstimateOutcome =
   | { fail: 'not_found' | 'bad_request' | 'no_rows'; message: string }
   | { ok: AiEstimate };
-
-// Target rows this run would touch: the subset, else all existing rows.
-// Returns the count plus a small data sample for input-token averaging.
-// targetRowIndexes come from resolveRowIdsToIndexes, so they already exist:
-// only the sample is read (a sheet can hold a million rows).
-function targetRowsAndSample(
-  sheetId: string, userId: string, targetRowIndexes: number[] | undefined,
-): { count: number; sample: Record<string, string>[] } {
-  if (targetRowIndexes && targetRowIndexes.length > 0) {
-    const targets = [...new Set(targetRowIndexes)];
-    const sampleIdx = targets.slice(0, AI_ESTIMATE_SAMPLE_ROWS);
-    const sample = sampleIdx.length === 0 ? [] : (db.prepare(
-      `SELECT data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index IN (${sampleIdx.map(() => '?').join(',')})`,
-    ).all(sheetId, userId, ...sampleIdx) as Array<{ data: string }>).map(r => JSON.parse(r.data));
-    return { count: targets.length, sample };
-  }
-  const count = (db.prepare('SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?')
-    .get(sheetId, userId) as { c: number }).c;
-  const sample = (db.prepare(
-    'SELECT data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index ASC LIMIT ?',
-  ).all(sheetId, userId, AI_ESTIMATE_SAMPLE_ROWS) as Array<{ data: string }>).map(r => JSON.parse(r.data));
-  return { count, sample };
-}
-
-// Recent completion-token history for THIS model, across the user's runs. p75 is
-// the high end (Clay's withholding rank); avg the low end. Thin history (<
-// MIN_HISTORY) falls back to a modest typical-cell default.
-function outputTokenRange(userId: string, model: string): { range: Range; historyRows: number; basis: AiEstimate['basis'] } {
-  const rows = db.prepare(`
-    SELECT ar.completion_tokens AS t
-    FROM ai_results ar JOIN ai_runs r ON ar.run_id = r.id
-    WHERE r.user_id = ? AND r.model = ? AND ar.status = 'completed' AND ar.completion_tokens IS NOT NULL
-    ORDER BY ar.created_at DESC LIMIT 500
-  `).all(userId, model) as Array<{ t: number }>;
-  const tokens = rows.map(r => r.t).filter(t => Number.isFinite(t) && t >= 0);
-  if (tokens.length >= AI_ESTIMATE_MIN_HISTORY) {
-    const low = Math.round(average(tokens) ?? AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW);
-    const high = Math.max(low, Math.round(percentile(tokens, 75) ?? AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH));
-    return { range: { low, high }, historyRows: tokens.length, basis: 'history' };
-  }
-  return {
-    range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH },
-    historyRows: tokens.length, basis: 'heuristic-no-history',
-  };
-}
 
 export async function estimateAiRun(userId: string, input: AiEstimateInput): Promise<AiEstimateOutcome> {
   const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(input.sheetId, userId);
@@ -104,16 +64,29 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const { count, sample } = targetRowsAndSample(input.sheetId, userId, input.targetRowIndexes);
   if (count === 0) return { fail: 'no_rows', message: 'No rows to process.' };
 
-  // Input tokens: render the prompt against sampled rows (+ system prompt) and
-  // average. Free — no API calls.
+  // Input tokens: render the prompt against sampled rows (+ system prompt, + a
+  // structured run's JSON instruction) and average. Free — no API calls.
+  const web: WebTools = { search: !!input.useOpenRouterWebSearch, fetch: !!input.useWebFetch };
+  const usesWeb = web.search || web.fetch;
   const sysTokens = input.systemPrompt ? estimateTokens(input.systemPrompt) : 0;
-  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d)) + sysTokens);
-  const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + sysTokens);
+  const instructionTokens = input.outputColumns
+    ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
+  const fixedTokens = sysTokens + instructionTokens;
+  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d)) + fixedTokens);
+  const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
-  const out = model
-    ? outputTokenRange(userId, model)
-    : { range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0, basis: 'heuristic-no-history' as const };
+  const history = model ? tokenHistory(userId, model, web) : null;
+  const out = history?.output
+    ?? { range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0, basis: 'heuristic-no-history' as const };
+  // What the web tools read lands in the prompt: past rows with the same tools
+  // measured it (never less than this prompt alone, which can outgrow theirs);
+  // otherwise the heuristic on top of this prompt.
+  const extra = usesWeb && !history?.webInput ? webInputTokensPerRow(web) : { low: 0, high: 0 };
+  const inputTokens: Range = history?.webInput
+    ? { low: Math.max(history.webInput.low, avgInputTokens), high: Math.max(history.webInput.high, avgInputTokens) }
+    : { low: avgInputTokens + extra.low, high: avgInputTokens + extra.high };
+  const fees = usesWeb ? webFeesPerRow(web) : null;
 
   // Pricing: stale cache is fine for a cost hint. Missing model / fetch failure
   // -> pricing_available:false, cost null (never a hard error — the estimate is
@@ -129,8 +102,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       pricingAvailable = true;
       const p = parseTokenPrice(m.pricing.prompt);
       const c = parseTokenPrice(m.pricing.completion);
-      const rowLow = rowCostUsd(avgInputTokens, out.range.low, p, c);
-      const rowHigh = rowCostUsd(avgInputTokens, out.range.high, p, c);
+      const rowLow = rowCostUsd(inputTokens.low, out.range.low, p, c) + (fees?.low ?? 0);
+      const rowHigh = rowCostUsd(inputTokens.high, out.range.high, p, c) + (fees?.high ?? 0);
       perRow = { low: roundUsd(rowLow), high: roundUsd(rowHigh) };
       cost = { low: roundUsd(rowLow * count), high: roundUsd(rowHigh * count) };
     }
@@ -144,7 +117,13 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   }
   if (!model) notes.push('No model resolved — set a model to price this run.');
   else if (!pricingAvailable) notes.push('OpenRouter pricing was unavailable; row count is exact, cost is not shown.');
-  if (input.useOpenRouterWebSearch) notes.push('Web search adds provider search costs not reflected here.');
+  if (fees) {
+    notes.push(`Includes web ${[web.search && 'search', web.fetch && 'fetch'].filter(Boolean).join(' and ')} fees of about `
+      + `$${roundUsd(fees.low)}-$${roundUsd(fees.high)} a row at OpenRouter's Exa/Parallel prices (native search engines differ), `
+      + (history?.webInput
+        ? 'and the pages read, sized from your past runs with the same web tools.'
+        : 'and a rough allowance for the text the pages add to each prompt.'));
+  }
 
   return {
     ok: {
@@ -153,39 +132,16 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       pricing_available: pricingAvailable,
       estimated_cost_usd: cost,
       per_row_usd: perRow,
+      web_fees_usd: fees ? { low: roundUsd(fees.low * count), high: roundUsd(fees.high * count) } : null,
       basis: out.basis,
       assumptions: {
         avg_input_tokens: avgInputTokens,
+        input_tokens: inputTokens,
         output_tokens: out.range,
         sampled_rows: sample.length,
         history_rows: out.historyRows,
       },
       note: notes.join(' '),
-    },
-  };
-}
-
-export interface HttpEstimate {
-  rows_to_process: number;
-  ai_cost_usd: null;
-  note: string;
-}
-
-// HTTP enrichment egresses from the user's own API, not an AI model — there is no
-// AI dollar cost to price. Report the row count (= outbound calls before caching)
-// and the operational caveats.
-export function estimateHttpRun(
-  userId: string, sheetId: string, targetRowIndexes: number[] | undefined,
-): { fail: 'not_found' | 'no_rows'; message: string } | { ok: HttpEstimate } {
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
-  if (!owns) return { fail: 'not_found', message: 'Sheet not found' };
-  const { count } = targetRowsAndSample(sheetId, userId, targetRowIndexes);
-  if (count === 0) return { fail: 'no_rows', message: 'No rows to process.' };
-  return {
-    ok: {
-      rows_to_process: count,
-      ai_cost_usd: null,
-      note: 'HTTP enrichment runs against your own API (no AI credits). This is one outbound request per row before GET/HEAD caching, subject to your account outbound rate limit.',
     },
   };
 }

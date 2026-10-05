@@ -102,8 +102,9 @@ router.get('/runs/:id/stream', (req, res) => {
       for (const row of newResults) {
         // Structured (multi-column) run: output_value is a raw JSON object, not a
         // single cell value — streaming it into one column would show a JSON blob.
-        // Its N typed columns update via the sheet live-update poll (data_version)
-        // instead. Still advance the cursor so progress + terminal logic proceed.
+        // Its N typed columns (and "(Data)") update via the sheet live-update poll:
+        // each row's write bumps data_version (ai-row-writers-multi.ts). Still
+        // advance the cursor so progress + terminal logic proceed.
         if (r.output_columns) { lastRowid = row.cursor; continue; }
         // Output column event
         res.write(`data: ${JSON.stringify({

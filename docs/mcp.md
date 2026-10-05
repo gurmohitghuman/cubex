@@ -168,7 +168,8 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 - `prompt` reads other columns with `/column_name`: lower case, with spaces and symbols turned into `_` ("What they sell (Output)" is `/what_they_sell_output`).
 - `estimate_only: true` returns the row count and estimated cost without starting anything. `preview_rows: 3` runs the prompt on a few rows and returns the answers without saving them.
 - `output_columns: [{"column_name", "type", "description"}]` fills several typed columns from one call per row.
-- Also optional: `system_prompt`, `temperature`, `web_search`, `web_fetch`, `max_chars`, `concurrency`.
+- `web_search: true` lets the model search the web. `web_fetch: true` lets it open pages, but only on the sites named in the cells the prompt references, so a prompt that mentions `/domain` keeps each row on its own site. Either one works with `output_columns`: the run also fills a `<column_name> (Data)` column with the sources it used. Estimates include web fees, and previews use the same tools and list each row's sources.
+- Also optional: `system_prompt`, `temperature`, `max_chars`, `concurrency`.
 - `model` is required unless you've set a default (Settings → AI). `GET /models?search=deepseek` finds exact ids.
 
 **HTTP run:** `POST /sheets/:id/http-runs`
@@ -192,7 +193,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | Endpoint | Body or query |
 |---|---|
 | `GET /runs` | Recent runs, newest first. `?sheet_id=...&filter=active` (`active`, `terminal` or `all`) `&limit=20` (up to 50). |
-| `GET /ai-runs/:id` · `GET /http-runs/:id` | Status and progress. `completed` means every row was processed, not that every row worked: check `failed_rows`. |
+| `GET /ai-runs/:id` · `GET /http-runs/:id` | Status and progress. `completed` means every row was processed, not that every row worked: check `failed_rows`. A structured AI run also lists its `output_columns`, and a run with web search or fetch names its `data_column` (the sources). |
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. |
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Structured (`output_columns`) runs can't be rerun yet. |

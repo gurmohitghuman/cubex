@@ -110,7 +110,8 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
   if (a.estimate_only === true) {
     const est = await estimateAiRun(c.userId, {
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
-      useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, maxChars: parsed.safeMaxChars,
+      useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
+      outputColumns: parsed.outputColumns, maxChars: parsed.safeMaxChars,
       targetRowIndexes: pre.targetRowIndexes,
     });
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
@@ -121,6 +122,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     const prev = await previewAiRun(c.userId, {
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
       maxChars: parsed.safeMaxChars, outputColumns: parsed.outputColumns,
+      useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes,
     });
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
@@ -145,7 +147,9 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
   if ('fail' in result) return result;
   const payload = result.ok.statusColumn ? {
     run_id: result.ok.runId, status_column: result.ok.statusColumn,
-    output_columns: result.ok.outputColumns, target_rows: result.ok.targetCount,
+    output_columns: result.ok.outputColumns,
+    data_column: result.ok.dataColumn ?? null,
+    target_rows: result.ok.targetCount,
   } : {
     run_id: result.ok.runId, output_column: result.ok.outputColumn,
     data_column: result.ok.dataColumn, reused_rows: result.ok.reusedRows, target_rows: result.ok.targetCount,

@@ -8,7 +8,7 @@ import { httpTemplateError } from '../lib/http-template-validate';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
-import { estimateHttpRun } from './run-estimate';
+import { estimateHttpRun } from './run-estimate-http';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 
 export interface TokenHttpRunArgs {

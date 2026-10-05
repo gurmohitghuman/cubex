@@ -22,6 +22,7 @@ export interface AIRunRow {
   target_rows: string | null;        // JSON array of row indices for reruns; NULL = full run
   output_columns: string | null;     // JSON [{columnName,type,description}] for structured runs; NULL = single-column (migration 042)
   status_column: string | null;      // per-row ✅/❌ column for structured runs; NULL for single-column
+  data_column?: string | null;       // structured runs with a web tool: their "(Data)" citations column (migration 006)
   worker_generation: number;         // bumped on each resume; old workers exit on mismatch
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   created_at: string;

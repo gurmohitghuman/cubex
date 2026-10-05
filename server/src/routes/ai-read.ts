@@ -1,4 +1,5 @@
 import express from 'express';
+import { aiRunDataColumn, type AiRunDataColumnFields } from '../lib/ai-data-column';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { type AIRunRow } from '../services/ai-runner';
@@ -37,50 +38,43 @@ router.get('/runs', (req: AuthRequest, res) => {
   }
 });
 
-router.get('/sheets/:sheetId/results', (req: AuthRequest, res) => {
+// The sources behind one "(Data)" cell: at this row, the newest result with
+// sources from the runs whose "(Data)" column this is (aiRunDataColumn, the rule
+// locks and column types use). Looked up per click through (run_id, row_index),
+// so the grid loads nothing about results up front: a sheet can hold a million.
+router.get('/sheets/:sheetId/sources', (req: AuthRequest, res) => {
   try {
     const { sheetId } = req.params;
-    const runs = db.prepare(
-      'SELECT id, column_name FROM ai_runs WHERE sheet_id = ? AND user_id = ?',
-    ).all(sheetId, req.userId!) as Array<{ id: string; column_name: string }>;
-
-    const runIdToColumn: Record<string, string> = {};
-    runs.forEach(r => { runIdToColumn[r.id] = r.column_name; });
-    const runIds = Object.keys(runIdToColumn);
-    if (runIds.length === 0) return res.json([]);
-
-    const placeholders = runIds.map(() => '?').join(',');
-    const results = db.prepare(`
-      SELECT * FROM ai_results
-      WHERE run_id IN (${placeholders}) AND user_id = ?
-      ORDER BY row_index ASC
-    `).all(...runIds, req.userId!) as any[];
-
-    res.json(results.map(r => ({ ...r, column_name: runIdToColumn[r.run_id] || null })));
-  } catch (error) {
-    console.error('Error getting AI results for sheet:', error);
-    res.status(500).json({ error: 'Failed to get AI results for sheet' });
-  }
-});
-
-router.get('/results/:resultId/scraped-data', (req: AuthRequest, res) => {
-  try {
-    const { resultId } = req.params;
-    const result = db.prepare('SELECT scraped_data FROM ai_results WHERE id = ? AND user_id = ?')
-      .get(resultId, req.userId!) as { scraped_data: string | null } | undefined;
-
-    if (!result) return res.status(404).json({ error: 'Result not found' });
-    if (!result.scraped_data) {
-      return res.json({ scrapedData: null, message: 'No scraped data available for this row' });
+    const rowIndex = Number(req.query.row_index);
+    const column = typeof req.query.column === 'string' ? req.query.column : '';
+    if (!Number.isSafeInteger(rowIndex) || rowIndex < 0 || !column) {
+      return res.status(400).json({ error: 'row_index and column are required' });
     }
-    try {
-      res.json({ scrapedData: JSON.parse(result.scraped_data) });
-    } catch {
-      res.status(500).json({ error: 'Failed to parse scraped data' });
+    const runs = db.prepare(`
+      SELECT id, column_name, output_columns, data_column, use_openrouter_web_search FROM ai_runs
+      WHERE sheet_id = ? AND user_id = ? ORDER BY created_at DESC, rowid DESC
+    `).all(sheetId, req.userId!) as Array<AiRunDataColumnFields & { id: string }>;
+    const sourced = db.prepare(`
+      SELECT scraped_data FROM ai_results
+      WHERE run_id = ? AND row_index = ? AND user_id = ? AND scraped_data IS NOT NULL
+      ORDER BY created_at DESC, rowid DESC LIMIT 1
+    `);
+    // Newest run first; one that has nothing at this row (a rerun of other
+    // rows) falls through to the run whose sources the cell still shows.
+    for (const run of runs) {
+      if (aiRunDataColumn(run) !== column) continue;
+      const hit = sourced.get(run.id, rowIndex, req.userId!) as { scraped_data: string } | undefined;
+      if (!hit) continue;
+      try {
+        return res.json({ scrapedData: JSON.parse(hit.scraped_data) });
+      } catch {
+        return res.status(500).json({ error: 'Failed to parse scraped data' });
+      }
     }
+    res.json({ scrapedData: null });
   } catch (error) {
-    console.error('Get scraped data error:', error);
-    res.status(500).json({ error: 'Failed to get scraped data' });
+    console.error('Get cell sources error:', error);
+    res.status(500).json({ error: 'Failed to get sources' });
   }
 });
 

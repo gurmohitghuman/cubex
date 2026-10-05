@@ -23,14 +23,11 @@ import { SheetData } from '@/utils/api'
 // (already derived by the caller — verbatim for HTTP extractedFields, derived
 // from status/outputValue for AI), so the buffer is display-logic-free.
 interface CellDelta { rowIndex: number; column: string; value: string }
-// A resultId to remember for the scraped-data modal (AI completed results).
-interface ResultIdDelta { rowIndex: number; column: string; resultId: string }
 
 const cellKey = (rowIndex: number, column: string) => `${rowIndex}\u0000${column}`
 
 export interface SSEResultBuffer {
   enqueueCell: (rowIndex: number, column: string, value: string) => void
-  enqueueResultId: (rowIndex: number, column: string, resultId: string) => void
   // Force a synchronous flush now (used before the terminal-status reload so an
   // in-flight batch can't repaint over the fresher silent-reload state).
   flushNow: () => void
@@ -41,20 +38,17 @@ export interface SSEResultBuffer {
 
 export function createSSEResultBuffer(
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>,
-  setAiResultCells: React.Dispatch<React.SetStateAction<Map<string, string>>>,
-  withResultIdKeys: (rowIndex: number, column: string) => string[],
 ): SSEResultBuffer {
   // Pending coalesced state. Maps (not arrays) so a later write to the same cell
   // overwrites the earlier one in O(1) — last-write-wins within the flush window.
   let pendingCells = new Map<string, CellDelta>()
-  let pendingIds = new Map<string, ResultIdDelta>()
   let frame: number | null = null
 
   const flush = () => {
     frame = null
-    if (pendingCells.size === 0 && pendingIds.size === 0) return
-    const cells = pendingCells; const ids = pendingIds
-    pendingCells = new Map(); pendingIds = new Map()
+    if (pendingCells.size === 0) return
+    const cells = pendingCells
+    pendingCells = new Map()
 
     if (cells.size > 0) {
       // Group deltas by rowIndex so each affected row is cloned exactly once.
@@ -81,16 +75,6 @@ export function createSSEResultBuffer(
         return { ...prev, data: { ...prev.data, rows } }
       })
     }
-
-    if (ids.size > 0) {
-      setAiResultCells(prev => {
-        const next = new Map(prev)
-        for (const d of ids.values()) {
-          for (const k of withResultIdKeys(d.rowIndex, d.column)) next.set(k, d.resultId)
-        }
-        return next
-      })
-    }
   }
 
   const schedule = () => {
@@ -107,10 +91,6 @@ export function createSSEResultBuffer(
       pendingCells.set(cellKey(rowIndex, column), { rowIndex, column, value })
       schedule()
     },
-    enqueueResultId(rowIndex, column, resultId) {
-      pendingIds.set(cellKey(rowIndex, column), { rowIndex, column, resultId })
-      schedule()
-    },
     flushNow() {
       if (frame !== null) {
         if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
@@ -125,7 +105,7 @@ export function createSSEResultBuffer(
         else clearTimeout(frame as unknown as ReturnType<typeof setTimeout>)
         frame = null
       }
-      pendingCells = new Map(); pendingIds = new Map()
+      pendingCells = new Map()
     },
   }
 }

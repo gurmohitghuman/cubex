@@ -4,7 +4,7 @@ import { INITIAL_ROW_LOAD } from '@/lib/constants'
 import { AIColumnModal } from '@/components/AIColumnModal'
 import { HTTPAPIColumnModal } from '@/components/HTTPAPIColumnModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { ScrapedDataModal } from '@/components/ScrapedDataModal'
+import { ScrapedDataModal, type SourcesCell } from '@/components/ScrapedDataModal'
 import { ImportCSVModal } from '@/components/sheet/ImportCSVModal'
 import { NewColumnModal } from '@/components/sheet/NewColumnModal'
 import { Sheet, SheetData } from '@/utils/api'
@@ -20,14 +20,14 @@ interface SheetModalsProps {
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
   showNewColumnModal: boolean
-  scrapedDataModal: { isOpen: boolean; resultId: string | null }
+  scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
   // setters
   setConfirmTopbarDeleteOpen: (b: boolean) => void
   setShowImportModal: (b: boolean) => void
   setShowAddColumnModal: (b: boolean) => void
   setShowHTTPAPIColumnModal: (b: boolean) => void
   setShowNewColumnModal: (b: boolean) => void
-  setScrapedDataModal: (s: { isOpen: boolean; resultId: string | null }) => void
+  setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
   setSelectedRowIndices: (rows: number[]) => void
   // Clears the grid row selection through AG Grid (deselectAll) — un-highlights the
   // rows AND syncs the mirrors. The topbar confirm uses this instead of only
@@ -189,8 +189,8 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
 
       <ScrapedDataModal
         isOpen={scrapedDataModal.isOpen}
-        resultId={scrapedDataModal.resultId}
-        onClose={() => setScrapedDataModal({ isOpen: false, resultId: null })}
+        cell={scrapedDataModal.cell}
+        onClose={() => setScrapedDataModal({ isOpen: false, cell: null })}
       />
     </>
   )

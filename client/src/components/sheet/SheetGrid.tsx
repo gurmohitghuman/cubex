@@ -22,7 +22,7 @@ export interface SheetGridProps {
   activeHTTPRunsByColumn: RunByColumn
   activeAIRunsByColumn: RunByColumn
   onCellEdit: (rowIndex: number, column: string, value: string) => void
-  onCellClick: (rowIndex: number, columnName: string) => void
+  onCellClick: (rowIndex: number, columnName: string, value?: unknown) => void
   onLoadMore: (offset: number, limit?: number) => Promise<void> | void
   onSortChange: (columnId: string, direction?: 'asc' | 'desc' | null) => void
   onEmptyFilterChange: (column: string, value: 'empty' | 'not_empty' | null) => void

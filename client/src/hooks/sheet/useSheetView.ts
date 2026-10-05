@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
+import type { SourcesCell } from '@/components/ScrapedDataModal'
 
 interface UseSheetViewArgs {
   activeSheet: Sheet | null
   sheetData: SheetData | null
   emptyFilter: Record<string, 'empty' | 'not_empty'>
-  aiResultCells: Map<string, string>
-  setScrapedDataModal: (s: { isOpen: boolean; resultId: string | null }) => void
+  setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
   // Sort is a one-time PHYSICAL reorder (Google Sheets semantics): the server
   // rewrites row_index, then we reload. There is no client-side live sort —
   // rows render in row_index order and never move when cell values change.
@@ -30,7 +30,7 @@ interface UseSheetViewArgs {
 
 export const useSheetView = ({
   activeSheet, sheetData, emptyFilter,
-  aiResultCells, setScrapedDataModal, reloadSheet, waitForSaves, clearSelection, setIsLoading,
+  setScrapedDataModal, reloadSheet, waitForSaves, clearSelection, setIsLoading,
 }: UseSheetViewArgs) => {
   const filteredRows = useMemo(() => {
     if (!sheetData?.data?.rows) return []
@@ -76,16 +76,14 @@ export const useSheetView = ({
     }
   }, [activeSheet, reloadSheet, waitForSaves, clearSelection, setIsLoading])
 
-  const handleCellClick = useCallback((rowIndex: number, columnName: string) => {
-    // AI Data column → specialized scraped-sources modal (existing flow).
-    // Other long-content cells now use AG Grid's built-in large-text popup
-    // editor via the per-column cellEditor config — see buildColumnDefs.
-    const cellKey = `${rowIndex}:${columnName}`
-    const resultId = aiResultCells.get(cellKey)
-    if (resultId && columnName.endsWith(' (Data)')) {
-      setScrapedDataModal({ isOpen: true, resultId })
-    }
-  }, [aiResultCells, setScrapedDataModal])
+  const handleCellClick = useCallback((rowIndex: number, columnName: string, value?: unknown) => {
+    // A "(Data)" cell holding an AI run's sources summary (📊 …) opens the
+    // sources modal, which asks the server for that one cell's sources. Other
+    // long-content cells use AG Grid's large-text popup editor (buildColumnDefs).
+    if (!activeSheet || !columnName.endsWith(' (Data)')) return
+    if (typeof value !== 'string' || !value.startsWith('📊')) return
+    setScrapedDataModal({ isOpen: true, cell: { sheetId: activeSheet.id, rowIndex, columnName } })
+  }, [activeSheet, setScrapedDataModal])
 
   // Kept under its historical name to limit churn at the call sites: these are
   // the rows the grid renders — row_index order, empty-filter applied. No sort.

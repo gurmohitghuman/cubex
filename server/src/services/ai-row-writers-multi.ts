@@ -9,7 +9,7 @@
 // output columns are blanked too, so no cell is stranded on the spinner.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { touchSheet, jsonPath } from '../lib/sql-helpers';
+import { jsonPath } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { STOP_SENTINEL } from './ai-row-writers';
 import type { RowTokenUsage } from './ai-row-writers';
@@ -26,6 +26,15 @@ export interface MultiWriteCtx {
 
 const STATUS_OK = '✅';
 
+// data_version, not just updated_at (touchSheet): structured runs don't stream
+// their cells over SSE (ai-stream.ts), so an open grid learns of each row
+// through the change poll, which watches data_version (and paces its reloads).
+function bumpSheetVersion(ctx: MultiWriteCtx): void {
+  db.prepare(
+    "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+  ).run(ctx.sheetId, ctx.userId);
+}
+
 // json_set(data, p1, v1, p2, v2, ...) built from ordered (path, value) pairs.
 function jsonSetPairs(pairs: Array<[string, string]>): { expr: string; args: string[] } {
   const expr = 'json_set(data' + pairs.map(() => ', ?, ?').join('') + ')';
@@ -34,31 +43,37 @@ function jsonSetPairs(pairs: Array<[string, string]>): { expr: string; args: str
   return { expr, args };
 }
 
+// A run with a web tool also writes its sources: the "(Data)" cell summary and
+// the full list for the sources viewer (ai_results.scraped_data).
+export interface MultiSources { column: string; summary: string; json: string | null }
+
 // Persist a successful structured row: ai_results (raw JSON as output_value) +
-// each output column cell + status ✅, in one immediate txn.
+// each output column cell + status ✅ (+ the "(Data)" cell), in one immediate txn.
 export function writeMultiSuccess(
   ctx: MultiWriteCtx,
   values: Record<string, string>,
   rawJson: string,
   usage?: RowTokenUsage,
+  sources?: MultiSources,
 ): void {
   const resultId = uuidv4();
   db.transaction(() => {
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
-      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, prompt_tokens, completion_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, prompt_tokens, completion_tokens, scraped_data)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, rawJson,
-      usage?.promptTokens ?? null, usage?.completionTokens ?? null);
+      usage?.promptTokens ?? null, usage?.completionTokens ?? null, sources?.json ?? null);
 
     const pairs: Array<[string, string]> = Object.entries(values).map(([col, val]) => [jsonPath(col), val]);
+    if (sources) pairs.push([jsonPath(sources.column), sources.summary]);
     pairs.push([jsonPath(ctx.statusColumn), STATUS_OK]);
     const { expr, args } = jsonSetPairs(pairs);
     db.prepare(`
       UPDATE rows SET data = ${expr}, updated_at = datetime('now')
       WHERE user_id = ? AND sheet_id = ? AND row_index = ?
     `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
-    touchSheet(ctx.sheetId, ctx.userId);
+    bumpSheetVersion(ctx);
   }).immediate();
 }
 
@@ -85,6 +100,6 @@ export function writeMultiFailure(
       UPDATE rows SET data = ${expr}, updated_at = datetime('now')
       WHERE user_id = ? AND sheet_id = ? AND row_index = ?
     `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
-    touchSheet(ctx.sheetId, ctx.userId);
+    bumpSheetVersion(ctx);
   }).immediate();
 }

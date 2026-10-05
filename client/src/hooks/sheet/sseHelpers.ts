@@ -1,49 +1,9 @@
-// Stateless helpers for SSE reconnection and AI-results bootstrap.
+// Stateless helpers for SSE reconnection and result events.
 // Extracted from useSheetSSE so the hook file stays under the 200-line cap.
 
 import toast from 'react-hot-toast'
 import { AIRun, HTTPRun } from '@/utils/api'
 import { SSEResultBuffer, deriveAICellValue } from './sseResultBuffer'
-
-export const fetchExistingAIResults = async (sheetId: string): Promise<Map<string, string>> => {
-  const map = new Map<string, string>()
-  try {
-    const response = await fetch(`/api/ai/sheets/${sheetId}/results`, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (!response.ok) {
-      console.error('Failed to fetch AI results for sheet:', response.status, response.statusText)
-      return map
-    }
-    const results = await response.json()
-    for (const result of results) {
-      const cellKey = `${result.row_index}:${result.column_name}`
-      map.set(cellKey, result.id)
-      // Mirror the (Output) cell's resultId onto the (Data) sibling so clicks on
-      // either reach the scraped-data modal via the same lookup.
-      if (result.column_name.endsWith(' (Output)')) {
-        const dataKey = `${result.row_index}:${result.column_name.replace(' (Output)', ' (Data)')}`
-        map.set(dataKey, result.id)
-      }
-    }
-  } catch (error) {
-    console.error('Error loading existing AI results:', error)
-  }
-  return map
-}
-
-// The aiResultCells keys a completed AI result is recorded under (so a cell click
-// opens the scraped-data modal): the (row:column) key plus, for an (Output)
-// column, its (Data) sibling — the modal is reachable from either. Must match the
-// colon-keyed format fetchExistingAIResults seeds.
-export const withAIResultIdKeys = (rowIndex: number, columnName: string): string[] => {
-  const keys = [`${rowIndex}:${columnName}`]
-  if (columnName.endsWith(' (Output)')) {
-    keys.push(`${rowIndex}:${columnName.replace(' (Output)', ' (Data)')}`)
-  }
-  return keys
-}
 
 // Enqueue an SSE 'result' delta (AI single-column OR HTTP extractedFields) into the
 // coalescing buffer (perf fix #1). The CALLER decides whether this result belongs to
@@ -51,9 +11,6 @@ export const withAIResultIdKeys = (rowIndex: number, columnName: string): string
 export const enqueueResultEvent = (data: any, buffer: SSEResultBuffer) => {
   if (data.columnName) {
     buffer.enqueueCell(data.rowIndex, data.columnName, deriveAICellValue(data.status, data.outputValue, data.errorMessage))
-    if (data.status === 'completed' && data.resultId) {
-      buffer.enqueueResultId(data.rowIndex, data.columnName, data.resultId)
-    }
   } else if (data.extractedFields) {
     // HTTP runs: data.extractedFields is a map of the EXACT final cell strings the
     // server already computed (field values, or markers like '❌ Error' / '⏭️ No

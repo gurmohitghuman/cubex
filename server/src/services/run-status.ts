@@ -5,13 +5,16 @@
 // row_index with the row's STABLE id joined on (v1 clients address by id).
 import { db } from '../lib/db';
 import { parseTargetRows } from '../lib/run-targets';
+import { aiRunDataColumn } from '../lib/ai-data-column';
 
 export interface RunSummary {
   id: string;
   sheet_id: string;
   type: 'ai' | 'http';
-  column_name: string | null;   // AI: "<name> (Output)"; HTTP: master/status column
+  column_name: string | null;   // AI: "<name> (Output)", or "<name> (Status)" with output_columns; HTTP: master/status column
   model?: string | null;        // AI only
+  output_columns?: string[];    // AI structured run: the typed columns it fills
+  data_column?: string;         // AI run with web tools: the "(Data)" column listing its sources
   status: string;
   processed_rows: number;
   total_rows: number;
@@ -34,20 +37,35 @@ export function rowOutcomes(table: 'ai_results' | 'http_results', runId: string)
   return { failed_rows: n('failed'), succeeded_rows: n('completed') + n('accepted') };
 }
 
-export function getAiRunSummary(runId: string, userId: string): RunSummary | null {
-  const r = db.prepare(`
-    SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows,
-           error_message, target_rows, created_at, updated_at
-    FROM ai_runs WHERE id = ? AND user_id = ?
-  `).get(runId, userId) as any;
-  if (!r) return null;
+function outputColumnNames(json: string | null): string[] | null {
+  if (!json) return null;
+  try { return (JSON.parse(json) as Array<{ columnName: string }>).map(s => s.columnName); } catch { return null; }
+}
+
+// One ai_runs row as a summary (the SELECTs here and in run-list.ts list the
+// columns it reads, written out so the SQL schema test checks them). Says which
+// columns the run fills, so a caller reading a structured run knows where its
+// values landed.
+export function aiRunSummaryFromRow(r: any): RunSummary {
+  const outputs = outputColumnNames(r.output_columns);
+  const data = aiRunDataColumn(r);
   return {
     id: r.id, sheet_id: r.sheet_id, type: 'ai', column_name: r.column_name,
-    model: r.model, status: r.status, processed_rows: r.processed_rows,
+    model: r.model, ...(outputs ? { output_columns: outputs } : {}), ...(data ? { data_column: data } : {}),
+    status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...rowOutcomes('ai_results', r.id),
     created_at: r.created_at, updated_at: r.updated_at,
   };
+}
+
+export function getAiRunSummary(runId: string, userId: string): RunSummary | null {
+  const r = db.prepare(`
+    SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
+           target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search
+    FROM ai_runs WHERE id = ? AND user_id = ?
+  `).get(runId, userId);
+  return r ? aiRunSummaryFromRow(r) : null;
 }
 
 export function getHttpRunSummary(runId: string, userId: string): RunSummary | null {

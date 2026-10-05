@@ -1,11 +1,13 @@
 import OpenAI from 'openai';
-import { processPromptTemplate, extractAllowedDomainsFromRow } from '../lib/prompt';
+import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { redactSecrets } from '../lib/http-request';
 import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
-import { WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_MAX_TOTAL_RESULTS } from '../lib/constants-ai';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
+import { buildWebTools } from '../lib/ai-web-tools';
+import { citationsFromCompletion } from '../lib/ai-citations';
+import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
 import { createCompletionWithConnectRetry, connectionCauseCode } from './openrouter-retry';
@@ -27,10 +29,10 @@ export async function processRow(
     const { processMultiRow } = await import('./ai-row-multi');
     return processMultiRow(runId, row, run, openai, signal, myGeneration);
   }
-  // (Data) column only exists for runs with web SEARCH on. Web fetch returns no
-  // caller-visible breadcrumb on chat-completions, so a Data column for
-  // fetch-only runs would always be empty — see ai-run-start.ts.
-  const needsDataColumn = !!run.use_openrouter_web_search;
+  // (Data) column only exists for runs with web SEARCH on (lib/ai-data-column.ts).
+  // Web fetch returns no caller-visible breadcrumb on chat-completions, and a
+  // free-text answer has no room for a sources list (structured runs ask for one).
+  const needsDataColumn = aiRunDataColumn(run) !== null;
   const ctx = {
     runId, userId: run.user_id, sheetId: run.sheet_id, rowIndex: row.rowIndex,
     columnName: run.column_name, inputValues: JSON.stringify(row.data),
@@ -53,41 +55,10 @@ export async function processRow(
     }
     messages.push({ role: 'user', content: processedPrompt });
 
-    const tools: any[] = [];
-    if (run.use_openrouter_web_search) {
-      // max_total_results caps the CUMULATIVE results across every search the
-      // model chooses to run for one row — without it, result count is
-      // unbounded and model-controlled (observed 2-4 searches/row, 10-20
-      // results, 2-4x the advertised estimate).
-      // This limits result/context exposure; pricing is engine-
-      // dependent (native provider search even ignores max_results), so it is
-      // NOT an absolute dollar ceiling — see constants-ai.ts.
-      tools.push({
-        type: 'openrouter:web_search',
-        parameters: {
-          max_results: WEB_SEARCH_MAX_RESULTS,
-          max_total_results: WEB_SEARCH_MAX_TOTAL_RESULTS,
-        },
-      });
-      // Search needs a "now" anchor for queries like "latest …"; datetime is free,
-      // so always pair it with search rather than hand-injecting.
-      tools.push({ type: 'openrouter:datetime' });
-    }
-    if (run.use_web_fetch) {
-      // Per-row allowed_domains: only let the model fetch URLs whose host appears
-      // in this row's URL-valued cells of /columns referenced in the prompt.
-      // ALWAYS send parameters.allowed_domains, even when empty — omitting the
-      // key entirely leaves the behavior up to OpenRouter's defaults, which are
-      // not contractually documented and have historically meant "allow any
-      // public URL." Sending an explicit empty list means "block everything,"
-      // which is the safe-by-default behavior for a row whose URL columns are
-      // unpopulated.
-      const allowed = extractAllowedDomainsFromRow(run.prompt, row.data);
-      tools.push({
-        type: 'openrouter:web_fetch',
-        parameters: { allowed_domains: allowed },
-      });
-    }
+    // Web search (+ datetime) and per-row domain-limited web fetch: lib/ai-web-tools.ts.
+    const tools = buildWebTools(run.prompt, row.data, {
+      search: !!run.use_openrouter_web_search, fetch: !!run.use_web_fetch,
+    });
 
     // Every start/rerun path resolves and stores a user-chosen model, so a NULL
     // here means a legacy pre-default-era run resurrected by the queue. Fail the
@@ -123,17 +94,7 @@ export async function processRow(
     // above; this is the hard storage ceiling on top.
     result = clampCellChars(stripControlChars(result), CELL_MAX_ENRICHMENT);
 
-    const annotations = (completion.choices[0]?.message as any)?.annotations as
-      | Array<{ type?: string; url_citation?: { url: string; title?: string; content?: string } }>
-      | undefined;
-    const citedUrls = (annotations || [])
-      .filter(a => a?.type === 'url_citation' && a.url_citation?.url)
-      .map(a => ({
-        title: a.url_citation!.title || a.url_citation!.url,
-        url: a.url_citation!.url,
-        content: a.url_citation!.content || '',
-        snippet: (a.url_citation!.content || '').slice(0, 200),
-      }));
+    const citedUrls = citationsFromCompletion(completion);
 
     const scrapedDataJson = citedUrls.length > 0 ? JSON.stringify(citedUrls) : null;
     // Shared with the SSE stream (ai-stream.ts) so the live (Data) cell == the

@@ -1,4 +1,5 @@
 // Helpers for processing AI prompts that reference sheet columns via /column tokens.
+import { isIP } from 'node:net';
 
 // Convert a human column name like "Website URL" → "website_url" for /token matching.
 export function normalizeColumnName(name: string): string {
@@ -103,7 +104,7 @@ export function extractAllowedDomainsFromRow(
       // Filter out obviously-wrong hosts (no dot, IPs, localhost) so a cell
       // value that happens to start with letters but isn't a real URL doesn't
       // become an allowed domain.
-      if (host.includes('.') && !host.endsWith('.local') && host !== 'localhost') {
+      if (host.includes('.') && !host.endsWith('.local') && host !== 'localhost' && !isIP(host)) {
         hosts.add(host);
       }
     } catch {

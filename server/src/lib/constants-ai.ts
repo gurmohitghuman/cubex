@@ -63,7 +63,15 @@ export const MAX_OUTPUT_COLUMNS_PER_RUN = 20;
 export const PREVIEW_MAX_ROWS = 20;
 
 export const AI_ESTIMATE_SAMPLE_ROWS = 50;
-export const AI_ESTIMATE_MIN_HISTORY = 20;
+// Finished rows on a model before estimate_only trusts their token counts over
+// defaults. 20 meant a 10-row trial run never counted, so the next estimate
+// still said "no history"; five real rows are a better guess than the default.
+// (Previews save nothing, so only runs add history.)
+export const AI_ESTIMATE_MIN_HISTORY = 5;
+// That history is read in bounded slices (services/ai-token-history.ts): the
+// latest runs on the model, and at most this many finished rows of each.
+export const AI_ESTIMATE_HISTORY_RUNS = 20;
+export const AI_ESTIMATE_HISTORY_ROWS_PER_RUN = 50;
 export const AI_ESTIMATE_CHARS_PER_TOKEN = 4;
 export const AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW = 100;
 export const AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH = 600;
@@ -117,3 +125,18 @@ export const FREE_MODEL_CONCURRENCY_WARN = 10;
 // ignores max_results), so this limits exposure rather than fixing a price.
 export const WEB_SEARCH_MAX_RESULTS = 5;
 export const WEB_SEARCH_MAX_TOTAL_RESULTS = 10;
+
+// estimate_only's web fees per row (lib/ai-web-cost.ts). OpenRouter's own docs
+// (2026-10): search is billed per search call, $0.007 on Exa (the usual "auto"
+// engine; Parallel $0.001-0.005, native engines pass the provider's price
+// through), and the caps above allow about one or two searches per row. Fetch
+// is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine). The model
+// picks how many it makes, so these give a range, not a price.
+export const WEB_SEARCH_USD_PER_SEARCH = 0.007;
+export const WEB_SEARCHES_PER_ROW = { low: 1, high: 2 };
+export const WEB_FETCH_USD_PER_PAGE = 0.001;
+export const WEB_FETCH_PAGES_PER_ROW = { low: 1, high: 3 };
+// Input tokens the found or fetched text adds to a row's prompt, when there's
+// no history of runs with the same web tools to go by.
+export const WEB_SEARCH_TOKENS_PER_SEARCH = { low: 750, high: 2_500 };
+export const WEB_FETCH_TOKENS_PER_PAGE = { low: 1_000, high: 6_000 };
