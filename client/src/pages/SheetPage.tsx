@@ -142,7 +142,6 @@ export const SheetPage: React.FC = () => {
   } = useSheetLoad({
     setSheetData, setIsLoading, setLoadedRowsCount,
     setColumnOrder: columnOps.setColumnOrder, setEmptyFilter, setColumnFilters,
-    loadExistingAIResults: sse.loadExistingAIResults,
     fetchActiveHTTPRuns: runs.fetchHTTPRuns,
     fetchActiveAIRuns: runs.fetchAIRuns,
     reconnectToActiveRuns: sse.reconnectToActiveRuns,
@@ -162,7 +161,6 @@ export const SheetPage: React.FC = () => {
 
   const view = useSheetView({
     activeSheet, sheetData, emptyFilter,
-    aiResultCells: sse.aiResultCells,
     setScrapedDataModal: modals.setScrapedDataModal,
     reloadSheet: () => loadSheetDataRef.current(activeSheet?.id ?? ''),
     waitForSaves: cellOps.waitForSaves,
@@ -268,7 +266,6 @@ export const SheetPage: React.FC = () => {
     if (!activeSheet) return
     currentSheetIdRef.current = activeSheet.id
     setLoadedRowsCount(0)
-    sse.setAiResultCells(new Map())
     // Clear row selection — it's stored by row_index, which means different
     // logical rows on a different sheet. A loud reload remounts the grid with
     // no selection but fires no selectionChanged, so the stale parent state
@@ -318,10 +315,10 @@ export const SheetPage: React.FC = () => {
             activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
             activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
             onCellEdit={cellOps.handleOptimizedCellEdit}
-            onCellClick={(rowIndex, columnName) => {
+            onCellClick={(rowIndex, columnName, value) => {
               // Clicking the read-only webhook marker cell opens the raw payload.
               if (webhookColumn && columnName === webhookColumn) { setWebhookPayloadRow(rowIndex); return }
-              view.handleCellClick(rowIndex, columnName)
+              view.handleCellClick(rowIndex, columnName, value)
             }}
             onLoadMore={loadMoreData} onSortChange={view.handleSortChange}
             onEmptyFilterChange={onEmptyFilterChange}

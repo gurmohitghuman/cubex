@@ -1,4 +1,5 @@
 import { db } from './db';
+import { aiRunDataColumn, type AiRunDataColumnFields } from './ai-data-column';
 
 // AUTHORITATIVE column-type resolution. The grid menu used to GUESS a column's
 // type from cell contents (any "✅/❌/⏭️/⏳" → HTTP master) and from its name
@@ -52,26 +53,24 @@ export function getColumnTypes(
 
   // AI columns: ai_runs.column_name is the "(Output)" column (single-column) or
   // the status column (structured runs); output_columns lists a structured run's
-  // N typed columns. The "(Data)" companion exists only for web-search runs
-  // (mutually exclusive with output_columns). AI wins over any HTTP match.
+  // N typed columns. The "(Data)" sources column (lib/ai-data-column.ts): a
+  // single-column web-search run's, or a structured run's with a web tool. AI
+  // wins over any HTTP match.
   const aiRuns = db.prepare(
-    `SELECT column_name AS name, use_openrouter_web_search AS web, output_columns AS outputCols FROM ai_runs
+    `SELECT column_name, use_openrouter_web_search, output_columns, data_column FROM ai_runs
        WHERE sheet_id = ? AND user_id = ?`,
-  ).all(sheetId, userId) as Array<{ name: string; web: number; outputCols: string | null }>;
-  for (const { name, web, outputCols } of aiRuns) {
-    types[name] = 'ai-output';
-    if (outputCols) {
+  ).all(sheetId, userId) as Array<AiRunDataColumnFields & { output_columns: string | null }>;
+  for (const run of aiRuns) {
+    types[run.column_name] = 'ai-output';
+    if (run.output_columns) {
       try {
-        for (const s of JSON.parse(outputCols) as Array<{ columnName?: unknown }>) {
+        for (const s of JSON.parse(run.output_columns) as Array<{ columnName?: unknown }>) {
           if (s && typeof s.columnName === 'string') types[s.columnName] = 'ai-output';
         }
       } catch { /* malformed spec — status column still classified */ }
-    } else if (web) {
-      const dataCol = name.endsWith(' (Output)')
-        ? name.replace(/ \(Output\)$/, ' (Data)')
-        : `${name} (Data)`;
-      types[dataCol] = 'ai-data';
     }
+    const dataCol = aiRunDataColumn(run);
+    if (dataCol) types[dataCol] = 'ai-data';
   }
 
   // Webhook columns: the raw marker column (webhook_sources.raw_column_name) is

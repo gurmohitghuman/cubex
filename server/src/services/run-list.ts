@@ -7,7 +7,7 @@
 // hand any element straight to get_run_status / get_run_results / control_run.
 import { db } from '../lib/db';
 import { parseTargetRows } from '../lib/run-targets';
-import { RunSummary, rowOutcomes } from './run-status';
+import { RunSummary, rowOutcomes, aiRunSummaryFromRow } from './run-status';
 
 export type RunListFilter = 'active' | 'terminal' | 'all';
 
@@ -44,8 +44,8 @@ export function listRuns(
   const sheetParams = opts.sheetId ? [opts.sheetId] : [];
 
   const aiRows = db.prepare(`
-    SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows,
-           error_message, target_rows, created_at, updated_at
+    SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
+           target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search
     FROM ai_runs WHERE user_id = ? ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
@@ -57,13 +57,7 @@ export function listRuns(
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
 
-  const ai: RunSummary[] = aiRows.map(r => ({
-    id: r.id, sheet_id: r.sheet_id, type: 'ai', column_name: r.column_name,
-    model: r.model, status: r.status, processed_rows: r.processed_rows,
-    total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...rowOutcomes('ai_results', r.id),
-    created_at: r.created_at, updated_at: r.updated_at,
-  }));
+  const ai: RunSummary[] = aiRows.map(aiRunSummaryFromRow);
   const http: RunSummary[] = httpRows.map(r => ({
     id: r.id, sheet_id: r.sheet_id, type: 'http', column_name: r.master_column_name,
     model: null, status: r.status, processed_rows: r.processed_rows,

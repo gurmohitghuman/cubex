@@ -18,7 +18,7 @@ import {
   appendColumnsToOrder, countColumnsAndRows, getSheetColumns, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { existingRowIndexes } from '../lib/run-rows';
-import { columnReuseCollision } from '../lib/column-names';
+import { runColumnConflict } from './ai-run-start-checks';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { promotePreviewReuse } from '../lib/ai-run-promote';
 import { deleteDraftForColumn } from '../lib/ai-drafts';
@@ -97,14 +97,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // fetch-only runs would always be empty.
   const needsDataColumn = !!p.useOpenRouterWebSearch;
 
-  // Reject a case/token collision with a DIFFERENT existing column, like every
-  // other column-creation site. columnReuseCollision fast-paths self-reuse (the
-  // run writing to its own existing column). Non-self-healing read (no txn here).
-  const existingColumns = getSheetColumns(p.sheetId, userId, false);
-  for (const candidate of needsDataColumn ? [outputCol, dataCol] : [outputCol]) {
-    const conflictMsg = columnReuseCollision(candidate, existingColumns);
-    if (conflictMsg) return { fail: 'conflict', message: conflictMsg };
-  }
+  const columnConflict = runColumnConflict(p.sheetId, userId, outputCol, needsDataColumn ? dataCol : null);
+  if (columnConflict) return { fail: 'conflict', message: columnConflict };
 
   // Reject unresolvable /column references up front — unknown refs substitute
   // "[MISSING: /token]" on EVERY row and burn the run's whole model budget on

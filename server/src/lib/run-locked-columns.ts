@@ -20,9 +20,9 @@ export function getLockedRunColumns(sheetId: string, userId: string): Set<string
   const locked = new Set<string>();
 
   const aiRuns = db.prepare(`
-    SELECT column_name, output_columns FROM ai_runs
+    SELECT column_name, output_columns, data_column FROM ai_runs
     WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-  `).all(sheetId, userId) as Array<{ column_name: string; output_columns: string | null }>;
+  `).all(sheetId, userId) as Array<{ column_name: string; output_columns: string | null; data_column: string | null }>;
   for (const r of aiRuns) {
     // column_name is the (Output) column (single-column) OR the status column
     // (structured runs). Lock it either way.
@@ -35,6 +35,8 @@ export function getLockedRunColumns(sheetId: string, userId: string): Set<string
           if (s && typeof s.columnName === 'string') locked.add(s.columnName);
         }
       } catch { /* malformed spec — the status column lock still holds */ }
+      // ...and its "(Data)" sources column when it uses a web tool (migration 006).
+      if (r.data_column) locked.add(r.data_column);
     } else {
       // Single-column: lock the (Data) sibling unconditionally — cheap, and
       // simpler than working out whether this run writes one.

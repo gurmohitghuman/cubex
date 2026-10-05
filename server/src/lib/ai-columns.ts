@@ -48,6 +48,9 @@ export function renameAiRunColumnRefs(
   db.prepare(
     `UPDATE ai_runs SET status_column = ? WHERE sheet_id = ? AND user_id = ? AND status_column = ?`,
   ).run(newName, sheetId, userId, oldName);
+  db.prepare(
+    `UPDATE ai_runs SET data_column = ? WHERE sheet_id = ? AND user_id = ? AND data_column = ?`,
+  ).run(newName, sheetId, userId, oldName);
   if (oldName.endsWith(' (Data)')) {
     const outputName = `${oldName.slice(0, -' (Data)'.length)} (Output)`;
     db.prepare(
@@ -113,6 +116,9 @@ export function deleteAiRunColumnRefs(
   }
   db.prepare(
     `UPDATE ai_runs SET status_column = NULL WHERE sheet_id = ? AND user_id = ? AND status_column = ?`,
+  ).run(sheetId, userId, columnName);
+  db.prepare(
+    `UPDATE ai_runs SET data_column = NULL WHERE sheet_id = ? AND user_id = ? AND data_column = ?`,
   ).run(sheetId, userId, columnName);
 
   rewriteOutputColumns(sheetId, userId, specs => {

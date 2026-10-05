@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AIRun, HTTPRun, Sheet, SheetData } from '@/utils/api'
-import { fetchExistingAIResults, reconnectActiveRuns, enqueueResultEvent, withAIResultIdKeys, handleTerminalStatus, toastRunFailure } from './sseHelpers'
+import { reconnectActiveRuns, enqueueResultEvent, handleTerminalStatus, toastRunFailure } from './sseHelpers'
 import { createSSEResultBuffer, type SSEResultBuffer } from './sseResultBuffer'
 
 interface UseSheetSSEArgs {
@@ -56,13 +56,12 @@ export const useSheetSSE = ({
   // currentSheetIdRef guards inside each timer don't cover the unmounted case.
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   const [_activeAIRuns, setActiveAIRuns] = useState<Set<string>>(new Set())
-  const [aiResultCells, setAiResultCells] = useState<Map<string, string>>(new Map())
 
   // Coalescing buffer for SSE 'result' events (perf fix #1 — see sseResultBuffer):
   // events queue and flush once per frame, replacing the old per-event full-array copy.
   const bufferRef = useRef<SSEResultBuffer | null>(null)
   if (!bufferRef.current) {
-    bufferRef.current = createSSEResultBuffer(setSheetData, setAiResultCells, withAIResultIdKeys)
+    bufferRef.current = createSSEResultBuffer(setSheetData)
   }
 
   const handleSSEMessage = useCallback((data: any, runId: string) => {
@@ -157,10 +156,6 @@ export const useSheetSSE = ({
   // Keep the self-reference fresh for the reconnect timeout.
   setupRef.current = setupSSEConnection
 
-  const loadExistingAIResults = useCallback(async (sheetId: string) => {
-    setAiResultCells(await fetchExistingAIResults(sheetId))
-  }, [])
-
   const reconnectToActiveRuns = useCallback(async (sheetId: string) => {
     await reconnectActiveRuns({
       sheetId,
@@ -191,10 +186,7 @@ export const useSheetSSE = ({
   void _activeAIRuns
 
   return {
-    aiResultCells,
-    setAiResultCells,
     setupSSEConnection,
-    loadExistingAIResults,
     reconnectToActiveRuns,
   }
 }

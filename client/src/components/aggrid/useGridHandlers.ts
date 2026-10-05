@@ -14,7 +14,7 @@ interface UseGridHandlersArgs {
   setColumnWidths: React.Dispatch<React.SetStateAction<Record<string, number>>>
   setSelectedRows: (rows: number[]) => void
   onCellEdit: (rowIndex: number, column: string, value: string) => void
-  onCellClick?: (rowIndex: number, columnName: string) => void
+  onCellClick?: (rowIndex: number, columnName: string, value?: unknown) => void
   onSelectedRowsChange?: (rows: number[]) => void
   onColumnReorder?: (newColumnOrder: string[]) => void | Promise<void>
   onLoadMore?: (offset: number, limit: number) => void
@@ -62,7 +62,7 @@ export const useGridHandlers = (args: UseGridHandlersArgs) => {
 
   const onCellClicked = useCallback((event: CellClickedEvent) => {
     if (onCellClick && event.colDef.field && event.data.__rowIndex !== undefined) {
-      onCellClick(event.data.__rowIndex, event.colDef.field)
+      onCellClick(event.data.__rowIndex, event.colDef.field, event.value)
     }
   }, [onCellClick])
 

@@ -47,9 +47,9 @@ export async function deleteSheetColumn(
       -- A stopped run still clearing its ⏳ cells (migration 004) counts too:
       -- its clear would wipe a new run's placeholders under the same name.
       AND (status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)
-      AND (column_name = ? OR (column_name = ? AND use_openrouter_web_search = 1))
+      AND (column_name = ? OR data_column = ? OR (column_name = ? AND use_openrouter_web_search = 1))
     LIMIT 1
-  `).get(sheetId, userId, columnName, dataSiblingOutput ?? ' __no_sibling__');
+  `).get(sheetId, userId, columnName, columnName, dataSiblingOutput ?? ' __no_sibling__');
   if (activeAIRun) {
     return { fail: 'active_run', error: 'Cannot delete a column while an AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
   }

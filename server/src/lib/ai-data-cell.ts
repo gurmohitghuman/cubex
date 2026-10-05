@@ -9,11 +9,12 @@ export interface CitedUrl { title?: string; url?: string }
 
 // Build the "(Data)" cell breadcrumb from cited URLs. Empty list → '' (matches
 // the worker: no sources → blank cell). Mirrors ai-row.ts's scrapedSummary.
-export function aiDataCellSummary(citedUrls: CitedUrl[]): string {
+// 'Read' is for a structured run that only fetched pages: it searched nothing.
+export function aiDataCellSummary(citedUrls: CitedUrl[], verb: 'Searched' | 'Read' = 'Searched'): string {
   if (citedUrls.length === 0) return '';
   const head = citedUrls.slice(0, 2).map(w => w.title || w.url || '').join(', ');
   const more = citedUrls.length > 2 ? ` +${citedUrls.length - 2} more` : '';
-  return `📊 Searched ${citedUrls.length} source${citedUrls.length > 1 ? 's' : ''}: ${head}${more}`;
+  return `📊 ${verb} ${citedUrls.length} source${citedUrls.length > 1 ? 's' : ''}: ${head}${more}`;
 }
 
 // Parse ai_results.scraped_data JSON to a CitedUrl[] (defensive — null/malformed

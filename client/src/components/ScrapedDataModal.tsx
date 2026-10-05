@@ -3,25 +3,31 @@ import { aiAPI } from '../utils/api';
 import Modal from './Modal'
 import { safeHref } from '../lib/utils'
 
+// A source as ai_results.scraped_data stores it. Search citations carry a title
+// and an excerpt; a page a structured run fetched is often just its URL, so
+// every part but the URL is optional and shown only when present.
 interface ScrapedWebsite {
-  title: string;
+  title?: string;
   url: string;
-  content: string;
-  snippet: string;
-  column_name: string;
-  crawled_at: string;
+  content?: string;
+  snippet?: string;
+  column_name?: string;
+  crawled_at?: string;
 }
+
+// The "(Data)" cell whose sources to show; the server finds the run result.
+export interface SourcesCell { sheetId: string; rowIndex: number; columnName: string }
 
 interface ScrapedDataModalProps {
   isOpen: boolean;
   onClose: () => void;
-  resultId: string | null;
+  cell: SourcesCell | null;
 }
 
 export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
   isOpen,
   onClose,
-  resultId
+  cell
 }) => {
   const [scrapedData, setScrapedData] = useState<ScrapedWebsite[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,20 +41,20 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
     // previous result's websites while the new fetch is in flight.
     setScrapedData(null);
     setError(null);
-    if (isOpen && resultId) {
+    if (isOpen && cell) {
       fetchScrapedData();
     }
-  }, [isOpen, resultId]);
+  }, [isOpen, cell]);
 
   const fetchScrapedData = async () => {
-    if (!resultId) return;
+    if (!cell) return;
 
     const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
 
     try {
-      const response = await aiAPI.getScrapedData(resultId);
+      const response = await aiAPI.getCellSources(cell.sheetId, cell.rowIndex, cell.columnName);
       if (seq !== fetchSeqRef.current) return; // superseded by a newer fetch
       setScrapedData(response.scrapedData);
     } catch (err) {
@@ -109,20 +115,22 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
           {!loading && !error && scrapedData && scrapedData.length > 0 && (
             <div className="space-y-6">
               <div className="text-sm text-gray-600 mb-4">
-                The AI used data from {scrapedData.length} website{scrapedData.length !== 1 ? 's' : ''} to generate this response:
+                The AI used {scrapedData.length} web page{scrapedData.length !== 1 ? 's' : ''} for this response:
               </div>
               
               {scrapedData.map((website, index) => (
                 <div key={index} className="border rounded-lg p-4 bg-gray-50">
                   {/* Website Header */}
-                  <div className="flex items-start justify-between mb-3">
+                  <div className={`flex items-start justify-between${website.content || website.snippet ? ' mb-3' : ''}`}>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-lg text-gray-900 mb-1">
-                        {website.title || 'Untitled'}
-                      </h3>
-                      <div className="text-sm text-gray-700 mb-1">
-                        <span className="font-medium">Source Column:</span> {website.column_name}
-                      </div>
+                      {website.title && website.title !== website.url && (
+                        <h3 className="font-semibold text-lg text-gray-900 mb-1">{website.title}</h3>
+                      )}
+                      {website.column_name && (
+                        <div className="text-sm text-gray-700 mb-1">
+                          <span className="font-medium">Source Column:</span> {website.column_name}
+                        </div>
+                      )}
                       {safeHref(website.url) ? (
                         <a
                           href={safeHref(website.url)}
@@ -136,23 +144,27 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
                         <span className="text-sm text-gray-500 break-all">{website.url}</span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-500 ml-4">
-                      {website.crawled_at ? new Date(website.crawled_at).toLocaleString() : 'Recently'}
-                    </div>
+                    {website.crawled_at && (
+                      <div className="text-xs text-gray-500 ml-4">{new Date(website.crawled_at).toLocaleString()}</div>
+                    )}
                   </div>
 
                   {/* Content Preview */}
-                  <div className="bg-white rounded p-3 border">
-                    <div className="text-sm font-medium text-gray-700 mb-2">Content Used:</div>
-                    <div className="text-sm text-gray-600 leading-relaxed max-h-32 overflow-y-auto">
-                      {website.content}
+                  {website.content && (
+                    <div className="bg-white rounded p-3 border">
+                      <div className="text-sm font-medium text-gray-700 mb-2">Content Used:</div>
+                      <div className="text-sm text-gray-600 leading-relaxed max-h-32 overflow-y-auto">
+                        {website.content}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Snippet */}
-                  <div className="mt-3 text-xs text-gray-500">
-                    <span className="font-medium">Preview:</span> {website.snippet}
-                  </div>
+                  {/* Snippet: the start of the content, so only on its own */}
+                  {website.snippet && !website.content && (
+                    <div className="mt-3 text-xs text-gray-500">
+                      <span className="font-medium">Preview:</span> {website.snippet}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

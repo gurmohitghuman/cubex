@@ -24,7 +24,7 @@ export interface AGGridSpreadsheetProps {
   columnFilters?: Record<string, { type: 'contains'; value: string }>
   onColumnFilterChange?: (column: string, value: string | null) => void
   onSelectedRowsChange?: (rows: number[]) => void
-  onCellClick?: (rowIndex: number, columnName: string) => void
+  onCellClick?: (rowIndex: number, columnName: string, value?: unknown) => void
   onRunHTTPForColumn?: (columnName: string) => void
   // Batched: re-run the whole row selection in ONE run (N per-row runs would
   // trip the per-user concurrency cap). See useSheetGridRunActions.handleRunHTTPForRows.

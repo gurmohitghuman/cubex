@@ -1,8 +1,9 @@
 import type OpenAI from 'openai';
-import { processPromptTemplate, extractAllowedDomainsFromRow } from '../lib/prompt';
+import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { aiMaxTokens } from '../lib/constants';
-import { WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_MAX_TOTAL_RESULTS } from '../lib/constants-ai';
+import { buildWebTools } from '../lib/ai-web-tools';
+import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 
 interface PreviewArgs {
   prompt: string
@@ -16,6 +17,9 @@ interface PreviewArgs {
   // NOT be markdown-cleaned — cleaning breaks ```json fences and strips * / # /
   // backticks out of JSON string values. Defaults to prose behavior.
   rawText?: boolean
+  // Appended after the row's /references are filled in, exactly as the
+  // structured runner appends its JSON instruction (ai-row-multi.ts).
+  promptSuffix?: string
 }
 
 export interface PreviewRowResult {
@@ -27,6 +31,11 @@ export interface PreviewRowResult {
   // the full run. Absent when the row errored before a completion came back.
   promptTokens?: number
   completionTokens?: number
+  // Web search citations (url_citation annotations); [] without search.
+  citations?: Citation[]
+  // What OpenRouter charged for this row, web fees included, when the response
+  // reports it (usage.cost). Absent otherwise; callers fall back to tokens.
+  costUsd?: number
 }
 
 // Run a single row through OpenRouter for preview. Returns a result row including any
@@ -40,14 +49,18 @@ export const processOneRow = async (
   externalSignal?: AbortSignal,
 ): Promise<PreviewRowResult> => {
   try {
-    const processedPrompt = processPromptTemplate(args.prompt, row.data);
-    const usingTools = args.useOpenRouterWebSearch || args.useWebFetch;
+    const filled = processPromptTemplate(args.prompt, row.data);
+    const processedPrompt = args.promptSuffix ? `${filled}\n\n${args.promptSuffix}` : filled;
+    // A prose answer with web tools gets the runner's tools system message in
+    // place of the user's (ai-row.ts); a structured (JSON) one keeps the user's
+    // system prompt, as ai-row-multi.ts does.
+    const proseWithTools = (args.useOpenRouterWebSearch || args.useWebFetch) && !args.rawText;
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-    if (args.systemPrompt && !usingTools) {
+    if (args.systemPrompt && !proseWithTools) {
       messages.push({ role: 'system', content: args.systemPrompt });
     }
-    if (usingTools) {
+    if (proseWithTools) {
       messages.push({
         role: 'system',
         content: 'You are a helpful AI assistant. You can reference and analyze information from web search results and fetched pages when provided. Use that context to provide accurate, up-to-date information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When you cite sources, prefer plain URLs over markdown links.',
@@ -63,37 +76,15 @@ export const processOneRow = async (
       // cap made them return null content); maxChars raises it up to a ceiling.
       max_tokens: aiMaxTokens(args.maxChars),
       stream: false,
+      // OpenRouter usage accounting: usage.cost is the row's real price, web
+      // search and fetch fees included (tokens alone miss them).
+      usage: { include: true },
     };
-    const tools: any[] = [];
-    if (args.useOpenRouterWebSearch) {
-      // Same per-row result caps as the production runner (ai-row.ts) — a
-      // preview must cost and behave like the run it previews.
-      tools.push({
-        type: 'openrouter:web_search',
-        parameters: {
-          max_results: WEB_SEARCH_MAX_RESULTS,
-          max_total_results: WEB_SEARCH_MAX_TOTAL_RESULTS,
-        },
-      });
-      // Search needs a "now" anchor for queries like "latest …" or "2026 …"; datetime
-      // is free, so always pair it with search rather than hand-injecting.
-      tools.push({ type: 'openrouter:datetime' });
-    }
-    if (args.useWebFetch) {
-      // Per-row allowed_domains: only let the model fetch URLs whose host appears
-      // in this row's URL-valued cells of /columns referenced in the prompt.
-      // ALWAYS send parameters.allowed_domains, even when empty — omitting the
-      // key entirely leaves the behavior up to OpenRouter's defaults, which are
-      // not contractually documented and have historically meant "allow any
-      // public URL." Sending an explicit empty list means "block everything,"
-      // which is the safe-by-default behavior for a row whose URL columns are
-      // unpopulated. Keep this in lockstep with ai-row.ts (the production runner).
-      const allowed = extractAllowedDomainsFromRow(args.prompt, row.data);
-      tools.push({
-        type: 'openrouter:web_fetch',
-        parameters: { allowed_domains: allowed },
-      });
-    }
+    // The production runners' exact tools (lib/ai-web-tools.ts): a preview must
+    // cost and behave like the run it previews.
+    const tools = buildWebTools(args.prompt, row.data, {
+      search: args.useOpenRouterWebSearch, fetch: args.useWebFetch,
+    });
     if (tools.length > 0) baseArgs.tools = tools;
 
     // 60s timeout per preview row. The OpenAI SDK's default would let a stuck request
@@ -140,13 +131,18 @@ export const processOneRow = async (
     // content — a reasoning model hitting the token limit, a refusal, etc. — so
     // the row shows an "Error" badge instead of a silent blank.
     let result = extractCompletionText(completion, { cleanMarkdown: !args.rawText });
-    if (args.maxChars && result.length > args.maxChars) result = result.substring(0, args.maxChars);
-    const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+    // A structured reply is JSON: cutting it would break it, and the real run
+    // never does (ai-row-multi.ts clamps each cell instead).
+    if (!args.rawText && args.maxChars && result.length > args.maxChars) result = result.substring(0, args.maxChars);
+    const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: unknown } }).usage;
+    const cost = usage?.cost;
     return {
       rowIndex: row.rowIndex,
       value: result,
       promptTokens: usage?.prompt_tokens,
       completionTokens: usage?.completion_tokens,
+      citations: citationsFromCompletion(completion),
+      ...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';

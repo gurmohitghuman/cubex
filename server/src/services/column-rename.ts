@@ -65,9 +65,9 @@ export async function renameSheetColumn(
       -- A run whose leftover ⏳ cells are still being cleared (migration 004)
       -- counts too: a rename would copy them to a name the clear never visits.
       AND (status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)
-      AND (column_name = ? OR (column_name = ? AND use_openrouter_web_search = 1))
+      AND (column_name = ? OR data_column = ? OR (column_name = ? AND use_openrouter_web_search = 1))
     LIMIT 1
-  `).get(sheetId, userId, columnName, dataSiblingOutput ?? ' none');
+  `).get(sheetId, userId, columnName, columnName, dataSiblingOutput ?? ' none');
   if (activeAIRun) {
     return { fail: 'active_run', error: 'Cannot rename a column while an AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
   }

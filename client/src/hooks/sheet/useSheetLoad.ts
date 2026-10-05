@@ -14,7 +14,6 @@ interface UseSheetLoadArgs {
   setColumnOrder: (cols: string[]) => void
   setEmptyFilter: (f: Record<string, 'empty' | 'not_empty'>) => void
   setColumnFilters: (f: Record<string, { type: 'contains'; value: string }>) => void
-  loadExistingAIResults: (sheetId: string) => Promise<void>
   fetchActiveHTTPRuns: (sheetId: string) => Promise<HTTPRun[]> | void
   fetchActiveAIRuns: (sheetId: string) => Promise<AIRun[]> | void
   reconnectToActiveRuns: (sheetId: string) => Promise<void> | void
@@ -49,7 +48,6 @@ export const useSheetLoad = ({
   setColumnOrder,
   setEmptyFilter,
   setColumnFilters,
-  loadExistingAIResults,
   fetchActiveHTTPRuns,
   fetchActiveAIRuns,
   reconnectToActiveRuns,
@@ -193,7 +191,6 @@ export const useSheetLoad = ({
       applyLoadedView(data, offset, { setEmptyFilter, setColumnFilters, setLoadedRowsCount, setColumnOrder })
 
       const sideLoads: Array<[string, () => Promise<unknown> | unknown]> = [
-        ['AI results', () => loadExistingAIResults(sheetId)],
         ['active HTTP runs', () => fetchActiveHTTPRuns(sheetId)],
         ['active AI runs', () => fetchActiveAIRuns(sheetId)],
         ['active runs reconnect', () => reconnectToActiveRuns(sheetId)],
@@ -219,7 +216,6 @@ export const useSheetLoad = ({
     }
   }, [
     setSheetData, setIsLoading, setLoadedRowsCount, setColumnOrder,
-    loadExistingAIResults,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reconnectToActiveRuns,
     clearSelection, pendingEditsRef, recentlySavedRef, currentSheetIdRef,
   ])

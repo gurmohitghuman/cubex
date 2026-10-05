@@ -1,7 +1,7 @@
 import { MAX_AI_CONCURRENCY, MAX_OUTPUT_COLUMNS_PER_RUN } from '../lib/constants';
 import { sanitizeAndValidateColumnName, findColumnNameCollision } from '../lib/column-names';
 import { validateModelParam } from '../lib/ai-model-resolve';
-import { OutputColumnSpec, OutputColumnType } from '../lib/ai-multi-output';
+import { OutputColumnSpec, OutputColumnType, SOURCES_KEY } from '../lib/ai-multi-output';
 
 const OUTPUT_COLUMN_TYPES: OutputColumnType[] = ['string', 'number', 'boolean'];
 
@@ -26,6 +26,9 @@ function parseOutputColumns(raw: unknown): { specs: OutputColumnSpec[] } | { err
     if (typeof rawName !== 'string') return { error: 'Each output_columns entry needs a string columnName.' };
     const nameCheck = sanitizeAndValidateColumnName(rawName);
     if ('error' in nameCheck) return { error: nameCheck.error };
+    if (nameCheck.name.toLowerCase() === SOURCES_KEY) {
+      return { error: `"${SOURCES_KEY}" is reserved for the sources list of runs with web search or web fetch. Use another column name.` };
+    }
     const type = (item as { type?: unknown }).type;
     if (typeof type !== 'string' || !OUTPUT_COLUMN_TYPES.includes(type as OutputColumnType)) {
       return { error: `output_columns[].type must be one of: ${OUTPUT_COLUMN_TYPES.join(', ')}.` };
@@ -95,14 +98,11 @@ export function parseRunRequest(body: any): RunParams | RunParseError {
   const modelParamError = validateModelParam(model);
   if (modelParamError) return { ok: false, status: 400, error: modelParamError };
 
-  // Structured multi-column output (optional). Rejected together with web tools
-  // in v1: a JSON-object response and the (Data) citations column have separate
-  // write/SSE paths we don't yet merge.
+  // Structured multi-column output (optional). Combines with web search and web
+  // fetch: the run then also fills a "(Data)" citations column
+  // (ai-run-start-multi.ts, ai-row-multi.ts).
   let outputColumns: OutputColumnSpec[] | undefined;
   if (rawOutputColumns !== undefined) {
-    if (useOpenRouterWebSearch || useWebFetch) {
-      return { ok: false, status: 400, error: 'output_columns cannot be combined with web_search in the same run yet. Use one or the other.' };
-    }
     const parsedCols = parseOutputColumns(rawOutputColumns);
     if ('error' in parsedCols) return { ok: false, status: 400, error: parsedCols.error };
     outputColumns = parsedCols.specs;

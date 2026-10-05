@@ -59,8 +59,9 @@ export const aiAPI = {
   // The server routes (/ai/results/:id, /ai/runs/:id/commit) remain as
   // defense-in-depth but have no client callers.
 
-  getScrapedData: (resultId: string): Promise<{ scrapedData: any[] | null; message?: string }> =>
-    api.get(`/ai/results/${resultId}/scraped-data`, noServerToast).then(res => res.data),
+  // The sources behind one "(Data)" cell, looked up by the cell itself.
+  getCellSources: (sheetId: string, rowIndex: number, column: string): Promise<{ scrapedData: any[] | null }> =>
+    api.get(`/ai/sheets/${sheetId}/sources`, { ...noServerToast, params: { row_index: rowIndex, column } }).then(res => res.data),
 
   // rowGeneration (optional): sent with a rowIndices selection so the server can
   // 409 if a sort/CSV-replace re-meant the indices since the user selected them.

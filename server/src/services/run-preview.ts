@@ -13,8 +13,10 @@ import { parseTokenPrice, roundUsd } from '../lib/ai-cost';
 import { getOpenRouterClient } from './openrouter';
 import { processOneRow } from '../routes/ai-preview-runner';
 import {
-  buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec,
+  buildMultiOutputInstruction, parseMultiOutput, sourcesFromOutput, type OutputColumnSpec,
 } from '../lib/ai-multi-output';
+import { withSourceUrls } from '../lib/ai-citations';
+import { extractAllowedDomainsFromRow } from '../lib/prompt';
 
 export interface PreviewInput {
   sheetId: string;
@@ -25,6 +27,8 @@ export interface PreviewInput {
   outputColumns?: OutputColumnSpec[];
   previewRows: number;
   targetRowIndexes?: number[];
+  useOpenRouterWebSearch?: boolean;
+  useWebFetch?: boolean;
 }
 
 export type PreviewOutcome =
@@ -69,8 +73,10 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
   if (sample.length === 0) return { fail: 'no_rows', message: 'No rows to preview.' };
 
   const specs = input.outputColumns;
-  // Multi-column preview asks the model for the same JSON object the real run would.
-  const effectivePrompt = specs ? `${input.prompt}\n\n${buildMultiOutputInstruction(specs)}` : input.prompt;
+  const web = { search: !!input.useOpenRouterWebSearch, fetch: !!input.useWebFetch };
+  // Multi-column preview asks the model for the same JSON object (and, with a
+  // web tool, the same sources list) the real run would.
+  const instruction = specs ? buildMultiOutputInstruction(specs, { withSources: web.search || web.fetch }) : undefined;
 
   // The one thing getOpenRouterClient throws for is a missing (or unreadable)
   // key: say so, instead of a 500.
@@ -79,38 +85,57 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
     return { fail: 'bad_request', message: 'No OpenRouter API key is saved, so there is nothing to preview with. Add one in Settings → AI.' };
   }
   const results = await Promise.all(sample.map(row => processOneRow(row, openai, {
-    prompt: effectivePrompt, systemPrompt: input.systemPrompt, model,
+    prompt: input.prompt, promptSuffix: instruction, systemPrompt: input.systemPrompt, model,
     safeTemperature: 0.7, maxChars: input.maxChars ?? undefined,
-    useOpenRouterWebSearch: false, useWebFetch: false,
+    useOpenRouterWebSearch: web.search, useWebFetch: web.fetch,
     // Structured preview parses JSON below — keep the text verbatim, exactly as
     // the real structured run does (services/ai-row-multi.ts).
     rawText: !!specs,
   })));
 
   // Shape each sample output; parse structured rows into their typed fields.
-  const preview = results.map(r => {
+  // With a web tool, each row also lists the sources its "(Data)" cell would show.
+  const preview = results.map((r, i) => {
     if (r.error) return { row_index: r.rowIndex, error: r.error };
+    const fetchHosts = web.fetch ? extractAllowedDomainsFromRow(input.prompt, sample[i].data) : [];
+    const cited = withSourceUrls(r.citations ?? [], specs ? sourcesFromOutput(r.value) : [], fetchHosts);
+    const sources = web.search || web.fetch ? { sources: cited.map(c => c.url) } : {};
     if (specs) {
       const parsed = parseMultiOutput(r.value, specs);
       return 'error' in parsed
         ? { row_index: r.rowIndex, error: parsed.error }
-        : { row_index: r.rowIndex, fields: parsed.ok };
+        : { row_index: r.rowIndex, fields: parsed.ok, ...sources };
     }
-    return { row_index: r.rowIndex, output: r.value };
+    return { row_index: r.rowIndex, output: r.value, ...sources };
   });
 
-  // MEASURED cost from real usage × model pricing.
-  const priced = results.filter(r => r.completionTokens !== undefined || r.promptTokens !== undefined);
+  // MEASURED cost: what OpenRouter reports it charged (web fees included) when
+  // every row says; otherwise real token usage × model pricing.
+  const priced = results.filter(r => r.completionTokens !== undefined || r.promptTokens !== undefined || r.costUsd !== undefined);
   let measured: number | null = null;
   let perRow: number | null = null;
-  const modelsResult = await fetchModels(Date.now());
-  const m = (modelsResult.ok ? modelsResult.models : modelsResult.stale)?.find(x => x.id === model);
-  if (m && priced.length > 0) {
-    const p = parseTokenPrice(m.pricing.prompt);
-    const c = parseTokenPrice(m.pricing.completion);
-    const total = priced.reduce((sum, r) => sum + (r.promptTokens ?? 0) * p + (r.completionTokens ?? 0) * c, 0);
+  let webFeesIncluded = false;
+  if (priced.length > 0 && priced.every(r => r.costUsd !== undefined)) {
+    const total = priced.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
     perRow = total / priced.length;
     measured = roundUsd(total);
+    webFeesIncluded = true;
+  } else {
+    const modelsResult = await fetchModels(Date.now());
+    const m = (modelsResult.ok ? modelsResult.models : modelsResult.stale)?.find(x => x.id === model);
+    if (m && priced.length > 0) {
+      const p = parseTokenPrice(m.pricing.prompt);
+      const c = parseTokenPrice(m.pricing.completion);
+      const total = priced.reduce((sum, r) => sum + (r.promptTokens ?? 0) * p + (r.completionTokens ?? 0) * c, 0);
+      perRow = total / priced.length;
+      measured = roundUsd(total);
+    }
+  }
+  const notes = ['Preview only — nothing was created or saved. A full run re-processes these rows.'];
+  if ((web.search || web.fetch) && measured !== null) {
+    notes.push(webFeesIncluded
+      ? 'Cost is what OpenRouter charged, web search and fetch fees included.'
+      : 'Cost is tokens only; web search and fetch fees are not included.');
   }
 
   return {
@@ -122,7 +147,7 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
       measured_cost_usd: measured,
       per_row_usd: perRow === null ? null : roundUsd(perRow),
       projected_full_run_usd: perRow === null ? null : roundUsd(perRow * count),
-      note: 'Preview only — nothing was created or saved. A full run re-processes these rows.',
+      note: notes.join(' '),
     },
   };
 }

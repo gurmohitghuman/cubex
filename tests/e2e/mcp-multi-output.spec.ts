@@ -42,15 +42,15 @@ test('multi-output: validation, start shape, and column creation', async () => {
   const { sheetId } = await seedSheet(api, 3)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e multi'))
 
-  // web_search + output_columns is rejected.
-  const combo: any = await client.callTool({
+  // "__sources" is reserved for the sources list of web runs.
+  const reserved: any = await client.callTool({
     name: 'run_ai_column',
     arguments: {
       sheet_id: sheetId, column_name: 'Lead', prompt: 'Rate /val',
-      model: 'openai/gpt-4o-mini', web_search: true, output_columns: OUTPUT_COLUMNS,
+      model: 'openai/gpt-4o-mini', output_columns: [{ column_name: '__sources', type: 'string', description: 'x' }],
     },
   })
-  expect(combo.isError).toBeTruthy()
+  expect(reserved.isError).toBeTruthy()
 
   // Collision: an output column named like an existing column is rejected.
   const collide: any = await client.callTool({

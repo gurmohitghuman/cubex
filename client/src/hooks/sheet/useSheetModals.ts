@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { SourcesCell } from '@/components/ScrapedDataModal'
 
 export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
@@ -8,7 +9,7 @@ export const useSheetModals = () => {
   const [showWebhookDrawer, setShowWebhookDrawer] = useState(false)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
   const [scrapedDataModal, setScrapedDataModal] =
-    useState<{ isOpen: boolean; resultId: string | null }>({ isOpen: false, resultId: null })
+    useState<{ isOpen: boolean; cell: SourcesCell | null }>({ isOpen: false, cell: null })
 
   return {
     showImportModal, setShowImportModal,
