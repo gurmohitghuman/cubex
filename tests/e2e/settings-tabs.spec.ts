@@ -18,6 +18,10 @@ test('settings tabs: redirect, per-tab content, navigation', async ({ page, cont
   await expect(page).toHaveURL(/\/settings\/ai$/)
   await expect(page.getByRole('heading', { name: 'OpenRouter API Key' })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('heading', { name: 'Default AI model' })).toBeVisible()
+  // The tab row never overflows vertically: a 1px overhang drew a scrollbar
+  // on Macs that always show scrollbars.
+  const tabRow = page.getByRole('navigation', { name: 'Settings sections' })
+  expect(await tabRow.evaluate(el => el.scrollHeight - el.clientHeight)).toBe(0)
   await shot(page, 'tab-1-ai')
   await page.goto(`${BASE}/settings/nonsense`)
   await expect(page).toHaveURL(/\/settings\/ai$/)

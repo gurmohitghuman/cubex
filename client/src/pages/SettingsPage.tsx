@@ -38,7 +38,13 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        <nav className="flex gap-1 border-b border-gray-200 mb-8 overflow-x-auto" aria-label="Settings sections">
+        {/* The grey rule is an inset shadow, not a border, so the active tab's
+            underline can cover it without poking out of the row: overflow-x-auto
+            also turns on vertical scrolling, and a 1px overhang showed a scrollbar. */}
+        <nav
+          className="flex gap-1 mb-8 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_theme(colors.gray.200)]"
+          aria-label="Settings sections"
+        >
           {TABS.map(({ slug, label, icon: Icon }) => {
             const isActive = slug === active.slug
             return (
@@ -46,7 +52,7 @@ export const SettingsPage: React.FC = () => {
                 key={slug}
                 to={`/settings/${slug}`}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-sm whitespace-nowrap transition-colors ${
                   isActive
                     ? 'border-cube-black text-cube-black font-medium'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
