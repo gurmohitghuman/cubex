@@ -25,8 +25,10 @@ The **Agent access** page shows these commands with your Cubex address and token
 **Claude Code**
 
 ```bash
-claude mcp add --transport http cubex http://localhost:3002/mcp --header "Authorization: Bearer cubex_pat_..."
+claude mcp add --scope user --transport http cubex http://localhost:3002/mcp --header "Authorization: Bearer cubex_pat_..."
 ```
+
+`--scope user` makes Cubex available in every folder. Without it, Claude Code only uses it in the folder where you ran the command. To switch to a new token later, run `claude mcp remove --scope user cubex`, then add it again.
 
 **Codex**
 
@@ -35,7 +37,7 @@ export CUBEX_TOKEN="cubex_pat_..."
 codex mcp add cubex --url http://localhost:3002/mcp --bearer-token-env-var CUBEX_TOKEN
 ```
 
-**Cursor** (`.cursor/mcp.json`)
+**Cursor** (`~/.cursor/mcp.json` for every project, or `.cursor/mcp.json` in one project)
 
 ```json
 { "mcpServers": { "cubex": { "url": "http://localhost:3002/mcp", "headers": { "Authorization": "Bearer cubex_pat_..." } } } }

@@ -33,7 +33,7 @@ test('settings tabs: redirect, per-tab content, navigation', async ({ page, cont
   await page.getByRole('link', { name: 'Agent access' }).click()
   await expect(page).toHaveURL(/\/settings\/agents$/)
   await expect(page.getByRole('heading', { name: 'Connect an AI agent' })).toBeVisible()
-  await expect(page.getByText(/claude mcp add --transport http cubex/)).toBeVisible()
+  await expect(page.getByText(/claude mcp add --scope user --transport http cubex/)).toBeVisible()
   await expect(page.getByText(/codex mcp add cubex --url/)).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Access tokens', exact: true })).toBeVisible()
   await shot(page, 'tab-3-agents')
