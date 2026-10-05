@@ -196,7 +196,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `GET /ai-runs/:id` · `GET /http-runs/:id` | Status and progress. `completed` means every row was processed, not that every row worked: check `failed_rows`. A structured AI run also lists its `output_columns`, and a run with web search or fetch names its `data_column` (the sources). |
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. |
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
-| `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Structured (`output_columns`) runs can't be rerun yet. |
+| `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
 | `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. |
 
 ### Responses and errors

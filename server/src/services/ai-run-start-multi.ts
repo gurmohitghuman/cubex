@@ -10,8 +10,8 @@
 //   - Web search and web fetch are allowed. Either one adds a "(Data)" column,
 //     stored in ai_runs.data_column, for the sources behind each row's answer:
 //     search citations plus the URLs the model lists (fetch has no citations).
-//   - Rerun is deferred (ai-run-rerun rejects structured runs); start +
-//     pause/resume/cancel are fully supported.
+//   - Rerun clones the latest run on the status column (ai-run-rerun-multi.ts);
+//     start, pause/resume/cancel and rerun are all supported.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_AI_CONCURRENCY, MAX_COLUMNS_PER_SHEET } from '../lib/constants';

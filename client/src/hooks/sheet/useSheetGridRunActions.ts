@@ -55,10 +55,12 @@ export const useSheetGridRunActions = (a: Args) => {
     }
   }
 
-  const handleRunAIMissingOrError = async (baseName: string) => {
+  // columnName is the header clicked, so a column of a structured run (several
+  // typed columns from one call) reruns exactly the run that owns it.
+  const handleRunAIMissingOrError = async (baseName: string, columnName?: string) => {
     if (!a.activeSheet) return
     try {
-      const res = await aiAPI.rerun(a.activeSheet.id, baseName)
+      const res = await aiAPI.rerun(a.activeSheet.id, baseName, undefined, undefined, columnName)
       toast.success(`Re-running AI for ${plural(res.targetRows, 'row')}`)
       a.setupSSEConnection(res.runId, 'ai')
       // Refresh active runs so the header Pause/Stop controls appear immediately

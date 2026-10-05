@@ -1,7 +1,7 @@
 // Column checks for a single-column AI run start (ai-run-start.ts).
-import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
+import { structuredRunOwning } from '../lib/structured-run-owner';
 
 // The conflict message for the run's "(Output)" (and "(Data)") column, or null.
 export function runColumnConflict(
@@ -15,13 +15,13 @@ export function runColumnConflict(
     const conflictMsg = columnReuseCollision(candidate, existingColumns);
     if (conflictMsg) return conflictMsg;
   }
-  // "(Data)" reuse is for this column's own earlier runs. One a structured run
-  // owns (ai_runs.data_column) isn't ours to write: two runs would overwrite
-  // each other's sources, and a cancel of either would clear the other's cells.
-  if (dataCol && db.prepare(
-    'SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND data_column = ? LIMIT 1',
-  ).get(sheetId, userId, dataCol)) {
-    return `"${dataCol}" holds the sources of a structured run. Use a different column name for this run.`;
+  // Reuse is for this column's own earlier runs. A column a structured run owns
+  // (its status, a typed or its "(Data)" column) isn't ours to write: two runs
+  // would overwrite each other, and a cancel of either would clear the other's cells.
+  for (const candidate of dataCol ? [outputCol, dataCol] : [outputCol]) {
+    if (structuredRunOwning(sheetId, userId, candidate)) {
+      return `"${candidate}" belongs to an AI run that fills several columns. Use a different column name for this run.`;
+    }
   }
   return null;
 }

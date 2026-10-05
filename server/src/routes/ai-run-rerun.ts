@@ -30,11 +30,15 @@ export function parseRowIndices(raw: unknown): { rowIndices?: number[] } | { err
 
 router.post('/rerun', async (req: AuthRequest, res) => {
   try {
-    const { sheetId, baseColumnName, rowIndices: rawRowIndices } = req.body as {
-      sheetId?: unknown; baseColumnName?: unknown; rowIndices?: unknown;
+    const { sheetId, baseColumnName, columnName, rowIndices: rawRowIndices } = req.body as {
+      sheetId?: unknown; baseColumnName?: unknown; columnName?: unknown; rowIndices?: unknown;
     };
     if (typeof sheetId !== 'string' || !sheetId || typeof baseColumnName !== 'string' || !baseColumnName) {
       return res.status(400).json({ error: 'sheetId and baseColumnName are required (strings).' });
+    }
+    // Optional: the exact header the menu was opened on (see rerunAiColumn).
+    if (columnName !== undefined && (typeof columnName !== 'string' || !columnName)) {
+      return res.status(400).json({ error: 'columnName must be a non-empty string.' });
     }
     const parsed = parseRowIndices(rawRowIndices);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
@@ -51,7 +55,7 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     }
 
     const result = await rerunAiColumn(req.userId!, {
-      sheetId, baseColumnName, rowIndices: parsed.rowIndices,
+      sheetId, baseColumnName, columnName, rowIndices: parsed.rowIndices,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

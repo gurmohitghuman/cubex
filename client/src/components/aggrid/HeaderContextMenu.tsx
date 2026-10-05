@@ -16,7 +16,7 @@ interface AIActionsProps {
   activeAIRunsByColumn: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
   setMenu: (m: MenuState) => void
   onRunAIForColumn?: (columnName: string) => void
-  onRunAIMissingOrError?: (columnName: string) => void
+  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (columnName: string) => void
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
 }
@@ -40,7 +40,7 @@ const AIColumnActions: React.FC<AIActionsProps> = ({
         <DropdownMenuItem onClick={() => { onRunAIForColumn(base); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔄 Run All Rows</DropdownMenuItem>
       )}
       {onRunAIMissingOrError && (
-        <DropdownMenuItem onClick={() => { onRunAIMissingOrError(base); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔁 Run Missing or Errors</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { onRunAIMissingOrError(base, columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔁 Run Missing or Errors</DropdownMenuItem>
       )}
       {onEditAIColumn && (
         <DropdownMenuItem onClick={() => { onEditAIColumn(base); setMenu(null) }}>✏️ Edit / Update Instructions</DropdownMenuItem>
@@ -73,7 +73,7 @@ export interface HeaderContextMenuProps {
   onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
   onRunHTTPForMissingOrError?: (columnName: string) => void
   onRunAIForColumn?: (baseName: string) => void
-  onRunAIMissingOrError?: (baseName: string) => void
+  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (baseName: string) => void
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
 }
