@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { rerunAiColumn } from '../services/ai-run-rerun';
+import { AI_RERUN_MODES, type AiRerunMode } from '../services/ai-rerun-modes';
 import { runFailHttpStatus } from '../services/run-shared';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
 
@@ -30,8 +31,8 @@ export function parseRowIndices(raw: unknown): { rowIndices?: number[] } | { err
 
 router.post('/rerun', async (req: AuthRequest, res) => {
   try {
-    const { sheetId, baseColumnName, columnName, rowIndices: rawRowIndices } = req.body as {
-      sheetId?: unknown; baseColumnName?: unknown; columnName?: unknown; rowIndices?: unknown;
+    const { sheetId, baseColumnName, columnName, mode, rowIndices: rawRowIndices } = req.body as {
+      sheetId?: unknown; baseColumnName?: unknown; columnName?: unknown; mode?: unknown; rowIndices?: unknown;
     };
     if (typeof sheetId !== 'string' || !sheetId || typeof baseColumnName !== 'string' || !baseColumnName) {
       return res.status(400).json({ error: 'sheetId and baseColumnName are required (strings).' });
@@ -39,6 +40,10 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     // Optional: the exact header the menu was opened on (see rerunAiColumn).
     if (columnName !== undefined && (typeof columnName !== 'string' || !columnName)) {
       return res.status(400).json({ error: 'columnName must be a non-empty string.' });
+    }
+    // Optional: which rows ("Run All Rows" on a structured run sends 'all').
+    if (mode !== undefined && !AI_RERUN_MODES.includes(mode as AiRerunMode)) {
+      return res.status(400).json({ error: `mode must be one of: ${AI_RERUN_MODES.join(', ')}.` });
     }
     const parsed = parseRowIndices(rawRowIndices);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
@@ -55,7 +60,7 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     }
 
     const result = await rerunAiColumn(req.userId!, {
-      sheetId, baseColumnName, columnName, rowIndices: parsed.rowIndices,
+      sheetId, baseColumnName, columnName, mode: mode as AiRerunMode | undefined, rowIndices: parsed.rowIndices,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

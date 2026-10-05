@@ -15,7 +15,7 @@ interface AIActionsProps {
   columnType?: ColumnType
   activeAIRunsByColumn: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
   setMenu: (m: MenuState) => void
-  onRunAIForColumn?: (columnName: string) => void
+  onRunAIForColumn?: (baseName: string, columnName: string) => void
   onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (columnName: string) => void
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
@@ -31,13 +31,17 @@ const AIColumnActions: React.FC<AIActionsProps> = ({
   // it's an AI column, so a plain column literally named "X (Data)" is never matched.
   if (columnType !== 'ai-output' && columnType !== 'ai-data') return null
   const base = columnId.replace(/ \((Output|Data)\)$/, '')
-  const running = !!activeAIRunsByColumn[`${base} (Output)`]
+  // The active run writing this column: listed under the column itself (a
+  // single-column run's "(Output)", or any column of a structured run), or, for
+  // a "(Data)" column, under its "(Output)".
+  const runColumn = activeAIRunsByColumn[columnId] ? columnId
+    : activeAIRunsByColumn[`${base} (Output)`] ? `${base} (Output)` : null
   return (
     <>
       <DropdownMenuSeparator />
       <DropdownMenuLabel>AI Column Actions</DropdownMenuLabel>
       {onRunAIForColumn && (
-        <DropdownMenuItem onClick={() => { onRunAIForColumn(base); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔄 Run All Rows</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { onRunAIForColumn(base, columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔄 Run All Rows</DropdownMenuItem>
       )}
       {onRunAIMissingOrError && (
         <DropdownMenuItem onClick={() => { onRunAIMissingOrError(base, columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔁 Run Missing or Errors</DropdownMenuItem>
@@ -45,8 +49,8 @@ const AIColumnActions: React.FC<AIActionsProps> = ({
       {onEditAIColumn && (
         <DropdownMenuItem onClick={() => { onEditAIColumn(base); setMenu(null) }}>✏️ Edit / Update Instructions</DropdownMenuItem>
       )}
-      {running && (
-        <DropdownMenuItem onClick={() => { onStopRunForColumn?.('ai', `${base} (Output)`); setMenu(null) }} className="text-red-600 focus:text-red-600">🟥 Stop AI Run</DropdownMenuItem>
+      {runColumn && (
+        <DropdownMenuItem onClick={() => { onStopRunForColumn?.('ai', runColumn); setMenu(null) }} className="text-red-600 focus:text-red-600">🟥 Stop AI Run</DropdownMenuItem>
       )}
     </>
   )
@@ -72,7 +76,7 @@ export interface HeaderContextMenuProps {
   onRunHTTPForColumn?: (columnName: string) => void
   onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
   onRunHTTPForMissingOrError?: (columnName: string) => void
-  onRunAIForColumn?: (baseName: string) => void
+  onRunAIForColumn?: (baseName: string, columnName: string) => void
   onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (baseName: string) => void
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void

@@ -65,10 +65,14 @@ export const aiAPI = {
 
   // rowGeneration (optional): sent with a rowIndices selection so the server can
   // 409 if a sort/CSV-replace re-meant the indices since the user selected them.
-  // columnName (optional): the exact header clicked, so the server reruns the
-  // run that owns it instead of guessing from the base name.
-  rerun: (sheetId: string, baseColumnName: string, rowIndices?: number[], rowGeneration?: number, columnName?: string): Promise<{ runId: string; message: string; targetRows: number }> =>
-    api.post('/ai/rerun', { sheetId, baseColumnName, rowIndices, rowGeneration, columnName }, noServerToast).then(res => res.data),
+  // opts.columnName: the exact header clicked, so the server reruns the run that
+  // owns it instead of guessing from the base name. opts.mode: which rows
+  // (the server's default is 'missing').
+  rerun: (
+    sheetId: string, baseColumnName: string,
+    opts: { rowIndices?: number[]; rowGeneration?: number; columnName?: string; mode?: 'errored' | 'empty' | 'missing' | 'all' } = {},
+  ): Promise<{ runId: string; message: string; targetRows: number }> =>
+    api.post('/ai/rerun', { sheetId, baseColumnName, ...opts }, noServerToast).then(res => res.data),
 }
 
 export const httpAPI = {
