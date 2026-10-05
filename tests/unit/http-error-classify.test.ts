@@ -2,7 +2,11 @@
 // "unknown"). Messages below are the ones http-row.ts records, verbatim.
 
 import assert from 'node:assert/strict'
-import { classifyHttpError as cls, summarizeHttpErrorClasses } from '../../server/src/lib/http-error-classify'
+import classifyMod from '../../server/src/lib/http-error-classify'
+// Default import + destructure: Node 22 (CI) can't see named exports of the
+// server's CommonJS modules from this ESM test file.
+const { classifyHttpError: cls, summarizeHttpErrorClasses } =
+  classifyMod as typeof import('../../server/src/lib/http-error-classify')
 
 const cases: Array<[string | null, string]> = [
   ['HTTP 404 from upstream: {"error":"no such company"}', 'not_found'],
