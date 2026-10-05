@@ -1,6 +1,6 @@
 # Cubex
 
-A self-hosted spreadsheet where a column can be an AI prompt or an API call.
+**A self-hosted alternative to [Clay](https://www.clay.com).** A spreadsheet where a column can be an AI prompt or an API call, run with your own AI key instead of credits.
 
 ![A Cubex sheet of 12 companies: an AI column says what each one sells, and location, public repos and followers come from the GitHub API](docs/media/cubex-sheet.png)
 
