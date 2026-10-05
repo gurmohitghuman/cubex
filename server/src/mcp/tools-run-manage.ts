@@ -40,7 +40,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
     'control_run',
     {
       description:
-        'Pause, resume, or cancel an active run, or rerun a finished one. rerun starts a NEW run reusing the column\'s latest config and COSTS MONEY AGAIN — one AI call per targeted row. For an AI rerun you MUST pass either row_ids or mode (there is no default): mode "errored" re-runs only ❌ rows (the usual retry), "empty" only blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet. For HTTP, mode is "missing" or "all" (default all). Check get_run_status or get_run_results first so you know how many rows you are about to re-bill. Structured (output_columns) runs can\'t be rerun yet: to retry their rows, call run_ai_column with target_row_ids and new output column names, or delete the output columns and run again. Returns the NEW run_id.',
+        'Pause, resume, or cancel an active run, or rerun a finished one. rerun starts a NEW run reusing the column\'s latest config and COSTS MONEY AGAIN — one AI call per targeted row. For an AI rerun you MUST pass either row_ids or mode (there is no default): mode "errored" re-runs only ❌ rows (the usual retry), "empty" only blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet. For HTTP, mode is "missing" or "all" (default all). Check get_run_status or get_run_results first so you know how many rows you are about to re-bill. A structured (output_columns) run reruns whole: one call per targeted row refills all its typed columns (and its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). Returns the NEW run_id.',
       inputSchema: {
         run_type: z.enum(['ai', 'http']),
         run_id: z.string(),

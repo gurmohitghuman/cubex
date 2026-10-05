@@ -1,7 +1,8 @@
 // AI column rerun — the flow behind POST /api/ai/rerun, shared by the UI route,
-// /api/v1 and MCP. Clones the column's LATEST run config into a fresh ai_runs
-// row, seeds placeholders on the target rows, persists target_rows (pause-before-
-// first-completion resumes as a subset RERUN — migration 019), dispatches the
+// /api/v1 and MCP; a structured run's goes on to ai-run-rerun-multi.ts. Clones
+// the column's LATEST run config into a fresh ai_runs row, seeds placeholders on
+// the target rows, persists target_rows (pause-before-first-completion resumes
+// as a subset RERUN — migration 019), dispatches the
 // rerun job. Choosing targets, the insert and the seeding all run in the
 // sheet's busy window (services/run-seed.ts), the seeding after the rerun has
 // answered; a failure there fails the run and clears its placeholders.
@@ -21,12 +22,17 @@ import { enqueueAIRerun } from '../queue';
 import { RunFail } from './run-shared';
 import { AiRerunMode, DEFAULT_AI_RERUN_MODE, resolveRerunTargets } from './ai-rerun-modes';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { rerunAiMultiColumn, structuredRunByBase } from './ai-run-rerun-multi';
+import { structuredRunOwning } from '../lib/structured-run-owner';
 
 export type { AiRerunMode } from './ai-rerun-modes';
 
 export interface AiRerunParams {
   sheetId: string;
   baseColumnName: string;
+  // The exact column the user picked (the sheet menu sends the clicked header).
+  // When given, the run that owns it is rerun: no guessing from the base name.
+  columnName?: string;
   // Explicit target row_index values. Takes precedence over mode.
   rowIndices?: number[];
   // Which rows to target when rowIndices is absent. Defaults to 'missing' (the
@@ -54,19 +60,14 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   const outputCol = `${cleanBase} (Output)`;
   const dataCol = `${cleanBase} (Data)`;
 
-  // Rerun isn't supported for structured (multi-column) runs yet — they anchor on
-  // a status column, not the "(Output)" naming this path assumes. Reject clearly.
-  const structured = db.prepare(
-    `SELECT id FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND output_columns IS NOT NULL
-       AND (status_column = ? OR status_column = ?) LIMIT 1`,
-  ).get(p.sheetId, userId, p.baseColumnName, `${cleanBase} (Status)`);
-  if (structured) return {
-    fail: 'bad_request',
-    // A new run into the same columns collides with them, so name a way out.
-    message: "Rerun isn't available yet for AI runs that fill several columns. To retry, delete this run's "
-      + 'output columns and run it again, or start a new run that writes to new column names '
-      + '(over the API or MCP, target_row_ids limits it to the rows you want).',
-  };
+  // A structured run (several typed columns from one call per row) anchors on
+  // its "(Status)" column, not the "(Output)" naming below: its own path. With
+  // the exact column, the run owning it; with only a base name, a run whose
+  // status or "(Data)" column that base names.
+  const structuredStatus = p.columnName
+    ? structuredRunOwning(p.sheetId, userId, p.columnName)
+    : structuredRunByBase(p.sheetId, userId, p.baseColumnName, cleanBase);
+  if (structuredStatus) return rerunAiMultiColumn(userId, p, structuredStatus);
 
   // Runs on a sheet are only created inside its busy window (services/run-seed.ts),
   // so no new one can appear between this check and the insert below.
@@ -88,6 +89,9 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
     ORDER BY created_at DESC, rowid DESC LIMIT 1
   `).get(p.sheetId, outputCol, userId) as AIRunRow | undefined;
   if (!latestRun) return { fail: 'not_found', message: 'No AI run found for this column' };
+  // A structured run whose status column was renamed "<base> (Output)" is still
+  // structured: cloning it as a single-column run would write prose into it.
+  if (latestRun.output_columns) return rerunAiMultiColumn(userId, p, latestRun.column_name);
 
   // A rerun reuses the original run's model — that's what the user chose for
   // this column. Legacy runs (pre account-defaults) can carry NULL: resolve

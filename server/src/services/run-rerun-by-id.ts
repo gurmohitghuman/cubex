@@ -7,6 +7,7 @@
 import { db } from '../lib/db';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { rerunAiColumn, RerunOutcome } from './ai-run-rerun';
+import { rerunAiMultiColumn } from './ai-run-rerun-multi';
 import { AiRerunMode } from './ai-rerun-modes';
 import { rerunHttpColumn } from './http-run-rerun';
 import { resolveRowIdsToIndexes } from './run-shared';
@@ -30,8 +31,8 @@ export async function rerunAiRunById(
   opts: { rowIds?: string[]; mode?: AiRerunMode } = {},
 ): Promise<RerunOutcome> {
   const run = db.prepare(
-    'SELECT id, sheet_id, column_name FROM ai_runs WHERE id = ? AND user_id = ?',
-  ).get(runId, userId) as { id: string; sheet_id: string; column_name: string } | undefined;
+    'SELECT id, sheet_id, column_name, output_columns FROM ai_runs WHERE id = ? AND user_id = ?',
+  ).get(runId, userId) as { id: string; sheet_id: string; column_name: string; output_columns: string | null } | undefined;
   if (!run) return { fail: 'not_found', message: 'AI run not found' };
 
   // Tie-break on rowid (true insert order) so two runs sharing a created_at
@@ -46,6 +47,13 @@ export async function rerunAiRunById(
   const t = resolveTargets(run.sheet_id, userId, opts.rowIds);
   if ('error' in t) return { fail: 'bad_request', message: t.error };
 
+  // A structured run reruns as itself: its status column is its anchor, so
+  // there is no name to strip or guess.
+  if (run.output_columns) {
+    return rerunAiMultiColumn(userId, {
+      sheetId: run.sheet_id, baseColumnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
+    }, run.column_name);
+  }
   // The rerun service keys on the BASE column name and re-appends " (Output)".
   const baseColumnName = run.column_name.replace(/ \(Output\)$/, '');
   return rerunAiColumn(userId, {

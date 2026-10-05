@@ -31,7 +31,7 @@ export interface AGGridSpreadsheetProps {
   onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
   onRunHTTPForMissingOrError?: (columnName: string) => void
   onRunAIForColumn?: (baseName: string) => void
-  onRunAIMissingOrError?: (baseName: string) => void
+  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (baseName: string) => void
   activeHTTPRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
   activeAIRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
