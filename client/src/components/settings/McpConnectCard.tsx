@@ -64,7 +64,7 @@ export const McpConnectCard: React.FC = () => {
   const tok = tokenValid ? token : 'YOUR_TOKEN'
 
   const endpoint = `${window.location.origin}/mcp`
-  const claudeCmd = `claude mcp add --transport http cubex ${endpoint} --header "Authorization: Bearer ${tok}"`
+  const claudeCmd = `claude mcp add --scope user --transport http cubex ${endpoint} --header "Authorization: Bearer ${tok}"`
   // Codex reads the bearer token from an env var, never inline (verified
   // against `codex mcp add --help`: --url + --bearer-token-env-var).
   const codexCmd = `export CUBEX_TOKEN="${tok}"\ncodex mcp add cubex --url ${endpoint} --bearer-token-env-var CUBEX_TOKEN`
@@ -139,8 +139,14 @@ export const McpConnectCard: React.FC = () => {
 
         <div>
           <p className="text-sm font-medium text-gray-900 mb-1.5">Claude Code</p>
-          <p className="text-sm text-gray-500 mb-1.5">Run this in a terminal:</p>
+          <p className="text-sm text-gray-500 mb-1.5">
+            Run this once in a terminal. <code className="bg-gray-100 px-1 rounded text-xs">--scope user</code> makes
+            Cubex available in every folder, not just the one you run it in.
+          </p>
           <CopyRow value={claudeCmd} what="Command" />
+          <p className="text-xs text-gray-400 mt-1.5">
+            Replacing a token? Run <code className="bg-gray-100 px-1 rounded">claude mcp remove --scope user cubex</code> first.
+          </p>
         </div>
 
         <div>
@@ -155,7 +161,8 @@ export const McpConnectCard: React.FC = () => {
         <div>
           <p className="text-sm font-medium text-gray-900 mb-1.5">Cursor</p>
           <p className="text-sm text-gray-500 mb-1.5">
-            Add this to <code className="bg-gray-100 px-1 rounded text-xs">.cursor/mcp.json</code>:
+            Add this to <code className="bg-gray-100 px-1 rounded text-xs">~/.cursor/mcp.json</code> to use it in
+            every project (or to one project&apos;s <code className="bg-gray-100 px-1 rounded text-xs">.cursor/mcp.json</code>):
           </p>
           <CopyRow value={cursorConfig} what="Config" />
           <p className="text-xs text-gray-400 mt-1.5">
