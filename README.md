@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.s
 
 The install takes a minute or two and needs about 1.5 GB of free memory while it builds. Everything goes into `~/.cubex`: a private copy of Node.js (your own Node, if you have one, is never used or changed), Cubex itself, your data and a settings file.
 
-Only this computer can open Cubex until you change that. To use it from other devices on your network, install with `--public`: Cubex then listens on every network interface, and the installer generates your password and prints it. On a server that's reachable from the internet, keep the default instead and put HTTPS in front (see [Putting it on the internet](#putting-it-on-the-internet)).
+Only this computer can open Cubex until you change that. To use it from other devices on your network, install with `--public`: Cubex then listens on every network interface, and the installer generates your password and prints it. On a server that's reachable from the internet, keep the default instead and put HTTPS in front (step by step: [Run Cubex on your own server](docs/self-hosting.md)).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.sh | bash -s -- --public
@@ -135,13 +135,19 @@ Everything Cubex keeps lives in one directory, `~/.cubex/data`:
 | `.encryption-key` | Encrypts your OpenRouter key, saved API keys and webhook URLs. |
 | `uploads/` | CSV files while they import. Emptied when Cubex starts; no need to back it up. |
 
-Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh`.
+Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](docs/self-hosting.md#6-back-up-every-night).
 
 ## Putting it on the internet
 
-Cubex is built to run on your own machine or server. If it's reachable from the internet (for example so webhooks can arrive):
+Cubex is built to run on your own machine or server. **[Run Cubex on your own server](docs/self-hosting.md)** walks through it step by step, from a new Linux server to Cubex on your own domain: DNS, firewall, HTTPS certificate, nightly backups and updates. In short, if Cubex is reachable from the internet (for example so webhooks can arrive):
 
-- Put it behind HTTPS with a reverse proxy (Caddy, nginx, Traefik). The session cookie becomes `Secure` automatically when the proxy sends `X-Forwarded-Proto: https`. Keep the default `HOST=127.0.0.1` and run the proxy on the same server. With [Caddy](https://caddyserver.com), which gets the certificate for you, that's one line in its Caddyfile: `cubex.example.com { reverse_proxy localhost:3002 }`.
+- Put it behind HTTPS with a reverse proxy (Caddy, nginx, Traefik). The session cookie becomes `Secure` automatically when the proxy sends `X-Forwarded-Proto: https`. Keep the default `HOST=127.0.0.1` and run the proxy on the same server. [Caddy](https://caddyserver.com) gets the certificate for you, and this is its whole Caddyfile:
+
+  ```
+  cubex.example.com {
+      reverse_proxy 127.0.0.1:3002
+  }
+  ```
 - Set `INITIAL_PASSWORD` so the install is never open for someone else to claim, or choose the password before you open it up.
 - Use a strong password. Failed sign-ins are limited for the whole instance (10 per 15 minutes), not per IP: someone hammering the login can delay new sign-ins, but browsers that are already signed in keep working.
 - Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app.
