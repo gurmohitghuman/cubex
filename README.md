@@ -1,6 +1,6 @@
 # Cubex
 
-**A self-hosted alternative to [Clay](https://www.clay.com).** A spreadsheet where a column can be an AI prompt or an API call, run with your own AI key instead of credits.
+**A self-hosted alternative to [Clay](https://www.clay.com).** A spreadsheet where a column can be an AI prompt or an API call, run with your own [OpenRouter](https://openrouter.ai) key instead of credits.
 
 ![A Cubex sheet of 12 companies: an AI column says what each one sells, and location, public repos and followers come from the GitHub API](docs/media/cubex-sheet.png)
 
@@ -36,7 +36,7 @@ Other options include `--port` and `--dir` (install somewhere other than `~/.cub
 
 Open http://localhost:3002. **Whoever opens Cubex first chooses the password,** unless `INITIAL_PASSWORD` is set (`--public` sets it for you). There's one account and no email, so there's no reset link either. If you forget the password, run `cubex reset-password` on the computer Cubex runs on. Changing or resetting the password signs out every browser.
 
-To use AI columns, add your OpenRouter key and pick a default model in **Settings → AI**. Cubex never picks a model for you.
+To use AI columns, create an API key at [openrouter.ai/keys](https://openrouter.ai/keys) (OpenRouter bills you directly for what your runs use), then add it and pick a default model in **Settings → AI**. Cubex never picks a model for you.
 
 Cubex keeps running in the background and comes back after a restart: on macOS when you log in, on Linux when the computer starts (if the installer can't set that up, it tells you the one command that does). Everything else goes through the `cubex` command:
 
