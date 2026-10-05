@@ -1,0 +1,62 @@
+# Anything we don't want in the Docker build context (or final image).
+# A small build context = faster `docker build` + no secret leaks.
+
+# Node deps — built fresh inside the image
+node_modules
+*/node_modules
+**/node_modules
+
+# Build outputs — rebuilt in the builder stage
+dist
+build
+server/dist
+client/dist
+
+# Local DB / runtime data — never bake user data into the image
+server/data
+*.db
+*.db-wal
+*.db-shm
+
+# Env files — settings come from the environment at run time, not the image
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.vscode
+.idea
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Git internals
+.git
+.gitignore
+.github
+
+# Tests (not shipped in prod runtime)
+tests
+playwright.config.ts
+test-results
+playwright-report
+
+# Docs / runbooks (no need in image)
+*.md
+LICENSE
+.claude
+
+# Misc local stuff
+temp
+coverage
+*.lcov
+.nyc_output
+
+# README screenshots and demo GIFs: not needed to build or run Cubex
+docs/media

@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# The `cubex` command, for a Cubex installed with install.sh. Run `cubex help`.
+set -euo pipefail
+
+CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
+APP="$CUBEX_HOME/app"
+NODE="$CUBEX_HOME/node/bin/node"
+CONFIG="$CUBEX_HOME/config.env"
+LOG="$CUBEX_HOME/logs/cubex.log"
+QUIET=0
+# shellcheck source=bin/cubex-service.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cubex-service.sh"
+
+say() { if [ "$QUIET" = 0 ]; then printf '%s\n' "$*"; fi; }
+die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+# config.env into the environment: plain KEY=value lines, nothing is executed.
+load_config() {
+  local line key val
+  if [ -f "$CONFIG" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      case "$line" in ''|'#'*) continue ;; *=*) ;; *) continue ;; esac
+      key="${line%%=*}" && val="${line#*=}"
+      case "$key" in ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;; esac
+      case "$val" in \"*\") val="${val#\"}" && val="${val%\"}" ;; \'*\') val="${val#\'}" && val="${val%\'}" ;; esac
+      export "$key=$val"
+    done < "$CONFIG"
+  fi
+  export PORT="${PORT:-3002}" HOST="${HOST:-127.0.0.1}"
+  case "$PORT" in *[!0-9]*|'') die "PORT in $CONFIG must be a number from 1 to 65535." ;; esac
+  if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then die "PORT in $CONFIG must be a number from 1 to 65535."; fi
+  # A relative DB_PATH means inside ~/.cubex, never inside the app folder an update replaces.
+  case "${DB_PATH:-}" in ''|/*) ;; *) export DB_PATH="$CUBEX_HOME/$DB_PATH" ;; esac
+}
+
+probe_url() { # how this machine reaches Cubex
+  case "$HOST" in
+    0.0.0.0|::|127.0.0.1|localhost) echo "http://127.0.0.1:$PORT" ;;
+    *:*) echo "http://[$HOST]:$PORT" ;;
+    *) echo "http://$HOST:$PORT" ;;
+  esac
+}
+display_url() { case "$HOST" in 0.0.0.0|::|127.0.0.1|localhost) echo "http://localhost:$PORT" ;; *) probe_url ;; esac; }
+healthy() {
+  local body
+  body="$(curl -fsS --max-time 2 "$(probe_url)/api/health" 2>/dev/null)" || return 1
+  case "$body" in *'"status":"ok"'*) return 0 ;; esac
+  return 1
+}
+port_in_use() { local rc=0; curl -s -o /dev/null --max-time 2 "$(probe_url)/" || rc=$?; [ "$rc" != 7 ]; }
+running() { service_running && healthy; }
+
+cmd_run() { # foreground; what the service manager starts
+  load_config
+  export NODE_ENV=production DB_PATH="${DB_PATH:-$CUBEX_HOME/data/cubex.db}"
+  cd "$APP"
+  exec "$NODE" server/dist/index.js
+}
+
+cmd_start() {
+  local i=0
+  load_config
+  if running; then say "Cubex is already running: $(display_url)"; return 0; fi
+  if ! service_running && port_in_use; then
+    die "Port $PORT is in use by another program. Set another PORT in $CONFIG, then run: cubex start"
+  fi
+  mkdir -p "$(dirname "$LOG")"
+  if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 10485760 ]; then mv -f "$LOG" "$LOG.1"; fi
+  service_start
+  until healthy; do
+    i=$((i + 1))
+    if [ "$i" -gt 120 ]; then
+      service_stop >/dev/null 2>&1 || true
+      tail -n 20 "$LOG" >&2 || true
+      die "Cubex didn't start; the end of its log is above. Full log: $LOG"
+    fi
+    sleep 0.5
+  done
+  say "Cubex is running: $(display_url)"
+}
+
+cmd_stop() {
+  local i=0
+  load_config
+  service_stop
+  while service_running && [ "$i" -lt 60 ]; do sleep 0.25; i=$((i + 1)); done
+  say "Cubex stopped."
+}
+
+cmd_restart() { local quiet="$QUIET"; QUIET=1; cmd_stop; QUIET="$quiet"; cmd_start; }
+
+cmd_status() {
+  load_config
+  if running; then
+    if [ "$QUIET" = 1 ]; then return 0; fi
+    say "Cubex is running: $(display_url)"
+  else
+    if [ "$QUIET" = 1 ]; then return 1; fi
+    if service_running; then say "Cubex is starting, or failing to start (see: cubex logs)."
+    elif port_in_use; then say "Cubex is stopped, and another program is using port $PORT."
+    else say "Cubex is stopped. Start it with: cubex start"; fi
+  fi
+  say "  Version:  $(cat "$APP/.cubex-version" 2>/dev/null || echo unknown), Node $("$NODE" --version)"
+  say "  Runs as:  $(service_describe)"
+  say "  Data:     $(dirname "${DB_PATH:-$CUBEX_HOME/data/cubex.db}")"
+  say "  Settings: $CONFIG"
+  say "  Log:      $LOG"
+}
+
+cmd_open() {
+  load_config
+  local url; url="$(display_url)"
+  if [ "$(uname -s)" = Darwin ]; then open "$url"
+  elif command -v xdg-open >/dev/null; then xdg-open "$url" >/dev/null 2>&1
+  else printf '%s\n' "$url"; fi
+}
+
+# An update is the installer run again: it keeps data and settings, rebuilds,
+# and puts the previous version back if the new one doesn't start.
+cmd_update() {
+  local CUBEX_REPO='' CUBEX_REF='' CUBEX_SOURCE='' CUBEX_BIN_DIR='' script
+  # shellcheck disable=SC1091 # written by install.sh
+  if [ -f "$CUBEX_HOME/install.env" ]; then . "$CUBEX_HOME/install.env"; fi
+  export CUBEX_HOME CUBEX_REPO CUBEX_REF CUBEX_BIN_DIR
+  if [ -n "$CUBEX_SOURCE" ]; then exec bash "$CUBEX_SOURCE/install.sh" --source "$CUBEX_SOURCE" "$@"; fi
+  script="$(mktemp)"
+  curl -fsSL "https://raw.githubusercontent.com/$CUBEX_REPO/$CUBEX_REF/install.sh" -o "$script" \
+    || die "Couldn't download the installer. Check your internet connection."
+  exec bash "$script" "$@"
+}
+
+cmd_reset_password() {
+  load_config
+  export DB_PATH="${DB_PATH:-$CUBEX_HOME/data/cubex.db}"
+  cd "$APP"
+  exec "$NODE" server/dist/cli/reset-password.js
+}
+
+# Removes only Cubex's own entries, by name. The folder itself goes only with
+# --delete-data, and only if nothing else is left in it.
+cmd_uninstall() {
+  local purge=0 answer='' entry CUBEX_BIN_DIR="$HOME/.local/bin"
+  if [ "${1:-}" = --delete-data ]; then purge=1; fi
+  case "$CUBEX_HOME" in ''|/|"$HOME"|"$HOME"/) die "Refusing to remove $CUBEX_HOME." ;; esac
+  [ -f "$CUBEX_HOME/.cubex-home" ] || die "$CUBEX_HOME doesn't look like a Cubex install."
+  # shellcheck disable=SC1091 # written by install.sh
+  if [ -f "$CUBEX_HOME/install.env" ]; then . "$CUBEX_HOME/install.env"; fi
+  if [ "$purge" = 1 ]; then
+    printf 'This permanently deletes every table, sheet and setting in %s.\nType delete to confirm: ' "$CUBEX_HOME"
+    { read -r answer < /dev/tty; } 2>/dev/null || true
+    [ "$answer" = delete ] || die "Nothing was removed."
+  fi
+  load_config
+  service_remove
+  if grep -qs 'Cubex launcher' "$CUBEX_BIN_DIR/cubex"; then rm -f "$CUBEX_BIN_DIR/cubex"; fi
+  for entry in app app.next app.previous app.failed node node.next node.previous logs install.env cubex.pid .install-lock; do
+    rm -rf "${CUBEX_HOME:?}/$entry"
+  done
+  if [ "$purge" = 0 ]; then
+    say "Cubex is uninstalled. Your data and settings are still in $CUBEX_HOME; delete that folder to remove them too."
+    return 0
+  fi
+  rm -rf "${CUBEX_HOME:?}/data" "${CUBEX_HOME:?}/config.env" "${CUBEX_HOME:?}/.cubex-home"
+  if rmdir "$CUBEX_HOME" 2>/dev/null; then say "Cubex and all its data are removed."
+  else say "Cubex and its data are removed. $CUBEX_HOME had other files in it, so it was left in place."; fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage: cubex <command>
+
+  start            Start Cubex in the background
+  stop             Stop it
+  restart          Restart it (after changing settings)
+  status           Is it running, where, which version
+  open             Open Cubex in your browser
+  logs             Follow the server log (Ctrl+C to stop)
+  update           Update to the latest version (data and settings are kept)
+  config           Show the settings file
+  reset-password   Choose a new password (signs out every browser)
+  uninstall        Remove Cubex but keep your data (--delete-data removes it too)
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"
+  if [ $# -gt 0 ]; then shift; fi
+  if [ "${1:-}" = --quiet ]; then QUIET=1; shift; fi
+  case "$cmd" in help|-h|--help|uninstall) ;; *) [ -d "$APP" ] || die "Cubex isn't installed in $CUBEX_HOME." ;; esac
+  case "$cmd" in
+    run) cmd_run ;;
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart ;;
+    status) cmd_status ;;
+    is-active) load_config && service_running ;; # for install.sh: is the service up (healthy or not)
+    open) cmd_open ;;
+    url) load_config && display_url ;;
+    logs) [ -f "$LOG" ] || die "There's no log yet."; exec tail -n 100 -F "$LOG" ;;
+    update) cmd_update "$@" ;;
+    config) printf 'Settings file: %s (after a change, run: cubex restart)\n\n' "$CONFIG"; cat "$CONFIG" ;;
+    reset-password) cmd_reset_password ;;
+    uninstall) cmd_uninstall "$@" ;;
+    version|--version) cat "$APP/.cubex-version"; "$NODE" --version ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; die "Unknown command: $cmd" ;;
+  esac
+}
+
+main "$@"

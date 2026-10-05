@@ -1,0 +1,9 @@
+# Plain `docker compose up` merges this file in automatically and publishes
+# Cubex on http://localhost:3002. Coolify deploys with an explicit
+# `-f docker-compose.yaml`, so it never reads this file: there the app is
+# reachable only through the domain Coolify routes to it, not on a raw host
+# port (Docker-published ports also bypass host firewalls such as ufw).
+services:
+  cubex:
+    ports:
+      - "3002:3002"

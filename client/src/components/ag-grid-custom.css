@@ -1,0 +1,327 @@
+/* Custom AG Grid Styling for Cubex Application */
+
+.ag-theme-alpine {
+  /* Core colors */
+  --ag-background-color: #ffffff;
+  --ag-foreground-color: #374151;
+  --ag-border-color: #e5e7eb;
+  
+  /* Header */
+  --ag-header-background-color: #ffffff;
+  --ag-header-foreground-color: #374151;
+  --ag-header-cell-hover-background-color: #f9fafb;
+  /* Was #eff6ff (blue) — orphaned accent that fought the monochrome shell.
+     Graphite-tinted grey keeps the column-move cue without introducing a hue. */
+  --ag-header-cell-moving-background-color: #f3f4f6;
+
+  /* Rows */
+  --ag-row-hover-color: #f9fafb;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-even-row-background-color: #ffffff;
+
+  /* Selection — graphite-grey scale (was Tailwind blue). The grid is the
+     primary surface; its selection colors are the brand's most-seen accent,
+     so they stay monochrome like the rest of the UI. */
+  --ag-selected-row-background-color: #f3f4f6;
+  --ag-range-selection-background-color: #e5e7eb;
+  --ag-range-selection-background-color-2: #d1d5db;
+  --ag-range-selection-background-color-3: #9ca3af;
+  --ag-range-selection-background-color-4: #6b7280;
+  
+  /* Borders - lighter and more subtle */
+  --ag-cell-horizontal-border: solid 1px #f3f4f6;
+  --ag-cell-vertical-border: solid 1px #f3f4f6;
+  --ag-header-column-separator-color: #e5e7eb;
+  --ag-header-column-separator-width: 1px;
+  
+  /* Typography */
+  --ag-font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ag-font-size: 12px;
+  
+  /* Sizing */
+  --ag-header-height: 36px;
+  --ag-row-height: 32px;
+  --ag-list-item-height: 28px;
+}
+
+/* Column borders - subtle and clean */
+.ag-theme-alpine .ag-cell {
+  border-right: 1px solid #f3f4f6;
+}
+
+.ag-theme-alpine .ag-header-cell {
+  border-right: 1px solid #e5e7eb;
+}
+
+/* Header styling - clean and minimal */
+.ag-theme-alpine .ag-header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Header cell text styling - following AG Grid documentation */
+.ag-theme-alpine .ag-header-cell-label {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 8px;
+}
+
+.ag-theme-alpine .ag-header-cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--ag-header-foreground-color);
+}
+
+/* Ensure header cells are properly sized */
+.ag-theme-alpine .ag-header-cell {
+  display: flex;
+  align-items: center;
+  height: var(--ag-header-height);
+  min-height: var(--ag-header-height);
+}
+
+/* Column resize handles - minimal and functional */
+.ag-theme-alpine .ag-header-cell-resize {
+  background-color: transparent;
+  width: 4px;
+  cursor: col-resize;
+}
+
+.ag-theme-alpine .ag-header-cell-resize:hover {
+  background-color: #252626; /* graphite (was blue #3b82f6) */
+}
+
+.ag-theme-alpine .ag-header-cell-resize:active {
+  background-color: #4a4b4b; /* graphite (was blue #1d4ed8) */
+}
+
+/* Row numbers column styling */
+.ag-theme-alpine .ag-header-cell[col-id="__rowNumber"] {
+  background-color: white;
+  border-right: 2px solid #e2e8f0;
+  font-weight: 600;
+  color: #374151;
+}
+
+.ag-theme-alpine .ag-cell[col-id="__rowNumber"] {
+  background-color: white;
+  border-right: 2px solid #e2e8f0;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+/* Loading cell styling */
+.ag-theme-alpine .loading-cell {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* AI data cell styling */
+.ag-theme-alpine .ai-data-cell {
+  cursor: pointer;
+  background-color: #f3f4f6;
+  padding: 2px 4px;
+}
+
+/* Custom header with delete button styling */
+.ag-theme-alpine .ag-header-cell-text {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+}
+
+.ag-theme-alpine .ag-header-cell-text .group:hover button {
+  opacity: 1;
+}
+
+/* Add Column header styling */
+.ag-theme-alpine .ag-header-cell[col-id="__addColumn"] {
+  background-color: #f8fafc;
+  border-left: 2px solid #e2e8f0;
+  min-width: 140px !important;
+  width: 140px !important;
+  max-width: 160px !important;
+}
+
+.ag-theme-alpine .ag-cell[col-id="__addColumn"] {
+  background-color: #f8fafc;
+  border-left: 2px solid #e2e8f0;
+  min-width: 140px !important;
+  width: 140px !important;
+  max-width: 160px !important;
+}
+
+/* Ensure Add Column button is fully visible */
+.ag-theme-alpine .ag-header-cell[col-id="__addColumn"] .ag-header-cell-text {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: visible !important;
+}
+
+.ag-theme-alpine .ag-header-cell[col-id="__addColumn"] button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ag-theme-alpine .ai-data-cell:hover {
+  background-color: #e5e7eb;
+}
+
+/* URL cell styling */
+.ag-theme-alpine .url-cell {
+  color: #000000;
+  text-decoration: underline;
+}
+
+.ag-theme-alpine .url-cell:hover {
+  color: #374151;
+}
+
+/* Selection styling */
+.ag-theme-alpine .ag-row-selected {
+  background-color: #f3f4f6 !important;
+}
+
+.ag-theme-alpine .ag-cell-range-selected-1 {
+  background-color: #e5e7eb !important;
+}
+
+/* Focus styling */
+.ag-theme-alpine .ag-cell-focus {
+  border: 2px solid #000000 !important;
+}
+
+/* Context menu styling */
+.ag-theme-alpine .ag-menu {
+  border: 1px solid #e5e7eb;
+}
+
+/* Scroll bars */
+.ag-theme-alpine .ag-body-horizontal-scroll {
+  background-color: #f9fafb;
+}
+
+.ag-theme-alpine .ag-body-vertical-scroll {
+  background-color: #f9fafb;
+}
+
+/* Column moving ghost */
+.ag-theme-alpine .ag-column-moving {
+  background-color: rgba(37, 38, 38, 0.08); /* graphite tint (was blue) */
+  border: 1px solid #252626;
+}
+
+/* Pinned columns */
+.ag-theme-alpine .ag-pinned-left-cols-container {
+  border-right: 2px solid #e5e7eb;
+}
+
+.ag-theme-alpine .ag-pinned-right-cols-container {
+  border-left: 2px solid #e5e7eb;
+}
+
+/* Status indicators */
+.ag-theme-alpine .status-success {
+  color: #16a34a;
+  background-color: #f0fdf4;
+}
+
+.ag-theme-alpine .status-error {
+  color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.ag-theme-alpine .status-loading {
+  color: #6b7280;
+  background-color: #f3f4f6;
+}
+
+.ag-theme-alpine .status-processing {
+  color: #f59e0b;
+  background-color: #fffbeb;
+}
+
+/* Compact mode for better space utilization */
+.ag-theme-alpine.ag-grid-compact {
+  --ag-header-height: 32px;
+  --ag-row-height: 28px;
+  --ag-font-size: 11px;
+}
+
+/* No border variant */
+.ag-theme-alpine.ag-grid-no-border {
+  border: none;
+}
+
+/* Custom scrollbar for webkit browsers */
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-track {
+  background: #f9fafb;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Fix overlapping filter icon and text */
+.ag-theme-alpine .ag-text-field-input {
+  padding-left: 32px !important;
+}
+
+.ag-theme-alpine .ag-filter-body-wrapper {
+  position: relative;
+}
+
+.ag-theme-alpine .ag-text-field-input-wrapper {
+  position: relative;
+}
+
+/* ---- Popup cell editor (agLargeTextCellEditor) ---- */
+/* Match the unified brand palette: cube-black #252626 border + soft shadow,
+   white background, monospaced/regular text. AG Grid's default popup uses a
+   thin grey border that visually clashes with our otherwise-dark UI accents
+   (active tab indicator, primary buttons). */
+.ag-theme-alpine .ag-popup-editor {
+  background-color: #ffffff;
+  border: 1px solid #252626;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(37, 38, 38, 0.18);
+  overflow: hidden;
+}
+.ag-theme-alpine .ag-popup-editor .ag-large-text-input {
+  padding: 0;
+}
+.ag-theme-alpine .ag-popup-editor textarea.ag-input-field-input {
+  background-color: #ffffff;
+  color: #252626;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  padding: 10px 12px;
+  line-height: 1.5;
+  font-size: 14px;
+  resize: none;
+  /* Focus state should stay subtle — the outer border already provides the
+     visual frame; an extra ring would double-up. */
+}
+.ag-theme-alpine .ag-popup-editor textarea.ag-input-field-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+

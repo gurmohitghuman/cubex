@@ -1,0 +1,374 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui CSS variables */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  
+  body {
+    font-family: Inter, system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer base {
+  .font-brand-semibold {
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 600;
+  }
+  .font-brand-bold {
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 700;
+  }
+}
+
+@layer components {
+  /* Confident, static type scale (no motion). Used for page H1s so titles read
+     as deliberate, not timid. Poppins display face + tight tracking. */
+  .text-display {
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 1.875rem;   /* 30px */
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .text-title {
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.25rem;    /* 20px */
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  /* Tracked, uppercase metadata label — turns quiet grey meta lines into an
+     intentional typographic detail (row counts, timestamps, etc.). */
+  .meta-label {
+    font-size: 0.6875rem;  /* 11px */
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: theme('colors.gray.500');
+  }
+
+  /* Faint isometric-grid texture echoing the 3D cube logo geometry. Applied to
+     calm surfaces only (empty states, auth, dashboard hero) — never behind
+     dense grid data. Two 60°/-60° hairline gradients on a graphite tint. The
+     ::before lives behind content, so the host element needs position:relative
+     and its real content should sit at z-10. */
+  .iso-grid {
+    position: relative;
+  }
+  .iso-grid::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image:
+      linear-gradient(60deg, transparent 0 49.5%, rgba(37,38,38,0.035) 49.5% 50.5%, transparent 50.5%),
+      linear-gradient(-60deg, transparent 0 49.5%, rgba(37,38,38,0.035) 49.5% 50.5%, transparent 50.5%);
+    background-size: 28px 48px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-cube-black hover:bg-gray-800 text-white px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  }
+
+  /* Larger primary — same look as .btn-primary at px-4 py-2. For the prominent
+     CTAs that were previously hand-rolling this size (View Results, Save
+     Changes, run-header actions). Keeps the color/hover/disabled contract in
+     ONE place instead of duplicating the tailwind string per button. */
+  .btn-primary-lg {
+    @apply bg-cube-black hover:bg-gray-800 text-white px-4 py-2 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm;
+  }
+
+  .btn-danger {
+    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm;
+  }
+
+  .btn-success {
+    @apply bg-cube-black hover:bg-gray-800 text-white px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  }
+
+  .btn-warning {
+    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm;
+  }
+
+  .btn-orange {
+    @apply bg-cube-black hover:bg-gray-800 text-white px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  }
+  
+  .input {
+    /* focus ring at /40 (was /15) so keyboard focus is actually visible —
+       a 15%-opacity ring on white was well under the 3:1 non-text contrast
+       floor for a focus indicator (WCAG 2.4.11 / 1.4.11). */
+    @apply border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-cube-black focus:ring-2 focus:ring-cube-black/40 transition-[border-color,box-shadow] duration-150 bg-white text-sm;
+  }
+
+  .card {
+    @apply bg-white rounded-lg border border-gray-200 transition-colors duration-150;
+  }
+  /* Clickable cards (e.g. dashboard table rows): flat — just a border-darken
+     on hover, no lift/shadow. */
+  .card-interactive {
+    @apply card cursor-pointer hover:border-gray-300;
+  }
+  
+  /* Consolidated card variants. The old .card-teal / .card-orange /
+     .card-golden classes accompanied the dropped cube-* color palette.
+     If any component still imports one of those, it falls back to no
+     accent. .card-accent is the single colored-border replacement. */
+  .card-accent {
+    @apply bg-white rounded-lg border-l-4 border-l-cube-black;
+  }
+  
+  .spreadsheet-cell {
+    @apply border-r border-b border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-2 focus:border-cube-black focus:bg-gray-100 min-h-[36px] resize-none transition-colors duration-150;
+  }
+  
+  .spreadsheet-header {
+    @apply bg-gray-50 border-r border-b border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 min-h-[44px] hover:bg-gray-100 transition-colors duration-150;
+  }
+  
+  .modal-overlay {
+    @apply fixed inset-0 bg-cube-black bg-opacity-50 flex items-center justify-center z-[9999] p-4;
+  }
+  
+  .modal {
+    @apply bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-auto border border-gray-200;
+  }
+  
+  .table-container {
+    @apply bg-white rounded-lg border border-gray-200 overflow-hidden;
+  }
+
+  /* Smooth Slider Styles */
+  [data-radix-slider-thumb] {
+    @apply cursor-pointer;
+  }
+  
+  [data-radix-slider-thumb]:hover {
+    @apply shadow-md;
+  }
+  
+  .modern-header {
+    @apply bg-white border-b border-gray-200;
+  }
+  
+  .cell-hover {
+    @apply hover:bg-gray-100 transition-colors duration-150;
+  }
+  
+  .selection-highlight {
+    @apply bg-gray-100 border-2 border-cube-black;
+  }
+  
+  .column-resizer {
+    @apply absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-cube-black active:bg-gray-800 transition-colors duration-150;
+  }
+  
+  .cube-icon {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-lg;
+  }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Animation classes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Virtual scrolling optimizations for large datasets */
+.virtual-scroll-container {
+  scroll-behavior: auto; /* Disable smooth scrolling for better performance */
+  backface-visibility: hidden;
+  perspective: 1000px;
+  transform: translateZ(0); /* Force GPU acceleration */
+  will-change: scroll-position;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(249, 250, 251, 0.95);
+  backdrop-filter: blur(8px);
+}
+
+.sticky-left {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: white;
+}
+
+/* Performance optimizations */
+.virtual-scroll-container * {
+  pointer-events: auto;
+}
+
+/* Modal scrolling fixes */
+.modal-content-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.modal-content-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.modal-content-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ensure modal dialogs are properly centered and sized */
+[data-radix-dialog-content] {
+  max-height: 90vh !important;
+  overflow: hidden !important;
+}
+
+/* Fix for large modal content */
+.modal-large-content {
+  max-width: 80vw !important;
+  width: 100% !important;
+}
+
+/* Reduce animations for large datasets */
+@media (prefers-reduced-motion: reduce) {
+  .virtual-scroll-container,
+  .virtual-scroll-container * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

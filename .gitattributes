@@ -1,0 +1,3 @@
+# Keep the README screenshots and demo GIFs out of GitHub's source tarballs,
+# which is what install.sh and `cubex update` download.
+docs/media export-ignore
