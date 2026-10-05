@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { aiAPI, httpAPI, AIRun, HTTPRun } from '@/utils/api'
+import { structuredRunColumns } from '@/lib/structuredRuns'
 
 type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
@@ -45,7 +46,12 @@ export const useActiveRuns = () => {
 
   const aiByColumn = useMemo(() => {
     const m: RunByColumn = {}
-    aiRuns.forEach(r => { m[r.column_name] = { runId: r.id, status: r.status as any } })
+    aiRuns.forEach(r => {
+      const run = { runId: r.id, status: r.status as any }
+      m[r.column_name] = run
+      // A structured run writes several columns, and each of them shows it.
+      for (const c of structuredRunColumns(r)) m[c] = run
+    })
     return m
   }, [aiRuns])
 

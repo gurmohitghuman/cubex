@@ -94,6 +94,15 @@ test('control_run reruns a structured run into the same columns', async () => {
     expect(s.target_row_count).toBe(3)
   }
 
+  // The menu's "Run All Rows" sends mode 'all': every row, a ✅ one included
+  // (the default, missing, would skip it). An unknown mode is refused.
+  const [done] = await rows()
+  await call('update_cells', { sheet_id: sheetId, row_id: done.id, data: { 'Score (Status)': '✅' } })
+  const all = await menuRerun({ baseColumnName: 'Why', columnName: 'Why', mode: 'all' })
+  expect((await settle((await all.json()).runId)).target_row_count).toBe(3)
+  const badMode = await api.post('/api/ai/rerun', { data: { sheetId, baseColumnName: 'Why', mode: 'everything' } })
+  expect(badMode.status()).toBe(400)
+
   // Renamed "Score (Output)", the status column still reruns as a structured
   // run (by id and from the menu), and a single-column run can't take it over.
   await whenFree(() => call('rename_column', { sheet_id: sheetId, column: 'Score (Status)', new_name: 'Score (Output)' }), r => !!r.isError)

@@ -60,6 +60,11 @@ export interface AIRun {
   use_web_fetch?: boolean
   max_chars?: number
   concurrency: number
+  // Structured runs (several typed columns from one call per row): the typed
+  // columns' spec (JSON), the "(Status)" column and the "(Data)" column.
+  output_columns?: string | null
+  status_column?: string | null
+  data_column?: string | null
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   total_rows: number
   processed_rows: number

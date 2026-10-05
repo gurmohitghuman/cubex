@@ -67,11 +67,12 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
 
   // "Run All Rows" clears the column's current results first and spends credits
   // or requests on every row again, so it asks before starting.
-  const [confirmRunAll, setConfirmRunAll] = useState<{ kind: 'ai' | 'http'; column: string } | null>(null)
+  // columnName: the AI header clicked (a structured run reruns from any column).
+  const [confirmRunAll, setConfirmRunAll] = useState<{ kind: 'ai' | 'http'; column: string; columnName?: string } | null>(null)
   const runAll = async () => {
     const c = confirmRunAll
     setConfirmRunAll(null)
-    if (c?.kind === 'ai') await actions.handleRunAIForColumn(c.column)
+    if (c?.kind === 'ai') await actions.handleRunAIForColumn(c.column, c.columnName)
     else if (c) await actions.handleRunHTTPForColumn(c.column)
   }
 
@@ -110,7 +111,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onRunHTTPForColumn={(column) => setConfirmRunAll({ kind: 'http', column })}
       onRunHTTPForMissingOrError={actions.handleRunHTTPMissingOrError}
       onRunHTTPForRows={actions.handleRunHTTPForRows}
-      onRunAIForColumn={(column) => setConfirmRunAll({ kind: 'ai', column })}
+      onRunAIForColumn={(column, columnName) => setConfirmRunAll({ kind: 'ai', column, columnName })}
       onRunAIMissingOrError={actions.handleRunAIMissingOrError}
       onEditAIColumn={actions.handleEditAIColumn}
       columnTypes={columnTypes}

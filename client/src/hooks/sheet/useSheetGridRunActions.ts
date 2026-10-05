@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { aiAPI, httpAPI, AIRun, HTTPRun, Sheet } from '@/utils/api'
 import { aiRunConfigFromLatest } from './aiRunConfigFromLatest'
 import { plural } from '@/lib/utils'
+import { structuredRunOwns } from '@/lib/structuredRuns'
 
 interface Args {
   activeSheet: Sheet | null
@@ -20,10 +21,23 @@ interface Args {
 }
 
 export const useSheetGridRunActions = (a: Args) => {
-  const handleRunAIForColumn = async (baseName: string) => {
+  // columnName is the header clicked (see handleRunAIMissingOrError).
+  const handleRunAIForColumn = async (baseName: string, columnName?: string) => {
     if (!a.activeSheet) return
     try {
       const runs = await aiAPI.getRuns(a.activeSheet.id)
+      // A column of a structured run (several typed columns from one call per
+      // row): refill all of that run's columns on every row. That's a rerun, as
+      // a fresh start would need new column names.
+      if (columnName && runs.some(r => structuredRunOwns(r, columnName))) {
+        const res = await aiAPI.rerun(a.activeSheet.id, baseName, { columnName, mode: 'all' })
+        toast.success(`Re-running AI for ${plural(res.targetRows, 'row')}`)
+        // Live updates, header controls and placeholders, as below.
+        a.setupSSEConnection(res.runId, 'ai')
+        a.fetchActiveAIRuns(a.activeSheet.id)
+        a.reloadSheetData?.(a.activeSheet.id)
+        return
+      }
       const latest = runs.find(r => r.column_name === `${baseName} (Output)`)
       if (!latest) {
         a.setShowAddColumnModal(true)
@@ -60,7 +74,7 @@ export const useSheetGridRunActions = (a: Args) => {
   const handleRunAIMissingOrError = async (baseName: string, columnName?: string) => {
     if (!a.activeSheet) return
     try {
-      const res = await aiAPI.rerun(a.activeSheet.id, baseName, undefined, undefined, columnName)
+      const res = await aiAPI.rerun(a.activeSheet.id, baseName, { columnName })
       toast.success(`Re-running AI for ${plural(res.targetRows, 'row')}`)
       a.setupSSEConnection(res.runId, 'ai')
       // Refresh active runs so the header Pause/Stop controls appear immediately
@@ -159,7 +173,8 @@ export const useSheetGridRunActions = (a: Args) => {
           .catch(e => toast.error(e.response?.data?.error || 'Failed to cancel HTTP API run'))
       }
     } else {
-      const run = a.activeAIRunsList.find(r => r.column_name === columnName)
+      // A structured run is stopped from any of its columns.
+      const run = a.activeAIRunsList.find(r => r.column_name === columnName || structuredRunOwns(r, columnName))
       if (run) {
         aiAPI.cancelRun(run.id)
           .then(afterCancel)
