@@ -1,0 +1,69 @@
+name: CI
+
+# Runs on every push to main and every pull request: typecheck, unit tests,
+# build. The Playwright e2e suite needs a browser and a booted server, so it
+# runs locally (scripts/e2e-harness.sh), not here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress runs when a new commit lands on the same branch.
+# Saves CI minutes during back-to-back pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck + Unit tests + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          # Pin a major. Sidequest@1.15.0 requires Node >=22.6.0; CI must
+          # match. Also matches the lockfile-generation env (npm 11 ships
+          # with Node 22+) — older npm 10 from Node 20 mis-reads the
+          # lockfile and fails npm ci with "Missing: yaml@2.9.0".
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is stricter than `npm install`: it requires a
+        # package-lock.json, fails if the lock is out of sync, and never
+        # mutates package.json. The right thing for CI.
+        run: npm ci
+
+      - name: Typecheck (server + client)
+        # Hits both tsconfig.json files in one command.
+        run: npm run typecheck
+
+      - name: Unit tests
+        # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
+        # No server, no network; each DB-touching test gets its own temp DB_PATH.
+        run: npm run test:unit
+
+      - name: Build (server + client)
+        # Catches the cases typecheck misses: SQL migrations missing from
+        # the copy step, broken Vite plugin config, missing dist outputs.
+        run: npm run build
+
+      - name: Verify build outputs exist
+        # Belt and braces: confirm the artifacts that production needs
+        # actually got produced. If the build "succeeds" but produces no
+        # dist/, the deploy will fail mysteriously.
+        run: |
+          set -e
+          test -f server/dist/index.js
+          test -f server/dist/package.json
+          test -d server/dist/db/migrations
+          test -f client/dist/index.html
+          ls server/dist/db/migrations/*.sql | wc -l | xargs -I{} test {} -gt 0
+          echo "✓ all build outputs present"

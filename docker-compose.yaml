@@ -1,0 +1,36 @@
+# Cubex: one container and one volume. This file works as-is in two places:
+#
+#   Coolify: create a resource from this repository with the "Docker Compose"
+#     build pack. Coolify gives the app a domain, routes it to port 3002 and
+#     generates the password (README: "Deploy on Coolify").
+#   Docker:  `docker compose up -d`, then open http://localhost:3002. The port
+#     is published by docker-compose.override.yaml, which plain Docker merges in
+#     automatically and Coolify never reads, so a Coolify install is reachable
+#     only through its domain.
+services:
+  cubex:
+    build: .
+    environment:
+      # Coolify: give this service a domain, routed to container port 3002.
+      - SERVICE_URL_CUBEX_3002
+      # Coolify generates SERVICE_PASSWORD_CUBEX (shown under Environment
+      # Variables), so the account exists before anyone can open the app.
+      # Empty under plain Docker, where the first visitor chooses the password.
+      - INITIAL_PASSWORD=${SERVICE_PASSWORD_CUBEX:-}
+      # Settings. On Coolify these appear under Environment Variables, where
+      # you can change them; Coolify passes a setting to the container only if
+      # it is listed here. What each one does: server/.env.example.
+      - MAX_ROWS_PER_SHEET=${MAX_ROWS_PER_SHEET:-1000000}
+      - MAX_COLUMNS_PER_SHEET=${MAX_COLUMNS_PER_SHEET:-200}
+      - MAX_CSV_UPLOAD_MB=${MAX_CSV_UPLOAD_MB:-500}
+      - SIDEQUEST_MAX_CONCURRENT_JOBS=${SIDEQUEST_MAX_CONCURRENT_JOBS:-4}
+      - HTTP_MAX_CONCURRENCY=${HTTP_MAX_CONCURRENCY:-20}
+      - MCP_EFFICIENT_ROWS_ENABLED=${MCP_EFFICIENT_ROWS_ENABLED:-0}
+    volumes:
+      # Everything Cubex keeps: cubex.db, jobs.db and the secrets generated on
+      # first boot. Back up this volume as a whole.
+      - cubex-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  cubex-data:

@@ -1,0 +1,63 @@
+import { useCallback, useMemo, useState } from 'react'
+import { aiAPI, httpAPI, AIRun, HTTPRun } from '@/utils/api'
+
+type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
+
+export const useActiveRuns = () => {
+  const [httpRuns, setHttpRuns] = useState<HTTPRun[]>([])
+  const [aiRuns, setAiRuns] = useState<AIRun[]>([] as any)
+
+  const fetchHTTPRuns = useCallback(async (sheetId: string) => {
+    try {
+      const runs = await httpAPI.getRuns(sheetId)
+      const active = runs.filter(r => r.status === 'running' || r.status === 'paused' || r.status === 'pending')
+      setHttpRuns(active)
+      return active
+    } catch (error) {
+      console.error('Error fetching active HTTP runs:', error)
+      return []
+    }
+  }, [])
+
+  const fetchAIRuns = useCallback(async (sheetId: string) => {
+    try {
+      const runs = await aiAPI.getRuns(sheetId)
+      const active = runs.filter(r => r.status === 'running' || r.status === 'paused' || r.status === 'pending')
+      setAiRuns(active)
+      return active
+    } catch (error) {
+      console.error('Error fetching active AI runs:', error)
+      return []
+    }
+  }, [])
+
+  const refetch = useCallback(async (sheetId: string) => {
+    await Promise.allSettled([fetchHTTPRuns(sheetId), fetchAIRuns(sheetId)])
+  }, [fetchHTTPRuns, fetchAIRuns])
+
+  const httpByColumn = useMemo(() => {
+    const m: RunByColumn = {}
+    httpRuns.forEach(r => {
+      if (r.master_column_name) m[r.master_column_name] = { runId: r.id, status: r.status as any }
+    })
+    return m
+  }, [httpRuns])
+
+  const aiByColumn = useMemo(() => {
+    const m: RunByColumn = {}
+    aiRuns.forEach(r => { m[r.column_name] = { runId: r.id, status: r.status as any } })
+    return m
+  }, [aiRuns])
+
+  return {
+    httpRuns,
+    aiRuns,
+    setHttpRuns,
+    setAiRuns,
+    fetchHTTPRuns,
+    fetchAIRuns,
+    refetch,
+    httpByColumn,
+    aiByColumn,
+  }
+}
