@@ -1,15 +1,17 @@
 # Cubex
 
-**A self-hosted alternative to [Clay](https://www.clay.com).** A spreadsheet where a column can be an AI prompt or an API call, run with your own [OpenRouter](https://openrouter.ai) key instead of credits.
+**A self-hosted alternative to [Clay](https://www.clay.com) that your AI agent can run for you.** A spreadsheet where a column can be an AI prompt or an API call, run with your own [OpenRouter](https://openrouter.ai) key instead of credits. Connect Claude Code, Cursor, Codex or Claude Desktop over MCP and ask for the work in plain words.
 
-![A Cubex sheet of 12 companies: an AI column says what each one sells, and location, public repos and followers come from the GitHub API](docs/media/cubex-sheet.png)
+![Claude Code connected to Cubex over MCP: asked to score 12 companies for fit, it adds Fit and Why columns, runs an AI column on every row while the sheet fills in, and reports the top 3](docs/media/cubex-agent.gif)
 
-Import a CSV, then add columns that fill themselves row by row: ask a model about each company, call an enrichment API with each email, or let a webhook append new rows as events arrive. AI agents (Claude, Cursor, Codex) can drive the whole thing over MCP.
+Import a CSV, then add columns that fill themselves row by row: ask a model about each company, call an enrichment API with each email, or let a webhook append new rows as events arrive. Do it by clicking in the browser, or tell your agent:
 
+> "Import leads.csv into a new table called Leads. Add an AI column that scores each company 1 to 10 for fit, using /company and /domain. Try it on 5 rows, show me the results, then run it on the rest and tell me how many scored 8 or more."
+
+- **Agent access (MCP).** Your agent can create tables, import and export CSVs, edit rows, and start, pause and re-run AI and HTTP runs. Each access token gets only the scopes you give it, so an agent can be read-only. There's also a REST API.
 - **AI columns.** Write a prompt that references other columns (`Score /company 1-10 for fit`). Runs on any of 300+ models through your own [OpenRouter](https://openrouter.ai) key. Through the API or MCP, one run can fill several typed columns at once (a score and the reason for it).
 - **HTTP API columns.** Call any JSON API once per row with values from the row (`https://api.example.com/people?email={{email}}`), then pick fields from the response to become columns.
 - **Webhooks.** Give a sheet a secret URL; every JSON event POSTed to it becomes a new row.
-- **Agent access (MCP).** Connect Claude Code, Claude Desktop, Cursor or Codex and work in Cubex by chatting. There's also a REST API.
 - **A real spreadsheet underneath.** Multiple sheets per table, CSV import and export, sort, filters, live progress while runs fill cells, pause and resume.
 
 Your data stays in one SQLite file on your machine. The server only calls out to OpenRouter for AI columns (including its price list for web search engines) and to the APIs you put in HTTP columns. (The web page loads its fonts from Google Fonts.)
@@ -53,6 +55,8 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 
 ## How it works
 
+![A Cubex sheet of 12 companies: an AI column says what each one sells, and location, public repos and followers come from the GitHub API](docs/media/cubex-sheet.png)
+
 **Import.** Create a table, then import a CSV or start typing. A sheet holds up to a million rows.
 
 ![Creating a table and importing a CSV of companies](docs/media/cubex-import.gif)
@@ -73,7 +77,19 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 
 ![Creating a webhook table, picking fields from a test event, then new events arriving as rows](docs/media/cubex-webhook.gif)
 
-**Agents.** Create an access token in **Settings → Agent access** and follow the setup shown there. See [docs/mcp.md](docs/mcp.md).
+**Agents (MCP).** Create an access token in **Settings → Agent access**. The page shows the setup command for your agent with your address and token filled in. For Claude Code it's one line:
+
+```bash
+claude mcp add --scope user --transport http cubex http://localhost:3002/mcp --header "Authorization: Bearer cubex_pat_..."
+```
+
+Then ask for the work in chat:
+
+- "Call `https://api.example.com/people?email={{email}}` for each row and add the job title and LinkedIn URL as columns."
+- "The last run left some cells blank. Show me why, then re-run only those rows."
+- "Export the rows where Status is Qualified, with just Email and Company."
+
+Give each token only the scopes it needs: `read`, `write`, `run` (starts runs, which spend your OpenRouter credits) and `secrets` (HTTP runs that use your saved API keys). Setup for Cursor, Codex, VS Code and Claude Desktop, and the full list of tools, is in [docs/mcp.md](docs/mcp.md).
 
 ![The Agent access page with the MCP endpoint and setup commands for Claude Code and Codex](docs/media/cubex-agents.png)
 
