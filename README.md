@@ -87,7 +87,7 @@ Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` 
 | `HOST` | `127.0.0.1` | Who can open Cubex. `127.0.0.1`: only this computer. `0.0.0.0`: any device that can reach it. |
 | `DB_PATH` | `~/.cubex/data/cubex.db` | The database. Its directory also holds `jobs.db` and the generated secrets. |
 | `INITIAL_PASSWORD` | (none) | Creates the account with this password on first boot, so a public install can't be claimed by whoever finds it first. Ignored once the account exists. |
-| `PUBLIC_URL` | (none) | The address webhook senders use, if it differs from the one you browse on. |
+| `PUBLIC_URL` | (none) | The address webhook senders and agents' file links use, if it differs from the one you browse on. |
 | `MAX_ROWS_PER_SHEET` | `1000000` | Rows per sheet. |
 | `MAX_COLUMNS_PER_SHEET` | `200` | Columns per sheet. |
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |
@@ -152,7 +152,7 @@ Cubex is built to run on your own machine or server. **[Run Cubex on your own se
 - Use a strong password. Failed sign-ins are limited for the whole instance (10 per 15 minutes), not per IP: someone hammering the login can delay new sign-ins, but browsers that are already signed in keep working.
 - Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app.
 
-For webhooks on a laptop, a tunnel (`cloudflared tunnel`, `ngrok`) works. Set `PUBLIC_URL` to the tunnel address so the app shows the right webhook URL.
+For webhooks on a laptop, a tunnel (`cloudflared tunnel`, `ngrok`) works. Set `PUBLIC_URL` to the tunnel address so the app shows the right webhook URL and agents get working file links.
 
 ## Other ways to run Cubex
 

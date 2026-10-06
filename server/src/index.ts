@@ -37,6 +37,7 @@ import aiRoutes from './routes/ai';
 import httpRoutes from './routes/http';
 import settingsRoutes from './routes/settings';
 import webhooksPublicRoutes from './routes/webhooks-public';
+import fileLinkRoutes from './routes/file-links';
 import apiV1Routes from './routes/api-v1';
 import mcpRoutes from './routes/mcp';
 import healthRoutes from './routes/health';
@@ -100,6 +101,10 @@ app.use('/mcp', noStore); // MCP tool results carry sheet data too
 // own 512KB cap governs. Cache-Control: private, no-store from the /api handler
 // above still applies.
 app.use('/api/webhooks', webhooksPublicRoutes);
+// PUBLIC one-time file links an MCP agent gets for moving a CSV in or out
+// (routes/file-links.ts): likewise no auth, the token in the path is the
+// capability, and the global parsers skip the prefix so uploads stream to disk.
+app.use('/api/files', fileLinkRoutes);
 
 // Programmatic surfaces — personal-access-token auth ONLY (no session cookies).
 // The global JSON parsers are skipped for both prefixes (see

@@ -24,8 +24,8 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         + 'COST WARNING: the CSV comes back as a STRING IN YOUR CONTEXT, so exporting a wide or long '
         + 'sheet is EXPENSIVE — always pass columns and where to fetch only what you need. '
         + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the result says `
-        + 'truncated: true (with the total row count when there is no where); get the rest with read_rows (same columns/where, paged) '
-        + 'or the whole file from GET /api/v1/sheets/{sheet_id}/export with a read-scope token (streams any size). '
+        + 'truncated: true (with the total row count when there is no where); get the rest with read_rows (same columns/where, paged), '
+        + 'or save it all as a file of any size with create_download_link. '
         + 'Use this when you want CSV specifically (to hand to another tool, or save verbatim); '
         + 'for reading data to reason over, read_rows with the same columns/where is usually cheaper '
         + 'and pages. Values are escaped against spreadsheet formula injection.',
@@ -54,8 +54,8 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
           sheet_id, sheet_name: result.sheetName, csv: result.csv, columns: result.columns,
           row_count: result.rowCount, matching_rows: result.matchingRows, truncated: true,
           rest: `Only the first ${result.rowCount} of ${result.matchingRows ?? 'the'} matching rows fit. `
-            + 'Page through the rest with read_rows (same columns/where), or download the whole file from '
-            + `GET /api/v1/sheets/${sheet_id}/export with a read-scope token.`,
+            + 'Page through the rest with read_rows (same columns/where), or save everything as a file '
+            + 'with create_download_link.',
         });
       }
       // rowCount comes from the builder (matched rows), NOT from counting lines:

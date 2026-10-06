@@ -14,6 +14,7 @@ import { registerRunResultTools } from './tools-run-results';
 import { registerWorkspaceTools } from './tools-workspace';
 import { registerStructureTools } from './tools-structure';
 import { registerImportTools } from './tools-import';
+import { registerLinkTools } from './tools-links';
 import { registerModelTools } from './tools-models';
 import { registerTransferTool } from './tools-transfer';
 import { registerTransformTool } from './tools-transform';
@@ -29,7 +30,9 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'append_rows/update_cells/delete_rows; manage columns with ' +
         'add_column/rename_column/delete_column; sort_sheet permanently reorders rows. ' +
         'Set up workspaces with manage_table/manage_sheet and bulk-load with ' +
-        'import_csv. Enrich with run_ai_column (per-row AI prompt) or ' +
+        'import_csv. To move a CSV file in or out, create_upload_link and ' +
+        'create_download_link return one-time links used with curl, so the file ' +
+        'never passes through your context. Enrich with run_ai_column (per-row AI prompt) or ' +
         'run_http_enrichment (per-row HTTP JSON API + JSONPath extraction) — both ' +
         'return a run_id to poll via get_run_status; pause/resume/cancel/rerun ' +
         'with control_run. Discover AI models with list_models and set account/' +
@@ -48,6 +51,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerWorkspaceTools(server, ctx);
   registerStructureTools(server, ctx);
   registerImportTools(server, ctx);
+  registerLinkTools(server, ctx);
   registerModelTools(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);

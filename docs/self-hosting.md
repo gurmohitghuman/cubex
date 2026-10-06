@@ -262,7 +262,7 @@ docker compose exec cubex bash /app/scripts/backup-cubex-db.sh /app/server/data/
 
 ### No public IP (a home server or a laptop)
 
-Use a tunnel such as [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), which needs no open ports. If you open Cubex on a different address than the tunnel's (for example `http://localhost:3002`), set `PUBLIC_URL` in `~/.cubex/config.env` to the tunnel's address and run `cubex restart`, so the app shows the right webhook URL. Cloudflare limits uploads to 100 MB on its free plan.
+Use a tunnel such as [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), which needs no open ports. If you open Cubex on a different address than the tunnel's (for example `http://localhost:3002`), set `PUBLIC_URL` in `~/.cubex/config.env` to the tunnel's address and run `cubex restart`, so the app shows the right webhook URL and agents get working file links. Cloudflare limits uploads to 100 MB on its free plan.
 
 ### Only you need access
 

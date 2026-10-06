@@ -40,6 +40,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   manage_table: write('Create, rename or delete a table', true, false),
   manage_sheet: write('Create, rename, delete or reorder sheets', true, false),
   import_csv: write('Import a CSV', true, false),
+  // A one-time link is not read-only (it is a credential for one transfer), so
+  // careful clients ask first; open world, since the file moves outside Cubex.
+  // An upload link in replace mode deletes the rows when the file arrives.
+  create_upload_link: write('Create a one-time CSV upload link', true, false, true),
+  create_download_link: write('Create a one-time CSV download link', false, false, true),
   set_default_model: write('Set the default AI model', true, true),
   run_ai_column: write('Run an AI column', true, false, true),
   run_http_enrichment: write('Run an HTTP enrichment', true, false, true),

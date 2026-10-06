@@ -29,8 +29,14 @@ for (const name of Object.keys(TOOL_ANNOTATIONS)) {
 for (const name of ['list_tables', 'read_rows', 'export_csv', 'get_run_status']) {
   assert.equal(tools[name].annotations?.readOnlyHint, true, `${name} is read-only`)
 }
-for (const name of ['delete_rows', 'delete_column', 'manage_table', 'import_csv']) {
+for (const name of ['delete_rows', 'delete_column', 'manage_table', 'import_csv', 'create_upload_link']) {
   assert.equal(tools[name].annotations?.destructiveHint, true, `${name} is destructive`)
+}
+// A one-time file link is a credential for one transfer: never read-only, and
+// open world, so careful clients ask before making one.
+for (const name of ['create_upload_link', 'create_download_link']) {
+  assert.equal(tools[name].annotations?.readOnlyHint, false, `${name} is not read-only`)
+  assert.equal(tools[name].annotations?.openWorldHint, true, `${name} is open world`)
 }
 assert.deepEqual(ok({ a: 1 }).structuredContent, { a: 1 })
 assert.equal(ok([1]).structuredContent, undefined, 'structuredContent is only ever an object')

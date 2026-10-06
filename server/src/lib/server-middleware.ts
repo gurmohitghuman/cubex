@@ -48,9 +48,11 @@ export const applyServerMiddleware = (app: express.Express, opts: { isProduction
   app.use(cookieParser());
 
   // Surfaces that own their body parsing: the public webhook endpoint (512 KB
-  // cap, rejects cheaply BEFORE parsing), the token-authed /api/v1 + /mcp
-  // (authenticate the Bearer token first, then a tighter route-level parser),
-  // and /api/auth (JSON only, 4 KB — see routes/auth.ts).
+  // cap, rejects cheaply BEFORE parsing), the one-time file links (an upload
+  // streams to disk once its link checks out, routes/file-links.ts), the
+  // token-authed /api/v1 + /mcp (authenticate the Bearer token first, then a
+  // tighter route-level parser), and /api/auth (JSON only, 4 KB — see
+  // routes/auth.ts).
   // A route-level express.json does NOT govern if a global parser runs first —
   // the global one consumes the body at 32 MB — so these prefixes skip every
   // global parser. Compare LOWERCASED: Express routing is case-insensitive, so
@@ -58,6 +60,7 @@ export const applyServerMiddleware = (app: express.Express, opts: { isProduction
   const ownsBodyParsing = (rawPath: string) => {
     const p = rawPath.toLowerCase();
     return p === '/api/webhooks' || p.startsWith('/api/webhooks/')
+      || p === '/api/files' || p.startsWith('/api/files/')
       || p === '/api/v1' || p.startsWith('/api/v1/')
       || p === '/mcp' || p.startsWith('/mcp/')
       || p === '/api/auth' || p.startsWith('/api/auth/');

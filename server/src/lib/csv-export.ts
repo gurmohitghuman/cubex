@@ -1,13 +1,14 @@
 // Shared CSV builder for the UI export route and /api/v1 (extracted from
 // routes/sheets-csv-export.ts verbatim). escapeCsvCell neutralizes formula
 // injection (=, +, -, @, \t, \r first chars) — this is the boundary where CSV
-// injection matters: the spreadsheet app the user opens the file in.
+// injection matters: the spreadsheet app the user opens the file in. Writing a
+// sheet out a page at a time lives in lib/csv-write.ts.
 import type { Response } from 'express';
 import { db } from './db';
 import { getSheetColumns, parseRowData } from './sql-helpers';
 import { contentDispositionFilename, escapeCsvCell } from './csv-safety';
 import { withSheetRead } from './sheet-busy';
-import { yieldToRequests } from './slices';
+import { csvLine, eachPage, responseWriter, writeSheetCsv, type SheetExportPlan } from './csv-write';
 // Reuses read_rows' filter predicate rather than a second implementation, so
 // `where` means exactly the same thing on both tools. (lib -> services is the
 // unusual direction; row-selection itself only depends on lib, so there's no
@@ -40,28 +41,18 @@ export interface CsvExportOptions {
   maxChars?: number;
 }
 
-// Build a sheet's CSV, optionally projected to a column subset and filtered to
-// matching rows.
-//
-// Projection/filtering exist because returning the WHOLE sheet as one string is
-// usually the expensive option, not the cheap one: an agent asking for 300 rows
-// x 4 columns out of 1,735 x 18 paid ~26x the cells it needed, which is worse
-// than the paged read_rows it was told to prefer (dogfood, 2026-07-25). The
-// filtering itself is not new — queryRows has done it for read_rows all along;
-// it simply was not wired to this path.
-export async function buildSheetCsv(
-  sheetId: string, userId: string, opts: CsvExportOptions = {},
-): Promise<CsvExport> {
+// What an export writes: the columns (the same verified list the grid shows,
+// column_order, or the caller's subset in the caller's order) and the filter.
+// Checked BEFORE any row is read: a typo'd column name must be a clean error,
+// not a CSV silently full of blanks (the failure mode a caller can't see).
+export function planSheetExport(
+  sheetId: string, userId: string, opts: Pick<CsvExportOptions, 'columns' | 'where'> = {},
+): SheetExportPlan | { fail: 'not_found' } | { fail: 'invalid'; error: string } {
   const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?')
     .get(sheetId, userId) as { name: string } | undefined;
   if (!sheet) return { fail: 'not_found' };
-
-  // The same verified list the grid shows (column_order). selfHeal=false: an
-  // export never writes.
+  // selfHeal=false: an export never writes.
   const allColumns = getSheetColumns(sheetId, userId, false);
-
-  // Validate BEFORE reading rows: a typo'd column name must be a clean error,
-  // not a CSV silently full of blanks (the failure mode a caller can't see).
   let columns = allColumns;
   if (opts.columns?.length) {
     const known = new Set(allColumns);
@@ -76,6 +67,24 @@ export async function buildSheetCsv(
     const condErr = validateRowConditions(allColumns, opts.where);
     if (condErr) return { fail: 'invalid', error: condErr };
   }
+  return { sheetName: sheet.name, columns, where: opts.where?.length ? opts.where : undefined };
+}
+
+// Build a sheet's CSV, optionally projected to a column subset and filtered to
+// matching rows.
+//
+// Projection/filtering exist because returning the WHOLE sheet as one string is
+// usually the expensive option, not the cheap one: an agent asking for 300 rows
+// x 4 columns out of 1,735 x 18 paid ~26x the cells it needed, which is worse
+// than the paged read_rows it was told to prefer (dogfood, 2026-07-25). The
+// filtering itself is not new — queryRows has done it for read_rows all along;
+// it simply was not wired to this path.
+export async function buildSheetCsv(
+  sheetId: string, userId: string, opts: CsvExportOptions = {},
+): Promise<CsvExport> {
+  const plan = planSheetExport(sheetId, userId, opts);
+  if ('fail' in plan) return plan;
+  const { columns, where } = plan;
 
   // Rows a page at a time between requests (each row's JSON parsed once, for
   // the filter and the line alike), holding off heavy operations meanwhile.
@@ -87,8 +96,8 @@ export async function buildSheetCsv(
       for (const json of rows) {
         sheetRows++;
         const data = parseRowData(json);
-        if (opts.where?.length && !rowPasses(data, opts.where)) continue;
-        const line = columns.map(col => escapeCsvCell(data[col] ?? '')).join(',');
+        if (where && !rowPasses(data, where)) continue;
+        const line = csvLine(columns, data);
         if (chars + 2 + line.length > maxChars) { truncated = true; return false; }
         lines.push(line);
         chars += 2 + line.length;
@@ -97,36 +106,19 @@ export async function buildSheetCsv(
     });
     const rowCount = lines.length - 1;
     const matchingRows = !truncated ? rowCount
-      : opts.where?.length ? null
+      : where ? null
       : (db.prepare('SELECT COUNT(*) AS n FROM rows WHERE sheet_id = ? AND user_id = ?').get(sheetId, userId) as { n: number }).n;
     // An empty SHEET is 'empty' (the historical contract the UI route 400s on).
     // A filter that matched nothing is NOT empty — it's a valid result, and the
     // caller still wants the header row to know the query ran.
     if (sheetRows === 0) return { fail: 'empty' };
     return {
-      ok: true, sheetName: sheet.name, csv: lines.join('\r\n'), columns,
+      ok: true, sheetName: plan.sheetName, csv: lines.join('\r\n'), columns,
       rowCount, matchingRows, truncated,
     };
   });
   return 'busy' in outcome && typeof outcome.busy === 'string' ? { fail: 'busy', error: outcome.busy } : outcome as CsvExport;
 }
-
-// The sheet's row data in row order, EXPORT_PAGE_ROWS at a time, yielding to
-// other requests between pages, until `apply` returns false.
-async function eachPage(sheetId: string, userId: string, apply: (rows: string[]) => boolean): Promise<void> {
-  const page = db.prepare(`
-    SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
-    ORDER BY row_index LIMIT ?
-  `).raw();
-  for (let after = Number.MIN_SAFE_INTEGER; ;) {
-    const rows = page.all(sheetId, userId, after, EXPORT_PAGE_ROWS) as Array<[number, string]>;
-    if (!apply(rows.map(r => r[1])) || rows.length < EXPORT_PAGE_ROWS) return;
-    after = rows[rows.length - 1][0];
-    await yieldToRequests();
-  }
-}
-
-const EXPORT_PAGE_ROWS = 5_000;
 
 // The whole sheet as a CSV download, written to `res` a page of rows at a time
 // between requests: a million-row export holds one page in memory and never
@@ -146,36 +138,8 @@ export async function streamSheetCsv(
     const columns = getSheetColumns(sheetId, userId, false);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', contentDispositionFilename(sheet.name, 'csv'));
-    const page = db.prepare(`
-      SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
-      ORDER BY row_index LIMIT ?
-    `).raw();
-    let chunk = columns.map(escapeCsvCell).join(',');
-    for (let after = Number.MIN_SAFE_INTEGER; ;) {
-      const rows = page.all(sheetId, userId, after, EXPORT_PAGE_ROWS) as Array<[number, string]>;
-      for (const [, json] of rows) {
-        const data = parseRowData(json);
-        chunk += '\r\n' + columns.map(col => escapeCsvCell(data[col] ?? '')).join(',');
-      }
-      if (res.destroyed) break;
-      if (!res.write(chunk)) await drained(res);
-      chunk = '';
-      if (rows.length < EXPORT_PAGE_ROWS || res.destroyed) break;
-      after = rows[rows.length - 1][0];
-      await yieldToRequests();
-    }
+    await writeSheetCsv(sheetId, userId, { sheetName: sheet.name, columns }, responseWriter(res));
     res.end();
     return 'ok' as const;
-  });
-}
-
-// Resolves when the client has taken the buffered output, or has gone away
-// (then the loop above stops at its next check).
-function drained(res: Response): Promise<void> {
-  return new Promise(resolve => {
-    if (res.destroyed) return resolve();
-    const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
-    res.on('drain', done);
-    res.on('close', done);
   });
 }
