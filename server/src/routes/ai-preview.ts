@@ -7,10 +7,11 @@ import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { samplePreviewRows } from '../lib/ai-preview-sample';
 import {
-  upsertDraftConfig, saveDraftPreview, computeInputHash,
-  type DraftConfig, type DraftPreviewRow,
+  upsertDraftConfig, saveDraftPreview, computeInputHash, draftConfigFrom, type DraftPreviewRow,
 } from '../lib/ai-drafts';
+import { webSearchSummary } from '../lib/web-search-plan';
 import { getOpenRouterClient } from '../services/openrouter';
+import { planIfSearching } from '../services/web-search-catalog';
 import { processOneRow } from './ai-preview-runner';
 import {
   acquirePreviewSlot, releasePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER,
@@ -40,9 +41,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
     const parsed = parsePreviewRequest(req.body);
     if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
     const {
-      sheetId, cleanColumnName, prompt, systemPrompt, model: requestedModel,
-      useOpenRouterWebSearch, useWebFetch,
-      safePreviewSize, safeTemperature, safeConcurrency, safeMaxChars,
+      sheetId, prompt, systemPrompt, model: requestedModel,
+      useOpenRouterWebSearch, useWebFetch, search: searchOptions, safePreviewSize, safeTemperature, safeMaxChars,
     } = parsed;
 
     const sheet = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
@@ -60,6 +60,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // its draft would now be rejected anyway (lib/prompt-ref-validate.ts).
     const refsError = unknownPromptRefsError(sheetId, req.userId!, prompt);
     if (refsError) return res.status(400).json({ error: refsError });
+    const planned = await planIfSearching(req.userId!, model, useOpenRouterWebSearch, searchOptions);
+    if ('error' in planned) return res.status(400).json({ error: planned.error });
 
     // EXACT count of rows "Run All Rows" will process — UNFILTERED, matching
     // ai-run-start.ts. The client's sheetData.totalRows is filter-aware (it shrinks
@@ -75,21 +77,15 @@ router.post('/preview', async (req: AuthRequest, res) => {
     try { openai = await getOpenRouterClient(req.userId!); }
     catch (e: any) { return res.status(400).json({ error: `AI setup error: ${e?.message || 'AI client initialization failed'}` }); }
 
-    const args = { prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, useOpenRouterWebSearch, useWebFetch };
+    const args = { prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, search: planned.ok, useWebFetch };
 
     // Persist the draft CONFIG before streaming (survives close/reopen even if
     // the stream is aborted mid-way). Results attach at stream END, all-or-
     // nothing — see lib/ai-drafts.ts. columnName stored in canonical clean form
-    // so run-start promotion compares like-for-like.
-    const draftConfig: DraftConfig = {
-      columnName: cleanColumnName, prompt, systemPrompt: systemPrompt || null,
-      model, temperature: safeTemperature,
-      useOpenRouterWebSearch: !!useOpenRouterWebSearch, useWebFetch: !!useWebFetch,
-      maxChars: safeMaxChars, concurrency: safeConcurrency,
-    };
-    // The attempt id keys this stream's end-of-stream save — a superseding
-    // preview re-upserts with a new id, neutralizing this stream's late save.
-    const draftAttemptId = upsertDraftConfig(req.userId!, sheetId, draftConfig, sheet.row_generation);
+    // so run-start promotion compares like-for-like. The attempt id keys this
+    // stream's end-of-stream save — a superseding preview re-upserts with a new
+    // id, neutralizing this stream's late save.
+    const draftAttemptId = upsertDraftConfig(req.userId!, sheetId, draftConfigFrom(parsed, model), sheet.row_generation);
 
     // Stream rows as newline-delimited JSON (NDJSON) so the client renders each row
     // the instant OpenRouter returns it, instead of waiting for the slowest of all 5.
@@ -146,6 +142,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
             rowIndex: result.rowIndex, value: result.value,
             ...(result.error ? { error: result.error } : { inputHash: computeInputHash(prompt, row.data) }),
             promptTokens: result.promptTokens, completionTokens: result.completionTokens,
+            costUsd: result.costUsd, searchQueries: result.searchQueries, webSearches: result.webSearches,
           };
           // Carry the server's INTENDED order (position in `rows`) so the client
           // renders in that order: rows stream out of order as they resolve.
@@ -171,7 +168,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
       saveDraftPreview(req.userId!, sheetId, draftAttemptId, collected, runTargetRows);
     }
 
-    if (writeLine({ type: 'done', totalRows: rows.length, runTargetRows })) res.end();
+    const webSearch = planned.ok ? webSearchSummary(planned.ok) : null;
+    if (writeLine({ type: 'done', totalRows: rows.length, runTargetRows, webSearch })) res.end();
     else if (!res.writableEnded) res.end();
   } catch (error: any) {
     console.error('Preview error:', error);

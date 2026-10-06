@@ -1,13 +1,17 @@
 import React from 'react'
 import { Loader2 } from 'lucide-react'
 import { AIResult, AIRun } from './types'
+import { formatCost } from './format'
+import type { RunSpend } from '@/utils/api'
 
 interface Props {
   currentRun: AIRun
   runResults: AIResult[]
+  // What the run has cost and searched so far (null until known).
+  spend?: RunSpend | null
 }
 
-export const RunStep: React.FC<Props> = ({ currentRun, runResults }) => (
+export const RunStep: React.FC<Props> = ({ currentRun, runResults, spend }) => (
   <div className="p-4 space-y-4">
     <div className="bg-white border border-cube-black p-3">
       <div className="flex items-start space-x-2">
@@ -39,6 +43,12 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults }) => (
             </span>
             <span>Model: {currentRun.model}</span>
           </div>
+          {spend && (spend.cost_usd !== null || spend.searches !== null) && (
+            <p className="mt-1 text-xs text-cube-black" data-testid="run-spend">
+              Spent so far: {spend.cost_usd !== null ? formatCost(spend.cost_usd) : 'not reported yet'}
+              {spend.searches !== null && ` · ${spend.searches.toLocaleString()} search${spend.searches === 1 ? '' : 'es'}`}
+            </p>
+          )}
         </div>
       </div>
     </div>

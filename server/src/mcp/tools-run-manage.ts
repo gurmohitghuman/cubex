@@ -18,7 +18,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
     'get_run_status',
     {
       description:
-        'Status of an AI or HTTP enrichment run: status (pending/running/paused/completed/failed/cancelled), processed vs total rows, failed_rows and succeeded_rows, and error_message when the run itself failed. "completed" means every row was processed, not that it worked: check failed_rows, then get_run_results for the reasons. Poll this after run_ai_column / run_http_enrichment; read the enriched cells with read_rows once completed.',
+        'Status of an AI or HTTP enrichment run: status (pending/running/paused/completed/failed/cancelled), processed vs total rows, failed_rows and succeeded_rows, and error_message when the run itself failed. "completed" means every row was processed, not that it worked: check failed_rows, then get_run_results for the reasons. AI runs also report cost_usd, what the rows so far cost (OpenRouter\'s own figure, web fees included), and with web search the searches that ran (searches) and the web_search settings (engine sent, runs_on, mode billed, max_searches_per_row). Poll this after run_ai_column / run_http_enrichment; read the enriched cells with read_rows once completed.',
       inputSchema: {
         run_type: z.enum(['ai', 'http']),
         run_id: z.string(),

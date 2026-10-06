@@ -15,7 +15,7 @@ interface HydrationCallbacks {
   applyConfig: (config: AIDraft['config']) => void
   // Non-null previewResults ⇒ the preview is complete AND fresh (the server
   // withholds stale ones) — restore it and land on the preview step.
-  applyPreview: (rows: AIPreview[], runTargetRows: number) => void
+  applyPreview: (rows: AIPreview[], runTargetRows: number, config: AIDraft['config']) => void
   // Called instead when canApply refuses (the panel kept its state from an
   // earlier open): a column renamed since then is already renamed in the
   // server draft, so the caller can take its prompt (see takesRenamedRefs).
@@ -88,8 +88,9 @@ export function useAIDraftHydration(
           const rows: AIPreview[] = draft.previewResults.map((r, i) => ({
             rowIndex: r.rowIndex, previewIndex: i, value: r.value,
             error: r.error, promptTokens: r.promptTokens, completionTokens: r.completionTokens,
+            costUsd: r.costUsd, searchQueries: r.searchQueries, webSearches: r.webSearches,
           }))
-          cb.current.applyPreview(rows, draft.runTargetRows ?? 0)
+          cb.current.applyPreview(rows, draft.runTargetRows ?? 0, draft.config)
         }
       })
       .catch(() => { /* hydration is best-effort — blank modal is the fallback */ })

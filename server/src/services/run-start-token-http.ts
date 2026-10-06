@@ -10,6 +10,7 @@ import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
 import { estimateHttpRun } from './run-estimate-http';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
+import { parseBooleanOption } from '../lib/web-search-options';
 
 export interface TokenHttpRunArgs {
   sheet_id: unknown; url?: unknown; method?: unknown; headers?: unknown; body?: unknown;
@@ -59,7 +60,7 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   // before it costs a run-start slot; startHttpRun checks again).
   const templateError = httpTemplateError(config.requestConfig, getSheetColumns(sheetId, c.userId, false), c.userId);
   if (templateError) return bad(templateError);
-  if (a.estimate_only === true) {
+  if (parseBooleanOption(a.estimate_only) === true) {
     const est = estimateHttpRun(c.userId, sheetId, pre.targetRowIndexes);
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
   }

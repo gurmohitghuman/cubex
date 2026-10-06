@@ -1,6 +1,8 @@
 import { MAX_AI_CONCURRENCY } from '../lib/constants';
 import { sanitizeAndValidateColumnName } from '../lib/column-names';
 import { validateModelParam } from '../lib/ai-model-resolve';
+import type { SearchOptions } from '../lib/web-search-options';
+import { parseWebOptions } from './ai-run-parse';
 
 // Parse + validate + numeric-bound the /ai/preview request body. Split out of
 // ai-preview.ts (200-line guardrail) — a self-contained "trust the client's
@@ -25,6 +27,7 @@ export interface PreviewParams {
   safeTemperature: number;
   safeConcurrency: number;
   safeMaxChars: number | null;
+  search: SearchOptions | null;
 }
 
 // User-facing message for a pre-stream preview failure (validation, client
@@ -42,8 +45,6 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
   const {
     sheetId, columnName, prompt, systemPrompt,
     model, temperature = 0.7,
-    useOpenRouterWebSearch = false,
-    useWebFetch = false,
     maxChars, previewSize = 5,
     // Not used by the preview itself — captured into the draft so hydration
     // restores the user's slider. Excluded from the config hash.
@@ -56,6 +57,8 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
   if (typeof prompt !== 'string') return { ok: false, status: 400, error: 'Prompt must be a string.' };
   const modelParamError = validateModelParam(model);
   if (modelParamError) return { ok: false, status: 400, error: modelParamError };
+  const web = parseWebOptions(body);
+  if ('error' in web) return { ok: false, status: 400, error: web.error };
 
   const nameCheck = sanitizeAndValidateColumnName(columnName);
   if ('error' in nameCheck) return { ok: false, status: 400, error: nameCheck.error };
@@ -76,7 +79,7 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
     ok: true,
     sheetId, cleanColumnName: nameCheck.name, prompt, systemPrompt,
     model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
-    useOpenRouterWebSearch: !!useOpenRouterWebSearch, useWebFetch: !!useWebFetch,
+    ...web.ok,
     safePreviewSize, safeTemperature, safeConcurrency, safeMaxChars,
   };
 }

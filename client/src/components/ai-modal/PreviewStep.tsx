@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { CheckCircle, Edit3, Loader2, Play, Save } from 'lucide-react'
+import { CheckCircle, Edit3, Loader2, Play, Save, Search } from 'lucide-react'
 import { AIPreview } from './types'
-import { estimateRunCost, formatTokens, formatCost } from './format'
+import { estimateRunCost, formatTokens, formatCost, rowSearchLine } from './format'
 import { plural } from '@/lib/utils'
+import type { SearchPlanSummary } from '@/utils/api'
 
 interface Props {
   previewResults: AIPreview[]
@@ -26,6 +27,8 @@ interface Props {
   // Whether the run uses web tools — makes per-row cost heavy-tailed, so the estimate
   // is flagged as less reliable.
   usesWebTools: boolean
+  // With web search: the engine the searches ran on, priced (what the run will use).
+  webSearchPlan?: SearchPlanSummary | null
   nameError: string
   onBack: () => void
   onCommit: () => Promise<unknown>
@@ -34,7 +37,7 @@ interface Props {
 
 export const PreviewStep: React.FC<Props> = ({
   previewResults, setPreviewResults, isCommittingPreview, isGeneratingPreview, expectedRows,
-  runTargetRows, modelPricing, usesWebTools, nameError,
+  runTargetRows, modelPricing, usesWebTools, webSearchPlan, nameError,
   onBack, onCommit, onStartRun,
 }) => {
   const [editing, setEditing] = useState<{ rowIndex: number; value: string } | null>(null)
@@ -98,6 +101,12 @@ export const PreviewStep: React.FC<Props> = ({
             ) : (
               <div className="group">
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">{result.error || result.value}</p>
+                {/* What the row searched for and cost, as its "(Data)" cell will say. */}
+                {rowSearchLine(result) && (
+                  <p className="mt-1 text-xs text-gray-500 flex items-start gap-1" data-testid="preview-row-search">
+                    <Search className="h-3 w-3 mt-0.5 flex-shrink-0" /><span>{rowSearchLine(result)}</span>
+                  </p>
+                )}
                 {/* Editing is locked until the stream finishes — acting on a row
                     while others are still arriving is confusing and the commit
                     would use a partial set. */}
@@ -138,11 +147,14 @@ export const PreviewStep: React.FC<Props> = ({
             </span>
           </div>
           <p className="text-gray-500 mt-1">
-            Rough estimate from {estimate.sampledRows} preview row{estimate.sampledRows === 1 ? '' : 's'}
+            {estimate.basis === 'measured'
+              ? `Based on what the ${plural(estimate.sampledRows, 'preview row')} cost${usesWebTools ? ', web fees included' : ''}`
+              : `Rough estimate from ${plural(estimate.sampledRows, 'preview row')}`}
             {!estimate.isFree && ` · ~${formatTokens(estimate.tokensLow)}–${formatTokens(estimate.tokensHigh)} tokens`}
-            {usesWebTools && ' · web tools may add to actual cost'}
+            {usesWebTools && estimate.basis === 'tokens' && ' · web fees not included'}
             . Actual cost varies per row.
           </p>
+          {webSearchPlan && <p className="text-gray-500 mt-1">{webSearchPlan.note}</p>}
         </div>
       )}
 

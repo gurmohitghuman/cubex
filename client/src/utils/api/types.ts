@@ -65,6 +65,11 @@ export interface AIRun {
   output_columns?: string | null
   status_column?: string | null
   data_column?: string | null
+  // Web search engine sent, engine that ran the searches, mode and per-row cap.
+  web_search_engine?: string | null
+  web_search_engine_used?: string | null
+  web_search_mode?: string | null
+  web_search_max_per_row?: number | null
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   total_rows: number
   processed_rows: number
@@ -81,6 +86,11 @@ export interface AIResult {
   status: 'pending' | 'completed' | 'failed' | 'accepted' | 'rejected'
   error_message?: string
   scraped_data?: string
+  // What the row cost (OpenRouter's usage.cost), the searches that ran, and
+  // every search call as JSON [{query, ran}]; null when not recorded.
+  cost_usd?: number | null
+  web_searches?: number | null
+  web_search_queries?: string | null
   created_at: string
   updated_at: string
 }
@@ -99,6 +109,9 @@ export interface AIDraft {
     useWebFetch: boolean
     maxChars: number | null
     concurrency: number
+    searchEngine?: string | null
+    searchMode?: string | null
+    maxSearchesPerRow?: number | null
   }
   previewResults: Array<{
     rowIndex: number
@@ -106,6 +119,9 @@ export interface AIDraft {
     error?: string
     promptTokens?: number
     completionTokens?: number
+    costUsd?: number
+    searchQueries?: Array<{ query: string; ran: boolean }>
+    webSearches?: number
   }> | null
   runTargetRows: number | null
 }
@@ -120,6 +136,10 @@ export interface AIPreview {
   // Actual tokens OpenRouter reported for this preview row (for run cost estimates).
   promptTokens?: number
   completionTokens?: number
+  // What OpenRouter charged for the row, web fees included, and its searches.
+  costUsd?: number
+  searchQueries?: Array<{ query: string; ran: boolean }>
+  webSearches?: number
 }
 
 export interface HTTPRun {

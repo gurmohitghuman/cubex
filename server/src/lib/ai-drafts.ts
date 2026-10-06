@@ -26,6 +26,26 @@ export interface DraftConfig {
   // Restored on hydration but EXCLUDED from the config hash — concurrency
   // changes scheduling, never a row's output, so it must not invalidate reuse.
   concurrency: number;
+  // Web search engine, mode and per-row cap (null: the defaults). Absent on
+  // drafts saved before they existed.
+  searchEngine?: string | null;
+  searchMode?: string | null;
+  maxSearchesPerRow?: number | null;
+}
+
+// A draft's config from a parsed /ai/preview request and the model it resolved to.
+export function draftConfigFrom(p: {
+  cleanColumnName: string; prompt: string; systemPrompt?: string; safeTemperature: number;
+  useOpenRouterWebSearch: boolean; useWebFetch: boolean; safeMaxChars: number | null; safeConcurrency: number;
+  search: { engine: string; mode: string | null; maxPerRow: number | null } | null;
+}, model: string): DraftConfig {
+  return {
+    columnName: p.cleanColumnName, prompt: p.prompt, systemPrompt: p.systemPrompt || null,
+    model, temperature: p.safeTemperature,
+    useOpenRouterWebSearch: p.useOpenRouterWebSearch, useWebFetch: p.useWebFetch,
+    maxChars: p.safeMaxChars, concurrency: p.safeConcurrency,
+    searchEngine: p.search?.engine ?? null, searchMode: p.search?.mode ?? null, maxSearchesPerRow: p.search?.maxPerRow ?? null,
+  };
 }
 
 export interface DraftPreviewRow {
@@ -37,6 +57,11 @@ export interface DraftPreviewRow {
   inputHash?: string;
   promptTokens?: number;
   completionTokens?: number;
+  // What the row cost (web fees included) and what it searched, so a reopened
+  // preview shows and prices them the same.
+  costUsd?: number;
+  searchQueries?: Array<{ query: string; ran: boolean }>;
+  webSearches?: number;
 }
 
 export interface AIDraft {
@@ -61,6 +86,8 @@ export function computeConfigHash(c: DraftConfig): string {
     c.columnName, c.prompt, usingTools ? null : (c.systemPrompt ?? null),
     c.model, c.temperature,
     !!c.useOpenRouterWebSearch, !!c.useWebFetch, c.maxChars ?? null,
+    // Search settings only when searching, so every other config hashes as before.
+    ...(c.useOpenRouterWebSearch ? [c.searchEngine ?? null, c.searchMode ?? null, c.maxSearchesPerRow ?? null] : []),
   ]));
 }
 

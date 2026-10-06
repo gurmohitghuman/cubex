@@ -6,6 +6,8 @@
 import { db } from '../lib/db';
 import { parseTargetRows } from '../lib/run-targets';
 import { aiRunDataColumn } from '../lib/ai-data-column';
+import { parseSearchQueries } from '../lib/ai-data-cell';
+import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-outcomes';
 
 export interface RunSummary {
   id: string;
@@ -24,12 +26,20 @@ export interface RunSummary {
   // processed every row, failed ones included, so these say whether it worked.
   failed_rows: number;
   succeeded_rows: number;
+  // AI runs: what the rows so far cost (OpenRouter's usage.cost, web fees
+  // included; null when none reported it) and how many searches ran.
+  cost_usd?: number | null;
+  searches?: number | null;
+  // AI runs with web search: the engine sent, the engine the searches run on,
+  // the billed mode and the per-row cap. engine null: a run from before
+  // engines could be chosen (OpenRouter's default).
+  web_search?: RunSearchSettings;
   created_at: string;
   updated_at: string;
 }
 
-// An index-only range scan on (run_id, status) (migration 005): about 30 ms
-// for a run with a million results, so list_runs over many huge runs adds up.
+// An index-only range scan on (run_id, status) (migrations 005, 008): about
+// 30 ms for a run with a million results, so list_runs over many huge runs adds up.
 export function rowOutcomes(table: 'ai_results' | 'http_results', runId: string): { failed_rows: number; succeeded_rows: number } {
   const counts = db.prepare(`SELECT status, COUNT(*) AS n FROM ${table} WHERE run_id = ? GROUP BY status`)
     .all(runId) as Array<{ status: string; n: number }>;
@@ -49,12 +59,14 @@ function outputColumnNames(json: string | null): string[] | null {
 export function aiRunSummaryFromRow(r: any): RunSummary {
   const outputs = outputColumnNames(r.output_columns);
   const data = aiRunDataColumn(r);
+  const search = searchSettings(r);
   return {
     id: r.id, sheet_id: r.sheet_id, type: 'ai', column_name: r.column_name,
     model: r.model, ...(outputs ? { output_columns: outputs } : {}), ...(data ? { data_column: data } : {}),
+    ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...rowOutcomes('ai_results', r.id),
+    error_message: r.error_message, ...aiRowOutcomes(r.id),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -62,7 +74,8 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
 export function getAiRunSummary(runId: string, userId: string): RunSummary | null {
   const r = db.prepare(`
     SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
-           target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search
+           target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
+           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
     FROM ai_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId);
   return r ? aiRunSummaryFromRow(r) : null;
@@ -92,6 +105,11 @@ export interface RunResultsPage {
     value?: string | null;                       // AI output
     extracted_fields?: Record<string, unknown>;  // HTTP extractions
     error_message: string | null;
+    // AI: what the row cost (null: not reported), the searches that ran and
+    // every search call ({query, ran}); the last two only with web search.
+    cost_usd?: number | null;
+    searches?: number;
+    search_queries?: Array<{ query: string; ran: boolean }>;
   }>;
   next_cursor: number | null;
 }
@@ -122,17 +140,22 @@ export function getAiRunResults(
   if (!run) return null;
   const f = statusClause(filter);
   const rows = db.prepare(`
-    SELECT res.row_index, res.status, res.output_value, res.error_message, r.id AS row_id
+    SELECT res.row_index, res.status, res.output_value, res.error_message, r.id AS row_id,
+           res.cost_usd, res.web_searches, res.web_search_queries
     FROM ai_results res
     LEFT JOIN rows r ON r.sheet_id = ? AND r.user_id = res.user_id AND r.row_index = res.row_index
     WHERE res.run_id = ? AND res.user_id = ? AND res.row_index > ? ${f.sql}
     ORDER BY res.row_index ASC LIMIT ?
   `).all(run.sheet_id, runId, userId, after, ...f.params, limit) as any[];
   return {
-    results: rows.map(r => ({
-      row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
-      value: r.output_value, error_message: r.error_message,
-    })),
+    results: rows.map(r => {
+      const queries = parseSearchQueries(r.web_search_queries);
+      return {
+        row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
+        value: r.output_value, error_message: r.error_message, cost_usd: r.cost_usd ?? null,
+        ...(queries ? { searches: r.web_searches ?? 0, search_queries: queries } : {}),
+      };
+    }),
     next_cursor: rows.length === limit ? rows[rows.length - 1].row_index : null,
   };
 }

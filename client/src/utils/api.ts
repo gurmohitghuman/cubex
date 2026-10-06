@@ -2,6 +2,7 @@
 // Specific consumers can import directly from './api/auth', './api/types', etc.
 export * from './api/client'
 export * from './api/types'
+export * from './api/types-search'
 export * from './api/auth'
 export * from './api/tables-sheets'
 export * from './api/ai-http'

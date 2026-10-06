@@ -125,15 +125,31 @@ export const FREE_MODEL_CONCURRENCY_WARN = 10;
 // ignores max_results), so this limits exposure rather than fixing a price.
 export const WEB_SEARCH_MAX_RESULTS = 5;
 export const WEB_SEARCH_MAX_TOTAL_RESULTS = 10;
+// Highest per-row search cap a run may set (max_searches_per_row, sent as the
+// tool's max_uses). OpenRouter's own ceiling is 30 tool calls per request; past
+// ten a cap no longer controls cost. Mirrored in client/src/lib/constants.ts.
+export const MAX_SEARCHES_PER_ROW = 10;
+// A capped row also gets a budget of tool calls (the request's max_tool_calls):
+// once its searches are used up, a model can keep asking for more, and each
+// refused ask is another paid model turn (live run 2026-10-05: 15 refused asks,
+// 5x the row's cost). The budget is the cap plus this slack (the datetime call
+// and one refused ask, so the model hears the limit once), plus room for page
+// fetches when web fetch is on; OpenRouter then makes the model answer.
+export const SEARCH_TOOL_CALL_SLACK = 2;
+export const FETCH_TOOL_CALLS_PER_ROW = 5;
+// OpenRouter's server-tool catalog (engine prices, models with their own
+// search) changes rarely: one read per 5 minutes (services/web-search-catalog.ts).
+export const SEARCH_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
+// After a failed read, the last good copy (or the static fallbacks) serves this
+// long before the next try, so an outage doesn't slow every estimate and start.
+export const SEARCH_CATALOG_RETRY_MS = 60_000;
 
-// estimate_only's web fees per row (lib/ai-web-cost.ts). OpenRouter's own docs
-// (2026-10): search is billed per search call, $0.007 on Exa (the usual "auto"
-// engine; Parallel $0.001-0.005, native engines pass the provider's price
-// through), and the caps above allow about one or two searches per row. Fetch
-// is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine). The model
-// picks how many it makes, so these give a range, not a price.
-export const WEB_SEARCH_USD_PER_SEARCH = 0.007;
+// estimate_only's searches per row when there's no history to go by. On
+// OpenRouter's engines the result caps above stop a row after about two
+// searches; a model's own search has no such stop. A per-row cap replaces both.
 export const WEB_SEARCHES_PER_ROW = { low: 1, high: 2 };
+export const WEB_SEARCHES_PER_ROW_NATIVE = { low: 1, high: 3 };
+// Fetch is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine).
 export const WEB_FETCH_USD_PER_PAGE = 0.001;
 export const WEB_FETCH_PAGES_PER_ROW = { low: 1, high: 3 };
 // Input tokens the found or fetched text adds to a row's prompt, when there's

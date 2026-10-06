@@ -3,6 +3,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { parseRunRequest } from './ai-run-parse';
 import { startAiRun } from '../services/ai-run-start';
 import { runFailHttpStatus } from '../services/run-shared';
+import { webSearchSummary } from '../lib/web-search-plan';
 
 // Thin wrapper over services/ai-run-start.ts (shared with /api/v1 and the MCP
 // run_ai_column tool). Parsing/bounding stays here (ai-run-parse.ts); the run
@@ -26,10 +27,14 @@ router.post('/run', async (req: AuthRequest, res) => {
       safeTemperature: parsed.safeTemperature,
       safeConcurrency: parsed.safeConcurrency,
       safeMaxChars: parsed.safeMaxChars,
+      search: parsed.search,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 
-    res.json({ runId: result.ok.runId, message: 'AI run started and column created', reusedRows: result.ok.reusedRows });
+    res.json({
+      runId: result.ok.runId, message: 'AI run started and column created', reusedRows: result.ok.reusedRows,
+      webSearch: result.ok.webSearch ? webSearchSummary(result.ok.webSearch) : null,
+    });
   } catch (error) {
     console.error('Start AI run error:', error);
     res.status(500).json({ error: 'Failed to start AI run' });

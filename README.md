@@ -12,7 +12,7 @@ Import a CSV, then add columns that fill themselves row by row: ask a model abou
 - **Agent access (MCP).** Connect Claude Code, Claude Desktop, Cursor or Codex and work in Cubex by chatting. There's also a REST API.
 - **A real spreadsheet underneath.** Multiple sheets per table, CSV import and export, sort, filters, live progress while runs fill cells, pause and resume.
 
-Your data stays in one SQLite file on your machine. The server only calls out to OpenRouter for AI columns and to the APIs you put in HTTP columns. (The web page loads its fonts from Google Fonts.)
+Your data stays in one SQLite file on your machine. The server only calls out to OpenRouter for AI columns (including its price list for web search engines) and to the APIs you put in HTTP columns. (The web page loads its fonts from Google Fonts.)
 
 ## Install
 
@@ -57,7 +57,7 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 
 ![Creating a table and importing a CSV of companies](docs/media/cubex-import.gif)
 
-**AI column.** Click **AI Column**, name it, and write what you want. Type `/` to reference another column; its value is filled in for each row. Try it on 5 rows first, check the results, then run it on the whole sheet. Turn on web search or "fetch URLs from referenced columns" when the model needs current information. Runs can be paused, resumed, stopped, and re-run on only the rows that failed or came back empty.
+**AI column.** Click **AI Column**, name it, and write what you want. Type `/` to reference another column; its value is filled in for each row. Try it on 5 rows first, check the results, then run it on the whole sheet. Turn on web search or "fetch URLs from referenced columns" when the model needs current information. With web search on, pick the search engine and limit the searches per row (search fees are usually most of the cost); each row's "(Data)" cell shows what it searched for and what it cost. Runs can be paused, resumed, stopped, and re-run on only the rows that failed or came back empty.
 
 ![Adding an AI column whose prompt references /company and /website, previewing 5 rows, then running it on every row](docs/media/cubex-ai.gif)
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { aiAPI } from '@/utils/api'
+import { aiAPI, webSearchBody, type RunSpend, type WebSearchSettings } from '@/utils/api'
 import { AIResult, AIRun, Step } from './types'
 import { usePreviewHandlers } from './usePreviewHandlers'
 
@@ -22,6 +22,7 @@ interface Args {
   systemPrompt: string
   model: string
   useOpenRouterWebSearch: boolean
+  webSearch: WebSearchSettings
   useWebFetch: boolean
   concurrency: number
   nameError: string
@@ -41,6 +42,8 @@ export const useAIRunHandlers = (a: Args) => {
   const [runResults, setRunResults] = useState<AIResult[]>([])
   const [currentRun, setCurrentRun] = useState<AIRun | null>(null)
   const [isPolling, setIsPolling] = useState(false)
+  // What the run has cost and searched so far.
+  const [runSpend, setRunSpend] = useState<RunSpend | null>(null)
   // Latest run id, for the poll's in-flight guard below. A resetState (sheet
   // switch, cancel, terminal) clears currentRun, but a getRun already in
   // flight would still resolve and resurrect the stale run into fresh state.
@@ -55,9 +58,9 @@ export const useAIRunHandlers = (a: Args) => {
     const interval = setInterval(async () => {
       if (!currentRun?.id) return
       try {
-        const { run, results } = await aiAPI.getRun(currentRun.id)
+        const { run, results, spend } = await aiAPI.getRun(currentRun.id)
         if (ownedRunId.current !== run.id) return // reset/superseded while in flight
-        setCurrentRun(run as any); setRunResults(results)
+        setCurrentRun(run as any); setRunResults(results); setRunSpend(spend ?? null)
         if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
           setIsPolling(false)
           // The run worker writes each cell into rows.data live — on a terminal
@@ -83,6 +86,7 @@ export const useAIRunHandlers = (a: Args) => {
     systemPrompt: a.systemPrompt || undefined, model: a.model,
     temperature: a.temperature,
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
+    ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, concurrency: a.concurrency,
   })
 
@@ -101,8 +105,8 @@ export const useAIRunHandlers = (a: Args) => {
       // owner asked not to surface a "reused N preview results" toast.)
       if (result.runId) a.onRunStarted?.(result.runId)
 
-      const { run } = await aiAPI.getRun(result.runId)
-      setCurrentRun(run as any); setIsPolling(true); a.setStep('run')
+      const { run, spend } = await aiAPI.getRun(result.runId)
+      setCurrentRun(run as any); setRunSpend(spend ?? null); setIsPolling(true); a.setStep('run')
       a.onSuccess()
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to start AI run')
@@ -132,7 +136,7 @@ export const useAIRunHandlers = (a: Args) => {
   return {
     // Preview state + handlers, re-exported so AIColumnModal keeps one hook surface.
     ...preview,
-    runResults, currentRun, setCurrentRun, isPolling, setIsPolling,
+    runResults, runSpend, currentRun, setCurrentRun, isPolling, setIsPolling,
     handleStartRun,
     handlePauseRun, handleResumeRun, handleCancelRun,
   }

@@ -162,14 +162,18 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         INSERT INTO ai_runs (
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
-          status, total_rows, processed_rows, target_rows, placeholder_work
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding')
+          status, total_rows, processed_rows, target_rows, placeholder_work,
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?)
       `).run(
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
         latestRun.use_openrouter_web_search, latestRun.use_web_fetch,
         latestRun.max_chars, latestRun.concurrency, targets.length,
         JSON.stringify(targets),
+        // The same search engine, mode and cap as the run it repeats.
+        latestRun.web_search_engine ?? null, latestRun.web_search_engine_used ?? null,
+        latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null,
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 

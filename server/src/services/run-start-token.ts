@@ -22,6 +22,8 @@ import { estimateAiRun } from './run-estimate';
 import { previewAiRun } from './run-preview';
 import { runStartWindow, resolveRowIdsToIndexes, type RunFailKind } from './run-shared';
 import { tooManyMessage, type RateDecision } from '../lib/rate-window';
+import { parseBooleanOption } from '../lib/web-search-options';
+import { webSearchSummary } from '../lib/web-search-plan';
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
@@ -37,7 +39,9 @@ export const bad = (message: string): Fail => ({ fail: 'bad_request', message })
 // Checks shared by both kinds: arguments, sheet, target rows.
 export function preamble(c: TokenCaller, a: { sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown }):
   Fail | { targetRowIndexes?: number[] } {
-  if (a.estimate_only !== undefined && typeof a.estimate_only !== 'boolean') return bad('estimate_only must be true or false');
+  // true/false, or the text "true"/"false" (an MCP client with a stale tool
+  // list). null is refused too: read as "not an estimate" it would start a billed run.
+  if (a.estimate_only === null || parseBooleanOption(a.estimate_only) === 'invalid') return bad('estimate_only must be true or false');
   if (a.idempotency_key !== undefined && (typeof a.idempotency_key !== 'string' || !a.idempotency_key || a.idempotency_key.length > 200)) {
     return bad('idempotency_key must be a string of 1-200 characters');
   }
@@ -77,6 +81,7 @@ export interface TokenAiRunArgs {
   model?: unknown; concurrency?: unknown; system_prompt?: unknown; temperature?: unknown;
   web_search?: unknown; web_fetch?: unknown; max_chars?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
+  search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown;
 }
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
@@ -98,6 +103,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     sheetId, columnName: a.column_name, prompt: a.prompt, systemPrompt: a.system_prompt,
     model: a.model, temperature: a.temperature, concurrency: a.concurrency, maxChars: a.max_chars,
     useOpenRouterWebSearch: a.web_search, useWebFetch: a.web_fetch, outputColumns,
+    searchEngine: a.search_engine, searchMode: a.search_mode, maxSearchesPerRow: a.max_searches_per_row,
   });
   if (!parsed.ok) return bad(parsed.error);
   // A typo'd model used to start a run whose every row failed.
@@ -107,12 +113,12 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       return bad(`Unknown model id "${a.model}". Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.`);
     }
   }
-  if (a.estimate_only === true) {
+  if (parseBooleanOption(a.estimate_only) === true) {
     const est = await estimateAiRun(c.userId, {
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       outputColumns: parsed.outputColumns, maxChars: parsed.safeMaxChars,
-      targetRowIndexes: pre.targetRowIndexes,
+      targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
     });
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
   }
@@ -123,14 +129,18 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
       maxChars: parsed.safeMaxChars, outputColumns: parsed.outputColumns,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
-      previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes,
+      previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
     });
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
   const hash = runRequestHash('ai_run', {
     sheet_id: sheetId, column_name: a.column_name, prompt: a.prompt, system_prompt: a.system_prompt,
-    model: a.model, concurrency: a.concurrency, web_search: a.web_search, output_columns: a.output_columns,
-    target_row_ids: a.target_row_ids, temperature: a.temperature, web_fetch: a.web_fetch, max_chars: a.max_chars,
+    model: a.model, concurrency: a.concurrency, output_columns: a.output_columns,
+    target_row_ids: a.target_row_ids, temperature: a.temperature, max_chars: a.max_chars,
+    // Parsed values, so a retry sending "true" (or a cap of "1") replays a start
+    // that sent true (or 1) instead of conflicting with it.
+    web_search: parsed.useOpenRouterWebSearch, web_fetch: parsed.useWebFetch,
+    ...(parsed.useOpenRouterWebSearch ? { search: parsed.search } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -142,17 +152,20 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
     safeTemperature: parsed.safeTemperature, safeConcurrency: parsed.safeConcurrency,
     safeMaxChars: parsed.safeMaxChars, targetRowIndexes: pre.targetRowIndexes,
-    outputColumns: parsed.outputColumns,
+    outputColumns: parsed.outputColumns, search: parsed.search,
   });
   if ('fail' in result) return result;
+  // With web search: the engine it runs on, priced, and why if Cubex switched it.
+  const webSearch = result.ok.webSearch ? { web_search: webSearchSummary(result.ok.webSearch) } : {};
   const payload = result.ok.statusColumn ? {
     run_id: result.ok.runId, status_column: result.ok.statusColumn,
     output_columns: result.ok.outputColumns,
     data_column: result.ok.dataColumn ?? null,
-    target_rows: result.ok.targetCount,
+    target_rows: result.ok.targetCount, ...webSearch,
   } : {
     run_id: result.ok.runId, output_column: result.ok.outputColumn,
     data_column: result.ok.dataColumn, reused_rows: result.ok.reusedRows, target_rows: result.ok.targetCount,
+    ...webSearch,
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'ai_run', payload);
   return { ok: payload, started: true };

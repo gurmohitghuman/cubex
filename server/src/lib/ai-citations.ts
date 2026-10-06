@@ -5,21 +5,24 @@ export interface Citation { title: string; url: string; content: string; snippet
 
 type Annotation = { type?: string; url_citation?: { url?: string; title?: string; content?: string } };
 
-// The url_citation annotations OpenRouter returns for web SEARCH results. Web
-// fetch adds none (its pages reach only the model), which is why structured
-// runs also ask the model to list its sources (withSourceUrls).
+const sameUrl = (u: string) => u.replace(/\/+$/, '').toLowerCase();
+
+// The url_citation annotations OpenRouter returns for web SEARCH results, each
+// page once (an annotation marks a cited span, so a page cited twice comes
+// back twice). Web fetch adds none (its pages reach only the model), which is
+// why structured runs also ask the model to list its sources (withSourceUrls).
 export function citationsFromCompletion(completion: unknown): Citation[] {
   const message = (completion as { choices?: Array<{ message?: { annotations?: Annotation[] } }> })
     ?.choices?.[0]?.message;
+  const seen = new Set<string>();
   return (message?.annotations ?? [])
     .filter(a => a?.type === 'url_citation' && a.url_citation?.url)
+    .filter(a => !seen.has(sameUrl(a.url_citation!.url!)) && !!seen.add(sameUrl(a.url_citation!.url!)))
     .map(a => {
       const c = a.url_citation!;
       return { title: c.title || c.url!, url: c.url!, content: c.content || '', snippet: (c.content || '').slice(0, 200) };
     });
 }
-
-const sameUrl = (u: string) => u.replace(/\/+$/, '').toLowerCase();
 
 function hostOf(url: string): string | null {
   try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase() || null; } catch { return null; }

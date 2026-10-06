@@ -1,4 +1,3 @@
-import type OpenAI from 'openai';
 import { APIConnectionError, APIConnectionTimeoutError } from 'openai';
 import { AI_CONNECT_RETRY_DELAY_MS } from '../lib/constants';
 
@@ -36,25 +35,24 @@ export function connectionCauseCode(error: unknown): string | null {
   return typeof code === 'string' && code.length > 0 ? code : null;
 }
 
-// chat.completions.create with the single stale-socket retry. `stopped` is the
-// run's generation fence (shouldStop closure): pause/cancel/resume flips DB
+// One OpenRouter call (`send`) with the single stale-socket retry. `stopped` is
+// the run's generation fence (shouldStop closure): pause/cancel/resume flips DB
 // state before the AbortSignal fires, and this row may be mid-backoff when it
-// does — so re-check BOTH before sleeping and again before the second create,
-// or the retry could spend after the user stopped the run. Rethrowing the
+// does — so re-check BOTH before sleeping and again before the second call, or
+// the retry could spend after the user stopped the run. Rethrowing the
 // original error when the fence trips is deliberate: processRow's catch sees
 // aborted/shouldStop and drops it as benign, never recording a failure.
-export async function createCompletionWithConnectRetry(
-  openai: OpenAI,
-  completionArgs: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+export async function withConnectRetry<T>(
+  send: () => Promise<T>,
   signal: AbortSignal | undefined,
   stopped: () => boolean,
-): Promise<OpenAI.Chat.ChatCompletion> {
+): Promise<T> {
   try {
-    return await openai.chat.completions.create(completionArgs, { signal });
+    return await send();
   } catch (error) {
     if (!isStaleSocketError(error) || signal?.aborted || stopped()) throw error;
     await new Promise(resolve => setTimeout(resolve, AI_CONNECT_RETRY_DELAY_MS));
     if (signal?.aborted || stopped()) throw error;
-    return await openai.chat.completions.create(completionArgs, { signal });
+    return await send();
   }
 }

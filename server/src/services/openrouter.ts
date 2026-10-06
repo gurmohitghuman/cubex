@@ -8,25 +8,27 @@ import {
 import { decrypt } from '../lib/crypto';
 import { openrouterAgent } from '../lib/openrouter-agent';
 
-// Build an OpenAI-SDK client pointed at OpenRouter, using the stored API key.
-// Throws if no key is configured OR the stored key fails to decrypt (which would
-// mean the encryption key changed without re-encrypting first).
-export async function getOpenRouterClient(userId: string): Promise<OpenAI> {
+// The stored OpenRouter API key, or null when none is saved or it fails to
+// decrypt (which would mean the encryption key changed without re-encrypting).
+export function getOpenRouterApiKey(userId: string): string | null {
   const row = db.prepare(
     'SELECT openrouter_api_key_encrypted FROM settings WHERE user_id = ?'
   ).get(userId) as { openrouter_api_key_encrypted: string | null } | undefined;
-
-  let apiKey: string | null = null;
-  if (row?.openrouter_api_key_encrypted) {
-    apiKey = decrypt(row.openrouter_api_key_encrypted);
-    if (apiKey === null) {
-      // Decrypt failure — wrong key or tampered blob. Treat as "not
-      // configured" rather than crashing the AI run. Log so an operator
-      // notices, but don't include the blob itself in the log.
-      console.error(`OpenRouter key decrypt failed for user ${userId}; treating as missing.`);
-    }
+  if (!row?.openrouter_api_key_encrypted) return null;
+  const apiKey = decrypt(row.openrouter_api_key_encrypted);
+  if (apiKey === null) {
+    // Decrypt failure — wrong key or tampered blob. Treat as "not
+    // configured" rather than crashing the AI run. Log so an operator
+    // notices, but don't include the blob itself in the log.
+    console.error(`OpenRouter key decrypt failed for user ${userId}; treating as missing.`);
   }
+  return apiKey;
+}
 
+// Build an OpenAI-SDK client pointed at OpenRouter, using the stored API key.
+// Throws if no key is configured OR the stored key fails to decrypt.
+export async function getOpenRouterClient(userId: string): Promise<OpenAI> {
+  const apiKey = getOpenRouterApiKey(userId);
   if (!apiKey) {
     throw new Error('OpenRouter API key not configured');
   }

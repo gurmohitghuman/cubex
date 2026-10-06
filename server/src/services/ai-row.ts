@@ -5,12 +5,13 @@ import { redactSecrets } from '../lib/http-request';
 import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
-import { buildWebTools } from '../lib/ai-web-tools';
+import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
 import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
-import { createCompletionWithConnectRetry, connectionCauseCode } from './openrouter-retry';
+import { withConnectRetry, connectionCauseCode } from './openrouter-retry';
+import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
 // result (or error) to the transactional writers in ai-row-writers.ts.
@@ -39,9 +40,14 @@ export async function processRow(
     needsDataColumn, myGeneration,
   };
 
+  // Set once the call comes back, so a failure after it (an unusable answer)
+  // still records what that billed call cost and searched (as does a failed
+  // response: billedUsage).
+  let call: ModelCall | null = null;
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
-    const usingTools = !!run.use_openrouter_web_search || !!run.use_web_fetch;
+    const search = runSearchConfig(run);
+    const usingTools = !!search || !!run.use_web_fetch;
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     if (run.system_prompt && !usingTools) {
@@ -56,36 +62,28 @@ export async function processRow(
     messages.push({ role: 'user', content: processedPrompt });
 
     // Web search (+ datetime) and per-row domain-limited web fetch: lib/ai-web-tools.ts.
-    const tools = buildWebTools(run.prompt, row.data, {
-      search: !!run.use_openrouter_web_search, fetch: !!run.use_web_fetch,
-    });
+    const tools = buildWebTools(run.prompt, row.data, { search, fetch: !!run.use_web_fetch });
 
     // Every start/rerun path resolves and stores a user-chosen model, so a NULL
     // here means a legacy pre-default-era run resurrected by the queue. Fail the
     // row loudly (→ "❌ Error" cell + failed row record) rather than silently
     // billing the user on a model they never picked.
-    if (!run.model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
-    const completionArgs: any = {
-      model: run.model,
-      messages,
-      temperature: run.temperature ?? 0.7,
-      // Floored so reasoning models can think AND answer (the old 1000 cap made
-      // them return null content → silent blank cells); max_chars raises it.
-      max_tokens: aiMaxTokens(run.max_chars),
-      stream: false,
-    };
-    if (tools.length > 0) completionArgs.tools = tools;
+    const model = run.model;
+    if (!model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
 
     // One retry for the stale-keep-alive-socket ECONNRESET only (nothing was
     // generated/billed); every other failure keeps maxRetries:0 semantics.
-    const completion = await createCompletionWithConnectRetry(
-      openai, completionArgs, signal, () => shouldStop(runId, myGeneration),
-    );
+    // Floored max_tokens so reasoning models can think AND answer (the old 1000
+    // cap made them return null content → silent blank cells); max_chars raises it.
+    call = await withConnectRetry(() => sendModelCall(openai, {
+      model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
+      tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
+    }, signal), signal, () => shouldStop(runId, myGeneration));
 
     // Throws (→ caught below, recorded as a `failed` row + "❌ Error" cell) when
     // the model returned no usable content — a reasoning model exhausting the
     // token budget, a refusal, a content filter — instead of writing a blank cell.
-    let result = extractCompletionText(completion);
+    let result = extractCompletionText(call.completion);
     if (run.max_chars && result.length > run.max_chars) result = result.substring(0, run.max_chars);
     // Strip control chars (same input policy as every other write path — P2-9)
     // and clamp to the enrichment cell cap (P2-8). Applied to the single `result`
@@ -94,29 +92,21 @@ export async function processRow(
     // above; this is the hard storage ceiling on top.
     result = clampCellChars(stripControlChars(result), CELL_MAX_ENRICHMENT);
 
-    const citedUrls = citationsFromCompletion(completion);
-
+    const citedUrls = citationsFromCompletion(call.completion);
     const scrapedDataJson = citedUrls.length > 0 ? JSON.stringify(citedUrls) : null;
-    // Shared with the SSE stream (ai-stream.ts) so the live (Data) cell == the
-    // persisted one.
-    const scrapedSummary = aiDataCellSummary(citedUrls);
-
-    // Capture per-row token usage for cost reporting + history-based estimates.
-    // Best-effort: some providers omit `usage`, and coerce anything non-numeric
-    // (never let a malformed usage block fail the row) to null.
-    const rawUsage = (completion as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } }).usage;
-    const toTokenCount = (v: unknown): number | null =>
-      typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
-    const usage = {
-      promptTokens: toTokenCount(rawUsage?.prompt_tokens),
-      completionTokens: toTokenCount(rawUsage?.completion_tokens),
-    };
+    // Built from the same stored fields the SSE stream (ai-stream.ts) reads, so
+    // the live (Data) cell == the persisted one: sources, searches and cost.
+    const scrapedSummary = aiDataCellSummary(citedUrls, 'Searched', {
+      queries: call.search?.queries ?? null, costUsd: call.usage.costUsd,
+    });
 
     // If the run was cancelled OR a resume bumped past us while this row's API
     // call was in flight, drop the result. Cheap early-out before opening a txn.
     if (shouldStop(runId, myGeneration)) return;
 
-    writeSuccess(ctx, result, scrapedDataJson, scrapedSummary, usage);
+    // Tokens and cost for cost reporting + history-based estimates, best-effort
+    // (null when the provider omits them), plus the row's searches.
+    writeSuccess(ctx, result, scrapedDataJson, scrapedSummary, rowUsage(call));
   } catch (error) {
     // Our own in-txn stop sentinel: the run was cancelled/superseded, the write
     // rolled back. Benign — drop without recording a failure.
@@ -141,6 +131,6 @@ export async function processRow(
     // would land in server logs AND in ai_results.error_message.
     const errorMessage = redactSecrets(rawErrorMessage);
     console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
-    writeFailure(ctx, errorMessage);
+    writeFailure(ctx, errorMessage, billedUsage(call, error));
   }
 }

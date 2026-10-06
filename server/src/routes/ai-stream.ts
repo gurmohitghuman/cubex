@@ -3,7 +3,7 @@ import { db } from '../lib/db';
 import { authenticateUser } from '../lib/auth';
 import { writeSSEHeaders } from '../lib/sse';
 import { acquireSSESlot, SSE_MAX_PER_USER } from '../lib/sse-limits';
-import { aiDataCellSummary, parseScrapedData } from '../lib/ai-data-cell';
+import { aiDataCellSummary, parseScrapedData, parseSearchQueries } from '../lib/ai-data-cell';
 
 const router = express.Router();
 
@@ -88,7 +88,8 @@ router.get('/runs/:id/stream', (req, res) => {
       if (!r) { clearInterval(timer); try { res.end(); } catch {} return; }
 
       const newResults = db.prepare(`
-        SELECT rowid AS cursor, id, row_index, output_value, status, error_message, scraped_data
+        SELECT rowid AS cursor, id, row_index, output_value, status, error_message, scraped_data,
+               cost_usd, web_search_queries
         FROM ai_results
         WHERE run_id = ? AND rowid > ?
         ORDER BY rowid ASC
@@ -96,6 +97,7 @@ router.get('/runs/:id/stream', (req, res) => {
       `).all(id, lastRowid) as Array<{
         cursor: number; id: string; row_index: number; output_value: string;
         status: string; error_message: string | null; scraped_data: string | null;
+        cost_usd: number | null; web_search_queries: string | null;
       }>;
 
       const needsDataColumn = !!r.use_openrouter_web_search;
@@ -122,12 +124,14 @@ router.get('/runs/:id/stream', (req, res) => {
           const dataColName = r.column_name.endsWith(' (Output)')
             ? r.column_name.replace(/ \(Output\)$/, ' (Data)')
             : `${r.column_name} (Data)`;
-          // Reconstruct the SAME '📊 Searched N sources: …' breadcrumb the worker
-          // persisted (from scraped_data) instead of always sending '' — which
-          // blanked a populated (Data) cell live until a reload re-fetched it (L9).
+          // Reconstruct the SAME (Data) cell the worker persisted (sources,
+          // searches, cost: lib/ai-data-cell.ts) instead of always sending '',
+          // which blanked a populated (Data) cell live until a reload (L9).
           const dataValue = row.status === 'failed'
             ? '❌ Error'
-            : aiDataCellSummary(parseScrapedData(row.scraped_data));
+            : aiDataCellSummary(parseScrapedData(row.scraped_data), 'Searched', {
+              queries: parseSearchQueries(row.web_search_queries), costUsd: row.cost_usd,
+            });
           res.write(`data: ${JSON.stringify({
             type: 'result',
             rowIndex: row.row_index,

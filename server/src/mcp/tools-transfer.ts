@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
 import { TransferSelection } from '../services/transfer-selection';
-import { McpAuthCtx, ok, err, missingScope, registerTool, rowConditionSchema as condition } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, rowConditionSchema as condition } from './tool-helpers';
 
 
 export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
@@ -18,7 +18,7 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       destination_sheet_id: z.string(),
       operation: z.enum(['copy', 'move']),
       selection: z.object({
-        all: z.boolean().optional(),
+        all: lenientBoolean().optional(),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional(),
         where: z.array(condition).min(1).optional(),
       }),

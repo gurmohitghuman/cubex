@@ -8,7 +8,7 @@ import {
 
 const FETCH_TIMEOUT_MS = 10_000;
 
-interface FetchResult<T> { ok: boolean; status: number; body: T | null; }
+export interface FetchResult<T> { ok: boolean; status: number; body: T | null; }
 
 // fetch + JSON parse under a SINGLE abort timeout, so a server that streams
 // headers fast but stalls mid-body can't hang past FETCH_TIMEOUT_MS. The timer
@@ -16,7 +16,7 @@ interface FetchResult<T> { ok: boolean; status: number; body: T | null; }
 // { ok: false, body: null } (the body is not read). A network error, timeout
 // (AbortError), or JSON-parse failure THROWS — callers wrap the call to handle
 // those, and the thrown AbortError lets them distinguish a timeout.
-async function fetchJsonWithTimeout<T>(url: string, headers: Record<string, string>): Promise<FetchResult<T>> {
+export async function fetchJsonWithTimeout<T>(url: string, headers: Record<string, string>): Promise<FetchResult<T>> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -75,7 +75,11 @@ export interface TrimmedModel {
 
 // Module-level cache, shared across requests. The 5-min TTL keeps the upstream
 // rate low while staying fresh enough that newly-added models show up promptly.
-let modelsCache: { data: TrimmedModel[]; fetchedAt: number } | null = null;
+// noTemperature: models whose supported_parameters leave out temperature (kept
+// apart from TrimmedModel, which the client's model list receives).
+let modelsCache: { data: TrimmedModel[]; fetchedAt: number; noTemperature: Set<string> } | null = null;
+// One read at a time: a run's first wave of rows shares it.
+let modelsInflight: Promise<ModelsResult> | null = null;
 
 export type ModelsResult =
   | { ok: true; models: TrimmedModel[] }
@@ -88,7 +92,20 @@ export async function fetchModels(now: number): Promise<ModelsResult> {
   if (modelsCache && (now - modelsCache.fetchedAt) < OPENROUTER_MODELS_CACHE_TTL_MS) {
     return { ok: true, models: modelsCache.data };
   }
+  modelsInflight ??= readModels(now).finally(() => { modelsInflight = null; });
+  return modelsInflight;
+}
 
+// Whether a model takes a temperature, by OpenRouter's supported_parameters
+// (OpenAI's reasoning models, gpt-6-luna among them, don't). Read from the
+// cached list only, never a fetch (callers warm it with fetchModels, so an
+// outage can't hold up every row): null when the list or the model is unknown.
+export function modelTakesTemperature(model: string): boolean | null {
+  if (!modelsCache?.data.some(m => m.id === model)) return null;
+  return !modelsCache.noTemperature.has(model);
+}
+
+async function readModels(now: number): Promise<ModelsResult> {
   let result: FetchResult<{ data: any[] }>;
   try {
     // A 200 whose body fails to parse throws inside the helper and is caught
@@ -116,6 +133,10 @@ export async function fetchModels(now: number): Promise<ModelsResult> {
       pricing: { prompt: m.pricing?.prompt || '0', completion: m.pricing?.completion || '0' },
     }));
 
-  modelsCache = { data: trimmed, fetchedAt: now };
+  const noTemperature = new Set<string>(result.body.data
+    .filter(m => m && typeof m.id === 'string' && Array.isArray(m.supported_parameters)
+      && !m.supported_parameters.includes('temperature'))
+    .map(m => m.id));
+  modelsCache = { data: trimmed, fetchedAt: now, noTemperature };
   return { ok: true, models: trimmed };
 }
