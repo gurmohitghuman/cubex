@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Eye, Loader2 } from 'lucide-react'
 import { AccordionSection } from '../AccordionSection'
 import { OpenRouterCreditNotice } from '../OpenRouterCreditNotice'
@@ -7,6 +7,7 @@ import { ConfigureTab } from './ConfigureTab'
 import { ModelsHandle } from './useModels'
 import { PromptSuggestionsHandle } from './usePromptSuggestions'
 import { plural } from '@/lib/utils'
+import type { WebSearchSettings } from '@/utils/api'
 
 interface Props {
   sheetId: string
@@ -15,6 +16,7 @@ interface Props {
   nameError: string
   prompt: string; setPrompt: (v: string) => void
   useOpenRouterWebSearch: boolean; setUseOpenRouterWebSearch: (b: boolean) => void
+  webSearch: WebSearchSettings; setWebSearch: (v: WebSearchSettings) => void
   useWebFetch: boolean; setUseWebFetch: (b: boolean) => void
   columnSuggestions: Array<{ name: string; reference: string }>
   sugg: PromptSuggestionsHandle
@@ -43,10 +45,15 @@ interface Props {
 }
 
 export const ConfigureStep: React.FC<Props> = (p) => {
+  // Why the chosen web search settings can't run (a limit the model's own
+  // search would ignore), from the server's plan; null when they can.
+  const [searchBlocked, setSearchBlocked] = useState<string | null>(null)
+  const blockedBySearch = p.useOpenRouterWebSearch && !!searchBlocked
   // Names the FIRST unmet requirement for a preview, in the SAME order as the
-  // CTA's disabled guard below (name error → column name → prompt → model).
-  // Deliberately does NOT mention the OpenRouter key: the key never disables
-  // the button (the no-key banner above + server-side enforcement own that).
+  // CTA's disabled guard below (name error → column name → prompt → model →
+  // search settings). Deliberately does NOT mention the OpenRouter key: the
+  // key never disables the button (the no-key banner above + server-side
+  // enforcement own that).
   const disabledReason = p.nameError
     ? p.nameError
     : !p.columnName.trim()
@@ -55,7 +62,9 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         ? 'Add a prompt to continue.'
         : !p.model
           ? 'Choose a model under Configure — or set a default model in Settings.'
-          : null
+          : blockedBySearch
+            ? 'Change the web search settings to continue.'
+            : null
 
   return (
   <div className="p-4 space-y-3">
@@ -67,6 +76,7 @@ export const ConfigureStep: React.FC<Props> = (p) => {
       <GenerateTab columnName={p.columnName} setColumnName={p.setColumnName} nameError={p.nameError}
         prompt={p.prompt} setPrompt={p.setPrompt}
         useOpenRouterWebSearch={p.useOpenRouterWebSearch} setUseOpenRouterWebSearch={p.setUseOpenRouterWebSearch}
+        model={p.model} webSearch={p.webSearch} setWebSearch={p.setWebSearch} onSearchBlocked={setSearchBlocked}
         useWebFetch={p.useWebFetch} setUseWebFetch={p.setUseWebFetch}
         columnSuggestions={p.columnSuggestions}
         showSuggestions={p.sugg.show} setShowSuggestions={p.sugg.setShow}
@@ -94,7 +104,7 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         <div className="flex space-x-3">
           <button onClick={p.onCancel} className="btn-secondary">Cancel</button>
           <button onClick={p.onPreview}
-            disabled={p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim() || !!p.nameError || !p.model}
+            disabled={p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim() || !!p.nameError || !p.model || blockedBySearch}
             className="btn-primary flex items-center space-x-2">
             {p.isGeneratingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
             <span>{p.isGeneratingPreview ? `Processing ${plural(p.previewSize, 'row')}…` : `Try on ${plural(p.previewSize, 'row')}`}</span>

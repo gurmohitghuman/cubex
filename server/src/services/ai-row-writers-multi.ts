@@ -11,8 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
-import { STOP_SENTINEL } from './ai-row-writers';
-import type { RowTokenUsage } from './ai-row-writers';
+import { STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
 
 export interface MultiWriteCtx {
   runId: string;
@@ -60,10 +59,11 @@ export function writeMultiSuccess(
   db.transaction(() => {
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
-      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, prompt_tokens, completion_tokens, scraped_data)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)
-    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, rawJson,
-      usage?.promptTokens ?? null, usage?.completionTokens ?? null, sources?.json ?? null);
+      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)
+    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, rawJson, sources?.json ?? null,
+      ...usageColumns(usage));
 
     const pairs: Array<[string, string]> = Object.entries(values).map(([col, val]) => [jsonPath(col), val]);
     if (sources) pairs.push([jsonPath(sources.column), sources.summary]);
@@ -79,19 +79,22 @@ export function writeMultiSuccess(
 
 // Persist a failed structured row: ai_results 'failed' + status ❌ + every output
 // column blanked (so none is stranded on ⏳). No throw on stop (caller is already
-// in its catch) — matches writeFailure.
+// in its catch) — matches writeFailure. usage: set when the call came back (an
+// unparseable answer), so the billed call's cost and searches are kept.
 export function writeMultiFailure(
   ctx: MultiWriteCtx,
   outputColumns: string[],
   errorMessage: string,
+  usage?: RowTokenUsage,
 ): void {
   const resultId = uuidv4();
   db.transaction(() => {
     if (shouldStop(ctx.runId, ctx.myGeneration)) return;
     db.prepare(`
-      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message)
-      VALUES (?, ?, ?, ?, ?, '', 'failed', ?)
-    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage);
+      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
+      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?)
+    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
 
     const pairs: Array<[string, string]> = outputColumns.map(col => [jsonPath(col), '']);
     pairs.push([jsonPath(ctx.statusColumn), `❌ Error: ${errorMessage}`]);

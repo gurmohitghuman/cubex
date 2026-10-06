@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { aiAPI, sheetsAPI } from '@/utils/api'
+import { aiAPI, sheetsAPI, webSearchBody, type AIDraft, type SearchPlanSummary, type WebSearchSettings } from '@/utils/api'
 import { AIPreview, Step } from './types'
 
 // The slice of the AI modal's config the preview path needs. Kept narrow so this
@@ -17,6 +17,7 @@ interface PreviewArgs {
   systemPrompt: string
   model: string
   useOpenRouterWebSearch: boolean
+  webSearch: WebSearchSettings
   useWebFetch: boolean
   // Rides the preview request only so the server-side draft can restore the
   // user's slider on reopen — the preview itself doesn't use it.
@@ -49,6 +50,9 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
   // bills, NOT the client's filter-aware sheetData.totalRows (which understates when
   // the empty-filter is active).
   const [runTargetRows, setRunTargetRows] = useState(0)
+  // With web search: the engine the preview's (and the run's) searches go to,
+  // priced, from the server's final stream line.
+  const [previewWebSearch, setPreviewWebSearch] = useState<SearchPlanSummary | null>(null)
   // Aborts the in-flight preview fetch. Replaced each run; aborted on close/reset and
   // before starting a new preview so a stale stream can't write into fresh state or
   // keep the server calling OpenRouter.
@@ -59,15 +63,22 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     systemPrompt: a.systemPrompt || undefined, model: a.model,
     temperature: a.temperature,
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
+    ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, previewSize: a.previewSize, concurrency: a.concurrency,
   })
 
   // Restore a persisted preview (draft hydration on modal open) — same state
-  // the streaming path builds, minus the stream.
-  const hydratePreview = (results: AIPreview[], targetRows: number) => {
+  // the streaming path builds, minus the stream. The search plan isn't saved
+  // with it, so ask for it again.
+  const hydratePreview = (results: AIPreview[], targetRows: number, c?: AIDraft['config']) => {
     setPreviewResults(results)
     setExpectedRows(results.length)
     setRunTargetRows(targetRows)
+    setPreviewWebSearch(null)
+    if (c?.useOpenRouterWebSearch) {
+      aiAPI.searchPlan({ model: c.model, engine: c.searchEngine || 'auto', mode: c.searchMode || '', cap: c.maxSearchesPerRow ?? null })
+        .then(r => setPreviewWebSearch(r.plan)).catch(() => {})
+    }
   }
 
   // Cancel any in-flight preview (modal close, reset, or a fresh preview superseding
@@ -98,10 +109,11 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     // rows stream in (sorted by rowIndex as they arrive) instead of staring at the
     // configure spinner until the whole batch finishes.
     setPreviewResults([])
+    setPreviewWebSearch(null)
     setExpectedRows(a.previewSize)
     a.setStep('preview')
     try {
-      const { totalRows, runTargetRows: target } = await aiAPI.previewStream(previewBody(), (row) => {
+      const { totalRows, runTargetRows: target, webSearch } = await aiAPI.previewStream(previewBody(), (row) => {
         // Ignore late rows from a superseded/aborted stream.
         if (controller.signal.aborted) return
         // Sort by the server's display ordinal (its sample order), NOT rowIndex: rows
@@ -112,7 +124,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
           [...prev, row].sort((x, y) => key(x) - key(y)))
       }, controller.signal)
       // Server is authoritative on the count (short sheets return < previewSize).
-      if (!controller.signal.aborted) { setExpectedRows(totalRows); setRunTargetRows(target) }
+      if (!controller.signal.aborted) { setExpectedRows(totalRows); setRunTargetRows(target); setPreviewWebSearch(webSearch) }
     } catch (error: any) {
       // A deliberate abort (close/supersede) is not an error — drop silently.
       if (controller.signal.aborted || error?.name === 'AbortError') return
@@ -182,7 +194,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
 
   return {
     previewResults, setPreviewResults, isGeneratingPreview, previewError, isCommittingPreview,
-    expectedRows, runTargetRows, abortPreview, hydratePreview,
+    expectedRows, runTargetRows, previewWebSearch, abortPreview, hydratePreview,
     handleGeneratePreview, handleCommitPreviewToSheet,
   }
 }

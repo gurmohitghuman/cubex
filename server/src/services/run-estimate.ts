@@ -12,8 +12,10 @@ import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '../lib/ai-cost';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
 import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
+import type { SearchOptions } from '../lib/web-search-options';
 import { targetRowsAndSample } from './run-estimate-rows';
 import { tokenHistory } from './ai-token-history';
+import { estimateWebWork, webNote, webSearchEstimate } from './run-estimate-web';
 
 export interface AiEstimateInput {
   sheetId: string;
@@ -25,6 +27,7 @@ export interface AiEstimateInput {
   outputColumns?: OutputColumnSpec[];
   maxChars: number | null;
   targetRowIndexes?: number[];
+  search?: SearchOptions | null;
 }
 
 export interface AiEstimate {
@@ -36,7 +39,12 @@ export interface AiEstimate {
   per_row_usd: Range | null;
   // Web search and fetch fees alone, for the whole run; null without web tools.
   web_fees_usd: Range | null;
-  basis: 'history' | 'heuristic-no-history';
+  // With web search: the engine it runs on, its price, searches a row
+  // (run-estimate-web.ts). null without web search.
+  web_search: ReturnType<typeof webSearchEstimate>;
+  // 'measured': the search price is unknown, so the cost is what your past
+  // runs with the same settings really cost per row.
+  basis: 'history' | 'heuristic-no-history' | 'measured';
   assumptions: {
     avg_input_tokens: number;
     // Per row, with what the web tools read added in.
@@ -76,24 +84,28 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
-  const history = model ? tokenHistory(userId, model, web) : null;
+  // The engine the searches would run on and its price: the plan a run would
+  // store. Refused the same way a run would be (a cap that can't hold).
+  const webEst = await estimateWebWork(userId, model, web, input.search);
+  if ('error' in webEst) return { fail: 'bad_request', message: webEst.error };
+  const w = webEst.ok;
+  const history = model ? tokenHistory(userId, model, web, w.plan?.used ?? null) : null;
   const out = history?.output
     ?? { range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0, basis: 'heuristic-no-history' as const };
   // What the web tools read lands in the prompt: past rows with the same tools
   // measured it (never less than this prompt alone, which can outgrow theirs);
   // otherwise the heuristic on top of this prompt.
-  const extra = usesWeb && !history?.webInput ? webInputTokensPerRow(web) : { low: 0, high: 0 };
+  const extra = usesWeb && !history?.webInput ? webInputTokensPerRow(w.work) : { low: 0, high: 0 };
   const inputTokens: Range = history?.webInput
     ? { low: Math.max(history.webInput.low, avgInputTokens), high: Math.max(history.webInput.high, avgInputTokens) }
     : { low: avgInputTokens + extra.low, high: avgInputTokens + extra.high };
-  const fees = usesWeb ? webFeesPerRow(web) : null;
+  const fees = usesWeb ? webFeesPerRow(w.work) : null;
 
   // Pricing: stale cache is fine for a cost hint. Missing model / fetch failure
   // -> pricing_available:false, cost null (never a hard error — the estimate is
   // advisory).
   let pricingAvailable = false;
-  let cost: Range | null = null;
-  let perRow: Range | null = null;
+  let row: Range | null = null;
   if (model) {
     const result = await fetchModels(Date.now());
     const models = result.ok ? result.models : result.stale;
@@ -102,12 +114,22 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       pricingAvailable = true;
       const p = parseTokenPrice(m.pricing.prompt);
       const c = parseTokenPrice(m.pricing.completion);
-      const rowLow = rowCostUsd(inputTokens.low, out.range.low, p, c) + (fees?.low ?? 0);
-      const rowHigh = rowCostUsd(inputTokens.high, out.range.high, p, c) + (fees?.high ?? 0);
-      perRow = { low: roundUsd(rowLow), high: roundUsd(rowHigh) };
-      cost = { low: roundUsd(rowLow * count), high: roundUsd(rowHigh * count) };
+      row = {
+        low: rowCostUsd(inputTokens.low, out.range.low, p, c) + (fees?.low ?? 0),
+        high: rowCostUsd(inputTokens.high, out.range.high, p, c) + (fees?.high ?? 0),
+      };
     }
   }
+  // A search price Cubex doesn't know (some providers' own search) would leave
+  // the search fees out: what your runs with these settings cost is closer.
+  let basis: AiEstimate['basis'] = out.basis;
+  if (w.plan && w.plan.pricePerSearch === null && w.measuredCostPerRow) {
+    row = w.measuredCostPerRow;
+    pricingAvailable = true;
+    basis = 'measured';
+  }
+  const perRow = row ? { low: roundUsd(row.low), high: roundUsd(row.high) } : null;
+  const cost = row ? { low: roundUsd(row.low * count), high: roundUsd(row.high * count) } : null;
 
   const notes: string[] = ['Estimate only — actual cost depends on real token usage.'];
   if (out.basis === 'heuristic-no-history') {
@@ -117,13 +139,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   }
   if (!model) notes.push('No model resolved — set a model to price this run.');
   else if (!pricingAvailable) notes.push('OpenRouter pricing was unavailable; row count is exact, cost is not shown.');
-  if (fees) {
-    notes.push(`Includes web ${[web.search && 'search', web.fetch && 'fetch'].filter(Boolean).join(' and ')} fees of about `
-      + `$${roundUsd(fees.low)}-$${roundUsd(fees.high)} a row at OpenRouter's Exa/Parallel prices (native search engines differ), `
-      + (history?.webInput
-        ? 'and the pages read, sized from your past runs with the same web tools.'
-        : 'and a rough allowance for the text the pages add to each prompt.'));
-  }
+  if (fees) notes.push(webNote(w, fees, !!history?.webInput));
 
   return {
     ok: {
@@ -133,7 +149,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       estimated_cost_usd: cost,
       per_row_usd: perRow,
       web_fees_usd: fees ? { low: roundUsd(fees.low * count), high: roundUsd(fees.high * count) } : null,
-      basis: out.basis,
+      web_search: webSearchEstimate(w),
+      basis,
       assumptions: {
         avg_input_tokens: avgInputTokens,
         input_tokens: inputTokens,

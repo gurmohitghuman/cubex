@@ -34,7 +34,8 @@ function send(res: express.Response, r: TokenRunResult) {
 
 // POST /v1/sheets/:id/ai-runs
 // Body: { column_name, prompt, output_columns?, model?, system_prompt?,
-//         temperature?, web_search?, web_fetch?, max_chars?, concurrency?,
+//         temperature?, web_search?, search_engine?, search_mode?,
+//         max_searches_per_row?, web_fetch?, max_chars?, concurrency?,
 //         target_row_ids?, estimate_only?, preview_rows?, idempotency_key? }
 router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {

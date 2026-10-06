@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { AIDraft, AIPreview, AIResult, AIRun, HTTPPreview, HTTPResult, HTTPRun } from './types'
+import type { RowSearchQuery, RunSpend, SearchPlanResponse } from './types-search'
 import { previewStream } from './ai-preview-stream'
 
 // Every consumer of these AI/HTTP helpers has its own catch block that surfaces a
@@ -22,6 +23,10 @@ type AIRunParams = {
   maxChars?: number
   previewSize?: number
   concurrency?: number
+  // Web search engine, mode and per-row cap; sent only with web search on.
+  searchEngine?: string
+  searchMode?: string
+  maxSearchesPerRow?: number
 }
 
 export const aiAPI = {
@@ -44,8 +49,16 @@ export const aiAPI = {
   deleteDraft: (sheetId: string): Promise<void> =>
     api.delete(`/ai/drafts/${sheetId}`, noServerToast).then(() => {}),
 
-  getRun: (id: string): Promise<{ run: AIRun; results: AIResult[] }> =>
+  // spend: what the run has cost and searched so far.
+  getRun: (id: string): Promise<{ run: AIRun; results: AIResult[]; spend?: RunSpend }> =>
     api.get(`/ai/runs/${id}`, noServerToast).then(res => res.data),
+
+  // The engine a model's searches would run on and its price, for the drawer's
+  // web search options (server lib/web-search-plan.ts).
+  searchPlan: (p: { model: string; engine: string; mode: string; cap: number | null }): Promise<SearchPlanResponse> =>
+    api.get('/ai/search-plan', {
+      ...noServerToast, params: { model: p.model, engine: p.engine, mode: p.mode || undefined, cap: p.cap ?? undefined },
+    }).then(res => res.data),
 
   getRuns: (sheetId: string): Promise<AIRun[]> =>
     api.get(`/ai/runs`, { params: { sheetId }, ...noServerToast }).then(res => res.data),
@@ -59,8 +72,13 @@ export const aiAPI = {
   // The server routes (/ai/results/:id, /ai/runs/:id/commit) remain as
   // defense-in-depth but have no client callers.
 
-  // The sources behind one "(Data)" cell, looked up by the cell itself.
-  getCellSources: (sheetId: string, rowIndex: number, column: string): Promise<{ scrapedData: any[] | null }> =>
+  // The sources behind one "(Data)" cell, looked up by the cell itself, with
+  // what the row searched for and cost.
+  getCellSources: (sheetId: string, rowIndex: number, column: string): Promise<{
+    scrapedData: any[] | null
+    search?: { searches: number; queries: RowSearchQuery[] } | null
+    costUsd?: number | null
+  }> =>
     api.get(`/ai/sheets/${sheetId}/sources`, { ...noServerToast, params: { row_index: rowIndex, column } }).then(res => res.data),
 
   // rowGeneration (optional): sent with a rowIndices selection so the server can

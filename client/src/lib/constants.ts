@@ -21,6 +21,8 @@ export const SILENT_RELOAD_MAX_ROWS = 1000;
 // rate-limit above FREE_MODEL_CONCURRENCY_WARN, so the modal warns past it.
 export const MAX_AI_CONCURRENCY = 100;
 export const FREE_MODEL_CONCURRENCY_WARN = 10;
+// Highest per-row web search limit (mirrors server MAX_SEARCHES_PER_ROW).
+export const MAX_SEARCHES_PER_ROW = 10;
 
 // How long an acked-but-not-loud-reloaded cell edit stays eligible to be
 // re-overlaid onto a SILENT background reload (run completion / Stop). The

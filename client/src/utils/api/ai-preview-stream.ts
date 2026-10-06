@@ -1,5 +1,6 @@
 import { redirectToLoginOn401 } from './client'
 import type { AIPreview } from './types'
+import type { SearchPlanSummary } from './types-search'
 
 // Params accepted by the streaming preview endpoint (a subset of AIRunParams —
 // only the fields /ai/preview reads). Kept local so this module doesn't depend on
@@ -15,6 +16,9 @@ export interface PreviewStreamParams {
   useWebFetch?: boolean
   maxChars?: number
   previewSize?: number
+  searchEngine?: string
+  searchMode?: string
+  maxSearchesPerRow?: number
 }
 
 // Streaming preview. The server responds with NDJSON (one JSON object per line):
@@ -38,7 +42,7 @@ export const previewStream = async (
   params: PreviewStreamParams,
   onRow: (row: AIPreview) => void,
   signal?: AbortSignal,
-): Promise<{ totalRows: number; runTargetRows: number }> => {
+): Promise<{ totalRows: number; runTargetRows: number; webSearch: SearchPlanSummary | null }> => {
   // Internal controller aborts on EITHER the caller's signal (modal close / supersede)
   // OR a stall. fetch + the reader both observe it, so a hung stream can't strand the
   // caller's isGeneratingPreview forever.
@@ -99,11 +103,13 @@ export const previewStream = async (
   let totalRows: number | null = null
   // The UNFILTERED count of rows "Run All Rows" will process (for the cost estimate).
   let runTargetRows = 0
+  // With web search: the engine the run's searches go to, priced.
+  let webSearch: SearchPlanSummary | null = null
   // Parse one NDJSON line. Bad JSON (a proxy-truncated chunk, a corrupt line)
   // throws a clean error instead of a raw SyntaxError.
   const handleLine = (line: string) => {
     let msg: { type: 'row' } & AIPreview
-      | { type: 'done'; totalRows: number; runTargetRows?: number }
+      | { type: 'done'; totalRows: number; runTargetRows?: number; webSearch?: SearchPlanSummary | null }
       | { type: 'error'; error: string }
     try {
       msg = JSON.parse(line)
@@ -116,6 +122,7 @@ export const previewStream = async (
     } else if (msg.type === 'done') {
       totalRows = msg.totalRows
       runTargetRows = msg.runTargetRows ?? 0
+      webSearch = msg.webSearch ?? null
     } else if (msg.type === 'error') {
       throw new Error(msg.error)
     }
@@ -158,5 +165,5 @@ export const previewStream = async (
   // The stream ended cleanly but never sent {type:'done'} → it was truncated. Fail
   // rather than silently returning a partial set the caller might commit.
   if (totalRows === null) throw new Error('Preview stream ended before completion')
-  return { totalRows, runTargetRows }
+  return { totalRows, runTargetRows, webSearch }
 }

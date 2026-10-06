@@ -108,25 +108,66 @@ check('missing key → blank cell, row still ✅', partial.Score === '6' && part
 // Drives the real runner (processMultiRow) with a fake OpenRouter client, so the
 // tools it sends and the cells it writes are both the real thing.
 const DATA = 'Lead (Data)'
-async function webRow(web: { search: boolean; fetch: boolean }, content: string, annotations: unknown[] = []) {
+// A search row goes through the Responses API (services/ai-model-call.ts); a
+// fetch-only row through Chat Completions. The fake serves both: `searches` are
+// the search calls the model made, `cost` OpenRouter's usage.cost.
+type Search = { query: string; sources?: string[] }
+async function webRow(
+  web: { search: boolean; fetch: boolean }, content: string, annotations: any[] = [],
+  opts: { searches?: Search[]; cost?: number; engine?: string; used?: string; mode?: string; cap?: number; refuseTemperature?: boolean; failed?: string } = {},
+) {
   const sid = uuid(), rid = uuid()
   db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)')
     .run(sid, tid, uid, `S_${sid.slice(0, 8)}`, JSON.stringify(['domain', 'Score', 'Reason', STATUS, DATA]))
   db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,0,?)')
     .run(uuid(), sid, uid, JSON.stringify({ domain: 'stripe.com', Score: '', Reason: '', [STATUS]: '⏳ Processing...', [DATA]: '⏳ Processing...' }))
   db.prepare(`INSERT INTO ai_runs (id,sheet_id,user_id,column_name,prompt,model,status,worker_generation,total_rows,processed_rows,
-      output_columns,status_column,data_column,use_openrouter_web_search,use_web_fetch)
-    VALUES (?,?,?,?,?,?, 'running', 0, 1, 0, ?, ?, ?, ?, ?)`)
-    .run(rid, sid, uid, STATUS, 'Score /domain', 'm', JSON.stringify(specs), STATUS, DATA, web.search ? 1 : 0, web.fetch ? 1 : 0)
+      output_columns,status_column,data_column,use_openrouter_web_search,use_web_fetch,
+      web_search_engine,web_search_engine_used,web_search_mode,web_search_max_per_row)
+    VALUES (?,?,?,?,?,?, 'running', 0, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(rid, sid, uid, STATUS, 'Score /domain', 'm', JSON.stringify(specs), STATUS, DATA, web.search ? 1 : 0, web.fetch ? 1 : 0,
+      opts.engine ?? null, opts.used ?? null, opts.mode ?? null, opts.cap ?? null)
   const run = db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(rid)
   let sent: any
-  const openai = { chat: { completions: { create: async (args: any) => {
-    sent = args
-    return { choices: [{ message: { content, annotations }, finish_reason: 'stop' }], usage: { prompt_tokens: 900, completion_tokens: 40 } }
-  } } } }
+  let api = ''
+  const usage = { prompt_tokens: 900, completion_tokens: 40, ...(opts.cost !== undefined ? { cost: opts.cost } : {}) }
+  const openai = {
+    chat: { completions: { create: async (args: any) => {
+      sent = args; api = 'chat'
+      return { choices: [{ message: { content, annotations }, finish_reason: 'stop' }], usage }
+    } } },
+    // The Responses API, through the SDK's generic post (services/ai-model-call.ts).
+    post: async (path: string, { body: args }: { body: any }) => {
+      if (path !== '/responses') throw new Error(`unexpected POST ${path}`)
+      sent = { ...args }; api = 'responses'
+      // Like an OpenAI reasoning model that takes no temperature: refused before anything is generated.
+      if (opts.refuseTemperature && 'temperature' in args) {
+        throw Object.assign(new Error("400 Unsupported parameter: 'temperature' is not supported with this model."), { status: 400 })
+      }
+      return {
+        status: opts.failed ? 'failed' : 'completed',
+        ...(opts.failed ? { error: { message: opts.failed } } : {}),
+        output: [
+          ...(opts.searches ?? []).map(q => ({
+            type: 'openrouter:web_search', status: 'completed',
+            action: { type: 'search', query: q.query, ...(q.sources ? { sources: q.sources.map(url => ({ type: 'url', url })) } : {}) },
+          })),
+          { type: 'message', role: 'assistant', status: 'completed', content: [{
+            type: 'output_text', text: content,
+            annotations: annotations.map(a => ({ type: 'url_citation', ...a.url_citation })),
+          }] },
+        ],
+        usage: { input_tokens: usage.prompt_tokens, output_tokens: usage.completion_tokens, cost: opts.cost },
+      }
+    },
+  }
   await processMultiRow(rid, { rowIndex: 0, data: { domain: 'stripe.com' } }, run as any, openai as any, undefined, 0)
-  const result = db.prepare('SELECT scraped_data FROM ai_results WHERE run_id = ?').get(rid) as { scraped_data: string | null }
-  return { cells: cells(sid), sent, scraped: result.scraped_data ? JSON.parse(result.scraped_data) : null }
+  const result = db.prepare('SELECT scraped_data, cost_usd, web_searches, web_search_queries FROM ai_results WHERE run_id = ?').get(rid) as
+    { scraped_data: string | null; cost_usd: number | null; web_searches: number | null; web_search_queries: string | null }
+  return {
+    cells: cells(sid), sent, api, result,
+    scraped: result.scraped_data ? JSON.parse(result.scraped_data) : null,
+  }
 }
 
 async function webCases() {
@@ -134,24 +175,65 @@ async function webCases() {
   const f = await webRow({ search: false, fetch: true },
     '{"Score": 9, "Reason": "payments", "__sources": ["https://stripe.com/", "https://stripe.com/payments", "not a url", "https://crunchbase.com/organization/stripe"]}')
   const fetchTool = f.sent.tools?.find((t: any) => t.type === 'openrouter:web_fetch')
+  check('fetch-only row stays on Chat Completions', f.api === 'chat')
   check('fetch run sends web_fetch limited to the row\'s own domain', JSON.stringify(fetchTool?.parameters?.allowed_domains) === '["stripe.com"]')
   check('fetch-only run sends no web_search', !f.sent.tools.some((t: any) => t.type === 'openrouter:web_search'))
   check('the instruction asks for __sources', f.sent.messages.at(-1).content.includes('"__sources"'))
   check('fetch run fills the typed columns and ✅', f.cells.Score === '9' && f.cells.Reason === 'payments' && f.cells[STATUS] === '✅')
   check('fetch run fills "(Data)" from __sources (junk and hosts it could not fetch dropped)', f.cells[DATA] === '📊 Read 2 sources: https://stripe.com/, https://stripe.com/payments')
   check('fetch run saves the sources for the viewer', f.scraped?.length === 2)
+  check('fetch-only row logs no searches', f.result.web_searches === null && f.result.web_search_queries === null)
 
-  // Search + fetch: citations and __sources merge, each URL once.
+  // Search + fetch: citations and __sources merge, each URL once; the row's
+  // search words, search count and cost are saved and shown in "(Data)".
   const both = await webRow({ search: true, fetch: true },
     '{"Score": 8, "Reason": "x", "__sources": ["https://stripe.com", "https://stripe.com/pricing"]}',
-    [{ type: 'url_citation', url_citation: { url: 'https://stripe.com/', title: 'Stripe', content: 'Payments' } }])
+    [{ type: 'url_citation', url_citation: { url: 'https://stripe.com/', title: 'Stripe', content: 'Payments' } }],
+    { searches: [{ query: 'stripe pricing', sources: ['https://stripe.com/'] }], cost: 0.0021 })
+  check('search row goes through the Responses API', both.api === 'responses')
   check('search run sends web_search, datetime and web_fetch',
     ['openrouter:web_search', 'openrouter:datetime', 'openrouter:web_fetch'].every(t => both.sent.tools.some((x: any) => x.type === t)))
-  check('citations and __sources merge without duplicates', both.cells[DATA] === '📊 Searched 2 sources: Stripe, https://stripe.com/pricing')
+  check('the Responses call carries the prompt as input', both.sent.input.at(-1).content.includes('"__sources"'))
+  check('citations and __sources merge without duplicates; cost first, then searches',
+    both.cells[DATA] === '📊 $0.0021 · 1 search: "stripe pricing" · 2 sources: Stripe, https://stripe.com/pricing')
+  check('the row saves its cost, searches and search words',
+    both.result.cost_usd === 0.0021 && both.result.web_searches === 1
+    && both.result.web_search_queries === JSON.stringify([{ query: 'stripe pricing', ran: true }]))
 
-  // A failed row blanks "(Data)" with the outputs: nothing stays on ⏳.
-  const bad = await webRow({ search: false, fetch: true }, 'Sorry, I could not open the page.')
+  // A cap of 1 on Parallel: the tool carries engine, mode and max_uses, and of
+  // three search calls only the first ran (OpenRouter refused the other two).
+  const capped = await webRow({ search: true, fetch: false }, '{"Score": 5, "Reason": "y"}', [],
+    { searches: [{ query: 'a', sources: ['https://a.com'] }, { query: 'b' }, { query: 'c' }], cost: 0.0015,
+      engine: 'parallel', used: 'parallel', mode: 'fast', cap: 1 })
+  const searchTool = capped.sent.tools.find((t: any) => t.type === 'openrouter:web_search')
+  check('capped run sends engine, mode and max_uses',
+    searchTool.parameters.engine === 'parallel' && searchTool.parameters.mode === 'fast' && searchTool.parameters.max_uses === 1
+    && searchTool.parameters.max_total_results === 5)
+  check('capped run bounds the tool loop (cap + datetime + one refused ask)', capped.sent.max_tool_calls === 3)
+  check('an uncapped run leaves OpenRouter\'s default budget', both.sent.max_tool_calls === undefined)
+  check('only the searches that ran count', capped.result.web_searches === 1
+    && capped.result.web_search_queries === JSON.stringify([{ query: 'a', ran: true }, { query: 'b', ran: false }, { query: 'c', ran: false }]))
+  check('the (Data) cell lists the search that ran', capped.cells[DATA] === '📊 $0.0015 · 1 search: "a"')
+
+  // A model that refuses temperature on the Responses API: sent again without it.
+  const noTemp = await webRow({ search: true, fetch: false }, '{"Score": 4, "Reason": "z"}', [],
+    { searches: [{ query: 'q', sources: ['https://q.com'] }], cost: 0.0011, refuseTemperature: true })
+  check('a refused temperature is dropped and the row still runs',
+    noTemp.cells[STATUS] === '✅' && !('temperature' in noTemp.sent) && noTemp.result.cost_usd === 0.0011)
+
+  // A response that came back failed may have run searches already: the row
+  // fails, and still records what it cost and searched.
+  const failedCall = await webRow({ search: true, fetch: false }, '', [],
+    { searches: [{ query: 'f', sources: ['https://f.com'] }], cost: 0.0009, failed: 'Provider down' })
+  check('a failed response fails the row but keeps its cost and searches',
+    failedCall.cells[STATUS].startsWith('❌') && failedCall.cells[STATUS].includes('Provider down')
+    && failedCall.result.cost_usd === 0.0009 && failedCall.result.web_searches === 1)
+
+  // A failed row blanks "(Data)" with the outputs: nothing stays on ⏳. The
+  // call was billed, so its cost is kept.
+  const bad = await webRow({ search: false, fetch: true }, 'Sorry, I could not open the page.', [], { cost: 0.0004 })
   check('failed web row is ❌ with "(Data)" blank', bad.cells[STATUS].startsWith('❌') && bad.cells[DATA] === '' && !JSON.stringify(bad.cells).includes('⏳'))
+  check('a failed row whose call came back keeps its cost', bad.result.cost_usd === 0.0004)
 
   // No sources at all: the row still succeeds, "(Data)" stays blank.
   const none = await webRow({ search: false, fetch: true }, '{"Score": 3, "Reason": "unknown"}')

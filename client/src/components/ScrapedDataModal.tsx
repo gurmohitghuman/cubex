@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { aiAPI } from '../utils/api';
+import { aiAPI, type RowSearchQuery } from '../utils/api';
 import Modal from './Modal'
 import { safeHref } from '../lib/utils'
+import { RowSearchSummary } from './RowSearchSummary'
 
 // A source as ai_results.scraped_data stores it. Search citations carry a title
 // and an excerpt; a page a structured run fetched is often just its URL, so
@@ -30,6 +31,9 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
   cell
 }) => {
   const [scrapedData, setScrapedData] = useState<ScrapedWebsite[] | null>(null);
+  // What the row searched for (every call, and whether it ran) and what it cost.
+  const [search, setSearch] = useState<{ searches: number; queries: RowSearchQuery[] } | null>(null);
+  const [costUsd, setCostUsd] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Monotonic token: only the latest fetch is allowed to write state, so a
@@ -40,6 +44,8 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
     // Clear stale data whenever the target changes so we never show the
     // previous result's websites while the new fetch is in flight.
     setScrapedData(null);
+    setSearch(null);
+    setCostUsd(null);
     setError(null);
     if (isOpen && cell) {
       fetchScrapedData();
@@ -57,6 +63,8 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
       const response = await aiAPI.getCellSources(cell.sheetId, cell.rowIndex, cell.columnName);
       if (seq !== fetchSeqRef.current) return; // superseded by a newer fetch
       setScrapedData(response.scrapedData);
+      setSearch(response.search ?? null);
+      setCostUsd(response.costUsd ?? null);
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
       setError('Failed to fetch scraped data');
@@ -71,7 +79,7 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b">
         <h2 className="text-title text-gray-900">
-          Website Data Used for AI Response
+          Sources and searches for this row
         </h2>
         <button
           onClick={onClose}
@@ -104,12 +112,17 @@ export const ScrapedDataModal: React.FC<ScrapedDataModalProps> = ({
             </div>
           )}
 
-          {!loading && !error && scrapedData === null && (
+          {!loading && !error && (search || costUsd !== null) && <RowSearchSummary search={search} costUsd={costUsd} />}
+
+          {!loading && !error && scrapedData === null && !search && costUsd === null && (
             <div className="text-center py-8 text-gray-600">
               <div className="text-2xl mb-2">📄</div>
-              <div>No website data was used for this AI response.</div>
-              <div className="text-sm mt-2">This row was processed without web crawling.</div>
+              <div>This row has no sources or searches recorded.</div>
             </div>
+          )}
+
+          {!loading && !error && (search || costUsd !== null) && (!scrapedData || scrapedData.length === 0) && (
+            <div className="text-sm text-gray-600">No sources were cited for this answer.</div>
           )}
 
           {!loading && !error && scrapedData && scrapedData.length > 0 && (

@@ -3,6 +3,7 @@ import { redactError } from '../lib/redact';
 import { runRows, countRunRows } from '../lib/run-rows';
 import { shouldNotStartRun, type AIRunRow } from './ai-runner-status';
 import { dispatchRows, finalizeStatus, markFailed } from './ai-runner-lifecycle';
+import { fetchModels } from '../lib/openrouter';
 
 // Re-exports for backwards compatibility with existing callers (routes/ai.ts).
 export type { AIRunRow } from './ai-runner-status';
@@ -84,6 +85,9 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
     // rows are placeholders); the completed count on a resume.
     const remaining = countRunRows(run.sheet_id, run.user_id, run.column_name, null);
     const startCompleted = Math.max(0, (run.total_rows || remaining) - remaining);
+    // Search rows check the model list for whether the model takes a
+    // temperature (services/ai-model-call.ts); read it once here, not per row.
+    if (run.use_openrouter_web_search) await fetchModels(Date.now());
 
     await dispatchRows(runId, run, myGeneration, runRows(run.sheet_id, run.user_id, run.column_name, null), startCompleted, controller);
     await finalizeStatus(runId, run, myGeneration);
@@ -131,6 +135,7 @@ export async function processAIRerun(runId: string, targetRows: number[], expect
     // re-billed every target when a rerun was paused before its first completion.
     const remaining = countRunRows(run.sheet_id, run.user_id, run.column_name, targetRows);
     const startCompleted = Math.max(0, (run.total_rows || targetRows.length) - remaining);
+    if (run.use_openrouter_web_search) await fetchModels(Date.now()); // see processAIRun
 
     await dispatchRows(runId, run, myGeneration, runRows(run.sheet_id, run.user_id, run.column_name, targetRows), startCompleted, controller);
     // Scope the stuck-row check to the rerun's targets (subset) — see finalizeStatus.

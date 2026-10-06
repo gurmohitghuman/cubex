@@ -2,6 +2,8 @@ import React from 'react'
 import { Globe } from 'lucide-react'
 import { OpenRouterCreditNotice } from '../OpenRouterCreditNotice'
 import { PromptReferenceChips } from './PromptReferenceChips'
+import { WebSearchOptions } from './WebSearchOptions'
+import type { WebSearchSettings } from '@/utils/api'
 
 // True while the text before the caret still ends with the /token the
 // suggestion list is filtered by.
@@ -19,6 +21,11 @@ interface Props {
   setPrompt: (v: string) => void
   useOpenRouterWebSearch: boolean
   setUseOpenRouterWebSearch: (v: boolean) => void
+  // Engine, mode and per-row limit for web search, and the model they're priced for.
+  model: string
+  webSearch: WebSearchSettings
+  setWebSearch: (v: WebSearchSettings) => void
+  onSearchBlocked: (reason: string | null) => void
   useWebFetch: boolean
   setUseWebFetch: (v: boolean) => void
   columnSuggestions: Array<{ name: string; reference: string }>
@@ -34,6 +41,7 @@ interface Props {
 export const GenerateTab: React.FC<Props> = ({
   columnName, setColumnName, nameError, prompt, setPrompt,
   useOpenRouterWebSearch, setUseOpenRouterWebSearch,
+  model, webSearch, setWebSearch, onSearchBlocked,
   useWebFetch, setUseWebFetch,
   columnSuggestions, showSuggestions, suggestFilter, activeSuggestIndex,
   setSuggestFilter, setShowSuggestions, setActiveSuggestIndex,
@@ -59,10 +67,13 @@ export const GenerateTab: React.FC<Props> = ({
           <span className="text-sm text-gray-700">Web search</span>
         </label>
         <p className="text-xs text-gray-500 mt-1 ml-6">
-          Let the AI search the web when it needs current info. Uses OpenRouter&apos;s built-in
-          search. Search fees are billed by OpenRouter on top of tokens, and a row can trigger
-          a couple of searches depending on your prompt (results are capped per row).
+          Let the AI search the web when it needs current info. Each search costs extra, on top
+          of tokens, and is often most of a row&apos;s cost: choose the engine and limit the
+          searches per row below.
         </p>
+        {useOpenRouterWebSearch && (
+          <WebSearchOptions model={model} value={webSearch} onChange={setWebSearch} onBlocked={onSearchBlocked} />
+        )}
       </div>
       <div>
         <label className="flex items-center space-x-2">

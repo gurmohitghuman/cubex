@@ -2,6 +2,7 @@ import { MAX_AI_CONCURRENCY, MAX_OUTPUT_COLUMNS_PER_RUN } from '../lib/constants
 import { sanitizeAndValidateColumnName, findColumnNameCollision } from '../lib/column-names';
 import { validateModelParam } from '../lib/ai-model-resolve';
 import { OutputColumnSpec, OutputColumnType, SOURCES_KEY } from '../lib/ai-multi-output';
+import { parseBooleanOption, parseSearchOptions, type SearchOptions } from '../lib/web-search-options';
 
 const OUTPUT_COLUMN_TYPES: OutputColumnType[] = ['string', 'number', 'boolean'];
 
@@ -75,14 +76,30 @@ export interface RunParams {
   safeConcurrency?: number;
   safeMaxChars: number | null;
   outputColumns?: OutputColumnSpec[];
+  // Web search engine, mode and per-row cap; null without web search.
+  search: SearchOptions | null;
+}
+
+// The two web-tool switches and the search options, shared with the preview
+// parser. A switch takes true/false or the text "true"/"false"; anything else is
+// refused, since `!!"false"` would quietly turn a paid tool on.
+export function parseWebOptions(body: any):
+  { ok: { useOpenRouterWebSearch: boolean; useWebFetch: boolean; search: SearchOptions | null } } | { error: string } {
+  const webSearch = parseBooleanOption(body?.useOpenRouterWebSearch);
+  const webFetch = parseBooleanOption(body?.useWebFetch);
+  if (webSearch === 'invalid') return { error: 'web_search must be true or false.' };
+  if (webFetch === 'invalid') return { error: 'web_fetch must be true or false.' };
+  const search = parseSearchOptions(
+    { engine: body?.searchEngine, mode: body?.searchMode, maxPerRow: body?.maxSearchesPerRow }, !!webSearch,
+  );
+  if ('error' in search) return search;
+  return { ok: { useOpenRouterWebSearch: !!webSearch, useWebFetch: !!webFetch, search: search.ok } };
 }
 
 export function parseRunRequest(body: any): RunParams | RunParseError {
   const {
     sheetId, columnName, prompt, systemPrompt,
     model, temperature = 0.7,
-    useOpenRouterWebSearch = false,
-    useWebFetch = false,
     // NO destructuring default for concurrency: an omitted value must stay
     // undefined so the start service can resolve the sheet's setting. Defaulting
     // it to 5 here is exactly the bug — it made "unspecified" indistinguishable
@@ -97,6 +114,8 @@ export function parseRunRequest(body: any): RunParams | RunParseError {
   if (typeof prompt !== 'string') return { ok: false, status: 400, error: 'Prompt must be a string.' };
   const modelParamError = validateModelParam(model);
   if (modelParamError) return { ok: false, status: 400, error: modelParamError };
+  const web = parseWebOptions(body);
+  if ('error' in web) return { ok: false, status: 400, error: web.error };
 
   // Structured multi-column output (optional). Combines with web search and web
   // fetch: the run then also fills a "(Data)" citations column
@@ -135,7 +154,7 @@ export function parseRunRequest(body: any): RunParams | RunParseError {
     ok: true,
     sheetId, cleanColumnName: nameCheck.name, prompt, systemPrompt,
     model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
-    useOpenRouterWebSearch: !!useOpenRouterWebSearch, useWebFetch: !!useWebFetch,
+    ...web.ok,
     safeTemperature, safeConcurrency, safeMaxChars, outputColumns,
   };
 }

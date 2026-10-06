@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Bot } from 'lucide-react'
-import { aiAPI } from '@/utils/api'
+import { aiAPI, DEFAULT_WEB_SEARCH, webSearchFrom, type WebSearchSettings } from '@/utils/api'
 import { Drawer, DrawerHeader } from './Drawer'
 
 import { Step, DEFAULT_SYSTEM_PROMPT, DEFAULT_CONCURRENCY, clampConcurrency } from './ai-modal/types'
@@ -44,6 +44,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   // Model value + provenance (no hardcoded default; picked-this-session flag).
   const sel = useModelSelection(isOpen, onDefaultModelChanged)
   const [useOpenRouterWebSearch, setUseOpenRouterWebSearch] = useState(false)
+  // Web search engine, mode and per-row limit (sent only with web search on).
+  const [webSearch, setWebSearch] = useState<WebSearchSettings>(DEFAULT_WEB_SEARCH)
   const [useWebFetch, setUseWebFetch] = useState(false)
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
 
@@ -59,7 +61,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
 
   const h = useAIRunHandlers({
     isOpen, sheetId, rowGeneration, columnName, prompt, systemPrompt, model: sel.model,
-    useOpenRouterWebSearch, useWebFetch, concurrency, nameError,
+    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, nameError,
     previewSize, temperature, maxChars,
     setStep, onSuccess, onClose, onRunStarted, resetState: () => resetState(),
   })
@@ -72,7 +74,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
     // Back to the defaults chain (sheet default > account default > '').
     sel.setModel(defaultAiModel || sel.accountDefaultModel || '')
     sel.resetPicked()
-    setUseOpenRouterWebSearch(false); setUseWebFetch(false); setConcurrency(DEFAULT_CONCURRENCY)
+    setUseOpenRouterWebSearch(false); setWebSearch(DEFAULT_WEB_SEARCH); setUseWebFetch(false); setConcurrency(DEFAULT_CONCURRENCY)
     h.setPreviewResults([]); h.setCurrentRun(null); h.setIsPolling(false)
     try { localStorage.removeItem('ai_modal_initial') } catch {}
   }
@@ -80,7 +82,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   // Prefill on open from edit-mode payload or sheet defaults (once per open).
   const init = useAIModalInit(isOpen, sheetId, defaultAiModel, defaultAiConcurrency, sel.accountDefaultModel, {
     setColumnSuggestions, setColumnName, setPrompt, setSystemPrompt, setModel: sel.setModel,
-    setUseOpenRouterWebSearch, setUseWebFetch, setConcurrency,
+    setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setConcurrency,
     onEditPrefill: () => resetState(),
     // Retained config = the modal reopened with a kept draft still in state.
     // Reading current columnName/prompt is safe: the init effect runs on the
@@ -108,8 +110,9 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
       init.noteExplicitModel(); sel.setModel(c.model)
       init.noteExplicitConcurrency(); setConcurrency(clampConcurrency(c.concurrency))
       setUseOpenRouterWebSearch(c.useOpenRouterWebSearch); setUseWebFetch(c.useWebFetch)
+      setWebSearch(webSearchFrom(c.searchEngine, c.searchMode, c.maxSearchesPerRow))
     },
-    applyPreview: (rows, target) => { h.hydratePreview(rows, target); setStep('preview') },
+    applyPreview: (rows, target, c) => { h.hydratePreview(rows, target, c); setStep('preview') },
     // Kept state + a column renamed since: take the draft's renamed /references.
     syncRefs: (c, cols) => { if (!h.currentRun && c.columnName === columnName) setPrompt(p => (takesRenamedRefs(p, c.prompt, cols) ? c.prompt : p)) },
   })
@@ -147,6 +150,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             columnName={columnName} setColumnName={setColumnName} nameError={nameError}
             prompt={prompt} setPrompt={setPrompt}
             useOpenRouterWebSearch={useOpenRouterWebSearch} setUseOpenRouterWebSearch={setUseOpenRouterWebSearch}
+            webSearch={webSearch} setWebSearch={setWebSearch}
             useWebFetch={useWebFetch} setUseWebFetch={setUseWebFetch}
             columnSuggestions={columnSuggestions}
             sugg={sugg} models={models}
@@ -169,7 +173,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             isCommittingPreview={h.isCommittingPreview}
             isGeneratingPreview={h.isGeneratingPreview} expectedRows={h.expectedRows}
             runTargetRows={h.runTargetRows} modelPricing={models.selectedModel?.pricing}
-            usesWebTools={useOpenRouterWebSearch || useWebFetch}
+            usesWebTools={useOpenRouterWebSearch || useWebFetch} webSearchPlan={h.previewWebSearch}
             nameError={nameError}
             // Back is the explicit "discard this attempt": it deletes the
             // persisted draft (owner decision), so the NEXT open starts fresh —
@@ -185,7 +189,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
         )}
 
         {step === 'run' && h.currentRun && (
-          <RunStep currentRun={h.currentRun} runResults={h.runResults} />
+          <RunStep currentRun={h.currentRun} runResults={h.runResults} spend={h.runSpend} />
         )}
       </div>
 

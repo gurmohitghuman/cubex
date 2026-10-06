@@ -26,6 +26,7 @@ import { enqueueAIRun, enqueueAIRerun } from '../queue';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { planIfSearching } from './web-search-catalog';
 
 export type { AiRunStartParams, AiRunStartOutcome };
 
@@ -46,6 +47,12 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // an AI column only ever runs on a model the user chose.
   const resolvedModel = resolveAiModel(p.model, p.sheetId, userId);
   if (!resolvedModel) return { fail: 'no_model', message: NO_MODEL_ERROR };
+
+  // Search engine, price and cap (lib/web-search-plan.ts). Awaited before the
+  // checks below: from the conflict check to the insert there is no await.
+  const search = await planIfSearching(userId, resolvedModel, !!p.useOpenRouterWebSearch, p.search);
+  if ('error' in search) return { fail: 'bad_request', message: search.error };
+  const plan = search.ok;
 
   // Explicit choice > sheet default_ai_concurrency > DEFAULT_AI_CONCURRENCY.
   // Resolved HERE, not in parseRunRequest: this is after verifySheetOwnership,
@@ -113,8 +120,9 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
     INSERT INTO ai_runs (
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
-      status, total_rows, processed_rows, target_rows, placeholder_work
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding')
+      status, total_rows, processed_rows, target_rows, placeholder_work,
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?)
   `);
 
   // Cap check + mutation in ONE immediate() txn — otherwise two concurrent
@@ -140,6 +148,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
         p.useWebFetch ? 1 : 0,
         p.safeMaxChars, resolvedConcurrency, targetCount,
         targets ? JSON.stringify(targets) : null,
+        plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
       );
       // Credit reuse: promote still-valid persisted preview results into this
       // run's cells + ai_results, BEFORE placeholder seeding, so the worker's
@@ -184,7 +193,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
     return {
       ok: {
         runId, outputColumn: outputCol, dataColumn: needsDataColumn ? dataCol : null,
-        reusedRows: promotedRows.length, targetCount,
+        reusedRows: promotedRows.length, targetCount, webSearch: plan,
       },
     };
   });

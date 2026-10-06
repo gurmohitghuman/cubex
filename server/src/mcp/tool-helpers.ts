@@ -22,6 +22,14 @@ export const rowConditionSchema = z.object({
   value: z.string().optional(),
 });
 
+// Option types that also take their value as text. An MCP client whose tool
+// list was loaded before an option existed sends it as a string ("true", "2"),
+// which a strict schema rejects. Clients still see a plain boolean or integer.
+export const lenientBoolean = () =>
+  z.preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
+export const lenientInt = (min: number, max: number) =>
+  z.preprocess(v => (typeof v === 'string' && /^\d+$/.test(v.trim()) ? Number(v.trim()) : v), z.number().int().min(min).max(max));
+
 export interface McpAuthCtx {
   userId: string;
   // The access token's id: the key for MCP's per-token rate windows.

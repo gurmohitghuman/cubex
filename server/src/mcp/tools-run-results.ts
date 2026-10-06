@@ -32,6 +32,9 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + 'the API has nothing for that row, or, on every row, a wrong URL path), "configuration" (URL, auth, '
         + 'headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), "unknown". '
         + 'error_summary counts each class across the page, with a hint. '
+        + 'AI rows also carry cost_usd (what the row cost, web fees included) and, with web search, searches (how many ran) '
+        + 'and search_queries ([{query, ran}]; ran:false is a search the per-row limit stopped), to check search quality and spend. '
+        + "With a model's own search (runs_on native), searches and their words appear only when the provider reports them. "
         + 'Use this when a run finished but cells are blank or wrong, instead of guessing and re-running blind. '
         + "DEFAULTS TO status_filter 'failed' — the failures are what you want, and returning every successful "
         + "row wastes your context. Then retry only the transient ones with control_run action 'rerun' "

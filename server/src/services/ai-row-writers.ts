@@ -31,11 +31,24 @@ interface WriteCtx {
 
 // OpenRouter completion.usage, captured per row. NULL when the provider omits
 // the usage block. Persisted for measured-cost reporting + history-based
-// estimates (see lib/ai-cost.ts). Both fields nullable end-to-end.
+// estimates (see lib/ai-cost.ts). Every field nullable end-to-end.
 export interface RowTokenUsage {
   promptTokens: number | null;
   completionTokens: number | null;
+  // What OpenRouter charged for the row (usage.cost), web fees included. Kept
+  // on a failed row too when its call came back: that call was still billed.
+  costUsd?: number | null;
+  // With web search on: the searches that ran, and every search call as JSON
+  // [{query, ran}] (lib/responses-adapter.ts). null without web search.
+  webSearches?: number | null;
+  searchQueries?: string | null;
 }
+
+// The ai_results spend columns, in INSERT order: tokens, cost, searches, queries.
+export const usageColumns = (u?: RowTokenUsage) => [
+  u?.promptTokens ?? null, u?.completionTokens ?? null, u?.costUsd ?? null,
+  u?.webSearches ?? null, u?.searchQueries ?? null,
+];
 
 // Persist a successful row result: ai_results row + the output cell (and the
 // (Data) cell for web-search runs) in one .immediate() write transaction.
@@ -60,10 +73,10 @@ export function writeSuccess(
     // back; processRow's catch treats it as a benign drop, not a run failure.
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
-      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data, prompt_tokens, completion_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)
-    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson,
-      usage?.promptTokens ?? null, usage?.completionTokens ?? null);
+      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)
+    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson, ...usageColumns(usage));
 
     if (ctx.needsDataColumn) {
       db.prepare(`
@@ -97,15 +110,18 @@ export function writeSuccess(
 // the in-txn shouldStop is atomic vs the main-process status UPDATE; if it fires
 // we SKIP the writes (return from the txn fn — no throw, since the caller is
 // already in its catch and a sentinel would escape processRow).
-export function writeFailure(ctx: WriteCtx, errorMessage: string): void {
+// usage: set when the call came back and the answer was unusable (a refusal,
+// the token limit): what that billed call cost and searched.
+export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTokenUsage): void {
   const resultId = uuidv4();
   const dataColName = dataColumnName(ctx.columnName);
   db.transaction(() => {
     if (shouldStop(ctx.runId, ctx.myGeneration)) return;
     db.prepare(`
-      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message)
-      VALUES (?, ?, ?, ?, ?, '', 'failed', ?)
-    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage);
+      INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
+      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?)
+    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
     if (ctx.needsDataColumn) {
       db.prepare(`
         UPDATE rows SET data = json_set(data, ?, ?, ?, ?),

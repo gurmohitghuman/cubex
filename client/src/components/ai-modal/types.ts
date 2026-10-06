@@ -11,6 +11,11 @@ export interface AIPreview {
   // Actual tokens OpenRouter reported for this preview row (for run cost estimates).
   promptTokens?: number
   completionTokens?: number
+  // What OpenRouter charged for the row (web fees included) and, with web
+  // search, every search call and how many ran.
+  costUsd?: number
+  searchQueries?: Array<{ query: string; ran: boolean }>
+  webSearches?: number
 }
 
 // The modal's built-in concurrency default when a sheet has no saved preference.
@@ -49,6 +54,8 @@ export interface AIResult {
   output_value: string
   status: 'pending' | 'completed' | 'failed' | 'accepted' | 'rejected'
   error_message?: string
+  cost_usd?: number | null
+  web_searches?: number | null
   created_at: string
   updated_at: string
 }

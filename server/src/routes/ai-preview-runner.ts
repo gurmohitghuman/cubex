@@ -2,8 +2,10 @@ import type OpenAI from 'openai';
 import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { aiMaxTokens } from '../lib/constants';
-import { buildWebTools } from '../lib/ai-web-tools';
+import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig } from '../lib/ai-web-tools';
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
+import type { SearchQueryLog } from '../lib/responses-adapter';
+import { sendModelCall, type ModelCall } from '../services/ai-model-call';
 
 interface PreviewArgs {
   prompt: string
@@ -11,7 +13,8 @@ interface PreviewArgs {
   model: string
   safeTemperature: number
   maxChars?: number
-  useOpenRouterWebSearch: boolean
+  // The run's search settings as planned (web-search-plan.ts); null: no search.
+  search: SearchToolConfig | null
   useWebFetch: boolean
   // Structured (multi-column) preview: the model returns JSON, so the text must
   // NOT be markdown-cleaned — cleaning breaks ```json fences and strips * / # /
@@ -36,6 +39,9 @@ export interface PreviewRowResult {
   // What OpenRouter charged for this row, web fees included, when the response
   // reports it (usage.cost). Absent otherwise; callers fall back to tokens.
   costUsd?: number
+  // With web search: every search call and how many ran.
+  searchQueries?: SearchQueryLog[]
+  webSearches?: number
 }
 
 // Run a single row through OpenRouter for preview. Returns a result row including any
@@ -54,7 +60,7 @@ export const processOneRow = async (
     // A prose answer with web tools gets the runner's tools system message in
     // place of the user's (ai-row.ts); a structured (JSON) one keeps the user's
     // system prompt, as ai-row-multi.ts does.
-    const proseWithTools = (args.useOpenRouterWebSearch || args.useWebFetch) && !args.rawText;
+    const proseWithTools = (!!args.search || args.useWebFetch) && !args.rawText;
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     if (args.systemPrompt && !proseWithTools) {
@@ -68,24 +74,16 @@ export const processOneRow = async (
     }
     messages.push({ role: 'user', content: processedPrompt });
 
-    const baseArgs: any = {
-      model: args.model,
-      messages,
-      temperature: args.safeTemperature,
-      // Floored so reasoning models have room to think AND answer (the old 1000
-      // cap made them return null content); maxChars raises it up to a ceiling.
-      max_tokens: aiMaxTokens(args.maxChars),
-      stream: false,
-      // OpenRouter usage accounting: usage.cost is the row's real price, web
-      // search and fetch fees included (tokens alone miss them).
-      usage: { include: true },
+    // The production runners' exact call (services/ai-model-call.ts) and tools
+    // (lib/ai-web-tools.ts): a preview must cost and behave like the run it
+    // previews. Floored max_tokens so reasoning models have room to think AND
+    // answer; maxChars raises it up to a ceiling.
+    const input = {
+      model: args.model, messages, temperature: args.safeTemperature, maxTokens: aiMaxTokens(args.maxChars),
+      tools: buildWebTools(args.prompt, row.data, { search: args.search, fetch: args.useWebFetch }),
+      searchReplay: args.search ? searchReplayFor(args.search) : null,
+      maxToolCalls: toolCallBudget(args.search, args.useWebFetch),
     };
-    // The production runners' exact tools (lib/ai-web-tools.ts): a preview must
-    // cost and behave like the run it previews.
-    const tools = buildWebTools(args.prompt, row.data, {
-      search: args.useOpenRouterWebSearch, fetch: args.useWebFetch,
-    });
-    if (tools.length > 0) baseArgs.tools = tools;
 
     // 60s timeout per preview row. The OpenAI SDK's default would let a stuck request
     // hang for ~10min, which means an unreachable OpenRouter freezes the entire preview
@@ -100,9 +98,9 @@ export const processOneRow = async (
       if (externalSignal.aborted) previewController.abort();
       else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
     }
-    let completion;
+    let call: ModelCall;
     try {
-      completion = await openai.chat.completions.create(baseArgs, { signal: previewController.signal });
+      call = await sendModelCall(openai, input, previewController.signal);
     } catch (e: any) {
       if (e?.status === 401) throw new Error('Invalid OpenRouter API key. Please check your settings.');
       if (e?.status === 429) {
@@ -118,7 +116,7 @@ export const processOneRow = async (
           const t = setTimeout(() => { previewController.signal.removeEventListener('abort', onAbort); resolve(); }, 2000);
           previewController.signal.addEventListener('abort', onAbort, { once: true });
         });
-        completion = await openai.chat.completions.create(baseArgs, { signal: previewController.signal });
+        call = await sendModelCall(openai, input, previewController.signal);
       } else if (e?.name === 'AbortError' || e?.name === 'APIUserAbortError') {
         throw new Error('Preview timed out (60s). The model may be overloaded — try again.');
       } else throw e;
@@ -130,19 +128,19 @@ export const processOneRow = async (
     // Throws (→ caught below as a per-row error) if the model returned no usable
     // content — a reasoning model hitting the token limit, a refusal, etc. — so
     // the row shows an "Error" badge instead of a silent blank.
-    let result = extractCompletionText(completion, { cleanMarkdown: !args.rawText });
+    let result = extractCompletionText(call.completion, { cleanMarkdown: !args.rawText });
     // A structured reply is JSON: cutting it would break it, and the real run
     // never does (ai-row-multi.ts clamps each cell instead).
     if (!args.rawText && args.maxChars && result.length > args.maxChars) result = result.substring(0, args.maxChars);
-    const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: unknown } }).usage;
-    const cost = usage?.cost;
+    const { promptTokens, completionTokens, costUsd } = call.usage;
     return {
       rowIndex: row.rowIndex,
       value: result,
-      promptTokens: usage?.prompt_tokens,
-      completionTokens: usage?.completion_tokens,
-      citations: citationsFromCompletion(completion),
-      ...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}),
+      ...(promptTokens !== null ? { promptTokens } : {}),
+      ...(completionTokens !== null ? { completionTokens } : {}),
+      citations: citationsFromCompletion(call.completion),
+      ...(costUsd !== null ? { costUsd } : {}),
+      ...(call.search ? { searchQueries: call.search.queries, webSearches: call.search.searches } : {}),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';

@@ -16,5 +16,13 @@ export function aiRunConfigFromLatest(latest: AIRun, columnName: string) {
     useWebFetch: !!r.use_web_fetch,
     maxChars: r.max_chars,
     concurrency: r.concurrency,
+    // The run's search engine, mode and cap: a rerun or edit keeps what the
+    // run used (the engine it actually sent, e.g. Exa when Auto was switched
+    // so a cap would hold). Absent without web search or on older runs.
+    ...(r.use_openrouter_web_search && r.web_search_engine ? {
+      searchEngine: r.web_search_engine,
+      ...(r.web_search_mode ? { searchMode: r.web_search_mode } : {}),
+      ...(r.web_search_max_per_row ? { maxSearchesPerRow: r.web_search_max_per_row } : {}),
+    } : {}),
   }
 }

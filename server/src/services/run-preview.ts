@@ -17,6 +17,9 @@ import {
 } from '../lib/ai-multi-output';
 import { withSourceUrls } from '../lib/ai-citations';
 import { extractAllowedDomainsFromRow } from '../lib/prompt';
+import type { SearchOptions } from '../lib/web-search-options';
+import { webSearchSummary } from '../lib/web-search-plan';
+import { planIfSearching } from './web-search-catalog';
 
 export interface PreviewInput {
   sheetId: string;
@@ -29,6 +32,7 @@ export interface PreviewInput {
   targetRowIndexes?: number[];
   useOpenRouterWebSearch?: boolean;
   useWebFetch?: boolean;
+  search?: SearchOptions | null;
 }
 
 export type PreviewOutcome =
@@ -67,6 +71,9 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
   if (refsError) return { fail: 'bad_request', message: refsError };
   const model = resolveAiModel(input.model, input.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  // The engine, mode and cap the run would get (lib/web-search-plan.ts).
+  const planned = await planIfSearching(userId, model, !!input.useOpenRouterWebSearch, input.search);
+  if ('error' in planned) return { fail: 'bad_request', message: planned.error };
 
   const n = Math.max(1, Math.min(input.previewRows, PREVIEW_MAX_ROWS));
   const { count, sample } = sampleRows(input.sheetId, userId, n, input.targetRowIndexes);
@@ -87,7 +94,7 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
   const results = await Promise.all(sample.map(row => processOneRow(row, openai, {
     prompt: input.prompt, promptSuffix: instruction, systemPrompt: input.systemPrompt, model,
     safeTemperature: 0.7, maxChars: input.maxChars ?? undefined,
-    useOpenRouterWebSearch: web.search, useWebFetch: web.fetch,
+    search: planned.ok, useWebFetch: web.fetch,
     // Structured preview parses JSON below — keep the text verbatim, exactly as
     // the real structured run does (services/ai-row-multi.ts).
     rawText: !!specs,
@@ -95,18 +102,23 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
 
   // Shape each sample output; parse structured rows into their typed fields.
   // With a web tool, each row also lists the sources its "(Data)" cell would show.
+  // Each row also says what it cost and, with search, what it searched for.
   const preview = results.map((r, i) => {
-    if (r.error) return { row_index: r.rowIndex, error: r.error };
+    if (r.error) return { row_index: r.rowIndex, error: r.error, cost_usd: r.costUsd ?? null };
     const fetchHosts = web.fetch ? extractAllowedDomainsFromRow(input.prompt, sample[i].data) : [];
     const cited = withSourceUrls(r.citations ?? [], specs ? sourcesFromOutput(r.value) : [], fetchHosts);
-    const sources = web.search || web.fetch ? { sources: cited.map(c => c.url) } : {};
+    const extra = {
+      ...(web.search || web.fetch ? { sources: cited.map(c => c.url) } : {}),
+      ...(r.searchQueries ? { searches: r.webSearches ?? 0, search_queries: r.searchQueries } : {}),
+      cost_usd: r.costUsd ?? null,
+    };
     if (specs) {
       const parsed = parseMultiOutput(r.value, specs);
       return 'error' in parsed
-        ? { row_index: r.rowIndex, error: parsed.error }
-        : { row_index: r.rowIndex, fields: parsed.ok, ...sources };
+        ? { row_index: r.rowIndex, error: parsed.error, cost_usd: r.costUsd ?? null }
+        : { row_index: r.rowIndex, fields: parsed.ok, ...extra };
     }
-    return { row_index: r.rowIndex, output: r.value, ...sources };
+    return { row_index: r.rowIndex, output: r.value, ...extra };
   });
 
   // MEASURED cost: what OpenRouter reports it charged (web fees included) when
@@ -144,6 +156,7 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
       sampled_rows: sample.length,
       rows_in_full_run: count,
       model,
+      ...(planned.ok ? { web_search: webSearchSummary(planned.ok) } : {}),
       measured_cost_usd: measured,
       per_row_usd: perRow === null ? null : roundUsd(perRow),
       projected_full_run_usd: perRow === null ? null : roundUsd(perRow * count),

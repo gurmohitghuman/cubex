@@ -118,10 +118,13 @@ check('structured run without web tools: none', aiRunDataColumn(run({ output_col
 check('single run with search: derived from (Output)', aiRunDataColumn(run({ column_name: 'Pitch (Output)', use_openrouter_web_search: 1 })) === 'Pitch (Data)')
 check('single run without search: none', aiRunDataColumn(run({ column_name: 'Pitch (Output)' })) === null)
 
-const fees = webFeesPerRow({ search: true, fetch: true })
+const fees = webFeesPerRow({ searches: { low: 1, high: 2 }, pricePerSearch: 0.007, fetch: true })
 check('web fees: search + fetch add up', Math.abs(fees.low - 0.008) < 1e-9 && Math.abs(fees.high - 0.017) < 1e-9)
-check('no web tools: no fees, no extra tokens', webFeesPerRow({ search: false, fetch: false }).high === 0 && webInputTokensPerRow({ search: false, fetch: false }).high === 0)
-check('fetch adds input tokens', webInputTokensPerRow({ search: false, fetch: true }).low > 0)
+const noWeb = { searches: null, pricePerSearch: null, fetch: false }
+check('no web tools: no fees, no extra tokens', webFeesPerRow(noWeb).high === 0 && webInputTokensPerRow(noWeb).high === 0)
+check('fetch adds input tokens', webInputTokensPerRow({ ...noWeb, fetch: true }).low > 0)
+check('unknown search price: only the fetch fee counts',
+  Math.abs(webFeesPerRow({ searches: { low: 1, high: 3 }, pricePerSearch: null, fetch: true }).high - 0.003) < 1e-9)
 
 if (failures) { console.error(`\n${failures} FAILED`); process.exit(1) }
 console.log('\nall ai-multi-output checks passed')

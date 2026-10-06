@@ -23,6 +23,13 @@ export interface AIRunRow {
   output_columns: string | null;     // JSON [{columnName,type,description}] for structured runs; NULL = single-column (migration 042)
   status_column: string | null;      // per-row ✅/❌ column for structured runs; NULL for single-column
   data_column?: string | null;       // structured runs with a web tool: their "(Data)" citations column (migration 006)
+  // Web search settings (migration 008, lib/web-search-plan.ts): the engine sent,
+  // the engine that runs the searches, its mode, and the per-row cap. All NULL
+  // without web search, and engine NULL on runs from before they existed.
+  web_search_engine?: string | null;
+  web_search_engine_used?: string | null;
+  web_search_mode?: string | null;
+  web_search_max_per_row?: number | null;
   worker_generation: number;         // bumped on each resume; old workers exit on mismatch
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   created_at: string;
