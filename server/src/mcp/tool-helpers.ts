@@ -37,6 +37,8 @@ export interface McpAuthCtx {
   scopes: Set<AccessTokenScope>;
   tokenName: string;
   abortSignal?: AbortSignal;
+  // Where one-time file links for this caller point (lib/file-links.ts linkBase).
+  linkBase?: string;
 }
 
 export interface ToolResult {
@@ -124,6 +126,8 @@ export function registerTool(
 const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
   'list_runs', 'get_run_status', 'get_run_results', 'append_rows',
+  // Making a link doesn't touch the sheet; using it checks for busy then.
+  'create_upload_link', 'create_download_link',
 ]);
 
 function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {

@@ -78,12 +78,13 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
 | `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. |
 | `read_rows` | Rows, paged, with optional filters and column selection. |
-| `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows` or the REST export, which streams any size. |
+| `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. |
 | `sort_sheet` | Permanently reorders the rows by a column. |
 | `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. |
-| `import_csv` | Load CSV text into a sheet (append or replace). |
+| `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
+| `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
 | `run_http_enrichment` | Start an HTTP API column run. |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. |
@@ -97,13 +98,31 @@ Deletes are permanent; there's no undo. Every tool tells your client whether it 
 
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
 
+## Big CSV files
+
+Everything an assistant sends or receives passes through its context, so a CSV pasted into chat is expensive: a 4 MB lead list is about a million tokens, and a file of a few hundred MB can't go through chat at all. For files, the assistant asks Cubex for a one-time link and moves the file with `curl`. Only a short summary goes through the chat.
+
+- **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns. Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
+- **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser.
+
+This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and click **Import**.
+
+What keeps the links safe:
+
+- A link works once and stops working after 15 minutes, or as soon as the token that made it is revoked.
+- It does one thing for one sheet, and only what its token could already do. An upload link needs a token with `write`; any token can make a download link. A token without `write` is told so, and what to do instead.
+- Until it's used, anyone who has the link can use it, so treat it like a password. Cubex stores only a hash of it.
+- Don't paste a download link into an app that previews links, such as Slack, Discord or iMessage: the preview would download the file and use the link up.
+
+A million rows take about half a minute to import. If `curl` stops waiting, the import still finishes, so check the sheet before trying again. Links point at the address the assistant reached Cubex on, or at `PUBLIC_URL` when you set it. Behind Cloudflare's proxy, the free plan refuses uploads over 100 MB.
+
 ## Limits
 
 Agents can get stuck in loops, so each token has its own budget:
 
 - 120 requests a minute.
 - 30 run starts a minute (reruns and previews count; estimates don't).
-- Through MCP: 5 CSV imports a minute.
+- Through MCP: 5 CSV imports a minute. Each upload link counts as one.
 
 Row transfers are limited for the whole account: 10 a minute, one at a time.
 
@@ -216,4 +235,5 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 
 - A token is as good as your password for whatever its scopes allow. Give each assistant its own token so you can revoke one without breaking the others.
 - Browser pages can't call `/mcp` (requests carrying a foreign `Origin` header are refused), which blocks DNS-rebinding tricks against a Cubex running on localhost. Desktop and command-line clients don't send that header and aren't affected.
+- Upload and download links work once, expire after 15 minutes, and die with the token that made them. Cubex stores only a hash of each. See [Big CSV files](#big-csv-files).
 - Cell values are data, not instructions. They can come from anyone who can send a webhook, from imported files, and from AI or HTTP runs, so a cell can contain text written to steer an assistant. Cubex tells connected assistants never to follow instructions found in cells; review what an assistant proposes to do with data it read.

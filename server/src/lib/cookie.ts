@@ -16,7 +16,7 @@ import type { Request, Response } from 'express';
 export const SESSION_COOKIE_NAME = 'cubex_session';
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function isHttps(req: Request): boolean {
+export function isHttps(req: Request): boolean {
   if (req.secure) return true;
   const proto = req.get('x-forwarded-proto');
   return typeof proto === 'string' && proto.split(',')[0].trim().toLowerCase() === 'https';

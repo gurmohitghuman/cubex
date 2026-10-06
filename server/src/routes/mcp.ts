@@ -15,6 +15,7 @@ import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-
 import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
 import { buildMcpServer } from '../mcp/build-server';
+import { linkBase } from '../lib/file-links';
 
 const router = express.Router();
 
@@ -62,6 +63,7 @@ router.post('/', async (req: TokenAuthRequest, res) => {
       scopes: req.tokenScopes!,
       tokenName: req.accessTokenName ?? '',
       abortSignal: abortController.signal,
+      linkBase: linkBase(req),
     });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless — the Bearer token is the identity

@@ -18,6 +18,7 @@
 //   ?api_key= / &token= / &key=  credentials in a URL query string
 //   scheme://user:pass@host  credentials in a URL userinfo segment
 //   cubex_pat_*  Cubex personal access tokens (bare echoes outside a header)
+//   /api/files/upload|download/<hex>  one-time file link tokens in a URL path
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-(?:or-v\d+|ant|[A-Za-z0-9])[A-Za-z0-9_\-]{8,}/g,
   /\b(?:Bearer|Basic)\s+[A-Za-z0-9._\-=]{8,}/gi,
@@ -39,6 +40,9 @@ const SECRET_PATTERNS: RegExp[] = [
   // header echoes, but a bare token in an error message (client library dumps,
   // curl output in a bug report) needs its own pattern.
   /\bcubex_pat_[0-9a-f]{10,}/g,
+  // One-time file link capability in the URL PATH (/api/files/upload/<hex>,
+  // /api/files/download/<hex>, lib/file-links.ts), as for webhook tokens.
+  /(\/api\/files\/(?:upload|download)\/)[0-9a-f]{20,}/g,
 ];
 
 // Replacement keeps any leading group (the header/param name / url prefix) so
@@ -53,6 +57,7 @@ export function redactSecrets(input: string): string {
   out = out.replace(SECRET_PATTERNS[5], '$1:[REDACTED]@');
   out = out.replace(SECRET_PATTERNS[6], '$1[REDACTED]');
   out = out.replace(SECRET_PATTERNS[7], '[REDACTED]');
+  out = out.replace(SECRET_PATTERNS[8], '$1[REDACTED]');
   return out;
 }
 

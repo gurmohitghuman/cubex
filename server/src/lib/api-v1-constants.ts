@@ -57,3 +57,8 @@ export const MCP_RUN_STARTS_PER_MIN = 30;
 // is where clients start spilling; 40k stays under both. A whole sheet of any
 // size streams from GET /api/v1/sheets/:id/export.
 export const MCP_EXPORT_MAX_CHARS = 40_000;
+
+// One-time file links (lib/file-links.ts): how long one works, and its token's
+// shape (32 random bytes in hex), checked before any database lookup.
+export const FILE_LINK_TTL_MINUTES = 15;
+export const FILE_LINK_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
