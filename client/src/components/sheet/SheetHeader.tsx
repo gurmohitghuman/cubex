@@ -1,10 +1,11 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowLeft, Bot, Download, Globe, Import, Inbox, Loader2, Pause, Play, Square, Trash2,
+  ArrowLeft, Download, Import, Loader2, Pause, Play, Square, Trash2,
 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
+import { SheetEnrichActions } from './SheetEnrichActions'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -28,6 +29,7 @@ interface SheetHeaderProps {
   onImport: () => void
   onExport: () => void
   onAddAIColumn: () => void
+  onAddEnrichment: () => void
   onAddHTTPColumn: () => void
   onOpenWebhook: () => void
 }
@@ -51,6 +53,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onImport,
   onExport,
   onAddAIColumn,
+  onAddEnrichment,
   onAddHTTPColumn,
   onOpenWebhook,
 }) => {
@@ -146,39 +149,8 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 ONE primary (AI Column) reads as the point of the page. */}
             <div className="w-px h-5 bg-gray-200" aria-hidden="true" />
 
-            {/* Enrich group. AI Column is the SINGLE filled/primary action; HTTP
-                API + Webhook are secondary so the hierarchy has one clear hero
-                (was three near-identical black buttons). */}
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={onAddAIColumn}
-                className="btn-primary flex items-center space-x-1"
-                disabled={!hasRows}
-                title="AI Column: Preview, configure, and run AI processing with full control"
-              >
-                <Bot className="h-3 w-3" />
-                <span>AI Column</span>
-              </button>
-
-              <button
-                onClick={onAddHTTPColumn}
-                className="btn-secondary flex items-center space-x-1"
-                disabled={!hasRows}
-                title="HTTP API: Call any REST API per row and map response fields into new columns"
-              >
-                <Globe className="h-3 w-3" />
-                <span>HTTP API</span>
-              </button>
-
-              <button
-                onClick={onOpenWebhook}
-                className="btn-secondary flex items-center space-x-1"
-                title="Webhook: receive external events as new rows in this sheet"
-              >
-                <Inbox className="h-3 w-3" />
-                <span>Webhook</span>
-              </button>
-            </div>
+            <SheetEnrichActions hasRows={hasRows} onAddAIColumn={onAddAIColumn} onAddEnrichment={onAddEnrichment}
+              onAddHTTPColumn={onAddHTTPColumn} onOpenWebhook={onOpenWebhook} />
           </div>
         </div>
       </div>

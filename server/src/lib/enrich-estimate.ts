@@ -5,6 +5,7 @@
 // default per-row cap must cover every enabled provider that bills a miss, plus
 // the dearest one that could answer, or the waterfall quietly stops early.
 import { ENRICH_MAX_DEFAULT_ROW_CAP_USD } from './constants';
+import { providerCanAnswer } from './enrich-accepts';
 import type { EnrichTool, ToolProvider } from './enrich-tool';
 
 const EPS = 1e-9;
@@ -18,9 +19,27 @@ export function billsMisses(p: ToolProvider): boolean {
   return p.usdPerHit === null || p.usdPerHit > p.usd + EPS;
 }
 
-export function enabledProviders(tool: EnrichTool, skip: string[] = []): ToolProvider[] {
-  const skipped = new Set(skip.map(s => s.toLowerCase()));
-  return (tool.providers ?? []).filter(p => !p.exhausted && !skipped.has(p.provider.toLowerCase()));
+// What the user picked for a waterfall: providers switched off, the inputs
+// they mapped (null: don't filter by inputs), their order, and "stop after the
+// first provider" (X-Treg-Route-Waterfall: 0). limit is a page size.
+export interface ProviderPick {
+  skip?: string[]; given?: string[] | null; order?: string[]; stopAtFirst?: boolean; limit?: number | null;
+}
+
+// The providers a row can reach: switched on, usable in a sheet, with an
+// identity the mapped inputs cover. With stop-at-first, only the first of them
+// in the user's order (catalog order for the rest).
+export function enabledProviders(tool: EnrichTool, pick: ProviderPick = {}): ToolProvider[] {
+  const skipped = new Set((pick.skip ?? []).map(s => s.toLowerCase()));
+  const sent = pick.given ? new Set(pick.given) : null;
+  const known = new Set((tool.inputs ?? []).map(i => i.name));
+  const usable = (tool.providers ?? []).filter(p => !p.exhausted && !p.unavailable
+    && !skipped.has(p.provider.toLowerCase())
+    && (!sent || providerCanAnswer(p.accepts, sent, tool.derive, known)));
+  if (!pick.stopAtFirst || usable.length === 0) return usable;
+  const order = (pick.order ?? []).map(s => s.toLowerCase());
+  const rank = (p: ToolProvider) => { const i = order.indexOf(p.provider.toLowerCase()); return i === -1 ? order.length : i; };
+  return [[...usable].sort((a, b) => rank(a) - rank(b))[0]];
 }
 
 // One call to a single tool: its price, times the page size for per-result
@@ -31,11 +50,22 @@ function singleCallCost(tool: EnrichTool, limit: number | null): number {
   return tool.price.type === 'per_result' ? unit * Math.min(Math.max(limit ?? 20, 1), 100) : unit;
 }
 
+// A waterfall whose plan is known but leaves no provider a row can reach
+// (inputs, switches): nothing would be called, so nothing is priced.
+const noneOf = (tool: EnrichTool, enabled: ToolProvider[]) =>
+  tool.kind === 'waterfall' && tool.providers !== null && enabled.length === 0;
+export function noProviderCanRun(tool: EnrichTool, opts: ProviderPick = {}): boolean {
+  return noneOf(tool, enabledProviders(tool, opts));
+}
+
 // Waterfall: every provider that bills a miss, plus the dearest one that only
 // charges on a hit (a miss-billing provider is already in the sum), capped at
 // treg's own $1 waterfall default. A single tool's default is simply its price.
-export function defaultMaxCostPerRow(tool: EnrichTool, opts: { skip?: string[]; limit?: number | null } = {}): number {
-  const enabled = enabledProviders(tool, opts.skip);
+// A waterfall with no provider to run costs nothing; one whose plan the catalog
+// didn't list falls back to its list price.
+export function defaultMaxCostPerRow(tool: EnrichTool, opts: ProviderPick = {}): number {
+  const enabled = enabledProviders(tool, opts);
+  if (noneOf(tool, enabled)) return 0;
   if (tool.kind === 'waterfall' && enabled.length) {
     const misses = enabled.filter(billsMisses).reduce((s, p) => s + (p.usd ?? 0), 0);
     const dearestOnHit = enabled.filter(p => !billsMisses(p)).reduce((m, p) => Math.max(m, p.usd ?? 0), 0);
@@ -54,8 +84,9 @@ export interface Estimate { rows: number; lowUsd: number; highUsd: number; perRo
 // Low: every row found by the cheapest enabled provider. High: every row
 // spends its whole cap. Rows nobody finds can be free with per-success
 // providers, so the real figure is usually near the low end.
-export function estimateRun(tool: EnrichTool, rows: number, maxCostPerRow: number, opts: { skip?: string[]; limit?: number | null } = {}): Estimate {
-  const enabled = enabledProviders(tool, opts.skip);
+export function estimateRun(tool: EnrichTool, rows: number, maxCostPerRow: number, opts: ProviderPick = {}): Estimate {
+  const enabled = enabledProviders(tool, opts);
+  if (noneOf(tool, enabled)) return { rows, lowUsd: 0, highUsd: 0, perRowLowUsd: 0, perRowHighUsd: 0 };
   const cheapest = tool.kind === 'waterfall' && enabled.length
     ? enabled.reduce((m, p) => Math.min(m, p.usd ?? 0), Infinity)
     : singleCallCost(tool, opts.limit ?? null);

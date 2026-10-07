@@ -296,6 +296,7 @@ export const SheetPage: React.FC = () => {
         onDeleteSelectedRows={() => modals.setConfirmTopbarDeleteOpen(true)}
         onImport={() => modals.setShowImportModal(true)} onExport={exporter.handleExportCSV}
         onAddAIColumn={() => modals.setShowAddColumnModal(true)}
+        onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
       />

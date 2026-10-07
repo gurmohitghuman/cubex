@@ -5,6 +5,7 @@ export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAddColumnModal, setShowAddColumnModal] = useState(false)
   const [showHTTPAPIColumnModal, setShowHTTPAPIColumnModal] = useState(false)
+  const [showEnrichmentDrawer, setShowEnrichmentDrawer] = useState(false)
   const [showNewColumnModal, setShowNewColumnModal] = useState(false)
   const [showWebhookDrawer, setShowWebhookDrawer] = useState(false)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
@@ -15,6 +16,7 @@ export const useSheetModals = () => {
     showImportModal, setShowImportModal,
     showAddColumnModal, setShowAddColumnModal,
     showHTTPAPIColumnModal, setShowHTTPAPIColumnModal,
+    showEnrichmentDrawer, setShowEnrichmentDrawer,
     showNewColumnModal, setShowNewColumnModal,
     showWebhookDrawer, setShowWebhookDrawer,
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,

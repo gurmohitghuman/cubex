@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { normalizeColumnName } from './prompt';
 import { cleanDomain, DOMAIN_INPUT_NAMES } from './enrich-input-clean';
+import { setAvailable } from './enrich-accepts';
 import { TREG_TOOL_ID_PATTERN } from './constants';
 import type { ToolInput } from './enrich-tool-io';
 
@@ -99,20 +100,12 @@ function checkValue(input: ToolInput, value: unknown): string | null {
   return null;
 }
 
-// A key is there when it was sent, or when treg can derive it from keys that
-// were (contract derive: full_name from first_name + last_name, and so on).
-function available(tool: RequestTool, key: string, sent: Set<string>): boolean {
-  if (sent.has(key)) return true;
-  const expr = tool.derive?.[key];
-  if (!expr) return false;
-  const refs = (expr.match(/[a-z_][a-z0-9_]*/g) ?? []).filter(r => r !== key && tool.inputs.some(i => i.name === r));
-  return refs.length > 0 && refs.every(r => sent.has(r));
-}
-
-// Waterfalls need one complete identity set; single tools their required inputs.
+// Waterfalls need one complete identity set (counting what treg derives, such
+// as full_name from first_name + last_name); single tools their required inputs.
 export function missingInputs(tool: RequestTool, sent: Set<string>): string | null {
   if (tool.identitySets) {
-    const ok = tool.identitySets.some(set => set.every(k => available(tool, k, sent)));
+    const known = new Set(tool.inputs.map(i => i.name));
+    const ok = tool.identitySets.some(set => setAvailable(set, sent, tool.derive, known));
     if (!ok) return tool.identitySets.map(s => s.join(' + ')).join(', or ');
   }
   const required = tool.inputs.filter(i => i.required && !sent.has(i.name)).map(i => i.name);

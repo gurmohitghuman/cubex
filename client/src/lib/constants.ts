@@ -44,3 +44,8 @@ export const MAX_PASSWORD_LENGTH = 256;
 // "busy" 409. Autosave keeps the edits queued and tries again at this interval
 // until the change finishes (server lib/sheet-busy.ts).
 export const SHEET_BUSY_RETRY_MS = 2000;
+
+// Enrichments. Mirrors server/src/lib/constants-enrich.ts: the rows "Run on 5
+// rows" takes, and the highest per-row limit an estimate or run accepts.
+export const ENRICH_TEST_ROWS = 5;
+export const ENRICH_MAX_ROW_CAP_USD = 1000;

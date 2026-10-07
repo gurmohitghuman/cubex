@@ -12,13 +12,15 @@ export interface ToolPrice { type: string | null; unit: string | null; usd: numb
 export interface ToolProvider {
   endpointId: string; provider: string; name?: string; usd: number | null; hitRate: number | null;
   usdPerHit: number | null; works: number | null; accepts: string[][]; exhausted: boolean;
+  // A child a sheet run can't use: it answers later (async) or treg retired it.
+  unavailable: 'async' | 'retired' | null;
 }
 export interface ToolObserved { okRate: number | null; hitRate: number | null; samples: number | null; hitSamples: number | null }
 
 export interface ToolSummary {
   id: string; name: string; summary: string; provider: string; providerName?: string;
-  kind: 'waterfall' | 'single'; capability: string | null; platformLabel: string | null;
-  price: ToolPrice; observed: ToolObserved; childCount: number | null; needsOwnKey: boolean;
+  kind: 'waterfall' | 'single'; capability: string | null; capabilityDescription: string | null;
+  platformLabel: string | null; price: ToolPrice; observed: ToolObserved; childCount: number | null; needsOwnKey: boolean;
 }
 
 export interface EnrichTool extends ToolSummary {
@@ -70,29 +72,49 @@ function needsOwnKey(ep: Json, price: ToolPrice): boolean {
   return price.usd === null && price.type !== 'free';
 }
 
+// childCount is the waterfall's own provider list. (A search row's
+// children_hidden counts other search rows treg cut from the page, not more
+// providers.)
 export function summarizeTool(ep: Json): ToolSummary | null {
   const id = str(ep.id);
   if (!id) return null;
   const price = priceOf(ep);
-  const children = Array.isArray(ep.routed_children) ? ep.routed_children.length : 0;
-  const hidden = numOrNull(ep.children_hidden) ?? 0;
   const waterfall = str(ep.kind) === 'routed';
+  const providerName = str(ep.provider_display);
   return {
     id, name: str(ep.name) ?? id, summary: str(ep.summary) ?? '', provider: str(ep.provider) ?? id.split('.')[0],
-    kind: waterfall ? 'waterfall' : 'single', capability: str(ep.capability), platformLabel: str(ep.platform_label),
-    price, observed: observedOf(ep), childCount: waterfall ? children + hidden : null, needsOwnKey: needsOwnKey(ep, price),
+    ...(providerName ? { providerName } : {}),
+    kind: waterfall ? 'waterfall' : 'single', capability: str(ep.capability),
+    capabilityDescription: str(ep.capability_description), platformLabel: str(ep.platform_label),
+    price, observed: observedOf(ep),
+    childCount: waterfall ? (Array.isArray(ep.routed_children) ? ep.routed_children.length : 0) : null,
+    needsOwnKey: needsOwnKey(ep, price),
   };
 }
 
-function providersOf(routing: Json): ToolProvider[] | null {
+// The detail's siblings (the same job's endpoints) say which children answer
+// later or are retired; a run skips those.
+function unavailableChildren(siblings: unknown): Map<string, 'async' | 'retired'> {
+  const out = new Map<string, 'async' | 'retired'>();
+  if (!Array.isArray(siblings)) return out;
+  for (const s of siblings.filter(isObj)) {
+    const id = str(s.id);
+    if (id && s.async) out.set(id, 'async');
+    else if (id && s.retired) out.set(id, 'retired');
+  }
+  return out;
+}
+
+function providersOf(routing: Json, siblings: unknown): ToolProvider[] | null {
   if (!Array.isArray(routing.plan)) return null;
+  const off = unavailableChildren(siblings);
   return routing.plan.filter(isObj).map(p => {
     const endpointId = str(p.endpoint_id) ?? '';
     return {
       endpointId, provider: endpointId.split('.')[0], usd: numOrNull(p.usd), hitRate: numOrNull(p.hit_rate),
       usdPerHit: numOrNull(p.usd_per_hit), works: numOrNull(p.works),
       accepts: Array.isArray(p.accepts) ? p.accepts.filter(Array.isArray).map(a => a.filter((k: unknown): k is string => typeof k === 'string')) : [],
-      exhausted: p.exhausted === true,
+      exhausted: p.exhausted === true, unavailable: off.get(endpointId) ?? null,
     };
   }).filter(p => p.endpointId);
 }
@@ -114,7 +136,7 @@ export function normalizeTool(detail: Json): EnrichTool | null {
     derive: routing ? deriveOf(routing.contract) : null,
     outputs: io.outputs,
     list: io.list,
-    providers: routing ? providersOf(routing) : null,
+    providers: routing ? providersOf(routing, detail.siblings) : null,
     strictQuery: ep.strict_query === true,
     bodyType: str(input.bodyType),
     queryArrayEncoding: str(input.queryArrayEncoding),

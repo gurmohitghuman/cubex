@@ -16,7 +16,9 @@ export interface ToolInput {
   filter?: boolean;      // a waterfall filter (country, limit…) rather than an identity key
 }
 
-export interface ToolOutput { field: string; path: string; type?: string; note?: string }
+// required: the waterfall's contract always fills it on a hit (email for an
+// email find), so setup selects it by default.
+export interface ToolOutput { field: string; path: string; type?: string; note?: string; required?: boolean }
 export interface ToolList { field: string; path: string }
 
 type Json = Record<string, unknown>;
@@ -89,7 +91,10 @@ export function contractOutputs(contract: unknown): { outputs: ToolOutput[]; lis
     const path = `$.output${pathSegment(field)}`;
     const type = typeof d.type === 'string' ? d.type : undefined;
     if (type === 'list' && !list) { list = { field, path }; continue; }
-    outputs.push({ field, path, ...(type ? { type } : {}), ...(typeof d.note === 'string' ? { note: d.note } : {}) });
+    outputs.push({
+      field, path, ...(type ? { type } : {}), ...(typeof d.note === 'string' ? { note: d.note } : {}),
+      ...(d.required === true ? { required: true } : {}),
+    });
   }
   return { outputs, list };
 }
