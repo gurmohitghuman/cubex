@@ -1,0 +1,693 @@
+{
+ "query": "search people by job title and company",
+ "count": 25,
+ "total": 53,
+ "results": [
+  {
+   "id": "companyenrich.positions.autocomplete",
+   "provider": "companyenrich",
+   "provider_display": "CompanyEnrich",
+   "name": "Autocomplete job titles",
+   "summary": "Lookup positions",
+   "method": "GET",
+   "path": "/positions/autocomplete",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "people",
+   "call_template": "treg call companyenrich.positions.autocomplete --query 'query=chief exec'",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "note": "documented FREE and confirmed live 2026-08-20",
+    "usd": 0.0
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-08-20",
+   "docs_url": "https://docs.companyenrich.com/reference/get_positions-autocomplete",
+   "has_example": true,
+   "input": {
+    "queryParams": {
+     "query": {
+      "type": "string",
+      "required": true,
+      "note": "partial job title",
+      "example": "chief exec"
+     }
+    },
+    "note": "FREE, and disproportionately useful because people search has no free count route: this shows you the real title strings in the index ('Chief Executive Officer & Co-Founder', 'Interim Chief Executive Officer') before you spend 2 credits per row on a `positionQuery` that may match nothing."
+   },
+   "test_request": {
+    "queryParams": {
+     "query": "chief exec"
+    }
+   },
+   "capability": "people.positions.autocomplete",
+   "capability_description": "Autocomplete job titles for people search",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 40.727,
+   "observed": {
+    "samples": 2486,
+    "decided": 2484,
+    "ok_rate": 1.0,
+    "p50_ms": 256,
+    "p95_ms": 457,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "treg.people.enrich",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "people.enrich — routed: best of 24 providers, own keys first",
+   "summary": "Enrich a person from an email, a LinkedIn URL or a name + company domain — treg picks the provider and names the one that served",
+   "method": "POST",
+   "path": "/people.enrich",
+   "scope": "",
+   "tier": "core",
+   "kind": "routed",
+   "domain": "contacts",
+   "call_template": "treg call treg.people.enrich --method POST --data '{\"email\":\"…\"}'",
+   "cost": {
+    "type": "per_success",
+    "value": 0.0026335,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "source": "inferred",
+    "confidence": "documented",
+    "checked": null,
+    "varies": true,
+    "note": "NOT free: misses are billed too. the children's range $0.0026335–$0.38 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (2 of 24 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+    "usd": 0.0026335
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": {
+    "status": 200,
+    "means": "output.full_name == null"
+   },
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "docs_url": "",
+   "has_example": false,
+   "input": {
+    "bodyType": "json",
+    "body": {
+     "email": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of email)"
+     },
+     "linkedin_url": {
+      "type": "url",
+      "required": false,
+      "note": "identity key (part of linkedin_url)"
+     },
+     "linkedin_handle": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of linkedin_handle)"
+     },
+     "domain": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
+     },
+     "full_name": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of domain+full_name)"
+     },
+     "first_name": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of domain+first_name+last_name)"
+     },
+     "last_name": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of domain+first_name+last_name)"
+     }
+    },
+    "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({email} | {linkedin_url} | {linkedin_handle} | {domain, full_name} | {domain, first_name, last_name}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+   },
+   "test_request": {
+    "body": {
+     "email": "…"
+    }
+   },
+   "routed_children": [
+    "aiark.people.enrich",
+    "apollo.people.enrich",
+    "aviato.people.enrich",
+    "companyenrich.people.lookup",
+    "datagma.people.enrich",
+    "dropleads.people.enrich",
+    "enrichlayer.person.profile",
+    "fiber-ai.people.enrich",
+    "harvestapi.linkedin.user.profile",
+    "hunter.x.combined-find",
+    "hunter.people.enrich",
+    "icypeas.people.enrich",
+    "leadmagic.people.enrich",
+    "lusha.people.enrich",
+    "moltsets.people.enrich.name",
+    "moltsets.people.enrich.email",
+    "moltsets.people.enrich.linkedin",
+    "oceanio.people.enrich",
+    "pdl.people.enrich",
+    "prospeo.people.enrich",
+    "quickenrich.people.enrich",
+    "tomba.people.enrich",
+    "tomba.people.enrich.profile",
+    "tomba.people.enrich.combined"
+   ],
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 38.49,
+   "observed": {
+    "samples": 182161,
+    "decided": 178554,
+    "ok_rate": 0.5012,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "children_hidden": 14
+  },
+  {
+   "id": "moltsets.people.enrich.name",
+   "provider": "moltsets",
+   "provider_display": "MoltSets",
+   "name": "Enrich person by name",
+   "summary": "Find a business profile from a name and company",
+   "method": "POST",
+   "path": "/search_business_profile_by_name",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "contacts",
+   "call_template": "treg call moltsets.people.enrich.name --method POST --data '{\"name\":\"Treg Nonexistent Person 20260916\",\"company_domain\":\"example.invalid\"}'",
+   "cost": {
+    "type": "per_success",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "record",
+    "source": "observed",
+    "source_url": "https://docs.moltsets.com/",
+    "checked": "2026-09-16",
+    "confidence": "verified",
+    "note": "One ordinary record on status ok; status not_found and errors are free.",
+    "usd": 0.01
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-16",
+   "docs_url": "https://docs.moltsets.com/api-reference/search-business-profile-by-name",
+   "has_example": true,
+   "input": {
+    "bodyType": "json",
+    "body": {
+     "name": {
+      "type": "string"
+     },
+     "first_name": {
+      "type": "string"
+     },
+     "last_name": {
+      "type": "string"
+     },
+     "company": {
+      "type": "string"
+     },
+     "company_domain": {
+      "type": "string"
+     }
+    }
+   },
+   "test_request": {
+    "body": {
+     "name": "Treg Nonexistent Person 20260916",
+     "company_domain": "example.invalid"
+    }
+   },
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 39.9401,
+   "observed": {
+    "samples": 16143,
+    "decided": 15141,
+    "ok_rate": 0.9989,
+    "p50_ms": 37,
+    "p95_ms": 261,
+    "last_ok_days": 0,
+    "hit_rate": 0.146,
+    "hit_samples": 14927
+   }
+  },
+  {
+   "id": "getleadsio.people.enrich.from_person",
+   "provider": "getleadsio",
+   "provider_display": "GetLeads.io",
+   "name": "Enrich one person from name and company",
+   "summary": "Enrich one person from a name plus a company name or email domain.",
+   "method": "POST",
+   "path": "/api/v1/enrich/from-person",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "contacts",
+   "call_template": "treg call getleadsio.people.enrich.from_person --method POST --data '{\"items\":[{\"first_name\":\"Treg\",\"last_name\":\"Nonexistent\",\"email_domain\":\"treg-nonexistent-20260916.invalid\"}]}'",
+   "cost": {
+    "type": "per_success",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "item",
+    "source": "observed",
+    "source_url": "https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person",
+    "checked": "2026-09-16",
+    "confidence": "verified",
+    "note": "One credit for each result whose success field is true. Live balance moved by one for one such result. A reserved .invalid email also returned success=true and was billed; treat that as an upstream data-quality observation, not a validity guarantee.",
+    "usd": 0.0,
+    "trial_calls_per_team_day": 5
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-16",
+   "docs_url": "https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person",
+   "has_example": true,
+   "input": {
+    "body": {
+     "items": {
+      "type": "array[object]",
+      "required": true,
+      "min": 1,
+      "max": 1,
+      "example": [
+       {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "email_domain": "example.com"
+       }
+      ],
+      "note": "Each item needs first_name and last_name plus company_name or email_domain."
+     }
+    },
+    "note": "Exactly one item is accepted. One credit is charged when that result has success=true."
+   },
+   "strict_body": true,
+   "test_request": {
+    "body": {
+     "items": [
+      {
+       "first_name": "Treg",
+       "last_name": "Nonexistent",
+       "email_domain": "treg-nonexistent-20260916.invalid"
+      }
+     ]
+    }
+   },
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 38.49,
+   "observed": {
+    "samples": 375,
+    "decided": 323,
+    "ok_rate": 1.0,
+    "p50_ms": 252,
+    "p95_ms": 1059,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "tomba.people.enrich",
+   "provider": "tomba",
+   "provider_display": "Tomba",
+   "name": "Enrich a person by email — name, role, social profiles",
+   "summary": "Email address → full person record: name, company, position, department, seniority, country, gender, social profiles and the pages the address was found on",
+   "method": "GET",
+   "path": "/v1/enrich",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "people",
+   "call_template": "treg call tomba.people.enrich --query email=patrick@stripe.com",
+   "cost": {
+    "type": "per_success",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "source": "observed",
+    "source_url": "https://tomba.io/pricing",
+    "checked": "2026-08-20",
+    "confidence": "verified",
+    "note": "rate card: 1 credit per email enriched; /v1/logs reported cost=1 (route enrich-finder)",
+    "usd": 0.0089
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-08-20",
+   "docs_url": "https://docs.tomba.io/api/enrichment",
+   "has_example": true,
+   "input": {
+    "queryParams": {
+     "email": {
+      "type": "string",
+      "required": true,
+      "note": "the work email to enrich",
+      "example": "patrick@stripe.com"
+     }
+    }
+   },
+   "test_request": {
+    "queryParams": {
+     "email": "patrick@stripe.com"
+    }
+   },
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 38.49,
+   "observed": {
+    "samples": 39564,
+    "decided": 31534,
+    "ok_rate": 1.0,
+    "p50_ms": 195,
+    "p95_ms": 256,
+    "last_ok_days": 0,
+    "hit_rate": 0.0983,
+    "hit_samples": 31534
+   }
+  },
+  {
+   "id": "moltsets.people.enrich.linkedin",
+   "provider": "moltsets",
+   "provider_display": "MoltSets",
+   "name": "Enrich person from profile",
+   "summary": "Resolve a person and company from a professional profile",
+   "method": "POST",
+   "path": "/reverse_linkedin_lookup",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "contacts",
+   "call_template": "treg call moltsets.people.enrich.linkedin --method POST --data '{\"linkedin_url\":\"https://linkedin.com/in/treg-nonexistent-20260916\"}'",
+   "cost": {
+    "type": "per_success",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "record",
+    "source": "observed",
+    "source_url": "https://docs.moltsets.com/",
+    "checked": "2026-09-16",
+    "confidence": "verified",
+    "note": "One ordinary record on status ok; status not_found and errors are free.",
+    "usd": 0.01
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-16",
+   "docs_url": "https://docs.moltsets.com/api-reference/reverse-linkedin-lookup",
+   "has_example": true,
+   "input": {
+    "bodyType": "json",
+    "body": {
+     "linkedin_url": {
+      "type": "string",
+      "required": true
+     }
+    }
+   },
+   "test_request": {
+    "body": {
+     "linkedin_url": "https://linkedin.com/in/treg-nonexistent-20260916"
+    }
+   },
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 38.49,
+   "observed": {
+    "samples": 12381,
+    "decided": 10758,
+    "ok_rate": 1.0,
+    "p50_ms": 69,
+    "p95_ms": 4900,
+    "last_ok_days": 0,
+    "hit_rate": 0.8243,
+    "hit_samples": 10758
+   }
+  },
+  {
+   "id": "tomba.people.enrich.combined",
+   "provider": "tomba",
+   "provider_display": "Tomba",
+   "name": "Enrich a person and their company by email, in one call",
+   "summary": "Email address → both the person record and the full company record, in one response",
+   "method": "GET",
+   "path": "/v1/combined/find",
+   "scope": "any_account",
+   "tier": "core",
+   "kind": "data",
+   "domain": "people",
+   "call_template": "treg call tomba.people.enrich.combined --query email=patrick@stripe.com",
+   "cost": {
+    "type": "per_success",
+    "value": 2,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "source": "docs",
+    "source_url": "https://tomba.io/pricing",
+    "checked": "2026-08-20",
+    "confidence": "documented",
+    "note": "priced as the person (1) + company (1) enrichments it performs. The live call logged cost=0 under route 'enrich-combined', but only because the same person and company had been enriched minutes earlier and duplicates are free within the month — so the observed 0 is NOT the first-call price",
+    "usd": 0.0178
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": null,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-08-20",
+   "docs_url": "https://docs.tomba.io/migration/clearbit/combined-api",
+   "has_example": true,
+   "input": {
+    "queryParams": {
+     "email": {
+      "type": "string",
+      "required": true,
+      "note": "the work email to enrich",
+      "example": "patrick@stripe.com"
+     }
+    }
+   },
+   "test_request": {
+    "queryParams": {
+     "email": "patrick@stripe.com"
+    }
+   },
+   "capability": "people.enrich",
+   "capability_description": "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 38.49,
+   "observed": {
+    "samples": 14193,
+    "decided": 9198,
+    "ok_rate": 0.9999,
+    "p50_ms": 189,
+    "p95_ms": 243,
+    "last_ok_days": 0,
+    "hit_rate": 0.005,
+    "hit_samples": 9197
+   }
+  },
+  {
+   "id": "treg.people.search",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "people.search — routed: best of 24 providers, own keys first",
+   "summary": "Find people by a free-text description, or by company domain / title / country — provider-native rows in `people`",
+   "method": "POST",
+   "path": "/people.search",
+   "scope": "",
+   "tier": "core",
+   "kind": "routed",
+   "domain": "contacts",
+   "call_template": "treg call treg.people.search --method POST --data '{\"company_domain\":\"…\"}'",
+   "cost": {
+    "type": "per_success",
+    "value": 0.0,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "source": "inferred",
+    "confidence": "documented",
+    "checked": null,
+    "varies": true,
+    "note": "NOT free: misses are billed too. the children's range $0–$0.3 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (15 of 24 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+    "usd": 0.0
+   },
+   "async": null,
+   "platform_eligible": true,
+   "platform_blocked": null,
+   "miss": {
+    "status": 200,
+    "means": "output.people == []"
+   },
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "docs_url": "",
+   "has_example": false,
+   "input": {
+    "bodyType": "json",
+    "body": {
+     "q": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of q)"
+     },
+     "company_domain": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of company_domain, company_domain+title)"
+     },
+     "title": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of company_domain+title, title)"
+     },
+     "full_name": {
+      "type": "str",
+      "required": false,
+      "note": "identity key (part of full_name)"
+     },
+     "country": {
+      "type": "str",
+      "required": false,
+      "note": "filter — default None; ISO country code, where the provider supports it"
+     },
+     "location": {
+      "type": "str",
+      "required": false,
+      "note": "filter — default None; free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"
+     },
+     "limit": {
+      "type": "int",
+      "required": false,
+      "note": "filter — default 10; rows to return — THE price dial: most providers bill per row"
+     },
+     "keywords": {
+      "type": "list",
+      "required": false,
+      "note": "filter — default None; skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"
+     }
+    },
+    "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({q} | {company_domain} | {company_domain, title} | {title} | {full_name}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+   },
+   "test_request": {
+    "body": {
+     "company_domain": "…"
+    }
+   },
+   "routed_children": [
+    "aiark.people.search",
+    "aviato.people.search",
+    "aviato.people.search.simple",
+    "companyenrich.people.search",
+    "crustdata.people.search",
+    "dropleads.people.search",
+    "enrichlayer.people.search",
+    "exa.people.search",
+    "fiber-ai.people.search",
+    "findymail.search.domain",
+    "findymail.search.employees",
+    "harvestapi.linkedin.leads.search",
+    "hunter.companies.emails",
+    "icypeas.people.search",
+    "leadmagic.x.role-finder",
+    "leadmagic.x.employee-finder",
+    "leadmagic.people.search",
+    "leadsforge.people.search",
+    "lusha.people.search",
+    "oceanio.people.search",
+    "prospeo.people.search",
+    "quickenrich.people.search.domain",
+    "quickenrich.people.search",
+    "wiza.people.search"
+   ],
+   "capability": "people.search",
+   "capability_description": "Find people by role, company or location — lead lists and prospects (sales leads)",
+   "platform": "people",
+   "platform_label": "People & contact data",
+   "score": 32.2359,
+   "observed": {
+    "samples": 677801,
+    "decided": 675653,
+    "ok_rate": 0.8464,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "children_hidden": 7
+  }
+ ]
+}

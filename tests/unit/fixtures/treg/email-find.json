@@ -1,0 +1,340 @@
+{
+ "endpoint": {
+  "id": "treg.people.email.find",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "people.email.find — routed: best of 23 providers, own keys first",
+  "summary": "Find someone's work email — treg picks the provider (own keys first, then cheapest per hit) and tells you which one served",
+  "method": "POST",
+  "path": "/people.email.find",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "contacts",
+  "call_template": "treg call treg.people.email.find --method POST --data '{\"linkedin_url\":\"https://www.linkedin.com/in/patrickcollison\"}'",
+  "cost": {
+   "type": "per_success",
+   "value": 0.004834,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0.004834–$0.15 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (1 of 23 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "usd": 0.004834
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.email == null"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "domain": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
+    },
+    "full_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name)"
+    },
+    "first_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    },
+    "last_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    },
+    "linkedin_url": {
+     "type": "url",
+     "required": false,
+     "note": "identity key (part of linkedin_url)"
+    },
+    "linkedin_handle": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of linkedin_handle)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({domain, full_name} | {domain, first_name, last_name} | {linkedin_url} | {linkedin_handle}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  },
+  "test_request": {
+   "body": {
+    "linkedin_url": "https://www.linkedin.com/in/patrickcollison"
+   }
+  },
+  "routed_children": [
+   "aiark.people.email.find",
+   "aviato.people.email.find",
+   "contactout.people.contact.work",
+   "datagma.people.email.find",
+   "dropleads.people.email.find",
+   "fiber-ai.people.contacts.reveal",
+   "fiber-ai.people.contacts.turbo",
+   "findymail.search.name",
+   "findymail.search.business-profile",
+   "harvestapi.linkedin.user.profile.email",
+   "hunter.people.email.find",
+   "leadmagic.x.personal-email-finder",
+   "leadmagic.people.email.find",
+   "leadsforge.people.email.find",
+   "limadata.people.email.find.name",
+   "limadata.people.email.find.linkedin",
+   "moltsets.people.email.find.name",
+   "prospeo.people.email.find",
+   "quickenrich.people.email.find",
+   "tomba.people.email.find",
+   "tomba.people.email.find.linkedin",
+   "trykitt.people.email.find",
+   "wiza.people.email.find"
+  ],
+  "capability": "people.email.find",
+  "capability_description": "Get, find or look up a person's work email address from their name, company domain or LinkedIn profile",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "observed": {
+   "samples": 1190510,
+   "decided": 1185790,
+   "ok_rate": 0.8707,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "domain",
+     "full_name"
+    ],
+    [
+     "domain",
+     "first_name",
+     "last_name"
+    ],
+    [
+     "linkedin_url"
+    ],
+    [
+     "linkedin_handle"
+    ]
+   ],
+   "output": {
+    "email": {
+     "type": "str",
+     "required": true
+    },
+    "confidence": {
+     "type": "float",
+     "note": "0..1 — provider scales mapped; the original rides in raw"
+    },
+    "first_name": {
+     "type": "str"
+    },
+    "last_name": {
+     "type": "str"
+    },
+    "verified": {
+     "type": "bool",
+     "note": "the provider says it checked the mailbox"
+    }
+   },
+   "miss": "email == null",
+   "derive": {
+    "full_name": "join(first_name, last_name)",
+    "first_name": "split_first(full_name)",
+    "last_name": "split_last(full_name)",
+    "linkedin_url": "linkedin_url(linkedin_handle)",
+    "linkedin_handle": "linkedin_handle(linkedin_url)"
+   }
+  },
+  "plan": [
+   {
+    "endpoint_id": "quickenrich.people.email.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.004834,
+    "hit_rate": 0.3025,
+    "usd_per_hit": 0.004834,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "trykitt.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.005,
+    "hit_rate": 0.3803,
+    "usd_per_hit": 0.005,
+    "works": 0.9996
+   },
+   {
+    "endpoint_id": "aiark.people.email.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.005267,
+    "hit_rate": 0.2412,
+    "usd_per_hit": 0.005267,
+    "works": 0.9899
+   },
+   {
+    "endpoint_id": "tomba.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 0.2418,
+    "usd_per_hit": 0.0089,
+    "works": 0.9982
+   },
+   {
+    "endpoint_id": "tomba.people.email.find.linkedin",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 0.3593,
+    "usd_per_hit": 0.0089,
+    "works": 0.9973
+   },
+   {
+    "endpoint_id": "moltsets.people.email.find.name",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.01,
+    "hit_rate": 0.0647,
+    "usd_per_hit": 0.01,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "dropleads.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.018,
+    "hit_rate": 0.2034,
+    "usd_per_hit": 0.018,
+    "works": 0.991
+   },
+   {
+    "endpoint_id": "findymail.search.business-profile",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.2322,
+    "usd_per_hit": 0.0198,
+    "works": 0.999
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "anyapi.linkedin.email.work.find",
+    "usd": 0.011
+   },
+   {
+    "endpoint_id": "companyenrich.people.email",
+    "usd": 0.098
+   },
+   {
+    "endpoint_id": "enrichlayer.person.work-email",
+    "usd": 0.3
+   },
+   {
+    "endpoint_id": "icypeas.people.email.find",
+    "usd": 0.019
+   },
+   {
+    "endpoint_id": "leadmagic.x.b2b-profile-email",
+    "usd": 0.125
+   },
+   {
+    "endpoint_id": "leadsforge.people.email.find.bulk",
+    "usd": 0.0245
+   },
+   {
+    "endpoint_id": "oceanio.people.email.reveal",
+    "usd": 0.081
+   },
+   {
+    "endpoint_id": "tomba.people.email.find.author",
+    "usd": 0.0089
+   },
+   {
+    "endpoint_id": "zerobounce.people.email.find",
+    "usd": 0.276
+   }
+  ],
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,…]",
+   "X-Treg-Route-Exclude": "provider[,…]",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "example_response": null
+}

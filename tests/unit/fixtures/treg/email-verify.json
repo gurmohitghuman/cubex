@@ -1,0 +1,230 @@
+{
+ "endpoint": {
+  "id": "treg.people.email.verify",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "people.email.verify — routed: best of 11 providers, own keys first",
+  "summary": "Verify an email address — treg picks the provider (own keys first, then cheapest) and names the one that served",
+  "method": "POST",
+  "path": "/people.email.verify",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "contacts",
+  "call_template": "treg call treg.people.email.verify --method POST --data '{\"email\":\"…\"}'",
+  "cost": {
+   "type": "per_success",
+   "value": 0.0,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0–$0.0138 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (4 of 11 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "usd": 0.0
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.status == null"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "email": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of email)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({email}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  },
+  "test_request": {
+   "body": {
+    "email": "…"
+   }
+  },
+  "routed_children": [
+   "bounceban.people.email.verify",
+   "contactout.people.email.verify",
+   "dropleads.people.email.verify",
+   "hunter.people.email.verify",
+   "leadmagic.people.email.verify",
+   "limadata.people.email.verify",
+   "millionverifier.people.email.verify",
+   "scrubby.people.email.verify",
+   "tomba.people.email.verify",
+   "trykitt.people.email.verify",
+   "zerobounce.people.email.verify"
+  ],
+  "capability": "people.email.verify",
+  "capability_description": "Check an email address you ALREADY have is real and deliverable — not for finding one",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "observed": {
+   "samples": 946749,
+   "decided": 946749,
+   "ok_rate": 0.9939,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "email"
+    ]
+   ],
+   "output": {
+    "valid": {
+     "type": "bool",
+     "required": true,
+     "note": "the provider says the mailbox accepts mail"
+    },
+    "status": {
+     "type": "str",
+     "note": "the provider's own verdict word (valid | invalid | accept_all | unknown | …)"
+    },
+    "score": {
+     "type": "int"
+    }
+   },
+   "miss": "status == null",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "contactout.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0,
+    "works": 0.9995
+   },
+   {
+    "endpoint_id": "trykitt.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0015,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0015,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "millionverifier.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.00178,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00178,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "dropleads.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0018,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0018,
+    "works": 0.9982
+   },
+   {
+    "endpoint_id": "bounceban.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.004,
+    "hit_rate": 0.9022,
+    "usd_per_hit": 0.004433606739082244,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "limadata.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.006,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.006,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadmagic.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.00625,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00625,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "scrubby.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.008,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.008,
+    "works": 0.9095
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "bounceban.people.email.verify.waterfall",
+    "usd": 0.004
+   },
+   {
+    "endpoint_id": "findymail.verify",
+    "usd": null
+   },
+   {
+    "endpoint_id": "icypeas.people.email.verify",
+    "usd": 0.0019
+   }
+  ],
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,…]",
+   "X-Treg-Route-Exclude": "provider[,…]",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "example_response": null
+}

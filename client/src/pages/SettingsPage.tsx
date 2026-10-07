@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bot, Globe, Sparkles, UserRound } from 'lucide-react'
+import { ArrowLeft, Bot, DatabaseZap, Sparkles, UserRound } from 'lucide-react'
 import { SettingsAiTab } from '@/components/settings/SettingsAiTab'
 import { SettingsEnrichmentTab } from '@/components/settings/SettingsEnrichmentTab'
 import { SettingsAgentsTab } from '@/components/settings/SettingsAgentsTab'
@@ -12,7 +12,8 @@ import { SettingsAccountTab } from '@/components/settings/SettingsAccountTab'
 // renders instantly and a slow fetch in one area never gates another.
 const TABS = [
   { slug: 'ai', label: 'AI', icon: Sparkles, element: <SettingsAiTab /> },
-  { slug: 'http-enrichment', label: 'HTTP Enrichment', icon: Globe, element: <SettingsEnrichmentTab /> },
+  // Slug kept from when this tab held only HTTP API keys, so old links still work.
+  { slug: 'http-enrichment', label: 'Enrichment', icon: DatabaseZap, element: <SettingsEnrichmentTab /> },
   { slug: 'agents', label: 'Agent access', icon: Bot, element: <SettingsAgentsTab /> },
   { slug: 'account', label: 'Account', icon: UserRound, element: <SettingsAccountTab /> },
 ] as const
