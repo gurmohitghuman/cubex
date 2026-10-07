@@ -1,0 +1,63 @@
+{
+ "endpoint": {
+  "id": "akta.x.jobs",
+  "name": "Company live job postings by website — LinkedIn, Indeed",
+  "summary": "Fetches live LinkedIn and Indeed job listings for a company, including title, location, description, compensation, experience level, and extracted key skills.",
+  "provider": "akta",
+  "provider_display": "Akta by Wokelo",
+  "kind": "data",
+  "method": "GET",
+  "capability": "",
+  "capability_description": "",
+  "platform": "companies",
+  "platform_label": "Company data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": false,
+  "platform_blocked": "upstream 403 'Your current subscription does not include access to this endpoint' on treg's shared Akta key (alternative-data tier; re-probed 2026-07-31). Works with your own Akta key on a plan that includes Alternative Signals.",
+  "test_request": {
+   "queryParams": {
+    "company": "canva.com",
+    "limit": 1
+   }
+  },
+  "cost": {
+   "type": "per_result",
+   "unit": "item",
+   "usd": 0.02,
+   "note": "4 Akta credits per 10 job listings returned (llms-full.txt sample response)",
+   "per": 10
+  },
+  "observed": {
+   "ok_rate": null,
+   "hit_rate": null,
+   "samples": 0,
+   "hit_samples": 0
+  },
+  "input": {
+   "queryParams": {
+    "company": {
+     "type": "string",
+     "required": true,
+     "note": "company website (e.g. 'canva.com') or a company UUID from Company Search",
+     "example": "canva.com"
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "max job listings to return, default 10",
+     "example": 1
+    },
+    "offset": {
+     "type": "integer",
+     "required": false,
+     "note": "listings to skip before returning records, default 0"
+    }
+   },
+   "note": "synchronous GET; response also reports total open-role count and credits consumed."
+  }
+ },
+ "siblings": [],
+ "example_response": null
+}

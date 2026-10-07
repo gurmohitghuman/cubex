@@ -1,0 +1,35 @@
+{
+ "note": "Reserve above the balance: 402 insufficient_balance before any upstream call.",
+ "request": {
+  "method": "GET",
+  "path": "/call/enrichlayer.people.search?first_name=Zqx&last_name=Wvbn&page_size=10",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Route-Max-Cost": "10",
+   "Idempotency-Key": "cbx-m0:b2:11e0c3e51a6a",
+   "X-Treg-Token": "<redacted>"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 402,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000023",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": {
+    "error": "insufficient_balance",
+    "message": "enrichlayer.people.search would cost ~$3 on treg's enrichlayer key and this team's balance is $0.986683.\n  add funds:      https://treg.to/app#billing\n  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20\n  or use your own key: treg connections connect --provider enrichlayer",
+    "balance_micro": 986683,
+    "estimated_cost_micro": 3000000,
+    "topup_url": "/app#billing",
+    "autotopup_enabled": false,
+    "provider": "enrichlayer",
+    "endpoint_id": "enrichlayer.people.search"
+   }
+  }
+ }
+}

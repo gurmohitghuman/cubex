@@ -1,0 +1,29 @@
+{
+ "note": "A bad key on /call: 401 with X-Treg-Error (unlike /usage/me).",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Token": "treg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "X-Treg-Route-Max-Cost": "0.01",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Ada Lovelace",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 401,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000024",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": "invalid token"
+  }
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "tier": "none",
+ "authorization_method": "",
+ "connect_capability": "",
+ "connect_command": "treg connections connect --provider akta",
+ "action_label": "",
+ "missing_message": "",
+ "detail": "no akta credential in this org yet — connect with: treg connections connect --provider akta, or treg secret add akta …"
+}

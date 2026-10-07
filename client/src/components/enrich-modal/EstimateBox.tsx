@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import type { EnrichEstimate, TregBalance } from '@/utils/api'
 import { plural } from '@/lib/utils'
-import { TREG_TOPUP_URL, resetsAtText, spent, usd } from '@/lib/enrich-format'
+import { TREG_TOPUP_URL, limitText, resetsAtText, spent, usd } from '@/lib/enrich-format'
 
 interface Props {
   estimate: EnrichEstimate | null
@@ -20,6 +20,8 @@ interface Props {
   // A tool with no listed price, and the provider that bills it (the team's
   // own key at treg).
   unpriced: boolean
+  // A priced single tool the team runs on its own key at treg.
+  ownKeySingle: boolean
   ownKeyProvider: string
 }
 
@@ -28,13 +30,14 @@ interface Props {
 // whole per-row limit), the balance and today's limit. Amber when the run
 // could spend more than the balance.
 export const EstimateBox: React.FC<Props> = ({
-  estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeyProvider,
+  estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeySingle, ownKeyProvider,
 }) => {
-  if (unpriced) {
+  if (unpriced || ownKeySingle) {
     return (
       <div className="bg-gray-50 border border-gray-200 p-3 text-xs text-gray-700" data-testid="enrich-estimate">
-        This tool has no price at treg: it runs on your own {ownKeyProvider} key there, so {ownKeyProvider} bills you
-        directly. Cubex can&apos;t estimate it, and the daily limit doesn&apos;t cover it.
+        {unpriced ? 'This tool has no price at treg: it runs' : 'This runs'} on your own {ownKeyProvider} key
+        {unpriced ? ' there' : ' at treg'}, so {ownKeyProvider} bills you directly, not your treg balance. Cubex
+        can&apos;t estimate it, and the daily limit doesn&apos;t cover it.
       </div>
     )
   }
@@ -63,7 +66,7 @@ export const EstimateBox: React.FC<Props> = ({
         </span>
       </div>
       <p>Most rows cost less than the high end. {missNote}</p>
-      {spendLimit !== null && spendLimit < highUsd && <p>The run pauses at {spent(spendLimit)}, your limit for this run.</p>}
+      {spendLimit !== null && spendLimit < highUsd && <p>The run pauses at {limitText(spendLimit)}, your limit for this run.</p>}
       {ownKeys && <p>Providers that use your own key at treg bill you directly, outside these numbers.</p>}
       {balance && (overBalance ? (
         <p className="font-medium">

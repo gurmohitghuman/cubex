@@ -1,0 +1,50 @@
+{
+ "note": "No complete identity: 422 identity_incomplete, nothing charged.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Route-Max-Cost": "0.01",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 422,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000022",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": {
+    "error": "identity_incomplete",
+    "endpoint_id": "treg.people.email.find",
+    "message": "treg.people.email.find needs exactly one identity variant in the JSON body: {domain, full_name} | {domain, first_name, last_name} | {linkedin_url} | {linkedin_handle}",
+    "variants": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "linkedin_url"
+     ],
+     [
+      "linkedin_handle"
+     ]
+    ],
+    "charged_micro": 0
+   }
+  }
+ }
+}

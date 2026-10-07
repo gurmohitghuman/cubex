@@ -1,0 +1,213 @@
+{
+ "note": "A list job, first provider only: provider-native rows under output.people.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.search",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:s1:566de02dc4b6",
+   "X-Treg-Route-Max-Cost": "0.03",
+   "X-Treg-Route-Waterfall": "0",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "company_domain": "acme.example",
+   "limit": 2
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000009",
+   "x-treg-cost-micro": "0",
+   "x-treg-providers-tried": "quickenrich",
+   "x-treg-route-outcome": "hit",
+   "x-treg-served-by": "quickenrich.people.search"
+  },
+  "body": {
+   "output": {
+    "people": [
+     {
+      "emp_id": 1001,
+      "first_name": "Grace",
+      "last_name": "Hopper",
+      "title": "VP Engineering",
+      "employee_linkedin": "https://www.linkedin.com/in/grace-hopper-example",
+      "has_email": true,
+      "has_phone": true,
+      "has_linkedin": true,
+      "company_url": "acme.example",
+      "company_name": "Acme",
+      "email_domain": "acme.example",
+      "home_page_email": "",
+      "company_linked": "https://www.linkedin.com/company/acme-example",
+      "company_phone": "+15550199",
+      "industry": "Technology, Information and Internet",
+      "revenue": ">1 Billion",
+      "employee_count": ">10000",
+      "address1": "1 Example Street",
+      "address2": "",
+      "city": "Springfield",
+      "region_code": "CA",
+      "zip": "00000",
+      "locality": "Springfield",
+      "country_code": "US"
+     },
+     {
+      "emp_id": 1001,
+      "first_name": "Alan",
+      "last_name": "Turing",
+      "title": "Staff Engineer",
+      "employee_linkedin": "https://www.linkedin.com/in/alan-turing-example",
+      "has_email": true,
+      "has_phone": true,
+      "has_linkedin": true,
+      "company_url": "acme.example",
+      "company_name": "Acme",
+      "email_domain": "acme.example",
+      "home_page_email": "",
+      "company_linked": "https://www.linkedin.com/company/acme-example",
+      "company_phone": "+15550199",
+      "industry": "Technology, Information and Internet",
+      "revenue": ">1 Billion",
+      "employee_count": ">10000",
+      "address1": "1 Example Street",
+      "address2": "",
+      "city": "Springfield",
+      "region_code": "CA",
+      "zip": "00000",
+      "locality": "Springfield",
+      "country_code": "US"
+     }
+    ],
+    "count": 2,
+    "next_cursor": "cursor_0001"
+   },
+   "raw": {
+    "success": true,
+    "message": "Contacts fetched",
+    "code": 200,
+    "data": [
+     {
+      "emp_id": 1001,
+      "first_name": "Grace",
+      "last_name": "Hopper",
+      "title": "VP Engineering",
+      "employee_linkedin": "https://www.linkedin.com/in/grace-hopper-example",
+      "has_email": true,
+      "has_phone": true,
+      "has_linkedin": true,
+      "company_url": "acme.example",
+      "company_name": "Acme",
+      "email_domain": "acme.example",
+      "home_page_email": "",
+      "company_linked": "https://www.linkedin.com/company/acme-example",
+      "company_phone": "+15550199",
+      "industry": "Technology, Information and Internet",
+      "revenue": ">1 Billion",
+      "employee_count": ">10000",
+      "address1": "1 Example Street",
+      "address2": "",
+      "city": "Springfield",
+      "region_code": "CA",
+      "zip": "00000",
+      "locality": "Springfield",
+      "country_code": "US"
+     },
+     {
+      "emp_id": 1001,
+      "first_name": "Alan",
+      "last_name": "Turing",
+      "title": "Staff Engineer",
+      "employee_linkedin": "https://www.linkedin.com/in/alan-turing-example",
+      "has_email": true,
+      "has_phone": true,
+      "has_linkedin": true,
+      "company_url": "acme.example",
+      "company_name": "Acme",
+      "email_domain": "acme.example",
+      "home_page_email": "",
+      "company_linked": "https://www.linkedin.com/company/acme-example",
+      "company_phone": "+15550199",
+      "industry": "Technology, Information and Internet",
+      "revenue": ">1 Billion",
+      "employee_count": ">10000",
+      "address1": "1 Example Street",
+      "address2": "",
+      "city": "Springfield",
+      "region_code": "CA",
+      "zip": "00000",
+      "locality": "Springfield",
+      "country_code": "US"
+     }
+    ],
+    "meta": {
+     "page": 1,
+     "per_page": 2,
+     "total": 10080,
+     "last_page": 5040,
+     "next_cursor": "cursor_0001",
+     "has_more": true
+    }
+   },
+   "_treg": {
+    "served_by": "quickenrich.people.search",
+    "provider": "quickenrich",
+    "tier": "platform",
+    "advice": "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's own verification field says so. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row.",
+    "outcome": "hit",
+    "tried": [
+     {
+      "endpoint_id": "quickenrich.people.search",
+      "provider": "quickenrich",
+      "outcome": "hit",
+      "status": 200,
+      "charged_micro": 0
+     }
+    ],
+    "charged_micro": 0,
+    "dropped": [
+     {
+      "endpoint_id": "aviato.people.search",
+      "why": "needs {q}"
+     },
+     {
+      "endpoint_id": "aviato.people.search.simple",
+      "why": "needs {full_name}"
+     },
+     {
+      "endpoint_id": "crustdata.people.search",
+      "why": "needs {full_name}"
+     },
+     {
+      "endpoint_id": "exa.people.search",
+      "why": "needs {q}"
+     },
+     {
+      "endpoint_id": "findymail.search.employees",
+      "why": "needs {company_domain, title}"
+     },
+     {
+      "endpoint_id": "leadmagic.x.role-finder",
+      "why": "needs {company_domain, title}"
+     },
+     {
+      "endpoint_id": "lusha.people.search",
+      "why": "needs {title}"
+     },
+     {
+      "endpoint_id": "wiza.people.search",
+      "why": "needs {title}"
+     },
+     {
+      "endpoint_id": "oceanio.people.search",
+      "why": "treg's account for this provider is exhausted right now"
+     }
+    ]
+   }
+  }
+ }
+}

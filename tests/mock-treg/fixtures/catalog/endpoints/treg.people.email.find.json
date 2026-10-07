@@ -1,0 +1,726 @@
+{
+ "endpoint": {
+  "id": "treg.people.email.find",
+  "name": "people.email.find — routed: best of 23 providers, own keys first",
+  "summary": "Find someone's work email — treg picks the provider (own keys first, then cheapest per hit) and tells you which one served",
+  "provider": "treg",
+  "provider_display": "treg",
+  "kind": "routed",
+  "method": "POST",
+  "capability": "people.email.find",
+  "capability_description": "Get, find or look up a person's work email address from their name, company domain or LinkedIn profile",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "routed_children": [
+   "aiark.people.email.find",
+   "aviato.people.email.find",
+   "contactout.people.contact.work",
+   "datagma.people.email.find",
+   "dropleads.people.email.find",
+   "fiber-ai.people.contacts.reveal",
+   "fiber-ai.people.contacts.turbo",
+   "findymail.search.name",
+   "findymail.search.business-profile",
+   "harvestapi.linkedin.user.profile.email",
+   "hunter.people.email.find",
+   "leadmagic.x.personal-email-finder",
+   "leadmagic.people.email.find",
+   "leadsforge.people.email.find",
+   "limadata.people.email.find.name",
+   "limadata.people.email.find.linkedin",
+   "moltsets.people.email.find.name",
+   "prospeo.people.email.find",
+   "quickenrich.people.email.find",
+   "tomba.people.email.find",
+   "tomba.people.email.find.linkedin",
+   "trykitt.people.email.find",
+   "wiza.people.email.find"
+  ],
+  "test_request": {
+   "body": {
+    "linkedin_url": "https://www.linkedin.com/in/ada-lovelace"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.004834,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0.004834–$0.15 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (1 of 23 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.8752,
+   "hit_rate": null,
+   "samples": 1235440,
+   "hit_samples": 0
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "domain": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
+    },
+    "full_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name)"
+    },
+    "first_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    },
+    "last_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    },
+    "linkedin_url": {
+     "type": "url",
+     "required": false,
+     "note": "identity key (part of linkedin_url)"
+    },
+    "linkedin_handle": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of linkedin_handle)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({domain, full_name} | {domain, first_name, last_name} | {linkedin_url} | {linkedin_handle}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "domain",
+     "full_name"
+    ],
+    [
+     "domain",
+     "first_name",
+     "last_name"
+    ],
+    [
+     "linkedin_url"
+    ],
+    [
+     "linkedin_handle"
+    ]
+   ],
+   "output": {
+    "email": {
+     "type": "str",
+     "required": true
+    },
+    "confidence": {
+     "type": "float",
+     "note": "0..1 — provider scales mapped; the original rides in raw"
+    },
+    "first_name": {
+     "type": "str"
+    },
+    "last_name": {
+     "type": "str"
+    },
+    "verified": {
+     "type": "bool",
+     "note": "the provider says it checked the mailbox"
+    }
+   },
+   "miss": "email == null",
+   "derive": {
+    "full_name": "join(first_name, last_name)",
+    "first_name": "split_first(full_name)",
+    "last_name": "split_last(full_name)",
+    "linkedin_url": "linkedin_url(linkedin_handle)",
+    "linkedin_handle": "linkedin_handle(linkedin_url)"
+   }
+  },
+  "plan": [
+   {
+    "endpoint_id": "quickenrich.people.email.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.004834,
+    "hit_rate": 0.3032,
+    "usd_per_hit": 0.004834,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "trykitt.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.005,
+    "hit_rate": 0.3841,
+    "usd_per_hit": 0.005,
+    "works": 0.9996
+   },
+   {
+    "endpoint_id": "aiark.people.email.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.005267,
+    "hit_rate": 0.2258,
+    "usd_per_hit": 0.005267,
+    "works": 0.9911
+   },
+   {
+    "endpoint_id": "tomba.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 0.2439,
+    "usd_per_hit": 0.0089,
+    "works": 0.9981
+   },
+   {
+    "endpoint_id": "tomba.people.email.find.linkedin",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 0.3796,
+    "usd_per_hit": 0.0089,
+    "works": 0.997
+   },
+   {
+    "endpoint_id": "moltsets.people.email.find.name",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.01,
+    "hit_rate": 0.0686,
+    "usd_per_hit": 0.01,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "dropleads.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.018,
+    "hit_rate": 0.2046,
+    "usd_per_hit": 0.018,
+    "works": 0.9912
+   },
+   {
+    "endpoint_id": "findymail.search.business-profile",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.2324,
+    "usd_per_hit": 0.0198,
+    "works": 0.999
+   },
+   {
+    "endpoint_id": "findymail.search.name",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.1585,
+    "usd_per_hit": 0.0198,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "limadata.people.email.find.name",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.02,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.02,
+    "works": 0.998
+   },
+   {
+    "endpoint_id": "datagma.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.02258,
+    "hit_rate": 0.0433,
+    "usd_per_hit": 0.02258,
+    "works": 0.9996
+   },
+   {
+    "endpoint_id": "prospeo.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0245,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "hunter.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 0.123,
+    "usd_per_hit": 0.0245,
+    "works": 0.9991
+   },
+   {
+    "endpoint_id": "leadsforge.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 0.0922,
+    "usd_per_hit": 0.0245,
+    "works": 0.9993
+   },
+   {
+    "endpoint_id": "leadmagic.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.025,
+    "hit_rate": 0.026,
+    "usd_per_hit": 0.025,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "fiber-ai.people.contacts.reveal",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.04,
+    "hit_rate": 0.4638,
+    "usd_per_hit": 0.04,
+    "works": 0.9971
+   },
+   {
+    "endpoint_id": "leadmagic.x.personal-email-finder",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.05,
+    "hit_rate": 0.4969,
+    "usd_per_hit": 0.05,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "limadata.people.email.find.linkedin",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.06,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.06,
+    "works": 0.9994
+   },
+   {
+    "endpoint_id": "fiber-ai.people.contacts.turbo",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.06,
+    "hit_rate": 0.0538,
+    "usd_per_hit": 0.06,
+    "works": 0.9976
+   },
+   {
+    "endpoint_id": "wiza.people.email.find",
+    "accepts": [
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.075,
+    "hit_rate": 0.1361,
+    "usd_per_hit": 0.075,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "aviato.people.email.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.08,
+    "hit_rate": 0.1386,
+    "usd_per_hit": 0.08,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "harvestapi.linkedin.user.profile.email",
+    "accepts": [
+     [
+      "linkedin_handle"
+     ]
+    ],
+    "usd": 0.02,
+    "hit_rate": 0.1938,
+    "usd_per_hit": 0.10319917440660475,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "contactout.people.contact.work",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.15,
+    "hit_rate": 0.9874,
+    "usd_per_hit": 0.15,
+    "works": 0.9943
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "aiark.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "anyapi.linkedin.email.work.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.contact.work",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "datagma.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.person.work-email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.contacts.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.contacts.turbo",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.business-profile",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "harvestapi.linkedin.user.profile.email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.b2b-profile-email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.personal-email-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.email.find.bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.find.linkedin",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.find.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "moltsets.people.email.find.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.people.email.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find.author",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find.linkedin",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "trykitt.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.people.email.find",
+   "async": {
+    "id_from": "data.id",
+    "poll": {
+     "endpoint": "wiza.people.reveal.get",
+     "param": {
+      "in": "pathParams",
+      "name": "id"
+     }
+    },
+    "status": {
+     "path": "data.status",
+     "progress": [
+      "queued",
+      "resolving"
+     ],
+     "success": [
+      "finished"
+     ],
+     "failure": [
+      "failed"
+     ]
+    },
+    "result": {
+     "path": "data"
+    },
+    "interval": 2
+   },
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "zerobounce.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

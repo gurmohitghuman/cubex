@@ -1,0 +1,254 @@
+{
+ "tier": "routed",
+ "detail": "routed — 14 providers callable now; first: quickenrich.people.email.find on treg's quickenrich key, ~$0.004834 (send {linkedin_url}); for this {linkedin_url} example, not usable: datagma.people.email.find (needs {domain, full_name} | {domain, first_name, last_name}), dropleads.people.email.find (needs {domain, first_name, last_name}), findymail.search.name (needs {domain, full_name} | {domain, first_name, last_name}), hunter.people.email.find (needs {domain, full_name} | {domain, first_name, last_name}), leadmagic.people.email.find (needs {domain, full_name} | {domain, first_name, last_name}), limadata.people.email.find.name (needs {domain, full_name} | {domain, first_name, last_name}), moltsets.people.email.find.name (needs {domain, full_name} | {domain, first_name, last_name}), tomba.people.email.find (needs {domain, full_name} | {domain, first_name, last_name}), trykitt.people.email.find (needs {domain, full_name} | {domain, first_name, last_name})",
+ "plan": [
+  {
+   "endpoint_id": "quickenrich.people.email.find",
+   "provider": "quickenrich",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 4834,
+   "expected_cost_per_hit_micro": 4834,
+   "hit_rate": 0.303,
+   "ok_rate": 0.9999,
+   "p50_ms": 68,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "aiark.people.email.find",
+   "provider": "aiark",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 5267,
+   "expected_cost_per_hit_micro": 5267,
+   "hit_rate": 0.2248,
+   "ok_rate": 0.9911,
+   "p50_ms": 1719,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "tomba.people.email.find.linkedin",
+   "provider": "tomba",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 8900,
+   "expected_cost_per_hit_micro": 8900,
+   "hit_rate": 0.3801,
+   "ok_rate": 0.9969,
+   "p50_ms": 8460,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "findymail.search.business-profile",
+   "provider": "findymail",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 19800,
+   "expected_cost_per_hit_micro": 19800,
+   "hit_rate": 0.2323,
+   "ok_rate": 0.999,
+   "p50_ms": 3171,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "prospeo.people.email.find",
+   "provider": "prospeo",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 24500,
+   "expected_cost_per_hit_micro": 24500,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 225,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadsforge.people.email.find",
+   "provider": "leadsforge",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 24500,
+   "expected_cost_per_hit_micro": 24500,
+   "hit_rate": 0.0922,
+   "ok_rate": 0.9993,
+   "p50_ms": 4082,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "fiber-ai.people.contacts.reveal",
+   "provider": "fiber-ai",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 40000,
+   "expected_cost_per_hit_micro": 40000,
+   "hit_rate": 0.4637,
+   "ok_rate": 0.9971,
+   "p50_ms": 17230,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadmagic.x.personal-email-finder",
+   "provider": "leadmagic",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 50000,
+   "expected_cost_per_hit_micro": 50000,
+   "hit_rate": 0.4969,
+   "ok_rate": 1,
+   "p50_ms": 970,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "limadata.people.email.find.linkedin",
+   "provider": "limadata",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 60000,
+   "expected_cost_per_hit_micro": 60000,
+   "hit_rate": 1,
+   "ok_rate": 0.9994,
+   "p50_ms": 630,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "fiber-ai.people.contacts.turbo",
+   "provider": "fiber-ai",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 60000,
+   "expected_cost_per_hit_micro": 60000,
+   "hit_rate": 0.0538,
+   "ok_rate": 0.9976,
+   "p50_ms": 3916,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "wiza.people.email.find",
+   "provider": "wiza",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 75000,
+   "expected_cost_per_hit_micro": 75000,
+   "hit_rate": 0.1361,
+   "ok_rate": 1,
+   "p50_ms": 216,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "aviato.people.email.find",
+   "provider": "aviato",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 80000,
+   "expected_cost_per_hit_micro": 80000,
+   "hit_rate": 0.1386,
+   "ok_rate": 0.9998,
+   "p50_ms": 156,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "harvestapi.linkedin.user.profile.email",
+   "provider": "harvestapi",
+   "tier": "platform",
+   "identity": [
+    "linkedin_handle"
+   ],
+   "price_micro": 20000,
+   "expected_cost_per_hit_micro": 103252,
+   "hit_rate": 0.1937,
+   "ok_rate": 0.9997,
+   "p50_ms": 5767,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "contactout.people.contact.work",
+   "provider": "contactout",
+   "tier": "platform",
+   "identity": [
+    "linkedin_url"
+   ],
+   "price_micro": 150000,
+   "expected_cost_per_hit_micro": 150000,
+   "hit_rate": 0.9874,
+   "ok_rate": 0.9943,
+   "p50_ms": 186,
+   "confidence": "measured",
+   "exhausted": false
+  }
+ ],
+ "dropped": [
+  {
+   "endpoint_id": "datagma.people.email.find",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "dropleads.people.email.find",
+   "why": "needs {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "findymail.search.name",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "hunter.people.email.find",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "leadmagic.people.email.find",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "limadata.people.email.find.name",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "moltsets.people.email.find.name",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "tomba.people.email.find",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  },
+  {
+   "endpoint_id": "trykitt.people.email.find",
+   "why": "needs {domain, full_name} | {domain, first_name, last_name}"
+  }
+ ]
+}

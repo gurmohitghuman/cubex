@@ -1,0 +1,6 @@
+{
+ "tier": "platform",
+ "detail": "no key needed — uses treg's enrichlayer key, ~$0.1/call from your team balance (treg balance)",
+ "estimated_cost_micro": 100000,
+ "estimated_cost_usd": 0.1
+}

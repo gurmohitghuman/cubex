@@ -1,0 +1,433 @@
+{
+ "org_id": 7,
+ "balance_micro": 986683,
+ "balance_usd": 0.986683,
+ "promo_grant_micro": 1000000,
+ "blocks": [
+  {
+   "id": "c0ffee00000000000000000000000001",
+   "kind": "promotional",
+   "amount_micro": 1000000,
+   "remaining_micro": 986683,
+   "remaining_usd": 0.986683,
+   "currency": "USD",
+   "expires_at": null,
+   "created_at": "2026-09-01T16:50:05.004769"
+  }
+ ],
+ "holds": [],
+ "entries": {
+  "limit": 20,
+  "offset": 0,
+  "items": [
+   {
+    "id": "c0ffee00000000000000000000000002",
+    "kind": "settle",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000003",
+    "endpoint_id": "companyenrich.companies.autocomplete",
+    "meta": {
+     "provider": "companyenrich",
+     "status_code": 200,
+     "cost_type": "free",
+     "cost_source": "observed",
+     "reserved_micro": 0,
+     "observed_micro": 0,
+     "settled_micro": 0,
+     "consumed_micro": 0,
+     "refunded_micro": 0,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:32:02.246735"
+   },
+   {
+    "id": "c0ffee00000000000000000000000004",
+    "kind": "reserve",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000003",
+    "endpoint_id": "companyenrich.companies.autocomplete",
+    "meta": {
+     "tier": "platform",
+     "provider": "companyenrich",
+     "cost_type": "free",
+     "estimated_micro": 0,
+     "charged_micro": 0,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:32:01.840785"
+   },
+   {
+    "id": "c0ffee00000000000000000000000005",
+    "kind": "settle",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000006",
+    "endpoint_id": "millionverifier.people.email.verify",
+    "meta": {
+     "provider": "millionverifier",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 1780,
+     "observed_micro": 0,
+     "settled_micro": 0,
+     "consumed_micro": 0,
+     "refunded_micro": 1780,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:32:01.199788"
+   },
+   {
+    "id": "c0ffee00000000000000000000000007",
+    "kind": "reserve",
+    "amount_micro": -1780,
+    "amount_usd": -0.00178,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000006",
+    "endpoint_id": "millionverifier.people.email.verify",
+    "meta": {
+     "tier": "platform",
+     "provider": "millionverifier",
+     "cost_type": "per_success",
+     "estimated_micro": 1780,
+     "charged_micro": 1780,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:32:00.620748"
+   },
+   {
+    "id": "c0ffee00000000000000000000000008",
+    "kind": "settle",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000009:r0",
+    "endpoint_id": "quickenrich.people.search",
+    "meta": {
+     "provider": "quickenrich",
+     "status_code": 200,
+     "cost_type": "free",
+     "cost_source": "provider",
+     "reserved_micro": 0,
+     "observed_micro": 0,
+     "settled_micro": 0,
+     "consumed_micro": 0,
+     "refunded_micro": 0,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:59.139443"
+   },
+   {
+    "id": "c0ffee0000000000000000000000000a",
+    "kind": "reserve",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000009:r0",
+    "endpoint_id": "quickenrich.people.search",
+    "meta": {
+     "tier": "platform",
+     "provider": "quickenrich",
+     "cost_type": "free",
+     "estimated_micro": 0,
+     "charged_micro": 0,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:58.849293"
+   },
+   {
+    "id": "c0ffee0000000000000000000000000b",
+    "kind": "settle",
+    "amount_micro": -5000,
+    "amount_usd": -0.005,
+    "block_id": null,
+    "call_id": "c0ffee0000000000000000000000000c:r1",
+    "endpoint_id": "trykitt.people.email.find",
+    "meta": {
+     "provider": "trykitt",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 5000,
+     "observed_micro": 5000,
+     "settled_micro": 5000,
+     "consumed_micro": 5000,
+     "refunded_micro": 0,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:58.221885"
+   },
+   {
+    "id": "c0ffee0000000000000000000000000d",
+    "kind": "settle",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee0000000000000000000000000c:r0",
+    "endpoint_id": "quickenrich.people.email.find",
+    "meta": {
+     "provider": "quickenrich",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 4834,
+     "observed_micro": 0,
+     "settled_micro": 0,
+     "consumed_micro": 0,
+     "refunded_micro": 4834,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:58.157553"
+   },
+   {
+    "id": "c0ffee0000000000000000000000000e",
+    "kind": "reserve",
+    "amount_micro": -5000,
+    "amount_usd": -0.005,
+    "block_id": null,
+    "call_id": "c0ffee0000000000000000000000000c:r1",
+    "endpoint_id": "trykitt.people.email.find",
+    "meta": {
+     "tier": "platform",
+     "provider": "trykitt",
+     "cost_type": "per_success",
+     "estimated_micro": 5000,
+     "charged_micro": 5000,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:56.107349"
+   },
+   {
+    "id": "c0ffee0000000000000000000000000f",
+    "kind": "reserve",
+    "amount_micro": -4834,
+    "amount_usd": -0.004834,
+    "block_id": null,
+    "call_id": "c0ffee0000000000000000000000000c:r0",
+    "endpoint_id": "quickenrich.people.email.find",
+    "meta": {
+     "tier": "platform",
+     "provider": "quickenrich",
+     "cost_type": "per_success",
+     "estimated_micro": 4834,
+     "charged_micro": 4834,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:55.556280"
+   },
+   {
+    "id": "c0ffee00000000000000000000000010",
+    "kind": "settle",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000011:r0",
+    "endpoint_id": "quickenrich.people.email.find",
+    "meta": {
+     "provider": "quickenrich",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 4834,
+     "observed_micro": 0,
+     "settled_micro": 0,
+     "consumed_micro": 0,
+     "refunded_micro": 4834,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:53.661494"
+   },
+   {
+    "id": "c0ffee00000000000000000000000012",
+    "kind": "reserve",
+    "amount_micro": -4834,
+    "amount_usd": -0.004834,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000011:r0",
+    "endpoint_id": "quickenrich.people.email.find",
+    "meta": {
+     "tier": "platform",
+     "provider": "quickenrich",
+     "cost_type": "per_success",
+     "estimated_micro": 4834,
+     "charged_micro": 4834,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:52.288409"
+   },
+   {
+    "id": "c0ffee00000000000000000000000013",
+    "kind": "settle",
+    "amount_micro": -1500,
+    "amount_usd": -0.0015,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000014:r1",
+    "endpoint_id": "trykitt.people.email.verify",
+    "meta": {
+     "provider": "trykitt",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 1500,
+     "observed_micro": 1500,
+     "settled_micro": 1500,
+     "consumed_micro": 1500,
+     "refunded_micro": 0,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:49.912684"
+   },
+   {
+    "id": "c0ffee00000000000000000000000015",
+    "kind": "release",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000014:r0",
+    "endpoint_id": "contactout.people.email.verify",
+    "meta": {
+     "provider": "contactout",
+     "status_code": 429,
+     "cost_type": "free",
+     "cost_source": "observed",
+     "reason": "not_billable_429"
+    },
+    "created_at": "2026-10-07T21:31:49.887160"
+   },
+   {
+    "id": "c0ffee00000000000000000000000016",
+    "kind": "reserve",
+    "amount_micro": -1500,
+    "amount_usd": -0.0015,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000014:r1",
+    "endpoint_id": "trykitt.people.email.verify",
+    "meta": {
+     "tier": "platform",
+     "provider": "trykitt",
+     "cost_type": "per_success",
+     "estimated_micro": 1500,
+     "charged_micro": 1500,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:49.155223"
+   },
+   {
+    "id": "c0ffee00000000000000000000000017",
+    "kind": "reserve",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000014:r0",
+    "endpoint_id": "contactout.people.email.verify",
+    "meta": {
+     "tier": "platform",
+     "provider": "contactout",
+     "cost_type": "free",
+     "estimated_micro": 0,
+     "charged_micro": 0,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:48.770430"
+   },
+   {
+    "id": "c0ffee00000000000000000000000018",
+    "kind": "settle",
+    "amount_micro": -1500,
+    "amount_usd": -0.0015,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000019:r1",
+    "endpoint_id": "trykitt.people.email.verify",
+    "meta": {
+     "provider": "trykitt",
+     "status_code": 200,
+     "cost_type": "per_success",
+     "cost_source": "provider",
+     "reserved_micro": 1500,
+     "observed_micro": 1500,
+     "settled_micro": 1500,
+     "consumed_micro": 1500,
+     "refunded_micro": 0,
+     "margin": 0,
+     "block_shortfall_micro": 0
+    },
+    "created_at": "2026-10-07T21:31:47.667548"
+   },
+   {
+    "id": "c0ffee0000000000000000000000001a",
+    "kind": "release",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000019:r0",
+    "endpoint_id": "contactout.people.email.verify",
+    "meta": {
+     "provider": "contactout",
+     "status_code": 429,
+     "cost_type": "free",
+     "cost_source": "observed",
+     "reason": "not_billable_429"
+    },
+    "created_at": "2026-10-07T21:31:47.653619"
+   },
+   {
+    "id": "c0ffee0000000000000000000000001b",
+    "kind": "reserve",
+    "amount_micro": -1500,
+    "amount_usd": -0.0015,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000019:r1",
+    "endpoint_id": "trykitt.people.email.verify",
+    "meta": {
+     "tier": "platform",
+     "provider": "trykitt",
+     "cost_type": "per_success",
+     "estimated_micro": 1500,
+     "charged_micro": 1500,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:45.902920"
+   },
+   {
+    "id": "c0ffee0000000000000000000000001c",
+    "kind": "reserve",
+    "amount_micro": 0,
+    "amount_usd": 0,
+    "block_id": null,
+    "call_id": "c0ffee00000000000000000000000019:r0",
+    "endpoint_id": "contactout.people.email.verify",
+    "meta": {
+     "tier": "platform",
+     "provider": "contactout",
+     "cost_type": "free",
+     "estimated_micro": 0,
+     "charged_micro": 0,
+     "margin": 0,
+     "tags": {}
+    },
+    "created_at": "2026-10-07T21:31:45.207201"
+   }
+  ]
+ }
+}

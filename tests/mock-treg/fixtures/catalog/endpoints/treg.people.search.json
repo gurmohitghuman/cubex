@@ -1,0 +1,755 @@
+{
+ "endpoint": {
+  "id": "treg.people.search",
+  "name": "people.search — routed: best of 24 providers, own keys first",
+  "summary": "Find people by a free-text description, or by company domain / title / country — provider-native rows in `people`",
+  "provider": "treg",
+  "provider_display": "treg",
+  "kind": "routed",
+  "method": "POST",
+  "capability": "people.search",
+  "capability_description": "Find people by role, company or location — lead lists and prospects (sales leads)",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "routed_children": [
+   "aiark.people.search",
+   "aviato.people.search",
+   "aviato.people.search.simple",
+   "companyenrich.people.search",
+   "crustdata.people.search",
+   "dropleads.people.search",
+   "enrichlayer.people.search",
+   "exa.people.search",
+   "fiber-ai.people.search",
+   "findymail.search.domain",
+   "findymail.search.employees",
+   "harvestapi.linkedin.leads.search",
+   "hunter.companies.emails",
+   "icypeas.people.search",
+   "leadmagic.x.role-finder",
+   "leadmagic.x.employee-finder",
+   "leadmagic.people.search",
+   "leadsforge.people.search",
+   "lusha.people.search",
+   "oceanio.people.search",
+   "prospeo.people.search",
+   "quickenrich.people.search.domain",
+   "quickenrich.people.search",
+   "wiza.people.search"
+  ],
+  "test_request": {
+   "body": {
+    "company_domain": "…"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.0,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0–$0.3 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (15 of 24 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.852,
+   "hit_rate": null,
+   "samples": 703280,
+   "hit_samples": 0
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "q": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of q)"
+    },
+    "company_domain": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of company_domain, company_domain+title)"
+    },
+    "title": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of company_domain+title, title)"
+    },
+    "full_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of full_name)"
+    },
+    "country": {
+     "type": "str",
+     "required": false,
+     "note": "filter — default None; ISO country code, where the provider supports it"
+    },
+    "location": {
+     "type": "str",
+     "required": false,
+     "note": "filter — default None; free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"
+    },
+    "limit": {
+     "type": "int",
+     "required": false,
+     "note": "filter — default 10; rows to return — THE price dial: most providers bill per row"
+    },
+    "keywords": {
+     "type": "list",
+     "required": false,
+     "note": "filter — default None; skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({q} | {company_domain} | {company_domain, title} | {title} | {full_name}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "q"
+    ],
+    [
+     "company_domain"
+    ],
+    [
+     "company_domain",
+     "title"
+    ],
+    [
+     "title"
+    ],
+    [
+     "full_name"
+    ]
+   ],
+   "output": {
+    "people": {
+     "type": "list",
+     "required": true,
+     "note": "the provider's own people rows (name, title, profile url, location…) — shapes differ per provider; raw is the same body"
+    },
+    "count": {
+     "type": "int"
+    },
+    "next_cursor": {
+     "type": "str"
+    }
+   },
+   "miss": "people == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "quickenrich.people.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.0,
+    "hit_rate": 0.7184,
+    "usd_per_hit": 0.0,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadsforge.people.search",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.0,
+    "hit_rate": 0.2684,
+    "usd_per_hit": 0.0,
+    "works": 0.9984
+   },
+   {
+    "endpoint_id": "dropleads.people.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.0,
+    "hit_rate": 0.1813,
+    "usd_per_hit": 0.0,
+    "works": 0.981
+   },
+   {
+    "endpoint_id": "icypeas.people.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.00038,
+    "hit_rate": 0.4189,
+    "usd_per_hit": 0.0009071377417044641,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "aviato.people.search.simple",
+    "accepts": [
+     [
+      "full_name"
+     ]
+    ],
+    "usd": 0.0025,
+    "hit_rate": 0.4568,
+    "usd_per_hit": 0.0025,
+    "works": 0.9979
+   },
+   {
+    "endpoint_id": "aviato.people.search",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.0025,
+    "hit_rate": 0.5695,
+    "usd_per_hit": 0.0025,
+    "works": 0.7219
+   },
+   {
+    "endpoint_id": "aiark.people.search",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.002634,
+    "hit_rate": 0.2571,
+    "usd_per_hit": 0.002634,
+    "works": 0.9974
+   },
+   {
+    "endpoint_id": "leadmagic.x.employee-finder",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.00125,
+    "hit_rate": 0.3366,
+    "usd_per_hit": 0.0037136066547831252,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "quickenrich.people.search.domain",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.004834,
+    "hit_rate": 0.7328,
+    "usd_per_hit": 0.006596615720524017,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "exa.people.search",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.007,
+    "hit_rate": 0.9625,
+    "usd_per_hit": 0.007272727272727273,
+    "works": 0.9984
+   },
+   {
+    "endpoint_id": "wiza.people.search",
+    "accepts": [
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.0125,
+    "hit_rate": 0.9463,
+    "usd_per_hit": 0.0125,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "fiber-ai.people.search",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.02,
+    "hit_rate": 0.8488,
+    "usd_per_hit": 0.0235626767200754,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "prospeo.people.search",
+    "accepts": [
+     [
+      "q"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0245,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "crustdata.people.search",
+    "accepts": [
+     [
+      "full_name"
+     ]
+    ],
+    "usd": 0.009,
+    "hit_rate": 0.3484,
+    "usd_per_hit": 0.025832376578645237,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "findymail.search.domain",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.4629,
+    "usd_per_hit": 0.04277381723914453,
+    "works": 0.9858
+   },
+   {
+    "endpoint_id": "leadmagic.x.role-finder",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ]
+    ],
+    "usd": 0.05,
+    "hit_rate": 0.3308,
+    "usd_per_hit": 0.05,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "findymail.search.employees",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.3293,
+    "usd_per_hit": 0.060127543273610695,
+    "works": 0.9619
+   },
+   {
+    "endpoint_id": "hunter.companies.emails",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 0.3911,
+    "usd_per_hit": 0.06264382510866785,
+    "works": 0.9992
+   },
+   {
+    "endpoint_id": "companyenrich.people.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.0196,
+    "hit_rate": 0.1714,
+    "usd_per_hit": 0.11435239206534423,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadmagic.people.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 0.025,
+    "hit_rate": 0.2088,
+    "usd_per_hit": 0.11973180076628352,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "lusha.people.search",
+    "accepts": [
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.1248,
+    "hit_rate": 0.8663,
+    "usd_per_hit": 0.1440609488629805,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "harvestapi.linkedin.leads.search",
+    "accepts": [
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 2.5,
+    "hit_rate": 0.9696,
+    "usd_per_hit": 2.5783828382838285,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "enrichlayer.people.search",
+    "accepts": [
+     [
+      "full_name"
+     ],
+     [
+      "company_domain"
+     ],
+     [
+      "company_domain",
+      "title"
+     ],
+     [
+      "title"
+     ]
+    ],
+    "usd": 3.0,
+    "hit_rate": 0.64,
+    "usd_per_hit": 4.6875,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "oceanio.people.search",
+    "accepts": [
+     [
+      "company_domain"
+     ]
+    ],
+    "usd": 1.62,
+    "hit_rate": 0.0969,
+    "usd_per_hit": 16.71826625386997,
+    "works": 1.0
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "aiark.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "apollo.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.search.simple",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.search.scroll",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.decision-makers",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.decision-makers.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.search.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "coresignal.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crunchbase.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crustdata.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "diffbot.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "exa.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.domain",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.employees",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "getleadsio.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "harvestapi.linkedin.leads.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.companies.emails",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.x.multi-domain-search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.employee-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.role-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "lusha.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "moltsets.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "pdl.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "pdl.x.person-search-post",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.search.domain",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "sumble.people",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.prospect-lists.continue",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.prospect-lists.create",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

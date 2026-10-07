@@ -1,0 +1,456 @@
+{
+ "endpoint": {
+  "id": "apollo.people.search",
+  "name": "Search people by title, seniority, company or location",
+  "summary": "Search Apollo's 200M+ contacts by title, seniority, company, location or tech (free)",
+  "provider": "apollo",
+  "provider_display": "Apollo.io",
+  "kind": "data",
+  "method": "POST",
+  "capability": "people.search",
+  "capability_description": "Find people by role, company or location — lead lists and prospects (sales leads)",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "overflow_price_usd": 0.0,
+  "overflow_price_unit": "call",
+  "overflow_via": "orthogonal",
+  "test_request": {
+   "bodyType": "json",
+   "body": {
+    "person_titles": [
+     "head of marketing"
+    ],
+    "q_organization_domains_list": [
+     "acme.example"
+    ],
+    "per_page": 3
+   }
+  },
+  "cost": {
+   "type": "free",
+   "unit": "call",
+   "usd": 0.0,
+   "note": "documented free — 0 credits, because no contact data is returned. Counts against the plan's request limits only"
+  },
+  "observed": {
+   "ok_rate": 1.0,
+   "hit_rate": 0.5921,
+   "samples": 601245,
+   "hit_samples": 52513
+  },
+  "input": {
+   "queryParams": {
+    "person_titles[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "job titles, matched loosely (OR across the list)",
+     "example": [
+      "head of marketing"
+     ]
+    },
+    "person_seniorities[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"
+    },
+    "person_locations[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "where the PERSON lives",
+     "example": [
+      "California, US"
+     ]
+    },
+    "organization_locations[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "where their COMPANY's HQ is"
+    },
+    "q_organization_domains_list[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "restrict to employees of these company domains; max 1,000",
+     "example": [
+      "apollo.io"
+     ]
+    },
+    "organization_num_employees_ranges[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "employee-count bands as 'min,max' strings",
+     "example": [
+      "1,10"
+     ]
+    },
+    "contact_email_status[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "verified, unverified, likely to engage, unavailable"
+    },
+    "currently_using_any_of_technology_uids[]": {
+     "type": "array[string]",
+     "required": false,
+     "note": "tech-stack filter, e.g. salesforce"
+    },
+    "revenue_range[min]": {
+     "type": "integer",
+     "required": false,
+     "note": "annual revenue floor, integer with no symbols"
+    },
+    "revenue_range[max]": {
+     "type": "integer",
+     "required": false,
+     "note": "annual revenue ceiling"
+    },
+    "page": {
+     "type": "integer",
+     "required": false,
+     "note": "1-based; max 500 pages",
+     "example": 1
+    },
+    "per_page": {
+     "type": "integer",
+     "required": false,
+     "note": "max 100",
+     "example": 1
+    }
+   },
+   "note": "query-string params on a POST, with arrays in field[]=value form. RETURNS NO EMAILS OR PHONE NUMBERS AT ALL — that is why it is free. Pipe the person ids into apollo.people.enrich to get contact data, which is where the credits go. Result set is capped at 50,000 records"
+  }
+ },
+ "siblings": [
+  {
+   "id": "aiark.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.search.simple",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.search.scroll",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.decision-makers",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.decision-makers.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.search.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "coresignal.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crunchbase.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crustdata.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "diffbot.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "exa.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.domain",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.employees",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "getleadsio.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "harvestapi.linkedin.leads.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.companies.emails",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.x.multi-domain-search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.employee-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.role-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "lusha.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "moltsets.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "pdl.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "pdl.x.person-search-post",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.search.domain",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "sumble.people",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "treg.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.people.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.prospect-lists.continue",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.prospect-lists.create",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": {
+  "total_entries": 57,
+  "people": [
+   {
+    "id": "60ed25b7f8062300014a5b87",
+    "first_name": "Ada",
+    "last_name_obfuscated": "Be***i",
+    "title": "Head of Research",
+    "last_refreshed_at": "2026-08-12T12:54:52.712+00:00",
+    "has_email": true,
+    "has_city": true,
+    "has_state": true,
+    "has_country": true,
+    "has_direct_phone": "Yes",
+    "organization": {
+     "name": "Acme",
+     "has_industry": true,
+     "has_phone": true,
+     "has_city": true,
+     "has_state": true,
+     "has_country": true,
+     "has_zip_code": true,
+     "has_revenue": true,
+     "has_employee_count": true
+    }
+   },
+   {
+    "id": "610d25ae6dd50f0001c68107",
+    "first_name": "Ada",
+    "last_name_obfuscated": "Ok***o",
+    "title": "Head of Research",
+    "last_refreshed_at": "2026-08-16T14:01:27.381+00:00",
+    "has_email": true,
+    "has_city": true,
+    "has_state": true,
+    "has_country": true,
+    "has_direct_phone": "Yes",
+    "organization": {
+     "name": "Acme",
+     "has_industry": true,
+     "has_phone": true,
+     "has_city": true,
+     "has_state": true,
+     "has_country": true,
+     "has_zip_code": true,
+     "has_revenue": true,
+     "has_employee_count": true
+    }
+   },
+   {
+    "id": "622548594502710001e8ed22",
+    "first_name": "Ada",
+    "last_name_obfuscated": "Ts***g",
+    "title": "Head of Research",
+    "last_refreshed_at": "2026-07-13T09:47:56.229+00:00",
+    "has_email": true,
+    "has_city": true,
+    "has_state": true,
+    "has_country": true,
+    "has_direct_phone": "Yes",
+    "organization": {
+     "name": "Acme",
+     "has_industry": true,
+     "has_phone": true,
+     "has_city": true,
+     "has_state": true,
+     "has_country": true,
+     "has_zip_code": true,
+     "has_revenue": true,
+     "has_employee_count": true
+    }
+   }
+  ],
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-29 via treg (JSON body, not [] query keys); emails scrubbed, lists trimmed"
+ }
+}

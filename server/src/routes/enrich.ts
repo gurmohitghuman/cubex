@@ -6,8 +6,7 @@ import { TREG_TOOL_ID_PATTERN, UUID_PATTERN } from '../lib/constants';
 import { searchTools, getTool, featuredTools, type CatalogFailure } from '../services/enrich-catalog';
 import { estimateEnrichment, readEnrichBalance, sheetSetupInfo } from '../services/enrich-setup';
 import { parseEstimateInput } from '../lib/enrich-estimate-input';
-import { getTregToken } from '../services/treg-key';
-import { readToolAccess } from '../lib/treg';
+import { toolAccess } from '../services/enrich-access';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -51,11 +50,9 @@ router.get('/tools/:toolId/access', async (req: AuthRequest, res) => {
   try {
     const { toolId } = req.params;
     if (!TREG_TOOL_ID_PATTERN.test(toolId)) return res.status(400).json({ error: 'Invalid tool id' });
-    const token = getTregToken(req.userId!);
-    if (!token) return res.status(409).json({ error: 'Add your treg key in Settings first.', noKey: true });
-    const access = await readToolAccess(token, toolId);
-    if (!access) return res.status(502).json({ error: "Couldn't read this tool's access from treg." });
-    res.json({ access });
+    const read = await toolAccess(req.userId!, toolId);
+    if ('ok' in read) return res.json({ access: read.ok });
+    res.status(read.fail === 'no_key' ? 409 : 502).json({ error: read.message, ...(read.fail === 'no_key' ? { noKey: true } : {}) });
   } catch (error) {
     console.error('Enrichment tool access error:', error);
     res.status(500).json({ error: 'Failed to load tool access' });

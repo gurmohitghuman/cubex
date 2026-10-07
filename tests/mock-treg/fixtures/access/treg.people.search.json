@@ -1,0 +1,269 @@
+{
+ "tier": "routed",
+ "detail": "routed — 15 providers callable now; first: quickenrich.people.search on treg's quickenrich key, ~$0 (send {company_domain}); for this {company_domain} example, not usable: aviato.people.search (needs {q}), aviato.people.search.simple (needs {full_name}), crustdata.people.search (needs {full_name}), exa.people.search (needs {q}), findymail.search.employees (needs {company_domain, title}), leadmagic.x.role-finder (needs {company_domain, title}), lusha.people.search (needs {title}), wiza.people.search (needs {title}), oceanio.people.search (treg's account for this provider is exhausted right now)",
+ "plan": [
+  {
+   "endpoint_id": "quickenrich.people.search",
+   "provider": "quickenrich",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 0,
+   "expected_cost_per_hit_micro": 0,
+   "hit_rate": 0.7185,
+   "ok_rate": 1,
+   "p50_ms": 74,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadsforge.people.search",
+   "provider": "leadsforge",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 0,
+   "expected_cost_per_hit_micro": 0,
+   "hit_rate": 0.2684,
+   "ok_rate": 0.9984,
+   "p50_ms": 758,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "dropleads.people.search",
+   "provider": "dropleads",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 0,
+   "expected_cost_per_hit_micro": 0,
+   "hit_rate": 0.1813,
+   "ok_rate": 0.981,
+   "p50_ms": 1370,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "aiark.people.search",
+   "provider": "aiark",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 2634,
+   "expected_cost_per_hit_micro": 2634,
+   "hit_rate": 0.2571,
+   "ok_rate": 0.9974,
+   "p50_ms": 419,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "quickenrich.people.search.domain",
+   "provider": "quickenrich",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 4834,
+   "expected_cost_per_hit_micro": 6597,
+   "hit_rate": 0.7327,
+   "ok_rate": 1,
+   "p50_ms": 74,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "icypeas.people.search",
+   "provider": "icypeas",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 3800,
+   "expected_cost_per_hit_micro": 9071,
+   "hit_rate": 0.4189,
+   "ok_rate": 1,
+   "p50_ms": 657,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "prospeo.people.search",
+   "provider": "prospeo",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 24500,
+   "expected_cost_per_hit_micro": 24500,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 377,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadmagic.x.employee-finder",
+   "provider": "leadmagic",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 12500,
+   "expected_cost_per_hit_micro": 37136,
+   "hit_rate": 0.3366,
+   "ok_rate": 1,
+   "p50_ms": 942,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "hunter.companies.emails",
+   "provider": "hunter",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 24500,
+   "expected_cost_per_hit_micro": 62643,
+   "hit_rate": 0.3911,
+   "ok_rate": 0.9992,
+   "p50_ms": 302,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "fiber-ai.people.search",
+   "provider": "fiber-ai",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 200000,
+   "expected_cost_per_hit_micro": 235626,
+   "hit_rate": 0.8488,
+   "ok_rate": 1,
+   "p50_ms": 614,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "findymail.search.domain",
+   "provider": "findymail",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 198000,
+   "expected_cost_per_hit_micro": 427738,
+   "hit_rate": 0.4629,
+   "ok_rate": 0.9858,
+   "p50_ms": 4047,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "companyenrich.people.search",
+   "provider": "companyenrich",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 196000,
+   "expected_cost_per_hit_micro": 1143523,
+   "hit_rate": 0.1714,
+   "ok_rate": 1,
+   "p50_ms": 300,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadmagic.people.search",
+   "provider": "leadmagic",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 250000,
+   "expected_cost_per_hit_micro": 1197318,
+   "hit_rate": 0.2088,
+   "ok_rate": 0.9998,
+   "p50_ms": 3074,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "harvestapi.linkedin.leads.search",
+   "provider": "harvestapi",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 2500000,
+   "expected_cost_per_hit_micro": 2579979,
+   "hit_rate": 0.969,
+   "ok_rate": 1,
+   "p50_ms": 3581,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "enrichlayer.people.search",
+   "provider": "enrichlayer",
+   "tier": "platform",
+   "identity": [
+    "company_domain"
+   ],
+   "price_micro": 3000000,
+   "expected_cost_per_hit_micro": 4687500,
+   "hit_rate": 0.64,
+   "ok_rate": 1,
+   "p50_ms": 1256,
+   "confidence": "measured",
+   "exhausted": false
+  }
+ ],
+ "dropped": [
+  {
+   "endpoint_id": "aviato.people.search",
+   "why": "needs {q}"
+  },
+  {
+   "endpoint_id": "aviato.people.search.simple",
+   "why": "needs {full_name}"
+  },
+  {
+   "endpoint_id": "crustdata.people.search",
+   "why": "needs {full_name}"
+  },
+  {
+   "endpoint_id": "exa.people.search",
+   "why": "needs {q}"
+  },
+  {
+   "endpoint_id": "findymail.search.employees",
+   "why": "needs {company_domain, title}"
+  },
+  {
+   "endpoint_id": "leadmagic.x.role-finder",
+   "why": "needs {company_domain, title}"
+  },
+  {
+   "endpoint_id": "lusha.people.search",
+   "why": "needs {title}"
+  },
+  {
+   "endpoint_id": "wiza.people.search",
+   "why": "needs {title}"
+  },
+  {
+   "endpoint_id": "oceanio.people.search",
+   "why": "treg's account for this provider is exhausted right now"
+  }
+ ]
+}

@@ -1,0 +1,172 @@
+{
+ "tier": "routed",
+ "detail": "routed — 11 providers callable now; first: contactout.people.email.verify on treg's contactout key, ~$0 (send {email})",
+ "plan": [
+  {
+   "endpoint_id": "contactout.people.email.verify",
+   "provider": "contactout",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 0,
+   "expected_cost_per_hit_micro": 0,
+   "hit_rate": 1,
+   "ok_rate": 0.9995,
+   "p50_ms": 981,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "trykitt.people.email.verify",
+   "provider": "trykitt",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 1500,
+   "expected_cost_per_hit_micro": 1500,
+   "hit_rate": 1,
+   "ok_rate": 0.9998,
+   "p50_ms": 1970,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "millionverifier.people.email.verify",
+   "provider": "millionverifier",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 1780,
+   "expected_cost_per_hit_micro": 1780,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 710,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "dropleads.people.email.verify",
+   "provider": "dropleads",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 1800,
+   "expected_cost_per_hit_micro": 1800,
+   "hit_rate": 1,
+   "ok_rate": 0.9982,
+   "p50_ms": 1009,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "bounceban.people.email.verify",
+   "provider": "bounceban",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 4000,
+   "expected_cost_per_hit_micro": 4421,
+   "hit_rate": 0.9046,
+   "ok_rate": 1,
+   "p50_ms": 1283,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "limadata.people.email.verify",
+   "provider": "limadata",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 6000,
+   "expected_cost_per_hit_micro": 6000,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 2334,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "leadmagic.people.email.verify",
+   "provider": "leadmagic",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 6250,
+   "expected_cost_per_hit_micro": 6250,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 3262,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "scrubby.people.email.verify",
+   "provider": "scrubby",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 8000,
+   "expected_cost_per_hit_micro": 8000,
+   "hit_rate": 1,
+   "ok_rate": 0.9095,
+   "p50_ms": 1275,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "tomba.people.email.verify",
+   "provider": "tomba",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 8900,
+   "expected_cost_per_hit_micro": 8900,
+   "hit_rate": 1,
+   "ok_rate": 1,
+   "p50_ms": 307,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "hunter.people.email.verify",
+   "provider": "hunter",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 12250,
+   "expected_cost_per_hit_micro": 12402,
+   "hit_rate": 0.9877,
+   "ok_rate": 0.9999,
+   "p50_ms": 1016,
+   "confidence": "measured",
+   "exhausted": false
+  },
+  {
+   "endpoint_id": "zerobounce.people.email.verify",
+   "provider": "zerobounce",
+   "tier": "platform",
+   "identity": [
+    "email"
+   ],
+   "price_micro": 13800,
+   "expected_cost_per_hit_micro": 13800,
+   "hit_rate": 0.9646,
+   "ok_rate": 1,
+   "p50_ms": 446,
+   "confidence": "measured",
+   "exhausted": false
+  }
+ ],
+ "dropped": []
+}

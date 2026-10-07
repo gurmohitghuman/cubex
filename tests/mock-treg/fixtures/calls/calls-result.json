@@ -1,0 +1,35 @@
+{
+ "note": "GET /calls/{id}/result for a waterfall call: stored false (only metered single calls are kept).",
+ "request": {
+  "method": "GET",
+  "path": "/calls/c0ffee0000000000000000000000001d/result",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Token": "<redacted>"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json"
+  },
+  "body": {
+   "id": 1001,
+   "call_ref": "c0ffee0000000000000000000000001d",
+   "endpoint_id": "treg.people.email.find",
+   "provider": "treg",
+   "credential_tier": "routed",
+   "method": "POST",
+   "path": "/people.email.find",
+   "status_code": 200,
+   "cached": false,
+   "created_at": "2026-10-07T21:31:42.211153",
+   "stored": false,
+   "note": "not stored: calls on your own tools are relayed without being kept, and an own-key answer is kept only when it fit the archive's size cap while recording was on",
+   "request": null,
+   "response": null
+  }
+ }
+}

@@ -1,0 +1,65 @@
+{
+ "endpoint": {
+  "id": "companyenrich.companies.autocomplete",
+  "name": "Resolve a company name to its domain (free autocomplete)",
+  "summary": "Returns a list of companies matching the given partial domain name — up to 10 companies per request",
+  "provider": "companyenrich",
+  "provider_display": "CompanyEnrich",
+  "kind": "data",
+  "method": "GET",
+  "capability": "companies.autocomplete",
+  "capability_description": "Autocomplete a company by partial domain or name",
+  "platform": "companies",
+  "platform_label": "Company data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "overflow_price_usd": 0.0,
+  "overflow_price_unit": "call",
+  "overflow_via": "orthogonal",
+  "test_request": {
+   "queryParams": {
+    "query": "Acme"
+   }
+  },
+  "cost": {
+   "type": "free",
+   "unit": "call",
+   "usd": 0.0,
+   "note": "documented FREE and confirmed live 2026-08-20 — the credit meter did not move"
+  },
+  "observed": {
+   "ok_rate": 1.0,
+   "hit_rate": null,
+   "samples": 143792,
+   "hit_samples": 0
+  },
+  "input": {
+   "queryParams": {
+    "query": {
+     "type": "string",
+     "required": true,
+     "note": "partial domain or company name",
+     "example": "stripe"
+    }
+   },
+   "note": "FREE, so this is the correct way to turn a fuzzy company name into a canonical domain BEFORE spending a credit on enrichment. Returns {domain, name, logoUrl} only."
+  }
+ },
+ "siblings": [],
+ "example_response": [
+  {
+   "domain": "acme.example",
+   "name": "Acme",
+   "logoUrl": "https://logo.example/acme.png"
+  },
+  {
+   "domain": "acme-labs.example",
+   "name": "Acme",
+   "logoUrl": "https://logo.example/acme.png"
+  },
+  "... 8 more items truncated"
+ ]
+}
