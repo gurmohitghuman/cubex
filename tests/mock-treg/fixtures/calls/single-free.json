@@ -1,0 +1,74 @@
+{
+ "note": "Free single tool: cost header 0, call id.",
+ "request": {
+  "method": "GET",
+  "path": "/call/companyenrich.companies.autocomplete?query=Acme",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Route-Max-Cost": "0.01",
+   "X-Treg-Token": "<redacted>"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json; charset=utf-8",
+   "x-treg-call-id": "c0ffee00000000000000000000000003",
+   "x-treg-cost-micro": "0"
+  },
+  "body": [
+   {
+    "domain": "acme.example",
+    "name": "Acme",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "acme-labs.example",
+    "name": "Acme",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acme.partners",
+    "name": "Acme",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmes.com",
+    "name": "Stars and Acmes",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmedspatula.com",
+    "name": "Acmed Spatula",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmeystork.org.uk",
+    "name": "Acmey Stork",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmesgenerator.com",
+    "name": "CSS Acmes Generator",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "dj-Acme.github.io",
+    "name": "DJ-Acme",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmesbeauty.com",
+    "name": "Acmes Beauty",
+    "logoUrl": "https://logo.example/acme.png"
+   },
+   {
+    "domain": "Acmeyste.com",
+    "name": "Acme Young Scientist & Technology Exhibition",
+    "logoUrl": "https://logo.example/acme.png"
+   }
+  ]
+ }
+}

@@ -1,0 +1,309 @@
+{
+ "endpoint": {
+  "id": "treg.people.email.verify",
+  "name": "people.email.verify — routed: best of 11 providers, own keys first",
+  "summary": "Verify an email address — treg picks the provider (own keys first, then cheapest) and names the one that served",
+  "provider": "treg",
+  "provider_display": "treg",
+  "kind": "routed",
+  "method": "POST",
+  "capability": "people.email.verify",
+  "capability_description": "Check an email address you ALREADY have is real and deliverable — not for finding one",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "routed_children": [
+   "bounceban.people.email.verify",
+   "contactout.people.email.verify",
+   "dropleads.people.email.verify",
+   "hunter.people.email.verify",
+   "leadmagic.people.email.verify",
+   "limadata.people.email.verify",
+   "millionverifier.people.email.verify",
+   "scrubby.people.email.verify",
+   "tomba.people.email.verify",
+   "trykitt.people.email.verify",
+   "zerobounce.people.email.verify"
+  ],
+  "test_request": {
+   "body": {
+    "email": "…"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.0,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0–$0.0138 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (4 of 11 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.9936,
+   "hit_rate": null,
+   "samples": 954380,
+   "hit_samples": 0
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "email": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of email)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({email}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "email"
+    ]
+   ],
+   "output": {
+    "valid": {
+     "type": "bool",
+     "required": true,
+     "note": "the provider says the mailbox accepts mail"
+    },
+    "status": {
+     "type": "str",
+     "note": "the provider's own verdict word (valid | invalid | accept_all | unknown | …)"
+    },
+    "score": {
+     "type": "int"
+    }
+   },
+   "miss": "status == null",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "contactout.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0,
+    "works": 0.9995
+   },
+   {
+    "endpoint_id": "trykitt.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0015,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0015,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "millionverifier.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.00178,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00178,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "dropleads.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0018,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0018,
+    "works": 0.9982
+   },
+   {
+    "endpoint_id": "bounceban.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.004,
+    "hit_rate": 0.9046,
+    "usd_per_hit": 0.004421843908910016,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "limadata.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.006,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.006,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadmagic.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.00625,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00625,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "scrubby.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.008,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.008,
+    "works": 0.9095
+   },
+   {
+    "endpoint_id": "tomba.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0089,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "hunter.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.01225,
+    "hit_rate": 0.9877,
+    "usd_per_hit": 0.012402551381998583,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "zerobounce.people.email.verify",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0138,
+    "hit_rate": 0.9649,
+    "usd_per_hit": 0.0138,
+    "works": 1.0
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "bounceban.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "bounceban.people.email.verify.waterfall",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "millionverifier.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "scrubby.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "trykitt.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "zerobounce.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

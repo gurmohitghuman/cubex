@@ -1,0 +1,494 @@
+{
+ "endpoint": {
+  "id": "treg.people.phone.find",
+  "name": "people.phone.find — routed: best of 13 providers, own keys first",
+  "summary": "Find someone's phone number — treg picks the provider (own keys first, then cheapest per hit) and names the one that served",
+  "provider": "treg",
+  "provider_display": "treg",
+  "kind": "routed",
+  "method": "POST",
+  "capability": "people.phone.find",
+  "capability_description": "Find someone's phone number",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "routed_children": [
+   "aiark.people.phone.find",
+   "aviato.people.phone.find",
+   "contactout.people.contact.phone",
+   "dropleads.people.phone.find",
+   "findymail.search.phone",
+   "leadmagic.people.phone.find",
+   "leadsforge.people.phone.find",
+   "limadata.people.phone.find",
+   "lusha.people.phone.find",
+   "prospeo.people.phone.find",
+   "quickenrich.people.phone.find",
+   "tomba.people.phone.find",
+   "wiza.people.phone.find"
+  ],
+  "test_request": {
+   "body": {
+    "linkedin_url": "https://www.linkedin.com/in/ada-lovelace"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.004834,
+   "note": "the children's range $0.004834–$0.7488 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (0 of 13 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.7939,
+   "hit_rate": null,
+   "samples": 273815,
+   "hit_samples": 0
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "linkedin_url": {
+     "type": "url",
+     "required": false,
+     "note": "identity key (part of linkedin_url)"
+    },
+    "email": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of email)"
+    },
+    "domain": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
+    },
+    "full_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+full_name)"
+    },
+    "first_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    },
+    "last_name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain+first_name+last_name)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({linkedin_url} | {email} | {domain, full_name} | {domain, first_name, last_name}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "linkedin_url"
+    ],
+    [
+     "email"
+    ],
+    [
+     "domain",
+     "full_name"
+    ],
+    [
+     "domain",
+     "first_name",
+     "last_name"
+    ]
+   ],
+   "output": {
+    "phone": {
+     "type": "str",
+     "required": true,
+     "note": "as the provider formats it; E.164 when it offers one"
+    },
+    "line_type": {
+     "type": "str"
+    },
+    "country_code": {
+     "type": "str"
+    }
+   },
+   "miss": "phone == null",
+   "derive": {
+    "full_name": "join(first_name, last_name)",
+    "first_name": "split_first(full_name)",
+    "last_name": "split_last(full_name)",
+    "domain": "email_domain(email)",
+    "linkedin_url": "linkedin_url(linkedin_handle)",
+    "linkedin_handle": "linkedin_handle(linkedin_url)"
+   }
+  },
+  "plan": [
+   {
+    "endpoint_id": "quickenrich.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.004834,
+    "hit_rate": 0.1544,
+    "usd_per_hit": 0.004834,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "aiark.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.026335,
+    "hit_rate": 0.1887,
+    "usd_per_hit": 0.026335,
+    "works": 0.9973
+   },
+   {
+    "endpoint_id": "tomba.people.phone.find",
+    "accepts": [
+     [
+      "email"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0445,
+    "hit_rate": 0.2064,
+    "usd_per_hit": 0.0445,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "dropleads.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.054,
+    "hit_rate": 0.0193,
+    "usd_per_hit": 0.054,
+    "works": 0.9975
+   },
+   {
+    "endpoint_id": "aviato.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.08,
+    "hit_rate": 0.0566,
+    "usd_per_hit": 0.08,
+    "works": 0.9989
+   },
+   {
+    "endpoint_id": "leadmagic.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.125,
+    "hit_rate": 0.1326,
+    "usd_per_hit": 0.125,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "wiza.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ],
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.15,
+    "hit_rate": 0.2,
+    "usd_per_hit": 0.15,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "findymail.search.phone",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.198,
+    "hit_rate": 0.0546,
+    "usd_per_hit": 0.198,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "limadata.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.2,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.2,
+    "works": 0.999
+   },
+   {
+    "endpoint_id": "prospeo.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ],
+     [
+      "domain",
+      "full_name"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ]
+    ],
+    "usd": 0.245,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.245,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadsforge.people.phone.find",
+    "accepts": [
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.245,
+    "hit_rate": 0.1507,
+    "usd_per_hit": 0.245,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "contactout.people.contact.phone",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.25,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.25,
+    "works": 0.9988
+   },
+   {
+    "endpoint_id": "lusha.people.phone.find",
+    "accepts": [
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ],
+     [
+      "domain",
+      "first_name",
+      "last_name"
+     ],
+     [
+      "domain",
+      "full_name"
+     ]
+    ],
+    "usd": 0.7488,
+    "hit_rate": 0.3652,
+    "usd_per_hit": 0.7488,
+    "works": 1.0
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "aiark.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.contact.phone",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "datagma.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.phone",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "getleadsio.people.phone.lookup",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.phone.find.bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "lusha.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.people.phone.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.phone.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.people.phone.find",
+   "async": {
+    "id_from": "data.id",
+    "poll": {
+     "endpoint": "wiza.people.reveal.get",
+     "param": {
+      "in": "pathParams",
+      "name": "id"
+     }
+    },
+    "status": {
+     "path": "data.status",
+     "progress": [
+      "queued",
+      "resolving"
+     ],
+     "success": [
+      "finished"
+     ],
+     "failure": [
+      "failed"
+     ]
+    },
+    "result": {
+     "path": "data"
+    },
+    "interval": 2
+   },
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

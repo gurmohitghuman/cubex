@@ -11,6 +11,9 @@ interface Props {
   columns: string[]
   defaultMaxCostPerRow: number | null
   defaultSpendLimit: number | null
+  // The provider that bills this tool directly (the team's own key at treg):
+  // treg's limits can't stop its charges, so they aren't offered.
+  billedBy: string | null
 }
 
 const parseMoney = (text: string): number | null => {
@@ -40,7 +43,7 @@ const MoneyInput: React.FC<{ value: number | null; fallback: number | null; labe
 
 const count = (n: number | null) => (n === null ? '…' : n.toLocaleString())
 
-export const RowsLimitsPane: React.FC<Props> = ({ draft, update, counts, columns, defaultMaxCostPerRow, defaultSpendLimit }) => {
+export const RowsLimitsPane: React.FC<Props> = ({ draft, update, counts, columns, defaultMaxCostPerRow, defaultSpendLimit, billedBy }) => {
   const modes: Array<{ value: RowsMode; label: string; show: boolean }> = [
     { value: 'all', label: `All rows (${count(counts.all)})`, show: true },
     { value: 'filter', label: `Rows in the current filter (${count(counts.filter)})`, show: counts.filter !== null },
@@ -70,28 +73,32 @@ export const RowsLimitsPane: React.FC<Props> = ({ draft, update, counts, columns
         <ConditionsField conditions={draft.conditions} columns={columns} onChange={conditions => update({ conditions })} />
       </div>
 
-      <div className="space-y-1">
-        <label className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-          <span className="w-28">Max per row</span>
-          <MoneyInput value={cap} fallback={defaultMaxCostPerRow} label="Max per row" onChange={v => update({ maxCostPerRowUsd: v })} />
-        </label>
-        <p className={`text-xs ml-[7.5rem] ${tooHigh ? 'text-red-600' : lowCap ? 'text-amber-700' : 'text-gray-500'}`}>
-          {tooHigh
-            ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.`
-            : lowCap
-              ? `Below ${formatCost(defaultMaxCostPerRow!)}, later providers can be skipped, and rows show "Budget ran out".`
-              : 'Lets every provider you picked answer. Empty uses the default.'}
-        </p>
-      </div>
+      {billedBy ? (
+        <p className="text-xs text-gray-600">No spend limits here: {billedBy} bills these calls directly, not your treg balance.</p>
+      ) : (<>
+        <div className="space-y-1">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+            <span className="w-28">Max per row</span>
+            <MoneyInput value={cap} fallback={defaultMaxCostPerRow} label="Max per row" onChange={v => update({ maxCostPerRowUsd: v })} />
+          </label>
+          <p className={`text-xs ml-[7.5rem] ${tooHigh ? 'text-red-600' : lowCap ? 'text-amber-700' : 'text-gray-500'}`}>
+            {tooHigh
+              ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.`
+              : lowCap
+                ? `Below ${formatCost(defaultMaxCostPerRow!)}, later providers can be skipped, and rows show "Budget ran out".`
+                : 'Lets every provider you picked answer. Empty uses the default.'}
+          </p>
+        </div>
 
-      <div className="space-y-1">
-        <label className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-          <span className="w-28">Stop the run at</span>
-          <MoneyInput value={draft.spendLimitUsd} fallback={defaultSpendLimit} label="Stop the run at"
-            onChange={v => update({ spendLimitUsd: v })} />
-        </label>
-        <p className="text-xs text-gray-500 ml-[7.5rem]">The run pauses when it has spent this much. Empty uses the estimate&apos;s high end.</p>
-      </div>
+        <div className="space-y-1">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+            <span className="w-28">Stop the run at</span>
+            <MoneyInput value={draft.spendLimitUsd} fallback={defaultSpendLimit} label="Stop the run at"
+              onChange={v => update({ spendLimitUsd: v })} />
+          </label>
+          <p className="text-xs text-gray-500 ml-[7.5rem]">The run pauses when it has spent this much. Empty uses the estimate&apos;s high end.</p>
+        </div>
+      </>)}
 
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={draft.fresh} onChange={e => update({ fresh: e.target.checked })}

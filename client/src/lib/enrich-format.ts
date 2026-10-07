@@ -13,6 +13,10 @@ export const usd = (value: number): string => `$${value.toFixed(2)}`
 // $0.003 calls never read as "$0.00 used".
 export const spent = (value: number): string => (value === 0 ? '$0.00' : formatCost(value))
 
+// A limit someone typed reads as typed: $0.10, $0.0125, $0.005.
+export const limitText = (value: number): string =>
+  (Math.abs(value * 100 - Math.round(value * 100)) < 1e-9 ? usd(value) : `$${value.toFixed(4).replace(/0+$/, '')}`)
+
 // Daily limits reset at midnight UTC; say when that is for the reader.
 export function utcMidnightLocal(now = new Date()): string {
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))

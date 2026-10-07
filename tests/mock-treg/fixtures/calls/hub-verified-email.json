@@ -1,0 +1,29 @@
+{
+ "note": "Hub tools are off in production: 404 with X-Treg-Error.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg-hub.verified-email",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Route-Max-Cost": "0.000001",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Ada Lovelace",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 404,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000026",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": "no tool 'treg-hub.verified-email' in this org"
+  }
+ }
+}

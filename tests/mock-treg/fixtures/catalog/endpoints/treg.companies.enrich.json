@@ -1,0 +1,798 @@
+{
+ "endpoint": {
+  "id": "treg.companies.enrich",
+  "name": "companies.enrich — routed: best of 27 providers, own keys first",
+  "summary": "Enrich a company from its domain, name, LinkedIn URL or a work email — treg picks the provider and names the one that served",
+  "provider": "treg",
+  "provider_display": "treg",
+  "kind": "routed",
+  "method": "POST",
+  "capability": "companies.enrich",
+  "capability_description": "Enrich a company from its domain or name",
+  "platform": "companies",
+  "platform_label": "Company data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "routed_children": [
+   "apollo.companies.enrich",
+   "aviato.companies.enrich",
+   "branddev.brand.retrieve",
+   "branddev.brand.retrieve-by-name",
+   "branddev.brand.retrieve-by-email",
+   "companyenrich.companies.enrich",
+   "companyenrich.companies.enrich.by_properties",
+   "contactout.companies.enrich",
+   "datagma.companies.enrich",
+   "dropleads.companies.enrich",
+   "enrichlayer.company.profile",
+   "fiber-ai.companies.enrich",
+   "findymail.search.company",
+   "harvestapi.linkedin.company.profile",
+   "hunter.companies.enrich",
+   "icypeas.companies.enrich",
+   "leadmagic.companies.enrich",
+   "limadata.companies.enrich",
+   "lusha.companies.enrich",
+   "pdl.companies.enrich",
+   "predictleads.companies.enrich",
+   "prospeo.companies.enrich",
+   "sumble.organizations",
+   "thecompaniesapi.companies.enrich",
+   "thecompaniesapi.companies.enrich_by_email",
+   "tomba.companies.enrich",
+   "wiza.companies.enrich"
+  ],
+  "test_request": {
+   "body": {
+    "domain": "acme.example"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.0018,
+   "varies": true,
+   "note": "NOT free: misses are billed too. the children's range $0.0018–$0.38 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (7 of 27 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.7364,
+   "hit_rate": null,
+   "samples": 423984,
+   "hit_samples": 0
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "domain": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of domain)"
+    },
+    "website": {
+     "type": "url",
+     "required": false,
+     "note": "identity key (part of website)"
+    },
+    "name": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of name)"
+    },
+    "linkedin_url": {
+     "type": "url",
+     "required": false,
+     "note": "identity key (part of linkedin_url)"
+    },
+    "linkedin_handle": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of linkedin_handle)"
+    },
+    "email": {
+     "type": "str",
+     "required": false,
+     "note": "identity key (part of email)"
+    }
+   },
+   "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({domain} | {website} | {name} | {linkedin_url} | {linkedin_handle} | {email}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "domain"
+    ],
+    [
+     "website"
+    ],
+    [
+     "name"
+    ],
+    [
+     "linkedin_url"
+    ],
+    [
+     "linkedin_handle"
+    ],
+    [
+     "email"
+    ]
+   ],
+   "output": {
+    "name": {
+     "type": "str",
+     "required": true
+    },
+    "domain": {
+     "type": "str"
+    },
+    "website": {
+     "type": "str"
+    },
+    "description": {
+     "type": "str"
+    },
+    "industry": {
+     "type": "str"
+    },
+    "employees": {
+     "type": "str",
+     "note": "headcount or a range, as the provider states it"
+    },
+    "founded": {
+     "type": "int"
+    },
+    "location": {
+     "type": "str"
+    },
+    "linkedin_url": {
+     "type": "str"
+    }
+   },
+   "miss": "name == null",
+   "derive": {
+    "domain": "coalesce(email_domain(email), host(website))",
+    "linkedin_url": "linkedin_url(linkedin_handle)",
+    "linkedin_handle": "linkedin_handle(linkedin_url)"
+   }
+  },
+  "plan": [
+   {
+    "endpoint_id": "thecompaniesapi.companies.enrich_by_email",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.0019,
+    "hit_rate": 0.1301,
+    "usd_per_hit": 0.0019,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "thecompaniesapi.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.0019,
+    "hit_rate": 0.9883,
+    "usd_per_hit": 0.0019,
+    "works": 0.9995
+   },
+   {
+    "endpoint_id": "dropleads.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.0018,
+    "hit_rate": 0.4886,
+    "usd_per_hit": 0.0036839950880065493,
+    "works": 0.9802
+   },
+   {
+    "endpoint_id": "harvestapi.linkedin.company.profile",
+    "accepts": [
+     [
+      "linkedin_handle"
+     ]
+    ],
+    "usd": 0.004,
+    "hit_rate": 0.9092,
+    "usd_per_hit": 0.004399472063352398,
+    "works": 0.9985
+   },
+   {
+    "endpoint_id": "hunter.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.0049,
+    "hit_rate": 0.8408,
+    "usd_per_hit": 0.0049,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "tomba.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.0089,
+    "hit_rate": 0.1788,
+    "usd_per_hit": 0.0089,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "icypeas.companies.enrich",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0095,
+    "hit_rate": 0.8921,
+    "usd_per_hit": 0.0095,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "companyenrich.companies.enrich.by_properties",
+    "accepts": [
+     [
+      "name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0098,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0098,
+    "works": 0.9998
+   },
+   {
+    "endpoint_id": "companyenrich.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.0098,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0098,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "findymail.search.company",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.0198,
+    "hit_rate": 0.928,
+    "usd_per_hit": 0.0198,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "limadata.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.02,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.02,
+    "works": 0.9961
+   },
+   {
+    "endpoint_id": "datagma.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "website"
+     ],
+     [
+      "name"
+     ],
+     [
+      "linkedin_url"
+     ],
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.02258,
+    "hit_rate": 0.9205,
+    "usd_per_hit": 0.02258,
+    "works": 0.9977
+   },
+   {
+    "endpoint_id": "prospeo.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "name"
+     ],
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.0245,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.0245,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "leadmagic.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.025,
+    "hit_rate": 0.5852,
+    "usd_per_hit": 0.025,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "branddev.brand.retrieve",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.02534,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.02534,
+    "works": 0.9982
+   },
+   {
+    "endpoint_id": "branddev.brand.retrieve-by-name",
+    "accepts": [
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.02534,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.02534,
+    "works": 0.9029
+   },
+   {
+    "endpoint_id": "branddev.brand.retrieve-by-email",
+    "accepts": [
+     [
+      "email"
+     ]
+    ],
+    "usd": 0.02534
+   },
+   {
+    "endpoint_id": "apollo.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.026,
+    "hit_rate": 0.8453,
+    "usd_per_hit": 0.026000000000000002,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "fiber-ai.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.04,
+    "hit_rate": 0.713,
+    "usd_per_hit": 0.04,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "predictleads.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.04,
+    "hit_rate": 0.9558,
+    "usd_per_hit": 0.04184975936388365,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "sumble.organizations",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.03,
+    "hit_rate": 0.6406,
+    "usd_per_hit": 0.04683109584764284,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "wiza.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ],
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.05,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.05,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "contactout.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.02,
+    "hit_rate": 0.3768,
+    "usd_per_hit": 0.05307855626326964,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "enrichlayer.company.profile",
+    "accepts": [
+     [
+      "linkedin_url"
+     ]
+    ],
+    "usd": 0.1,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "aviato.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.15,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.15,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "lusha.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.2496,
+    "hit_rate": 0.7785,
+    "usd_per_hit": 0.24960000000000002,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "pdl.companies.enrich",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.38,
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.38,
+    "works": 1.0
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "akta.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "apollo.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.companies.enrich.bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "branddev.brand.retrieve",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "branddev.brand.retrieve-by-email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "branddev.brand.retrieve-by-isin",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "branddev.brand.retrieve-by-name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "branddev.brand.retrieve-by-ticker",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "brightdata.x.companies-crunchbase",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.companies.enrich.batch",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.companies.enrich.by_properties",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.companies.get",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "coresignal.companies.collect",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "coresignal.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crunchbase.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crustdata.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crustdata.companies.identify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "datagma.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "diffbot.companies.bulk_enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "diffbot.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.company.lookup",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.company.profile",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.company",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "harvestapi.linkedin.company.profile",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "lusha.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.companies.enrich_bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.companies.lookup_bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "openmart.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "pdl.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "predictleads.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "sumble.organizations",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "thecompaniesapi.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "thecompaniesapi.companies.enrich_by_email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.companies.enrich",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

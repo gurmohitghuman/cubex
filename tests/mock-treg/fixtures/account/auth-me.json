@@ -1,0 +1,9 @@
+{
+ "email": "owner@example.com",
+ "is_superadmin": false,
+ "onboarded": true,
+ "github": false,
+ "org_id": 7,
+ "org": "acme",
+ "role": "owner"
+}

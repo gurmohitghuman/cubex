@@ -14,8 +14,9 @@
 #   scripts/e2e-harness.sh --no-build      # skip the build (use existing dist/)
 #   scripts/e2e-harness.sh -g "H3"         # pass-through Playwright args (grep, --headed, ...)
 #
-# Env overrides: E2E_PORT (default 3099), E2E_SPEC (default the data-consistency
-# specs; a Playwright path filter or a concrete .spec.ts path).
+# Env overrides: E2E_PORT (default 3099), E2E_TREG_PORT (the mock treg, default
+# 3098), E2E_SPEC (default the data-consistency specs; a Playwright path filter
+# or a concrete .spec.ts path).
 #
 # NOTE: written for macOS's stock bash 3.2 (empty-array expansion is guarded).
 set -euo pipefail
@@ -24,6 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PORT="${E2E_PORT:-3099}"
+TREG_PORT="${E2E_TREG_PORT:-3098}"
 SPEC="${E2E_SPEC:-data-consistency}"
 TEST_DIR="$ROOT/server/data/e2e"
 TEST_DB="$TEST_DIR/cubex-e2e.db"
@@ -50,9 +52,19 @@ case "$SPEC" in
     ;;
 esac
 
+# Another run (or a stale server) on our ports would be adopted as ours, and
+# this run's cleanup would delete its data. Check before touching anything.
+for url in "http://localhost:$PORT/api/health" "http://127.0.0.1:$TREG_PORT/health"; do
+  if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+    echo "[x] $url already answers (another e2e run?). Set E2E_PORT / E2E_TREG_PORT to free ports."; exit 1
+  fi
+done
+
 SERVER_PID=""
+TREG_PID=""
 cleanup() {
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
+  [ -n "$TREG_PID" ] && kill "$TREG_PID" 2>/dev/null || true
   # Give the writer a moment to release the files, then remove the test data dir.
   sleep 0.5
   rm -rf "$TEST_DIR"
@@ -82,6 +94,21 @@ export PUBLIC_URL="http://localhost:$PORT"
 export LOGIN_RATE_MAX="${LOGIN_RATE_MAX:-100000}"
 # Enables the transfer_rows / transform_column MCP tools so their specs run.
 export MCP_EFFICIENT_ROWS_ENABLED="${MCP_EFFICIENT_ROWS_ENABLED:-1}"
+# Enrichments talk to a mock treg (tests/mock-treg), never the real treg.to.
+# TREG_BASE_URL is an operator setting (never user input); specs drive the
+# mock's state through E2E_TREG.
+export TREG_BASE_URL="http://127.0.0.1:$TREG_PORT"
+
+echo "[boot] mock treg on :$TREG_PORT ..."
+node tests/mock-treg/server.mjs "$TREG_PORT" >/tmp/cubex-e2e-treg.log 2>&1 &
+TREG_PID=$!
+for _ in $(seq 1 20); do
+  kill -0 "$TREG_PID" 2>/dev/null || { echo "[x] mock treg died:"; tail -20 /tmp/cubex-e2e-treg.log; exit 1; }
+  curl -fsS -o /dev/null "$TREG_BASE_URL/health" 2>/dev/null && break
+  sleep 0.25
+done
+curl -fsS -o /dev/null "$TREG_BASE_URL/health" && kill -0 "$TREG_PID" 2>/dev/null \
+  || { echo "[x] mock treg never became ready"; tail -20 /tmp/cubex-e2e-treg.log; exit 1; }
 
 echo "[boot] prod server on :$PORT (data: server/data/e2e) ..."
 NODE_ENV=production PORT="$PORT" node server/dist/index.js >/tmp/cubex-e2e-server.log 2>&1 &
@@ -106,7 +133,7 @@ echo "[test] $SPEC ..."
 set +e
 # Guard the array expansion: stock bash 3.2 errors on "${arr[@]}" when arr is
 # empty under `set -u`. The ${arr[@]+...} form expands to nothing when unset.
-E2E_BASE="http://localhost:$PORT" npx playwright test "$SPEC" --reporter=list ${PW_ARGS[@]+"${PW_ARGS[@]}"}
+E2E_BASE="http://localhost:$PORT" E2E_TREG="$TREG_BASE_URL" npx playwright test "$SPEC" --reporter=list ${PW_ARGS[@]+"${PW_ARGS[@]}"}
 RC=$?
 set -e
 

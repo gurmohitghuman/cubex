@@ -1,0 +1,131 @@
+{
+ "note": "Same Idempotency-Key again: free replay, cost 0, original cost echoed.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:find:e797fd541301",
+   "X-Treg-Route-Max-Cost": "0.03",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Ada Lovelace",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee0000000000000000000000001d",
+   "x-treg-cost-micro": "0",
+   "x-treg-idempotent-replay": "true",
+   "x-treg-original-cost-micro": "4834"
+  },
+  "body": {
+   "output": {
+    "email": "Ada@acme.example",
+    "first_name": "Ada",
+    "last_name": "Lovelace"
+   },
+   "raw": {
+    "success": true,
+    "message": "Employee fetched",
+    "code": 200,
+    "data": {
+     "first_name": "Ada",
+     "last_name": "Lovelace",
+     "title": "Head of Research",
+     "email": "Ada@acme.example",
+     "employee_phone": "+15550100",
+     "employee_phone_type": "mobile",
+     "employee_linkedin": "https://www.linkedin.com/in/ada-lovelace-example",
+     "email_verification_date": "2026-09-15",
+     "company_url": "acme.example",
+     "company_name": "Acme",
+     "email_domain": "acme.example",
+     "company_linked": "https://www.linkedin.com/company/acme-example",
+     "company_phone": "+15550199",
+     "industry": "Technology, Information and Internet",
+     "revenue": ">1 Billion",
+     "employee_count": ">10000",
+     "address": "1 Example Street",
+     "city": "Springfield",
+     "region_code": "CA",
+     "zip": "00000",
+     "country_code": "US"
+    }
+   },
+   "_treg": {
+    "served_by": "quickenrich.people.email.find",
+    "provider": "quickenrich",
+    "tier": "platform",
+    "advice": "This address was found, not confirmed deliverable (verified != true). Run treg.people.email.verify on it before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes.",
+    "outcome": "hit",
+    "tried": [
+     {
+      "endpoint_id": "quickenrich.people.email.find",
+      "provider": "quickenrich",
+      "outcome": "hit",
+      "status": 200,
+      "charged_micro": 4834
+     }
+    ],
+    "charged_micro": 4834,
+    "dropped": [
+     {
+      "endpoint_id": "aiark.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "aviato.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "contactout.people.contact.work",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.reveal",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.turbo",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "findymail.search.business-profile",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "harvestapi.linkedin.user.profile.email",
+      "why": "needs {linkedin_handle}"
+     },
+     {
+      "endpoint_id": "leadmagic.x.personal-email-finder",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "tomba.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "datagma.people.email.find",
+      "why": "treg's account for this provider is exhausted right now"
+     },
+     {
+      "endpoint_id": "moltsets.people.email.find.name",
+      "why": "treg's account for this provider is exhausted right now"
+     }
+    ]
+   }
+  }
+ }
+}

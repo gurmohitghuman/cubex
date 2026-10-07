@@ -1,0 +1,217 @@
+{
+ "note": "The cheapest provider costs more than X-Treg-Route-Max-Cost: 402 route_max_cost, nothing charged.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Route-Max-Cost": "0.000001",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Ada Lovelace",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 402,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000021",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": {
+    "error": "route_max_cost",
+    "endpoint_id": "treg.people.email.find",
+    "max_cost_micro": 1,
+    "cheapest_micro": 4834,
+    "plan": [
+     {
+      "endpoint_id": "quickenrich.people.email.find",
+      "provider": "quickenrich",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "first_name",
+       "last_name"
+      ],
+      "price_micro": 4834,
+      "expected_cost_per_hit_micro": 4834,
+      "hit_rate": 0.303,
+      "ok_rate": 0.9999,
+      "p50_ms": 68,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "trykitt.people.email.find",
+      "provider": "trykitt",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 5000,
+      "expected_cost_per_hit_micro": 5000,
+      "hit_rate": 0.3841,
+      "ok_rate": 0.9996,
+      "p50_ms": 3952,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "tomba.people.email.find",
+      "provider": "tomba",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 8900,
+      "expected_cost_per_hit_micro": 8900,
+      "hit_rate": 0.2439,
+      "ok_rate": 0.9981,
+      "p50_ms": 6582,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "dropleads.people.email.find",
+      "provider": "dropleads",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "first_name",
+       "last_name"
+      ],
+      "price_micro": 18000,
+      "expected_cost_per_hit_micro": 18000,
+      "hit_rate": 0.2046,
+      "ok_rate": 0.9912,
+      "p50_ms": 2271,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "findymail.search.name",
+      "provider": "findymail",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 19800,
+      "expected_cost_per_hit_micro": 19800,
+      "hit_rate": 0.1585,
+      "ok_rate": 0.9997,
+      "p50_ms": 3569,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.name",
+      "provider": "limadata",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 20000,
+      "expected_cost_per_hit_micro": 20000,
+      "hit_rate": 1,
+      "ok_rate": 0.998,
+      "p50_ms": 335,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "prospeo.people.email.find",
+      "provider": "prospeo",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 24500,
+      "expected_cost_per_hit_micro": 24500,
+      "hit_rate": 1,
+      "ok_rate": 1,
+      "p50_ms": 225,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "hunter.people.email.find",
+      "provider": "hunter",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 24500,
+      "expected_cost_per_hit_micro": 24500,
+      "hit_rate": 0.1231,
+      "ok_rate": 0.9991,
+      "p50_ms": 3263,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "leadsforge.people.email.find",
+      "provider": "leadsforge",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "first_name",
+       "last_name"
+      ],
+      "price_micro": 24500,
+      "expected_cost_per_hit_micro": 24500,
+      "hit_rate": 0.0922,
+      "ok_rate": 0.9993,
+      "p50_ms": 4082,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "leadmagic.people.email.find",
+      "provider": "leadmagic",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 25000,
+      "expected_cost_per_hit_micro": 25000,
+      "hit_rate": 0.0261,
+      "ok_rate": 0.9999,
+      "p50_ms": 5230,
+      "confidence": "measured",
+      "exhausted": false
+     },
+     {
+      "endpoint_id": "wiza.people.email.find",
+      "provider": "wiza",
+      "tier": "platform",
+      "identity": [
+       "domain",
+       "full_name"
+      ],
+      "price_micro": 75000,
+      "expected_cost_per_hit_micro": 75000,
+      "hit_rate": 0.1361,
+      "ok_rate": 1,
+      "p50_ms": 216,
+      "confidence": "measured",
+      "exhausted": false
+     }
+    ],
+    "message": "the cheapest candidate (quickenrich.people.email.find) costs more than x-treg-route-max-cost",
+    "charged_micro": 0
+   }
+  }
+ }
+}

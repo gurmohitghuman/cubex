@@ -73,6 +73,10 @@ export function useSetupModel({ sheetId, draft, update, columns, selectedCount, 
   // bills them directly (the server's priceKnown, known before any inputs).
   const unpriced = !!tool && tool.kind === 'single' && tool.price.usd === null
     && tool.price.type !== 'free' && tool.price.overflowUsd === null
+  // A single tool the team runs on its own key at treg: the provider bills it,
+  // not the treg balance, so treg's price says nothing about the cost.
+  const ownKeySingle = !!tool && tool.kind === 'single' && !unpriced
+    && (data.access?.tier === 'tool' || data.access?.tier === 'credential') && data.access?.metered !== true
 
   // What a miss costs with what's picked, for the estimate box.
   const missNote = !tool ? '' : tool.kind === 'waterfall'
@@ -83,7 +87,7 @@ export function useSetupModel({ sheetId, draft, update, columns, selectedCount, 
 
   return {
     card, tool, data, ready, sent, counts, rows, providers, providersOn, problem, statusNameProblem, outputNameProblem,
-    estimate, missNote, blocked, limitsProblem, unpriced,
+    estimate, missNote, blocked, limitsProblem, unpriced, ownKeySingle,
     ownKeys: !!providers?.rows.some(r => r.access === 'own'),
     ownKeyProvider: card?.providerName ?? card?.provider ?? 'the provider',
   }

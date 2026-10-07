@@ -33,14 +33,22 @@ export function providerBillsMisses(p: Pick<EnrichToolProvider, 'usd' | 'usdPerH
 const maxOf = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b))
 const minOf = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b))
 
-// treg's /access plan rows ({provider, tier, price_micro}) for the team.
+// treg's /access plan rows ({provider, tier, price_micro}) for the team, plus
+// the rows the server adds for providers treg's plan leaves out. From treg's
+// source (application/call/access.py, routing/plan.py): a waterfall plan row
+// never has `metered` and prices own tiers at 0; a single endpoint's /access
+// always says `metered` for tool/credential. So an own key or tool reads as
+// "your key" unless treg says it still meters the connection.
 export function accessByProvider(access: EnrichToolAccess | null): Map<string, ProviderAccess> {
   const out = new Map<string, ProviderAccess>()
   for (const row of access?.plan ?? []) {
     const provider = typeof row.provider === 'string' ? row.provider.toLowerCase() : null
     if (!provider || out.has(provider)) continue
     if (row.tier === 'anonymous') out.set(provider, 'free')
-    else if (row.tier === 'tool' || row.tier === 'credential') out.set(provider, row.price_micro === 0 ? 'own' : 'connected')
+    else if (row.tier === 'tool' || row.tier === 'credential') {
+      const billed = row.metered === true || (typeof row.price_micro === 'number' && row.price_micro > 0)
+      out.set(provider, billed ? 'connected' : 'own')
+    }
   }
   return out
 }

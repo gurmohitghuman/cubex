@@ -1,0 +1,74 @@
+{
+ "note": "Verify waterfall: the free provider answered 429 and Kitt said valid-risky (valid false).",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.verify",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:v1:94c169162d50",
+   "X-Treg-Route-Max-Cost": "0.02",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "email": "Ada@acme.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000019",
+   "x-treg-cost-micro": "1500",
+   "x-treg-providers-tried": "contactout,trykitt",
+   "x-treg-route-outcome": "hit",
+   "x-treg-served-by": "trykitt.people.email.verify"
+  },
+  "body": {
+   "output": {
+    "valid": false,
+    "status": "valid-risky"
+   },
+   "raw": {
+    "jobId": "job_0001",
+    "email": "Ada@acme.example",
+    "validity": "valid-risky",
+    "validIdentity": true,
+    "validSMTP": null,
+    "displayText": "valid-risky",
+    "mxDomain": "mx.acme.example",
+    "reason": null,
+    "reasonCode": null,
+    "credits": {
+     "jobCredits": 0.0015,
+     "remainingCredits": "100.0"
+    }
+   },
+   "_treg": {
+    "served_by": "trykitt.people.email.verify",
+    "provider": "trykitt",
+    "tier": "platform",
+    "outcome": "hit",
+    "tried": [
+     {
+      "endpoint_id": "contactout.people.email.verify",
+      "provider": "contactout",
+      "outcome": "error",
+      "status": 429,
+      "charged_micro": 0,
+      "detail": "{\n    \"message\": \"Too Many Attempts.\"\n}"
+     },
+     {
+      "endpoint_id": "trykitt.people.email.verify",
+      "provider": "trykitt",
+      "outcome": "hit",
+      "status": 200,
+      "charged_micro": 1500
+     }
+    ],
+    "charged_micro": 1500
+   }
+  }
+ }
+}

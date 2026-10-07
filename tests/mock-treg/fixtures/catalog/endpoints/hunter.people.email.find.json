@@ -1,0 +1,337 @@
+{
+ "endpoint": {
+  "id": "hunter.people.email.find",
+  "name": "Find a person's work email by name and company domain",
+  "summary": "Find someone's work email address from their name and their company's domain",
+  "provider": "hunter",
+  "provider_display": "Hunter",
+  "kind": "data",
+  "method": "GET",
+  "capability": "people.email.find",
+  "capability_description": "Get, find or look up a person's work email address from their name, company domain or LinkedIn profile",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "overflow_price_usd": 0.01,
+  "overflow_price_unit": "call",
+  "overflow_via": "orthogonal",
+  "test_request": {
+   "queryParams": {
+    "domain": "acme.example",
+    "full_name": "Ada Lovelace"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.0245,
+   "note": "1 SEARCH credit, charged only when an email is found; a miss is free.",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 0.9991,
+   "hit_rate": 0.1231,
+   "samples": 166055,
+   "hit_samples": 151354
+  },
+  "input": {
+   "queryParams": {
+    "domain": {
+     "type": "string",
+     "required": false,
+     "note": "the company's domain — preferred over company",
+     "example": "reddit.com"
+    },
+    "company": {
+     "type": "string",
+     "required": false,
+     "note": "company name, when you don't know the domain"
+    },
+    "linkedin_handle": {
+     "type": "string",
+     "required": false,
+     "note": "identifies EITHER the person or the company — it can stand in for the name pair or for domain/company"
+    },
+    "first_name": {
+     "type": "string",
+     "required": false,
+     "note": "use with last_name",
+     "example": "Alexis"
+    },
+    "last_name": {
+     "type": "string",
+     "required": false,
+     "example": "Ohanian"
+    },
+    "full_name": {
+     "type": "string",
+     "required": false,
+     "note": "alternative to first_name + last_name"
+    },
+    "max_duration": {
+     "type": "integer",
+     "required": false,
+     "note": "seconds Hunter may spend, 3-20, default 10"
+    }
+   },
+   "note": "one of domain | company | linkedin_handle, plus either full_name or first_name + last_name (or linkedin_handle alone). The response carries a confidence score, the sources the address was seen on, and an automatic verification of the address it found"
+  }
+ },
+ "siblings": [
+  {
+   "id": "aiark.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "anyapi.linkedin.email.work.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "aviato.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "companyenrich.people.email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.contact.work",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "datagma.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "enrichlayer.person.work-email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.contacts.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "fiber-ai.people.contacts.turbo",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.business-profile",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.search.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "harvestapi.linkedin.user.profile.email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.b2b-profile-email",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.personal-email-finder",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadsforge.people.email.find.bulk",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.find.linkedin",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.find.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "moltsets.people.email.find.name",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "oceanio.people.email.reveal",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "prospeo.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "quickenrich.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find.author",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.find.linkedin",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "treg.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "trykitt.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "wiza.people.email.find",
+   "async": {
+    "id_from": "data.id",
+    "poll": {
+     "endpoint": "wiza.people.reveal.get",
+     "param": {
+      "in": "pathParams",
+      "name": "id"
+     }
+    },
+    "status": {
+     "path": "data.status",
+     "progress": [
+      "queued",
+      "resolving"
+     ],
+     "success": [
+      "finished"
+     ],
+     "failure": [
+      "failed"
+     ]
+    },
+    "result": {
+     "path": "data"
+    },
+    "interval": 2
+   },
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "zerobounce.people.email.find",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": {
+  "data": {
+   "first_name": "Ada",
+   "last_name": "Lovelace",
+   "email": "person@example.com",
+   "score": 80,
+   "domain": "acme.example",
+   "accept_all": true,
+   "position": null,
+   "twitter": null,
+   "linkedin_url": null,
+   "phone_number": null,
+   "company": "Acme",
+   "source_type": "generated",
+   "sources": [],
+   "verification": {
+    "date": "2026-07-28",
+    "status": "valid"
+   }
+  },
+  "meta": {
+   "params": {
+    "first_name": null,
+    "last_name": null,
+    "full_name": "Ada Lovelace",
+    "domain": "acme.example",
+    "company": null,
+    "linkedin_handle": null,
+    "max_duration": null
+   }
+  },
+  "_scrubbed": true
+ }
+}

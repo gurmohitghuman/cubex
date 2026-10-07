@@ -8,8 +8,11 @@ export type EmailVerdict = 'valid' | 'catch_all' | 'risky' | 'invalid' | 'no_ver
 export type EmailStrategy = 'safest' | 'balanced' | 'wide';
 
 // Compared with spaces, underscores and hyphens removed: "Accept-All",
-// "accept all" and "acceptall" are one word.
-const RISKY = new Set(['risky', 'unknown', 'unverified', 'webmail']);
+// "accept all" and "acceptall" are one word. The words come from treg's 11
+// verifier adapters (their `verdicts` maps) and live answers: Kitt says
+// "valid-risky" for an address it can't confirm (a catch-all domain).
+const VALID = new Set(['valid', 'ok', 'deliverable']);
+const RISKY = new Set(['risky', 'unknown', 'unverified', 'webmail', 'disposable', 'abuse', 'donotmail']);
 const NOT_CHECKED = new Set(['timeout', 'error', 'unavailable', 'verifying', 'pending', 'retry']);
 const squash = (w: string) => w.toLowerCase().replace(/[\s_-]+/g, '');
 const isCatchAll = (n: string) => n.includes('catch') || n === 'acceptall';
@@ -17,11 +20,13 @@ const isCatchAll = (n: string) => n.includes('catch') || n === 'acceptall';
 export function classifyVerify(output: { valid?: unknown; status?: unknown } | null | undefined): { verdict: EmailVerdict; word: string | null } {
   const word = typeof output?.status === 'string' && output.status.trim() ? output.status.trim() : null;
   const n = word ? squash(word) : '';
-  // A catch-all is never a plain "valid", even if a provider sets the flag.
+  // A catch-all or a risky word is never a plain "valid", even if a provider
+  // sets the flag: "safest" must not take them.
   if (word && isCatchAll(n)) return { verdict: 'catch_all', word };
-  if (output?.valid === true) return { verdict: 'valid', word };
+  if (word && (RISKY.has(n) || n.includes('risky'))) return { verdict: 'risky', word };
+  // treg sets `valid` from the provider's own word; without the flag, the word decides.
+  if (output?.valid === true || (output?.valid == null && VALID.has(n))) return { verdict: 'valid', word };
   if (!word || NOT_CHECKED.has(n)) return { verdict: 'no_verdict', word };
-  if (RISKY.has(n)) return { verdict: 'risky', word };
   // Invalid, undeliverable and any word we don't know (with `valid` not true):
   // never accepted, shown as it came.
   return { verdict: 'invalid', word };

@@ -1,0 +1,128 @@
+{
+ "note": "A capped walk that hit before the cap mattered (Kitt guessed an address).",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:m2:38c4fae43e5e",
+   "X-Treg-Route-Max-Cost": "0.006",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Nobody Example",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee0000000000000000000000000c",
+   "x-treg-cost-micro": "5000",
+   "x-treg-hint": "feedback",
+   "x-treg-providers-tried": "quickenrich,trykitt",
+   "x-treg-route-outcome": "hit",
+   "x-treg-served-by": "trykitt.people.email.find"
+  },
+  "body": {
+   "output": {
+    "email": "qw@acme.example",
+    "verified": false
+   },
+   "raw": {
+    "jobId": "job_0001",
+    "fullName": "nobody.example",
+    "domain": "acme.example",
+    "companyName": null,
+    "email": "qw@acme.example",
+    "validIdentity": true,
+    "validSMTP": null,
+    "validity": "valid-risky",
+    "displayText": "qw@acme.example",
+    "botGeneratedEmail": "qw@acme.example",
+    "mxDomain": "mx.acme.example",
+    "credits": {
+     "jobCredits": 0.005,
+     "remainingCredits": "100.0"
+    }
+   },
+   "_treg": {
+    "served_by": "trykitt.people.email.find",
+    "provider": "trykitt",
+    "tier": "platform",
+    "advice": "This address was found, not confirmed deliverable (verified != true). Run treg.people.email.verify on it before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes.",
+    "outcome": "hit",
+    "tried": [
+     {
+      "endpoint_id": "quickenrich.people.email.find",
+      "provider": "quickenrich",
+      "outcome": "miss",
+      "status": 200,
+      "charged_micro": 0
+     },
+     {
+      "endpoint_id": "trykitt.people.email.find",
+      "provider": "trykitt",
+      "outcome": "hit",
+      "status": 200,
+      "charged_micro": 5000
+     }
+    ],
+    "charged_micro": 5000,
+    "dropped": [
+     {
+      "endpoint_id": "aiark.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "aviato.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "contactout.people.contact.work",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.reveal",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.turbo",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "findymail.search.business-profile",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "harvestapi.linkedin.user.profile.email",
+      "why": "needs {linkedin_handle}"
+     },
+     {
+      "endpoint_id": "leadmagic.x.personal-email-finder",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "tomba.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "datagma.people.email.find",
+      "why": "treg's account for this provider is exhausted right now"
+     },
+     {
+      "endpoint_id": "moltsets.people.email.find.name",
+      "why": "treg's account for this provider is exhausted right now"
+     }
+    ]
+   }
+  }
+ }
+}

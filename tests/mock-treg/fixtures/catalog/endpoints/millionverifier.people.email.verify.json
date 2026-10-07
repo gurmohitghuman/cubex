@@ -1,0 +1,155 @@
+{
+ "endpoint": {
+  "id": "millionverifier.people.email.verify",
+  "name": "Verify email — catch-all, disposable and role flags",
+  "summary": "Verify an email address in real time",
+  "provider": "millionverifier",
+  "provider_display": "MillionVerifier",
+  "kind": "data",
+  "method": "GET",
+  "capability": "people.email.verify",
+  "capability_description": "Check an email address you ALREADY have is real and deliverable — not for finding one",
+  "platform": "people",
+  "platform_label": "People & contact data",
+  "async": null,
+  "status": null,
+  "superseded_by": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "test_request": {
+   "queryParams": {
+    "email": "owner@example.com"
+   }
+  },
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 0.00178,
+   "note": "One credit per verification at the $89 / 50,000-credit pack rate, including invalid results. Credits never expire. Upstream deducts a credit first, then automatically returns it for unknown/catch-all results on eligible accounts; accounts flagged for misuse may still pay. On platform keys, treg settles unknown/catch-all at zero without waiting for the upstream return and absorbs any eligibility exception. Own keys are not metered by treg. Credit returns were observed on the promotional account; the account owner confirmed a $89 purchase of the base 50,000-credit pack. This rate excludes the initial free credits and variable promotional bonuses; it is the documented base-pack rate, not the effective cost after bonuses.",
+   "per": 1
+  },
+  "observed": {
+   "ok_rate": 1.0,
+   "hit_rate": 1.0,
+   "samples": 541199,
+   "hit_samples": 515424
+  },
+  "input": {
+   "queryParams": {
+    "email": {
+     "type": "string",
+     "required": true,
+     "note": "email address to verify",
+     "example": "support@millionverifier.com"
+    },
+    "timeout": {
+     "type": "integer",
+     "required": false,
+     "note": "recipient-server timeout in seconds; 2–60, default 20",
+     "example": 10
+    }
+   },
+   "note": "Returns result (ok | catch_all | invalid | unknown | disposable | unverified), quality, subresult, free and role flags. The API key is injected as the api query parameter. free indicates a free email service, not billing."
+  }
+ },
+ "siblings": [
+  {
+   "id": "bounceban.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "bounceban.people.email.verify.waterfall",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "contactout.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "dropleads.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "findymail.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "hunter.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "icypeas.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "limadata.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "scrubby.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "tomba.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "treg.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "trykitt.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "zerobounce.people.email.verify",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": {
+  "email": "owner@example.com",
+  "quality": "good",
+  "result": "ok",
+  "resultcode": 1,
+  "subresult": "ok",
+  "free": false,
+  "role": true,
+  "didyoumean": "",
+  "credits": 1000,
+  "executiontime": 6764,
+  "error": "",
+  "livemode": true
+ }
+}

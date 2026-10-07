@@ -1,0 +1,184 @@
+{
+ "note": "Every affordable provider missed, the rest were skipped: 200 miss + X-Treg-Route-Capped.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:m3:96ec0dd92822",
+   "X-Treg-Route-Max-Cost": "0.006",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Nobody Example",
+   "domain": "nowhere.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000020",
+   "x-treg-cost-micro": "0",
+   "x-treg-providers-tried": "quickenrich,trykitt,tomba,dropleads,findymail,limadata,leadsforge,prospeo,hunter,leadmagic,wiza",
+   "x-treg-route-capped": "true",
+   "x-treg-route-outcome": "miss"
+  },
+  "body": {
+   "output": {
+    "email": null,
+    "confidence": null,
+    "first_name": null,
+    "last_name": null,
+    "verified": null
+   },
+   "raw": null,
+   "_treg": {
+    "served_by": null,
+    "outcome": "miss",
+    "tried": [
+     {
+      "endpoint_id": "quickenrich.people.email.find",
+      "provider": "quickenrich",
+      "outcome": "miss",
+      "status": 200,
+      "charged_micro": 0
+     },
+     {
+      "endpoint_id": "trykitt.people.email.find",
+      "provider": "trykitt",
+      "outcome": "miss",
+      "status": 200,
+      "charged_micro": 0
+     },
+     {
+      "endpoint_id": "tomba.people.email.find",
+      "provider": "tomba",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "dropleads.people.email.find",
+      "provider": "dropleads",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "findymail.search.name",
+      "provider": "findymail",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.name",
+      "provider": "limadata",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "leadsforge.people.email.find",
+      "provider": "leadsforge",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "prospeo.people.email.find",
+      "provider": "prospeo",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "hunter.people.email.find",
+      "provider": "hunter",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "leadmagic.people.email.find",
+      "provider": "leadmagic",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     },
+     {
+      "endpoint_id": "wiza.people.email.find",
+      "provider": "wiza",
+      "outcome": "skipped",
+      "status": null,
+      "charged_micro": 0,
+      "detail": "would exceed max cost"
+     }
+    ],
+    "charged_micro": 0,
+    "capped": true,
+    "dropped": [
+     {
+      "endpoint_id": "aiark.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "aviato.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "contactout.people.contact.work",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.reveal",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.turbo",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "findymail.search.business-profile",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "harvestapi.linkedin.user.profile.email",
+      "why": "needs {linkedin_handle}"
+     },
+     {
+      "endpoint_id": "leadmagic.x.personal-email-finder",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "tomba.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "datagma.people.email.find",
+      "why": "treg's account for this provider is exhausted right now"
+     },
+     {
+      "endpoint_id": "moltsets.people.email.find.name",
+      "why": "treg's account for this provider is exhausted right now"
+     }
+    ]
+   }
+  }
+ }
+}

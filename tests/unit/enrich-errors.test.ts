@@ -3,6 +3,7 @@
 import errMod from '../../server/src/lib/enrich-errors'
 import emailMod from '../../server/src/lib/enrich-email-status'
 import estMod from '../../server/src/lib/enrich-estimate'
+import fs from 'fs'
 const { classifyCall } = errMod as typeof import('../../server/src/lib/enrich-errors')
 const { classifyVerify, acceptedBy, statusLabel } = emailMod as typeof import('../../server/src/lib/enrich-email-status')
 const { defaultMaxCostPerRow, estimateRun, billsMisses, rowsThatFit } = estMod as typeof import('../../server/src/lib/enrich-estimate')
@@ -64,6 +65,14 @@ for (const w of ['invalid', 'undeliverable', 'spamtrap', 'brand-new-word']) chec
 check('no status is no verdict', classifyVerify({ valid: false }).verdict === 'no_verdict')
 for (const w of ['timeout', 'error', 'unavailable', 'verifying']) check(`${w} means it couldn't check`, classifyVerify({ valid: false, status: w }).verdict === 'no_verdict')
 check('a catch-all is never plain valid', classifyVerify({ valid: true, status: 'accept_all' }).verdict === 'catch_all')
+// Words from treg's verifier adapters, and live answers (tests/mock-treg/fixtures/calls).
+for (const w of ['valid-risky', 'disposable', 'abuse', 'do_not_mail', 'unverified']) check(`${w} is risky`, classifyVerify({ valid: false, status: w }).verdict === 'risky')
+check('a valid word without the flag is valid', classifyVerify({ status: 'deliverable' }).verdict === 'valid' && classifyVerify({ status: 'ok' }).verdict === 'valid')
+check('the flag says no: not valid', classifyVerify({ valid: false, status: 'ok' }).verdict !== 'valid')
+for (const w of ['risky', 'unknown', 'disposable']) check(`the flag never makes ${w} valid`, classifyVerify({ valid: true, status: w }).verdict === 'risky')
+const liveOutput = (name: string) => JSON.parse(fs.readFileSync(`tests/mock-treg/fixtures/calls/${name}.json`, 'utf8')).response.body.output
+check('live: Kitt valid-risky is risky', classifyVerify(liveOutput('verify-found')).verdict === 'risky')
+check('live: a made-up address is invalid', classifyVerify(liveOutput('verify-nobody')).verdict === 'invalid')
 check('safest takes only valid', acceptedBy('safest', 'valid') && !acceptedBy('safest', 'catch_all'))
 check('balanced takes catch-all', acceptedBy('balanced', 'catch_all') && !acceptedBy('balanced', 'risky'))
 check('wide takes risky, never invalid', acceptedBy('wide', 'risky') && !acceptedBy('wide', 'invalid'))

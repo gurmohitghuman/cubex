@@ -1,0 +1,30 @@
+{
+ "note": "A key reused for a different body: 422, X-Treg-Error, detail is a string.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:find:e797fd541301",
+   "X-Treg-Route-Max-Cost": "0.03",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Ada Lovelace",
+   "domain": "acme-labs.example"
+  }
+ },
+ "response": {
+  "status": 422,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee0000000000000000000000001f",
+   "x-treg-error": "1"
+  },
+  "body": {
+   "detail": "Idempotency-Key 'cbx-m0:find:e797fd541301' was already used for a different request. Use a new key, or repeat the original request exactly."
+  }
+ }
+}

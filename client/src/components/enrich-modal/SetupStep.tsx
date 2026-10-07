@@ -37,8 +37,8 @@ export const SetupStep: React.FC<Props> = (p) => {
   const card = m.card
   if (!card) return null
   const est = m.estimate.estimate
-  // A tool with no listed price has no cap worth showing.
-  const cap = m.unpriced ? null : draft.maxCostPerRowUsd ?? est?.defaultMaxCostPerRowUsd ?? null
+  // A tool with no listed price, or one the provider bills, has no cap worth showing.
+  const cap = m.unpriced || m.ownKeySingle ? null : draft.maxCostPerRowUsd ?? est?.defaultMaxCostPerRowUsd ?? null
 
   return (
     <div className="p-4 space-y-3">
@@ -109,12 +109,13 @@ export const SetupStep: React.FC<Props> = (p) => {
           <AccordionSection title="Rows and limits"
             summary={`${m.rows === null ? '…' : m.rows.toLocaleString()} rows${cap !== null ? ` · up to ${formatCost(cap)}/row` : ''}`}>
             <RowsLimitsPane draft={draft} update={update} counts={m.counts} columns={p.columns}
-              defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null} defaultSpendLimit={est?.estimate.highUsd ?? null} />
+              defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null} defaultSpendLimit={est?.estimate.highUsd ?? null}
+              billedBy={m.unpriced || m.ownKeySingle ? m.ownKeyProvider : null} />
           </AccordionSection>
 
           <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows} balance={m.data.balance}
             spendLimit={draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys} blocked={m.blocked}
-            unpriced={m.unpriced} ownKeyProvider={m.ownKeyProvider} />
+            unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider} />
         </>
       )}
 

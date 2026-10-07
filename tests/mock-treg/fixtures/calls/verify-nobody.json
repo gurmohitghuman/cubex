@@ -1,0 +1,74 @@
+{
+ "note": "Verify of a made-up address: invalid.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.verify",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:v2:8553b72cc8c6",
+   "X-Treg-Route-Max-Cost": "0.02",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "email": "zz-cubex-nobody-4417@acme.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000014",
+   "x-treg-cost-micro": "1500",
+   "x-treg-providers-tried": "contactout,trykitt",
+   "x-treg-route-outcome": "hit",
+   "x-treg-served-by": "trykitt.people.email.verify"
+  },
+  "body": {
+   "output": {
+    "valid": false,
+    "status": "invalid"
+   },
+   "raw": {
+    "jobId": "job_0001",
+    "email": "zz-cubex-nobody-4417@acme.example",
+    "validity": "invalid",
+    "validIdentity": false,
+    "validSMTP": null,
+    "displayText": "invalid",
+    "mxDomain": "mx.acme.example",
+    "reason": "identity provider could be checked and returned invalid status",
+    "reasonCode": "invalid_identity_provider",
+    "credits": {
+     "jobCredits": 0.0015,
+     "remainingCredits": "100.0"
+    }
+   },
+   "_treg": {
+    "served_by": "trykitt.people.email.verify",
+    "provider": "trykitt",
+    "tier": "platform",
+    "outcome": "hit",
+    "tried": [
+     {
+      "endpoint_id": "contactout.people.email.verify",
+      "provider": "contactout",
+      "outcome": "error",
+      "status": 429,
+      "charged_micro": 0,
+      "detail": "{\n    \"message\": \"Too Many Attempts.\"\n}"
+     },
+     {
+      "endpoint_id": "trykitt.people.email.verify",
+      "provider": "trykitt",
+      "outcome": "hit",
+      "status": 200,
+      "charged_micro": 1500
+     }
+    ],
+    "charged_micro": 1500
+   }
+  }
+ }
+}

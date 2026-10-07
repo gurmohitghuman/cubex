@@ -1,0 +1,22 @@
+{
+ "note": "A bad key on /usage/me: 401, no X-Treg-Error.",
+ "request": {
+  "method": "GET",
+  "path": "/usage/me",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "X-Treg-Token": "treg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 401,
+  "headers": {
+   "content-type": "application/json"
+  },
+  "body": {
+   "detail": "invalid token"
+  }
+ }
+}

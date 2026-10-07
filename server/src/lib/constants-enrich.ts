@@ -19,6 +19,10 @@ export const TREG_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 export const TREG_CATALOG_CACHE_MAX_ENTRIES = 200;
 export const TREG_SEARCH_LIMIT = 100;     // treg's own maximum; hidden kinds are filtered after
 export const ENRICH_SEARCH_RESULTS = 25;  // what the drawer and search_enrichments show
+// A tool's /access for the team (Set up's provider badges): read on each drawer
+// open, plus one read per waterfall provider treg's plan leaves out.
+export const TREG_ACCESS_CACHE_MS = 5 * 60 * 1000;
+export const TREG_ACCESS_CACHE_MAX_ENTRIES = 100;
 
 // Tool calls. A waterfall runs providers one after another (treg allows each
 // upstream phase 180 s idle) plus up to 60 s waiting on a provider that answers

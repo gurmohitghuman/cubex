@@ -1,0 +1,115 @@
+{
+ "note": "X-Treg-Route-Waterfall: 0 miss: 200, cost 0, served_by still names the provider asked.",
+ "request": {
+  "method": "POST",
+  "path": "/call/treg.people.email.find",
+  "headers": {
+   "Accept": "application/json",
+   "X-Treg-Client": "cubex",
+   "Idempotency-Key": "cbx-m0:m1:6baa59719339",
+   "X-Treg-Route-Max-Cost": "0.03",
+   "X-Treg-Route-Waterfall": "0",
+   "X-Treg-Token": "<redacted>",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "full_name": "Nobody Example",
+   "domain": "acme.example"
+  }
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "x-treg-call-id": "c0ffee00000000000000000000000011",
+   "x-treg-cost-micro": "0",
+   "x-treg-providers-tried": "quickenrich",
+   "x-treg-route-outcome": "miss",
+   "x-treg-served-by": "quickenrich.people.email.find"
+  },
+  "body": {
+   "output": {
+    "email": null,
+    "confidence": null,
+    "first_name": null,
+    "last_name": null,
+    "verified": null
+   },
+   "raw": {
+    "success": true,
+    "message": "No records found",
+    "code": 200,
+    "data": [],
+    "meta": {
+     "reason": "EMPLOYEE_NOT_FOUND"
+    }
+   },
+   "_treg": {
+    "served_by": "quickenrich.people.email.find",
+    "provider": "quickenrich",
+    "tier": "platform",
+    "outcome": "miss",
+    "tried": [
+     {
+      "endpoint_id": "quickenrich.people.email.find",
+      "provider": "quickenrich",
+      "outcome": "miss",
+      "status": 200,
+      "charged_micro": 0
+     }
+    ],
+    "charged_micro": 0,
+    "dropped": [
+     {
+      "endpoint_id": "aiark.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "aviato.people.email.find",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "contactout.people.contact.work",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.reveal",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "fiber-ai.people.contacts.turbo",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "findymail.search.business-profile",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "harvestapi.linkedin.user.profile.email",
+      "why": "needs {linkedin_handle}"
+     },
+     {
+      "endpoint_id": "leadmagic.x.personal-email-finder",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "limadata.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "tomba.people.email.find.linkedin",
+      "why": "needs {linkedin_url}"
+     },
+     {
+      "endpoint_id": "datagma.people.email.find",
+      "why": "treg's account for this provider is exhausted right now"
+     },
+     {
+      "endpoint_id": "moltsets.people.email.find.name",
+      "why": "treg's account for this provider is exhausted right now"
+     }
+    ]
+   }
+  }
+ }
+}
