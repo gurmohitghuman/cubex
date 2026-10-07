@@ -1,7 +1,7 @@
 import { api } from './client'
 import type {
   AccessToken, AccessTokenScope, APIKey, APIKeySuggestion, CreatedAccessToken,
-  OpenRouterKeyTestResult, OpenRouterModel, Settings,
+  EnrichDailyLimit, OpenRouterKeyTestResult, OpenRouterModel, Settings, TregKeyTestResult,
 } from './types'
 
 export const settingsAPI = {
@@ -18,6 +18,20 @@ export const settingsAPI = {
 
   listOpenRouterModels: (): Promise<OpenRouterModel[]> =>
     api.get('/settings/openrouter-models').then(res => res.data),
+
+  // treg key for enrichments. testTregKey without a key tests the saved one.
+  updateTregKey: (apiKey: string): Promise<void> =>
+    api.put('/settings/treg-key', { apiKey }).then(() => {}),
+
+  testTregKey: (apiKey?: string): Promise<TregKeyTestResult> =>
+    api.post('/settings/test-treg-key', apiKey ? { apiKey } : {}).then(res => res.data),
+
+  clearTregKey: (): Promise<void> =>
+    api.delete('/settings/treg-key').then(() => {}),
+
+  // Daily limit for all enrichments; null turns it off.
+  setEnrichDailyLimit: (limitUsd: number | null): Promise<EnrichDailyLimit> =>
+    api.put('/settings/enrich-daily-limit', { limitUsd }).then(res => res.data),
 
   // Account-wide default AI model; null clears it.
   updateDefaultModel: (model: string | null): Promise<void> =>

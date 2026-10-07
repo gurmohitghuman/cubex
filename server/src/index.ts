@@ -41,6 +41,7 @@ import fileLinkRoutes from './routes/file-links';
 import apiV1Routes from './routes/api-v1';
 import mcpRoutes from './routes/mcp';
 import healthRoutes from './routes/health';
+import enrichRoutes from './routes/enrich';
 import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
 
@@ -119,6 +120,7 @@ app.use('/api/tables', tablesRoutes);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/http', httpRoutes);
+app.use('/api/enrich', enrichRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Liveness/readiness probe (see routes/health.ts).

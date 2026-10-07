@@ -1,13 +1,9 @@
 // AI / OpenRouter constants live in constants-ai.ts (200-line guardrail split);
 // re-exported here so every call site keeps importing from './constants'.
 export * from './constants-ai';
-
-// Positive integer from the environment, else the fallback. A garbage value must
-// not become NaN: several consumers treat NaN as "no limit".
-const envInt = (name: string, fallback: number): number => {
-  const raw = parseInt(process.env[name] || '', 10);
-  return Number.isInteger(raw) && raw > 0 ? raw : fallback;
-};
+// Enrichment (treg.to) constants, same split.
+export * from './constants-enrich';
+import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

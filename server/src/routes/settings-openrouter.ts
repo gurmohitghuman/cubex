@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { encrypt, decrypt } from '../lib/crypto';
 import { validateKey, fetchAccountBalance, fetchModels } from '../lib/openrouter';
+import { dailyLimitView } from '../services/treg-key';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -12,9 +13,9 @@ router.use(authenticateToken);
 router.get('/', (req: AuthRequest, res) => {
   try {
     const settings = db.prepare(
-      'SELECT id, openrouter_api_key_encrypted, default_ai_model, created_at, updated_at FROM settings WHERE user_id = ?',
+      'SELECT id, openrouter_api_key_encrypted, treg_token_encrypted, default_ai_model, created_at, updated_at FROM settings WHERE user_id = ?',
     ).get(req.userId!) as
-      | { id: string; openrouter_api_key_encrypted: string | null; default_ai_model: string | null; created_at: string; updated_at: string }
+      | { id: string; openrouter_api_key_encrypted: string | null; treg_token_encrypted: string | null; default_ai_model: string | null; created_at: string; updated_at: string }
       | undefined;
 
     res.json({
@@ -24,6 +25,8 @@ router.get('/', (req: AuthRequest, res) => {
       // and the user re-enters it.
       hasOpenRouterKey: !!settings?.openrouter_api_key_encrypted
         && decrypt(settings.openrouter_api_key_encrypted) !== null,
+      hasTregKey: !!settings?.treg_token_encrypted && decrypt(settings.treg_token_encrypted) !== null,
+      enrichDailyLimit: dailyLimitView(req.userId!),
       defaultAiModel: settings?.default_ai_model || null,
       created_at: settings?.created_at || null,
       updated_at: settings?.updated_at || null,

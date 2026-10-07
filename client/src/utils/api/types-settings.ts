@@ -2,9 +2,28 @@
 // guardrail). Re-exported from './types' — import sites don't need to know
 // about the physical split.
 
+// One daily limit for everything enrichments spend (UTC day). limitUsd null = off.
+export interface EnrichDailyLimit {
+  limitUsd: number | null
+  usedTodayUsd: number
+  remainingUsd: number | null
+}
+
+export interface TregKeyTestResult {
+  valid: boolean
+  message: string
+  problem?: 'invalid' | 'personal_token' | 'team_setup' | 'suspended' | 'unreachable' | 'unknown'
+  team?: string | null
+  balanceUsd?: number | null
+  onHoldUsd?: number | null
+}
+
 export interface Settings {
   id: string | null
   hasOpenRouterKey: boolean
+  // treg.to key for enrichments (stored encrypted; never sent to the browser).
+  hasTregKey: boolean
+  enrichDailyLimit: EnrichDailyLimit
   // Account-wide default AI model. Sheet defaults override it; with neither
   // set, AI runs are blocked until the user picks a model (no hardcoded fallback).
   defaultAiModel: string | null

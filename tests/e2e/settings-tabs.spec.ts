@@ -26,9 +26,12 @@ test('settings tabs: redirect, per-tab content, navigation', async ({ page, cont
   await page.goto(`${BASE}/settings/nonsense`)
   await expect(page).toHaveURL(/\/settings\/ai$/)
 
-  // HTTP Enrichment: renamed keys section, no access-tokens content here.
-  await page.getByRole('link', { name: 'HTTP Enrichment' }).click()
+  // Enrichment: the treg key card (with the daily limit) above the saved
+  // HTTP API keys; no access-tokens content here. The slug stayed for old links.
+  await page.getByRole('link', { name: 'Enrichment', exact: true }).click()
   await expect(page).toHaveURL(/\/settings\/http-enrichment$/)
+  await expect(page.getByRole('heading', { name: 'treg API key' })).toBeVisible()
+  await expect(page.getByTestId('enrich-daily-limit')).toContainText('$10.00 for all enrichments')
   await expect(page.getByRole('heading', { name: 'External service keys' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Access tokens' })).toHaveCount(0)
   await shot(page, 'tab-2-http')

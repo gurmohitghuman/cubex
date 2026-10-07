@@ -34,20 +34,29 @@ const KEY_BYTES = 32;
 // unreadable (and restoring the old file later would orphan anything written
 // in between), so refuse and say how to fix it. On a database that hasn't
 // been migrated yet the tables don't exist, which means nothing to protect.
+// Each check runs on its own, so a column a later migration adds can never make
+// one combined query fail and read as "nothing to protect". Only a missing table
+// or column (a database not migrated yet) counts as nothing; any other error
+// (busy, I/O) stops the boot instead of minting a key over encrypted data.
+function holds(check: () => unknown): boolean {
+  try { return !!check(); } catch (err) {
+    if (/no such (table|column)/i.test(String((err as Error)?.message))) return false;
+    throw err;
+  }
+}
+
 function refuseNewKeyOverEncryptedData(file: string): void {
-  let hasEncrypted = false;
-  try {
-    hasEncrypted = (db.prepare(`SELECT
-      EXISTS(SELECT 1 FROM settings WHERE openrouter_api_key_encrypted IS NOT NULL)
-      OR EXISTS(SELECT 1 FROM api_keys)
-      OR EXISTS(SELECT 1 FROM webhook_sources WHERE token_ciphertext IS NOT NULL) AS has`).get() as { has: number }).has === 1;
-  } catch { /* tables not created yet: a fresh database */ }
+  const hasEncrypted =
+    holds(() => db.prepare('SELECT 1 FROM settings WHERE openrouter_api_key_encrypted IS NOT NULL LIMIT 1').get())
+    || holds(() => db.prepare('SELECT 1 FROM settings WHERE treg_token_encrypted IS NOT NULL LIMIT 1').get())
+    || holds(() => db.prepare('SELECT 1 FROM api_keys LIMIT 1').get())
+    || holds(() => db.prepare('SELECT 1 FROM webhook_sources WHERE token_ciphertext IS NOT NULL LIMIT 1').get());
   if (!hasEncrypted) return;
   throw new Error(
     `${file} is missing, but the database already holds keys encrypted with it.\n` +
     `  Restore ${path.basename(file)} from your backup into ${path.dirname(file)} (or set APP_ENCRYPTION_KEY).\n` +
     `  If it's lost for good: openssl rand -hex 32 > ${file}\n` +
-    '  then re-enter your OpenRouter key and saved API keys in Settings, and rotate your webhook URLs.',
+    '  then re-enter your OpenRouter key, treg key and saved API keys in Settings, and rotate your webhook URLs.',
   );
 }
 

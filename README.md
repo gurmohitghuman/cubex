@@ -65,7 +65,7 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 
 ![Adding an AI column whose prompt references /company and /website, previewing 5 rows, then running it on every row](docs/media/cubex-ai.gif)
 
-**HTTP API column.** Click **HTTP API** and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Save API keys under **Settings → HTTP Enrichment** and reference them the same way by name, for example `Authorization: Bearer {{apollo_key}}`. Saved keys are stored encrypted and never shown again. Preview on a few rows, then click the response fields you want as columns. A few rules:
+**HTTP API column.** Click **HTTP API** and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Save API keys under **Settings → Enrichment** and reference them the same way by name, for example `Authorization: Bearer {{apollo_key}}`. Saved keys are stored encrypted and never shown again. Preview on a few rows, then click the response fields you want as columns. A few rules:
 
 - Responses must be JSON. HTML pages are rejected, so this isn't a scraper.
 - Requests can't reach private or internal addresses (localhost, your LAN, cloud metadata), so a value that came in through a webhook or an AI answer can't point Cubex at your own network.
@@ -109,6 +109,9 @@ Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` 
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |
 | `HTTP_MAX_CONCURRENCY` | `20` | Most concurrent requests one HTTP run makes. |
 | `SIDEQUEST_MAX_CONCURRENT_JOBS` | `4` | AI and HTTP runs that execute at once; more wait in line. |
+| `ENRICH_DEFAULT_CONCURRENCY` | `5` | Requests one enrichment run sends to treg at once. |
+| `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider answer is kept for the answer panel. |
+| `TREG_BASE_URL` | `https://treg.to` | Where enrichment calls go. Only for testing or a self-hosted treg. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes, for the whole instance. |
 | `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |
 | `JWT_SECRET`, `APP_ENCRYPTION_KEY` | generated | Created on first boot. Set them only to manage them yourself. |

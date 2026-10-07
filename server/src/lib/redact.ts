@@ -19,6 +19,7 @@
 //   scheme://user:pass@host  credentials in a URL userinfo segment
 //   cubex_pat_*  Cubex personal access tokens (bare echoes outside a header)
 //   /api/files/upload|download/<hex>  one-time file link tokens in a URL path
+//   treg_* and signed eyJ… keys  treg.to API keys (enrichments)
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-(?:or-v\d+|ant|[A-Za-z0-9])[A-Za-z0-9_\-]{8,}/g,
   /\b(?:Bearer|Basic)\s+[A-Za-z0-9._\-=]{8,}/gi,
@@ -28,7 +29,7 @@ const SECRET_PATTERNS: RegExp[] = [
   // `Authorization: Token abc` would otherwise leave `abc` exposed. Each piece
   // is a bounded \S+ with single spaces between, so no catastrophic backtracking.
   /\b(Authorization\s*[:=]\s*(?:[A-Za-z][A-Za-z0-9._-]*\s+)?)\S+/gi,
-  /\b(?:x-api-key|api[-_]?key|api[-_]?secret|access[-_]?token)\s*[:=]\s*\S+/gi,
+  /\b(?:x-api-key|x-treg-token|api[-_]?key|api[-_]?secret|access[-_]?token)\s*[:=]\s*\S+/gi,
   /([?&](?:api[-_]?key|api[-_]?secret|access[-_]?token|token|key|password)=)[^&\s]+/gi,
   /([a-z][a-z0-9+.\-]*:\/\/[^/\s:@]+):[^/\s@]+@/gi,
   // Incoming-webhook capability token in the URL PATH (/api/webhooks/<token>).
@@ -43,6 +44,11 @@ const SECRET_PATTERNS: RegExp[] = [
   // One-time file link capability in the URL PATH (/api/files/upload/<hex>,
   // /api/files/download/<hex>, lib/file-links.ts), as for webhook tokens.
   /(\/api\/files\/(?:upload|download)\/)[0-9a-f]{20,}/g,
+  // treg keys: dashboard and agent keys are treg_<43 urlsafe chars>; a team's
+  // default key is signed (base64url claims "eyJ…" + "." + signature), which
+  // also covers JWT-shaped tokens.
+  /\btreg_[A-Za-z0-9_-]{20,}/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)?/g,
 ];
 
 // Replacement keeps any leading group (the header/param name / url prefix) so
@@ -58,6 +64,8 @@ export function redactSecrets(input: string): string {
   out = out.replace(SECRET_PATTERNS[6], '$1[REDACTED]');
   out = out.replace(SECRET_PATTERNS[7], '[REDACTED]');
   out = out.replace(SECRET_PATTERNS[8], '$1[REDACTED]');
+  out = out.replace(SECRET_PATTERNS[9], '[REDACTED]');
+  out = out.replace(SECRET_PATTERNS[10], '[REDACTED]');
   return out;
 }
 
