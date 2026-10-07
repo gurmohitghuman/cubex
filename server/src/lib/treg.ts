@@ -81,6 +81,16 @@ export async function checkTregKey(token: string): Promise<TregKeyCheck> {
   }
 }
 
+// The team's balance for the drawer's estimate box: /auth/me gives the team
+// id, then its balance. null when treg refuses the key or can't be reached.
+export async function readTregBalance(token: string): Promise<{ balanceMicro: number; onHoldMicro: number } | null> {
+  try {
+    const me = await tregGetJson<{ org_id?: unknown }>('/auth/me', token);
+    if (me.status !== 200 || me.body?.org_id == null) return null;
+    return await readBalance(token, String(me.body.org_id));
+  } catch { return null; }
+}
+
 // balance_micro is already net of in-flight holds; holds[] lists them.
 async function readBalance(token: string, orgId: string): Promise<{ balanceMicro: number; onHoldMicro: number } | null> {
   try {

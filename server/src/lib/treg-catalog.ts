@@ -26,9 +26,9 @@ const pick = (o: unknown, keys: string[]) =>
 function slimEndpoint(ep: unknown, withInput: boolean): unknown {
   if (!isObj(ep)) return ep;
   return {
-    ...pick(ep, ['id', 'name', 'summary', 'provider', 'kind', 'method', 'capability', 'platform', 'platform_label',
-      'async', 'status', 'superseded_by', 'platform_eligible', 'platform_blocked', 'overflow_price_usd',
-      'strict_query', 'routed_children', 'children_hidden']),
+    ...pick(ep, ['id', 'name', 'summary', 'provider', 'provider_display', 'kind', 'method', 'capability',
+      'capability_description', 'platform', 'platform_label', 'async', 'status', 'superseded_by',
+      'platform_eligible', 'platform_blocked', 'overflow_price_usd', 'strict_query', 'routed_children']),
     cost: pick(ep.cost, ['type', 'unit', 'usd', 'varies', 'note']),
     observed: pick(ep.observed, ['ok_rate', 'hit_rate', 'samples', 'hit_samples']),
     input: withInput ? ep.input : pick(ep.input, ['bodyType']),
@@ -46,6 +46,11 @@ const slimDetail: Slim = body => {
   return {
     endpoint: slimEndpoint(body.endpoint, true),
     routing: isObj(body.routing) ? pick(body.routing, ['contract', 'plan']) : undefined,
+    // The same job's other endpoints, waterfall children included: only what
+    // says a child can't run in a sheet (it answers later, or is retired).
+    siblings: Array.isArray(body.siblings)
+      ? body.siblings.filter(isObj).map(s => ({ id: s.id, async: !!s.async, retired: !!(s.status || s.superseded_by) }))
+      : undefined,
     example_response: keepExample ? example : null,
   };
 };

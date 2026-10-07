@@ -63,6 +63,14 @@ export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_USER_YIELD_MS = 2 * 60 * 1000;
 export const LIST_DRAIN_MS = 5_000;
 
+// The checker the "Verified work email" preset runs on each found address.
+export const ENRICH_VERIFY_TOOL_ID = 'treg.people.email.verify';
+// Bounds for a setup estimate request (a pure read; it sizes nothing), and
+// the highest per-row limit a user can set (mirrored in the client).
+export const ENRICH_ESTIMATE_MAX_ROWS = 10_000_000;
+export const ENRICH_ESTIMATE_MAX_LIST = 200;
+export const ENRICH_MAX_ROW_CAP_USD = 1000;
+
 // The drawer's "Popular" jobs. Ids the live catalog no longer has are hidden.
 export interface FeaturedJob { id: string; title: string; blurb: string; preset?: 'verified_email' }
 export const ENRICH_FEATURED: FeaturedJob[] = [
@@ -74,5 +82,5 @@ export const ENRICH_FEATURED: FeaturedJob[] = [
   { id: 'treg.companies.enrich', title: 'Company from domain', blurb: 'Fills in size, industry and location for a company.' },
   { id: 'treg.people.search', title: 'People at a company', blurb: 'Adds the people it finds as rows in another sheet.' },
   { id: 'treg.companies.search', title: 'Find companies', blurb: 'Adds the companies it finds as rows in another sheet.' },
-  { id: 'treg.google.serp.organic', title: 'Google search results', blurb: 'Top Google results for a search, per row.' },
+  { id: 'treg.google.serp.organic', title: 'Google search results', blurb: "Adds the top Google results for each row's search as rows in another sheet." },
 ];

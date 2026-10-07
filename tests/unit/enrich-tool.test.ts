@@ -76,6 +76,26 @@ const summaries = (search.results as Record<string, unknown>[]).map(r => summari
 check('search results summarize', summaries.length === search.results.length)
 const routed = summaries.find(s => s!.kind === 'waterfall')
 check('a routed search result counts its providers', !routed || (routed.childCount ?? 0) > 0)
+// children_hidden counts other search ROWS treg cut from the page, not more
+// providers: people.search has 24 providers and 7 cut rows, so 24, not 31.
+const peopleSearch = summaries.find(s => s!.id === 'treg.people.search')!
+check('provider count is the waterfall own list, not cut search rows', peopleSearch.childCount === 24)
+check('email find counts its 23 providers', find.childCount === 23)
+check('capability description is kept', !!peopleSearch.capabilityDescription?.startsWith('Find people by role'))
+check('provider display name comes from the row', summaries.find(s => s!.id === 'getleadsio.people.enrich.from_person')?.providerName === 'GetLeads.io')
+check('a required contract output is marked', find.outputs.find(o => o.field === 'email')?.required === true)
+check('an optional contract output is not', !find.outputs.find(o => o.field === 'confidence')?.required)
+
+// --- Children a sheet run can't use (from the detail's siblings) -----------
+const firstChild = find.providers![0].endpointId
+const withSiblings = normalizeTool({
+  ...fixture('email-find.json'),
+  siblings: [{ id: firstChild, async: true, retired: false }, { id: find.providers![1].endpointId, async: false, retired: true }],
+})!
+check('an async child is unavailable', withSiblings.providers![0].unavailable === 'async')
+check('a retired child is unavailable', withSiblings.providers![1].unavailable === 'retired')
+check('other children stay available', withSiblings.providers!.slice(2).every(p => p.unavailable === null))
+check('no siblings: every child available', find.providers!.every(p => p.unavailable === null))
 
 // --- JSONPath segments ------------------------------------------------------
 check('identifier segment', pathSegment('email') === '.email')

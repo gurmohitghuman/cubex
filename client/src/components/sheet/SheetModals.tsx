@@ -1,12 +1,11 @@
 import React from 'react'
 import toast from 'react-hot-toast'
 import { INITIAL_ROW_LOAD } from '@/lib/constants'
-import { AIColumnModal } from '@/components/AIColumnModal'
-import { HTTPAPIColumnModal } from '@/components/HTTPAPIColumnModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ScrapedDataModal, type SourcesCell } from '@/components/ScrapedDataModal'
 import { ImportCSVModal } from '@/components/sheet/ImportCSVModal'
 import { NewColumnModal } from '@/components/sheet/NewColumnModal'
+import { SheetRunDrawers } from '@/components/sheet/SheetRunDrawers'
 import { Sheet, SheetData } from '@/utils/api'
 import { plural } from '@/lib/utils'
 
@@ -19,6 +18,7 @@ interface SheetModalsProps {
   showImportModal: boolean
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
+  showEnrichmentDrawer: boolean
   showNewColumnModal: boolean
   scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
   // setters
@@ -26,6 +26,7 @@ interface SheetModalsProps {
   setShowImportModal: (b: boolean) => void
   setShowAddColumnModal: (b: boolean) => void
   setShowHTTPAPIColumnModal: (b: boolean) => void
+  setShowEnrichmentDrawer: (b: boolean) => void
   setShowNewColumnModal: (b: boolean) => void
   setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
   setSelectedRowIndices: (rows: number[]) => void
@@ -51,9 +52,9 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
   const {
     activeSheet, sheetData, selectedRowIndices,
     confirmTopbarDeleteOpen, showImportModal, showAddColumnModal,
-    showHTTPAPIColumnModal, showNewColumnModal, scrapedDataModal,
+    showHTTPAPIColumnModal, showEnrichmentDrawer, showNewColumnModal, scrapedDataModal,
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal,
-    setShowHTTPAPIColumnModal, setShowNewColumnModal, setScrapedDataModal,
+    setShowHTTPAPIColumnModal, setShowEnrichmentDrawer, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
     handleDeleteRows, handleAddColumn, loadSheetData, setupSSEConnection, fetchActiveAIRuns,
     waitForSaves, dropAllPending,
@@ -120,59 +121,15 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
         }}
       />
 
-      {activeSheet && (
-        <AIColumnModal
-          isOpen={showAddColumnModal}
-          onClose={() => setShowAddColumnModal(false)}
-          sheetId={activeSheet.id}
-          rowGeneration={sheetData?.sheet?.row_generation}
-          defaultAiModel={sheetData?.sheet?.default_ai_model}
-          onDefaultModelChanged={(model) => {
-            setSheetData(prev => prev ? { ...prev, sheet: { ...prev.sheet, default_ai_model: model } } : prev)
-          }}
-          defaultAiConcurrency={sheetData?.sheet?.default_ai_concurrency}
-          onDefaultConcurrencyChanged={(concurrency) => {
-            setSheetData(prev => prev ? { ...prev, sheet: { ...prev.sheet, default_ai_concurrency: concurrency } } : prev)
-          }}
-          onSuccess={() => {
-            // SILENT reload: the grid stays mounted (no FullPageLoader flash) while
-            // it picks up the newly created column + its '⏳ Processing...' cells. The
-            // load's side-load chain also runs reconnectToActiveRuns to attach SSE.
-            // Matches the menu run actions; a loud reload here flashed the page on create.
-            loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
-            // No success toast — the new column appears in the grid and
-            // cells visibly start filling with '⏳ Processing...'.
-          }}
-          onRunStarted={(runId: string) => {
-            setupSSEConnection(runId, 'ai')
-            setShowAddColumnModal(false)
-            // Refresh active runs so the header Pause/Stop controls appear immediately.
-            fetchActiveAIRuns(activeSheet.id)
-          }}
-        />
-      )}
-
-      {activeSheet && (
-        <HTTPAPIColumnModal
-          isOpen={showHTTPAPIColumnModal}
-          onClose={() => setShowHTTPAPIColumnModal(false)}
-          sheetId={activeSheet.id}
-          rowGeneration={sheetData?.sheet?.row_generation}
-          defaultAiModel={sheetData?.sheet?.default_ai_model}
-          onSuccess={() => {
-            // SILENT reload — see the AI modal above. No page flash on create; the new
-            // columns + '⏳ Processing...' cells appear and SSE attaches via the load's
-            // reconnectToActiveRuns side-load.
-            loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
-            // No success toast — new columns visible immediately, processing
-            // status shows in each cell.
-          }}
-          onRunStarted={(runId: string) => {
-            setupSSEConnection(runId, 'http')
-            setShowHTTPAPIColumnModal(false)
-          }}
-        />
-      )}
+      <SheetRunDrawers
+        activeSheet={activeSheet} sheetData={sheetData} selectedRowCount={selectedRowIndices.length}
+        showAddColumnModal={showAddColumnModal} showHTTPAPIColumnModal={showHTTPAPIColumnModal}
+        showEnrichmentDrawer={showEnrichmentDrawer}
+        setShowAddColumnModal={setShowAddColumnModal} setShowHTTPAPIColumnModal={setShowHTTPAPIColumnModal}
+        setShowEnrichmentDrawer={setShowEnrichmentDrawer}
+        setSheetData={setSheetData} loadSheetData={loadSheetData}
+        setupSSEConnection={setupSSEConnection} fetchActiveAIRuns={fetchActiveAIRuns}
+      />
 
       <NewColumnModal
         isOpen={showNewColumnModal}

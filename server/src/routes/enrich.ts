@@ -2,8 +2,10 @@
 // services/enrich-*.ts so the MCP tools and /api/v1 share it.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { TREG_TOOL_ID_PATTERN } from '../lib/constants';
+import { TREG_TOOL_ID_PATTERN, UUID_PATTERN } from '../lib/constants';
 import { searchTools, getTool, featuredTools, type CatalogFailure } from '../services/enrich-catalog';
+import { estimateEnrichment, readEnrichBalance, sheetSetupInfo } from '../services/enrich-setup';
+import { parseEstimateInput } from '../lib/enrich-estimate-input';
 import { getTregToken } from '../services/treg-key';
 import { readToolAccess } from '../lib/treg';
 
@@ -57,6 +59,46 @@ router.get('/tools/:toolId/access', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Enrichment tool access error:', error);
     res.status(500).json({ error: 'Failed to load tool access' });
+  }
+});
+
+// Set up step: the sheet's row counts (all, and its saved filter's) and room
+// for new columns.
+router.get('/sheets/:id/setup', (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid sheet ID format' });
+    const info = sheetSetupInfo(req.userId!, id);
+    if (!info) return res.status(404).json({ error: 'Sheet not found' });
+    res.json(info);
+  } catch (error) {
+    console.error('Enrichment setup read error:', error);
+    res.status(500).json({ error: 'Failed to read the sheet' });
+  }
+});
+
+// The estimate box. A pure read: nothing is created and nothing is called.
+router.post('/estimate', async (req: AuthRequest, res) => {
+  try {
+    const parsed = parseEstimateInput(req.body);
+    if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    const out = await estimateEnrichment(req.userId!, parsed.ok);
+    return 'ok' in out ? res.json(out.ok) : sendFailure(res, out);
+  } catch (error) {
+    console.error('Enrichment estimate error:', error);
+    res.status(500).json({ error: 'Failed to estimate' });
+  }
+});
+
+// The treg balance, shown in the estimate box.
+router.get('/balance', async (req: AuthRequest, res) => {
+  try {
+    const read = await readEnrichBalance(req.userId!);
+    if ('ok' in read) return res.json(read.ok);
+    res.status(read.fail === 'no_key' ? 409 : 502).json({ error: read.message, ...(read.fail === 'no_key' ? { noKey: true } : {}) });
+  } catch (error) {
+    console.error('treg balance read error:', error);
+    res.status(500).json({ error: 'Failed to read the treg balance' });
   }
 });
 
