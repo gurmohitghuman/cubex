@@ -7,6 +7,10 @@ type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' 
 export const useActiveRuns = () => {
   const [httpRuns, setHttpRuns] = useState<HTTPRun[]>([])
   const [aiRuns, setAiRuns] = useState<AIRun[]>([] as any)
+  // Every column a structured (multi-column) AI run writes, finished runs too.
+  // Such a run is set up over MCP or the API; the column menu doesn't offer
+  // "Edit / Update Instructions" on its columns (the dialog is single-column).
+  const [aiStructuredColumns, setAiStructuredColumns] = useState<ReadonlySet<string>>(new Set())
 
   const fetchHTTPRuns = useCallback(async (sheetId: string) => {
     try {
@@ -25,6 +29,7 @@ export const useActiveRuns = () => {
       const runs = await aiAPI.getRuns(sheetId)
       const active = runs.filter(r => r.status === 'running' || r.status === 'paused' || r.status === 'pending')
       setAiRuns(active)
+      setAiStructuredColumns(new Set(runs.flatMap(structuredRunColumns)))
       return active
     } catch (error) {
       console.error('Error fetching active AI runs:', error)
@@ -65,5 +70,6 @@ export const useActiveRuns = () => {
     refetch,
     httpByColumn,
     aiByColumn,
+    aiStructuredColumns,
   }
 }

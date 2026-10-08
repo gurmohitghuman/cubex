@@ -26,6 +26,8 @@ export interface SheetGridProps {
   activeAIRunsList: AIRun[]
   activeHTTPRunsByColumn: RunByColumn
   activeAIRunsByColumn: RunByColumn
+  // Columns written by structured (multi-column) AI runs: no edit-instructions item.
+  structuredAIColumns?: ReadonlySet<string>
   onCellEdit: (rowIndex: number, column: string, value: string) => void
   onCellClick: (rowIndex: number, columnName: string, value?: unknown) => void
   onLoadMore: (offset: number, limit?: number) => Promise<void> | void
@@ -61,7 +63,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   const {
     activeSheet, forceUpdate, columns, rows, totalRows, emptyFilter, columnFilters,
     lastRenamedColumn, columnTypes, activeHTTPRuns, activeAIRunsList,
-    activeHTTPRunsByColumn, activeAIRunsByColumn,
+    activeHTTPRunsByColumn, activeAIRunsByColumn, structuredAIColumns,
     onCellEdit, onCellClick, onLoadMore, onSortChange, onEmptyFilterChange, onColumnFilterChange,
     onSelectedRowsChange, onRenameColumn, onDeleteColumn, onDeleteRows,
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
@@ -114,6 +116,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onRunAIForColumn: (column, columnName) => setConfirmRunAll({ kind: 'ai', column, columnName }),
     onRunAIMissingOrError: actions.handleRunAIMissingOrError,
     onEditAIColumn: actions.handleEditAIColumn,
+    canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,
   }

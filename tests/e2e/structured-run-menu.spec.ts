@@ -72,3 +72,55 @@ test('column menu: Run All Rows and Stop AI Run on a structured run', async ({ p
     db.close()
   }
 })
+
+// "Edit / Update Instructions" opens the single-column AI dialog, which can't
+// show a structured run (it opened blank, named after the clicked column, and
+// said that name was taken) — so the item is hidden on a structured run's
+// columns. On a single-column run it opens prefilled, and the column's own name
+// is not reported as taken (here a plain "Summary" column sits beside
+// "Summary (Output)", so the dialog's "Summary" matches an existing column).
+test('column menu: Edit / Update Instructions only on single-column AI runs', async ({ page, context }) => {
+  test.setTimeout(60_000)
+  const api = await authedApi()
+  await context.addCookies((await api.storageState()).cookies)
+  const { tableId, sheetId } = await seedSheet(api, 3)
+  const db = openTestDb()
+  try {
+    const userId = (db.prepare('SELECT id FROM users LIMIT 1').get() as { id: string }).id
+    db.prepare(`
+      INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status, total_rows, processed_rows,
+        output_columns, status_column, created_at)
+      VALUES (?, ?, ?, 'Score (Status)', 'Rate /val', 'openai/gpt-4o-mini', 'completed', 3, 3, ?, 'Score (Status)',
+        '2020-01-01 00:00:00')
+    `).run(randomUUID(), sheetId, userId, SPECS)
+    db.prepare(`
+      INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status, total_rows, processed_rows,
+        created_at)
+      VALUES (?, ?, ?, 'Summary (Output)', 'Summarize /val', 'openai/gpt-4o-mini', 'completed', 3, 3,
+        '2020-01-01 00:00:00')
+    `).run(randomUUID(), sheetId, userId)
+    db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?')
+      .run(JSON.stringify(['val', 'Fit', 'Why', 'Score (Status)', 'Summary', 'Summary (Output)']), sheetId)
+
+    await page.goto(`${BASE}/table/${tableId}`)
+    const edit = page.getByText('Edit / Update Instructions')
+    for (const header of ['Why', 'Score (Status)']) {
+      const cell = page.locator('.ag-header-cell', { hasText: header }).first()
+      await expect(cell).toBeVisible({ timeout: 15_000 })
+      await cell.click({ button: 'right' })
+      await expect(page.getByText('Run All Rows')).toBeVisible()
+      await expect(edit).toHaveCount(0)
+      await page.keyboard.press('Escape')
+    }
+
+    const output = page.locator('.ag-header-cell', { hasText: 'Summary (Output)' }).first()
+    await output.scrollIntoViewIfNeeded()
+    await output.click({ button: 'right' })
+    await edit.click()
+    const name = page.getByPlaceholder('e.g., Industry Analysis, Sentiment Score')
+    await expect(name).toHaveValue('Summary', { timeout: 10_000 })
+    await expect(page.getByText('A column with this name already exists')).toHaveCount(0)
+  } finally {
+    db.close()
+  }
+})
