@@ -94,10 +94,10 @@ const config = {
   responseMapping: [], previewSize: 5,
   enrichment: { toolSnapshot: requestToolOf(find), cleanDomains: true } as never,
 }
-const plan = (over = {}) => ({ statusColumn: null, where: [], config, columns: ['Name', 'Website', 'S', 'Size'], ...over })
+const plan = (over = {}) => ({ statusColumn: null, status: 'any' as const, where: [], config, columns: ['Name', 'Website', 'S', 'Size'], ...over })
 check('a row with its inputs runs', seedVerdict({ Name: 'Ada L', Website: 'a.example' }, plan()) === 'run')
 check('a row without them is skipped as missing', seedVerdict({ Name: 'Ada L' }, plan()) === 'missing')
-check('not enriched: a row with a status is skipped', seedVerdict({ Name: 'A', Website: 'a.example', S: '⏭️ Not found' }, plan({ statusColumn: 'S' })) === 'skip')
+check('not enriched: a row with a status is skipped', seedVerdict({ Name: 'A', Website: 'a.example', S: '⏭️ Not found' }, plan({ statusColumn: 'S', status: 'not_enriched' })) === 'skip')
 const where = [{ column: 'Size', op: 'gt' as const, value: '50' }]
 check('Only run if: passes', seedVerdict({ Name: 'A', Website: 'a.example', Size: '120' }, plan({ where })) === 'run')
 check('Only run if: fails, and a non-number never passes gt', seedVerdict({ Name: 'A', Website: 'a.example', Size: 'big' }, plan({ where })) === 'skip')

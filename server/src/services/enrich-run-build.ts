@@ -92,7 +92,8 @@ export async function buildEnrichmentConfig(
       : defaultMaxCostPerRow(tool, pick));
   }
   const spendLimit = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
-  if (cap !== null && spendLimit !== null && spendLimit + 1e-9 < cap) {
+  // A micro of slack: a quoted limit is the estimate rounded to 6 decimals.
+  if (cap !== null && spendLimit !== null && spendLimit + 1e-6 < cap) {
     return bad(`The run limit ($${spendLimit}) is below the max per row ($${cap}), so no row could run. Raise the run limit.`);
   }
 
@@ -103,7 +104,7 @@ export async function buildEnrichmentConfig(
     toolSnapshot: requestToolOf(tool), providerNames: providerNamesOf(tool, ...(verify ? [verify] : [])),
     route: routeFor(tool, input.providerOrder, input.skipProviders, input.stopAtFirst),
     cleanDomains: input.cleanDomains, fresh: input.fresh, maxCostPerRowUsd: cap, spendLimitUsd: spendLimit,
-    rows: { mode: input.rows.mode, test: input.rows.test, where: input.conditions },
+    rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test, where: input.conditions },
     email: verify && input.email ? {
       strategy: input.email.accept, guess: input.email.guess, pattern: input.email.pattern,
       verifyTool: requestToolOf(verify), verifyExclude: routeFor(verify, [], [], false).exclude, verifyKind: verify.kind,

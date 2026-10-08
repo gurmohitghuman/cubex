@@ -2,6 +2,7 @@ import { api } from './client'
 import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
   EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
+  EnrichRowCounts, EnrichRowsScope, EnrichRerunRequest, EnrichRerunEstimate, EnrichColumnSetup, EnrichSpend,
 } from './types'
 
 // The drawer shows its own error for each of these (inline, in place), so the
@@ -38,5 +39,27 @@ export const enrichAPI = {
 
   // Resume a paused run, with a higher run limit when its limit paused it.
   resumeRun: (runId: string, spendLimitUsd?: number): Promise<{ ok: true }> =>
-    api.post(`/enrich/runs/${runId}/resume`, spendLimitUsd === undefined ? {} : { spendLimitUsd }, noServerToast).then(res => res.data),
+    api.post(`/enrich/runs/${runId}/resume`, spendLimitUsd === undefined ? {} : { spendLimitUsd }, noServerToast)
+      .then(res => res.data),
+
+  // Rows by status in a column (null: a new column), for a scope.
+  rowCounts: (
+    sheetId: string, column: string | null, mode: EnrichRowsScope, rowIndexes?: number[],
+  ): Promise<EnrichRowCounts> =>
+    api.post(`/enrich/sheets/${sheetId}/row-counts`, { column, mode, ...(mode === 'selected' ? { rowIndexes } : {}) },
+      noServerToast).then(res => res.data),
+
+  // The column menu's reruns, and their confirm's figures (a pure read).
+  rerun: (sheetId: string, body: EnrichRerunRequest): Promise<EnrichRunStarted> =>
+    api.post(`/enrich/sheets/${sheetId}/reruns`, { ...body, estimateOnly: false }, noServerToast).then(res => res.data),
+
+  rerunEstimate: (sheetId: string, body: EnrichRerunRequest): Promise<EnrichRerunEstimate> =>
+    api.post(`/enrich/sheets/${sheetId}/reruns`, { ...body, estimateOnly: true }, noServerToast)
+      .then(res => res.data.estimate),
+
+  columnSetup: (sheetId: string, column: string): Promise<EnrichColumnSetup> =>
+    api.get(`/enrich/sheets/${sheetId}/column-setup`, { ...noServerToast, params: { column } }).then(res => res.data),
+
+  spend: (days: number): Promise<EnrichSpend> =>
+    api.get('/enrich/spend', { ...noServerToast, params: { days } }).then(res => res.data),
 }

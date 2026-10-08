@@ -3,10 +3,11 @@ import toast from 'react-hot-toast'
 import { APIKey, Settings, settingsAPI } from '@/utils/api'
 import { ApiKeysSection } from './ApiKeysSection'
 import { TregCard } from './TregCard'
+import { EnrichmentSpendCard } from './EnrichmentSpendCard'
 import { TabLoading, TabLoadFailed } from './TabLoading'
 
-// Enrichment: the treg key that runs enrichments (with the daily limit), then
-// the saved third-party credentials HTTP API columns reference as /key_name.
+// Enrichment: the treg key that runs enrichments (with the daily limit), what
+// enrichments spent, then the saved third-party credentials HTTP API columns reference as /key_name.
 // Deliberately a separate tab from Agent access: none of these are Cubex
 // credentials. Explicit loading/failure states avoid a false "no key" flash.
 export const SettingsEnrichmentTab: React.FC = () => {
@@ -48,6 +49,7 @@ export const SettingsEnrichmentTab: React.FC = () => {
   return (
     <>
       <TregCard settings={settings} reloadSettings={loadSettings} />
+      <EnrichmentSpendCard />
       <ApiKeysSection apiKeys={apiKeys} reloadAPIKeys={loadAPIKeys} />
     </>
   )

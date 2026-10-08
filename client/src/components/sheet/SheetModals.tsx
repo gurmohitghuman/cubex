@@ -7,6 +7,7 @@ import { ImportCSVModal } from '@/components/sheet/ImportCSVModal'
 import { NewColumnModal } from '@/components/sheet/NewColumnModal'
 import { SheetRunDrawers } from '@/components/sheet/SheetRunDrawers'
 import { Sheet, SheetData } from '@/utils/api'
+import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 import { plural } from '@/lib/utils'
 
 interface SheetModalsProps {
@@ -19,6 +20,8 @@ interface SheetModalsProps {
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
   showEnrichmentDrawer: boolean
+  enrichOpen: EnrichOpenRequest | null
+  enrichWatch: string | null
   showNewColumnModal: boolean
   scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
   // setters
@@ -27,6 +30,8 @@ interface SheetModalsProps {
   setShowAddColumnModal: (b: boolean) => void
   setShowHTTPAPIColumnModal: (b: boolean) => void
   setShowEnrichmentDrawer: (b: boolean) => void
+  clearEnrichOpen: () => void
+  stopEnrichWatch: () => void
   setShowNewColumnModal: (b: boolean) => void
   setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
   setSelectedRowIndices: (rows: number[]) => void
@@ -46,17 +51,18 @@ interface SheetModalsProps {
   dropAllPending: (sheetId: string) => void
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => void | Promise<void>
   fetchActiveAIRuns: (sheetId: string) => unknown
+  fetchActiveHTTPRuns: (sheetId: string) => unknown
 }
 
 export const SheetModals: React.FC<SheetModalsProps> = (props) => {
   const {
     activeSheet, sheetData, selectedRowIndices,
     confirmTopbarDeleteOpen, showImportModal, showAddColumnModal,
-    showHTTPAPIColumnModal, showEnrichmentDrawer, showNewColumnModal, scrapedDataModal,
-    setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal,
-    setShowHTTPAPIColumnModal, setShowEnrichmentDrawer, setShowNewColumnModal, setScrapedDataModal,
+    showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, enrichWatch, showNewColumnModal, scrapedDataModal,
+    setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal, setShowHTTPAPIColumnModal,
+    setShowEnrichmentDrawer, clearEnrichOpen, stopEnrichWatch, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
-    handleDeleteRows, handleAddColumn, loadSheetData, setupSSEConnection, fetchActiveAIRuns,
+    handleDeleteRows, handleAddColumn, loadSheetData, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
     waitForSaves, dropAllPending,
   } = props
 
@@ -114,7 +120,8 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           await loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0)
           if (sheetHadData && newColumns.length > 0) {
             const noun = newColumns.length === 1 ? 'column' : 'columns'
-            toast.success(`Imported ${plural(rowsImported, 'row')} in ${newColumns.length} new ${noun}. Scroll right to view.`)
+            toast.success(
+              `Imported ${plural(rowsImported, 'row')} in ${newColumns.length} new ${noun}. Scroll right to view.`)
           } else {
             toast.success(`${plural(rowsImported, 'row')} imported`)
           }
@@ -124,11 +131,13 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
       <SheetRunDrawers
         activeSheet={activeSheet} sheetData={sheetData} selectedRowIndices={selectedRowIndices}
         showAddColumnModal={showAddColumnModal} showHTTPAPIColumnModal={showHTTPAPIColumnModal}
-        showEnrichmentDrawer={showEnrichmentDrawer}
+        showEnrichmentDrawer={showEnrichmentDrawer} enrichOpen={enrichOpen} clearEnrichOpen={clearEnrichOpen}
+        enrichWatch={enrichWatch} stopEnrichWatch={stopEnrichWatch}
         setShowAddColumnModal={setShowAddColumnModal} setShowHTTPAPIColumnModal={setShowHTTPAPIColumnModal}
         setShowEnrichmentDrawer={setShowEnrichmentDrawer}
         setSheetData={setSheetData} loadSheetData={loadSheetData}
         setupSSEConnection={setupSSEConnection} fetchActiveAIRuns={fetchActiveAIRuns}
+        fetchActiveHTTPRuns={fetchActiveHTTPRuns}
       />
 
       <NewColumnModal
@@ -139,7 +148,9 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           // the grid replaces the empty state with a cell to type into.
           const wasEmpty = (sheetData?.data.totalRows ?? 0) === 0
           const added = await handleAddColumn(name)
-          if (added && wasEmpty && activeSheet) await loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          if (added && wasEmpty && activeSheet) {
+            await loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          }
           return added
         }}
       />

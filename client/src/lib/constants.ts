@@ -49,3 +49,8 @@ export const SHEET_BUSY_RETRY_MS = 2000;
 // rows" takes, and the highest per-row limit an estimate or run accepts.
 export const ENRICH_TEST_ROWS = 5;
 export const ENRICH_MAX_ROW_CAP_USD = 1000;
+// How often the drawer's Test and Run steps read a run's lean status while it
+// runs (GET /api/enrich/runs/:id); the grid itself follows the run over SSE.
+export const ENRICH_RUN_POLL_MS = 1500;
+// The Settings spend card's windows, in days (server ENRICH_SPEND_WINDOWS).
+export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;

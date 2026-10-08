@@ -13,13 +13,15 @@ export type RunFailKind =
   | 'bad_request'   // 400
   | 'conflict'      // 409 — active run on the column, superseded run, CAS miss
   | 'forbidden'     // 403 — missing scope (e.g. 'secrets' for a key-referencing run)
-  | 'cap';          // 400 — column cap
+  | 'cap'           // 400 — column cap
+  | 'upstream';     // 502 — a service Cubex reads can't answer now (treg's catalog)
 export interface RunFail { fail: RunFailKind; message: string }
 
 export const runFailHttpStatus = (f: RunFail): number =>
   f.fail === 'not_found' ? 404
   : f.fail === 'conflict' ? 409
   : f.fail === 'forbidden' ? 403
+  : f.fail === 'upstream' ? 502
   : 400;
 
 // Resolve stable row ids → row_index for a run-target subset. Unknown ids are

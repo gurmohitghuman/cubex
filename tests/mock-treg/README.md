@@ -18,7 +18,8 @@ TREG_BASE_URL=http://127.0.0.1:3096 ... node server/dist/index.js
   `/catalog/platforms`.
 - `GET /catalog/endpoints/{id}/access`. For a waterfall it plans for the tool's own example input
   only, as treg does, so providers that need other inputs are left out of the plan.
-- `/call/...`: refused with treg's 404 for now. Tool calls arrive with the run engine.
+- `/call/...` and `/calls/{id}/result`: tool calls (calls.mjs), with failure scenarios steered
+  through `/__mock/state`.
 
 Keys: anything starting `treg_mock_` is a team key. `treg_mock_personal…` is a personal login
 token (400 "choose an org"), `treg_mock_setup…` a team that hasn't finished setup. Anything else is
@@ -27,8 +28,14 @@ refused (401).
 ## Control routes
 
 - `GET /__mock/state` and `POST /__mock/state` with any of `balanceMicro`, `holdsMicro`,
-  `ownKeys` (provider slugs the team has its own key for), `freeProviders` (free public routes)
-  and `down` (drop every connection, like an unreachable treg).
+  `ownKeys` (provider slugs the team has its own key for), `freeProviders` (free public routes),
+  `down` (drop every connection, like an unreachable treg), and for tool calls `scenario`,
+  `delayMs`, `findMisses`, `sameEmail`, `verifiedDomains`, `verdicts` (see calls.mjs and
+  answers.mjs) and `badDomains` (a call whose request mentions one answers treg's 400
+  `catalog_parameter_invalid`, so its row fails).
+- `GET /__mock/billing`: every charge, by Idempotency-Key. `GET /__mock/state` also has
+  `inFlightCount`, the calls still being answered: a spec that stops a run waits for 0 before
+  checking the bill, so a late charge never lands in the next spec's log.
 - `POST /__mock/reset`: back to the defaults ($1.00, no own keys) with an empty request log.
 - `GET /__mock/requests`: what Cubex called. Header names and values are kept, except the key,
   which is only marked as sent.

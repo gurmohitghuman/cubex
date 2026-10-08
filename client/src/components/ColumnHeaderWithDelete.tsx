@@ -1,16 +1,19 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap } from 'lucide-react'
+import type { ColumnType } from '@/utils/api/types'
 
 interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   onDeleteColumn: (columnId: string) => void
   onHeaderClick: (columnName: string, anchor: DOMRect) => void
   // A filter on this column hides rows: say so, or the sheet looks short.
   isFiltered?: boolean
+  // The server's type for the column: an enrichment's status column shows DatabaseZap.
+  columnType?: ColumnType
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
-  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered } = params
+  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType } = params
 
   const colDef = column.getColDef()
   const columnName = (colDef.field as string) || column.getColId()
@@ -49,6 +52,10 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
         title={displayName}
         onClick={handleHeaderClick}
       >
+        {columnType === 'enrich-status' && (
+          <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
+            data-testid="enrich-status-icon" />
+        )}
         {isAIColumn && (
           <Sparkles
             size={12}
@@ -58,7 +65,9 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
         )}
         <span className="truncate">{displayName}</span>
         {isFiltered && (
-          <Filter size={12} className="flex-shrink-0 text-cube-black" aria-label="Filtered"><title>Filtered: some rows are hidden</title></Filter>
+          <Filter size={12} className="flex-shrink-0 text-cube-black" aria-label="Filtered">
+            <title>Filtered: some rows are hidden</title>
+          </Filter>
         )}
       </div>
 
@@ -68,7 +77,8 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
             prevents the menu from opening alongside the delete confirmation. */}
         <button
           onClick={handleDelete}
-          className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-0.5 hover:bg-red-100 rounded text-red-600 hover:text-red-700 flex-shrink-0"
+          className={'opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-0.5 hover:bg-red-100 rounded'
+            + ' text-red-600 hover:text-red-700 flex-shrink-0'}
           title={`Delete column "${displayName}"`}
           aria-label={`Delete column ${displayName}`}
         >

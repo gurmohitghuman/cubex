@@ -1,22 +1,28 @@
 // Enrichment run routes (cookie session), next to routes/enrich.ts under
-// /api/enrich. Thin: services/enrich-run-*.ts hold the logic for every surface.
+// /api/enrich. Thin: services/enrich-*.ts hold the logic for every surface.
 // Pause and cancel are the HTTP run controls (/api/http/jobs/:id/control).
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
-import { parseEnrichRunInput } from '../lib/enrich-run-input';
+import { parseEnrichRunInput, parseRerunInput, parseRows } from '../lib/enrich-run-input';
 import { startEnrichmentRun } from '../services/enrich-run-start';
 import { enrichRunStatus, resumeEnrichmentRun } from '../services/enrich-run-status';
+import { enrichRowCounts } from '../services/enrich-row-count';
+import { columnSetup } from '../services/enrich-column';
+import { rerunEnrichmentColumn } from '../services/enrich-rerun';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { runFailHttpStatus } from '../services/run-shared';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
 
 const router = express.Router();
 router.use(authenticateToken);
 
+const badSheet = (res: express.Response) => res.status(400).json({ error: 'Invalid sheet ID format' });
+
 router.post('/sheets/:id/runs', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    if (!UUID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid sheet ID format' });
+    if (!UUID_PATTERN.test(id)) return badSheet(res);
     const parsed = parseEnrichRunInput(req.body);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
     // Selected rows go by row number: a sort elsewhere since they were picked
@@ -34,6 +40,61 @@ router.post('/sheets/:id/runs', async (req: AuthRequest, res) => {
   }
 });
 
+// The column menu's reruns of an enrichment column (and, with estimateOnly,
+// the confirm's figures: a pure read).
+router.post('/sheets/:id/reruns', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_PATTERN.test(id)) return badSheet(res);
+    const parsed = parseRerunInput(req.body);
+    if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    if (parsed.ok.rows.mode === 'selected' && !parsed.ok.estimateOnly) {
+      const conflict = rerunRowGenerationConflict(id, req.userId!, req.body);
+      if (conflict) return res.status(409).json(conflict);
+    }
+    const out = await rerunEnrichmentColumn(req.userId!, id, parsed.ok);
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error) {
+    console.error('Enrichment rerun error:', error);
+    res.status(500).json({ error: 'Failed to run the enrichment' });
+  }
+});
+
+// Rows by status in a column (not enriched yet, without a result, failed),
+// for a scope: the drawer's row choices and its "the other N rows".
+router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_PATTERN.test(id)) return badSheet(res);
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const column = typeof b.column === 'string' && b.column.trim() && b.column.length <= 200 ? b.column : null;
+    const rows = parseRows({ mode: b.mode, status: 'any', rowIndexes: b.rowIndexes }, true);
+    if (typeof rows === 'string') return res.status(400).json({ error: rows });
+    if (!verifySheetOwnership(id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    res.json(await enrichRowCounts(id, req.userId!, column, { mode: rows.mode, rowIndexes: rows.rowIndexes }));
+  } catch (error) {
+    console.error('Enrichment row count error:', error);
+    res.status(500).json({ error: 'Failed to count the rows' });
+  }
+});
+
+// "Edit enrichment": the column's tool and choices from its newest run.
+router.get('/sheets/:id/column-setup', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_PATTERN.test(id)) return badSheet(res);
+    const column = typeof req.query.column === 'string' ? req.query.column : '';
+    if (!column.trim() || column.length > 200) return res.status(400).json({ error: 'Pick an enrichment column.' });
+    const out = await columnSetup(req.userId!, id, column);
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error) {
+    console.error('Enrichment column setup error:', error);
+    res.status(500).json({ error: 'Failed to read the enrichment' });
+  }
+});
+
 router.get('/runs/:id', (req: AuthRequest, res) => {
   try {
     const status = enrichRunStatus(req.params.id, req.userId!);
@@ -48,7 +109,10 @@ router.get('/runs/:id', (req: AuthRequest, res) => {
 router.post('/runs/:id/resume', async (req: AuthRequest, res) => {
   try {
     const out = await resumeEnrichmentRun(req.params.id, req.userId!, req.body?.spendLimitUsd);
-    if ('fail' in out) return res.status(out.fail === 'not_found' ? 404 : out.fail === 'conflict' ? 409 : 400).json({ error: out.message });
+    if ('fail' in out) {
+      const status = out.fail === 'not_found' ? 404 : out.fail === 'conflict' ? 409 : 400;
+      return res.status(status).json({ error: out.message });
+    }
     res.json({ ok: true });
   } catch (error) {
     console.error('Enrichment run resume error:', error);

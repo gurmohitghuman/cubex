@@ -8,6 +8,13 @@ const drafts = new Map<string, EnrichDraft>()
 
 type Patch = Partial<EnrichDraft> | ((draft: EnrichDraft) => Partial<EnrichDraft>)
 
+// The run a sheet's drawer shows on its Test or Run step (null: none). The
+// sheet uses it to skip a pause toast the open drawer already explains.
+export function draftRunOnScreen(sheetId: string): string | null {
+  const d = drafts.get(sheetId)
+  return d?.runId && (d.step === 'test' || d.step === 'run') ? d.runId : null
+}
+
 export function useEnrichmentDraft(sheetId: string) {
   const [state, setState] = useState(() => ({ sheetId, draft: drafts.get(sheetId) ?? emptyDraft() }))
   // A sheet switch reads that sheet's draft straight away (no stale render of

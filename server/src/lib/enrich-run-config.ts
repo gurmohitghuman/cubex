@@ -10,7 +10,12 @@ import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichTool } from './enrich-tool';
 import type { HTTPAPIConfig } from './http-request-template';
 
-export type EnrichRowsMode = 'all' | 'filter' | 'selected' | 'not_enriched';
+// Which rows a run takes: a scope (every row, the saved filter's rows, the
+// selected rows) narrowed, on a column a run already made, by the status cell:
+// empty (not enriched yet), empty or skipped or failed (without a result), or
+// failed. 'any' takes every row in scope again.
+export type EnrichRowsMode = 'all' | 'filter' | 'selected';
+export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed';
 export interface EnrichCondition { column: string; op: 'not_empty' | 'empty' | 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string }
 
 export interface EnrichRoute { prefer: string[]; exclude: string[]; stopAtFirst: boolean }
@@ -39,7 +44,7 @@ export interface EnrichmentBlock {
   // all its calls); null for a tool with no known price, which the provider bills.
   maxCostPerRowUsd: number | null;
   spendLimitUsd: number | null;
-  rows: { mode: EnrichRowsMode; test: number | null; where: EnrichCondition[] };
+  rows: { mode: EnrichRowsMode; status?: EnrichRowsStatus; test: number | null; where: EnrichCondition[] };
   email: EnrichEmailLoop | null;
 }
 

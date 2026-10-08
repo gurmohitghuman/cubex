@@ -17,19 +17,19 @@ import { useClearRowSelection } from './aggrid/useClearRowSelection'
 import { useScrollTopOnFilterChange } from './aggrid/useScrollTopOnFilterChange'
 import { useHeaderContextMenu } from './aggrid/useHeaderContextMenu'
 import { GridEmptyMessage } from './aggrid/GridEmptyMessage'
-import type { AGGridSpreadsheetProps } from './aggrid/types'
+import type { AGGridSpreadsheetProps, RunMenuActions } from './aggrid/types'
+
+const NO_RUN_ACTIONS: RunMenuActions = {}
 
 export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   const {
     columns, data, totalRows, onCellEdit, onLoadMore, className = '',
     onSortChange, onRenameColumn, onDeleteColumn, onDeleteRows, onAddColumn,
     emptyFilter, onEmptyFilterChange, columnFilters, onColumnFilterChange,
-    onSelectedRowsChange, onCellClick,
-    onRunHTTPForColumn, onRunHTTPForRows, onRunHTTPForMissingOrError,
-    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn,
+    onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
     columnTypes = {},
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
-    onStopRunForColumn, onColumnReorder, sheetId,
+    onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection,
   } = props
 
@@ -178,13 +178,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
         onEmptyFilterChange={onEmptyFilterChange}
         onColumnFilterChange={onColumnFilterChange}
         onDeleteColumn={onDeleteColumn} onDeleteRows={onDeleteRows}
-        onRunHTTPForColumn={onRunHTTPForColumn}
-        onRunHTTPForRows={onRunHTTPForRows}
-        onRunHTTPForMissingOrError={onRunHTTPForMissingOrError}
-        onRunAIForColumn={onRunAIForColumn}
-        onRunAIMissingOrError={onRunAIMissingOrError}
-        onEditAIColumn={onEditAIColumn}
-        onStopRunForColumn={onStopRunForColumn}
+        runActions={runActions}
       />
 
       <RenameColumnPopover state={renaming} setState={setRenaming} onRenameColumn={onRenameColumn} />

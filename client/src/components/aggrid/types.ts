@@ -1,5 +1,25 @@
 import type { ColumnType } from '@/utils/api/types'
 
+export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
+
+// The column menu's Enrichment Actions: run the column again on rows by status
+// (not enriched yet, failed), on the selected rows or on every row; edit its
+// setup; watch or stop its active run.
+export type EnrichMenuAction = 'not_enriched' | 'failed' | 'selected' | 'all' | 'edit' | 'view' | 'stop'
+
+export interface RunMenuActions {
+  onRunHTTPForColumn?: (columnName: string) => void
+  // Batched: re-run the whole row selection in ONE run (N per-row runs would
+  // trip the per-user concurrency cap). See useHTTPColumnRunActions.
+  onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
+  onRunHTTPForMissingOrError?: (columnName: string) => void
+  onRunAIForColumn?: (baseName: string, columnName: string) => void
+  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
+  onEditAIColumn?: (baseName: string) => void
+  onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
+  onEnrichAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
+}
+
 export interface AGGridSpreadsheetProps {
   columns: string[]
   // Authoritative per-column type from the server (run-record derived). Drives the
@@ -25,17 +45,10 @@ export interface AGGridSpreadsheetProps {
   onColumnFilterChange?: (column: string, value: string | null) => void
   onSelectedRowsChange?: (rows: number[]) => void
   onCellClick?: (rowIndex: number, columnName: string, value?: unknown) => void
-  onRunHTTPForColumn?: (columnName: string) => void
-  // Batched: re-run the whole row selection in ONE run (N per-row runs would
-  // trip the per-user concurrency cap). See useSheetGridRunActions.handleRunHTTPForRows.
-  onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
-  onRunHTTPForMissingOrError?: (columnName: string) => void
-  onRunAIForColumn?: (baseName: string, columnName: string) => void
-  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
-  onEditAIColumn?: (baseName: string) => void
-  activeHTTPRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
-  activeAIRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
-  onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
+  // What the column menu's run blocks call (AI, HTTP API and enrichment columns).
+  runActions?: RunMenuActions
+  activeHTTPRunsByColumn?: RunByColumn
+  activeAIRunsByColumn?: RunByColumn
   onColumnReorder?: (newColumnOrder: string[]) => void | Promise<void>
   sheetId?: string
   // Signal that a column was renamed in place. Preserves AG Grid's internal colId

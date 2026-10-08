@@ -4,8 +4,10 @@ import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
 import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
 import type { ColumnType } from '@/utils/api/types'
 import { useSheetGridRunActions } from '@/hooks/sheet/useSheetGridRunActions'
-
-type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
+import { useEnrichColumnActions } from '@/hooks/sheet/useEnrichColumnActions'
+import type { RunByColumn, RunMenuActions } from '@/components/aggrid/types'
+import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
+import { EnrichRerunConfirm } from './EnrichRerunConfirm'
 
 export interface SheetGridProps {
   activeSheet: Sheet | null
@@ -46,6 +48,8 @@ export interface SheetGridProps {
   // Forwarded to AGGridSpreadsheet so the topbar delete confirm can clear the
   // grid selection through deselectAll (the selection source of truth).
   registerClearSelection?: (clear: (() => void) | null) => void
+  // Opens the enrichment drawer on a column's setup or a run (Enrichment Actions).
+  onOpenEnrichment?: (target: EnrichOpenTarget) => void
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -57,6 +61,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onSelectedRowsChange, onRenameColumn, onDeleteColumn, onDeleteRows,
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection,
+    onOpenEnrichment,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -64,16 +69,32 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef,
   })
+  const enrich = useEnrichColumnActions({
+    activeSheet, activeHTTPRuns, setupSSEConnection, fetchActiveHTTPRuns, reloadSheetData, rowGenerationRef,
+    onOpenEnrichment,
+  })
 
   // "Run All Rows" clears the column's current results first and spends credits
   // or requests on every row again, so it asks before starting.
   // columnName: the AI header clicked (a structured run reruns from any column).
-  const [confirmRunAll, setConfirmRunAll] = useState<{ kind: 'ai' | 'http'; column: string; columnName?: string } | null>(null)
+  const [confirmRunAll, setConfirmRunAll] =
+    useState<{ kind: 'ai' | 'http'; column: string; columnName?: string } | null>(null)
   const runAll = async () => {
     const c = confirmRunAll
     setConfirmRunAll(null)
     if (c?.kind === 'ai') await actions.handleRunAIForColumn(c.column, c.columnName)
     else if (c) await actions.handleRunHTTPForColumn(c.column)
+  }
+
+  const runActions: RunMenuActions = {
+    onRunHTTPForColumn: (column) => setConfirmRunAll({ kind: 'http', column }),
+    onRunHTTPForMissingOrError: actions.handleRunHTTPMissingOrError,
+    onRunHTTPForRows: actions.handleRunHTTPForRows,
+    onRunAIForColumn: (column, columnName) => setConfirmRunAll({ kind: 'ai', column, columnName }),
+    onRunAIMissingOrError: actions.handleRunAIMissingOrError,
+    onEditAIColumn: actions.handleEditAIColumn,
+    onStopRunForColumn: actions.handleStopRunForColumn,
+    onEnrichAction: enrich.onEnrichAction,
   }
 
   return (
@@ -82,12 +103,14 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
         isOpen={!!confirmRunAll}
         title="Run all rows again?"
         message={confirmRunAll?.kind === 'ai'
-          ? `"${confirmRunAll.column}" will be cleared and filled again on every row, using your OpenRouter credits. To fill only empty or failed rows, use "Run Missing or Errors" instead.`
+          ? `"${confirmRunAll.column}" will be cleared and filled again on every row, using your OpenRouter credits. `
+            + 'To fill only empty or failed rows, use "Run Missing or Errors" instead.'
           : `"${confirmRunAll?.column ?? ''}" will call the API again for every row and replace the current results.`}
         confirmText="Run all rows"
         onConfirm={runAll}
         onCancel={() => setConfirmRunAll(null)}
       />
+      <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
       <div className="flex-1 min-h-0">
         <AGGridSpreadsheet
           key={`${activeSheet?.id}_${forceUpdate}`}
@@ -108,16 +131,10 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onRenameColumn={onRenameColumn}
       onDeleteColumn={(col) => actions.handleDeleteColumnWithWidthCleanup(col, onDeleteColumn)}
       onDeleteRows={onDeleteRows}
-      onRunHTTPForColumn={(column) => setConfirmRunAll({ kind: 'http', column })}
-      onRunHTTPForMissingOrError={actions.handleRunHTTPMissingOrError}
-      onRunHTTPForRows={actions.handleRunHTTPForRows}
-      onRunAIForColumn={(column, columnName) => setConfirmRunAll({ kind: 'ai', column, columnName })}
-      onRunAIMissingOrError={actions.handleRunAIMissingOrError}
-      onEditAIColumn={actions.handleEditAIColumn}
+      runActions={runActions}
       columnTypes={columnTypes}
       activeHTTPRunsByColumn={activeHTTPRunsByColumn}
       activeAIRunsByColumn={activeAIRunsByColumn}
-      onStopRunForColumn={actions.handleStopRunForColumn}
       onColumnReorder={onColumnReorder}
       onAddColumn={onAddColumn}
       registerClearSelection={registerClearSelection}

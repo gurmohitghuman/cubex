@@ -10,7 +10,8 @@ import { SSEResultBuffer, deriveAICellValue } from './sseResultBuffer'
 // the active sheet (run→sheet binding); this just queues once that's been cleared.
 export const enqueueResultEvent = (data: any, buffer: SSEResultBuffer) => {
   if (data.columnName) {
-    buffer.enqueueCell(data.rowIndex, data.columnName, deriveAICellValue(data.status, data.outputValue, data.errorMessage))
+    const value = deriveAICellValue(data.status, data.outputValue, data.errorMessage)
+    buffer.enqueueCell(data.rowIndex, data.columnName, value)
   } else if (data.extractedFields) {
     // HTTP runs: data.extractedFields is a map of the EXACT final cell strings the
     // server already computed (field values, or markers like '❌ Error' / '⏭️ No
@@ -51,10 +52,17 @@ export const refetchRunsThrottled = (lastRef: React.MutableRefObject<number>, re
 
 // A run that paused itself (an enrichment's spend or daily limit, the treg
 // balance or key, treg unreachable) says why; a pause the user clicked doesn't.
-export const notePausedRun = (data: any, refetch: () => void) => {
+// An enrichment's pause goes to `onEnrichPaused`, which offers its fix (the
+// drawer's Run step) or stays quiet when the drawer already shows it.
+export const notePausedRun = (
+  data: any, runId: string, refetch: () => void, onEnrichPaused?: (runId: string, reason: string) => void,
+) => {
   refetch()
-  const reason = (data.error || '').trim()
-  if (reason) toast.error(`Paused: ${reason.length > 300 ? `${reason.slice(0, 300)}…` : reason}`)
+  const raw = (data.error || '').trim()
+  if (!raw) return
+  const reason = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw
+  if (data.enrichment && onEnrichPaused) onEnrichPaused(runId, reason)
+  else toast.error(`Paused: ${reason}`)
 }
 
 // Refs/setters/callbacks handleTerminalStatus needs. Bundled so the hook passes
@@ -106,6 +114,8 @@ export const handleTerminalStatus = (
   ctx.pendingTimersRef.current.add(timer)
 }
 
+const ACTIVE = new Set(['running', 'paused', 'pending'])
+
 interface ReconnectArgs {
   sheetId: string
   setActiveAIRuns: (runs: AIRun[]) => void
@@ -123,7 +133,7 @@ export const reconnectActiveRuns = async ({
     })
     if (aiResponse.ok) {
       const aiRuns = await aiResponse.json()
-      const active = aiRuns.filter((run: any) => run.status === 'running' || run.status === 'paused' || run.status === 'pending')
+      const active = aiRuns.filter((run: any) => ACTIVE.has(run.status))
       setActiveAIRuns(active)
       for (const run of active) setupSSEConnection(run.id, 'ai')
     }
@@ -138,7 +148,7 @@ export const reconnectActiveRuns = async ({
     })
     if (httpResponse.ok) {
       const httpRuns = await httpResponse.json()
-      const active = httpRuns.filter((run: any) => run.status === 'running' || run.status === 'paused' || run.status === 'pending')
+      const active = httpRuns.filter((run: any) => ACTIVE.has(run.status))
       setActiveHTTPRuns(active)
       for (const run of active) setupSSEConnection(run.id, 'http')
     }

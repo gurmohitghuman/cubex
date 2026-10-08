@@ -12,6 +12,7 @@ import { OutputsPane, outputsSummary } from './OutputsPane'
 import { RowsLimitsPane } from './RowsLimitsPane'
 import { EstimateBox } from './EstimateBox'
 import { RunButtons } from './RunButtons'
+import { continuing } from './run-request'
 import { useSetupModel } from './useSetupModel'
 
 interface Props {
@@ -27,7 +28,9 @@ interface Props {
   filledColumns: Set<string> | null
   onChangeTool: () => void
   onCancel: () => void
-  onRunStarted: (runId: string) => void
+  onStarted: (runId: string, statusColumn: string, test: boolean) => void
+  // Why no new run can start yet: a run on this column is still going (or loading).
+  runBlock?: string | null
 }
 
 // Step 2: inputs mapped to columns, the waterfall's providers, outputs as new
@@ -39,7 +42,13 @@ export const SetupStep: React.FC<Props> = (p) => {
   if (!card) return null
   const est = m.estimate.estimate
   // A tool with no listed price, or one the provider bills, has no cap worth showing.
-  const cap = m.unpriced || m.ownKeySingle ? null : draft.maxCostPerRowUsd ?? est?.defaultMaxCostPerRowUsd ?? null
+  const billed = m.unpriced || m.ownKeySingle
+  const cap = billed ? null : draft.maxCostPerRowUsd ?? est?.defaultMaxCostPerRowUsd ?? null
+  const more = continuing(draft)
+  const rowsSummary = `${m.rows === null ? '…' : m.rows.toLocaleString()} rows`
+    + (cap !== null ? ` · up to ${formatCost(cap)}/row` : '')
+  const problem = !m.ready || !m.tool ? 'Loading the enrichment…'
+    : p.runBlock ?? m.problem ?? (p.hasKey === false ? 'Add your treg key in Settings first.' : null)
 
   return (
     <div className="p-4 space-y-3">
@@ -49,7 +58,9 @@ export const SetupStep: React.FC<Props> = (p) => {
           <p className="text-sm font-medium text-gray-900">{card.title}</p>
           <p className="text-xs text-gray-500">{cardMeta(card).join(' · ')}</p>
         </div>
-        <button type="button" onClick={p.onChangeTool} className="text-xs text-gray-700 underline hover:no-underline">Change</button>
+        <button type="button" onClick={p.onChangeTool} className="text-xs text-gray-700 underline hover:no-underline">
+          Change
+        </button>
       </div>
 
       {m.data.toolError ? (
@@ -62,12 +73,18 @@ export const SetupStep: React.FC<Props> = (p) => {
       ) : (
         <>
           <div>
-            <label htmlFor="enrich-column-name" className="block text-sm font-medium text-gray-700 mb-1">Column name</label>
+            <label htmlFor="enrich-column-name" className="block text-sm font-medium text-gray-700 mb-1">
+              Column name
+            </label>
             <input id="enrich-column-name" className={`input w-full ${m.statusNameProblem ? '!border-red-300' : ''}`}
               value={draft.columnName} onChange={e => update({ columnName: e.target.value })} />
             {m.statusNameProblem
               ? <p className="text-xs text-red-600 mt-1">{m.statusNameProblem}</p>
-              : <p className="text-xs text-gray-500 mt-1">Shows each row&apos;s result: found, not found, or why it failed.</p>}
+              : <p className="text-xs text-gray-500 mt-1">
+                {more
+                  ? 'Runs add to this column. Rename it to make a new column instead.'
+                  : "Shows each row's result: found, not found, or why it failed."}
+              </p>}
           </div>
 
           <AccordionSection title="Inputs" summary={inputsSummary(draft.bindings)} defaultOpen>
@@ -107,23 +124,21 @@ export const SetupStep: React.FC<Props> = (p) => {
             </AccordionSection>
           )}
 
-          <AccordionSection title="Rows and limits"
-            summary={`${m.rows === null ? '…' : m.rows.toLocaleString()} rows${cap !== null ? ` · up to ${formatCost(cap)}/row` : ''}`}>
-            <RowsLimitsPane draft={draft} update={update} counts={m.counts} columns={p.columns}
-              defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null} defaultSpendLimit={est?.estimate.highUsd ?? null}
-              billedBy={m.unpriced || m.ownKeySingle ? m.ownKeyProvider : null} />
+          <AccordionSection title="Rows and limits" defaultOpen={more} summary={rowsSummary}>
+            <RowsLimitsPane draft={draft} update={update} counts={m.counts} continuing={more} byStatus={m.byStatus}
+              columns={p.columns} defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null}
+              defaultSpendLimit={est?.estimate.highUsd ?? null} billedBy={billed ? m.ownKeyProvider : null} />
           </AccordionSection>
 
-          <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows} balance={m.data.balance}
-            spendLimit={draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys} blocked={m.blocked}
-            unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider} />
+          <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows}
+            balance={m.data.balance} spendLimit={draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys}
+            blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider} />
         </>
       )}
 
-      <RunButtons sheetId={p.sheetId} draft={draft} update={update} rows={m.rows} counts={m.counts}
+      <RunButtons sheetId={p.sheetId} draft={draft} rows={m.rows} counts={m.counts}
         selectedRows={p.selectedRows} rowGeneration={p.rowGeneration} order={m.order} estimate={est}
-        problem={!m.ready || !m.tool ? 'Loading the enrichment…' : m.problem ?? (p.hasKey === false ? 'Add your treg key in Settings first.' : null)}
-        unpriced={m.unpriced || m.ownKeySingle} onCancel={p.onCancel} onRunStarted={p.onRunStarted} />
+        problem={problem} unpriced={billed} onCancel={p.onCancel} onStarted={p.onStarted} />
     </div>
   )
 }

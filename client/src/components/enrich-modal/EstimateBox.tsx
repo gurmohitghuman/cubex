@@ -23,14 +23,20 @@ interface Props {
   // A priced single tool the team runs on its own key at treg.
   ownKeySingle: boolean
   ownKeyProvider: string
+  // The heading's words for the rows ("Estimated for the other 1,199 rows").
+  label?: string
 }
+
+const GRAY = 'bg-gray-50 border border-gray-200'
+const AMBER = 'bg-amber-50 border-amber-200 text-amber-900'
 
 // The AI drawer's gray estimate box, for treg's prices: a range for the rows
 // (every row found by the cheapest provider, up to every row spending its
 // whole per-row limit), the balance and today's limit. Amber when the run
 // could spend more than the balance.
 export const EstimateBox: React.FC<Props> = ({
-  estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeySingle, ownKeyProvider,
+  estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeySingle,
+  ownKeyProvider, label,
 }) => {
   if (unpriced || ownKeySingle) {
     return (
@@ -41,11 +47,14 @@ export const EstimateBox: React.FC<Props> = ({
       </div>
     )
   }
-  if (blocked) return <div className="bg-gray-50 border border-gray-200 p-3 text-xs text-gray-700" data-testid="enrich-estimate">{blocked}</div>
+  if (blocked) {
+    return <div className={`${GRAY} p-3 text-xs text-gray-700`} data-testid="enrich-estimate">{blocked}</div>
+  }
   if (!estimate || rows === null) {
     return (
-      <div className="bg-gray-50 border border-gray-200 p-3 text-xs text-gray-600 flex items-center gap-2" data-testid="enrich-estimate">
-        {error ? <span>{error}</span> : <><Loader2 className="h-3 w-3 animate-spin" /><span>Estimating the cost…</span></>}
+      <div className={`${GRAY} p-3 text-xs text-gray-600 flex items-center gap-2`} data-testid="enrich-estimate">
+        {error ? <span>{error}</span>
+          : <><Loader2 className="h-3 w-3 animate-spin" /><span>Estimating the cost…</span></>}
       </div>
     )
   }
@@ -56,27 +65,33 @@ export const EstimateBox: React.FC<Props> = ({
   const overDaily = limit.remainingUsd !== null && high > limit.remainingUsd + 1e-9
 
   return (
-    <div className={`border p-3 text-xs space-y-1 ${overBalance ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-gray-50 border-gray-200 text-gray-700'}`}
+    <div className={`border p-3 text-xs space-y-1 ${overBalance ? AMBER : 'bg-gray-50 border-gray-200 text-gray-700'}`}
       data-testid="enrich-estimate">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-cube-black">Estimated for {plural(rows, 'row')}</span>
+        <span className="font-medium text-cube-black">{label ?? `Estimated for ${plural(rows, 'row')}`}</span>
         <span className="font-medium text-cube-black flex items-center gap-1.5">
           {loading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
           {spent(lowUsd)} to {spent(highUsd)}
         </span>
       </div>
       <p>Most rows cost less than the high end. {missNote}</p>
-      {spendLimit !== null && spendLimit < highUsd && <p>The run pauses at {limitText(spendLimit)}, your limit for this run.</p>}
+      {spendLimit !== null && spendLimit < highUsd && (
+        <p>The run pauses at {limitText(spendLimit)}, your limit for this run.</p>
+      )}
       {ownKeys && <p>Providers that use your own key at treg bill you directly, outside these numbers.</p>}
       {balance && (overBalance ? (
         <p className="font-medium">
           This could cost more than your treg balance ({usd(balance.balanceUsd)}).{' '}
-          <a href={TREG_TOPUP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline hover:no-underline">
+          <a href={TREG_TOPUP_URL} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 underline hover:no-underline">
             Top up at treg<ExternalLink className="h-3 w-3" />
           </a>{' '}or lower the limits.
         </p>
       ) : (
-        <p>Your treg balance: {usd(balance.balanceUsd)}{balance.onHoldUsd > 0 ? ` (${usd(balance.onHoldUsd)} on hold)` : ''}</p>
+        <p>
+          Your treg balance: {usd(balance.balanceUsd)}
+          {balance.onHoldUsd > 0 ? ` (${usd(balance.onHoldUsd)} on hold)` : ''}
+        </p>
       ))}
       <p className={overDaily ? 'text-amber-800' : ''} data-testid="enrich-daily-line">
         {limit.limitUsd === null
