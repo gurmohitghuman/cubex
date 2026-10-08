@@ -1,3 +1,5 @@
+// Over 200 lines: one load path whose ordering guards (load generation, commit
+// sequence, structural barriers) only make sense read together.
 import { useCallback, useRef } from 'react'
 import { sheetsAPI, Sheet, SheetData, AIRun, HTTPRun } from '@/utils/api'
 import toast from 'react-hot-toast'
@@ -6,6 +8,7 @@ import { overlayLocalEdits, PendingEdit, SavedCell } from './silentReloadOverlay
 import { useSheetLoadMore } from './useSheetLoadMore'
 import { useStructuralBarriers } from './useStructuralBarriers'
 import { applyLoadedView } from './applyLoadedView'
+import { commitMergedWindow, fetchWindow } from './reloadWindow'
 
 interface UseSheetLoadArgs {
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>
@@ -87,8 +90,17 @@ export const useSheetLoad = ({
   // the whole tree for a FullPageLoader while isLoading, which unmounts the
   // grid (scroll position, selection, in-progress edits all lost). Background
   // refreshes (run completion, Stop) use silent; user-initiated loads stay loud.
-  const loadSheetData = useCallback(async (sheetId: string, limit = INITIAL_ROW_LOAD, offset = 0, opts?: { silent?: boolean }) => {
+  //
+  // opts.keepWindow (silent only): a background refresh of the held window
+  // (reloadWindow.ts): `limit` may exceed one server page (fetched in pages, all
+  // from one data_version or discarded), and a slice at offset > 0 is MERGED into
+  // the held rows instead of replacing them, so the viewport doesn't move.
+  const loadSheetData = useCallback(async (
+    sheetId: string, limit = INITIAL_ROW_LOAD, offset = 0,
+    opts?: { silent?: boolean; keepWindow?: boolean; keepTail?: boolean },
+  ) => {
     const silent = opts?.silent === true
+    const keepWindow = silent && opts?.keepWindow === true
     // Refuse a SILENT dispatch while a structural barrier runs for this sheet —
     // BEFORE the commit-seq bump below: dispatched, it would supersede the
     // barrier's own loud reload (which then discards at commit) while itself
@@ -149,7 +161,10 @@ export const useSheetLoad = ({
     }, 30000) : null
 
     try {
-      const data = await sheetsAPI.getData(sheetId, limit, offset)
+      const data = keepWindow
+        ? await fetchWindow(sheetsAPI.getData, sheetId, offset, limit)
+        : await sheetsAPI.getData(sheetId, limit, offset)
+      if (!data) return // pages straddled a change: the change poll reloads again
       // Discard a superseded or wrong-sheet response: if a later load bumped the
       // token, or the user switched sheets while this fetch was in flight, do NOT
       // commit it — it would clobber the current sheet's state with stale data.
@@ -186,9 +201,12 @@ export const useSheetLoad = ({
       // un-flushed + acked-but-not-reloaded values onto the fetched rows, with
       // self-cleaning of reconciled entries (rationale in silentReloadOverlay).
       if (silent) overlayLocalEdits(data, sheetId, pendingEditsRef.current, recentlySavedRef.current)
-      setSheetData(data)
+      if (keepWindow) {
+        commitMergedWindow(setSheetData, setLoadedRowsCount, data, { offset, limit, keepTail: !!opts?.keepTail })
+      } else setSheetData(data)
 
-      applyLoadedView(data, offset, { setEmptyFilter, setColumnFilters, setLoadedRowsCount, setColumnOrder })
+      applyLoadedView(data, offset,
+        { setEmptyFilter, setColumnFilters, setLoadedRowsCount, setColumnOrder }, keepWindow)
 
       const sideLoads: Array<[string, () => Promise<unknown> | unknown]> = [
         ['active HTTP runs', () => fetchActiveHTTPRuns(sheetId)],

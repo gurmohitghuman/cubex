@@ -1,3 +1,5 @@
+// Over 200 lines: the AG Grid wiring (props, column defs, grid options, menus)
+// in one place; the logic itself lives in the aggrid/ hooks it calls.
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -15,6 +17,7 @@ import { DEFAULT_COL_DEF, ROW_SELECTION, getRowId } from './aggrid/gridOptions'
 import { useRowData } from './aggrid/useRowData'
 import { useClearRowSelection } from './aggrid/useClearRowSelection'
 import { useScrollTopOnFilterChange } from './aggrid/useScrollTopOnFilterChange'
+import { useRegisterViewport } from './aggrid/useRegisterViewport'
 import { useHeaderContextMenu } from './aggrid/useHeaderContextMenu'
 import { GridEmptyMessage } from './aggrid/GridEmptyMessage'
 import type { AGGridSpreadsheetProps } from './aggrid/types'
@@ -30,7 +33,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columnTypes = {},
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onStopRunForColumn, onColumnReorder, sheetId,
-    lastRenamedColumn = null, registerClearSelection,
+    lastRenamedColumn = null, registerClearSelection, registerViewport,
   } = props
 
   const gridRef = useRef<AgGridReact>(null)
@@ -111,6 +114,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
 
   const clearRowSelection = useClearRowSelection(gridRef, setSelectedRows, onSelectedRowsChange, registerClearSelection)
   useScrollTopOnFilterChange(gridRef, emptyFilter, columnFilters)
+  useRegisterViewport(gridRef, registerViewport)
   const { wrapperRef, onHeaderContextMenu } = useHeaderContextMenu(openColumnMenu)
 
   if (rowData.length === 0) {
