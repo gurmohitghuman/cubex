@@ -325,3 +325,28 @@
   box-shadow: none;
 }
 
+
+/* LoadingCellRenderer: the processing spinner and the typing cursor, defined
+   once here (each cell used to inject its own <style> tag: 400+ on a screen of
+   spinners, and every swap made the browser restyle the page). */
+.cube-cell-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  /* green-600 track with a lighter green-300 head so the rotation reads */
+  border: 1.5px solid #16a34a;
+  border-top-color: #86efac;
+  margin-left: var(--ag-cell-horizontal-padding, 12px);
+  animation: cube-cell-spin 0.7s linear infinite;
+}
+@keyframes cube-cell-spin { to { transform: rotate(360deg); } }
+.cube-cell-cursor::after {
+  content: '\258A';
+  margin-left: 1px;
+  animation: cube-cell-blink 0.9s infinite;
+}
+@keyframes cube-cell-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
