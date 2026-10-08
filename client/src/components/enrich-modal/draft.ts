@@ -13,7 +13,10 @@ export type InputBinding = { kind: 'column'; column: string } | { kind: 'fixed';
 // One output column: `key` is the tool's field (or a preset's own output),
 // `path` where it sits in treg's answer (null: Cubex works it out, such as
 // the email status).
-export interface OutputPick { key: string; path: string | null; label: string; enabled: boolean; columnName: string }
+// fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
+export interface OutputPick {
+  key: string; path: string | null; label: string; enabled: boolean; columnName: string; fromAnswer?: boolean
+}
 
 // Verified work email: which checker verdicts count as good enough
 // (server/src/lib/enrich-email-status.ts names them safest/balanced/wide).

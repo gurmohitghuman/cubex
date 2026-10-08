@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { enrichCellValues, type RowCells } from '../lib/enrich-cells';
+import { withFill } from '../lib/answer-store';
 import type { ResponseMapping } from '../lib/http-request-template';
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
@@ -16,7 +17,7 @@ export interface EnrichWrite {
   generation: number;
   rowIndex: number;
   cells: RowCells;
-  stored: unknown;            // the answer as kept (trimmed raw)
+  stored: unknown;            // the answer as kept (trimmed raw); stored with the row's fill rule
   mapping: ResponseMapping[];
   costMicro: number;
   request: Record<string, unknown>;
@@ -29,7 +30,8 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
   db.transaction(() => {
     if (shouldStopHttpRun(w.run.id, w.generation)) return;
     db.prepare(`
-      INSERT INTO http_results (id, run_id, user_id, row_index, request_config, response_data, extracted_fields, status, error_message, cost_usd)
+      INSERT INTO http_results (id, run_id, user_id, row_index, request_config, response_data, extracted_fields,
+        status, error_message, cost_usd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(run_id, row_index) DO UPDATE SET
         request_config = excluded.request_config, response_data = excluded.response_data,
@@ -37,7 +39,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
         error_message = excluded.error_message, cost_usd = excluded.cost_usd, updated_at = datetime('now')
     `).run(
       uuidv4(), w.run.id, w.run.user_id, w.rowIndex, JSON.stringify(w.request),
-      w.stored === undefined ? null : JSON.stringify(w.stored), JSON.stringify(cells),
+      w.stored === undefined ? null : JSON.stringify(withFill(w.stored, w.cells.fill)), JSON.stringify(cells),
       w.cells.status, w.cells.reason ? w.cells.reason.slice(0, 500) : null, w.costMicro / 1e6,
     );
     writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells));

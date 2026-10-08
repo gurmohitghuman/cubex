@@ -16,7 +16,9 @@ import type { HTTPAPIConfig } from './http-request-template';
 // failed. 'any' takes every row in scope again.
 export type EnrichRowsMode = 'all' | 'filter' | 'selected';
 export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed';
-export interface EnrichCondition { column: string; op: 'not_empty' | 'empty' | 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string }
+export interface EnrichCondition {
+  column: string; op: 'not_empty' | 'empty' | 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string;
+}
 
 export interface EnrichRoute { prefer: string[]; exclude: string[]; stopAtFirst: boolean }
 
@@ -46,6 +48,10 @@ export interface EnrichmentBlock {
   spendLimitUsd: number | null;
   rows: { mode: EnrichRowsMode; status?: EnrichRowsStatus; test: number | null; where: EnrichCondition[] };
   email: EnrichEmailLoop | null;
+  // Output paths added with "+ Column" from a stored answer (answer-field-add.ts):
+  // read from answers, not the tool's listed outputs, so a rerun keeps them
+  // without checking them against the catalog.
+  answerFields?: string[];
 }
 
 export type EnrichRunConfig = HTTPAPIConfig & { enrichment: EnrichmentBlock };
@@ -79,7 +85,8 @@ export function routeFor(tool: EnrichTool, order: string[], skip: string[], stop
   if (tool.kind !== 'waterfall' || !tool.providers) return { prefer: [], exclude: [], stopAtFirst: false };
   const off = new Set(skip.map(s => s.toLowerCase()));
   const all = new Set(tool.providers.map(p => p.provider.toLowerCase()));
-  const on = new Set(tool.providers.filter(p => !p.unavailable && !off.has(p.provider.toLowerCase())).map(p => p.provider.toLowerCase()));
+  const on = new Set(tool.providers
+    .filter(p => !p.unavailable && !off.has(p.provider.toLowerCase())).map(p => p.provider.toLowerCase()));
   const exclude = [...all].filter(p => !on.has(p)).sort();
   const prefer = [...new Set(order.map(s => s.toLowerCase()))].filter(p => on.has(p));
   return { prefer, exclude, stopAtFirst };

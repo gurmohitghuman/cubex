@@ -3,6 +3,7 @@ import {
   GridApi, GridReadyEvent, CellValueChangedEvent, CellClickedEvent,
   SelectionChangedEvent, ColumnMovedEvent, ColumnResizedEvent, NewColumnsLoadedEvent,
 } from 'ag-grid-community'
+import type { CellClickInfo } from './types'
 
 interface UseGridHandlersArgs {
   columns: string[]
@@ -14,7 +15,8 @@ interface UseGridHandlersArgs {
   setColumnWidths: React.Dispatch<React.SetStateAction<Record<string, number>>>
   setSelectedRows: (rows: number[]) => void
   onCellEdit: (rowIndex: number, column: string, value: string) => void
-  onCellClick?: (rowIndex: number, columnName: string, value?: unknown) => void
+  // info: the row number the grid shows (its "#" column), and 2 for a double click's second click.
+  onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   onSelectedRowsChange?: (rows: number[]) => void
   onColumnReorder?: (newColumnOrder: string[]) => void | Promise<void>
   onLoadMore?: (offset: number, limit: number) => void
@@ -62,7 +64,9 @@ export const useGridHandlers = (args: UseGridHandlersArgs) => {
 
   const onCellClicked = useCallback((event: CellClickedEvent) => {
     if (onCellClick && event.colDef.field && event.data.__rowIndex !== undefined) {
-      onCellClick(event.data.__rowIndex, event.colDef.field, event.value)
+      const displayRow = typeof event.rowIndex === 'number' ? event.rowIndex + 1 : event.data.__rowIndex + 1
+      const clicks = (event.event as MouseEvent | null)?.detail ?? 1
+      onCellClick(event.data.__rowIndex, event.colDef.field, event.value, { displayRow, clicks })
     }
   }, [onCellClick])
 

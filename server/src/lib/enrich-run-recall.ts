@@ -32,7 +32,10 @@ const CLIENT_PATHS: Record<string, string | null> = {
   email: '$.output.email', email_status: null, found_by: '$._treg.served_by', checked_by: null,
 };
 
-function recallOutput(m: { columnName: string; jsonPath: string }): OutputInput {
+function recallOutput(m: { columnName: string; jsonPath: string }, fromAnswer: Set<string>): OutputInput {
+  if (fromAnswer.has(m.jsonPath)) {
+    return { key: m.jsonPath.slice(0, 200), path: m.jsonPath, columnName: m.columnName, fromAnswer: true };
+  }
   const cubex = Object.entries(CUBEX_PATHS).find(([, path]) => path === m.jsonPath)?.[0];
   if (cubex) return { key: cubex, path: CLIENT_PATHS[cubex] ?? null, columnName: m.columnName };
   const key = m.jsonPath.replace(/^\$\.(output\.)?/, '').slice(0, 200) || m.jsonPath.slice(0, 200);
@@ -51,7 +54,7 @@ export function recallChoices(config: EnrichRunConfig, statusColumn: string): Re
     cleanDomains: e.cleanDomains, providerOrder: [...e.route.prefer], skipProviders: [...e.route.exclude],
     stopAtFirst: e.route.stopAtFirst,
     email: e.email ? { accept: e.email.strategy, guess: e.email.guess, pattern: e.email.pattern } : null,
-    outputs: config.responseMapping.map(recallOutput),
+    outputs: config.responseMapping.map(m => recallOutput(m, new Set(e.answerFields ?? []))),
     conditions: e.rows.where.map(c => ({ ...c })),
     maxCostPerRowUsd: e.maxCostPerRowUsd, fresh: e.fresh,
   };

@@ -54,7 +54,8 @@ export function useEnrichColumnActions(a: Args) {
     a.reloadSheetData?.(sheetId)
   }
 
-  const onEnrichAction = (action: EnrichMenuAction, column: string, rowIndices?: number[]) => {
+  // rowGeneration: when the rows were picked earlier (the answer panel's row), their generation then.
+  const onEnrichAction = (action: EnrichMenuAction, column: string, rowIndices?: number[], rowGeneration?: number) => {
     const sheet = a.activeSheet
     if (!sheet) return
     if (action === 'edit') { a.onOpenEnrichment?.({ kind: 'edit', column }); return }
@@ -69,7 +70,7 @@ export function useEnrichColumnActions(a: Args) {
     }
     const id = ++seq.current
     const next: PendingRerun = {
-      action, column, rowIndices, rowGeneration: a.rowGenerationRef?.current.get(sheet.id),
+      action, column, rowIndices, rowGeneration: rowGeneration ?? a.rowGenerationRef?.current.get(sheet.id),
       estimate: null, error: null, starting: false,
     }
     setPending(next)

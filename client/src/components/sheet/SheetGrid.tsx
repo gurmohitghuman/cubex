@@ -5,9 +5,12 @@ import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
 import type { ColumnType } from '@/utils/api/types'
 import { useSheetGridRunActions } from '@/hooks/sheet/useSheetGridRunActions'
 import { useEnrichColumnActions } from '@/hooks/sheet/useEnrichColumnActions'
-import type { RunByColumn, RunMenuActions } from '@/components/aggrid/types'
+import type { CellClickInfo, RunByColumn, RunMenuActions } from '@/components/aggrid/types'
 import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import { EnrichRerunConfirm } from './EnrichRerunConfirm'
+import { AnswerPanel } from '@/components/answer-panel/AnswerPanel'
+import { useAnswerPanel } from '@/hooks/sheet/useAnswerPanel'
+import { opensAnswer } from '@/components/answer-panel/answer-click'
 
 export interface SheetGridProps {
   activeSheet: Sheet | null
@@ -73,6 +76,22 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     activeSheet, activeHTTPRuns, setupSSEConnection, fetchActiveHTTPRuns, reloadSheetData, rowGenerationRef,
     onOpenEnrichment,
   })
+  // A click on an enrichment or HTTP API cell opens its answer; "Rerun this
+  // row" goes through the column menu's selected-rows run and its confirm.
+  const answers = useAnswerPanel({
+    activeSheet, reloadSheetData,
+    rowGeneration: () => (activeSheet ? rowGenerationRef?.current.get(activeSheet.id) : undefined),
+    onRerunRow: (column, row, generation) => enrich.onEnrichAction('selected', column, [row], generation),
+  })
+  const handleCellClick = (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => {
+    if (opensAnswer(columnTypes[columnName], value)) {
+      answers.clicked({ column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 },
+        info?.clicks ?? 1)
+      return
+    }
+    answers.cancelPending()
+    onCellClick(rowIndex, columnName, value)
+  }
 
   // "Run All Rows" clears the column's current results first and spends credits
   // or requests on every row again, so it asks before starting.
@@ -111,6 +130,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
         onCancel={() => setConfirmRunAll(null)}
       />
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
+      <AnswerPanel {...answers.panel} />
       <div className="flex-1 min-h-0">
         <AGGridSpreadsheet
           key={`${activeSheet?.id}_${forceUpdate}`}
@@ -119,7 +139,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
           data={rows}
       totalRows={totalRows}
       onCellEdit={onCellEdit}
-      onCellClick={onCellClick}
+      onCellClick={handleCellClick}
       onLoadMore={onLoadMore}
       onSortChange={onSortChange}
       lastRenamedColumn={lastRenamedColumn}

@@ -24,7 +24,8 @@ export interface EnrichRunRequest {
   skipProviders: string[]
   stopAtFirst: boolean
   email: { accept: 'safest' | 'balanced' | 'wide'; guess: boolean; pattern: string } | null
-  outputs: Array<{ key: string; path: string | null; columnName: string }>
+  // fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
+  outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   rows: { mode: EnrichRowsScope; status: EnrichRowsStatus; test: boolean; rowIndexes?: number[] }
   conditions: Array<{ column: string; op: string; value: string }>
   maxCostPerRowUsd: number | null
@@ -110,7 +111,8 @@ export interface EnrichRecalledChoices {
   skipProviders: string[]
   stopAtFirst: boolean
   email: { accept: 'safest' | 'balanced' | 'wide'; guess: boolean; pattern: string } | null
-  outputs: Array<{ key: string; path: string | null; columnName: string }>
+  // fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
+  outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   conditions: Array<{ column: string; op: string; value: string }>
   maxCostPerRowUsd: number | null
   fresh: boolean

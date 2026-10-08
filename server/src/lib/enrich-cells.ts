@@ -34,7 +34,9 @@ export function failedCell(message: string): string {
   return `❌ ${one.length > MAX_REASON_CELL ? `${one.slice(0, MAX_REASON_CELL - 1)}…` : one}`;
 }
 
-function cellText(v: unknown): string {
+// A value as a cell: objects as JSON text, control characters out, clamped.
+// HTTP columns write values the same way (http-cell-values.ts).
+export function cellText(v: unknown): string {
   if (v === undefined || v === null || v === '') return '';
   return clampCellChars(stripControlChars(typeof v === 'object' ? JSON.stringify(v) : String(v)), CELL_MAX_ENRICHMENT);
 }

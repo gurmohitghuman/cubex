@@ -52,7 +52,9 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
     stopAtFirst: d.stopAtFirst,
     email: d.card.preset === 'verified_email'
       ? { accept: d.emailChecks.accept, guess: d.emailChecks.guess, pattern: d.emailChecks.pattern } : null,
-    outputs: d.outputs.filter(o => o.enabled).map(o => ({ key: o.key, path: o.path, columnName: o.columnName.trim() })),
+    outputs: d.outputs.filter(o => o.enabled).map(o => ({
+      key: o.key, path: o.path, columnName: o.columnName.trim(), ...(o.fromAnswer ? { fromAnswer: true } : {}),
+    })),
     rows: {
       mode: c.mode, status: c.status ?? runStatusOf(d), test: c.test,
       ...(c.mode === 'selected' ? { rowIndexes: c.selectedRows } : {}),

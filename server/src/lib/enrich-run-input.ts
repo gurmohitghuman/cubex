@@ -1,6 +1,7 @@
 // The run-start request from the drawer (and later MCP and /api/v1), parsed
 // strictly (pure): it spends money, so anything unexpected is refused with a
 // plain reason instead of being guessed at.
+// Over 200 lines: one strict parser for a request that spends money; split, its checks would scatter.
 import {
   TREG_TOOL_ID_PATTERN, ENRICH_ESTIMATE_MAX_LIST, ENRICH_MAX_ROW_CAP_USD, ENRICH_DAILY_LIMIT_MAX_USD,
   MAX_COLUMNS_PER_SHEET, ENRICH_TEST_ROWS,
@@ -10,7 +11,8 @@ import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from './enrich-run-config';
 
 export type InputBinding = { column: string } | { value: string };
-export interface OutputInput { key: string; path: string | null; columnName: string }
+// fromAnswer: a field added from a stored answer ("+ Column"), kept by its path.
+export interface OutputInput { key: string; path: string | null; columnName: string; fromAnswer?: boolean }
 
 export interface EnrichRunInput {
   toolId: string;
@@ -72,7 +74,7 @@ function parseOutputs(v: unknown): OutputInput[] | string {
     if (!key || !columnName || (isObj(o) && o.path !== null && o.path !== undefined && path === null)) {
       return 'Each output needs a key and a column name.';
     }
-    out.push({ key, path, columnName });
+    out.push({ key, path, columnName, ...(isObj(o) && o.fromAnswer === true && path ? { fromAnswer: true } : {}) });
   }
   return out;
 }

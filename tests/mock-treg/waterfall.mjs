@@ -78,12 +78,16 @@ export function runWaterfall(toolId, body, headers) {
   const contract = fixture(`catalog/endpoints/${toolId}.json`).routing.contract.output
   const empty = Object.fromEntries(Object.keys(contract).map(k => [k, null]))
   const servedBy = hit ? hit.p.endpoint_id : (plan.length === 1 ? plan[0].endpoint_id : null)
+  const big = hit && (state.bigRawDomains ?? []).some(d => JSON.stringify(body ?? {}).toLowerCase().includes(d))
+  const sources = big
+    ? Array.from({ length: 400 }, (_, i) => ({ url: `https://source${i}.example/page`, title: `Source ${i} `.repeat(4) }))
+    : null
   return {
     status: 200, costMicro: spent, servedBy, capped: capped && !hit, outcome: hit ? 'hit' : 'miss',
     tried: tried.map(t => t.provider),
     body: {
       output: hit ? { ...empty, ...hit.output } : empty,
-      raw: hit ? { provider: hit.p.provider, data: hit.output } : null,
+      raw: hit ? { provider: hit.p.provider, data: hit.output, ...(sources ? { sources } : {}) } : null,
       _treg: {
         served_by: servedBy, ...(servedBy ? { provider: servedBy.split('.')[0], tier: 'platform' } : {}),
         outcome: hit ? 'hit' : 'miss', tried, charged_micro: spent,
