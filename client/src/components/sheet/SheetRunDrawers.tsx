@@ -8,7 +8,7 @@ import { Sheet, SheetData } from '@/utils/api'
 interface SheetRunDrawersProps {
   activeSheet: Sheet | null
   sheetData: SheetData | null
-  selectedRowCount: number
+  selectedRowIndices: number[]
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
   showEnrichmentDrawer: boolean
@@ -24,7 +24,7 @@ interface SheetRunDrawersProps {
 // The drawers that add filled columns to the sheet: AI Column, Enrichment and
 // HTTP API. Split out of SheetModals (200-line guardrail).
 export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
-  activeSheet, sheetData, selectedRowCount,
+  activeSheet, sheetData, selectedRowIndices,
   showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer,
   setShowAddColumnModal, setShowHTTPAPIColumnModal, setShowEnrichmentDrawer,
   setSheetData, loadSheetData, setupSSEConnection, fetchActiveAIRuns,
@@ -68,7 +68,15 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
         sheetId={activeSheet.id}
         columns={sheetData?.data.columns ?? []}
         loadedRows={sheetData?.data.rows ?? []}
-        selectedCount={selectedRowCount}
+        selectedRows={selectedRowIndices}
+        rowGeneration={sheetData?.sheet?.row_generation}
+        onRunStarted={(runId: string) => {
+          // Same as the HTTP drawer: follow the run live, and a silent reload
+          // shows its new columns (seeding paints ⏳ as it goes).
+          setupSSEConnection(runId, 'http')
+          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          setShowEnrichmentDrawer(false)
+        }}
       />
 
       <HTTPAPIColumnModal

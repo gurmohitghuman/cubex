@@ -69,7 +69,8 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
           : <p className="text-sm text-gray-600">No Popular jobs to show right now. Search for what you want to find.</p>
       ) : shown.length === 0 ? (
         <p className="text-sm text-gray-600">
-          Nothing found for &quot;{forQuery}&quot;. Try other words, like &quot;company size&quot; or &quot;linkedin&quot;.
+          Nothing found for &quot;{forQuery}&quot;: treg has no tool that matches. Try other words, like &quot;company size&quot;
+          or &quot;linkedin&quot;. For a provider treg doesn&apos;t carry, use an HTTP API column with your own key.
         </p>
       ) : (
         <div className="space-y-4">

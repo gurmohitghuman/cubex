@@ -122,7 +122,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
       />
 
       <SheetRunDrawers
-        activeSheet={activeSheet} sheetData={sheetData} selectedRowCount={selectedRowIndices.length}
+        activeSheet={activeSheet} sheetData={sheetData} selectedRowIndices={selectedRowIndices}
         showAddColumnModal={showAddColumnModal} showHTTPAPIColumnModal={showHTTPAPIColumnModal}
         showEnrichmentDrawer={showEnrichmentDrawer}
         setShowAddColumnModal={setShowAddColumnModal} setShowHTTPAPIColumnModal={setShowHTTPAPIColumnModal}

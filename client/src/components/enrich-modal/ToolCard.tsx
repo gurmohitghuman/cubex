@@ -29,6 +29,11 @@ export const ToolCard: React.FC<{ card: EnrichToolCard; onPick: (card: EnrichToo
       </div>
       {card.blurb && <p className="text-xs text-gray-600 mt-0.5">{card.blurb}</p>}
       <p className="text-xs text-gray-500 mt-1">{cardMeta(card).join(' · ')}</p>
+      {card.needsOwnKey && (
+        <p className="text-xs text-amber-800 mt-1">
+          {card.providerName ?? card.provider} isn&apos;t available on treg&apos;s key. Add your {card.providerName ?? card.provider} key at treg to use it.
+        </p>
+      )}
     </div>
     <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-300 group-hover:text-cube-black" />
   </button>

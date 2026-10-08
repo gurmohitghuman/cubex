@@ -23,9 +23,19 @@ export function httpResultCellValues(opts: {
   extractedFields: Record<string, unknown>;         // parsed http_results.extracted_fields
   mappingColumns: string[];                         // config.responseMapping[].columnName
   masterColumn: string | null;                      // run.master_column_name
+  // An enrichment row stores its exact cells (lib/enrich-cells.ts) as
+  // extracted_fields: replay them, every run column included ('' as written).
+  enrichment?: boolean;
 }): Record<string, string> {
   const { status, extractedFields, mappingColumns, masterColumn } = opts;
   const out: Record<string, string> = {};
+  if (opts.enrichment) {
+    for (const col of [...(masterColumn ? [masterColumn] : []), ...mappingColumns]) {
+      const v = extractedFields[col];
+      out[col] = typeof v === 'string' ? v : '';
+    }
+    return out;
+  }
 
   if (status === 'failed') {
     for (const col of mappingColumns) out[col] = '❌ Error';

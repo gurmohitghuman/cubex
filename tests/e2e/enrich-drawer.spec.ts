@@ -15,7 +15,7 @@ async function openDrawer(page: Page) {
   await expect(page.getByText('Add enrichment')).toBeVisible()
 }
 
-test('Enrichment drawer: button, Find, search, Set up, Run disabled with its reason', async ({ page, context }) => {
+test('Enrichment drawer: button, Find, search, Set up, Run disabled until a key is saved', async ({ page, context }) => {
   const api = await authedApi()
   await mockTreg.reset()
   await setTregKey(api, null)
@@ -45,7 +45,7 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled with its rea
   await expect(drawer(page).getByText(/Nothing found for "zzqxv nothing"/)).toBeVisible()
   await search.fill('')
 
-  // Set up: inputs matched by column name, Run waits for the run engine.
+  // Set up: inputs matched by column name, Run waits for a key.
   await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'Verified work email' }).click()
   await expect(page.getByText('Set up Verified work email')).toBeVisible()
   await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveValue('c:Name')
@@ -53,7 +53,7 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled with its rea
   const reason = drawer(page).getByTestId('enrich-run-reason')
   const runSome = drawer(page).getByRole('button', { name: /^Run on/ })
   const runAll = drawer(page).getByRole('button', { name: /^Run all/ })
-  await expect(reason).toHaveText('Runs arrive in the next step.')
+  await expect(reason).toHaveText('Add your treg key in Settings first.')
   await expect(runSome).toBeDisabled()
   await expect(runAll).toBeDisabled()
   await expect(runAll).toHaveText('Run all 3')
@@ -62,7 +62,7 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled with its rea
   await drawer(page).getByLabel('Full name', { exact: true }).selectOption('')
   await expect(reason).toContainText('Pick columns for')
   await drawer(page).getByLabel('Full name', { exact: true }).selectOption('c:Name')
-  await expect(reason).toHaveText('Runs arrive in the next step.')
+  await expect(reason).toHaveText('Add your treg key in Settings first.')
 
   // With a key, a Hunter key and a free source at treg, and a small balance.
   // Its own key: the server caches access per key (helpers-treg.ts).
@@ -86,6 +86,8 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled with its rea
   await expect(estimate).toContainText('This could cost more than your treg balance ($0.05)')
   await expect(estimate).toHaveClass(/bg-amber-50/)
   await expect(drawer(page).getByTestId('enrich-daily-line')).toContainText('Daily limit $10.00')
+  await expect(reason).toHaveText('Try it on a few rows first, then run the rest.')
+  await expect(runSome).toBeEnabled()
 
   // The waterfall's access was completed: Hunter needs a name and a domain, so
   // treg's own plan for the tool left it out and Cubex asked about it alone.

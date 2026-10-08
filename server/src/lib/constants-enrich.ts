@@ -53,6 +53,9 @@ export const ENRICH_LIST_MAX_ITEMS = 100;
 // flight, treg unreachable, a provider's own rate limit.
 export const ENRICH_RETRY_MS = 5_000;
 export const ENRICH_UNREACHABLE_RETRY_MS = 10_000;
+// The first "no answer" of a call (often a reused connection the far end had
+// just closed) is retried sooner.
+export const ENRICH_FIRST_RETRY_MS = 1_000;
 export const ENRICH_PROVIDER_RATE_RETRY_MS = 15_000;
 
 // Settings bounds for the key and the daily limit.

@@ -17,10 +17,22 @@ const defaults = () => ({
   freeProviders: [],
   // true: drop every non-mock connection, as an unreachable treg would.
   down: false,
+  // Tool calls (calls.mjs, answers.mjs): a failure for the next calls, a delay
+  // before each answer, and how finders and checkers answer.
+  scenario: null,
+  delayMs: 0,
+  findMisses: {},
+  sameEmail: [],
+  verifiedDomains: [],
+  verdicts: {},
+  // Set when a call reached an async provider (Cubex must exclude those).
+  asyncCalled: false,
 })
 
 export const state = defaults()
 const requests = []
+// Every charge: { key, toolId, costMicro }. GET /__mock/billing.
+export const billing = []
 
 // What specs assert on: which routes Cubex called and with which headers. The
 // key itself is never kept, only whether one was sent.
@@ -29,7 +41,7 @@ export function logRequest(req, url, body) {
   const token = headers['x-treg-token']
   delete headers['x-treg-token']
   requests.push({ method: req.method, path: url.pathname, query: url.search, hasToken: !!token, headers, body })
-  if (requests.length > 500) requests.shift()
+  if (requests.length > 2000) requests.shift()
 }
 
 export function adminRoute(req, url, body, send) {
@@ -43,8 +55,10 @@ export function adminRoute(req, url, body, send) {
   if (url.pathname === '/__mock/reset' && req.method === 'POST') {
     Object.assign(state, defaults())
     requests.length = 0
+    billing.length = 0
     return send(200, state)
   }
   if (url.pathname === '/__mock/requests' && req.method === 'GET') return send(200, requests)
+  if (url.pathname === '/__mock/billing' && req.method === 'GET') return send(200, billing)
   return send(404, { error: 'unknown mock route' })
 }

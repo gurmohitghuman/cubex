@@ -7,6 +7,8 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { getRunStatusAndGen, shouldNotStartRun, type HTTPRunRow } from './http-runner-status';
 import { processHTTPRow } from './http-row';
 import { finalizeHTTPRun, failHTTPRun } from './http-runner-finalize';
+import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { processEnrichmentRun } from './enrich-runner';
 
 export type { HTTPRunRow };
 
@@ -60,6 +62,13 @@ export async function processHTTPRun(
     if (claim.changes === 0) return;
 
     const config: HTTPAPIConfig = JSON.parse(run.config);
+    // An enrichment (config.enrichment) calls treg with its own loop: spend
+    // limits, the ledger, idempotent resume (services/enrich-runner.ts).
+    if (isEnrichmentConfig(config)) {
+      await processEnrichmentRun(run, config, myGeneration, Array.isArray(targetRowIndices) ? targetRowIndices : null);
+      await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
+      return;
+    }
 
     const controller = new AbortController();
 

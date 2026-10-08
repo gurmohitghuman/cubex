@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AIRun, HTTPRun, Sheet, SheetData } from '@/utils/api'
-import { reconnectActiveRuns, enqueueResultEvent, handleTerminalStatus, toastRunFailure } from './sseHelpers'
+import {
+  reconnectActiveRuns, enqueueResultEvent, handleTerminalStatus, toastRunFailure, refetchRunsThrottled, notePausedRun,
+} from './sseHelpers'
 import { createSSEResultBuffer, type SSEResultBuffer } from './sseResultBuffer'
 
 interface UseSheetSSEArgs {
@@ -45,7 +47,6 @@ export const useSheetSSE = ({
   // changes on a progress tick — so throttling to once per 5s is ample to catch
   // a status drift (pause/resume) without the flood.
   const lastRunsRefetchRef = useRef(0)
-  const PROGRESS_REFETCH_THROTTLE_MS = 5000
   // Self-reference for the reconnect timeout — setupSSEConnection can't call
   // itself from inside its own useCallback body.
   const setupRef = useRef<(runId: string, type?: 'ai' | 'http') => void>(() => {})
@@ -85,13 +86,9 @@ export const useSheetSSE = ({
       // Only a genuine failure toasts ('cancelled' is deliberate → no lie).
       if (data.status === 'failed') toastRunFailure(data)
     } else if (data.type === 'progress' && currentSheetId) {
-      // Throttled — see lastRunsRefetchRef. Without this, a long run self-trips
-      // the global rate limiter and autosave starts 429ing (silent edit loss).
-      const now = Date.now()
-      if (now - lastRunsRefetchRef.current >= PROGRESS_REFETCH_THROTTLE_MS) {
-        lastRunsRefetchRef.current = now
-        fetchActiveHTTPRuns(currentSheetId); fetchActiveAIRuns(currentSheetId)
-      }
+      refetchRunsThrottled(lastRunsRefetchRef, () => { fetchActiveHTTPRuns(currentSheetId); fetchActiveAIRuns(currentSheetId) })
+    } else if (data.type === 'status' && data.status === 'paused' && currentSheetId) {
+      notePausedRun(data, () => fetchActiveHTTPRuns(currentSheetId))
     }
   }, [reloadSheet, fetchActiveHTTPRuns, fetchActiveAIRuns, currentSheetIdRef])
 

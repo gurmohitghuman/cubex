@@ -1,7 +1,7 @@
 import { api } from './client'
 import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
-  EnrichToolDetail, TregBalance,
+  EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
 } from './types'
 
 // The drawer shows its own error for each of these (inline, in place), so the
@@ -28,4 +28,15 @@ export const enrichAPI = {
 
   balance: (): Promise<TregBalance> =>
     api.get('/enrich/balance', noServerToast).then(res => res.data),
+
+  // Starts a run: creates the columns, then seeds and queues it on the server.
+  startRun: (sheetId: string, body: EnrichRunRequest): Promise<EnrichRunStarted> =>
+    api.post(`/enrich/sheets/${sheetId}/runs`, body, noServerToast).then(res => res.data),
+
+  runStatus: (runId: string): Promise<EnrichRunStatus> =>
+    api.get(`/enrich/runs/${runId}`, noServerToast).then(res => res.data),
+
+  // Resume a paused run, with a higher run limit when its limit paused it.
+  resumeRun: (runId: string, spendLimitUsd?: number): Promise<{ ok: true }> =>
+    api.post(`/enrich/runs/${runId}/resume`, spendLimitUsd === undefined ? {} : { spendLimitUsd }, noServerToast).then(res => res.data),
 }

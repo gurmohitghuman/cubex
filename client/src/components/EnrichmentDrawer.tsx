@@ -15,13 +15,17 @@ interface Props {
   columns: string[]
   // The rows the grid has loaded, to tell which columns hold values.
   loadedRows: Array<{ data: Record<string, string> }>
-  selectedCount: number
+  // Row indexes of the selected rows ("Selected rows" mode).
+  selectedRows: number[]
+  rowGeneration?: number
+  // A run started: follow it in the grid (SSE, reload); the drawer closes.
+  onRunStarted: (runId: string) => void
 }
 
 // "Add enrichment": pick a job (Find), then map it to the sheet (Set up). Like
 // the AI Column drawer, a narrow right-side panel. Its state is kept per sheet
 // while the page is open, so closing and reopening resumes where you were.
-export const EnrichmentDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId, columns, loadedRows, selectedCount }) => {
+export const EnrichmentDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId, columns, loadedRows, selectedRows, rowGeneration, onRunStarted }) => {
   const { draft, update } = useEnrichmentDraft(sheetId)
   // Read when Set up builds its defaults; recomputed only while the drawer is open.
   const filledColumns = useMemo(() => {
@@ -51,9 +55,9 @@ export const EnrichmentDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId, co
           <FindStep query={draft.query} setQuery={query => update({ query })} hasKey={hasKey} active={isOpen}
             onPick={card => update(d => pickTool(d, card))} />
         ) : (
-          <SetupStep sheetId={sheetId} draft={draft} update={update} columns={columns} selectedCount={selectedCount}
-            filledColumns={filledColumns} hasKey={hasKey} active={isOpen}
-            onChangeTool={() => update({ step: 'find' })} onCancel={onClose} />
+          <SetupStep sheetId={sheetId} draft={draft} update={update} columns={columns} selectedCount={selectedRows.length}
+            selectedRows={selectedRows} rowGeneration={rowGeneration} filledColumns={filledColumns} hasKey={hasKey} active={isOpen}
+            onChangeTool={() => update({ step: 'find' })} onCancel={onClose} onRunStarted={onRunStarted} />
         )}
       </div>
     </Drawer>
