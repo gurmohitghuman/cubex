@@ -16,6 +16,7 @@ export type ColumnType =
   | 'ai-output'      // AI run target column ("X (Output)")
   | 'ai-data'        // its web-search companion ("X (Data)")
   | 'http-master'    // HTTP run master/status column
+  | 'enrich-status'  // an enrichment's status column (an HTTP run with an enrichment block)
   | 'http-extracted' // JSONPath-extracted HTTP response column
   | 'webhook-source' // the read-only "Webhook" marker column (row provenance)
   | 'webhook-mapped'; // a column a webhook mapping writes into
@@ -41,6 +42,16 @@ export function getColumnTypes(
   ).all(sheetId, userId, sheetId, userId) as Array<{ name: string }>;
   for (const { name } of httpMasters) types[name] = 'http-master';
 
+  // Enrichment status columns: the newest run of the column is an enrichment
+  // (lib/enrich-run-config.ts). Its outputs stay 'http-extracted' (📎).
+  const enrichMasters = db.prepare(
+    `SELECT master_column_name AS name FROM http_runs
+       WHERE rowid IN (SELECT MAX(rowid) FROM http_runs WHERE sheet_id = ? AND user_id = ?
+                         AND master_column_name IS NOT NULL GROUP BY master_column_name)
+         AND json_valid(config) AND json_extract(config, '$.enrichment.v') = 1`,
+  ).all(sheetId, userId) as Array<{ name: string }>;
+  for (const { name } of enrichMasters) types[name] = 'enrich-status';
+
   // HTTP extracted columns (response-mapping outputs).
   const httpExtracted = db.prepare(
     `SELECT DISTINCT extracted_column_name AS name FROM http_column_associations
@@ -48,7 +59,7 @@ export function getColumnTypes(
   ).all(sheetId, userId) as Array<{ name: string }>;
   for (const { name } of httpExtracted) {
     // Don't downgrade a master that also appears as an extracted name.
-    if (types[name] !== 'http-master') types[name] = 'http-extracted';
+    if (types[name] !== 'http-master' && types[name] !== 'enrich-status') types[name] = 'http-extracted';
   }
 
   // AI columns: ai_runs.column_name is the "(Output)" column (single-column) or

@@ -5,6 +5,8 @@ import {
 } from './sseHelpers'
 import { createSSEResultBuffer, type SSEResultBuffer } from './sseResultBuffer'
 
+const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
+
 interface UseSheetSSEArgs {
   activeSheet: Sheet | null
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>
@@ -15,13 +17,15 @@ interface UseSheetSSEArgs {
   fetchActiveAIRuns: (sheetId: string) => Promise<AIRun[]> | void
   reloadSheet: (sheetId: string) => void | Promise<void>
   currentSheetIdRef: React.MutableRefObject<string | null>
+  // An enrichment run paused itself (its limit, the balance, the key…).
+  onEnrichPaused?: (runId: string, reason: string) => void
 }
 
 export const useSheetSSE = ({
   activeSheet, setSheetData, setIsLoading,
   setActiveAIRunsList, setActiveHTTPRuns,
   fetchActiveHTTPRuns, fetchActiveAIRuns,
-  reloadSheet, currentSheetIdRef,
+  reloadSheet, currentSheetIdRef, onEnrichPaused,
 }: UseSheetSSEArgs) => {
   const sseRef = useRef<Map<string, EventSource>>(new Map())
   // Deliberate-reconnect budget per run (see onerror below). Reset whenever a
@@ -73,7 +77,7 @@ export const useSheetSSE = ({
 
     if (data.type === 'result' && currentSheetId && (runSheetId === undefined || runSheetId === currentSheetId)) {
       enqueueResultEvent(data, bufferRef.current!)
-    } else if (data.type === 'status' && (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') && currentSheetId) {
+    } else if (data.type === 'status' && TERMINAL.has(data.status) && currentSheetId) {
       // 'cancelled' MUST be terminal here (server ends cancelled/completed/failed
       // streams; end-of-stream → onerror → reconnect that replays old results over
       // edits — handleTerminalStatus closes it). Flush any buffered results FIRST so
@@ -86,11 +90,16 @@ export const useSheetSSE = ({
       // Only a genuine failure toasts ('cancelled' is deliberate → no lie).
       if (data.status === 'failed') toastRunFailure(data)
     } else if (data.type === 'progress' && currentSheetId) {
-      refetchRunsThrottled(lastRunsRefetchRef, () => { fetchActiveHTTPRuns(currentSheetId); fetchActiveAIRuns(currentSheetId) })
+      refetchRunsThrottled(lastRunsRefetchRef, () => {
+        fetchActiveHTTPRuns(currentSheetId)
+        fetchActiveAIRuns(currentSheetId)
+      })
     } else if (data.type === 'status' && data.status === 'paused' && currentSheetId) {
-      notePausedRun(data, () => fetchActiveHTTPRuns(currentSheetId))
+      // "Show" opens this sheet's drawer: only for a run of this sheet.
+      const here = runSheetId === undefined || runSheetId === currentSheetId
+      notePausedRun(data, runId, () => fetchActiveHTTPRuns(currentSheetId), here ? onEnrichPaused : undefined)
     }
-  }, [reloadSheet, fetchActiveHTTPRuns, fetchActiveAIRuns, currentSheetIdRef])
+  }, [reloadSheet, fetchActiveHTTPRuns, fetchActiveAIRuns, currentSheetIdRef, onEnrichPaused])
 
   const setupSSEConnection = useCallback(async (runId: string, type: 'ai' | 'http' = 'ai') => {
     if (sseRef.current.has(runId)) return

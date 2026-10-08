@@ -7,10 +7,17 @@ import { searchTools, getTool, featuredTools, type CatalogFailure } from '../ser
 import { estimateEnrichment, readEnrichBalance, sheetSetupInfo } from '../services/enrich-setup';
 import { parseEstimateInput } from '../lib/enrich-estimate-input';
 import { toolAccess } from '../services/enrich-access';
+import { enrichSpend, spendWindow } from '../services/enrich-spend';
 import runRoutes from './enrich-runs';
 
 const router = express.Router();
 router.use(authenticateToken);
+
+// A read that needs the saved treg key: 409 { noKey } without one, else 502.
+function sendReadFailure(res: express.Response, read: { fail: string; message: string }) {
+  const noKey = read.fail === 'no_key';
+  res.status(noKey ? 409 : 502).json({ error: read.message, ...(noKey ? { noKey: true } : {}) });
+}
 
 function sendFailure(res: express.Response, f: CatalogFailure) {
   const status = f.fail === 'not_found' ? 404 : f.fail === 'hidden' ? 422 : 502;
@@ -53,7 +60,7 @@ router.get('/tools/:toolId/access', async (req: AuthRequest, res) => {
     if (!TREG_TOOL_ID_PATTERN.test(toolId)) return res.status(400).json({ error: 'Invalid tool id' });
     const read = await toolAccess(req.userId!, toolId);
     if ('ok' in read) return res.json({ access: read.ok });
-    res.status(read.fail === 'no_key' ? 409 : 502).json({ error: read.message, ...(read.fail === 'no_key' ? { noKey: true } : {}) });
+    sendReadFailure(res, read);
   } catch (error) {
     console.error('Enrichment tool access error:', error);
     res.status(500).json({ error: 'Failed to load tool access' });
@@ -93,10 +100,20 @@ router.get('/balance', async (req: AuthRequest, res) => {
   try {
     const read = await readEnrichBalance(req.userId!);
     if ('ok' in read) return res.json(read.ok);
-    res.status(read.fail === 'no_key' ? 409 : 502).json({ error: read.message, ...(read.fail === 'no_key' ? { noKey: true } : {}) });
+    sendReadFailure(res, read);
   } catch (error) {
     console.error('treg balance read error:', error);
     res.status(500).json({ error: 'Failed to read the treg balance' });
+  }
+});
+
+// Settings' spend card: the last 7, 30 or 90 days from Cubex's ledger.
+router.get('/spend', async (req: AuthRequest, res) => {
+  try {
+    res.json(await enrichSpend(req.userId!, spendWindow(req.query.days)));
+  } catch (error) {
+    console.error('Enrichment spend read error:', error);
+    res.status(500).json({ error: 'Failed to read enrichment spending' });
   }
 });
 

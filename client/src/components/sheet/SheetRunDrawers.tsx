@@ -4,6 +4,7 @@ import { AIColumnModal } from '@/components/AIColumnModal'
 import { HTTPAPIColumnModal } from '@/components/HTTPAPIColumnModal'
 import { EnrichmentDrawer } from '@/components/EnrichmentDrawer'
 import { Sheet, SheetData } from '@/utils/api'
+import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 
 interface SheetRunDrawersProps {
   activeSheet: Sheet | null
@@ -12,6 +13,10 @@ interface SheetRunDrawersProps {
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
   showEnrichmentDrawer: boolean
+  enrichOpen: EnrichOpenRequest | null
+  clearEnrichOpen: () => void
+  enrichWatch: string | null
+  stopEnrichWatch: () => void
   setShowAddColumnModal: (b: boolean) => void
   setShowHTTPAPIColumnModal: (b: boolean) => void
   setShowEnrichmentDrawer: (b: boolean) => void
@@ -19,15 +24,17 @@ interface SheetRunDrawersProps {
   loadSheetData: (sheetId: string, limit?: number, offset?: number, opts?: { silent?: boolean }) => Promise<void> | void
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => void | Promise<void>
   fetchActiveAIRuns: (sheetId: string) => unknown
+  fetchActiveHTTPRuns: (sheetId: string) => unknown
 }
 
 // The drawers that add filled columns to the sheet: AI Column, Enrichment and
 // HTTP API. Split out of SheetModals (200-line guardrail).
 export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
   activeSheet, sheetData, selectedRowIndices,
-  showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer,
+  showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, clearEnrichOpen,
+  enrichWatch, stopEnrichWatch,
   setShowAddColumnModal, setShowHTTPAPIColumnModal, setShowEnrichmentDrawer,
-  setSheetData, loadSheetData, setupSSEConnection, fetchActiveAIRuns,
+  setSheetData, loadSheetData, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
 }) => {
   if (!activeSheet) return null
   return (
@@ -64,19 +71,27 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
 
       <EnrichmentDrawer
         isOpen={showEnrichmentDrawer}
-        onClose={() => setShowEnrichmentDrawer(false)}
+        onClose={() => { setShowEnrichmentDrawer(false); stopEnrichWatch() }}
         sheetId={activeSheet.id}
         columns={sheetData?.data.columns ?? []}
         loadedRows={sheetData?.data.rows ?? []}
         selectedRows={selectedRowIndices}
         rowGeneration={sheetData?.sheet?.row_generation}
         onRunStarted={(runId: string) => {
-          // Same as the HTTP drawer: follow the run live, and a silent reload
-          // shows its new columns (seeding paints ⏳ as it goes).
+          // Follow the run live, and a silent reload shows its new columns
+          // (seeding paints ⏳ as it goes). The drawer stays open on the run.
           setupSSEConnection(runId, 'http')
+          fetchActiveHTTPRuns(activeSheet.id)
           loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
-          setShowEnrichmentDrawer(false)
         }}
+        onRunChanged={() => {
+          fetchActiveHTTPRuns(activeSheet.id)
+          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+        }}
+        openRequest={enrichOpen}
+        onOpenHandled={clearEnrichOpen}
+        watchRunId={enrichWatch}
+        onStopWatching={stopEnrichWatch}
       />
 
       <HTTPAPIColumnModal

@@ -7,7 +7,7 @@ import {
 } from './constants';
 import { GUESS_PATTERNS } from './enrich-email-guess';
 import type { EmailStrategy } from './enrich-email-status';
-import type { EnrichCondition, EnrichRowsMode } from './enrich-run-config';
+import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from './enrich-run-config';
 
 export type InputBinding = { column: string } | { value: string };
 export interface OutputInput { key: string; path: string | null; columnName: string }
@@ -22,11 +22,14 @@ export interface EnrichRunInput {
   providerOrder: string[]; skipProviders: string[]; stopAtFirst: boolean;
   email: { accept: EmailStrategy; guess: boolean; pattern: string } | null;
   outputs: OutputInput[];
-  rows: { mode: EnrichRowsMode; test: number | null; rowIndexes: number[] | null };
+  rows: { mode: EnrichRowsMode; status: EnrichRowsStatus; test: number | null; rowIndexes: number[] | null };
   conditions: EnrichCondition[];
   maxCostPerRowUsd: number | null;
   spendLimitUsd: number | null;
   fresh: boolean;
+  // Selected rows: the sheet's row_generation when they were picked (a sort
+  // since re-means their numbers: the start refuses). null: not sent.
+  rowGeneration: number | null;
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -35,13 +38,15 @@ const MAX_FIXED = 2000;
 const MAX_CONDITIONS = 20;
 const MAX_SELECTED = 50_000;
 const OPS = new Set(['not_empty', 'empty', 'eq', 'neq', 'contains', 'gt', 'lt']);
-const MODES = new Set(['all', 'filter', 'selected', 'not_enriched']);
+const MODES = new Set(['all', 'filter', 'selected']);
+const STATUSES = new Set(['any', 'not_enriched', 'no_result', 'failed']);
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const str = (v: unknown, max = MAX_NAME): string | null => (typeof v === 'string' && v.length <= max ? v : null);
-const names = (v: unknown): string[] | null =>
-  (v === undefined ? [] : Array.isArray(v) && v.length <= ENRICH_ESTIMATE_MAX_LIST && v.every(s => typeof s === 'string' && NAME_RE.test(s)) ? v as string[] : null);
-const usd = (v: unknown, max: number): number | null | undefined =>
-  (v === undefined || v === null ? null : typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : undefined);
+const names = (v: unknown): string[] | null => (v === undefined ? []
+  : Array.isArray(v) && v.length <= ENRICH_ESTIMATE_MAX_LIST && v.every(s => typeof s === 'string' && NAME_RE.test(s))
+    ? v as string[] : null);
+const usd = (v: unknown, max: number): number | null | undefined => (v === undefined || v === null ? null
+  : typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : undefined);
 
 function parseInputs(v: unknown): Record<string, InputBinding> | string {
   if (!isObj(v)) return 'inputs must map input names to a column or a fixed value.';
@@ -64,7 +69,9 @@ function parseOutputs(v: unknown): OutputInput[] | string {
   for (const o of v) {
     const key = isObj(o) ? str(o.key) : null, columnName = isObj(o) ? str(o.columnName) : null;
     const path = isObj(o) && o.path !== null && o.path !== undefined ? str(o.path, 500) : null;
-    if (!key || !columnName || (isObj(o) && o.path !== null && o.path !== undefined && path === null)) return 'Each output needs a key and a column name.';
+    if (!key || !columnName || (isObj(o) && o.path !== null && o.path !== undefined && path === null)) {
+      return 'Each output needs a key and a column name.';
+    }
     out.push({ key, path, columnName });
   }
   return out;
@@ -75,11 +82,62 @@ function parseConditions(v: unknown): EnrichCondition[] | string {
   if (!Array.isArray(v) || v.length > MAX_CONDITIONS) return `Use at most ${MAX_CONDITIONS} conditions.`;
   const out: EnrichCondition[] = [];
   for (const c of v) {
-    const column = isObj(c) ? str(c.column) : null, op = isObj(c) ? c.op : null, value = isObj(c) ? str(c.value ?? '', MAX_FIXED) : null;
-    if (column === null || typeof op !== 'string' || !OPS.has(op) || value === null) return 'Each condition needs a column, an operator and a value.';
+    const column = isObj(c) ? str(c.column) : null, op = isObj(c) ? c.op : null;
+    const value = isObj(c) ? str(c.value ?? '', MAX_FIXED) : null;
+    if (column === null || typeof op !== 'string' || !OPS.has(op) || value === null) {
+      return 'Each condition needs a column, an operator and a value.';
+    }
     out.push({ column, op: op as EnrichCondition['op'], value });
   }
   return out;
+}
+
+// The rows' scope and, on a column a run already made, which of them by status.
+// A run that adds to its column takes the rows not enriched yet unless told
+// otherwise; the older mode 'not_enriched' means the same.
+function parseRowsScope(
+  rows: Record<string, unknown>, continueColumn: boolean,
+): { mode: EnrichRowsMode; status: EnrichRowsStatus } | string {
+  const legacy = rows.mode === 'not_enriched';
+  const mode = legacy ? 'all'
+    : typeof rows.mode === 'string' && MODES.has(rows.mode) ? rows.mode as EnrichRowsMode : null;
+  if (!mode) return 'rows.mode must be all, filter or selected.';
+  const raw = rows.status ?? (legacy || continueColumn ? 'not_enriched' : 'any');
+  if (typeof raw !== 'string' || !STATUSES.has(raw)) {
+    return 'rows.status must be any, not_enriched, no_result or failed.';
+  }
+  const status = raw as EnrichRowsStatus;
+  if (!continueColumn && (status === 'no_result' || status === 'failed')) {
+    return 'Rows without a result or that failed need an enrichment column a run already made.';
+  }
+  return { mode, status };
+}
+
+export function parseRows(rows: Record<string, unknown>, continueColumn: boolean): EnrichRunInput['rows'] | string {
+  const scope = parseRowsScope(rows, continueColumn);
+  if (typeof scope === 'string') return scope;
+  let rowIndexes: number[] | null = null;
+  if (scope.mode === 'selected') {
+    const ri = rows.rowIndexes;
+    if (!Array.isArray(ri) || ri.length === 0 || ri.length > MAX_SELECTED
+      || !ri.every(n => Number.isSafeInteger(n) && n >= 0)) {
+      return `Selected rows must be 1 to ${MAX_SELECTED.toLocaleString('en-US')} row numbers.`;
+    }
+    rowIndexes = [...new Set(ri as number[])].sort((x, y) => x - y);
+  }
+  return { ...scope, test: rows.test === true ? ENRICH_TEST_ROWS : null, rowIndexes };
+}
+
+const generationOf = (b: Record<string, unknown>): number | null =>
+  (typeof b.rowGeneration === 'number' && Number.isSafeInteger(b.rowGeneration) ? b.rowGeneration : null);
+
+function parseEmail(v: unknown): EnrichRunInput['email'] | 'bad' {
+  const e = isObj(v) ? v : {};
+  const accept = e.accept === 'balanced' || e.accept === 'wide' ? e.accept
+    : e.accept === undefined || e.accept === 'safest' ? 'safest' : null;
+  const pattern = e.pattern === undefined ? 'first.last' : e.pattern;
+  if (!accept || typeof pattern !== 'string' || !(GUESS_PATTERNS as readonly string[]).includes(pattern)) return 'bad';
+  return { accept, guess: e.guess !== false, pattern };
 }
 
 export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { error: string } {
@@ -96,37 +154,48 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
   if (typeof outputs === 'string') return { error: outputs };
   const conditions = parseConditions(b.conditions);
   if (typeof conditions === 'string') return { error: conditions };
-  const rows = isObj(b.rows) ? b.rows : {};
-  const mode = typeof rows.mode === 'string' && MODES.has(rows.mode) ? rows.mode as EnrichRowsMode : null;
-  if (!mode) return { error: 'rows.mode must be all, filter, selected or not_enriched.' };
-  const test = rows.test === true ? ENRICH_TEST_ROWS : null;
-  let rowIndexes: number[] | null = null;
-  if (mode === 'selected') {
-    const ri = rows.rowIndexes;
-    if (!Array.isArray(ri) || ri.length === 0 || ri.length > MAX_SELECTED || !ri.every(n => Number.isSafeInteger(n) && n >= 0)) {
-      return { error: `Selected rows must be 1 to ${MAX_SELECTED.toLocaleString('en-US')} row numbers.` };
-    }
-    rowIndexes = [...new Set(ri as number[])].sort((x, y) => x - y);
-  }
+  const continueColumn = b.continueColumn === true;
+  const rows = parseRows(isObj(b.rows) ? b.rows : {}, continueColumn);
+  if (typeof rows === 'string') return { error: rows };
   const cap = usd(b.maxCostPerRowUsd, ENRICH_MAX_ROW_CAP_USD);
-  if (cap === undefined) return { error: `Max per row must be more than $0 and at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString('en-US')}.` };
+  if (cap === undefined) {
+    const max = ENRICH_MAX_ROW_CAP_USD.toLocaleString('en-US');
+    return { error: `Max per row must be more than $0 and at most $${max}.` };
+  }
   const limit = usd(b.spendLimitUsd, ENRICH_DAILY_LIMIT_MAX_USD);
   if (limit === undefined) return { error: 'The run limit must be more than $0.' };
-  let email: EnrichRunInput['email'] = null;
-  if (b.preset === 'verified_email') {
-    const e = isObj(b.email) ? b.email : {};
-    const accept = e.accept === 'balanced' || e.accept === 'wide' ? e.accept : e.accept === undefined || e.accept === 'safest' ? 'safest' : null;
-    const pattern = e.pattern === undefined ? 'first.last' : e.pattern;
-    if (!accept || typeof pattern !== 'string' || !(GUESS_PATTERNS as readonly string[]).includes(pattern)) return { error: 'Check the email settings.' };
-    email = { accept, guess: e.guess !== false, pattern };
-  }
+  const email = b.preset === 'verified_email' ? parseEmail(b.email) : null;
+  if (email === 'bad') return { error: 'Check the email settings.' };
   return {
     ok: {
       toolId: b.toolId, preset: b.preset === 'verified_email' ? 'verified_email' : null,
-      columnName: columnName.trim(), continueColumn: b.continueColumn === true, inputs,
-      cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip, stopAtFirst: b.stopAtFirst === true,
-      email, outputs, rows: { mode, test, rowIndexes }, conditions,
-      maxCostPerRowUsd: cap, spendLimitUsd: limit, fresh: b.fresh === true,
+      columnName: columnName.trim(), continueColumn, inputs,
+      cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip,
+      stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions,
+      maxCostPerRowUsd: cap, spendLimitUsd: limit, fresh: b.fresh === true, rowGeneration: generationOf(b),
     },
+  };
+}
+
+// The column menu's reruns: the column, which of its rows, and whether to
+// only estimate them (a pure read for the confirm).
+// spendLimitUsd: the limit the confirm quoted (null: sized to the rows at start).
+export interface RerunInput {
+  column: string; rows: EnrichRunInput['rows']; estimateOnly: boolean;
+  spendLimitUsd: number | null; rowGeneration: number | null;
+}
+
+export function parseRerunInput(body: unknown): { ok: RerunInput } | { error: string } {
+  const b = isObj(body) ? body : {};
+  const column = str(b.column);
+  if (!column || !column.trim()) return { error: 'Pick an enrichment column.' };
+  // Which rows by status is never assumed: an omitted status could re-buy every row.
+  if (b.status === undefined) return { error: 'rows.status must be any, not_enriched, no_result or failed.' };
+  const rows = parseRows({ mode: b.mode, status: b.status, rowIndexes: b.rowIndexes }, true);
+  if (typeof rows === 'string') return { error: rows };
+  const limit = usd(b.spendLimitUsd, ENRICH_DAILY_LIMIT_MAX_USD);
+  if (limit === undefined) return { error: 'The run limit must be more than $0.' };
+  return {
+    ok: { column, rows, estimateOnly: b.estimateOnly === true, spendLimitUsd: limit, rowGeneration: generationOf(b) },
   };
 }

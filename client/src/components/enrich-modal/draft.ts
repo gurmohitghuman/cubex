@@ -1,10 +1,11 @@
 // The Add enrichment drawer's state for one sheet: the step, what was searched
 // and picked, and every Set up choice. Kept per sheet while the page is open
 // (useEnrichmentDraft), so closing and reopening resumes; a reload starts fresh.
-// M2's run start reads the same shape.
-import type { EnrichToolCard } from '@/utils/api'
+// The run start reads the same shape (run-request.ts).
+import type { EnrichRecalledChoices, EnrichRowsStatus, EnrichToolCard } from '@/utils/api'
 
-export type EnrichStep = 'find' | 'setup'
+// find → setup → test (after Run on 5 rows) or run (after a full run).
+export type EnrichStep = 'find' | 'setup' | 'test' | 'run'
 
 // An input reads a column, or a fixed value typed once for every row.
 export type InputBinding = { kind: 'column'; column: string } | { kind: 'fixed'; value: string }
@@ -24,6 +25,8 @@ export type ConditionOp = 'not_empty' | 'empty' | 'eq' | 'neq' | 'contains' | 'g
 export interface Condition { column: string; op: ConditionOp; value: string }
 
 export type RowsMode = 'all' | 'filter' | 'selected'
+// On a column a run already made: which of its rows, by their status cell.
+export type RowsStatus = EnrichRowsStatus
 
 export interface RowCounts { all: number | null; filter: number | null; selected: number }
 
@@ -60,8 +63,14 @@ export interface EnrichDraft {
   spendLimitUsd: number | null      // null: the estimate's high end
   fresh: boolean
   // The status column a run already made from this draft: the next run adds to
-  // it (rows not enriched yet) instead of making new columns.
+  // it instead of making new columns, on the rows `rowsStatus` picks.
   continueColumn: string | null
+  rowsStatus: RowsStatus
+  // The run the Test or Run step follows, and whether it has ended.
+  runId: string | null
+  runEnded: boolean
+  // "Edit enrichment": the column's choices, applied once the tool's details load.
+  recall: EnrichRecalledChoices | null
 }
 
 export const EMAIL_PATTERNS = ['first.last', 'firstlast', 'first', 'flast', 'f.last', 'first_last'] as const
@@ -72,7 +81,7 @@ export function emptyDraft(): EnrichDraft {
     providerOrder: [], skipProviders: [], stopAtFirst: false,
     emailChecks: { accept: 'safest', guess: true, pattern: 'first.last' },
     outputs: [], rowsMode: 'all', conditions: [], maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false,
-    continueColumn: null,
+    continueColumn: null, rowsStatus: 'not_enriched', runId: null, runEnded: false, recall: null,
   }
 }
 

@@ -129,6 +129,7 @@ router.get('/jobs/:id/stream', (req, res) => {
           type: 'status', status: r.status,
           // A run that paused itself (an enrichment's limits) carries its reason too.
           error: r.status === 'failed' || r.status === 'paused' ? (r.error_message || undefined) : undefined,
+          ...(enrichment ? { enrichment: true } : {}),
         })}\n\n`);
         lastStatus = r.status;
       }

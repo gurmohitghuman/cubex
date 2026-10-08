@@ -25,6 +25,9 @@ const defaults = () => ({
   sameEmail: [],
   verifiedDomains: [],
   verdicts: {},
+  // Calls whose request mentions one of these (a domain, an address) answer
+  // treg's 400 catalog_parameter_invalid: the row fails (❌), nothing billed.
+  badDomains: [],
   // Set when a call reached an async provider (Cubex must exclude those).
   asyncCalled: false,
 })

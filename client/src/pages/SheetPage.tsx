@@ -28,6 +28,7 @@ import { useRunControls } from '@/hooks/sheet/useRunControls'
 import { useSheetLoad } from '@/hooks/sheet/useSheetLoad'
 import { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
+import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 
@@ -124,6 +125,7 @@ export const SheetPage: React.FC = () => {
     setAutosavePaused: cellOps.setAutosavePaused,
   })
 
+  const onEnrichPaused = useEnrichPauseToast(currentSheetIdRef, modals)
   const sse = useSheetSSE({
     activeSheet, setSheetData, setIsLoading,
     setActiveAIRunsList: runs.setAiRuns,
@@ -133,7 +135,7 @@ export const SheetPage: React.FC = () => {
     // Run-completion refresh is SILENT — the grid stays mounted (scroll,
     // selection, in-progress edits survive); the new cell values just appear.
     reloadSheet: (sheetId) => silentReloadRef.current(sheetId),
-    currentSheetIdRef,
+    currentSheetIdRef, onEnrichPaused,
   })
 
   const {
@@ -156,7 +158,8 @@ export const SheetPage: React.FC = () => {
   useEffect(() => {
     loadSheetDataRef.current = (id, limit, offset, opts) => loadSheetData(id, limit, offset, opts)
     silentReloadRef.current = (id) =>
-      loadSheetData(id, Math.min(SILENT_RELOAD_MAX_ROWS, Math.max(INITIAL_ROW_LOAD, loadedRowsCount)), 0, { silent: true })
+      loadSheetData(id, Math.min(SILENT_RELOAD_MAX_ROWS, Math.max(INITIAL_ROW_LOAD, loadedRowsCount)), 0,
+        { silent: true })
   })
 
   const view = useSheetView({
@@ -304,7 +307,8 @@ export const SheetPage: React.FC = () => {
         {gridArea === 'loading' ? (
           <LoadingSpinner size="md" message="Loading spreadsheet…" className="h-full" />
         ) : gridArea === 'import' ? (
-          <SheetEmptyState onImport={() => modals.setShowImportModal(true)} onAddColumn={() => modals.setShowNewColumnModal(true)} />
+          <SheetEmptyState onImport={() => modals.setShowImportModal(true)}
+            onAddColumn={() => modals.setShowNewColumnModal(true)} />
         ) : (
           <SheetGrid
             activeSheet={activeSheet} forceUpdate={0}
@@ -330,7 +334,7 @@ export const SheetPage: React.FC = () => {
             onDeleteRows={cellOps.handleDeleteRows}
             onColumnReorder={columnOps.handleColumnReorder}
             onAddColumn={() => modals.setShowNewColumnModal(true)}
-            registerClearSelection={registerClearSelection}
+            registerClearSelection={registerClearSelection} onOpenEnrichment={modals.openEnrichment}
             setShowAddColumnModal={modals.setShowAddColumnModal}
             setupSSEConnection={sse.setupSSEConnection}
             fetchActiveHTTPRuns={runs.fetchHTTPRuns} fetchActiveAIRuns={runs.fetchAIRuns}
@@ -378,7 +382,7 @@ export const SheetPage: React.FC = () => {
         handleAddColumn={columnOps.handleAddColumn}
         loadSheetData={loadSheetData}
         setupSSEConnection={sse.setupSSEConnection}
-        fetchActiveAIRuns={runs.fetchAIRuns}
+        fetchActiveAIRuns={runs.fetchAIRuns} fetchActiveHTTPRuns={runs.fetchHTTPRuns}
         waitForSaves={cellOps.waitForSaves}
         dropAllPending={cellOps.dropAllPending}
       />

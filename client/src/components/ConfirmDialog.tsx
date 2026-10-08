@@ -12,6 +12,10 @@ interface ConfirmDialogProps {
   onCancel: () => void
   isDestructive?: boolean
   isLoading?: boolean
+  // Confirm can't be pressed yet (e.g. its figures are loading); Cancel still works.
+  confirmDisabled?: boolean
+  // Only one way on: a message with nothing to confirm shows just its button.
+  hideCancel?: boolean
   // Raise above another open overlay (e.g. a drawer): see Modal's zClassName.
   zClassName?: string
 }
@@ -26,6 +30,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
   isDestructive = false,
   isLoading = false,
+  confirmDisabled = false,
+  hideCancel = false,
   zClassName,
 }) => {
   // The Modal keeps the panel mounted through its ~150ms leave animation. Callers
@@ -36,11 +42,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   // closed, so the exit animation shows the last live text. Snapshot ONLY display
   // props — onConfirm/onCancel must stay current — and update it in an effect (not
   // a render-phase ref mutation, which is unsafe under StrictMode/concurrent render).
-  const [snapshot, setSnapshot] = useState({ title, message, confirmText, cancelText, isDestructive })
+  const live = { title, message, confirmText, cancelText, isDestructive, hideCancel, confirmDisabled }
+  const [snapshot, setSnapshot] = useState(live)
   useLayoutEffect(() => {
-    if (isOpen) setSnapshot({ title, message, confirmText, cancelText, isDestructive })
-  }, [isOpen, title, message, confirmText, cancelText, isDestructive])
-  const display = isOpen ? { title, message, confirmText, cancelText, isDestructive } : snapshot
+    if (isOpen) setSnapshot(live)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, title, message, confirmText, cancelText, isDestructive, hideCancel, confirmDisabled])
+  const display = isOpen ? live : snapshot
 
   return (
     <Modal isOpen={isOpen} onClose={onCancel} panelClassName="max-w-md w-full" zClassName={zClassName}>
@@ -65,16 +73,18 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </div>
 
         <div className="flex justify-end space-x-3 mt-6">
-          <button
-            onClick={onCancel}
-            disabled={isLoading}
-            className="btn-secondary"
-          >
-            {display.cancelText}
-          </button>
+          {!display.hideCancel && (
+            <button
+              onClick={onCancel}
+              disabled={isLoading}
+              className="btn-secondary"
+            >
+              {display.cancelText}
+            </button>
+          )}
           <button
             onClick={onConfirm}
-            disabled={isLoading}
+            disabled={isLoading || display.confirmDisabled}
             className={`flex items-center space-x-2 ${
               display.isDestructive ? 'btn-danger' : 'btn-primary'
             }`}

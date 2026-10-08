@@ -5,56 +5,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { ColumnType } from '@/utils/api/types'
 import { ContainsFilterInput } from './ContainsFilterInput'
+import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
+import { EnrichColumnActions } from './EnrichColumnActions'
+import type { RunByColumn, RunMenuActions } from './types'
 
 export type MenuState = {
   x: number; y: number; columnId: string; selectedRowIndices?: number[]
 } | null
-
-interface AIActionsProps {
-  columnId: string
-  columnType?: ColumnType
-  activeAIRunsByColumn: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
-  setMenu: (m: MenuState) => void
-  onRunAIForColumn?: (baseName: string, columnName: string) => void
-  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
-  onEditAIColumn?: (columnName: string) => void
-  onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
-}
-
-const AIColumnActions: React.FC<AIActionsProps> = ({
-  columnId, columnType, activeAIRunsByColumn, setMenu,
-  onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn, onStopRunForColumn,
-}) => {
-  // AUTHORITATIVE: only render AI actions when the server classifies this column
-  // as AI-owned. The base name (the AI run's column_name minus its " (Output)"/
-  // " (Data)" suffix) still comes from the name — but only after the type confirms
-  // it's an AI column, so a plain column literally named "X (Data)" is never matched.
-  if (columnType !== 'ai-output' && columnType !== 'ai-data') return null
-  const base = columnId.replace(/ \((Output|Data)\)$/, '')
-  // The active run writing this column: listed under the column itself (a
-  // single-column run's "(Output)", or any column of a structured run), or, for
-  // a "(Data)" column, under its "(Output)".
-  const runColumn = activeAIRunsByColumn[columnId] ? columnId
-    : activeAIRunsByColumn[`${base} (Output)`] ? `${base} (Output)` : null
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>AI Column Actions</DropdownMenuLabel>
-      {onRunAIForColumn && (
-        <DropdownMenuItem onClick={() => { onRunAIForColumn(base, columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔄 Run All Rows</DropdownMenuItem>
-      )}
-      {onRunAIMissingOrError && (
-        <DropdownMenuItem onClick={() => { onRunAIMissingOrError(base, columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔁 Run Missing or Errors</DropdownMenuItem>
-      )}
-      {onEditAIColumn && (
-        <DropdownMenuItem onClick={() => { onEditAIColumn(base); setMenu(null) }}>✏️ Edit / Update Instructions</DropdownMenuItem>
-      )}
-      {runColumn && (
-        <DropdownMenuItem onClick={() => { onStopRunForColumn?.('ai', runColumn); setMenu(null) }} className="text-red-600 focus:text-red-600">🟥 Stop AI Run</DropdownMenuItem>
-      )}
-    </>
-  )
-}
 
 export interface HeaderContextMenuProps {
   menu: MenuState
@@ -66,38 +23,35 @@ export interface HeaderContextMenuProps {
   columnFilters?: Record<string, { type: 'contains'; value: string }>
   setConfirmDeleteColumn: (col: string | null) => void
   setConfirmDeleteRows: (rows: number[] | null) => void
-  activeHTTPRunsByColumn: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
-  activeAIRunsByColumn: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
+  activeHTTPRunsByColumn: RunByColumn
+  activeAIRunsByColumn: RunByColumn
   onSortChange?: (column: string, direction?: 'asc' | 'desc' | null) => void
   onEmptyFilterChange?: (column: string, value: 'empty' | 'not_empty' | null) => void
   onColumnFilterChange?: (column: string, value: string | null) => void
   onDeleteColumn?: (columnName: string) => void | Promise<void>
   onDeleteRows?: (rowIndexes: number[]) => void | Promise<void>
-  onRunHTTPForColumn?: (columnName: string) => void
-  onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
-  onRunHTTPForMissingOrError?: (columnName: string) => void
-  onRunAIForColumn?: (baseName: string, columnName: string) => void
-  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
-  onEditAIColumn?: (baseName: string) => void
-  onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
+  runActions: RunMenuActions
 }
 
 export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   const {
     menu, setMenu, setRenaming, columnTypes, emptyFilter, columnFilters,
-    setConfirmDeleteColumn, setConfirmDeleteRows,
-    activeHTTPRunsByColumn, activeAIRunsByColumn,
-    onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows,
-    onRunHTTPForColumn, onRunHTTPForRows, onRunHTTPForMissingOrError,
-    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn, onStopRunForColumn,
+    setConfirmDeleteColumn, setConfirmDeleteRows, activeHTTPRunsByColumn, activeAIRunsByColumn,
+    onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows, runActions,
   } = props
 
   if (!menu) return null
 
-  // One type per column → AI and HTTP action blocks are mutually exclusive (the
-  // old heuristics could match both at once and stack both menus).
+  // One type per column → the AI, HTTP and enrichment blocks are mutually
+  // exclusive (the old heuristics could match both at once and stack both menus).
   const columnType = columnTypes[menu.columnId]
-  const isHTTPMaster = columnType === 'http-master'
+  const runProps = { columnId: menu.columnId, setMenu, actions: runActions }
+  // An emptiness filter replaces the column's text filter.
+  const emptiness = (value: 'empty' | 'not_empty') => {
+    onColumnFilterChange?.(menu.columnId, null)
+    onEmptyFilterChange?.(menu.columnId, value)
+    setMenu(null)
+  }
 
   return (
     <DropdownMenu open={!!menu} onOpenChange={(open) => !open && setMenu(null)}>
@@ -110,45 +64,22 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           setMenu(null)
         }}>Rename column</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'asc'); setMenu(null) }}>Sort ascending</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'desc'); setMenu(null) }}>Sort descending</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'asc'); setMenu(null) }}>
+          Sort ascending
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'desc'); setMenu(null) }}>
+          Sort descending
+        </DropdownMenuItem>
 
-        {isHTTPMaster && onRunHTTPForColumn && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>HTTP API Actions</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => { onRunHTTPForColumn(menu.columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔄 Run All Rows</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { onRunHTTPForMissingOrError?.(menu.columnId); setMenu(null) }} className="text-gray-700 focus:text-gray-900">🔁 Run Missing or Errors</DropdownMenuItem>
-            {menu.selectedRowIndices && menu.selectedRowIndices.length > 0 && (
-              <DropdownMenuItem
-                onClick={() => {
-                  // One batched run for the whole selection — not one run per row.
-                  if (menu.selectedRowIndices?.length) onRunHTTPForRows?.(menu.columnId, menu.selectedRowIndices)
-                  setMenu(null)
-                }}
-                className="text-gray-700 focus:text-gray-900"
-              >
-                🔄 Run Selected Rows ({menu.selectedRowIndices.length})
-              </DropdownMenuItem>
-            )}
-            {activeHTTPRunsByColumn[menu.columnId] && (
-              <DropdownMenuItem onClick={() => { onStopRunForColumn?.('http', menu.columnId); setMenu(null) }} className="text-red-600 focus:text-red-600">
-                🟥 Stop HTTP Run
-              </DropdownMenuItem>
-            )}
-          </>
+        {columnType === 'http-master' && (
+          <HTTPColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}
+            activeHTTPRunsByColumn={activeHTTPRunsByColumn} />
         )}
-
-        <AIColumnActions
-          columnId={menu.columnId}
-          columnType={columnType}
-          activeAIRunsByColumn={activeAIRunsByColumn}
-          setMenu={setMenu}
-          onRunAIForColumn={onRunAIForColumn}
-          onRunAIMissingOrError={onRunAIMissingOrError}
-          onEditAIColumn={onEditAIColumn}
-          onStopRunForColumn={onStopRunForColumn}
-        />
+        {columnType === 'enrich-status' && (
+          <EnrichColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}
+            activeHTTPRunsByColumn={activeHTTPRunsByColumn} />
+        )}
+        <AIColumnActions {...runProps} columnType={columnType} activeAIRunsByColumn={activeAIRunsByColumn} />
 
         {onColumnFilterChange && (
           <>
@@ -166,16 +97,16 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
 
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Filter by emptiness</DropdownMenuLabel>
-        <DropdownMenuItem
-          onClick={() => { onColumnFilterChange?.(menu.columnId, null); onEmptyFilterChange?.(menu.columnId, 'empty'); setMenu(null) }}
+        <DropdownMenuItem onClick={() => emptiness('empty')}
           className={emptyFilter?.[menu.columnId] === 'empty' ? 'font-semibold' : ''}
         >Show empty only</DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => { onColumnFilterChange?.(menu.columnId, null); onEmptyFilterChange?.(menu.columnId, 'not_empty'); setMenu(null) }}
+        <DropdownMenuItem onClick={() => emptiness('not_empty')}
           className={emptyFilter?.[menu.columnId] === 'not_empty' ? 'font-semibold' : ''}
         >Show non-empty only</DropdownMenuItem>
         {emptyFilter?.[menu.columnId] && (
-          <DropdownMenuItem onClick={() => { onEmptyFilterChange?.(menu.columnId, null); setMenu(null) }}>Clear filter</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { onEmptyFilterChange?.(menu.columnId, null); setMenu(null) }}>
+            Clear filter
+          </DropdownMenuItem>
         )}
 
         {onDeleteColumn && (

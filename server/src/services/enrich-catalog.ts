@@ -11,7 +11,9 @@ export type CatalogFailure = { fail: 'unreachable' | 'not_found' | 'hidden' | 'u
 
 // A tool as a card: its title, a one-line blurb (Popular jobs only), the
 // preset it opens with, and whether it adds its results as rows.
-export interface ListedTool extends ToolSummary { title: string; blurb: string; preset?: FeaturedJob['preset']; addsRows: boolean }
+export interface ListedTool extends ToolSummary {
+  title: string; blurb: string; preset?: FeaturedJob['preset']; addsRows: boolean;
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const FEATURED = new Map(ENRICH_FEATURED.map(job => [job.id, job]));
@@ -43,7 +45,9 @@ async function listJobs(tools: ToolSummary[]): Promise<Set<string>> {
 // provider key after the rest.
 export async function searchTools(query: string): Promise<{ ok: ListedTool[] } | CatalogFailure> {
   const res = await searchCatalog(query);
-  if (!res.ok) return res.unreachable ? unreachable() : { fail: 'upstream', message: `treg's catalog answered ${res.status}.` };
+  if (!res.ok) {
+    return res.unreachable ? unreachable() : { fail: 'upstream', message: `treg's catalog answered ${res.status}.` };
+  }
   const names = await providerNames();
   const jobs = ENRICH_FEATURED.filter(job => jobMatches(job.title, query));
   const lead = (await Promise.all(jobs.map(job => getTool(job.id)))).flatMap(r => ('ok' in r ? [r.ok] : []));
@@ -59,7 +63,10 @@ export async function searchTools(query: string): Promise<{ ok: ListedTool[] } |
   const lists = await listJobs(sorted);
   for (const t of lead) if (t.list && t.capability) lists.add(t.capability);
   return {
-    ok: [...lead.map(t => listed(summaryOf(t), t.list !== null)), ...sorted.map(t => listed(t, lists.has(t.capability ?? '')))],
+    ok: [
+      ...lead.map(t => listed(summaryOf(t), t.list !== null)),
+      ...sorted.map(t => listed(t, lists.has(t.capability ?? ''))),
+    ],
   };
 }
 
@@ -85,8 +92,10 @@ export async function getTool(toolId: string): Promise<{ ok: EnrichTool } | Cata
 
 function summaryOf(t: EnrichTool): ToolSummary {
   return {
-    id: t.id, name: t.name, summary: t.summary, provider: t.provider, ...(t.providerName ? { providerName: t.providerName } : {}),
-    kind: t.kind, capability: t.capability, capabilityDescription: t.capabilityDescription, platformLabel: t.platformLabel,
+    id: t.id, name: t.name, summary: t.summary, provider: t.provider,
+    ...(t.providerName ? { providerName: t.providerName } : {}),
+    kind: t.kind, capability: t.capability, capabilityDescription: t.capabilityDescription,
+    platformLabel: t.platformLabel,
     price: t.price, observed: t.observed, childCount: t.childCount, needsOwnKey: t.needsOwnKey,
   };
 }
@@ -97,4 +106,22 @@ export async function featuredTools(): Promise<{ ok: ListedTool[] } | CatalogFai
   const reads = await Promise.all(ENRICH_FEATURED.map(job => getTool(job.id)));
   if (reads.every(r => 'fail' in r && r.fail === 'unreachable')) return unreachable();
   return { ok: reads.flatMap(r => ('ok' in r ? [listed(summaryOf(r.ok), r.ok.list !== null)] : [])) };
+}
+
+// One tool as the drawer's card, for "Edit enrichment" (a column's tool opened
+// straight at Set up). The preset comes from the column's run, not from the
+// Popular list, so an email finder run without the preset reopens without it.
+export async function toolCard(
+  toolId: string, preset: FeaturedJob['preset'] | null,
+): Promise<{ ok: ListedTool } | CatalogFailure> {
+  const found = await getTool(toolId);
+  if (!('ok' in found)) return found;
+  const t = summaryOf(found.ok);
+  const job = ENRICH_FEATURED.find(j => j.id === toolId && (j.preset ?? null) === preset);
+  return {
+    ok: {
+      ...t, summary: plainText(t.summary), title: toolTitle(t, job?.title), blurb: job?.blurb ?? '',
+      ...(preset ? { preset } : {}), addsRows: found.ok.list !== null,
+    },
+  };
 }

@@ -101,6 +101,13 @@ function readDb<T>(fn: (db: any) => T): T {
 export const ledger = (runId: string): Array<{ attempt: string; idempotency_key: string; cost_micro: number | null; http_status: number | null; replay: number; call_id: string | null }> =>
   readDb(db => db.prepare('SELECT attempt, idempotency_key, cost_micro, http_status, replay, call_id FROM enrichment_calls WHERE run_id = ? ORDER BY rowid').all(runId))
 
+// Waits until the mock has answered every call it was still working on (a
+// stopped run's calls in flight finish and are billed), then checks the bill.
+export async function expectSettledBilledOnce(runIds: string[]) {
+  await expect.poll(async () => Number((await mockState()).inFlightCount ?? 0), { timeout: 20_000 }).toBe(0)
+  await expectBilledOnce(runIds)
+}
+
 // No Idempotency-Key was billed twice, and Cubex's ledger holds what the mock billed.
 export async function expectBilledOnce(runIds: string[]) {
   const billed = await mockBilling()

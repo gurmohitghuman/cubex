@@ -6,13 +6,13 @@ import { formatCost } from '@/components/ai-modal/format'
 import { ENRICH_TEST_ROWS } from '@/lib/constants'
 import type { EnrichEstimate } from '@/utils/api'
 import { effectiveMode, type EnrichDraft, type RowCounts } from './draft'
-import { continuing, runRequest } from './run-request'
+import { canTest, continuing, rowsPhrase, runRequest, runStatusOf } from './run-request'
 import { useRunStart } from './useRunStart'
 
 interface Props {
   sheetId: string
   draft: EnrichDraft
-  update: (patch: Partial<EnrichDraft>) => void
+  // The rows a full run takes: counted by status on a column a run already made.
   rows: number | null
   counts: RowCounts
   selectedRows: number[]
@@ -23,54 +23,79 @@ interface Props {
   estimate: EnrichEstimate | null
   unpriced: boolean
   onCancel: () => void
-  onRunStarted: (runId: string) => void
+  // A run started: Run on 5 rows shows the Test step, a full run the Run step.
+  onStarted: (runId: string, statusColumn: string, test: boolean) => void
+}
+
+// The run limit a full run shows and keeps: the one typed, else the estimate's high end.
+export const quotedLimit = (p: Pick<Props, 'draft' | 'estimate' | 'unpriced'>): number | null =>
+  (p.unpriced ? null : p.draft.spendLimitUsd ?? p.estimate?.estimate.highUsd ?? null)
+
+// The confirm before a full run repeats the estimate for the rows it takes.
+export function confirmMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced'>): string {
+  const title = p.draft.card?.title ?? 'this enrichment'
+  const more = continuing(p.draft)
+  const status = runStatusOf(p.draft)
+  const what = `Run ${title} on ${rowsPhrase(p.rows ?? 0, status, more)}?`
+  const again = !more || status === 'not_enriched' ? ''
+    : p.rows === 1 ? ' Its current result is replaced.' : ' Their current results are replaced.'
+  if (p.unpriced) return `${what}${again} Your provider bills these calls directly.`
+  const est = p.estimate?.estimate
+  const limit = quotedLimit(p)
+  const daily = p.estimate?.dailyLimit
+  return `${what}${again} Estimated ${formatCost(est?.lowUsd ?? 0)} to ${formatCost(est?.highUsd ?? 0)}.`
+    + (limit !== null ? ` The run stops at ${formatCost(limit)}.` : '')
+    + (daily?.limitUsd != null
+      ? ` Today's limit: ${formatCost(daily.limitUsd)}, ${formatCost(daily.remainingUsd ?? 0)} left.` : '')
 }
 
 // Set up's footer: Run on 5 rows (a real run on the first matching rows), and
-// Run all, which first repeats the estimate in a confirm. A run's column stays
-// with the draft, so the next run adds to it (the rows not enriched yet).
+// the full run, which first repeats the estimate in a confirm. A run's column
+// stays with the draft, so the next run adds to it, on the rows picked by
+// status (not enriched yet unless chosen otherwise).
 export const RunButtons: React.FC<Props> = (p) => {
   const [confirming, setConfirming] = useState(false)
-  const { start, starting, error } = useRunStart(p.sheetId, (runId, statusColumn) => {
-    p.update({ continueColumn: statusColumn, columnName: statusColumn })
-    p.onRunStarted(runId)
-  })
+  const { start, starting, error } = useRunStart(p.sheetId, p.onStarted)
   const waiting = !p.unpriced && !p.estimate ? 'Waiting for the estimate…' : null
   const blocked = p.problem ?? waiting
   const more = continuing(p.draft)
+  const testable = canTest(p.draft)
   const choice = (test: boolean) => ({
-    mode: effectiveMode(p.draft.rowsMode, p.counts), selectedRows: p.selectedRows, test, order: p.order, rowGeneration: p.rowGeneration,
+    mode: effectiveMode(p.draft.rowsMode, p.counts), selectedRows: p.selectedRows, test, order: p.order,
+    rowGeneration: p.rowGeneration,
   })
   const testRows = Math.max(1, Math.min(ENRICH_TEST_ROWS, p.rows ?? ENRICH_TEST_ROWS))
-  const est = p.estimate?.estimate
-  const limit = p.draft.spendLimitUsd ?? est?.highUsd ?? null
-  const message = p.unpriced
-    ? `Run ${p.draft.card?.title ?? 'this enrichment'} on ${more ? 'the rows not enriched yet' : plural(p.rows ?? 0, 'row')}? Your provider bills these calls directly.`
-    : `Run ${p.draft.card?.title ?? 'this enrichment'} on ${more ? 'the rows not enriched yet' : plural(p.rows ?? 0, 'row')}? `
-      + `Estimated ${formatCost(est?.lowUsd ?? 0)} to ${formatCost(est?.highUsd ?? 0)}.`
-      + (limit !== null ? ` The run stops at ${formatCost(limit)}.` : '')
-      + (p.estimate?.dailyLimit.limitUsd != null ? ` Today's limit: ${formatCost(p.estimate.dailyLimit.limitUsd)}, ${formatCost(p.estimate.dailyLimit.remainingUsd ?? 0)} left.` : '')
+  const count = p.rows !== null ? ` ${p.rows.toLocaleString()}` : ''
+  const fullLabel = more ? `Run on ${p.rows === null ? 'these rows' : plural(p.rows, 'row')}` : `Run all${count}`
+  const reason = more
+    ? 'Runs add to the column you already made.'
+    : 'Try it on a few rows first, then run the rest.'
 
   return (
     <div className="flex flex-col items-end gap-1 pt-4 border-t border-gray-200">
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" onClick={p.onCancel} className="btn-secondary">Cancel</button>
-        <button type="button" disabled={!!blocked || starting} className="btn-secondary" onClick={() => setConfirming(true)}
-          data-testid="enrich-run-all">
-          {more ? 'Run the rest' : `Run all${p.rows !== null ? ` ${p.rows.toLocaleString()}` : ''}`}
+        <button type="button" disabled={!!blocked || starting} onClick={() => setConfirming(true)}
+          className={testable ? 'btn-secondary' : 'btn-primary'} data-testid="enrich-run-all">
+          {fullLabel}
         </button>
-        <button type="button" disabled={!!blocked || starting} className="btn-primary flex items-center gap-1.5"
-          onClick={() => start(runRequest(p.draft, choice(true)))} data-testid="enrich-run-test">
-          <Play className="h-4 w-4" />Run on {plural(testRows, 'row')}
-        </button>
+        {testable && (
+          <button type="button" disabled={!!blocked || starting} className="btn-primary flex items-center gap-1.5"
+            onClick={() => start(runRequest(p.draft, choice(true)), true)} data-testid="enrich-run-test">
+            <Play className="h-4 w-4" />Run on {plural(testRows, 'row')}
+          </button>
+        )}
       </div>
       <p className={`text-xs ${error ? 'text-red-600' : 'text-gray-500'}`} data-testid="enrich-run-reason">
-        {error ?? blocked ?? (more ? 'Runs add to the column you already made, on rows not enriched yet.' : 'Try it on a few rows first, then run the rest.')}
+        {error ?? blocked ?? reason}
       </p>
-      <ConfirmDialog isOpen={confirming} title="Run the enrichment" message={message} confirmText="Run"
+      <ConfirmDialog isOpen={confirming} title="Run the enrichment" message={confirmMessage(p)} confirmText="Run"
         zClassName="z-[20010]" isLoading={starting}
         onCancel={() => setConfirming(false)}
-        onConfirm={() => { setConfirming(false); start(runRequest(p.draft, choice(false))) }} />
+        onConfirm={() => {
+          setConfirming(false)
+          start(runRequest(p.draft, { ...choice(false), spendLimitUsd: quotedLimit(p) }), false)
+        }} />
     </div>
   )
 }

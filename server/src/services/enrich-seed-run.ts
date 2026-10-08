@@ -30,17 +30,21 @@ const TEST_PAGE = 500;
 // The first `n` rows (row order) the run would take: a short scan in pages.
 async function firstMatching(job: SeedJob, n: number): Promise<{ targets: number[]; missing: number }> {
   const inTargets = job.targets ? new Set(job.targets) : null;
-  const page = db.prepare(`SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? AND row_index <= ?${job.rowFilter.clause}
+  const page = db.prepare(`SELECT row_index, data FROM rows
+    WHERE sheet_id = ? AND user_id = ? AND row_index > ? AND row_index <= ?${job.rowFilter.clause}
     ORDER BY row_index LIMIT ${TEST_PAGE}`);
   const targets: number[] = [];
   let missing = 0;
   for (let after = Number.MIN_SAFE_INTEGER; targets.length < n;) {
-    const rows = page.all(job.sheetId, job.userId, after, job.lastRow, ...job.rowFilter.params) as Array<{ row_index: number; data: string }>;
+    const rows = page.all(job.sheetId, job.userId, after, job.lastRow, ...job.rowFilter.params) as
+      Array<{ row_index: number; data: string }>;
     for (const r of rows) {
+      // Rows past the test rows aren't part of the run: neither run nor skipped.
+      if (targets.length >= n) break;
       if (inTargets && !inTargets.has(r.row_index)) continue;
       const v = seedVerdict(parseRowData(r.data), job.plan);
       if (v === 'missing') missing++;
-      if (v === 'run' && targets.length < n) targets.push(r.row_index);
+      if (v === 'run') targets.push(r.row_index);
     }
     if (rows.length < TEST_PAGE) break;
     after = rows[rows.length - 1].row_index;
@@ -63,7 +67,9 @@ async function seed(job: SeedJob, live: () => boolean): Promise<{ seeded: number
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
     const take: number[] = [];
-    for (const r of read.all(ids, job.sheetId, job.userId, ...job.rowFilter.params) as Array<{ id: number; data: string }>) {
+    const found = read.all(ids, job.sheetId, job.userId, ...job.rowFilter.params) as
+      Array<{ id: number; data: string }>;
+    for (const r of found) {
       const v = job.test !== null ? 'run' : seedVerdict(parseRowData(r.data), job.plan);
       if (v === 'run') take.push(r.id);
       else if (v === 'missing') missing++;
@@ -90,15 +96,19 @@ export function seedEnrichmentThenEnqueue(job: SeedJob): void {
       const ready = db.transaction(() => {
         const r = db.prepare(`UPDATE http_runs SET placeholder_work = NULL, total_rows = ?, skipped_rows = ?,
           status = CASE WHEN ? = 0 THEN 'completed' ELSE status END, updated_at = datetime('now')
-          WHERE id = ? AND status = 'pending' AND placeholder_work = 'seeding'`).run(done.seeded, done.missing, done.seeded, job.runId);
-        db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(job.sheetId, job.userId);
+          WHERE id = ? AND status = 'pending' AND placeholder_work = 'seeding'`)
+          .run(done.seeded, done.missing, done.seeded, job.runId);
+        db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
+          .run(job.sheetId, job.userId);
         return r.changes > 0;
       })();
       if (ready && done.seeded > 0) await enqueueHTTPRun(job.runId);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      db.prepare(`UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing', updated_at = datetime('now')
-        WHERE id = ? AND status = 'pending'`).run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), job.runId);
+      db.prepare(`UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+          updated_at = datetime('now')
+        WHERE id = ? AND status = 'pending'`)
+        .run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), job.runId);
       await clearRunPlaceholders('http', job.runId);
       console.error(`Starting enrichment run ${job.runId} failed:`, redactSecrets(reason));
     }

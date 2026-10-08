@@ -40,6 +40,11 @@ export const ENRICH_MAX_DEFAULT_ROW_CAP_USD = 1;
 // Runs.
 export const ENRICH_DEFAULT_CONCURRENCY = envInt('ENRICH_DEFAULT_CONCURRENCY', 5);
 export const ENRICH_TEST_ROWS = 5;
+// The newest rows the drawer's run screens show (lean status), and the spend
+// card's choice of windows in days.
+export const ENRICH_STATUS_LATEST = 5;
+export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;
+export const ENRICH_SPEND_TOP_COLUMNS = 20;
 export const ENRICH_VERIFY_MAX_FINDS = 3;
 export const ENRICH_DUPLICATE_THRESHOLD = 2;
 export const ENRICH_UNREACHABLE_PAUSE_AFTER = 5;

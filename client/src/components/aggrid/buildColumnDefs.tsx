@@ -9,7 +9,8 @@ import type { ColumnType } from '@/utils/api/types'
 interface BuildColumnDefsArgs {
   columns: string[]
   // Authoritative per-column type (server, run-record derived). Drives the header
-  // icons (🔗 HTTP master, 📎 HTTP extracted) and the AI suffix-only header. Absent → plain.
+  // icons (🔗 HTTP master, 📎 HTTP extracted, the enrichment status column's
+  // DatabaseZap in ColumnHeaderWithDelete). Absent → plain.
   columnTypes: Record<string, ColumnType>
   columnWidths: Record<string, number>
   onDeleteColumn?: (columnName: string) => void | Promise<void>
@@ -106,6 +107,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           onDeleteColumn: handleHeaderColumnDelete,
           onHeaderClick: openColumnMenu,
           isFiltered: column in emptyFilter || column in columnFilters,
+          columnType,
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);
@@ -128,6 +130,8 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
         }
         if (value.includes('❌')) { style.backgroundColor = '#fef2f2'; style.color = '#dc2626' }
         if (value.includes('✅')) { style.backgroundColor = '#f0fdf4'; style.color = '#16a34a' }
+        // ⏭️ Not found / Budget ran out / No data: no answer, muted (not an error).
+        if (value.startsWith('⏭️')) { style.backgroundColor = '#f8fafc'; style.color = '#64748b' }
         return Object.keys(style).length > 0 ? style : undefined
       },
     }

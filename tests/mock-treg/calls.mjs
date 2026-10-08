@@ -8,7 +8,8 @@
 //   scenario {kind, count}: the next `count` calls answer `kind`: 401,
 //     insufficient (402 balance), saturated (503), in_progress (409),
 //     daily_cap (429), unreachable (500, no call id), firewall (403, no call id)
-//   delayMs: every call waits this long first; balanceMicro: what's left.
+//   delayMs: every call waits this long first; balanceMicro: what's left;
+//   badDomains: requests mentioning one answer 400 catalog_parameter_invalid.
 import crypto from 'node:crypto'
 import { fixture, hasFixture, state, billing } from './state.mjs'
 import { refuseKey } from './account.mjs'
@@ -56,6 +57,9 @@ function answer(toolId, req) {
     const text = req.headers['x-treg-body-encoding'] === 'base64' ? Buffer.from(req.body, 'base64').toString('utf8') : req.body
     try { body = JSON.parse(text) } catch { return refusal(400, 'body is not JSON') }
   }
+  const raw = JSON.stringify(body).toLowerCase() + req.query.toLowerCase()
+  const bad = (state.badDomains ?? []).find(d => raw.includes(String(d).toLowerCase()))
+  if (bad) return refusal(400, { error: 'catalog_parameter_invalid', message: `${bad} is not a valid domain` })
   const run = isWaterfall(toolId) ? runWaterfall(toolId, body, req.headers) : singleTool(toolId, req)
   if (run.refusal) return refusal(run.status, run.refusal)
   const cost = run.costMicro
@@ -101,6 +105,9 @@ export async function callRoute(req, url, rawBody) {
     return { status: kept.answer.status, headers, body: kept.answer.body }
   }
   if (key) inFlight.add(key)
+  // Calls still being answered (GET /__mock/state inFlightCount): a spec that
+  // stops a run waits for 0, so a late charge can't land in the next spec's log.
+  state.inFlightCount = (state.inFlightCount ?? 0) + 1
   try {
     if (state.delayMs > 0) await new Promise(resolve => setTimeout(resolve, state.delayMs))
     const out = scenarioAnswer() ?? answer(toolId, { method: req.method, headers: req.headers, query: url.search, body: rawBody })
@@ -108,5 +115,8 @@ export async function callRoute(req, url, rawBody) {
     // A 409 means "still running": nothing is kept for it.
     if (key && out.headers?.['X-Treg-Call-Id'] && out.status !== 409) keys.set(key, { fingerprint, answer: out })
     return out
-  } finally { if (key) inFlight.delete(key) }
+  } finally {
+    if (key) inFlight.delete(key)
+    state.inFlightCount -= 1
+  }
 }
