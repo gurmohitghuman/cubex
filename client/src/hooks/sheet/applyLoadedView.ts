@@ -10,9 +10,12 @@ interface ViewSetters {
 // After a load commits its rows (useSheetLoad), apply the view state the
 // payload carries: the server-persisted filters, the loaded-window size, and
 // the column order.
+// keepWindow: the rows were MERGED into the held window (reloadWindow.ts), which
+// set loadedRowsCount itself.
 export function applyLoadedView(
   data: SheetData, offset: number,
   { setEmptyFilter, setColumnFilters, setLoadedRowsCount, setColumnOrder }: ViewSetters,
+  keepWindow = false,
 ): void {
   // No sort_state hydration: sort is a one-time physical reorder of
   // row_index (Google Sheets semantics) — there is no persistent sort view.
@@ -34,7 +37,7 @@ export function applyLoadedView(
     setColumnFilters({})
   }
 
-  setLoadedRowsCount(offset + data.data.rows.length)
+  if (!keepWindow) setLoadedRowsCount(offset + data.data.rows.length)
 
   // Sync column order with the columns the server reports (column_order is persisted
   // server-side, so we take its order verbatim — earlier code tried merging into the

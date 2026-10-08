@@ -9,7 +9,7 @@
 // output columns are blanked too, so no cell is stranded on the spinner.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { jsonPath } from '../lib/sql-helpers';
+import { jsonPath, touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
 
@@ -24,15 +24,6 @@ export interface MultiWriteCtx {
 }
 
 const STATUS_OK = '✅';
-
-// data_version, not just updated_at (touchSheet): structured runs don't stream
-// their cells over SSE (ai-stream.ts), so an open grid learns of each row
-// through the change poll, which watches data_version (and paces its reloads).
-function bumpSheetVersion(ctx: MultiWriteCtx): void {
-  db.prepare(
-    "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-  ).run(ctx.sheetId, ctx.userId);
-}
 
 // json_set(data, p1, v1, p2, v2, ...) built from ordered (path, value) pairs.
 function jsonSetPairs(pairs: Array<[string, string]>): { expr: string; args: string[] } {
@@ -73,7 +64,10 @@ export function writeMultiSuccess(
       UPDATE rows SET data = ${expr}, updated_at = datetime('now')
       WHERE user_id = ? AND sheet_id = ? AND row_index = ?
     `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
-    bumpSheetVersion(ctx);
+    // updated_at only, like the single-column writers: open grids get these cells
+    // over SSE (ai-stream.ts). A data_version bump here made every open tab
+    // reload the sheet for the whole run (it snapped deep-scrolled viewports).
+    touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }
 
@@ -103,6 +97,6 @@ export function writeMultiFailure(
       UPDATE rows SET data = ${expr}, updated_at = datetime('now')
       WHERE user_id = ? AND sheet_id = ? AND row_index = ?
     `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
-    bumpSheetVersion(ctx);
+    touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table, tablesAPI } from '@/utils/api'
-import { INITIAL_ROW_LOAD, SILENT_RELOAD_MAX_ROWS } from '@/lib/constants'
 
 import { SheetGrid } from '@/components/sheet/SheetGrid'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -26,6 +25,8 @@ import { useColumnFilters } from '@/hooks/sheet/useColumnFilters'
 import { useExport } from '@/hooks/sheet/useExport'
 import { useRunControls } from '@/hooks/sheet/useRunControls'
 import { useSheetLoad } from '@/hooks/sheet/useSheetLoad'
+import { planWindowReload } from '@/hooks/sheet/reloadWindow'
+import { useGridHandles } from '@/hooks/sheet/useGridHandles'
 import { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
@@ -51,20 +52,14 @@ export const SheetPage: React.FC = () => {
   >(() => {})
   // Silent variant for BACKGROUND refreshes (run completion, Stop): no isLoading
   // flip (the FullPageLoader swap unmounts the grid — scroll/selection/edits lost).
-  // Re-fetches the current window (≤ SILENT_RELOAD_MAX_ROWS), not the initial one.
+  // Refreshes the held rows around the viewport without moving it (reloadWindow.ts).
   const silentReloadRef = useRef<(sheetId: string) => Promise<void> | void>(() => {})
 
   // Webhook payload viewer (opened by clicking a read-only webhook marker cell).
   const [webhookPayloadRow, setWebhookPayloadRow] = useState<number | null>(null)
 
-  // Imperative "clear grid row selection" handle registered by AGGridSpreadsheet
-  // (deselectAll = the selection source of truth); the topbar delete confirm
-  // deselects through the same path the header delete uses. Stable identity so
-  // the registering effect doesn't re-fire every render.
-  const clearGridSelectionRef = useRef<(() => void) | null>(null)
-  const registerClearSelection = useCallback((clear: (() => void) | null) => {
-    clearGridSelectionRef.current = clear
-  }, [])
+  // Clear-selection + first-rendered-row handles the grid registers (useGridHandles).
+  const grid = useGridHandles()
 
   const runs = useActiveRuns()
   const modals = useSheetModals()
@@ -155,8 +150,10 @@ export const SheetPage: React.FC = () => {
   // Keep the forward-references fresh.
   useEffect(() => {
     loadSheetDataRef.current = (id, limit, offset, opts) => loadSheetData(id, limit, offset, opts)
-    silentReloadRef.current = (id) =>
-      loadSheetData(id, Math.min(SILENT_RELOAD_MAX_ROWS, Math.max(INITIAL_ROW_LOAD, loadedRowsCount)), 0, { silent: true })
+    silentReloadRef.current = (id) => {
+      const { offset, limit, keepTail } = planWindowReload(loadedRowsCount, grid.firstRenderedRow())
+      return loadSheetData(id, limit, offset, { silent: true, keepWindow: true, keepTail })
+    }
   })
 
   const view = useSheetView({
@@ -329,7 +326,7 @@ export const SheetPage: React.FC = () => {
             onDeleteRows={cellOps.handleDeleteRows}
             onColumnReorder={columnOps.handleColumnReorder}
             onAddColumn={() => modals.setShowNewColumnModal(true)}
-            registerClearSelection={registerClearSelection}
+            registerClearSelection={grid.registerClearSelection} registerViewport={grid.registerViewport}
             setShowAddColumnModal={modals.setShowAddColumnModal}
             setupSSEConnection={sse.setupSSEConnection}
             fetchActiveHTTPRuns={runs.fetchHTTPRuns} fetchActiveAIRuns={runs.fetchAIRuns}
@@ -371,11 +368,11 @@ export const SheetPage: React.FC = () => {
         selectedRowIndices={cellOps.selectedRowIndices}
         {...modals}
         setSelectedRowIndices={cellOps.setSelectedRowIndices}
-        clearGridSelection={() => clearGridSelectionRef.current?.()}
+        clearGridSelection={grid.clearSelection}
         setSheetData={setSheetData} setLoadedRowsCount={setLoadedRowsCount}
         handleDeleteRows={cellOps.handleDeleteRows}
         handleAddColumn={columnOps.handleAddColumn}
-        loadSheetData={loadSheetData}
+        loadSheetData={loadSheetData} silentReload={(id) => silentReloadRef.current(id)}
         setupSSEConnection={sse.setupSSEConnection}
         fetchActiveAIRuns={runs.fetchAIRuns}
         waitForSaves={cellOps.waitForSaves}

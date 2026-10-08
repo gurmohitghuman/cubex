@@ -47,4 +47,7 @@ export interface AGGridSpreadsheetProps {
   // grid — can deselect via the same source-of-truth path. Called with null on
   // unmount to unregister.
   registerClearSelection?: (clear: (() => void) | null) => void
+  // Registers a getter for the first rendered row (useRegisterViewport), so a
+  // background reload refreshes the rows in view. Null on unmount.
+  registerViewport?: (get: (() => number | null) | null) => void
 }

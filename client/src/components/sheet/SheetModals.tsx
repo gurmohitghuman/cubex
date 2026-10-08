@@ -40,6 +40,8 @@ interface SheetModalsProps {
   handleDeleteRows: (rows: number[]) => Promise<void> | void
   handleAddColumn: (name: string) => Promise<boolean>
   loadSheetData: (sheetId: string, limit?: number, offset?: number, opts?: { silent?: boolean }) => Promise<void> | void
+  // Background refresh of the held rows that keeps the viewport (reloadWindow.ts).
+  silentReload: (sheetId: string) => Promise<void> | void
   // Autosave barrier for CSV-replace import (same as sort/delete/rename).
   waitForSaves: (timeoutMs?: number) => Promise<boolean>
   dropAllPending: (sheetId: string) => void
@@ -55,7 +57,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal,
     setShowHTTPAPIColumnModal, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
-    handleDeleteRows, handleAddColumn, loadSheetData, setupSSEConnection, fetchActiveAIRuns,
+    handleDeleteRows, handleAddColumn, loadSheetData, silentReload, setupSSEConnection, fetchActiveAIRuns,
     waitForSaves, dropAllPending,
   } = props
 
@@ -139,7 +141,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
             // it picks up the newly created column + its '⏳ Processing...' cells. The
             // load's side-load chain also runs reconnectToActiveRuns to attach SSE.
             // Matches the menu run actions; a loud reload here flashed the page on create.
-            loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+            silentReload(activeSheet.id)
             // No success toast — the new column appears in the grid and
             // cells visibly start filling with '⏳ Processing...'.
           }}
@@ -163,7 +165,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
             // SILENT reload — see the AI modal above. No page flash on create; the new
             // columns + '⏳ Processing...' cells appear and SSE attaches via the load's
             // reconnectToActiveRuns side-load.
-            loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+            silentReload(activeSheet.id)
             // No success toast — new columns visible immediately, processing
             // status shows in each cell.
           }}
