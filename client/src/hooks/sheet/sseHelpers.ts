@@ -9,7 +9,13 @@ import { SSEResultBuffer, deriveAICellValue } from './sseResultBuffer'
 // coalescing buffer (perf fix #1). The CALLER decides whether this result belongs to
 // the active sheet (run→sheet binding); this just queues once that's been cleared.
 export const enqueueResultEvent = (data: any, buffer: SSEResultBuffer) => {
-  if (data.columnName) {
+  if (data.cells) {
+    // Structured (multi-column) AI run: every typed cell of the row exactly as the
+    // server saved it (status ✅/❌ + outputs + "(Data)") — queue verbatim.
+    for (const [columnName, value] of Object.entries(data.cells)) {
+      buffer.enqueueCell(data.rowIndex, columnName, value === undefined || value === null ? '' : String(value))
+    }
+  } else if (data.columnName) {
     const value = deriveAICellValue(data.status, data.outputValue, data.errorMessage)
     buffer.enqueueCell(data.rowIndex, data.columnName, value)
   } else if (data.extractedFields) {
