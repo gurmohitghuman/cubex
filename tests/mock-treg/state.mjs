@@ -28,6 +28,9 @@ const defaults = () => ({
   // Calls whose request mentions one of these (a domain, an address) answer
   // treg's 400 catalog_parameter_invalid: the row fails (❌), nothing billed.
   badDomains: [],
+  // A hit for a request mentioning one of these carries a long raw.sources
+  // list (about 30 KB), so Cubex keeps only part of it (lib/answer-trim.ts).
+  bigRawDomains: [],
   // Set when a call reached an async provider (Cubex must exclude those).
   asyncCalled: false,
 })

@@ -9,6 +9,7 @@ import { parseEstimateInput } from '../lib/enrich-estimate-input';
 import { toolAccess } from '../services/enrich-access';
 import { enrichSpend, spendWindow } from '../services/enrich-spend';
 import runRoutes from './enrich-runs';
+import answerRoutes from './enrich-answers';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -119,5 +120,6 @@ router.get('/spend', async (req: AuthRequest, res) => {
 
 // Starting, reading and resuming runs (routes/enrich-runs.ts).
 router.use(runRoutes);
+router.use(answerRoutes);
 
 export default router;

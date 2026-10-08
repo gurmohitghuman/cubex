@@ -7,14 +7,18 @@ const FILTER_FROM = 10
 
 // The answer's fields to keep as new columns, each with its column name.
 // Single tools list the fields of the catalog's example answer.
-export const OutputsPane: React.FC<{ outputs: OutputPick[]; onChange: (o: OutputPick[]) => void }> = ({ outputs, onChange }) => {
+type Props = { outputs: OutputPick[]; onChange: (o: OutputPick[]) => void }
+export const OutputsPane: React.FC<Props> = ({ outputs, onChange }) => {
   const [filter, setFilter] = useState('')
-  const set = (key: string, patch: Partial<OutputPick>) => onChange(outputs.map(o => (o.key === key ? { ...o, ...patch } : o)))
+  const set = (key: string, patch: Partial<OutputPick>) =>
+    onChange(outputs.map(o => (o.key === key ? { ...o, ...patch } : o)))
   const f = filter.trim().toLowerCase()
   const shown = f ? outputs.filter(o => o.label.toLowerCase().includes(f) || o.key.toLowerCase().includes(f)) : outputs
 
   if (outputs.length === 0) {
-    return <p className="text-xs text-gray-500">This tool lists no fields yet. You can pick fields after the test run.</p>
+    return (
+      <p className="text-xs text-gray-500">This tool lists no fields yet. You can pick fields after the test run.</p>
+    )
   }
   return (
     <div className="space-y-2" data-testid="enrich-outputs">
@@ -28,15 +32,23 @@ export const OutputsPane: React.FC<{ outputs: OutputPick[]; onChange: (o: Output
             <label className="flex items-center gap-2 text-sm text-gray-700 min-w-0">
               <input type="checkbox" checked={o.enabled} onChange={e => set(o.key, { enabled: e.target.checked })}
                 className="border-gray-300 text-cube-black focus:ring-black" />
-              <span className="truncate" title={o.key}>{o.label}</span>
+              <span className="truncate" title={o.fromAnswer ? `${o.path} (added from an answer)` : o.key}>
+                {o.label}{o.fromAnswer && <span className="text-gray-500"> (from an answer)</span>}
+              </span>
             </label>
             <ArrowRight className={`h-3.5 w-3.5 ${o.enabled ? 'text-gray-400' : 'text-gray-200'}`} />
-            <input className="input w-full py-1 disabled:bg-gray-50 disabled:text-gray-400" value={o.columnName} disabled={!o.enabled}
+            <input className="input w-full py-1 disabled:bg-gray-50 disabled:text-gray-400" value={o.columnName}
+              disabled={!o.enabled}
               onChange={e => set(o.key, { columnName: e.target.value })} aria-label={`Column name for ${o.label}`} />
           </li>
         ))}
         {shown.length === 0 && <li className="text-xs text-gray-500">No field matches &quot;{filter}&quot;.</li>}
       </ul>
+      {outputs.some(o => o.fromAnswer && o.enabled) && (
+        <p className="text-xs text-gray-500">
+          Fields from an answer aren&apos;t in the tool&apos;s list, so a row whose answer lacks one leaves it empty.
+        </p>
+      )}
     </div>
   )
 }

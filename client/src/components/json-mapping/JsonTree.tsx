@@ -13,7 +13,7 @@ import { appendKey, appendIndex, defaultColumnName } from './jsonPath'
 // the number sets all containers to `forceOpenState`. Used by the "Expand all"
 // / "Collapse all" buttons so the user can flip nested fields into view at once.
 export function JsonTree({
-  value, path, mappingByPath, onPick, depth = 0, expandSignal, forceOpenState,
+  value, path, mappingByPath, onPick, depth = 0, expandSignal, forceOpenState, pickLabel = 'Save as column',
 }: {
   value: any
   path: string
@@ -22,19 +22,26 @@ export function JsonTree({
   depth?: number
   expandSignal?: number
   forceOpenState?: boolean
+  // The leaf button's words ("Save as column"; the answer panel says "Column").
+  pickLabel?: string
 }) {
+  const shared = { mappingByPath, onPick, pickLabel }
   if (value === null || value === undefined || typeof value !== 'object') {
-    return <Leaf value={value} path={path} mappingByPath={mappingByPath} onPick={onPick} />
+    return <Leaf value={value} path={path} {...shared} />
   }
-  if (Array.isArray(value)) {
-    return <ArrayNode arr={value} path={path} mappingByPath={mappingByPath} onPick={onPick} depth={depth} expandSignal={expandSignal} forceOpenState={forceOpenState} />
-  }
-  return <ObjectNode obj={value as Record<string, unknown>} path={path} mappingByPath={mappingByPath} onPick={onPick} depth={depth} expandSignal={expandSignal} forceOpenState={forceOpenState} />
+  const nested = { ...shared, depth, expandSignal, forceOpenState }
+  if (Array.isArray(value)) return <ArrayNode arr={value} path={path} {...nested} />
+  return <ObjectNode obj={value as Record<string, unknown>} path={path} {...nested} />
+}
+
+interface NodeProps {
+  path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void
+  depth: number; expandSignal?: number; forceOpenState?: boolean; pickLabel: string
 }
 
 function ObjectNode({
-  obj, path, mappingByPath, onPick, depth, expandSignal, forceOpenState,
-}: { obj: Record<string, unknown>; path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void; depth: number; expandSignal?: number; forceOpenState?: boolean }) {
+  obj, path, mappingByPath, onPick, depth, expandSignal, forceOpenState, pickLabel,
+}: NodeProps & { obj: Record<string, unknown> }) {
   const [open, setOpen] = useState(depth < 3)
   // When the parent bumps expandSignal, snap to the requested state.
   useEffect(() => {
@@ -44,7 +51,8 @@ function ObjectNode({
   if (entries.length === 0) return <span className="text-gray-400">{'{}'}</span>
   return (
     <div>
-      <button type="button" onClick={() => setOpen(o => !o)} className="text-gray-500 hover:text-cube-black inline-flex items-center">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="text-gray-500 hover:text-cube-black inline-flex items-center">
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <span className="ml-1">{open ? '{' : `{ … ${entries.length} fields }`}</span>
       </button>
@@ -54,7 +62,8 @@ function ObjectNode({
             <div key={k} className="flex items-start gap-2 py-0.5">
               <span className="text-gray-700">"{k}":</span>
               <div className="flex-1 min-w-0">
-                <JsonTree value={v} path={appendKey(path, k)} mappingByPath={mappingByPath} onPick={onPick} depth={depth + 1} expandSignal={expandSignal} forceOpenState={forceOpenState} />
+                <JsonTree value={v} path={appendKey(path, k)} mappingByPath={mappingByPath} onPick={onPick}
+                  depth={depth + 1} expandSignal={expandSignal} forceOpenState={forceOpenState} pickLabel={pickLabel} />
                 {i < entries.length - 1 && <span className="text-gray-400">,</span>}
               </div>
             </div>
@@ -67,8 +76,8 @@ function ObjectNode({
 }
 
 function ArrayNode({
-  arr, path, mappingByPath, onPick, depth, expandSignal, forceOpenState,
-}: { arr: any[]; path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void; depth: number; expandSignal?: number; forceOpenState?: boolean }) {
+  arr, path, mappingByPath, onPick, depth, expandSignal, forceOpenState, pickLabel,
+}: NodeProps & { arr: any[] }) {
   const [open, setOpen] = useState(depth < 3)
   useEffect(() => {
     if (expandSignal !== undefined && forceOpenState !== undefined) setOpen(forceOpenState)
@@ -76,7 +85,8 @@ function ArrayNode({
   if (arr.length === 0) return <span className="text-gray-400">[]</span>
   return (
     <div>
-      <button type="button" onClick={() => setOpen(o => !o)} className="text-gray-500 hover:text-cube-black inline-flex items-center">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="text-gray-500 hover:text-cube-black inline-flex items-center">
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <span className="ml-1">{open ? '[' : `[ … ${arr.length} items ]`}</span>
       </button>
@@ -86,7 +96,8 @@ function ArrayNode({
             <div key={i} className="flex items-start gap-2 py-0.5">
               <span className="text-gray-500">{i}:</span>
               <div className="flex-1 min-w-0">
-                <JsonTree value={v} path={appendIndex(path, i)} mappingByPath={mappingByPath} onPick={onPick} depth={depth + 1} expandSignal={expandSignal} forceOpenState={forceOpenState} />
+                <JsonTree value={v} path={appendIndex(path, i)} mappingByPath={mappingByPath} onPick={onPick}
+                  depth={depth + 1} expandSignal={expandSignal} forceOpenState={forceOpenState} pickLabel={pickLabel} />
                 {i < arr.length - 1 && <span className="text-gray-400">,</span>}
               </div>
             </div>
@@ -99,8 +110,9 @@ function ArrayNode({
 }
 
 function Leaf({
-  value, path, mappingByPath, onPick,
-}: { value: unknown; path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void }) {
+  value, path, mappingByPath, onPick, pickLabel,
+}: { value: unknown; path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void
+  pickLabel: string }) {
   const existing = mappingByPath.get(path)
   const [naming, setNaming] = useState(false)
   // Default the column name to the last key segment (handles bracket-quoted keys).
@@ -114,7 +126,7 @@ function Leaf({
 
   if (existing) {
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex items-center gap-2" data-json-path={path}>
         {display}
         <span className="text-xs bg-cube-black text-white px-1.5 py-0.5">✓ {existing}</span>
       </span>
@@ -123,7 +135,7 @@ function Leaf({
 
   if (naming) {
     return (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1" data-json-path={path}>
         {display}
         <input
           type="text"
@@ -132,8 +144,11 @@ function Leaf({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && name.trim()) { onPick(path, name.trim()); setNaming(false) }
+            // Handled here: a dialog around the tree must not also close on them.
+            if (e.key !== 'Enter' && e.key !== 'Escape') return
+            e.preventDefault(); e.stopPropagation()
             if (e.key === 'Escape') setNaming(false)
+            else if (name.trim()) { onPick(path, name.trim()); setNaming(false) }
           }}
         />
         <button type="button" onClick={() => { if (name.trim()) { onPick(path, name.trim()); setNaming(false) } }}
@@ -145,11 +160,12 @@ function Leaf({
   }
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2" data-json-path={path}>
       {display}
       <button type="button" onClick={() => setNaming(true)}
-        className="text-xs text-gray-500 hover:text-cube-black inline-flex items-center gap-0.5 opacity-60 hover:opacity-100">
-        <Plus className="h-3 w-3" /> Save as column
+        className={'text-xs text-gray-500 hover:text-cube-black inline-flex items-center gap-0.5 opacity-60 '
+          + 'hover:opacity-100'}>
+        <Plus className="h-3 w-3" /> {pickLabel}
       </button>
     </span>
   )

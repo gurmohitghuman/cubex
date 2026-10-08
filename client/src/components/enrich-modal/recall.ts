@@ -2,7 +2,8 @@
 // (its newest run, server lib/enrich-run-recall.ts), laid over the defaults
 // built for the tool (setup-defaults.ts), so the outputs keep the tool's labels
 // and any provider treg added since shows up switched on. A recalled output the
-// tool no longer returns is left out: the run would refuse it.
+// tool no longer returns is left out: the run would refuse it. Fields added
+// from an answer ("+ Column") stay, after the tool's own, read by their path.
 import type { EnrichRecalledChoices } from '@/utils/api'
 import type { Condition, EnrichDraft, InputBinding, OutputPick } from './draft'
 
@@ -10,11 +11,24 @@ import type { Condition, EnrichDraft, InputBinding, OutputPick } from './draft'
 const CUBEX_KEYS = new Set(['email', 'email_status', 'found_by', 'checked_by'])
 
 function recallOutputs(built: OutputPick[], r: EnrichRecalledChoices): OutputPick[] {
-  return built.map(o => {
-    const hit = r.outputs.find(x =>
-      (CUBEX_KEYS.has(x.key) && CUBEX_KEYS.has(o.key) ? x.key === o.key : x.path === o.path))
+  // An answer field is never one of Cubex's own outputs (Email reads the
+  // checked address, not the finder's raw one), even on the same path.
+  const matches = (x: EnrichRecalledChoices['outputs'][number], o: OutputPick) => {
+    if (x.fromAnswer) return !CUBEX_KEYS.has(o.key) && x.path === o.path
+    return CUBEX_KEYS.has(x.key) && CUBEX_KEYS.has(o.key) ? x.key === o.key : x.path === o.path
+  }
+  const own = built.map(o => {
+    const hit = r.outputs.find(x => matches(x, o))
     return hit ? { ...o, enabled: true, columnName: hit.columnName } : { ...o, enabled: false }
   })
+  // A field added from an answer that the tool lists too is that output, ticked.
+  const listed = new Set(built.filter(o => !CUBEX_KEYS.has(o.key)).map(o => o.path).filter(Boolean))
+  const fromAnswer = r.outputs.filter(x => x.fromAnswer && x.path && !listed.has(x.path)).map((x, i) => ({
+    // Unique, and within the run request's 200-character key.
+    key: `answer${i}:${x.path}`.slice(0, 200), path: x.path, label: x.path!.replace(/^\$\.?/, ''), enabled: true,
+    columnName: x.columnName, fromAnswer: true,
+  }))
+  return [...own, ...fromAnswer]
 }
 
 // The column's order first, then any provider it didn't list (treg added it since).

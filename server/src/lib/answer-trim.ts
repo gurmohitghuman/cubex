@@ -12,12 +12,19 @@ const size = (v: unknown) => Buffer.byteLength(JSON.stringify(v) ?? '', 'utf8');
 const MAX_CUTS = 200;
 
 // The biggest child of `node` (an object key or array index) with its path.
-function biggestChild(node: unknown, path: string): { parent: Json | unknown[]; key: string | number; path: string; bytes: number } | null {
-  let best: { parent: Json | unknown[]; key: string | number; path: string; bytes: number } | null = null;
+interface Pick { parent: Json | unknown[]; key: string | number; path: string; bytes: number }
+function biggestChild(node: unknown, path: string): Pick | null {
+  let best: Pick | null = null;
   if (Array.isArray(node)) {
-    node.forEach((v, i) => { const b = size(v); if (!best || b > best.bytes) best = { parent: node, key: i, path: `${path}[${i}]`, bytes: b }; });
+    node.forEach((v, i) => {
+      const b = size(v);
+      if (!best || b > best.bytes) best = { parent: node, key: i, path: `${path}[${i}]`, bytes: b };
+    });
   } else if (isObj(node)) {
-    for (const [k, v] of Object.entries(node)) { const b = size(v); if (!best || b > best.bytes) best = { parent: node, key: k, path: `${path}${pathSegment(k)}`, bytes: b }; }
+    for (const [k, v] of Object.entries(node)) {
+      const b = size(v);
+      if (!best || b > best.bytes) best = { parent: node, key: k, path: `${path}${pathSegment(k)}`, bytes: b };
+    }
   }
   return best;
 }
@@ -35,7 +42,10 @@ function cutOnce(node: Json | unknown[], path: string, excess: number, trimmed: 
     trimmed.push(`${pick.path}[${child.length}:]`);
     return;
   }
-  if (pick.bytes > excess && isObj(child) && Object.keys(child).length > 1) { cutOnce(child, pick.path, excess, trimmed); return; }
+  if (pick.bytes > excess && isObj(child) && Object.keys(child).length > 1) {
+    cutOnce(child, pick.path, excess, trimmed);
+    return;
+  }
   if (Array.isArray(pick.parent)) pick.parent.splice(pick.key as number, 1);
   else delete (pick.parent as Json)[pick.key as string];
   trimmed.push(pick.path);
@@ -47,6 +57,22 @@ export function trimJson(value: unknown, max: number, rootPath: string): { value
   const copy = JSON.parse(JSON.stringify(value));
   const trimmed: string[] = [];
   if (!isObj(copy) && !Array.isArray(copy)) return { value: null, trimmed: [rootPath] };
+  // A list answer keeps every item's place: an item over the budget on its
+  // own is trimmed inside (null when nothing of it fits), then the list loses
+  // its tail, like a list inside one. Cutting items from the front would shift
+  // every index the kept paths read.
+  if (Array.isArray(copy) && copy.length > 1) {
+    copy.forEach((item, i) => {
+      if (item === null || size(item) <= max) return;
+      const inner = trimJson(item, max, `${rootPath}[${i}]`);
+      copy[i] = inner.value;
+      trimmed.push(...inner.trimmed);
+    });
+    let total = size(copy);
+    const before = copy.length;
+    while (copy.length > 1 && total > max) total -= size(copy.pop()) + 1;
+    if (copy.length < before) trimmed.push(`${rootPath}[${copy.length}:]`);
+  }
   for (let cuts = 0, over = size(copy) - max; cuts < MAX_CUTS && over > 0; cuts++, over = size(copy) - max) {
     const before = trimmed.length;
     cutOnce(copy, rootPath, over, trimmed);

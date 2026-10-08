@@ -3,6 +3,7 @@ import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
   EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
   EnrichRowCounts, EnrichRowsScope, EnrichRerunRequest, EnrichRerunEstimate, EnrichColumnSetup, EnrichSpend,
+  AnswerView, AnswerFieldAdded,
 } from './types'
 
 // The drawer shows its own error for each of these (inline, in place), so the
@@ -59,6 +60,16 @@ export const enrichAPI = {
 
   columnSetup: (sheetId: string, column: string): Promise<EnrichColumnSetup> =>
     api.get(`/enrich/sheets/${sheetId}/column-setup`, { ...noServerToast, params: { column } }).then(res => res.data),
+
+  // One cell's stored answer (enrichment and HTTP API columns).
+  answer: (sheetId: string, column: string, row: number): Promise<AnswerView> =>
+    api.get(`/enrich/sheets/${sheetId}/answer`, { ...noServerToast, params: { column, row } }).then(res => res.data),
+
+  // "+ Column": a new column filled from the stored answers (free).
+  addField: (
+    sheetId: string, body: { column: string; jsonPath: string; name: string; row: number },
+  ): Promise<AnswerFieldAdded> =>
+    api.post(`/enrich/sheets/${sheetId}/fields`, body, noServerToast).then(res => res.data),
 
   spend: (days: number): Promise<EnrichSpend> =>
     api.get('/enrich/spend', { ...noServerToast, params: { days } }).then(res => res.data),

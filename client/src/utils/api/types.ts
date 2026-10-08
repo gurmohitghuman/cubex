@@ -188,3 +188,4 @@ export interface HTTPColumnAssociation {
 export * from './types-settings'
 export * from './types-enrich'
 export * from './types-enrich-run'
+export * from './types-enrich-answer'

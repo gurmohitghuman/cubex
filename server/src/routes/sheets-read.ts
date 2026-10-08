@@ -6,6 +6,7 @@ import {
   getSheetColumns, parseRowData, type RowDB,
 } from '../lib/sql-helpers';
 import { getColumnTypes } from '../lib/column-types';
+import { FILL_PLACEHOLDER, fillingColumns } from '../services/answer-field-fill';
 import { scheduleColumnRepair } from '../lib/column-repair';
 import { parseEmptyFilter, buildEmptyFilterSql } from '../lib/empty-filter';
 import { parseColumnFilters, buildColumnFiltersSql } from '../lib/column-filters';
@@ -66,6 +67,10 @@ router.get('/:id', (req: AuthRequest, res) => {
       `SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?${filterClause}`,
     ).get(id, req.userId!, ...filterParams) as { c: number }).c;
     const rows = dbRows.map(r => ({ rowIndex: r.row_index, data: parseRowData(r.data) }));
+    // A column added from stored answers shows ⏳ until its fill is done
+    // (services/answer-field-fill.ts), then the tab reloads into its values.
+    const filling = fillingColumns(id, req.userId!).filter(c => columns.includes(c));
+    for (const r of filling.length ? rows : []) for (const c of filling) r.data[c] = FILL_PLACEHOLDER;
 
     // Strip internal-only columns from the sheet before it goes to the client.
     // `sheet` was SELECT *'d for the server-side filter reads above; the

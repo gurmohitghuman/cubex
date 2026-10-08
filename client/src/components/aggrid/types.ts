@@ -44,7 +44,7 @@ export interface AGGridSpreadsheetProps {
   columnFilters?: Record<string, { type: 'contains'; value: string }>
   onColumnFilterChange?: (column: string, value: string | null) => void
   onSelectedRowsChange?: (rows: number[]) => void
-  onCellClick?: (rowIndex: number, columnName: string, value?: unknown) => void
+  onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   // What the column menu's run blocks call (AI, HTTP API and enrichment columns).
   runActions?: RunMenuActions
   activeHTTPRunsByColumn?: RunByColumn
@@ -61,3 +61,6 @@ export interface AGGridSpreadsheetProps {
   // unmount to unregister.
   registerClearSelection?: (clear: (() => void) | null) => void
 }
+
+// A grid click: the row number the grid shows, and the click count (2 on a double click).
+export interface CellClickInfo { displayRow: number; clicks: number }

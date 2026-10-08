@@ -29,6 +29,7 @@ import { resumeColumnPurges } from './lib/column-purge';
 import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeImports } from './lib/import-undo';
+import { resumeFieldJobs } from './services/answer-field-fill';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
 import tableSheetsRoutes from './routes/tables-sheets';
@@ -176,10 +177,12 @@ createAccountFromEnv().then((result) => {
   if (result === 'exists') console.log('ℹ️  INITIAL_PASSWORD ignored: the account already exists (it only applies on first boot)');
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
-  // 004). Each marks its sheet busy synchronously, before the first request.
+  // 004, and 010's column fills). Each marks its sheet busy synchronously,
+  // before the first request.
   resumeSorts();
   resumeImports();
   resumeColumnPurges();
+  resumeFieldJobs();
   resumeRunCleanups();
   setInterval(() => resumeRunCleanups(RUN_CLEANUP_STALE_MINUTES), RUN_CLEANUP_SWEEP_MS).unref();
 }, (err) => {

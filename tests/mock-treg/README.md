@@ -31,8 +31,9 @@ refused (401).
   `ownKeys` (provider slugs the team has its own key for), `freeProviders` (free public routes),
   `down` (drop every connection, like an unreachable treg), and for tool calls `scenario`,
   `delayMs`, `findMisses`, `sameEmail`, `verifiedDomains`, `verdicts` (see calls.mjs and
-  answers.mjs) and `badDomains` (a call whose request mentions one answers treg's 400
-  `catalog_parameter_invalid`, so its row fails).
+  answers.mjs), `badDomains` (a call whose request mentions one answers treg's 400
+  `catalog_parameter_invalid`, so its row fails) and `bigRawDomains` (a hit whose request mentions one
+  carries a long `raw.sources` list, about 30 KB, so Cubex keeps only part of it).
 - `GET /__mock/billing`: every charge, by Idempotency-Key. `GET /__mock/state` also has
   `inFlightCount`, the calls still being answered: a spec that stops a run waits for 0 before
   checking the bill, so a late charge never lands in the next spec's log.
