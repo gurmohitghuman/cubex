@@ -9,6 +9,7 @@ import { SheetRunDrawers } from '@/components/sheet/SheetRunDrawers'
 import { Sheet, SheetData } from '@/utils/api'
 import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 import { plural } from '@/lib/utils'
+import { anyAutorunOn } from '@/hooks/sheet/useAutorun'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -99,6 +100,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         sheetId={activeSheet?.id}
+        autorunOn={anyAutorunOn(sheetData?.data.autorun)}
         onBeforeImport={async () => {
           if (!activeSheet) return true
           // Flush in-flight saves (can't be recalled — let them land first), then

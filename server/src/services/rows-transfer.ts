@@ -16,6 +16,8 @@ import {
 import { cellOf, validateRowConditions } from './row-selection';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
 import { nextRowIndex } from '../lib/sheet-busy';
+import { autorunRowsRemoved } from '../lib/autorun-mark';
+import { sheetRunBlock } from './autorun-block';
 
 export type { TransferRequest } from './transfer-ledger';
 
@@ -38,9 +40,11 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   if (request.sourceSheetId === request.destinationSheetId) {
     return { fail: 'invalid', error: 'Source and destination sheets must be different.' };
   }
-  if (sheetHasActiveRun(request.sourceSheetId, userId)
-      || sheetHasActiveRun(request.destinationSheetId, userId)) {
-    return { fail: 'active_run', error: 'Cannot transfer rows while either sheet has an active run.' };
+  for (const sheet of [request.sourceSheetId, request.destinationSheetId]) {
+    if (!sheetHasActiveRun(sheet, userId)) continue;
+    // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+    const busy = 'Cannot transfer rows while either sheet has an active run.';
+    return { fail: 'active_run', error: sheetRunBlock(sheet, userId, busy)?.message || busy };
   }
   const sourceColumns = getSheetColumns(request.sourceSheetId, userId, false);
   if ('where' in request.selection) {
@@ -49,7 +53,9 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   }
   const startedAt = Date.now();
   const checkTime = () => {
-    if (Date.now() - startedAt > TRANSFER_MAX_WRITER_MS) throw new TransferBudgetError('Transfer exceeded writer time budget.');
+    if (Date.now() - startedAt > TRANSFER_MAX_WRITER_MS) {
+      throw new TransferBudgetError('Transfer exceeded writer time budget.');
+    }
   };
   const preflight = scanTransferRows(request.sourceSheetId, userId, request.selection, checkTime);
   if (preflight.missingIds.length) return { fail: 'not_found', error: 'One or more selected rows were not found.' };
@@ -87,7 +93,9 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
       for (const [source, destination] of plan.sourceToDestination) projected[destination] = cellOf(row.data, source);
       for (const marker of plan.ghostMarkers) projected[marker] = '';
       storedBytes += Buffer.byteLength(JSON.stringify(projected), 'utf8');
-      if (storedBytes > TRANSFER_MAX_STORED_BYTES) throw new TransferBudgetError('Transfer exceeds stored-data budget.');
+      if (storedBytes > TRANSFER_MAX_STORED_BYTES) {
+        throw new TransferBudgetError('Transfer exceeds stored-data budget.');
+      }
     }
   });
   let nextIndex = nextRowIndex(request.destinationSheetId, userId);
@@ -115,6 +123,10 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
     'DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?',
   ).run(request.destinationSheetId, userId, SEED_ROW_COUNT);
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
+  // Moved rows leave the source: auto-run's fence there follows. The copies are
+  // new rows in the destination, which auto-run fills when it is on there.
+  // TODO(enrichments M3): the answer will list the auto-runs they set off (auto_run).
+  if (request.operation === 'move') autorunRowsRemoved(request.sourceSheetId, userId);
   bumpDataVersion(request.destinationSheetId, userId);
   if (request.operation === 'move') bumpDataVersion(request.sourceSheetId, userId);
   result.dest_row_count = countRows(request.destinationSheetId, userId);
@@ -130,13 +142,15 @@ export function transferRows(userId: string, request: TransferRequest): Transfer
   if ('row_ids' in request.selection && new Set(request.selection.row_ids).size !== request.selection.row_ids.length) {
     return { fail: 'invalid', error: 'row_ids must not contain duplicates.' };
   }
-  if (Object.entries(request.columnMapping).some(([source, destination]) => !source || typeof destination !== 'string')) {
+  const badMapping = ([source, destination]: [string, unknown]) => !source || typeof destination !== 'string';
+  if (Object.entries(request.columnMapping).some(badMapping)) {
     return { fail: 'invalid', error: 'column_mapping must map non-empty source names to destination name strings.' };
   }
   const slot = acquireTransferSlot(userId);
   if (slot !== 'ok') return {
     fail: slot,
-    error: slot === 'rate' ? 'Too many transfer starts. Wait a minute and try again.' : 'Another transfer is already active.',
+    error: slot === 'rate'
+      ? 'Too many transfer starts. Wait a minute and try again.' : 'Another transfer is already active.',
   };
   const hashes = transferHashes(request);
   try {

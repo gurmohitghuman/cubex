@@ -68,3 +68,12 @@ export const ENRICH_MAX_ROW_CAP_USD = 1000;
 export const ENRICH_RUN_POLL_MS = 1500;
 // The Settings spend card's windows, in days (server ENRICH_SPEND_WINDOWS).
 export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;
+
+// Auto-run (server constants-enrich.ts): an enrichment column's default daily
+// cap, and an HTTP API column's default and highest rows a day. The CSV
+// import's auto-run notice counts the rows of at most the first part of a big
+// file and scales the rest by size ("about").
+export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
+export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
+export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
+export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;

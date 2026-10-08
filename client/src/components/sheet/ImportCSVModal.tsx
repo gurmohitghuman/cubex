@@ -1,7 +1,9 @@
 import React, { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { FileText, Loader2, Upload } from 'lucide-react'
+import { Loader2, Upload } from 'lucide-react'
 import { sheetsAPI } from '@/utils/api'
+import { ImportFileCard } from './import-csv/ImportFileCard'
+import { ImportAutorunNotice } from './import-csv/ImportAutorunNotice'
 
 interface ImportCSVModalProps {
   isOpen: boolean
@@ -14,6 +16,8 @@ interface ImportCSVModalProps {
   // row after reload. Same barrier sort/delete/rename use. Optional so the modal
   // works standalone (tests, future call sites) without a barrier.
   onBeforeImport?: () => Promise<boolean>
+  // A column of this sheet has auto-run on: the imported rows are new rows it fills.
+  autorunOn?: boolean
 }
 
 export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
@@ -22,18 +26,23 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
   sheetId,
   onImported,
   onBeforeImport,
+  autorunOn,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [replaceData, setReplaceData] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [pauseAutorun, setPauseAutorun] = useState(false)
+  // The auto-run notice is still working out what the rows set off: the import waits for it.
+  const [noticeReady, setNoticeReady] = useState(true)
 
   if (!isOpen) return null
 
   const reset = () => {
     setSelectedFile(null)
     setUploadProgress(0)
+    setPauseAutorun(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -71,7 +80,7 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
       setUploadProgress(prev => (prev >= 90 ? prev : prev + Math.random() * 20))
     }, 200)
     try {
-      const result = await sheetsAPI.importCSV(sheetId, selectedFile, replaceData)
+      const result = await sheetsAPI.importCSV(sheetId, selectedFile, replaceData, !!autorunOn && pauseAutorun)
       setUploadProgress(100)
 
       setTimeout(() => {
@@ -128,49 +137,21 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting}
-                className="w-full btn-secondary flex items-center justify-center space-x-2 py-8 border-2 border-dashed border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={'w-full btn-secondary flex items-center justify-center space-x-2 py-8 border-2'
+                  + ' border-dashed border-gray-300 hover:border-gray-400'
+                  + ' disabled:opacity-50 disabled:cursor-not-allowed'}
               >
                 <Upload className="h-6 w-6" />
                 <span>Choose CSV File</span>
               </button>
             </div>
           ) : (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <FileText className="h-8 w-8 text-cube-black" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {selectedFile.size >= 1024 * 1024
-                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
-                        : `${(selectedFile.size / 1024).toFixed(1)} KB`}
-                    </p>
-                  </div>
-                </div>
-                {!isImporting && (
-                  <button onClick={reset} className="text-gray-400 hover:text-gray-600">
-                    <span className="sr-only">Remove file</span>
-                    ✕
-                  </button>
-                )}
-              </div>
+            <ImportFileCard file={selectedFile} importing={isImporting} progress={uploadProgress} onRemove={reset} />
+          )}
 
-              {isImporting && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-gray-600">Uploading…</span>
-                    <span className="text-gray-900 font-medium">{Math.round(uploadProgress)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-cube-black h-2 rounded-sm transition-all duration-300 ease-out"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+          {selectedFile && autorunOn && sheetId && (
+            <ImportAutorunNotice sheetId={sheetId} file={selectedFile} paused={pauseAutorun}
+              onPausedChange={setPauseAutorun} disabled={isImporting} onReady={setNoticeReady} />
           )}
 
           <div className="flex justify-end space-x-3">
@@ -185,7 +166,7 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
             {selectedFile && (
               <button
                 onClick={handleImport}
-                disabled={isImporting}
+                disabled={isImporting || (!!autorunOn && !noticeReady)}
                 className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {isImporting ? (

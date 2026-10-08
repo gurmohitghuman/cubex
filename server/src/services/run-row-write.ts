@@ -1,6 +1,7 @@
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/sql-helpers';
 import { getRunStatusAndGen } from './http-runner-status';
+import { markAutorunInputs } from '../lib/autorun-mark';
 
 // Writers shared by HTTP and enrichment rows (split out of http-row.ts).
 
@@ -15,6 +16,8 @@ export const shouldStopHttpRun = (runId: string, capturedGeneration: number): bo
 
 // Apply a {columnName: value} map to one row by building a single json_set call.
 // Paths are precomputed via jsonPath() so dotted/bracketed column names work.
+// Call inside the result's write transaction: a column another column's
+// auto-run reads queues this row for it (lib/autorun-mark.ts).
 export const writeRowColumns = (
   sheetId: string, userId: string, rowIndex: number,
   values: Array<[string, string]>,
@@ -29,4 +32,5 @@ export const writeRowColumns = (
                     updated_at = datetime('now')
     WHERE sheet_id = ? AND user_id = ? AND row_index = ?
   `).run(...args);
+  markAutorunInputs(sheetId, userId, values.map(([col]) => col), { indexes: [rowIndex] });
 };

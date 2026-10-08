@@ -40,6 +40,15 @@ const CHECK_INTERVAL_MS = 1_000;
 
 type Version = { dataVersion: number; rowGeneration: number; sheetsKey: string | null };
 
+// The sheet's active runs, sent with a change: a tab streams a run it didn't
+// start (an auto-run, another tab's run, an agent's) as soon as it starts.
+const activeRuns = (sheetId: string, userId: string): Array<{ id: string; kind: 'ai' | 'http' }> =>
+  db.prepare(`SELECT id, 'http' AS kind FROM http_runs WHERE sheet_id = ? AND user_id = ?
+      AND status IN ('pending', 'running', 'paused')
+    UNION ALL SELECT id, 'ai' AS kind FROM ai_runs WHERE sheet_id = ? AND user_id = ?
+      AND status IN ('pending', 'running', 'paused') LIMIT 50`)
+    .all(sheetId, userId, sheetId, userId) as Array<{ id: string; kind: 'ai' | 'http' }>;
+
 function readVersion(sheetId: string, userId: string): Version | null {
   const row = db.prepare(
     'SELECT data_version AS dv, row_generation AS rg, table_id AS tid FROM sheets WHERE id = ? AND user_id = ?',
@@ -67,7 +76,7 @@ router.get('/:id/changes', (req: AuthRequest, res) => {
 
   // Already ahead — return immediately (no hold).
   if (hasChanged(initial)) {
-    return res.json({ ...initial, changed: true });
+    return res.json({ ...initial, changed: true, activeRuns: activeRuns(id, req.userId!) });
   }
 
   // Over the concurrent-hold cap → don't hold; return an immediate heartbeat so
@@ -94,8 +103,10 @@ router.get('/:id/changes', (req: AuthRequest, res) => {
     // Sheet vanished mid-hold: echo the caller's own baselines so the client
     // sees "unchanged" (its next poll 404s and backs off) rather than a fake
     // rowGeneration:0 that would read as a structural change.
-    if (!cur) return finish({ dataVersion: sinceVersion, rowGeneration: sinceRg ?? 0, sheetsKey: sinceSk, changed: false });
-    if (hasChanged(cur)) return finish({ ...cur, changed: true });
+    if (!cur) {
+      return finish({ dataVersion: sinceVersion, rowGeneration: sinceRg ?? 0, sheetsKey: sinceSk, changed: false });
+    }
+    if (hasChanged(cur)) return finish({ ...cur, changed: true, activeRuns: activeRuns(id, req.userId!) });
     if (Date.now() >= deadline) return finish({ ...cur, changed: false });
   }, CHECK_INTERVAL_MS);
 

@@ -33,9 +33,11 @@ export function useOpenRequest(
           return
         }
         // A run still filling the column: Set up follows it and waits.
+        const autoRun = !!setup.autorun?.enabled
         update({
           ...emptyDraft(), card: setup.card, step: 'setup', recall: setup.choices,
           continueColumn: request.column, columnName: request.column, runId: setup.activeRunId,
+          autoRun, autoRunWas: autoRun, autoRunCapUsd: setup.autorun?.dailyCapUsd ?? null,
         })
       })
       .catch(e => { if (alive) toast.error(e?.response?.data?.error || "Couldn't open this enrichment.") })

@@ -26,6 +26,7 @@ import { enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
 import { RerunOutcome } from './ai-run-rerun';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { autorunFillingColumn } from './autorun-block';
 
 export interface HttpRerunParams {
   sheetId: string;
@@ -64,7 +65,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   `).get(p.sheetId, userId, cleanMaster);
   if (conflictingRun) return {
     fail: 'conflict',
-    message: 'A run on this column is still active, or still clearing the cells of a stopped run. Wait for it to finish, or stop it first.',
+    message: autorunFillingColumn(p.sheetId, userId, cleanMaster) ?? 'A run on this column is still active, or still '
+      + 'clearing the cells of a stopped run. Wait for it to finish, or stop it first.',
   };
 
   // rowid is monotonic insert order — a reliable "newest" tiebreaker when two
@@ -94,7 +96,9 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   const config: HTTPAPIConfig = JSON.parse(latestRun.config);
   // An enrichment starts through services/enrich-run-start.ts (the live tool,
   // inputs, limits and which rows): a plain clone here would skip all that.
-  if (isEnrichmentConfig(config)) return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
+  if (isEnrichmentConfig(config)) {
+    return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
+  }
 
   const newRunId = uuidv4();
 
@@ -137,7 +141,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
         ? (p.forceAllowSecrets ? 1 : 0)
         : (latestRun.allow_secrets ?? 1);
       db.prepare(`
-        INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name, target_rows, allow_secrets, placeholder_work)
+        INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name, target_rows,
+          allow_secrets, placeholder_work)
         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 'seeding')
       `).run(
         newRunId, p.sheetId, userId, JSON.stringify(config), targets.length,
@@ -159,7 +164,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
 
     if (capExceeded) return {
       fail: 'cap',
-      message: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet). This run's column(s) were deleted; re-running would recreate them — delete an unused column first.`,
+      message: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet). This run's column(s) were deleted; `
+        + 're-running would recreate them, so delete an unused column first.',
     };
 
     // A failure fails the run and clears its placeholders, so the user isn't

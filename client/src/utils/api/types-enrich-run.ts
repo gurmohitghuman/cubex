@@ -123,6 +123,8 @@ export interface EnrichColumnSetup {
   card: EnrichToolCard | null
   toolError: string | null
   activeRunId: string | null
+  // The column's auto-run, for Set up's checkbox (null: never turned on).
+  autorun: { enabled: boolean; dailyCapUsd: number | null } | null
 }
 
 export interface EnrichSpendColumn {

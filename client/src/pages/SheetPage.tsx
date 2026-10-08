@@ -32,6 +32,10 @@ import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
+import { useAutorun } from '@/hooks/sheet/useAutorun'
+import { useFollowRuns } from '@/hooks/sheet/useFollowRuns'
+import { AutorunChip } from '@/components/autorun/AutorunChip'
+import { AutorunDialogHost } from '@/components/autorun/AutorunDialogHost'
 
 export const SheetPage: React.FC = () => {
   const { tableId, sheetId: urlSheetId } = useParams<{ tableId: string; sheetId?: string }>()
@@ -188,7 +192,14 @@ export const SheetPage: React.FC = () => {
     silentReload: (id) => silentReloadRef.current(id),
     invalidateInFlightLoads, beginStructuralBarrier, endStructuralBarrier, isStructuralBarrierActive,
     sheetList: { key: table?.sheets_key, onChanged: syncSheetList },
+    onActiveRuns: useFollowRuns({
+      httpRuns: runs.httpRuns, aiRuns: runs.aiRuns, setupSSEConnection: sse.setupSSEConnection,
+      refetchRuns: runs.refetch,
+    }),
   })
+
+  // Auto-run: the headers' ⚡, the header chip and the column's dialog.
+  const autorun = useAutorun({ activeSheet, sheetData, silentReload: id => silentReloadRef.current(id) })
 
   // "Create a new table for the webhook" offer (only under the table cap).
   const { onCreateNewTable } = useWebhookNewTable()
@@ -298,6 +309,7 @@ export const SheetPage: React.FC = () => {
         onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
+        autorunChip={<AutorunChip autorun={autorun} />}
       />
       <div className="flex-1 overflow-hidden">
         {gridArea === 'loading' ? (
@@ -313,6 +325,7 @@ export const SheetPage: React.FC = () => {
             columnFilters={columnFilters}
             lastRenamedColumn={columnOps.lastRenamedColumn}
             columnTypes={sheetData?.data.columnTypes ?? {}}
+            autorun={autorun.view} columnSpend={autorun.spend} onAutorunAction={autorun.onAction}
             activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
             activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
             structuredAIColumns={runs.aiStructuredColumns}
@@ -384,7 +397,9 @@ export const SheetPage: React.FC = () => {
         waitForSaves={cellOps.waitForSaves}
         dropAllPending={cellOps.dropAllPending}
       />
+      <AutorunDialogHost autorun={autorun} columns={columnOps.columnHeaders} />
       <SheetWebhookOverlays
+        autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}
         onCloseDrawer={() => modals.setShowWebhookDrawer(false)}
         sheetId={activeSheet?.id ?? null}

@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { upsertCellsBatch } from '../lib/sql-helpers';
+import { markAutorunInputs } from '../lib/autorun-mark';
 import { clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
@@ -60,7 +61,9 @@ router.post('/runs/:id/commit', (req: AuthRequest, res) => {
     // but the API had no guard, so a direct call (or a cancel/commit edge) could
     // smuggle a commit past a live run. Only terminal runs are safe to commit.
     if (run.status === 'pending' || run.status === 'running' || run.status === 'paused') {
-      return res.status(409).json({ error: 'Cannot commit while the run is still active. Wait for it to finish, or cancel it first.' });
+      return res.status(409).json({
+        error: 'Cannot commit while the run is still active. Wait for it to finish, or cancel it first.',
+      });
     }
 
     // Refuse to commit a SUPERSEDED run. A rerun creates a NEW ai_runs row with the
@@ -76,7 +79,9 @@ router.post('/runs/:id/commit', (req: AuthRequest, res) => {
       ORDER BY created_at DESC, id DESC LIMIT 1
     `).get(run.sheet_id, req.userId!, run.column_name) as { id: string } | undefined;
     if (latest && latest.id !== run.id) {
-      return res.status(409).json({ error: 'This run has been superseded by a newer run on the same column. Commit the latest run instead.' });
+      return res.status(409).json({
+        error: 'This run has been superseded by a newer run on the same column. Commit the latest run instead.',
+      });
     }
 
     // Only commit results whose row still exists. upsertCellsBatch is an
@@ -98,6 +103,7 @@ router.post('/runs/:id/commit', (req: AuthRequest, res) => {
 
     db.transaction(() => {
       upsertCellsBatch(run.sheet_id, req.userId!, updates);
+      markAutorunInputs(run.sheet_id, req.userId!, [run.column_name], { indexes: updates.map(u => u.rowIndex) });
       db.prepare("UPDATE sheets SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
         .run(run.sheet_id, req.userId!);
     })();

@@ -8,6 +8,8 @@ import { countRows, jsonPath, parseRowData, purgeResultsForRows } from '../lib/s
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { bumpDataVersion, sheetHasActiveRun, checkColumns, TxnFail } from './data-plane-shared';
 import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
+import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
+import { sheetRunBlock } from './autorun-block';
 
 export type AppendOutcome =
   | { ok: { rows: Array<{ id: string; index: number }> } }
@@ -15,6 +17,8 @@ export type AppendOutcome =
 
 // ONE immediate txn: MAX(row_index)+1 and all N inserts are atomic vs
 // concurrent webhook/UI adds. Caller has validated cell maps + batch size.
+// The new rows sit above every auto-run watermark, so auto-run fills them.
+// TODO(enrichments M3): the answer will list the auto-runs they set off (auto_run).
 export function appendRows(
   sheetId: string, userId: string, parsedRows: Array<Record<string, string>>,
 ): AppendOutcome {
@@ -75,6 +79,7 @@ export function patchRowById(
       "UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE id = ? AND user_id = ?",
     );
     for (const [col, val] of Object.entries(cells)) set.run(jsonPath(col), val, row.id, userId);
+    markAutorunInputs(row.sheet_id, userId, Object.keys(cells), { ids: [row.id] });
     bumpDataVersion(row.sheet_id, userId);
     const fresh = db.prepare('SELECT data FROM rows WHERE id = ? AND user_id = ?')
       .get(row.id, userId) as { data: string };
@@ -97,7 +102,12 @@ export function deleteRowsByIds(
   let fail: TxnFail | null = null;
   let deleted = 0;
   db.transaction(() => {
-    if (sheetHasActiveRun(sheetId, userId)) { fail = { fail: 'active_run' }; return; }
+    if (sheetHasActiveRun(sheetId, userId)) {
+      // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+      const block = sheetRunBlock(sheetId, userId, '');
+      fail = block?.message ? { fail: 'busy', message: block.message } : { fail: 'active_run' };
+      return;
+    }
     const ph = unique.map(() => '?').join(',');
     const found = db.prepare(
       `SELECT id, row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND id IN (${ph})`,
@@ -108,6 +118,7 @@ export function deleteRowsByIds(
     ).run(sheetId, userId, ...found.map(r => r.id));
     deleted = found.length;
     purgeResultsForRows(sheetId, userId, found.map(r => r.row_index));
+    autorunRowsRemoved(sheetId, userId);
     bumpDataVersion(sheetId, userId);
   }).immediate();
   if (fail) return fail;

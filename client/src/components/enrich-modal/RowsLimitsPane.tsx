@@ -5,6 +5,7 @@ import type { EnrichRowCounts } from '@/utils/api'
 import { effectiveMode, type EnrichDraft, type RowCounts, type RowsMode, type RowsStatus } from './draft'
 import { ConditionsField } from './ConditionsField'
 import { MoneyInput } from './MoneyInput'
+import { AutorunField } from './AutorunField'
 
 interface Props {
   draft: EnrichDraft
@@ -19,6 +20,9 @@ interface Props {
   // The provider that bills this tool directly (the team's own key at treg):
   // treg's limits can't stop its charges, so they aren't offered.
   billedBy: string | null
+  // For the auto-run choice: a webhook adds rows from outside; the daily limit for all enrichments.
+  hasWebhook: boolean
+  dailyLimitUsd: number | null
 }
 
 const count = (n: number | null | undefined) => (n === null || n === undefined ? '…' : n.toLocaleString())
@@ -127,6 +131,9 @@ export const RowsLimitsPane: React.FC<Props> = (p) => {
           </span>
         </span>
       </label>
+
+      <AutorunField draft={draft} update={update} hasWebhook={p.hasWebhook} dailyLimitUsd={p.dailyLimitUsd}
+        billedBy={p.billedBy} />
     </div>
   )
 }

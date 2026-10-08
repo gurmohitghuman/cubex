@@ -21,11 +21,13 @@ import {
   type PositionMap, type SortPlan, type SortStage,
 } from '../lib/sort-plan';
 import { mapResults, parkResults } from '../lib/sort-results';
+import { autorunAfterReorder, autorunKeepUnswept } from '../lib/autorun-mark';
+import { sheetRunBlock, type BlockingRun } from './autorun-block';
 
 export type SortOutcome =
   | { ok: true; rowsReordered: number }
   | { fail: 'column_not_found' }
-  | { fail: 'active_run' }
+  | { fail: 'active_run'; message: string; run: BlockingRun }
   | { fail: 'busy'; error: string };
 
 const READ_SLICE_ROWS = 50_000;
@@ -46,12 +48,10 @@ export async function physicalSortSheet(
   // Sorting mid-run would scatter results into the wrong rows. (A stopped run
   // still clearing its leftover cells doesn't count: the clear finds them by
   // rowid, which a sort never changes.)
-  const activeRun = db.prepare(`
-    SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-    UNION SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-    LIMIT 1
-  `).get(sheetId, userId, sheetId, userId);
-  if (activeRun) return { fail: 'active_run' };
+  // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+  const block = sheetRunBlock(sheetId, userId,
+    'Cannot sort while a run is active on this sheet. Stop or finish the run first.');
+  if (block) return { fail: 'active_run', message: block.message, run: block.run };
 
   const outcome = await withSheetBusy(sheetId, 'sorting', async reserve => {
     // A sort an error stopped halfway finishes first, so its rows are back in
@@ -77,6 +77,8 @@ export async function physicalSortSheet(
     }
     const n = rids.length;
     if (n === 0) return { ok: true as const, rowsReordered: 0 };
+    // Rows auto-run hasn't looked at yet are kept by id before they move.
+    await autorunKeepUnswept(sheetId, userId, rids, positions);
 
     // 2. The new order: order[k] is the row that ends up at position k.
     const order = await sortedOrder(values, direction);
@@ -113,8 +115,8 @@ async function carryOut(
 ): Promise<void> {
   const fence = (bumpDataVersion: boolean) => {
     db.prepare(
-      `UPDATE sheets SET row_generation = row_generation + 1${bumpDataVersion ? ', data_version = data_version + 1' : ''}
-       WHERE id = ? AND user_id = ?`,
+      `UPDATE sheets SET row_generation = row_generation + 1
+         ${bumpDataVersion ? ', data_version = data_version + 1' : ''} WHERE id = ? AND user_id = ?`,
     ).run(sheetId, userId);
   };
   try {
@@ -136,6 +138,7 @@ async function carryOut(
   db.transaction(() => {
     dropPlan(sheetId);
     fence(!!opts.bumpDataVersion);
+    autorunAfterReorder(sheetId, userId, plan.rowIds.length);
     touchSheet(sheetId, userId);
   })();
 }

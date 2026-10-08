@@ -6,6 +6,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { checkTregKey } from '../lib/treg';
 import { getTregToken, saveTregToken, clearTregToken, setDailyLimitMicro, dailyLimitView } from '../services/treg-key';
 import { TREG_KEY_MAX_CHARS, ENRICH_DAILY_LIMIT_MIN_MICRO, ENRICH_DAILY_LIMIT_MAX_USD } from '../lib/constants';
+import { clearKeyPauses } from '../services/autorun-entry';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -25,8 +26,14 @@ const usd = (micro: number) => `$${(micro / 1e6).toFixed(2)}`;
 router.put('/treg-key', (req: AuthRequest, res) => {
   try {
     const key = keyFromBody(req.body);
-    if (!key) return res.status(400).json({ error: "That doesn't look like a treg API key. Paste the whole key, with no spaces." });
+    if (!key) {
+      return res.status(400).json({
+        error: "That doesn't look like a treg API key. Paste the whole key, with no spaces.",
+      });
+    }
     saveTregToken(req.userId!, key);
+    // Auto-runs stopped for the key (or the team's balance and rules) try again.
+    clearKeyPauses(req.userId!);
     res.json({ message: 'treg key saved' });
   } catch (error) {
     console.error('Save treg key error:', error);
@@ -38,14 +45,21 @@ router.put('/treg-key', (req: AuthRequest, res) => {
 router.post('/test-treg-key', async (req: AuthRequest, res) => {
   try {
     const typed = keyFromBody(req.body);
-    if (typed === null) return res.status(400).json({ error: "That doesn't look like a treg API key. Paste the whole key, with no spaces." });
+    if (typed === null) {
+      return res.status(400).json({
+        error: "That doesn't look like a treg API key. Paste the whole key, with no spaces.",
+      });
+    }
     const key = typed ?? getTregToken(req.userId!);
     if (!key) return res.status(400).json({ error: 'Paste your treg API key first.' });
     const result = await checkTregKey(key);
     if (!result.ok) return res.json({ valid: false, problem: result.problem, message: result.message });
     const parts = ['Valid'];
     if (result.balanceMicro !== null) {
-      parts.push(`Balance: ${usd(result.balanceMicro)}${result.onHoldMicro ? ` (${usd(result.onHoldMicro)} on hold)` : ''}`);
+      parts.push(
+        `Balance: ${usd(result.balanceMicro)}` +
+        `${result.onHoldMicro ? ` (${usd(result.onHoldMicro)} on hold)` : ''}`,
+      );
     }
     if (result.team) parts.push(`Team: ${result.team}`);
     res.json({
@@ -83,8 +97,13 @@ router.put('/enrich-daily-limit', (req: AuthRequest, res) => {
       setDailyLimitMicro(req.userId!, null);
       return res.json(dailyLimitView(req.userId!));
     }
-    if (typeof limitUsd !== 'number' || !Number.isFinite(limitUsd) || limitUsd <= 0 || limitUsd > ENRICH_DAILY_LIMIT_MAX_USD) {
-      return res.status(400).json({ error: `The daily limit must be between $0.01 and $${ENRICH_DAILY_LIMIT_MAX_USD.toLocaleString()}, or off.` });
+    if (
+      typeof limitUsd !== 'number' || !Number.isFinite(limitUsd) ||
+      limitUsd <= 0 || limitUsd > ENRICH_DAILY_LIMIT_MAX_USD
+    ) {
+      return res.status(400).json({
+        error: `The daily limit must be between $0.01 and $${ENRICH_DAILY_LIMIT_MAX_USD.toLocaleString()}, or off.`,
+      });
     }
     setDailyLimitMicro(req.userId!, Math.max(ENRICH_DAILY_LIMIT_MIN_MICRO, Math.round(limitUsd * 1e6)));
     res.json(dailyLimitView(req.userId!));

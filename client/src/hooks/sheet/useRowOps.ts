@@ -1,6 +1,8 @@
+// Over 200 lines: row add and delete with the autosave barrier and the two 409 recoveries, one flow.
 import { useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
+import { toastBlocked } from '@/components/sheet/blockedToast'
 
 interface UseRowOpsArgs {
   activeSheet: Sheet | null
@@ -60,7 +62,10 @@ export const useRowOps = ({
     // timeout, abort the delete rather than risk a resurrection race.
     const flushed = await waitForSaves(5000)
     if (!flushed) {
-      toast.error("Couldn't save your pending edits; delete cancelled. Check your connection and try again.", { id: toastId })
+      toast.error(
+        "Couldn't save your pending edits; delete cancelled. Check your connection and try again.",
+        { id: toastId }
+      )
       return
     }
     dropPendingForRows(unique)
@@ -140,7 +145,9 @@ export const useRowOps = ({
       if (error?.response?.status === 409) {
         const hasGen = typeof error?.response?.data?.currentGeneration === 'number'
         if (!hasGen) {
-          toast.error(error?.response?.data?.error ?? 'Cannot delete rows while a run is active. Stop or finish the run first.', { id: toastId })
+          // A paused run holding the sheet is named, with "Cancel it" (blockedToast).
+          toastBlocked(error, 'Cannot delete rows while a run is active. Stop or finish the run first.',
+            { id: toastId, onCancelled: reloadActiveSheet })
           return
         }
         // Only reload if still on the origin sheet — reloadActiveSheet targets
@@ -148,7 +155,10 @@ export const useRowOps = ({
         // sheet switch would yank an unrelated sheet. The origin sheet, when
         // revisited, loads fresh anyway.
         if (activeSheetIdRef.current === originSheetId) {
-          toast.error('This sheet was reordered in another tab. Reloaded. Re-select the rows to delete.', { id: toastId })
+          toast.error(
+            'This sheet was reordered in another tab. Reloaded. Re-select the rows to delete.',
+            { id: toastId }
+          )
           reloadActiveSheet()
         } else {
           toast.error('Couldn\'t delete rows: the sheet was reordered in another tab.', { id: toastId })
@@ -169,7 +179,10 @@ export const useRowOps = ({
       }
       toast.error('Failed to delete rows', { id: toastId })
     }
-  }, [activeSheet, setSheetData, setLoadedRowsCount, dropPendingForRows, waitForSaves, rowGenerationRef, reloadActiveSheet])
+  }, [
+    activeSheet, setSheetData, setLoadedRowsCount, dropPendingForRows,
+    waitForSaves, rowGenerationRef, reloadActiveSheet,
+  ])
 
   // Append N blank rows. Mirrors useColumnOps.handleAddColumn: call the API,
   // optimistically append, no reload, no success toast (the rows appear at once).

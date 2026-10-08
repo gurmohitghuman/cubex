@@ -18,6 +18,7 @@ import { validateRowConditions, rowPasses, cellOf, type RowCondition } from './r
 import {
   applyCellOp, applyTemplate, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
+import { markAutorunInputs } from '../lib/autorun-mark';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
 
@@ -49,7 +50,9 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
     const e = validateRegexPattern(p.pattern ?? ''); if (e) return { fail: 'invalid', error: e };
   } else if (p.operation === 'split') {
     if (!p.pattern) return { fail: 'invalid', error: 'split requires a pattern (the delimiter).' };
-    if (p.index !== undefined && (!Number.isInteger(p.index) || p.index < 0)) return { fail: 'invalid', error: 'index must be a non-negative integer.' };
+    if (p.index !== undefined && (!Number.isInteger(p.index) || p.index < 0)) {
+      return { fail: 'invalid', error: 'index must be a non-negative integer.' };
+    }
   } else if (p.operation === 'template') {
     if (!p.template) return { fail: 'invalid', error: 'template requires a template string.' };
   }
@@ -58,7 +61,9 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
   // template pulls from the whole row; every other op reads source_column.
   if (p.operation !== 'template') {
     if (!p.sourceColumn) return { fail: 'invalid', error: 'source_column is required for this operation.' };
-    if (!columns.includes(p.sourceColumn)) return { fail: 'invalid', error: `Source column "${p.sourceColumn}" not found.` };
+    if (!columns.includes(p.sourceColumn)) {
+      return { fail: 'invalid', error: `Source column "${p.sourceColumn}" not found.` };
+    }
   }
   if (p.where) {
     const invalid = validateRowConditions(columns, p.where);
@@ -72,15 +77,25 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
 
   // Never transform INTO a column an active run owns — the runner writes there.
   const locked = getLockedRunColumns(p.sheetId, userId);
-  if (locked.has(targetColumn)) return { fail: 'locked', error: `Column "${targetColumn}" is being written by an active run. Stop it first.` };
-  if (p.sourceColumn && locked.has(p.sourceColumn)) return { fail: 'locked', error: `Column "${p.sourceColumn}" is being written by an active run. Stop it first.` };
+  if (locked.has(targetColumn)) {
+    return { fail: 'locked', error: `Column "${targetColumn}" is being written by an active run. Stop it first.` };
+  }
+  if (p.sourceColumn && locked.has(p.sourceColumn)) {
+    return {
+      fail: 'locked',
+      error: `Column "${p.sourceColumn}" is being written by an active run. Stop it first.`,
+    };
+  }
 
   if (!targetExists) {
     // Creating a new column: case/token collision + cap (same as column-add).
     const collision = findColumnNameCollision(targetColumn, columns);
     if (collision) return { fail: 'collision', error: columnCollisionMessage(targetColumn, collision) };
     if (columns.length >= MAX_COLUMNS_PER_SHEET) {
-      return { fail: 'cap', error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet). Delete unused columns first.` };
+      return {
+        fail: 'cap',
+        error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet). Delete unused columns first.`,
+      };
     }
   }
 
@@ -96,7 +111,9 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
       // where-filtered transform leaves non-matching rows blank (not a ghost
       // column the read path prunes when zero rows back it).
       if (!targetExists) {
-        for (const r of db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND user_id = ?').all(p.sheetId, userId) as Array<{ id: string }>) {
+        const seedRows = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND user_id = ?')
+          .all(p.sheetId, userId) as Array<{ id: string }>;
+        for (const r of seedRows) {
           setCell.run(targetPath, '', r.id);
         }
         appendColumnsToOrder(p.sheetId, userId, [targetColumn]);
@@ -106,6 +123,7 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
       const rows = db.prepare('SELECT id, data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index ASC')
         .all(p.sheetId, userId) as Array<{ id: string; data: string }>;
       let seen = 0;
+      const written: string[] = [];
       for (const row of rows) {
         if ((++seen & 255) === 0 && Date.now() - startedAt > TRANSFORM_MAX_WRITER_MS) throw new WriterBudgetError();
         const data = parseRowData(row.data);
@@ -114,13 +132,22 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
           ? applyTemplate(p.template!, data)
           : applyCellOp(p.operation, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
         setCell.run(targetPath, value, row.id);
+        written.push(row.id);
         updated++;
       }
-      db.prepare("UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
-        .run(p.sheetId, userId);
+      // A column another column's auto-run reads queues these rows for it.
+      markAutorunInputs(p.sheetId, userId, [targetColumn], { ids: written });
+      db.prepare(
+        "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      ).run(p.sheetId, userId);
     }).immediate();
   } catch (e) {
-    if (e instanceof WriterBudgetError) return { fail: 'budget', error: 'Transform exceeded its time budget. Narrow it with a where filter and retry.' };
+    if (e instanceof WriterBudgetError) {
+      return {
+        fail: 'budget',
+        error: 'Transform exceeded its time budget. Narrow it with a where filter and retry.',
+      };
+    }
     throw e;
   }
 

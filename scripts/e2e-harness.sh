@@ -73,7 +73,8 @@ trap cleanup EXIT
 
 if [ "$DO_BUILD" -eq 1 ]; then
   echo "[build] client + server ..."
-  npm run build >/tmp/cubex-e2e-build.log 2>&1 || { echo "[x] build failed:"; tail -20 /tmp/cubex-e2e-build.log; exit 1; }
+  npm run build >/tmp/cubex-e2e-build.log 2>&1 \
+    || { echo "[x] build failed:"; tail -20 /tmp/cubex-e2e-build.log; exit 1; }
 fi
 [ -f "$ROOT/server/dist/index.js" ]    || { echo "[x] server/dist missing - run without --no-build"; exit 1; }
 [ -f "$ROOT/client/dist/index.html" ]  || { echo "[x] client/dist missing - run without --no-build"; exit 1; }
@@ -98,6 +99,11 @@ export MCP_EFFICIENT_ROWS_ENABLED="${MCP_EFFICIENT_ROWS_ENABLED:-1}"
 # TREG_BASE_URL is an operator setting (never user input); specs drive the
 # mock's state through E2E_TREG.
 export TREG_BASE_URL="http://127.0.0.1:$TREG_PORT"
+# Auto-run looks for rows to fill every half second here (15 s by default), and
+# specs move "today" forward through this file to test daily caps (lib/clock.ts).
+export AUTORUN_SWEEP_MS="${AUTORUN_SWEEP_MS:-500}"
+export AUTORUN_USER_YIELD_MS="${AUTORUN_USER_YIELD_MS:-6000}"
+export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
 
 echo "[boot] mock treg on :$TREG_PORT ..."
 node tests/mock-treg/server.mjs "$TREG_PORT" >/tmp/cubex-e2e-treg.log 2>&1 &
@@ -122,18 +128,21 @@ for _ in $(seq 1 40); do
   fi
   echo -n "."; sleep 0.5
 done
-curl -fsS -o /dev/null "http://localhost:$PORT/api/health" || { echo "[x] server never became ready"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
+curl -fsS -o /dev/null "http://localhost:$PORT/api/health" \
+  || { echo "[x] server never became ready"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
 
 echo "[setup] first-time password ..."
 SETUP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H 'Content-Type: application/json' \
   -d "{\"password\":\"$TEST_PASSWORD\"}" "http://localhost:$PORT/api/auth/setup")
-[ "$SETUP_STATUS" = "200" ] || { echo "[x] setup failed: HTTP $SETUP_STATUS"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
+[ "$SETUP_STATUS" = "200" ] \
+  || { echo "[x] setup failed: HTTP $SETUP_STATUS"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
 
 echo "[test] $SPEC ..."
 set +e
 # Guard the array expansion: stock bash 3.2 errors on "${arr[@]}" when arr is
 # empty under `set -u`. The ${arr[@]+...} form expands to nothing when unset.
-E2E_BASE="http://localhost:$PORT" E2E_TREG="$TREG_BASE_URL" npx playwright test "$SPEC" --reporter=list ${PW_ARGS[@]+"${PW_ARGS[@]}"}
+E2E_BASE="http://localhost:$PORT" E2E_TREG="$TREG_BASE_URL" E2E_CLOCK_FILE="$CUBEX_TEST_CLOCK_FILE" \
+  npx playwright test "$SPEC" --reporter=list ${PW_ARGS[@]+"${PW_ARGS[@]}"}
 RC=$?
 set -e
 

@@ -5,6 +5,7 @@ import { LoadingCellRenderer } from '../LoadingCellRenderer'
 import { WebhookMarkerCell } from '../webhook/WebhookMarkerCell'
 import { AddColumnHeader } from '../AddColumnHeader'
 import type { ColumnType } from '@/utils/api/types'
+import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 
 interface BuildColumnDefsArgs {
   columns: string[]
@@ -21,6 +22,9 @@ interface BuildColumnDefsArgs {
   // Active filters, keyed by column name: their headers show a filter icon.
   emptyFilter?: Record<string, unknown>
   columnFilters?: Record<string, unknown>
+  // Auto-run and spend per column: the header's ⚡ and its tooltip.
+  autorun?: SheetAutorun
+  columnSpend?: Record<string, ColumnSpend>
 }
 
 // Build the colDef array AG Grid renders from. Extracted from AGGridSpreadsheet so the
@@ -32,7 +36,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
   const {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
-    emptyFilter = {}, columnFilters = {},
+    emptyFilter = {}, columnFilters = {}, autorun, columnSpend,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -108,6 +112,8 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           onHeaderClick: openColumnMenu,
           isFiltered: column in emptyFilter || column in columnFilters,
           columnType,
+          autorun: autorun?.columns[column],
+          spend: columnSpend?.[column],
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);

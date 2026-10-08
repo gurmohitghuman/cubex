@@ -13,7 +13,8 @@ export const tablesAPI = {
   getAll: (): Promise<Table[]> => api.get('/tables', noServerToast).then(res => res.data),
   getById: (id: string): Promise<Table> => api.get(`/tables/${id}`, noServerToast).then(res => res.data),
   create: (name: string): Promise<Table> => api.post('/tables', { name }, noServerToast).then(res => res.data),
-  update: (id: string, name: string): Promise<Table> => api.put(`/tables/${id}`, { name }, noServerToast).then(res => res.data),
+  update: (id: string, name: string): Promise<Table> =>
+    api.put(`/tables/${id}`, { name }, noServerToast).then(res => res.data),
   delete: (id: string): Promise<void> => api.delete(`/tables/${id}`, noServerToast).then(() => {}),
 }
 
@@ -37,20 +38,31 @@ export const sheetsAPI = {
     // no-op as saved) and `lockedColumns` (names of columns an active run owns,
     // whose edits were dropped — see getLockedRunColumns server-side).
     mode?: 'upsert' | 'update',
-  ): Promise<{ skipped: number; skippedCells: Array<{ rowIndex: number; columnName: string }>; lockedColumns: string[]; oversizeCells: Array<{ rowIndex: number; columnName: string }> }> =>
+  ): Promise<{
+    skipped: number
+    skippedCells: Array<{ rowIndex: number; columnName: string }>
+    lockedColumns: string[]
+    oversizeCells: Array<{ rowIndex: number; columnName: string }>
+  }> =>
     api.put(`/sheets/${id}/data`, { updates, rowGeneration, mode }, noServerToast)
       .then(r => ({
         skipped: (r.data as { skipped?: number })?.skipped ?? 0,
-        skippedCells: (r.data as { skippedCells?: Array<{ rowIndex: number; columnName: string }> })?.skippedCells ?? [],
+        skippedCells:
+          (r.data as { skippedCells?: Array<{ rowIndex: number; columnName: string }> })?.skippedCells ?? [],
         lockedColumns: (r.data as { lockedColumns?: string[] })?.lockedColumns ?? [],
         // Cells dropped for exceeding the basic-cell size cap (P2-8).
-        oversizeCells: (r.data as { oversizeCells?: Array<{ rowIndex: number; columnName: string }> })?.oversizeCells ?? [],
+        oversizeCells:
+          (r.data as { oversizeCells?: Array<{ rowIndex: number; columnName: string }> })?.oversizeCells ?? [],
       })),
 
-  importCSV: (id: string, file: File, replaceData: boolean = false): Promise<{ rowsImported: number; startingRow: number; newColumns: string[] }> => {
+  // pauseAutorun: auto-run leaves the imported rows alone (the import's "Pause auto-run for this import").
+  importCSV: (
+    id: string, file: File, replaceData: boolean = false, pauseAutorun: boolean = false,
+  ): Promise<{ rowsImported: number; startingRow: number; newColumns: string[] }> => {
     const formData = new FormData()
-    formData.append('file', file)
     formData.append('replaceData', replaceData.toString())
+    formData.append('pauseAutorun', pauseAutorun.toString())
+    formData.append('file', file)
     return api.post(`/sheets/${id}/import`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       // Default 30s axios timeout cuts off large imports. A 50k-row × 80-col CSV
@@ -117,7 +129,9 @@ export const sheetsAPI = {
   // Sheet (tab) CRUD — mounted server-side under /api/tables/:tableId/sheets. All return
   // the authoritative { sheets } list so the caller reconciles (multi-tab/device drift).
   // noServerToast: each caller (useSheetOps) shows its own success/error toast.
-  createSheet: (tableId: string, body: { name?: string; afterSheetId?: string }): Promise<{ sheet: Sheet; sheets: Sheet[] }> =>
+  createSheet: (
+    tableId: string, body: { name?: string; afterSheetId?: string },
+  ): Promise<{ sheet: Sheet; sheets: Sheet[] }> =>
     api.post(`/tables/${tableId}/sheets`, body, noServerToast).then(r => r.data),
 
   renameSheet: (tableId: string, sheetId: string, name: string): Promise<{ sheet: Sheet; sheets: Sheet[] }> =>

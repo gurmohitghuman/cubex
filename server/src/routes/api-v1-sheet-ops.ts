@@ -34,9 +34,7 @@ router.post('/sheets/:id/sort', requireScope('write'), async (req: TokenAuthRequ
       if (result.fail === 'column_not_found') {
         return res.status(404).json({ error: `Column "${column}" not found in this sheet` });
       }
-      return res.status(409).json({
-        error: 'Cannot sort while a run is active on this sheet. Stop or finish the run first.',
-      });
+      return res.status(409).json({ error: result.message });
     }
     res.json({ rows_reordered: result.rowsReordered });
   } catch (error) {

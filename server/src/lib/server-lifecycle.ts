@@ -5,6 +5,7 @@ import { startQueue, stopQueue, resumeRecoveredRuns } from '../queue';
 import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
+import { startAutorunLoop } from '../services/autorun-loop';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -31,6 +32,8 @@ let webhookBucketSweep: ReturnType<typeof setInterval> | null = null;
 export const startBackground = (recovered?: RecoveredRuns) => {
   startQueue()
     .then(() => {
+      // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).
+      startAutorunLoop();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:
       // a failure rolls the individual run to 'failed' inside resumeRecoveredRuns.

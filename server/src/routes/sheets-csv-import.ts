@@ -27,8 +27,12 @@ router.post('/:id/import', csvUploadMiddleware, async (req: AuthRequest, res) =>
   };
   try {
     const { id } = req.params;
-    if (!id || !UUID_PATTERN.test(id)) { cleanupUpload(); return res.status(400).json({ error: 'Invalid sheet ID format' }); }
-    const { replaceData = 'false' } = req.body as { replaceData?: string };
+    if (!id || !UUID_PATTERN.test(id)) {
+      cleanupUpload();
+      return res.status(400).json({ error: 'Invalid sheet ID format' });
+    }
+    const { replaceData = 'false', pauseAutorun = 'false' } =
+      req.body as { replaceData?: string; pauseAutorun?: string };
     const replace = replaceData === 'true';
 
     if (!req.file) return res.status(400).json({ error: 'CSV file is required' });
@@ -60,7 +64,7 @@ router.post('/:id/import', csvUploadMiddleware, async (req: AuthRequest, res) =>
     }
 
     // The import streams the file again, so the upload is removed only after it.
-    const result = await importCsv(id, req.userId!, scanned, replace);
+    const result = await importCsv(id, req.userId!, scanned, replace, { skipAutorun: pauseAutorun === 'true' });
     cleanupUpload();
     if ('fail' in result) {
       if (result.fail === 'busy') return res.status(409).json({ error: result.error });

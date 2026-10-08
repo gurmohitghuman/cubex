@@ -5,6 +5,8 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { countColumnsAndRows, purgeResultsForRows, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { nextRowIndex } from '../lib/sheet-busy';
+import { autorunRowsRemoved } from '../lib/autorun-mark';
+import { sheetRunBlock } from '../services/autorun-block';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -58,7 +60,8 @@ router.post('/:id/rows', (req: AuthRequest, res) => {
 
     if (capRemaining >= 0) {
       return res.status(400).json({
-        error: `Row limit reached (${MAX_ROWS_PER_SHEET} per sheet). You can add at most ${capRemaining} more row${capRemaining === 1 ? '' : 's'}.`,
+        error: `Row limit reached (${MAX_ROWS_PER_SHEET} per sheet). You can add at most ${capRemaining} `
+          + `more row${capRemaining === 1 ? '' : 's'}.`,
       });
     }
 
@@ -116,14 +119,10 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
     // results that a later sort rebinds to the wrong live row, plus wasted API
     // credits. Sheet-wide (any run, any column): a deleted row affects every
     // column's results, not just the run's target column.
-    const activeRun = db.prepare(`
-      SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-      UNION SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-      LIMIT 1
-    `).get(id, req.userId!, id, req.userId!);
-    if (activeRun) return res.status(409).json({
-      error: 'Cannot delete rows while a run is active on this sheet. Stop or finish the run first.',
-    });
+    // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+    const block = sheetRunBlock(id, req.userId!,
+      'Cannot delete rows while a run is active on this sheet. Stop or finish the run first.');
+    if (block) return res.status(409).json({ error: block.message, blockingRun: block.run });
 
     // Same row_generation fence as PUT /:id/data (migration 021): deleting by
     // stale row_index after a sort/replace would delete the WRONG logical rows.
@@ -162,6 +161,8 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
       // different live row, and a preview-commit resurrects the deleted row
       // (it upserts by row_index). See purgeResultsForRows.
       purgeResultsForRows(id, req.userId!, unique);
+      // Appends reuse the positions of deleted last rows: auto-run's fence follows.
+      autorunRowsRemoved(id, req.userId!);
       touchSheet(id, req.userId!);
     })();
 

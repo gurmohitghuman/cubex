@@ -7,6 +7,7 @@ import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import type { ParsedUpdate } from './sheets-data-validate';
+import { markAutorunEdits } from '../lib/autorun-mark';
 
 export interface DataWriteResult {
   // A 400-ready column-name error (reserved / symbol-only / case-token dup) for a
@@ -114,13 +115,18 @@ export function applyDataWrite(args: {
         if (collision) { nameError = columnCollisionMessage(col, collision); return; }
         acceptedNew.push(col);
       }
-      if (existingColList.length + acceptedNew.length > MAX_COLUMNS_PER_SHEET) { capError = { kind: 'columns' }; return; }
+      if (existingColList.length + acceptedNew.length > MAX_COLUMNS_PER_SHEET) {
+        capError = { kind: 'columns' };
+        return;
+      }
     }
 
     // Columns that actually received a write (≥1 surviving row). Only these get
     // appended to column_order: a preview whose rows were all deleted since must
     // not create a column.
     const writtenColumns = new Set<string>();
+    // Cells written, for auto-run: a column another column's auto-run reads queues its row.
+    const edits: Array<{ column: string; rowIndex: number }> = [];
     for (const u of rows) {
       // Drop edits to a column an active run owns (both modes) — the worker is
       // the authoritative writer for that column until the run ends.
@@ -139,6 +145,7 @@ export function applyDataWrite(args: {
           oversizeCells.push({ rowIndex: u.rowIndex, columnName: u.columnName }); continue;
         }
         updateOnly.run(jsonPath(u.columnName), cleaned, id, userId, u.rowIndex);
+        edits.push({ column: u.columnName, rowIndex: u.rowIndex });
       } else {
         // Upsert creates new COLUMNS but must NOT create new ROWS: for a row_index
         // deleted since the preview was generated there's no ON CONFLICT, so a bare
@@ -150,8 +157,10 @@ export function applyDataWrite(args: {
         const value = clampCellChars(cleaned, CELL_MAX_ENRICHMENT);
         upsert.run(uuidv4(), id, userId, u.rowIndex, u.columnName, value, jsonPath(u.columnName), value);
         writtenColumns.add(u.columnName);
+        edits.push({ column: u.columnName, rowIndex: u.rowIndex });
       }
     }
+    markAutorunEdits(id, userId, edits);
     // Only upsert mode can introduce new columns; append only columns we actually
     // wrote (writtenColumns excludes locked + all-rows-deleted) so no ghost.
     const touchedColumns = mode === 'upsert' ? Array.from(writtenColumns) : [];

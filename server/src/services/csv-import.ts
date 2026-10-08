@@ -12,7 +12,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { appendColumnsToOrder, touchSheet } from '../lib/sql-helpers';
-import { deleteRowRange, purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob } from '../lib/import-undo';
+import {
+  deleteRowRange, purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob,
+} from '../lib/import-undo';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
 import { validateCsvImport } from '../lib/csv-import-validate';
@@ -22,6 +24,7 @@ import { yieldToRequests } from '../lib/slices';
 import { abortRunsForSheets } from './run-control';
 import { isPristineSeedSheet } from './transfer-seed';
 import { getLockedRunColumns } from '../routes/sheets-shared';
+import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../lib/autorun-mark';
 
 export type CsvImportOutcome =
   | { ok: {
@@ -44,7 +47,10 @@ export async function importCsv(
   csv: ScannedCsv,
   replace: boolean,
   // seedEmptyRow: as in column-add.ts (web app only).
-  opts: { bumpDataVersion?: boolean; seedEmptyRow?: boolean } = {},
+  // skipAutorun: auto-run leaves the imported rows alone ("Pause auto-run for
+  // this import"); otherwise they are new rows it fills where it is on.
+  // TODO(enrichments M3): v1/MCP answers will list the auto-runs they set off (auto_run).
+  opts: { bumpDataVersion?: boolean; seedEmptyRow?: boolean; skipAutorun?: boolean } = {},
 ): Promise<CsvImportOutcome> {
   const result = validateCsvImport(csv.summary, sheetId, userId, replace);
   if ('error' in result) return { fail: 'validation', error: result.error };
@@ -131,11 +137,15 @@ export async function importCsv(
         if (batch.length >= HEAVY_SLICE_ROWS) { flush(); await yieldToRequests(); }
       }
       flush();
+      if (!replace && opts.skipAutorun) await autorunSkipImport(sheetId, userId, startingRow, next - 1);
+      if (replace) await autorunDropPending(sheetId, userId);
 
       db.transaction(() => {
         // A header-only CSV into an empty sheet still leaves a row to type into
         // (web app only; see seedEmptyRow).
-        if (opts.seedEmptyRow !== false && next === startingRow && !db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId)) {
+        const hasAnyRow = db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1')
+          .get(sheetId, userId);
+        if (opts.seedEmptyRow !== false && next === startingRow && !hasAnyRow) {
           insertRow.run(uuidv4(), sheetId, userId, startingRow, '{}');
         }
         if (replace) {
@@ -147,10 +157,13 @@ export async function importCsv(
             `UPDATE sheets SET column_order = ?, empty_filter = NULL, column_filters = NULL,
                row_generation = row_generation + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
           ).run(replaceColumnOrder(job), sheetId, userId);
+          // Every row is new to auto-run, unless it was paused for this import.
+          autorunAfterReplace(sheetId, userId, opts.skipAutorun ? next - 1 : null);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {
-          db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
+          db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
+            .run(sheetId, userId);
         }
         db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(sheetId);
       })();

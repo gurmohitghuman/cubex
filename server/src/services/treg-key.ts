@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { encrypt, decrypt } from '../lib/crypto';
 import { ENRICH_DEFAULT_DAILY_LIMIT_MICRO } from '../lib/constants';
+import { nowDate, utcDay } from '../lib/clock';
+
+export { utcDay };
 
 // The stored key, or null when none is saved or it no longer decrypts (the
 // encryption key changed): the same contract as getOpenRouterApiKey.
@@ -31,7 +34,8 @@ export function saveTregToken(userId: string, token: string): void {
 }
 
 export function clearTregToken(userId: string): void {
-  db.prepare("UPDATE settings SET treg_token_encrypted = NULL, updated_at = datetime('now') WHERE user_id = ?").run(userId);
+  db.prepare("UPDATE settings SET treg_token_encrypted = NULL, updated_at = datetime('now') WHERE user_id = ?")
+    .run(userId);
 }
 
 // A missing settings row means the default limit; NULL in the column means off.
@@ -49,11 +53,7 @@ export function setDailyLimitMicro(userId: string, micro: number | null): void {
   })();
 }
 
-export function utcDay(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
-export function spentTodayMicro(userId: string, now = new Date()): number {
+export function spentTodayMicro(userId: string, now = nowDate()): number {
   const row = db.prepare('SELECT spent_micro FROM enrich_daily_spend WHERE user_id = ? AND day = ?')
     .get(userId, utcDay(now)) as { spent_micro: number } | undefined;
   return row?.spent_micro ?? 0;

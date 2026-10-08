@@ -2,6 +2,8 @@ import React from 'react'
 import { DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import type { MenuState } from './HeaderContextMenu'
 import type { EnrichMenuAction, RunByColumn, RunMenuActions } from './types'
+import type { AutorunColumn } from '@/utils/api/types-autorun'
+import { AutorunMenuItems } from './AutorunMenuItems'
 
 interface Props {
   columnId: string
@@ -9,6 +11,7 @@ interface Props {
   activeHTTPRunsByColumn: RunByColumn
   setMenu: (m: MenuState) => void
   actions: RunMenuActions
+  autorun?: AutorunColumn
 }
 
 const ITEM = 'text-gray-700 focus:text-gray-900'
@@ -19,7 +22,7 @@ const ITEM = 'text-gray-700 focus:text-gray-900'
 // column is active, only watching and stopping it are offered: a second run
 // on the same column is refused until it ends.
 export const EnrichColumnActions: React.FC<Props> = ({
-  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions,
+  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun,
 }) => {
   const { onEnrichAction } = actions
   if (!onEnrichAction) return null
@@ -46,6 +49,7 @@ export const EnrichColumnActions: React.FC<Props> = ({
         </>
       )}
       <DropdownMenuItem onClick={act('edit')} className={ITEM}>✏️ Edit Enrichment</DropdownMenuItem>
+      <AutorunMenuItems columnId={columnId} autorun={autorun} setMenu={setMenu} actions={actions} />
       {active && (
         <>
           <DropdownMenuItem onClick={act('view')} className={ITEM}>📈 View Run</DropdownMenuItem>

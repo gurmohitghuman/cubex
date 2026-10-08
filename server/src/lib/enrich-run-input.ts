@@ -79,7 +79,7 @@ function parseOutputs(v: unknown): OutputInput[] | string {
   return out;
 }
 
-function parseConditions(v: unknown): EnrichCondition[] | string {
+export function parseConditions(v: unknown): EnrichCondition[] | string {
   if (v === undefined) return [];
   if (!Array.isArray(v) || v.length > MAX_CONDITIONS) return `Use at most ${MAX_CONDITIONS} conditions.`;
   const out: EnrichCondition[] = [];

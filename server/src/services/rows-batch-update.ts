@@ -1,6 +1,7 @@
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/sql-helpers';
 import { bumpDataVersion, checkColumns, TxnFail } from './data-plane-shared';
+import { markAutorunEdits } from '../lib/autorun-mark';
 
 export interface BatchUpdate { rowId: string; cells: Record<string, string> }
 export type BatchUpdateOutcome = { ok: { updated: number } } | TxnFail | { fail: 'duplicate_rows' };
@@ -29,6 +30,8 @@ export function batchUpdateRows(
     for (const update of updates) {
       for (const [col, value] of Object.entries(update.cells)) set.run(jsonPath(col), value, update.rowId, userId);
     }
+    markAutorunEdits(sheetId, userId,
+      updates.flatMap(u => Object.keys(u.cells).map(column => ({ column, rowId: u.rowId }))));
     bumpDataVersion(sheetId, userId);
   }).immediate();
   return fail ?? { ok: { updated: updates.length } };

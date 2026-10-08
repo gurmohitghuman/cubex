@@ -16,6 +16,7 @@ import { runInSlices } from '../lib/slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
 import { statusColumnRuns } from './answer-runs';
+import { markAutorunInputs } from '../lib/autorun-mark';
 
 export const FILL_PLACEHOLDER = '⏳ Processing...';
 const FILLING = 'filling a column';
@@ -85,6 +86,8 @@ async function fill(job: FieldJob): Promise<void> {
     }
     db.transaction(() => {
       for (const [rowid, cell] of cells) write.run(cellPath, cell, rowid, job.user_id);
+      // A column another column's auto-run reads queues these rows for it.
+      markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { rowids: cells.map(c => c[0]) });
       moveCursor.run(slice[slice.length - 1], job.id, job.user_id);
     }).immediate();
     i += slice.length;

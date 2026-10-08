@@ -3,6 +3,7 @@ import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
 import { runInSlices } from './slices';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
+import { autorunAfterReplace, autorunDropPending, autorunRowsRemoved } from './autorun-mark';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
 // rows go in at first_row up to end_row, and appends from elsewhere land at
@@ -31,7 +32,9 @@ export async function purgeSheetResults(sheetId: string, userId: string): Promis
       )`),
     db.prepare(`
       DELETE FROM http_results WHERE rowid IN (
-        SELECT rowid FROM http_results WHERE run_id IN (SELECT id FROM http_runs WHERE sheet_id = ? AND user_id = ?) LIMIT ?
+        SELECT rowid FROM http_results WHERE run_id IN (
+          SELECT id FROM http_runs WHERE sheet_id = ? AND user_id = ?
+        ) LIMIT ?
       )`),
   ];
   for (const slice of slices) {
@@ -60,6 +63,7 @@ export function replaceColumnOrder(job: ImportJob): string {
 export async function undoImport(job: ImportJob): Promise<void> {
   await deleteRowRange(job.sheet_id, job.user_id, job.first_row, job.end_row);
   if (job.is_replace) await purgeSheetResults(job.sheet_id, job.user_id);
+  if (job.is_replace) await autorunDropPending(job.sheet_id, job.user_id);
   db.transaction(() => {
     if (job.is_replace) {
       db.prepare(
@@ -71,7 +75,11 @@ export async function undoImport(job: ImportJob): Promise<void> {
           .run(uuidv4(), job.sheet_id, job.user_id);
       }
     }
-    db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(job.sheet_id, job.user_id);
+    // The removed rows leave auto-run's fence exact (lib/autorun-mark.ts).
+    if (job.is_replace) autorunAfterReplace(job.sheet_id, job.user_id, null);
+    else autorunRowsRemoved(job.sheet_id, job.user_id);
+    db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
+      .run(job.sheet_id, job.user_id);
     db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(job.sheet_id);
   })();
 }

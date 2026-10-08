@@ -12,6 +12,7 @@ import { httpRunSecretRefsRequiringScope, httpConfigHasKeyShapedToken } from '..
 import { type AIRunRow } from './ai-runner';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueAIRun, enqueueAIRerun, enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
+import { autorunStoppedByUser } from './autorun-stop';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -137,6 +138,8 @@ export async function cancelRun(kind: RunKind, runId: string, userId: string): P
      WHERE id = ? AND user_id = ? AND status IN ('pending','running','paused')`,
   ).run(runId, userId);
   if (result.changes === 0) return { fail: 'not_active', message: `Run is not active (status: ${run.status})` };
+  // Stopping an auto-run run pauses that column's auto-run, so its rows aren't picked up again.
+  if (kind === 'http') autorunStoppedByUser(run);
 
   // Status flip first, cleanup second: any in-flight row that hasn't hit its
   // shouldStop check drops its write on the next poll, so we never race a
