@@ -48,7 +48,7 @@ export const AIColumnActions: React.FC<AIActionsProps> = ({
           🔁 Run Missing or Errors
         </DropdownMenuItem>
       )}
-      {onEditAIColumn && (
+      {onEditAIColumn && (actions.canEditAIColumn?.(columnId) ?? true) && (
         <DropdownMenuItem onClick={() => { onEditAIColumn(base); setMenu(null) }}>
           ✏️ Edit / Update Instructions
         </DropdownMenuItem>
