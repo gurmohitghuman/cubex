@@ -20,6 +20,7 @@ import {
 import { existingRowIndexes, rowsWhere } from '../lib/run-rows';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { type HTTPAPIConfig } from '../lib/http-request';
+import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
@@ -91,6 +92,9 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   const allColumns = [cleanMaster, ...extractedColumns];
 
   const config: HTTPAPIConfig = JSON.parse(latestRun.config);
+  // An enrichment starts through services/enrich-run-start.ts (the live tool,
+  // inputs, limits and which rows): a plain clone here would skip all that.
+  if (isEnrichmentConfig(config)) return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
 
   const newRunId = uuidv4();
 

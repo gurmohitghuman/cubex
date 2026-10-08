@@ -69,6 +69,11 @@ export function renameHttpRunColumnRefs(
         rc.headers = headers;
       }
     }
+    // An enrichment's "Only run if" conditions name columns too.
+    const where = config?.enrichment?.rows?.where;
+    if (Array.isArray(where)) {
+      for (const c of where) if (c && c.column === oldName) { c.column = newName; changed = true; }
+    }
     if (changed) update.run(JSON.stringify(config), run.id);
   }
 }

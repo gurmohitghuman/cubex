@@ -51,6 +51,9 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   if (!config || !Array.isArray(config.responseMapping)) {
     return { fail: 'bad_request', message: 'config.responseMapping must be an array' };
   }
+  // Enrichments start through services/enrich-run-start.ts, which checks the
+  // tool, prices the run and sets its limits. A hand-made block here would skip all that.
+  if ('enrichment' in config) return { fail: 'bad_request', message: 'Start enrichments from the Enrichment button.' };
   // Bound the mapping count BEFORE the O(n²) duplicate/JSONPath validation and
   // the giant json_set prepare. A run can create at most MAX_COLUMNS_PER_SHEET
   // columns anyway, so a larger mapping is definitionally over-cap — reject it

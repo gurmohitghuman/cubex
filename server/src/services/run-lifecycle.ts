@@ -87,9 +87,13 @@ export async function resumeRun(
   // bumped generation at startup. Compare-and-set on status='paused': between
   // the SELECT above and here the user can cancel — a bare UPDATE would
   // clobber 'cancelled' back to 'pending' and re-enqueue a killed run.
-  const resumed = db.prepare(
-    `UPDATE ${TABLE[kind]} SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now')
-     WHERE id = ? AND user_id = ? AND status = 'paused'`,
+  // An enrichment run's pause reason (migration 011) ends with the pause.
+  const resumed = db.prepare(kind === 'http'
+    ? `UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
+         pause_reason = NULL, error_message = NULL
+       WHERE id = ? AND user_id = ? AND status = 'paused'`
+    : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ? AND status = 'paused'`,
   ).run(runId, userId);
   if (resumed.changes === 0) return { fail: 'conflict', message: 'Run is no longer paused' };
 

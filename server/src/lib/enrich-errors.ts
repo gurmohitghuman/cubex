@@ -5,7 +5,7 @@
 import { ENRICH_RETRY_MS, ENRICH_UNREACHABLE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MS } from './constants';
 export type PauseReason =
   | 'auth' | 'balance' | 'treg_cap' | 'team_rule' | 'provider_busy' | 'unreachable'
-  | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key';
+  | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key' | 'unconfirmed';
 
 export type CallVerdict =
   | { kind: 'ok' }

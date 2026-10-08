@@ -5,6 +5,7 @@ import { writeSSEHeaders } from '../lib/sse';
 import { acquireSSESlot, SSE_MAX_PER_USER } from '../lib/sse-limits';
 import { httpResultCellValues } from '../lib/http-cell-values';
 import { type HTTPAPIConfig } from '../lib/http-request';
+import { isEnrichmentConfig } from '../lib/enrich-run-config';
 
 // HTTP run SSE stream only — pause/resume/cancel + run reads moved to
 // http-control.ts (thin wrappers over services/run-lifecycle.ts).
@@ -35,9 +36,11 @@ router.get('/jobs/:id/stream', (req, res) => {
   // for the live 'result' events (empty/failed rows write per-mapping markers, not
   // field values). Parsed ONCE at stream open; config is immutable for a run.
   let mappingColumns: string[] = [];
+  let enrichment = false;
   try {
     const cfg = run.config ? (JSON.parse(run.config) as HTTPAPIConfig) : null;
     mappingColumns = cfg?.responseMapping?.map(m => m.columnName) ?? [];
+    enrichment = isEnrichmentConfig(cfg);
   } catch { mappingColumns = []; }
   const masterColumn = run.master_column_name;
 
@@ -100,7 +103,7 @@ router.get('/jobs/:id/stream', (req, res) => {
         let extractedFields: Record<string, unknown> = {};
         try { extractedFields = row.extracted_fields ? JSON.parse(row.extracted_fields) : {}; } catch { /* {} */ }
         const cellValues = httpResultCellValues({
-          status: row.status, extractedFields, mappingColumns, masterColumn,
+          status: row.status, extractedFields, mappingColumns, masterColumn, enrichment,
         });
         res.write(`data: ${JSON.stringify({
           type: 'result', rowIndex: row.row_index, status: row.status,
@@ -124,7 +127,8 @@ router.get('/jobs/:id/stream', (req, res) => {
         // of "Unknown error" (L14). Only meaningful for 'failed'; omitted otherwise.
         res.write(`data: ${JSON.stringify({
           type: 'status', status: r.status,
-          error: r.status === 'failed' ? (r.error_message || undefined) : undefined,
+          // A run that paused itself (an enrichment's limits) carries its reason too.
+          error: r.status === 'failed' || r.status === 'paused' ? (r.error_message || undefined) : undefined,
         })}\n\n`);
         lastStatus = r.status;
       }

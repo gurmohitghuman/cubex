@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../lib/db';
+import { HTTP_RUNS_LIST_MAX } from '../lib/constants';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { type HTTPRunRow } from '../services/http-runner';
@@ -53,8 +54,14 @@ router.get('/runs', authenticateToken, (req: AuthRequest, res) => {
   try {
     const { sheetId } = req.query as { sheetId?: string };
     if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
-    const runs = db.prepare('SELECT * FROM http_runs WHERE sheet_id = ? AND user_id = ? ORDER BY created_at DESC')
-      .all(sheetId, req.userId!);
+    // Bounded: the active runs plus the newest run of each column, never every
+    // run the sheet ever had (reruns and auto-runs add up).
+    const runs = db.prepare(`
+      SELECT * FROM http_runs WHERE sheet_id = ? AND user_id = ?
+        AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL
+          OR rowid IN (SELECT MAX(rowid) FROM http_runs WHERE sheet_id = ? AND user_id = ? GROUP BY master_column_name))
+      ORDER BY created_at DESC, rowid DESC LIMIT ?
+    `).all(sheetId, req.userId!, sheetId, req.userId!, HTTP_RUNS_LIST_MAX);
     res.json(runs);
   } catch (error: any) {
     console.error('Get HTTP runs error:', error);

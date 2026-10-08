@@ -1,11 +1,8 @@
 import React from 'react'
-import { Play } from 'lucide-react'
 import { AccordionSection } from '../AccordionSection'
 import { TregNotice } from '../TregNotice'
 import { LoadingSpinner } from '../LoadingSpinner'
 import { formatCost } from '@/components/ai-modal/format'
-import { plural } from '@/lib/utils'
-import { ENRICH_TEST_ROWS } from '@/lib/constants'
 import type { EnrichDraft } from './draft'
 import { cardMeta } from './copy'
 import { InputsPane, inputsSummary } from './InputsPane'
@@ -14,6 +11,7 @@ import { EmailChecksPane, acceptSummary } from './EmailChecksPane'
 import { OutputsPane, outputsSummary } from './OutputsPane'
 import { RowsLimitsPane } from './RowsLimitsPane'
 import { EstimateBox } from './EstimateBox'
+import { RunButtons } from './RunButtons'
 import { useSetupModel } from './useSetupModel'
 
 interface Props {
@@ -22,15 +20,18 @@ interface Props {
   update: (patch: Partial<EnrichDraft>) => void
   columns: string[]
   selectedCount: number
+  selectedRows: number[]
+  rowGeneration?: number
   hasKey: boolean | undefined
   active: boolean
   filledColumns: Set<string> | null
   onChangeTool: () => void
   onCancel: () => void
+  onRunStarted: (runId: string) => void
 }
 
 // Step 2: inputs mapped to columns, the waterfall's providers, outputs as new
-// columns, rows and limits, and the estimate. Runs arrive with the run engine.
+// columns, rows and limits, the estimate, and the run buttons.
 export const SetupStep: React.FC<Props> = (p) => {
   const { draft, update } = p
   const m = useSetupModel(p)
@@ -119,18 +120,10 @@ export const SetupStep: React.FC<Props> = (p) => {
         </>
       )}
 
-      <div className="flex flex-col items-end gap-1 pt-4 border-t border-gray-200">
-        <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={p.onCancel} className="btn-secondary">Cancel</button>
-          <button type="button" disabled className="btn-secondary">
-            Run all{m.rows !== null ? ` ${m.rows.toLocaleString()}` : ''}
-          </button>
-          <button type="button" disabled className="btn-primary flex items-center gap-1.5">
-            <Play className="h-4 w-4" />Run on {plural(Math.max(1, Math.min(ENRICH_TEST_ROWS, m.rows ?? ENRICH_TEST_ROWS)), 'row')}
-          </button>
-        </div>
-        <p className="text-xs text-gray-500" data-testid="enrich-run-reason">{m.problem ?? 'Runs arrive in the next step.'}</p>
-      </div>
+      <RunButtons sheetId={p.sheetId} draft={draft} update={update} rows={m.rows} counts={m.counts}
+        selectedRows={p.selectedRows} rowGeneration={p.rowGeneration} order={m.order} estimate={est}
+        problem={!m.ready || !m.tool ? 'Loading the enrichment…' : m.problem ?? (p.hasKey === false ? 'Add your treg key in Settings first.' : null)}
+        unpriced={m.unpriced || m.ownKeySingle} onCancel={p.onCancel} onRunStarted={p.onRunStarted} />
     </div>
   )
 }

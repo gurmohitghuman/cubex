@@ -38,6 +38,25 @@ export const toastRunFailure = (data: any) => {
   toast.error(`Processing failed: ${reason}`)
 }
 
+// Progress ticks refetch the active runs at most once per 5 s (see
+// lastRunsRefetchRef in useSheetSSE): every tick would trip the global rate
+// limiter and 429 autosave.
+const PROGRESS_REFETCH_THROTTLE_MS = 5000
+export const refetchRunsThrottled = (lastRef: React.MutableRefObject<number>, refetch: () => void) => {
+  const now = Date.now()
+  if (now - lastRef.current < PROGRESS_REFETCH_THROTTLE_MS) return
+  lastRef.current = now
+  refetch()
+}
+
+// A run that paused itself (an enrichment's spend or daily limit, the treg
+// balance or key, treg unreachable) says why; a pause the user clicked doesn't.
+export const notePausedRun = (data: any, refetch: () => void) => {
+  refetch()
+  const reason = (data.error || '').trim()
+  if (reason) toast.error(`Paused: ${reason.length > 300 ? `${reason.slice(0, 300)}…` : reason}`)
+}
+
 // Refs/setters/callbacks handleTerminalStatus needs. Bundled so the hook passes
 // one object instead of a long arg list.
 export interface TerminalStatusCtx {

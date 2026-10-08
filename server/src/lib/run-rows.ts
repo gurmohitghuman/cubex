@@ -9,7 +9,8 @@ import { yieldToRequests } from './slices';
 // processing replaces it, so these are exactly the unfinished rows; null for a
 // legacy run without one). `targets` narrows a rerun to its rows. Rows come in
 // row order, and each page is read fresh, so it reflects edits made meanwhile.
-export interface RunRow { rowIndex: number; data: Record<string, string> }
+// rowId: the stable rows.id (enrichment ledger entries key on it; sorts move row_index).
+export interface RunRow { rowIndex: number; rowId: string; data: Record<string, string> }
 
 const PLACEHOLDER = '⏳ Processing...';
 const PAGE_ROWS = 500;
@@ -26,10 +27,10 @@ export async function* runRows(
     for (let i = 0; i < sorted.length; i += PAGE_ROWS) {
       const chunk = sorted.slice(i, i + PAGE_ROWS);
       const rows = db.prepare(
-        `SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index IN (${chunk.map(() => '?').join(',')}) ORDER BY row_index`,
-      ).all(sheetId, userId, ...chunk) as Array<{ row_index: number; data: string }>;
+        `SELECT row_index, id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index IN (${chunk.map(() => '?').join(',')}) ORDER BY row_index`,
+      ).all(sheetId, userId, ...chunk) as Array<{ row_index: number; id: string; data: string }>;
       for (const r of rows) {
-        const row = { rowIndex: r.row_index, data: parseRowData(r.data) };
+        const row = { rowIndex: r.row_index, rowId: r.id, data: parseRowData(r.data) };
         if (unfinished(row)) yield row;
       }
     }
@@ -37,16 +38,16 @@ export async function* runRows(
   }
   const inTargets = targets ? new Set(targets) : null;
   const page = placeholderColumn
-    ? db.prepare(`SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
+    ? db.prepare(`SELECT row_index, id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
         AND json_extract(data, ?) = '⏳ Processing...' ORDER BY row_index LIMIT ?`)
-    : db.prepare('SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?');
+    : db.prepare('SELECT row_index, id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?');
   const path = placeholderColumn ? [jsonPath(placeholderColumn)] : [];
   for (let after = Number.MIN_SAFE_INTEGER; ;) {
-    const rows = page.all(sheetId, userId, after, ...path, PAGE_ROWS) as Array<{ row_index: number; data: string }>;
+    const rows = page.all(sheetId, userId, after, ...path, PAGE_ROWS) as Array<{ row_index: number; id: string; data: string }>;
     if (rows.length === 0) return;
     after = rows[rows.length - 1].row_index;
     for (const r of rows) {
-      if (!inTargets || inTargets.has(r.row_index)) yield { rowIndex: r.row_index, data: parseRowData(r.data) };
+      if (!inTargets || inTargets.has(r.row_index)) yield { rowIndex: r.row_index, rowId: r.id, data: parseRowData(r.data) };
     }
   }
 }

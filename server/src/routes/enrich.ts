@@ -7,6 +7,7 @@ import { searchTools, getTool, featuredTools, type CatalogFailure } from '../ser
 import { estimateEnrichment, readEnrichBalance, sheetSetupInfo } from '../services/enrich-setup';
 import { parseEstimateInput } from '../lib/enrich-estimate-input';
 import { toolAccess } from '../services/enrich-access';
+import runRoutes from './enrich-runs';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -98,5 +99,8 @@ router.get('/balance', async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Failed to read the treg balance' });
   }
 });
+
+// Starting, reading and resuming runs (routes/enrich-runs.ts).
+router.use(runRoutes);
 
 export default router;

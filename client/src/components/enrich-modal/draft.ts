@@ -59,6 +59,9 @@ export interface EnrichDraft {
   maxCostPerRowUsd: number | null   // null: the estimate's default
   spendLimitUsd: number | null      // null: the estimate's high end
   fresh: boolean
+  // The status column a run already made from this draft: the next run adds to
+  // it (rows not enriched yet) instead of making new columns.
+  continueColumn: string | null
 }
 
 export const EMAIL_PATTERNS = ['first.last', 'firstlast', 'first', 'flast', 'f.last', 'first_last'] as const
@@ -69,6 +72,7 @@ export function emptyDraft(): EnrichDraft {
     providerOrder: [], skipProviders: [], stopAtFirst: false,
     emailChecks: { accept: 'safest', guess: true, pattern: 'first.last' },
     outputs: [], rowsMode: 'all', conditions: [], maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false,
+    continueColumn: null,
   }
 }
 

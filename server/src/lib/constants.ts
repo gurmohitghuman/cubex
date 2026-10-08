@@ -88,6 +88,8 @@ export const HTTP_DEFAULT_BATCH_SIZE = 5;
 // rate-limit well below this, and a burst of hundreds of concurrent requests
 // mostly buys 429s. Env-overridable for APIs that allow more.
 export const HTTP_MAX_CONCURRENCY = envInt('HTTP_MAX_CONCURRENCY', 20);
+// GET /api/http/runs: active runs plus each column's newest, at most this many.
+export const HTTP_RUNS_LIST_MAX = 500;
 // Requests an HTTP column preview makes at once (it previews up to 20 rows, so
 // one at a time could run past its 60 s deadline).
 export const HTTP_PREVIEW_CONCURRENCY = 5;

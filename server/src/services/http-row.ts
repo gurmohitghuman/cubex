@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { touchSheet, jsonPath } from '../lib/sql-helpers';
+import { touchSheet } from '../lib/sql-helpers';
 import { withSheetColumns } from '../lib/http-request-template';
 import {
   makeHTTPRequest,
@@ -9,40 +9,15 @@ import {
   type HTTPAPIConfig,
 } from '../lib/http-request';
 import { extractOutcome } from '../lib/jsonpath-extract';
-import { getRunStatusAndGen } from './http-runner-status';
+import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import { httpResultCellValues } from '../lib/http-cell-values';
 
-// True if the worker should stop processing rows. See ai-runner for the
-// generation-mismatch rationale (pause/resume race fix).
-const shouldStop = (runId: string, capturedGeneration: number): boolean => {
-  const cur = getRunStatusAndGen(runId);
-  if (cur === null) return true;
-  if (cur.status === 'paused' || cur.status === 'cancelled') return true;
-  return cur.generation !== capturedGeneration;
-};
+const shouldStop = shouldStopHttpRun;
 
 // Thrown inside the result-write txn when an atomic re-check finds the run is no
 // longer ours (cancel/resume raced us). Rolls back; the catch drops it benignly.
 const STOP_SENTINEL = Symbol('run-stopped');
-
-// Apply a {columnName: value} map to one row by building a single json_set call.
-// Paths are precomputed via jsonPath() so dotted/bracketed column names work.
-const writeRowColumns = (
-  sheetId: string, userId: string, rowIndex: number,
-  values: Array<[string, string]>,
-) => {
-  if (values.length === 0) return;
-  const setExprParts = values.map(() => `?, ?`).join(', ');
-  const args: any[] = [];
-  for (const [col, val] of values) args.push(jsonPath(col), val);
-  args.push(sheetId, userId, rowIndex);
-  db.prepare(`
-    UPDATE rows SET data = json_set(data, ${setExprParts}),
-                    updated_at = datetime('now')
-    WHERE sheet_id = ? AND user_id = ? AND row_index = ?
-  `).run(...args);
-};
 
 // Process a single sheet row: build the request, extract fields, write back into rows.data.
 export async function processHTTPRow(

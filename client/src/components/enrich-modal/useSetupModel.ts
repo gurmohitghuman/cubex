@@ -4,6 +4,7 @@ import { rowsFor, type EnrichDraft, type RowCounts } from './draft'
 import { buildSetup } from './setup-defaults'
 import { boundInputs, inputProblem } from './readiness'
 import { namesProblem } from './outputs'
+import { reusableNames } from './run-request'
 import { conditionsProblem } from './ConditionsField'
 import { providerStates } from './ProvidersPane'
 import { useSetupData } from './useSetupData'
@@ -46,8 +47,12 @@ export function useSetupModel({ sheetId, draft, update, columns, selectedCount, 
 
   const inputsProblem = ready && tool ? inputProblem(tool, draft.bindings, columns) : null
   const noProvider = !!providersOn && providersOn.length === 0
-  const statusNameProblem = ready ? namesProblem(draft.columnName, [], columns, null) : null
-  const outputNameProblem = ready && !statusNameProblem && !card?.addsRows ? namesProblem(draft.columnName, draft.outputs, columns, room) : null
+  // A run that adds to the column an earlier run of this draft made may reuse its names.
+  const reuse = reusableNames(draft)
+  const taken = columns.filter(c => !reuse.has(c))
+  const statusNameProblem = ready ? namesProblem(draft.columnName, [], taken, null) : null
+  const outputNameProblem = ready && !statusNameProblem && !card?.addsRows
+    ? namesProblem(draft.columnName, draft.outputs, taken, room === null ? null : room + reuse.size) : null
   const limitsProblem = (draft.maxCostPerRowUsd ?? 0) > ENRICH_MAX_ROW_CAP_USD
     ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.` : null
   const problem = !ready ? null : inputsProblem
@@ -86,7 +91,7 @@ export function useSetupModel({ sheetId, draft, update, columns, selectedCount, 
         : tool.price.type === 'free' || tool.price.usd === 0 ? 'This tool is free.' : 'You pay only when it finds something.'
 
   return {
-    card, tool, data, ready, sent, counts, rows, providers, providersOn, problem, statusNameProblem, outputNameProblem,
+    card, tool, data, ready, sent, counts, rows, providers, providersOn, problem, statusNameProblem, outputNameProblem, order,
     estimate, missNote, blocked, limitsProblem, unpriced, ownKeySingle,
     ownKeys: !!providers?.rows.some(r => r.access === 'own'),
     ownKeyProvider: card?.providerName ?? card?.provider ?? 'the provider',
