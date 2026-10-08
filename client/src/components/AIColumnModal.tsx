@@ -54,7 +54,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   const previewSize = 5
 
   const [columnSuggestions, setColumnSuggestions] = useState<Array<{ name: string; reference: string }>>([])
-  const nameError = useColumnNameValidation(columnName, columnSuggestions)
+  const [editingName, setEditingName] = useState<string | null>(null) // the column an edit opened on
+  const nameError = useColumnNameValidation(columnName, columnSuggestions, editingName)
   const sugg = usePromptSuggestions(prompt, setPrompt)
 
   const models = useModels(isOpen, sel.model)
@@ -81,7 +82,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
 
   // Prefill on open from edit-mode payload or sheet defaults (once per open).
   const init = useAIModalInit(isOpen, sheetId, defaultAiModel, defaultAiConcurrency, sel.accountDefaultModel, {
-    setColumnSuggestions, setColumnName, setPrompt, setSystemPrompt, setModel: sel.setModel,
+    setColumnSuggestions, setColumnName, setPrompt, setSystemPrompt, setModel: sel.setModel, setEditingName,
     setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setConcurrency,
     onEditPrefill: () => resetState(),
     // Retained config = the modal reopened with a kept draft still in state.
