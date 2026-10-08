@@ -23,6 +23,13 @@ export const SILENT_RELOAD_MAX_ROWS = 4000;
 export const SILENT_RELOAD_BELOW_ROWS = 1000;
 export const SILENT_RELOAD_LEAD_ROWS = 250;
 
+// The "type it in" effect when a cell gets its value (aggrid/typingTicker.ts):
+// per character, capped per cell however long the value is, and how many cells
+// may type at once (past that, a big batch shows its values straight away).
+export const TYPING_MS_PER_CHAR = 20;
+export const TYPING_MAX_MS = 600;
+export const TYPING_MAX_ACTIVE = 200;
+
 // AI run concurrency (in-run request fan-out). Mirrors server/src/lib/constants.ts
 // (the server clamps; the slider max must match). Free OpenRouter models
 // rate-limit above FREE_MODEL_CONCURRENCY_WARN, so the modal warns past it.
