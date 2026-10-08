@@ -19,6 +19,9 @@ interface InitSetters {
   // was retained (another column's form, a streaming preview) — otherwise the
   // prefill lands on top of foreign state.
   onEditPrefill?: () => void
+  // The column an edit opened on (null for a new column): the name check lets
+  // that name through instead of reporting it as taken.
+  setEditingName?: (name: string | null) => void
   // True when the modal reopened with RETAINED config (a kept draft — columnName
   // or prompt already present). The modal stays mounted on close, so its model/
   // concurrency survive; without this the reopen's sheet-defaults effect would
@@ -79,6 +82,7 @@ export function useAIModalInit(
     }
     if (prefilled.current) return
     prefilled.current = true
+    s.setEditingName?.(null)
 
     sheetsAPI.getColumns(sheetId)
       .then(s.setColumnSuggestions)
@@ -94,6 +98,7 @@ export function useAIModalInit(
         try { localStorage.removeItem('ai_modal_initial') } catch { /* non-fatal */ }
         editPrefill.current = true
         s.onEditPrefill?.()
+        if (init.mode === 'edit' && init.columnName) s.setEditingName?.(init.columnName)
         if (init.columnName) s.setColumnName(init.columnName)
         if (init.prompt) s.setPrompt(init.prompt)
         if (init.systemPrompt) s.setSystemPrompt(init.systemPrompt)

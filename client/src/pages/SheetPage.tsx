@@ -311,6 +311,7 @@ export const SheetPage: React.FC = () => {
             columnTypes={sheetData?.data.columnTypes ?? {}}
             activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
             activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
+            structuredAIColumns={runs.aiStructuredColumns}
             onCellEdit={cellOps.handleOptimizedCellEdit}
             onCellClick={(rowIndex, columnName, value) => {
               // Clicking the read-only webhook marker cell opens the raw payload.

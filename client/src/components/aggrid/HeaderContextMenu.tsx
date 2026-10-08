@@ -79,6 +79,8 @@ export interface HeaderContextMenuProps {
   onRunAIForColumn?: (baseName: string, columnName: string) => void
   onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (baseName: string) => void
+  // False for a column of a structured (multi-column) run: no edit item there.
+  canEditAIColumn?: (columnName: string) => boolean
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
 }
 
@@ -89,7 +91,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
     activeHTTPRunsByColumn, activeAIRunsByColumn,
     onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows,
     onRunHTTPForColumn, onRunHTTPForRows, onRunHTTPForMissingOrError,
-    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn, onStopRunForColumn,
+    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn, canEditAIColumn, onStopRunForColumn,
   } = props
 
   if (!menu) return null
@@ -146,7 +148,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           setMenu={setMenu}
           onRunAIForColumn={onRunAIForColumn}
           onRunAIMissingOrError={onRunAIMissingOrError}
-          onEditAIColumn={onEditAIColumn}
+          onEditAIColumn={canEditAIColumn?.(menu.columnId) === false ? undefined : onEditAIColumn}
           onStopRunForColumn={onStopRunForColumn}
         />
 

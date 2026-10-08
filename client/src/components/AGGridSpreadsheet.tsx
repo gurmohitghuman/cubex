@@ -29,7 +29,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     emptyFilter, onEmptyFilterChange, columnFilters, onColumnFilterChange,
     onSelectedRowsChange, onCellClick,
     onRunHTTPForColumn, onRunHTTPForRows, onRunHTTPForMissingOrError,
-    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn,
+    onRunAIForColumn, onRunAIMissingOrError, onEditAIColumn, canEditAIColumn,
     columnTypes = {},
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onStopRunForColumn, onColumnReorder, sheetId,
@@ -187,7 +187,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
         onRunHTTPForMissingOrError={onRunHTTPForMissingOrError}
         onRunAIForColumn={onRunAIForColumn}
         onRunAIMissingOrError={onRunAIMissingOrError}
-        onEditAIColumn={onEditAIColumn}
+        onEditAIColumn={onEditAIColumn} canEditAIColumn={canEditAIColumn}
         onStopRunForColumn={onStopRunForColumn}
       />
 

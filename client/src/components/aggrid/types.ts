@@ -33,6 +33,9 @@ export interface AGGridSpreadsheetProps {
   onRunAIForColumn?: (baseName: string, columnName: string) => void
   onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   onEditAIColumn?: (baseName: string) => void
+  // False for a column of a structured (multi-column) run: the edit dialog only
+  // knows single-column runs, so "Edit / Update Instructions" is hidden there.
+  canEditAIColumn?: (columnName: string) => boolean
   activeHTTPRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
   activeAIRunsByColumn?: Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
