@@ -1,5 +1,4 @@
 import React from 'react'
-import { INITIAL_ROW_LOAD } from '@/lib/constants'
 import { AIColumnModal } from '@/components/AIColumnModal'
 import { HTTPAPIColumnModal } from '@/components/HTTPAPIColumnModal'
 import { EnrichmentDrawer } from '@/components/EnrichmentDrawer'
@@ -21,7 +20,8 @@ interface SheetRunDrawersProps {
   setShowHTTPAPIColumnModal: (b: boolean) => void
   setShowEnrichmentDrawer: (b: boolean) => void
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>
-  loadSheetData: (sheetId: string, limit?: number, offset?: number, opts?: { silent?: boolean }) => Promise<void> | void
+  // Background refresh of the held rows; keeps the viewport (reloadWindow.ts).
+  silentReload: (sheetId: string) => Promise<void> | void
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => void | Promise<void>
   fetchActiveAIRuns: (sheetId: string) => unknown
   fetchActiveHTTPRuns: (sheetId: string) => unknown
@@ -34,7 +34,7 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
   showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, clearEnrichOpen,
   enrichWatch, stopEnrichWatch,
   setShowAddColumnModal, setShowHTTPAPIColumnModal, setShowEnrichmentDrawer,
-  setSheetData, loadSheetData, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
+  setSheetData, silentReload, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
 }) => {
   if (!activeSheet) return null
   return (
@@ -57,7 +57,7 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
           // it picks up the newly created column + its '⏳ Processing...' cells. The
           // load's side-load chain also runs reconnectToActiveRuns to attach SSE.
           // Matches the menu run actions; a loud reload here flashed the page on create.
-          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          silentReload(activeSheet.id)
           // No success toast — the new column appears in the grid and
           // cells visibly start filling with '⏳ Processing...'.
         }}
@@ -82,11 +82,11 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
           // (seeding paints ⏳ as it goes). The drawer stays open on the run.
           setupSSEConnection(runId, 'http')
           fetchActiveHTTPRuns(activeSheet.id)
-          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          silentReload(activeSheet.id)
         }}
         onRunChanged={() => {
           fetchActiveHTTPRuns(activeSheet.id)
-          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          silentReload(activeSheet.id)
         }}
         openRequest={enrichOpen}
         onOpenHandled={clearEnrichOpen}
@@ -104,7 +104,7 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
           // SILENT reload — see the AI modal above. No page flash on create; the new
           // columns + '⏳ Processing...' cells appear and SSE attaches via the load's
           // reconnectToActiveRuns side-load.
-          loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0, { silent: true })
+          silentReload(activeSheet.id)
           // No success toast — new columns visible immediately, processing
           // status shows in each cell.
         }}

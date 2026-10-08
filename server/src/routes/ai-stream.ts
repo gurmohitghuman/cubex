@@ -3,7 +3,7 @@ import { db } from '../lib/db';
 import { authenticateUser } from '../lib/auth';
 import { writeSSEHeaders } from '../lib/sse';
 import { acquireSSESlot, SSE_MAX_PER_USER } from '../lib/sse-limits';
-import { aiDataCellSummary, parseScrapedData, parseSearchQueries } from '../lib/ai-data-cell';
+import { resultEvents, structuredRunColumns, type StreamRun, type StreamResult } from '../lib/ai-stream-events';
 
 const router = express.Router();
 
@@ -82,10 +82,15 @@ router.get('/runs/:id/stream', (req, res) => {
 
   const tick = () => {
     try {
-      const r = db.prepare(
-        'SELECT status, processed_rows, total_rows, column_name, use_openrouter_web_search, error_message, output_columns FROM ai_runs WHERE id = ?',
-      ).get(id) as { status: string; processed_rows: number; total_rows: number; column_name: string; use_openrouter_web_search: number; error_message: string | null; output_columns: string | null } | undefined;
+      const r = db.prepare(`
+        SELECT status, processed_rows, total_rows, column_name, use_openrouter_web_search, error_message,
+               output_columns, sheet_id, status_column, data_column
+        FROM ai_runs WHERE id = ?
+      `).get(id) as StreamRun & {
+        status: string; processed_rows: number; total_rows: number; error_message: string | null;
+      } | undefined;
       if (!r) { clearInterval(timer); try { res.end(); } catch {} return; }
+      const structuredColumns = structuredRunColumns(r);
 
       const newResults = db.prepare(`
         SELECT rowid AS cursor, id, row_index, output_value, status, error_message, scraped_data,
@@ -94,51 +99,13 @@ router.get('/runs/:id/stream', (req, res) => {
         WHERE run_id = ? AND rowid > ?
         ORDER BY rowid ASC
         LIMIT 200
-      `).all(id, lastRowid) as Array<{
-        cursor: number; id: string; row_index: number; output_value: string;
-        status: string; error_message: string | null; scraped_data: string | null;
-        cost_usd: number | null; web_search_queries: string | null;
-      }>;
+      `).all(id, lastRowid) as Array<StreamResult & { cursor: number }>;
 
-      const needsDataColumn = !!r.use_openrouter_web_search;
+      // Result events (lib/ai-stream-events.ts): one per cell for a single-column
+      // run (+ its "(Data)" cell), one carrying every typed cell for a structured run.
       for (const row of newResults) {
-        // Structured (multi-column) run: output_value is a raw JSON object, not a
-        // single cell value — streaming it into one column would show a JSON blob.
-        // Its N typed columns (and "(Data)") update via the sheet live-update poll:
-        // each row's write bumps data_version (ai-row-writers-multi.ts). Still
-        // advance the cursor so progress + terminal logic proceed.
-        if (r.output_columns) { lastRowid = row.cursor; continue; }
-        // Output column event
-        res.write(`data: ${JSON.stringify({
-          type: 'result',
-          rowIndex: row.row_index,
-          columnName: r.column_name,
-          outputValue: row.status === 'failed' ? '' : row.output_value,
-          status: row.status,
-          resultId: row.id,
-          errorMessage: row.error_message || undefined,
-          hasScrapedData: !!row.scraped_data,
-        })}\n\n`);
-        // Data column event — only emit when the run created a (Data) column.
-        if (needsDataColumn) {
-          const dataColName = r.column_name.endsWith(' (Output)')
-            ? r.column_name.replace(/ \(Output\)$/, ' (Data)')
-            : `${r.column_name} (Data)`;
-          // Reconstruct the SAME (Data) cell the worker persisted (sources,
-          // searches, cost: lib/ai-data-cell.ts) instead of always sending '',
-          // which blanked a populated (Data) cell live until a reload (L9).
-          const dataValue = row.status === 'failed'
-            ? '❌ Error'
-            : aiDataCellSummary(parseScrapedData(row.scraped_data), 'Searched', {
-              queries: parseSearchQueries(row.web_search_queries), costUsd: row.cost_usd,
-            });
-          res.write(`data: ${JSON.stringify({
-            type: 'result',
-            rowIndex: row.row_index,
-            columnName: dataColName,
-            outputValue: dataValue,
-            status: row.status,
-          })}\n\n`);
+        for (const event of resultEvents(userId, r, row, structuredColumns)) {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
         }
         lastRowid = row.cursor;
       }

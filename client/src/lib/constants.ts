@@ -13,8 +13,15 @@ export const CELL_MAX_BASIC = 8000;
 // real network. load-more pulls the next page on scroll-end. Also the floor for
 // a silent (background) reload so it doesn't shrink the window below the baseline.
 export const INITIAL_ROW_LOAD = 300;
-// Hard cap on a silent (background) reload's row count (server also caps at 1000).
-export const SILENT_RELOAD_MAX_ROWS = 1000;
+// Silent (background) reloads (hooks/sheet/reloadWindow.ts) refetch the held
+// rows from the top in pages of SILENT_RELOAD_PAGE_ROWS (the server's GET cap),
+// up to SILENT_RELOAD_MAX_ROWS (4 requests). A viewport deeper than that cap
+// minus SILENT_RELOAD_BELOW_ROWS refetches a cap-sized slice starting
+// SILENT_RELOAD_LEAD_ROWS above its first rendered row instead.
+export const SILENT_RELOAD_PAGE_ROWS = 1000;
+export const SILENT_RELOAD_MAX_ROWS = 4000;
+export const SILENT_RELOAD_BELOW_ROWS = 1000;
+export const SILENT_RELOAD_LEAD_ROWS = 250;
 
 // AI run concurrency (in-run request fan-out). Mirrors server/src/lib/constants.ts
 // (the server clamps; the slider max must match). Free OpenRouter models

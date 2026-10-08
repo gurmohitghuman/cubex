@@ -46,6 +46,8 @@ interface SheetModalsProps {
   handleDeleteRows: (rows: number[]) => Promise<void> | void
   handleAddColumn: (name: string) => Promise<boolean>
   loadSheetData: (sheetId: string, limit?: number, offset?: number, opts?: { silent?: boolean }) => Promise<void> | void
+  // Background refresh of the held rows that keeps the viewport (reloadWindow.ts).
+  silentReload: (sheetId: string) => Promise<void> | void
   // Autosave barrier for CSV-replace import (same as sort/delete/rename).
   waitForSaves: (timeoutMs?: number) => Promise<boolean>
   dropAllPending: (sheetId: string) => void
@@ -62,7 +64,8 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal, setShowHTTPAPIColumnModal,
     setShowEnrichmentDrawer, clearEnrichOpen, stopEnrichWatch, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
-    handleDeleteRows, handleAddColumn, loadSheetData, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
+    handleDeleteRows, handleAddColumn, loadSheetData, silentReload,
+    setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
     waitForSaves, dropAllPending,
   } = props
 
@@ -135,7 +138,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
         enrichWatch={enrichWatch} stopEnrichWatch={stopEnrichWatch}
         setShowAddColumnModal={setShowAddColumnModal} setShowHTTPAPIColumnModal={setShowHTTPAPIColumnModal}
         setShowEnrichmentDrawer={setShowEnrichmentDrawer}
-        setSheetData={setSheetData} loadSheetData={loadSheetData}
+        setSheetData={setSheetData} silentReload={silentReload}
         setupSSEConnection={setupSSEConnection} fetchActiveAIRuns={fetchActiveAIRuns}
         fetchActiveHTTPRuns={fetchActiveHTTPRuns}
       />

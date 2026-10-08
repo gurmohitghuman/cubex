@@ -51,6 +51,8 @@ export interface SheetGridProps {
   // Forwarded to AGGridSpreadsheet so the topbar delete confirm can clear the
   // grid selection through deselectAll (the selection source of truth).
   registerClearSelection?: (clear: (() => void) | null) => void
+  // Forwarded too: background reloads refresh the rows around the viewport.
+  registerViewport?: (get: (() => number | null) | null) => void
   // Opens the enrichment drawer on a column's setup or a run (Enrichment Actions).
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
 }
@@ -63,7 +65,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onCellEdit, onCellClick, onLoadMore, onSortChange, onEmptyFilterChange, onColumnFilterChange,
     onSelectedRowsChange, onRenameColumn, onDeleteColumn, onDeleteRows,
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
-    fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection,
+    fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment,
   } = props
 
@@ -158,6 +160,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onColumnReorder={onColumnReorder}
       onAddColumn={onAddColumn}
       registerClearSelection={registerClearSelection}
+      registerViewport={registerViewport}
       className="w-full h-full"
     />
       </div>
