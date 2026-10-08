@@ -32,9 +32,8 @@ router.post('/:id/sort', async (req: AuthRequest, res) => {
       if (result.fail === 'column_not_found') {
         return res.status(404).json({ error: `Column "${column}" not found in this sheet.` });
       }
-      return res.status(409).json({
-        error: 'Cannot sort while a run is active on this sheet. Stop or finish the run first.',
-      });
+      // blockingRun: the grid offers "Cancel it" for a paused run.
+      return res.status(409).json({ error: result.message, blockingRun: result.run });
     }
     res.json({ message: 'Sheet sorted', rowsReordered: result.rowsReordered });
   } catch (error) {

@@ -1,4 +1,5 @@
 import type { ColumnType } from '@/utils/api/types'
+import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 
 export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
@@ -21,6 +22,8 @@ export interface RunMenuActions {
   canEditAIColumn?: (columnName: string) => boolean
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
   onEnrichAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
+  // ⚡ Turn On Auto-run / Auto-run Settings ('open', the dialog) and ⚡ Turn Off Auto-run.
+  onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
 }
 
 export interface AGGridSpreadsheetProps {
@@ -28,6 +31,9 @@ export interface AGGridSpreadsheetProps {
   // Authoritative per-column type from the server (run-record derived). Drives the
   // header menu's AI-vs-HTTP actions. Columns absent from the map are plain.
   columnTypes?: Record<string, ColumnType>
+  // Auto-run and spend per column: the header's ⚡ and tooltip, and the menu's auto-run items.
+  autorun?: SheetAutorun
+  columnSpend?: Record<string, ColumnSpend>
   data: Array<{ rowIndex: number; data: Record<string, string> }>
   totalRows: number
   onCellEdit: (rowIndex: number, column: string, value: string) => void

@@ -7,6 +7,7 @@ import { recallChoices, type RecalledChoices } from '../lib/enrich-run-recall';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { toolCard, type ListedTool } from './enrich-catalog';
 import type { RunFail } from './run-shared';
+import { entryFor } from './autorun-entry';
 
 export interface ColumnRun { id: string; status: string; active: boolean; config: EnrichRunConfig }
 
@@ -32,6 +33,8 @@ export interface ColumnSetup {
   card: ListedTool | null;
   toolError: string | null;
   activeRunId: string | null;
+  // The column's auto-run, for Set up's checkbox (null: never turned on).
+  autorun: { enabled: boolean; dailyCapUsd: number | null } | null;
 }
 
 export function loadColumnRun(sheetId: string, userId: string, column: string): ColumnRun | RunFail {
@@ -47,10 +50,14 @@ export async function columnSetup(
   if ('fail' in run) return run;
   const choices = recallChoices(run.config, column);
   const card = await toolCard(choices.toolId, choices.preset);
+  const entry = entryFor(sheetId, userId, column);
   return {
     ok: {
       choices, card: 'ok' in card ? card.ok : null, toolError: 'ok' in card ? null : card.message,
       activeRunId: run.active ? run.id : null,
+      autorun: entry ? {
+        enabled: entry.enabled === 1, dailyCapUsd: entry.daily_cap_micro === null ? null : entry.daily_cap_micro / 1e6,
+      } : null,
     },
   };
 }

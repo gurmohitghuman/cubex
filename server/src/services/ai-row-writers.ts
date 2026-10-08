@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet, jsonPath } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
+import { markAutorunInputs } from '../lib/autorun-mark';
 
 // Thrown inside the success-path write transaction when a re-check finds the run
 // is no longer ours (cancel/resume raced us). Rolls the txn back; processRow's
@@ -76,7 +77,10 @@ export function writeSuccess(
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
         prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
       VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)
-    `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson, ...usageColumns(usage));
+    `).run(
+      resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson,
+      ...usageColumns(usage),
+    );
 
     if (ctx.needsDataColumn) {
       db.prepare(`
@@ -98,6 +102,9 @@ export function writeSuccess(
         ctx.userId, ctx.sheetId, ctx.rowIndex,
       );
     }
+    // A column another column's auto-run reads queues this row for it.
+    const written = ctx.needsDataColumn ? [ctx.columnName, dataColName] : [ctx.columnName];
+    markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

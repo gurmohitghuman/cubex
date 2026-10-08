@@ -43,6 +43,7 @@ import apiV1Routes from './routes/api-v1';
 import mcpRoutes from './routes/mcp';
 import healthRoutes from './routes/health';
 import enrichRoutes from './routes/enrich';
+import autorunRoutes from './routes/autorun';
 import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
 
@@ -76,7 +77,10 @@ const PORT = Number(process.env.PORT) || 3002;
 const HOST = process.env.HOST || undefined;
 const isProduction = process.env.NODE_ENV === 'production';
 if (!HOST && !isProduction) {
-  console.warn('⚠️  HOST is not set, so Cubex listens on every network interface. Set HOST=127.0.0.1 to keep it on this computer.');
+  console.warn(
+    '⚠️  HOST is not set, so Cubex listens on every network interface. ' +
+    'Set HOST=127.0.0.1 to keep it on this computer.'
+  );
 }
 
 applyServerMiddleware(app, { isProduction });
@@ -122,6 +126,7 @@ app.use('/api/sheets', sheetsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/http', httpRoutes);
 app.use('/api/enrich', enrichRoutes);
+app.use('/api/autorun', autorunRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Liveness/readiness probe (see routes/health.ts).
@@ -174,7 +179,9 @@ createAccountFromEnv().then((result) => {
   // Needed only here: keep it out of the environment the job workers inherit.
   delete process.env.INITIAL_PASSWORD;
   if (result === 'created') console.log('🔐 Account created from INITIAL_PASSWORD');
-  if (result === 'exists') console.log('ℹ️  INITIAL_PASSWORD ignored: the account already exists (it only applies on first boot)');
+  if (result === 'exists') console.log(
+    'ℹ️  INITIAL_PASSWORD ignored: the account already exists (it only applies on first boot)'
+  );
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
   // 004, and 010's column fills). Each marks its sheet busy synchronously,

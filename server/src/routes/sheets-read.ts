@@ -7,6 +7,7 @@ import {
 } from '../lib/sql-helpers';
 import { getColumnTypes } from '../lib/column-types';
 import { FILL_PLACEHOLDER, fillingColumns } from '../services/answer-field-fill';
+import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
 import { parseEmptyFilter, buildEmptyFilterSql } from '../lib/empty-filter';
 import { parseColumnFilters, buildColumnFiltersSql } from '../lib/column-filters';
@@ -78,7 +79,12 @@ router.get('/:id', (req: AuthRequest, res) => {
     // internal-schema exposure flagged in a security review).
     const { user_id: _uid, column_order: _co, ...sheetForClient } =
       sheet as unknown as Record<string, unknown>;
-    res.json({ sheet: sheetForClient, data: { rows, columns, totalRows, columnTypes } });
+    // Auto-run per column and what each enrichment column spent: the headers' ⚡
+    // and tooltips, and the sheet header's auto-run chip.
+    const autorun = sheetAutorunView(id, req.userId!);
+    const columnSpend = enrichColumnSpend(id, req.userId!,
+      Object.keys(columnTypes).filter(c => columnTypes[c] === 'enrich-status'));
+    res.json({ sheet: sheetForClient, data: { rows, columns, totalRows, columnTypes, autorun, columnSpend } });
   } catch (error) {
     console.error('Get sheet error:', error);
     res.status(500).json({ error: 'Failed to fetch sheet data' });

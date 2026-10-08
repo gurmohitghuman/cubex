@@ -3,6 +3,7 @@
 // load-bearing: rows.data key, column_order, empty_filter,
 // column_filters, http_column_associations, stored HTTP run configs, webhook
 // refs — miss one and a rename orphans state.
+// Over 200 lines: one rename with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
@@ -13,7 +14,9 @@ import {
 import { renameWebhookColumnRefs } from '../lib/webhook-columns';
 import { renameHttpRunColumnRefs } from '../lib/http-columns';
 import { renameAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
-import { activeRunInputError } from '../lib/ai-prompt-inputs';
+import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
+import { renameAutorunColumnRefs } from '../lib/autorun-columns';
+import { autorunRunBlock } from './autorun-block';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
@@ -69,7 +72,11 @@ export async function renameSheetColumn(
     LIMIT 1
   `).get(sheetId, userId, columnName, columnName, dataSiblingOutput ?? ' none');
   if (activeAIRun) {
-    return { fail: 'active_run', error: 'Cannot rename a column while an AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    return {
+      fail: 'active_run',
+      error: 'Cannot rename a column while an AI run on it is active or still clearing its cells. ' +
+        'Stop the run, or wait a moment if it was just stopped.',
+    };
   }
   // A structured run's OUTPUT columns live in output_columns, not column_name
   // (which holds its STATUS column), so the check above misses them. Without
@@ -80,10 +87,14 @@ export async function renameSheetColumn(
   // (hasUnfinishedRow only inspects the status column, so the run still
   // finalizes 'completed'). column-delete.ts has always had this guard.
   if (activeStructuredRunOwnsColumn(sheetId, userId, columnName)) {
-    return { fail: 'active_run', error: 'Cannot rename a column while a structured AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    return {
+      fail: 'active_run',
+      error: 'Cannot rename a column while a structured AI run on it is active or still clearing its cells. ' +
+        'Stop the run, or wait a moment if it was just stopped.',
+    };
   }
   const activeHTTPRun = db.prepare(`
-    SELECT 1 FROM http_runs hr
+    SELECT hr.id FROM http_runs hr
     WHERE hr.sheet_id = ? AND hr.user_id = ?
       AND (hr.status IN ('pending', 'running', 'paused') OR hr.placeholder_work IS NOT NULL)
       AND (
@@ -94,10 +105,18 @@ export async function renameSheetColumn(
         )
       )
     LIMIT 1
-  `).get(sheetId, userId, columnName, columnName);
+  `).get(sheetId, userId, columnName, columnName) as { id: string } | undefined;
   if (activeHTTPRun) {
-    return { fail: 'active_run', error: 'Cannot rename a column while an HTTP run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+    return {
+      fail: 'active_run',
+      error: autorunRunBlock(activeHTTPRun.id) ?? 'Cannot rename a column while an HTTP run on it is active or still '
+        + 'clearing its cells. Stop the run, or wait a moment if it was just stopped.',
+    };
   }
+  const reader = activeHttpRunReadsColumn(sheetId, userId, columnName);
+  const autorunReader = reader ? autorunRunBlock(reader) : null;
+  if (autorunReader) return { fail: 'active_run', error: autorunReader };
   const inputRunError = activeRunInputError(sheetId, userId, columnName, 'rename');
   if (inputRunError) return { fail: 'active_run', error: inputRunError };
 
@@ -115,7 +134,8 @@ export async function renameSheetColumn(
       switchColumnName(sheetId, userId, columnName, trimmedNew);
       if (opts.bumpDataVersion) {
         db.prepare(
-          `UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+          `UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+           WHERE id = ? AND user_id = ?`,
         ).run(sheetId, userId);
       } else {
         touchSheet(sheetId, userId);
@@ -180,4 +200,6 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameHttpRunColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Webhook mappings and the raw marker name.
   renameWebhookColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Auto-run settings: the status column, the columns it reads, "Only run if".
+  renameAutorunColumnRefs(sheetId, userId, columnName, trimmedNew);
 }

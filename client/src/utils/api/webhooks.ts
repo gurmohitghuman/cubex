@@ -68,7 +68,8 @@ export const webhooksAPI = {
   addMapping: (
     sheetId: string, jsonPath: string, columnName: string, valueMode: 'scalar' | 'json' = 'scalar',
   ): Promise<{ mappings: WebhookMapping[] }> =>
-    api.post(`/sheets/${sheetId}/webhook/mappings`, { jsonPath, columnName, valueMode }, noServerToast).then(r => r.data),
+    api.post(`/sheets/${sheetId}/webhook/mappings`, { jsonPath, columnName, valueMode }, noServerToast)
+      .then(r => r.data),
 
   deleteMapping: (sheetId: string, mappingId: string): Promise<{ mappings: WebhookMapping[] }> =>
     api.delete(`/sheets/${sheetId}/webhook/mappings/${mappingId}`, noServerToast).then(r => r.data),
@@ -90,7 +91,10 @@ export const webhooksAPI = {
   // sinceSk: the table's tab-list key, so a sheet created/renamed/deleted
   // elsewhere resolves the poll too (answers carry the current sheetsKey).
   changes: (sheetId: string, since: number, sinceRg: number | null, sinceSk: string | null, signal?: AbortSignal):
-    Promise<{ dataVersion: number; rowGeneration: number; sheetsKey?: string | null; changed: boolean }> =>
+    Promise<{
+      dataVersion: number; rowGeneration: number; sheetsKey?: string | null; changed: boolean
+      activeRuns?: Array<{ id: string; kind: 'ai' | 'http' }>
+    }> =>
     api.get(`/sheets/${sheetId}/changes`, {
       params: {
         since,

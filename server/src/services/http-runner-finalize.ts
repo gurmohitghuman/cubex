@@ -2,6 +2,7 @@ import { db } from '../lib/db';
 import { redactSecrets } from '../lib/redact';
 import { getRunStatusAndGen, type HTTPRunRow } from './http-runner-status';
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
+import { autorunRunEnded, autorunRunFailed } from './autorun-stop';
 
 // Post-loop status transitions for an HTTP run. Split out of http-runner.ts (one
 // responsibility per file): the runner owns the batch loop; this owns the
@@ -35,9 +36,13 @@ export async function finalizeHTTPRun(
 
   if (stuck) {
     const failed = db.prepare(
-      "UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?",
+      `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+        updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
     ).run('Some rows could not be processed. Re-run to retry them.', runId, myGeneration);
-    if (failed.changes > 0) await clearRunPlaceholders('http', runId);
+    if (failed.changes > 0) {
+      autorunRunFailed(run, 'some rows could not be processed.');
+      await clearRunPlaceholders('http', runId);
+    }
     return;
   }
 
@@ -46,9 +51,11 @@ export async function finalizeHTTPRun(
   // window must NOT be stomped back to 'completed' by this (now-superseded)
   // worker. Without the guard, a resumed run's newer generation — or a user's
   // pause — gets silently overwritten.
-  db.prepare(
-    "UPDATE http_runs SET status = 'completed', updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?",
+  const done = db.prepare(
+    `UPDATE http_runs SET status = 'completed', updated_at = datetime('now')
+      WHERE id = ? AND status = 'running' AND worker_generation = ?`,
   ).run(runId, myGeneration);
+  if (done.changes > 0) autorunRunEnded(run);
 }
 
 // Called from the runner's outer catch. Marks the run failed — but ONLY if it's
@@ -64,8 +71,12 @@ export async function failHTTPRun(
 ): Promise<void> {
   const reason = redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 500);
   const failed = db.prepare(
-    "UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?",
+    `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+      updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
   ).run(reason, runId, myGeneration);
   // failedRun is set whenever myGeneration left -1, so it's defined when we get here.
-  if (failed.changes > 0 && failedRun) await clearRunPlaceholders('http', runId);
+  if (failed.changes > 0 && failedRun) {
+    autorunRunFailed(failedRun, reason);
+    await clearRunPlaceholders('http', runId);
+  }
 }

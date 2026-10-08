@@ -96,7 +96,9 @@ test('bulk-delete is rejected with 409 while a run is active, then succeeds once
   })
   expect(blocked.status()).toBe(409)
   const body = await blocked.json()
-  expect(body.error).toMatch(/run is active/i)
+  // A paused run names itself, so it can be resumed or cancelled ("Cancel it" in the grid).
+  expect(body.error).toMatch(/run is paused\. Resume it to finish, or cancel it/i)
+  expect(body.blockingRun).toMatchObject({ id: runId, kind: 'http', paused: true })
   expect(body.currentGeneration).toBeUndefined()
 
   // Rows untouched by the rejected delete.

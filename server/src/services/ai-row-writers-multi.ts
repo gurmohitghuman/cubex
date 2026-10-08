@@ -12,6 +12,7 @@ import { db } from '../lib/db';
 import { jsonPath, touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
+import { markAutorunInputs } from '../lib/autorun-mark';
 
 export interface MultiWriteCtx {
   runId: string;
@@ -64,6 +65,9 @@ export function writeMultiSuccess(
       UPDATE rows SET data = ${expr}, updated_at = datetime('now')
       WHERE user_id = ? AND sheet_id = ? AND row_index = ?
     `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
+    // A column another column's auto-run reads queues this row for it.
+    const written = [...Object.keys(values), ctx.statusColumn, ...(sources ? [sources.column] : [])];
+    markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
     // updated_at only, like the single-column writers: open grids get these cells
     // over SSE (ai-stream.ts). A data_version bump here made every open tab
     // reload the sheet for the whole run (it snapped deep-scrolled viewports).

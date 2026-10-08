@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react'
 import { webhooksAPI } from '@/utils/api/webhooks'
 
 export interface ChangeBaseline { dataVersion: number; rowGeneration: number }
+// The sheet's active runs, sent with each change (a run this tab didn't start,
+// such as an auto-run, streams as soon as it shows up).
+export type ActiveRunRef = { id: string; kind: 'ai' | 'http' }
 
 // Minimum time per poll cycle, even when every response reports a change.
 // Caps the loop at ~20 req/min under a sustained external write burst — well
@@ -37,7 +40,9 @@ const MIN_CYCLE_MS = 3000
 export function useSheetChangePoll(
   sheetId: string | null,
   baseline: ChangeBaseline | null,
-  onChanged: (sheetId: string, change: { rowGeneration: number; structural: boolean }) => void,
+  onChanged: (
+    sheetId: string, change: { rowGeneration: number; structural: boolean; activeRuns?: ActiveRunRef[] },
+  ) => void,
   sheetList?: { key: string | null | undefined; onChanged: () => void },
 ) {
   const onChangedRef = useRef(onChanged)
@@ -66,7 +71,7 @@ export function useSheetChangePoll(
           if (cancelled) return
           const structural = res.rowGeneration !== sinceRg
           if (structural || (res.changed && res.dataVersion > sinceDv)) {
-            onChangedRef.current(sheetId, { rowGeneration: res.rowGeneration, structural })
+            onChangedRef.current(sheetId, { rowGeneration: res.rowGeneration, structural, activeRuns: res.activeRuns })
           }
           if (res.sheetsKey && res.sheetsKey !== sinceSk) {
             if (sinceSk !== null) sheetListRef.current?.onChanged()

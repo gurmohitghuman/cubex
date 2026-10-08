@@ -16,6 +16,8 @@ export interface HTTPRunRow {
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   target_rows: string | null;        // JSON row-index array for reruns (migration 024); NULL for full runs
   allow_secrets: number;             // run-level saved-key policy (migration 034); 0 = fallback disabled
+  autorun_id?: string | null;        // the auto-run that started it (migration 013); null for a run a person started
+  autorun_day?: string | null;       // the UTC day it started (an auto-run's daily cap counts it there)
   created_at: string;
   updated_at: string;
 }

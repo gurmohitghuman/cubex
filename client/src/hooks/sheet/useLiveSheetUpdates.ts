@@ -1,6 +1,6 @@
 import React from 'react'
 import toast from 'react-hot-toast'
-import { useSheetChangePoll, ChangeBaseline } from './useSheetChangePoll'
+import { useSheetChangePoll, ChangeBaseline, type ActiveRunRef } from './useSheetChangePoll'
 import { shouldLoudReloadAfterBarrier } from './liveUpdateDecision'
 
 // Minimum gap between silent reloads of the same sheet. A "silent reload" is
@@ -63,10 +63,14 @@ export function useLiveSheetUpdates(args: {
   isStructuralBarrierActive: (sheetId: string) => boolean
   // The tab-list check riding the same poll (see useSheetChangePoll).
   sheetList?: { key: string | null | undefined; onChanged: () => void }
+  // The sheet's active runs with each change: the tab streams ones it isn't
+  // following yet (an auto-run, another tab's or an agent's run).
+  onActiveRuns?: (sheetId: string, runs: ActiveRunRef[]) => void
 }) {
   const {
     sheet, rowGenerationRef, currentSheetIdRef, waitForSaves, dropAllPending, reloadActiveSheet, silentReload,
     invalidateInFlightLoads, beginStructuralBarrier, endStructuralBarrier, isStructuralBarrierActive, sheetList,
+    onActiveRuns,
   } = args
   const baseline: ChangeBaseline | null = sheet
     ? { dataVersion: sheet.data_version ?? 0, rowGeneration: sheet.row_generation ?? 0 }
@@ -117,6 +121,7 @@ export function useLiveSheetUpdates(args: {
     else pendingSilentReloadRef.current.set(id, setTimeout(fire, wait))
   }
   useSheetChangePoll(sheet?.id ?? null, baseline, (id, change) => {
+    if (change.activeRuns && currentSheetIdRef.current === id) onActiveRuns?.(id, change.activeRuns)
     if (change.structural) {
       // Cancel any queued silent reload FIRST: left armed, it could fire during
       // the waitForSaves barrier below and overlay old-generation pending edits
@@ -153,7 +158,10 @@ export function useLiveSheetUpdates(args: {
         const dropped = !flushed
         if (dropped) {
           dropAllPending(id)
-          toast.error('Unsaved edits could not be saved before the sheet was reordered elsewhere. Please re-enter them.')
+          toast.error(
+            'Unsaved edits could not be saved before the sheet was reordered elsewhere. ' +
+            'Please re-enter them.'
+          )
         }
         // Decision (unit-tested in shouldLoudReloadAfterBarrier): reload only if
         // the tab still shows this sheet, and either we dropped a frozen queue

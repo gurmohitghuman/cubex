@@ -3,6 +3,7 @@
 // column_order, empty_filter, column_filters,
 // http_column_associations, stored HTTP run configs, webhook mappings; guards:
 // active-run 409, webhook raw-marker protection, last-column.
+// Over 200 lines: one delete with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
@@ -10,7 +11,9 @@ import { recordPurge, purgeColumnKey } from '../lib/column-purge';
 import { isWebhookRawColumn, deleteWebhookMappingsForColumn } from '../lib/webhook-columns';
 import { deleteHttpRunColumnRefs } from '../lib/http-columns';
 import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
-import { activeRunInputError } from '../lib/ai-prompt-inputs';
+import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
+import { deleteAutorunColumnRefs } from '../lib/autorun-columns';
+import { autorunRunBlock } from './autorun-block';
 
 export type ColumnDeleteOutcome =
   | { ok: true }
@@ -51,15 +54,23 @@ export async function deleteSheetColumn(
     LIMIT 1
   `).get(sheetId, userId, columnName, columnName, dataSiblingOutput ?? ' __no_sibling__');
   if (activeAIRun) {
-    return { fail: 'active_run', error: 'Cannot delete a column while an AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    return {
+      fail: 'active_run',
+      error: 'Cannot delete a column while an AI run on it is active or still clearing its cells. ' +
+        'Stop the run, or wait a moment if it was just stopped.',
+    };
   }
   // A structured run's OUTPUT columns live in output_columns, not column_name, so
   // the check above (which matches column_name = the status column) misses them.
   if (activeStructuredRunOwnsColumn(sheetId, userId, columnName)) {
-    return { fail: 'active_run', error: 'Cannot delete a column while a structured AI run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    return {
+      fail: 'active_run',
+      error: 'Cannot delete a column while a structured AI run on it is active or still clearing its cells. ' +
+        'Stop the run, or wait a moment if it was just stopped.',
+    };
   }
   const activeHTTPRun = db.prepare(`
-    SELECT 1 FROM http_runs hr
+    SELECT hr.id FROM http_runs hr
     WHERE hr.sheet_id = ? AND hr.user_id = ?
       AND (hr.status IN ('pending', 'running', 'paused') OR hr.placeholder_work IS NOT NULL)
       AND (
@@ -70,10 +81,18 @@ export async function deleteSheetColumn(
         )
       )
     LIMIT 1
-  `).get(sheetId, userId, columnName, columnName);
+  `).get(sheetId, userId, columnName, columnName) as { id: string } | undefined;
   if (activeHTTPRun) {
-    return { fail: 'active_run', error: 'Cannot delete a column while an HTTP run on it is active or still clearing its cells. Stop the run, or wait a moment if it was just stopped.' };
+    // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+    return {
+      fail: 'active_run',
+      error: autorunRunBlock(activeHTTPRun.id) ?? 'Cannot delete a column while an HTTP run on it is active or still '
+        + 'clearing its cells. Stop the run, or wait a moment if it was just stopped.',
+    };
   }
+  const reader = activeHttpRunReadsColumn(sheetId, userId, columnName);
+  const autorunReader = reader ? autorunRunBlock(reader) : null;
+  if (autorunReader) return { fail: 'active_run', error: autorunReader };
   // Guards above protect a run's OUTPUT columns; this protects its INPUTS.
   const inputRunError = activeRunInputError(sheetId, userId, columnName, 'delete');
   if (inputRunError) return { fail: 'active_run', error: inputRunError };
@@ -156,6 +175,8 @@ export async function deleteSheetColumn(
       // Drop any webhook mapping that targeted this column (the raw marker is
       // already protected above).
       deleteWebhookMappingsForColumn(sheetId, userId, columnName);
+      // Auto-run settings: its own status column goes, a column it reads pauses it.
+      deleteAutorunColumnRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);
@@ -170,7 +191,8 @@ export async function deleteSheetColumn(
       }
       if (opts.bumpDataVersion) {
         db.prepare(
-          `UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
+          `UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+           WHERE id = ? AND user_id = ?`,
         ).run(sheetId, userId);
       } else {
         touchSheet(sheetId, userId);

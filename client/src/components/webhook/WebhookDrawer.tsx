@@ -14,7 +14,7 @@ import { WebhookDeliveries } from './WebhookDeliveries'
 // `onColumnsChanged` tells the parent to reload the sheet when the webhook
 // creates/removes columns (marker + mapped columns).
 export function WebhookDrawer({
-  isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable,
+  isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable, autorunOn,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -27,6 +27,8 @@ export function WebhookDrawer({
   // cap). Lets them route the webhook to a fresh table instead of mixing it into
   // a hand-curated sheet. Absent → the option isn't shown.
   onCreateNewTable?: () => void
+  // A column of this sheet has auto-run on: delivered rows run it.
+  autorunOn?: boolean
 }) {
   const wh = useWebhook(sheetId, isOpen)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -60,7 +62,15 @@ export function WebhookDrawer({
           />
         ) : (
           <>
-            <WebhookStatus source={wh.source} onToggle={wh.setEnabled} onDelete={() => setConfirmDelete(true)} busy={wh.busy} />
+            <WebhookStatus source={wh.source} onToggle={wh.setEnabled} onDelete={() => setConfirmDelete(true)}
+              busy={wh.busy} />
+            {autorunOn && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2"
+                data-testid="webhook-autorun-warning">
+                Auto-run is on in this sheet. Anyone with this webhook URL can add rows, and each new row runs
+                the columns with auto-run on. Your daily limit and each column&apos;s daily cap limit the spend.
+              </p>
+            )}
             <WebhookEndpoint source={wh.source} onRotate={wh.rotate} rotating={wh.busy} />
             <WebhookMapping
               deliveries={wh.deliveries} mappings={wh.mappings}
@@ -125,7 +135,12 @@ function EmptyState({
           {busy ? 'Creating…' : hasData ? 'Create webhook on this sheet' : 'Create webhook'}
         </button>
         {hasData && onCreateNewTable && (
-          <button type="button" onClick={onCreateNewTable} disabled={busy} className="btn-secondary w-full disabled:opacity-50">
+          <button
+            type="button"
+            onClick={onCreateNewTable}
+            disabled={busy}
+            className="btn-secondary w-full disabled:opacity-50"
+          >
             Create a new table for the webhook
           </button>
         )}

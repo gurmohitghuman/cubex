@@ -2,7 +2,8 @@
 // an enrichment becomes a treg request. Pure: no DB, no network.
 import reqMod from '../../server/src/lib/enrich-request'
 import cleanMod from '../../server/src/lib/enrich-input-clean'
-const { buildRequest, fillTemplate, missingInputs, idempotencyKey, requestFingerprint } = reqMod as typeof import('../../server/src/lib/enrich-request')
+const { buildRequest, fillTemplate, missingInputs, idempotencyKey, requestFingerprint } =
+  reqMod as typeof import('../../server/src/lib/enrich-request')
 const { cleanDomain, asciiNamePart } = cleanMod as typeof import('../../server/src/lib/enrich-input-clean')
 
 let failures = 0
@@ -15,21 +16,32 @@ function check(label: string, cond: boolean) {
 const findTool = {
   id: 'treg.people.email.find', method: 'POST', queryArrayEncoding: null,
   identitySets: [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url']],
-  derive: { full_name: 'join(first_name, last_name)', first_name: 'split_first(full_name)', last_name: 'split_last(full_name)' },
-  inputs: ['domain', 'full_name', 'first_name', 'last_name', 'linkedin_url'].map(name => ({ name, in: 'body' as const, type: 'str', required: false })),
+  derive: {
+    full_name: 'join(first_name, last_name)', first_name: 'split_first(full_name)', last_name: 'split_last(full_name)',
+  },
+  inputs: ['domain', 'full_name', 'first_name', 'last_name', 'linkedin_url']
+    .map(name => ({ name, in: 'body' as const, type: 'str', required: false })),
 }
 // Stored rows are sparse: LinkedIn is a column, but this row has no value (no key) for it.
-const row: Record<string, string> = { Name: 'Patrick Collison', Website: 'https://www.Stripe.com/about', Notes: 'say "hi"' }
+const row: Record<string, string> = {
+  Name: 'Patrick Collison', Website: 'https://www.Stripe.com/about', Notes: 'say "hi"',
+}
 const columns = ['Name', 'Website', 'LinkedIn', 'Notes']
 const opts = { cleanDomains: true, columns }
 
 // --- Templates read columns only ------------------------------------------
-check('fills a column', JSON.stringify(fillTemplate('{{Name}}', row, columns)) === JSON.stringify({ value: 'Patrick Collison' }))
+check('fills a column',
+  JSON.stringify(fillTemplate('{{Name}}', row, columns)) === JSON.stringify({ value: 'Patrick Collison' }))
 check('column match ignores case', 'value' in fillTemplate('{{website}}', row, columns))
-check('unknown column is reported', JSON.stringify(fillTemplate('{{Gone}}', row, columns)) === JSON.stringify({ unknown: 'Gone' }))
-check('a column the row lacks is an empty cell, not unknown', JSON.stringify(fillTemplate('{{LinkedIn}}', row, columns)) === JSON.stringify({ value: '' }))
-check('exact name wins over a normalized match', JSON.stringify(fillTemplate('{{a.b}}', { 'a.b': 'exact', a_b: 'normalized' }, ['a_b', 'a.b'])) === JSON.stringify({ value: 'exact' }))
-check('literal text passes through', JSON.stringify(fillTemplate('fixed', row, columns)) === JSON.stringify({ value: 'fixed' }))
+check('unknown column is reported',
+  JSON.stringify(fillTemplate('{{Gone}}', row, columns)) === JSON.stringify({ unknown: 'Gone' }))
+check('a column the row lacks is an empty cell, not unknown',
+  JSON.stringify(fillTemplate('{{LinkedIn}}', row, columns)) === JSON.stringify({ value: '' }))
+check('exact name wins over a normalized match',
+  JSON.stringify(fillTemplate('{{a.b}}', { 'a.b': 'exact', a_b: 'normalized' }, ['a_b', 'a.b']))
+    === JSON.stringify({ value: 'exact' }))
+check('literal text passes through',
+  JSON.stringify(fillTemplate('fixed', row, columns)) === JSON.stringify({ value: 'fixed' }))
 
 // --- A waterfall body ----------------------------------------------------
 const built = buildRequest(findTool, { full_name: '{{Name}}', domain: '{{Website}}' }, row, opts)
@@ -42,9 +54,11 @@ if (built.ok) {
   check('name is sent', body.full_name === 'Patrick Collison')
   check('body keys follow the tool order', Object.keys(body).join(',') === 'domain,full_name')
 }
-const quoted = buildRequest(findTool, { full_name: '{{Notes}}', domain: '{{Website}}' }, row, { cleanDomains: false, columns })
+const quoted = buildRequest(findTool, { full_name: '{{Notes}}', domain: '{{Website}}' }, row,
+  { cleanDomains: false, columns })
 check('quotes in a cell stay valid JSON', quoted.ok && JSON.parse(quoted.body!).full_name === 'say "hi"')
-const injected = buildRequest(findTool, { full_name: '","linkedin_url":"evil', domain: 'x.com' }, {}, { cleanDomains: false, columns })
+const injected = buildRequest(findTool, { full_name: '","linkedin_url":"evil', domain: 'x.com' }, {},
+  { cleanDomains: false, columns })
 check('a cell cannot add JSON fields', injected.ok && Object.keys(JSON.parse(injected.body!)).length === 2)
 
 // --- Identity sets and derive ---------------------------------------------
@@ -68,11 +82,13 @@ const getTool = {
     { name: 'raw', in: 'query' as const, type: 'boolean', required: false },
   ],
 }
-const g = buildRequest(getTool, { q: '{{Name}}', limit: '25', country: 'GB', tags: 'a, b', id: 'x/1', raw: 'yes' }, row, opts)
+const g = buildRequest(getTool,
+  { q: '{{Name}}', limit: '25', country: 'GB', tags: 'a, b', id: 'x/1', raw: 'yes' }, row, opts)
 check('GET builds', g.ok)
 if (g.ok) {
   check('no body on GET', g.body === null)
-  check('query in declared order, encoded', g.query === 'q=Patrick%20Collison&limit=25&country=GB&tags=a%2Cb&id=x%2F1&raw=true')
+  check('query in declared order, encoded',
+    g.query === 'q=Patrick%20Collison&limit=25&country=GB&tags=a%2Cb&id=x%2F1&raw=true')
 }
 check('required query input', !buildRequest(getTool, {}, row, opts).ok)
 const notNum = buildRequest(getTool, { q: 'x', limit: 'ten' }, row, opts)
@@ -91,12 +107,19 @@ const parts = { method: 'POST', path: '/call/t', query: '', body: '{"a":1}' }
 const k1 = idempotencyKey('run-1', 3, 'f1', parts)
 check('same request, same key', k1 === idempotencyKey('run-1', 3, 'f1', parts))
 check('next attempt, new key', k1 !== idempotencyKey('run-1', 3, 'f2', parts))
-check('provider skips change the key', requestFingerprint(parts) !== requestFingerprint({ ...parts, exclude: ['hunter'] }))
+check('a key is scope, row, attempt and the request', k1.startsWith('cbx1:run-1:3:f1:'))
+const ak = idempotencyKey('a:entry-1', 'row-id', 't1', parts)
+check('an auto-run key keeps its row id, under 200 characters',
+  ak.startsWith('cbx1:a:entry-1:row-id:t1:') && ak.length < 200)
+check('provider skips change the key',
+  requestFingerprint(parts) !== requestFingerprint({ ...parts, exclude: ['hunter'] }))
 check('an edited cell changes the key', k1 !== idempotencyKey('run-1', 3, 'f1', { ...parts, body: '{"a":2}' }))
 check('a rerun changes the key', k1 !== idempotencyKey('run-2', 3, 'f1', parts))
 check('key fits treg (200 chars)', k1.length < 200)
-check('skip order does not change the key', requestFingerprint({ ...parts, exclude: ['a', 'b'] }) === requestFingerprint({ ...parts, exclude: ['b', 'a'] }))
-check('provider order does change the key', requestFingerprint({ ...parts, prefer: ['a', 'b'] }) !== requestFingerprint({ ...parts, prefer: ['b', 'a'] }))
+check('skip order does not change the key',
+  requestFingerprint({ ...parts, exclude: ['a', 'b'] }) === requestFingerprint({ ...parts, exclude: ['b', 'a'] }))
+check('provider order does change the key',
+  requestFingerprint({ ...parts, prefer: ['a', 'b'] }) !== requestFingerprint({ ...parts, prefer: ['b', 'a'] }))
 const unsafe = buildRequest(getTool, { q: 'x', limit: '9007199254740993' }, row, opts)
 check('integers must be exact', !unsafe.ok && 'invalid' in unsafe)
 const badId = buildRequest({ ...getTool, id: 'https://evil.example/x' }, { q: 'x' }, row, opts)
@@ -105,7 +128,8 @@ check('a tool id can never be a URL', !badId.ok && 'invalid' in badId)
 // --- Input clean-up --------------------------------------------------------
 check('URL to domain', cleanDomain('https://www.Stripe.com/about?x=1#y') === 'stripe.com')
 check('email to domain', cleanDomain('pat@stripe.com') === 'stripe.com')
-check('port and trailing dot', cleanDomain('stripe.com:443.') === 'stripe.com' || cleanDomain('stripe.com.:443') === 'stripe.com')
+check('port and trailing dot',
+  cleanDomain('stripe.com:443.') === 'stripe.com' || cleanDomain('stripe.com.:443') === 'stripe.com')
 check('bare domain unchanged', cleanDomain('acme.io') === 'acme.io')
 check('accents stripped for guesses', asciiNamePart('José María') === 'josemaria')
 check('apostrophes dropped', asciiNamePart("O'Brien") === 'obrien')

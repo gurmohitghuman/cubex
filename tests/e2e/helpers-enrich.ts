@@ -50,7 +50,9 @@ export function verifiedEmailRun(over: Record<string, unknown> = {}) {
   }
 }
 
-export async function startRun(api: APIRequestContext, sheetId: string, body: Record<string, unknown>): Promise<string> {
+export async function startRun(
+  api: APIRequestContext, sheetId: string, body: Record<string, unknown>,
+): Promise<string> {
   const res = await api.post(`/api/enrich/sheets/${sheetId}/runs`, { data: body })
   const json = await res.json()
   expect(res.ok(), JSON.stringify(json)).toBeTruthy()
@@ -68,7 +70,9 @@ export async function waitRun(api: APIRequestContext, runId: string, statuses: s
   for (;;) {
     const s = await runStatus(api, runId)
     if (statuses.includes(s.status)) return s
-    if (Date.now() > until) throw new Error(`run ${runId} is ${s.status} (${s.message ?? ''}), wanted ${statuses.join('/')}`)
+    if (Date.now() > until) {
+      throw new Error(`run ${runId} is ${s.status} (${s.message ?? ''}), wanted ${statuses.join('/')}`)
+    }
     await new Promise(r => setTimeout(r, 300))
   }
 }
@@ -89,7 +93,7 @@ export async function mockState(): Promise<Record<string, unknown>> {
   try { return await (await ctx.get('/__mock/state')).json() } finally { await ctx.dispose() }
 }
 
-function readDb<T>(fn: (db: any) => T): T {
+export function readDb<T>(fn: (db: any) => T): T {
   const dbPath = process.env.DB_PATH
   if (!dbPath) throw new Error('DB_PATH not set: run via scripts/e2e-harness.sh')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
@@ -98,8 +102,14 @@ function readDb<T>(fn: (db: any) => T): T {
 }
 
 // Cubex's ledger for a run, read straight from the test DB (harness only).
-export const ledger = (runId: string): Array<{ attempt: string; idempotency_key: string; cost_micro: number | null; http_status: number | null; replay: number; call_id: string | null }> =>
-  readDb(db => db.prepare('SELECT attempt, idempotency_key, cost_micro, http_status, replay, call_id FROM enrichment_calls WHERE run_id = ? ORDER BY rowid').all(runId))
+export const ledger = (runId: string): Array<{
+  attempt: string; idempotency_key: string; cost_micro: number | null; http_status: number | null;
+  replay: number; call_id: string | null
+}> =>
+  readDb(db => db.prepare(
+    'SELECT attempt, idempotency_key, cost_micro, http_status, replay, call_id ' +
+    'FROM enrichment_calls WHERE run_id = ? ORDER BY rowid',
+  ).all(runId))
 
 // Waits until the mock has answered every call it was still working on (a
 // stopped run's calls in flight finish and are billed), then checks the bill.
@@ -120,6 +130,11 @@ export async function expectBilledOnce(runIds: string[]) {
 // A sheet's enrichment runs, oldest first, and one run's stored results.
 export const runIdsOf = (sheetId: string): string[] =>
   readDb(db => db.prepare('SELECT id FROM http_runs WHERE sheet_id = ? ORDER BY rowid').pluck().all(sheetId))
-export const resultsOf = (runId: string): Array<{ row_index: number; status: string; cost_usd: number | null; error_message: string | null; response: any }> =>
-  readDb(db => (db.prepare('SELECT row_index, status, cost_usd, error_message, response_data FROM http_results WHERE run_id = ? ORDER BY row_index').all(runId) as any[])
+export const resultsOf = (runId: string): Array<{
+  row_index: number; status: string; cost_usd: number | null; error_message: string | null; response: any
+}> =>
+  readDb(db => (db.prepare(
+    'SELECT row_index, status, cost_usd, error_message, response_data ' +
+    'FROM http_results WHERE run_id = ? ORDER BY row_index',
+  ).all(runId) as any[])
     .map(r => ({ ...r, response: r.response_data ? JSON.parse(r.response_data) : null })))

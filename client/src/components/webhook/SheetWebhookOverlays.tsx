@@ -7,8 +7,10 @@ import { WebhookPayloadModal } from './WebhookPayloadModal'
 // presentational pass-through — all state lives in SheetPage.
 export function SheetWebhookOverlays({
   drawerOpen, onCloseDrawer, sheetId, rowCount, onColumnsChanged, onCreateNewTable,
-  payloadRowIndex, onClosePayload,
+  payloadRowIndex, onClosePayload, autorunOn,
 }: {
+  // Auto-run is on in this sheet: every delivered row can spend (the drawer says so).
+  autorunOn?: boolean
   drawerOpen: boolean
   onCloseDrawer: () => void
   sheetId: string | null
@@ -27,6 +29,7 @@ export function SheetWebhookOverlays({
         rowCount={rowCount}
         onColumnsChanged={onColumnsChanged}
         onCreateNewTable={onCreateNewTable}
+        autorunOn={autorunOn}
       />
       <WebhookPayloadModal
         isOpen={payloadRowIndex != null}

@@ -9,7 +9,7 @@ import { inputTemplates, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { answerCells, missingCells, verdictCells } from '../lib/enrich-outcome';
 import { failedCell, type RowCells } from '../lib/enrich-cells';
 import { trimAnswer } from '../lib/answer-trim';
-import { runStep, type RunCtx, type StepResult } from './enrich-step';
+import { keyScope, runStep, type RunCtx, type StepResult } from './enrich-step';
 import { verifiedEmailRow } from './enrich-verified-email';
 import { recoverPaidAnswer } from './enrich-recover';
 import { recordCall } from './enrich-ledger';
@@ -24,29 +24,44 @@ export interface RowResult { cells: RowCells; stored: unknown; costMicro: number
 type Built = Extract<BuiltRequest, { ok: true }>;
 
 // The request a row sends, or the cells for a row that can't send one.
-export function rowRequest(config: EnrichRunConfig, row: EnrichRow, columns: string[]): { built: Built } | { cells: RowCells } {
+export function rowRequest(
+  config: EnrichRunConfig, row: EnrichRow, columns: string[],
+): { built: Built } | { cells: RowCells } {
   const e = config.enrichment;
-  const built = buildRequest(e.toolSnapshot, inputTemplates(config), row.data, { cleanDomains: e.cleanDomains, columns });
+  const built = buildRequest(e.toolSnapshot, inputTemplates(config), row.data,
+    { cleanDomains: e.cleanDomains, columns });
   if (built.ok) return { built };
   if ('missing' in built) return { cells: missingCells(built.missing) };
-  return { cells: { status: 'failed', statusCell: failedCell(built.invalid), answer: null, fill: 'none', reason: built.invalid } };
+  const reason = built.invalid;
+  return { cells: { status: 'failed', statusCell: failedCell(reason), answer: null, fill: 'none', reason } };
 }
 
 // One call for the run's tool, read into cells.
-async function singleStep(ctx: RunCtx, config: EnrichRunConfig, row: EnrichRow, built: Built): Promise<RowResult | null> {
+async function singleStep(
+  ctx: RunCtx, config: EnrichRunConfig, row: EnrichRow, built: Built,
+): Promise<RowResult | null> {
   const e = config.enrichment;
   const routed = e.kind === 'waterfall';
   const route = routed ? e.route : { prefer: [], exclude: [], stopAtFirst: false };
-  const parts = { method: built.method, path: built.path, query: built.query, body: built.body, prefer: route.prefer, exclude: route.exclude };
+  const parts = {
+    method: built.method, path: built.path, query: built.query, body: built.body,
+    prefer: route.prefer, exclude: route.exclude,
+  };
   if (!routed) {
     const recovered = await recoverPaidAnswer(ctx, row.rowId, row.rowIndex, e.toolId, parts);
     if (recovered) {
       const meta = { ...readTregMeta({}), callId: recovered.callId, costMicro: 0, replay: true };
+      const at = keyScope(ctx, row.rowIndex, row.rowId);
       recordCall({
-        userId: ctx.userId, sheetId: ctx.sheetId, runId: ctx.runId, rowId: row.rowId, statusColumn: ctx.statusColumn, toolId: e.toolId,
-        attempt: 't1', idempotencyKey: idempotencyKey(ctx.runId, row.rowIndex, 't1', parts), httpStatus: 200, tregErrorCode: null, tier: null, meta,
+        userId: ctx.userId, sheetId: ctx.sheetId, runId: ctx.runId, rowId: row.rowId,
+        statusColumn: ctx.statusColumn, toolId: e.toolId,
+        attempt: 't1', idempotencyKey: idempotencyKey(at.scope, at.row, 't1', parts), httpStatus: 200,
+        tregErrorCode: null, tier: null, meta,
       });
-      const cells = answerCells({ routed, body: recovered.body, meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow: null });
+      const cells = answerCells({
+        routed, body: recovered.body, meta, providerNames: e.providerNames, mapping: config.responseMapping,
+        sameAsRow: null,
+      });
       return { cells, stored: trimAnswer(cells.answer, routed), costMicro: 0 };
     }
   }
@@ -55,11 +70,19 @@ async function singleStep(ctx: RunCtx, config: EnrichRunConfig, row: EnrichRow, 
     request: { ...parts, routed, maxCostUsd: e.maxCostPerRowUsd, stopAtFirst: route.stopAtFirst, fresh: e.fresh },
   });
   if (r.kind === 'answer') {
-    if (r.oversize) return { cells: verdictCells('row_fail', "The answer was too big to read (over treg's 8 MB limit)."), stored: undefined, costMicro: r.costMicro };
-    const cells = answerCells({ routed, body: r.body, meta: r.meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow: r.sameAsRow });
+    if (r.oversize) {
+      const cells = verdictCells('row_fail', "The answer was too big to read (over treg's 8 MB limit).");
+      return { cells, stored: undefined, costMicro: r.costMicro };
+    }
+    const cells = answerCells({
+      routed, body: r.body, meta: r.meta, providerNames: e.providerNames, mapping: config.responseMapping,
+      sameAsRow: r.sameAsRow,
+    });
     return { cells, stored: trimAnswer(cells.answer, routed), costMicro: r.costMicro };
   }
-  if (r.kind === 'row_skip' || r.kind === 'row_fail') return { cells: verdictCells(r.kind, r.message), stored: undefined, costMicro: r.costMicro };
+  if (r.kind === 'row_skip' || r.kind === 'row_fail') {
+    return { cells: verdictCells(r.kind, r.message), stored: undefined, costMicro: r.costMicro };
+  }
   return null;
 }
 
@@ -73,7 +96,10 @@ export async function processEnrichmentRow(
   else result = await singleStep(ctx, config, row, req.built);
   if (!result) return;
   const request = 'built' in req
-    ? { toolId: config.enrichment.toolId, method: req.built.method, path: req.built.path, query: req.built.query, body: req.built.body }
+    ? {
+      toolId: config.enrichment.toolId, method: req.built.method, path: req.built.path, query: req.built.query,
+      body: req.built.body,
+    }
     : { toolId: config.enrichment.toolId };
   writeEnrichmentResult({
     run, generation, rowIndex: row.rowIndex, cells: result.cells, stored: result.stored,

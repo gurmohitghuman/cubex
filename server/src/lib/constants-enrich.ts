@@ -68,11 +68,20 @@ export const TREG_KEY_MAX_CHARS = 512;
 export const ENRICH_DAILY_LIMIT_MIN_MICRO = 10_000;        // $0.01
 export const ENRICH_DAILY_LIMIT_MAX_USD = 100_000;
 
-// Background loops in the API process.
-export const AUTORUN_SWEEP_MS = 15_000;
+// Background loops in the API process. Auto-run looks for rows to fill every
+// AUTORUN_SWEEP_MS (tests shorten it) and takes at most AUTORUN_MAX_ROWS a run.
+export const AUTORUN_SWEEP_MS = envInt('AUTORUN_SWEEP_MS', 15_000);
 export const AUTORUN_MAX_ROWS = 500;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
-export const AUTORUN_USER_YIELD_MS = 2 * 60 * 1000;
+export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
+export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
+// A sort, row delete or column change refused because auto-run was busy holds
+// new auto-runs on that sheet this long, so the user's retry goes through.
+export const AUTORUN_USER_YIELD_MS = envInt('AUTORUN_USER_YIELD_MS', 2 * 60 * 1000);
+// Stops treg may clear on its own (unreachable, balance, its own caps) are retried this long after.
+export const AUTORUN_RETRY_MS = envInt('AUTORUN_RETRY_MS', 5 * 60 * 1000);
+// Rows read per page while looking for rows to fill.
+export const AUTORUN_SCAN_PAGE = 2_000;
 export const LIST_DRAIN_MS = 5_000;
 
 // The checker the "Verified work email" preset runs on each found address.
@@ -88,11 +97,18 @@ export interface FeaturedJob { id: string; title: string; blurb: string; preset?
 export const ENRICH_FEATURED: FeaturedJob[] = [
   { id: 'treg.people.email.find', title: 'Verified work email', preset: 'verified_email',
     blurb: 'Finds an email, checks it, and tries other providers until one passes.' },
-  { id: 'treg.people.phone.find', title: 'Find phone number', blurb: 'Finds a phone number from a name and company, or a LinkedIn URL.' },
-  { id: 'treg.people.email.verify', title: 'Verify email', blurb: 'Checks whether a mailbox accepts mail before you send.' },
-  { id: 'treg.people.enrich', title: 'Person from LinkedIn or email', blurb: 'Fills in name, title and company for a person.' },
-  { id: 'treg.companies.enrich', title: 'Company from domain', blurb: 'Fills in size, industry and location for a company.' },
-  { id: 'treg.people.search', title: 'People at a company', blurb: 'Adds the people it finds as rows in another sheet.' },
-  { id: 'treg.companies.search', title: 'Find companies', blurb: 'Adds the companies it finds as rows in another sheet.' },
-  { id: 'treg.google.serp.organic', title: 'Google search results', blurb: "Adds the top Google results for each row's search as rows in another sheet." },
+  { id: 'treg.people.phone.find', title: 'Find phone number',
+    blurb: 'Finds a phone number from a name and company, or a LinkedIn URL.' },
+  { id: 'treg.people.email.verify', title: 'Verify email',
+    blurb: 'Checks whether a mailbox accepts mail before you send.' },
+  { id: 'treg.people.enrich', title: 'Person from LinkedIn or email',
+    blurb: 'Fills in name, title and company for a person.' },
+  { id: 'treg.companies.enrich', title: 'Company from domain',
+    blurb: 'Fills in size, industry and location for a company.' },
+  { id: 'treg.people.search', title: 'People at a company',
+    blurb: 'Adds the people it finds as rows in another sheet.' },
+  { id: 'treg.companies.search', title: 'Find companies',
+    blurb: 'Adds the companies it finds as rows in another sheet.' },
+  { id: 'treg.google.serp.organic', title: 'Google search results',
+    blurb: "Adds the top Google results for each row's search as rows in another sheet." },
 ];

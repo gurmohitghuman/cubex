@@ -3,6 +3,8 @@ import { DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/co
 import type { ColumnType } from '@/utils/api/types'
 import type { MenuState } from './HeaderContextMenu'
 import type { RunByColumn, RunMenuActions } from './types'
+import type { AutorunColumn } from '@/utils/api/types-autorun'
+import { AutorunMenuItems } from './AutorunMenuItems'
 
 // The column menu's run blocks for AI and HTTP API columns, split out of
 // HeaderContextMenu (each column type gets its own block; enrichment columns
@@ -68,10 +70,11 @@ interface HTTPActionsProps {
   activeHTTPRunsByColumn: RunByColumn
   setMenu: (m: MenuState) => void
   actions: RunMenuActions
+  autorun?: AutorunColumn
 }
 
 export const HTTPColumnActions: React.FC<HTTPActionsProps> = ({
-  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions,
+  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun,
 }) => {
   const { onRunHTTPForColumn, onRunHTTPForMissingOrError, onRunHTTPForRows, onStopRunForColumn } = actions
   if (!onRunHTTPForColumn) return null
@@ -97,6 +100,7 @@ export const HTTPColumnActions: React.FC<HTTPActionsProps> = ({
           🔄 Run Selected Rows ({selectedRowIndices.length})
         </DropdownMenuItem>
       )}
+      <AutorunMenuItems columnId={columnId} autorun={autorun} setMenu={setMenu} actions={actions} />
       {activeHTTPRunsByColumn[columnId] && (
         <DropdownMenuItem onClick={() => { onStopRunForColumn?.('http', columnId); setMenu(null) }} className={STOP}>
           🟥 Stop HTTP Run

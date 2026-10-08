@@ -22,6 +22,7 @@ import { countFor, enrichRowCounts } from './enrich-row-count';
 import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
 import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
+import { autorunFillingColumn } from './autorun-block';
 
 export type EnrichStartOutcome = { ok: { runId: string; statusColumn: string; outputColumns: string[] } } | RunFail;
 
@@ -54,7 +55,8 @@ function continueProblem(
   }
   if (activeRunOn(sheetId, userId, statusColumn)) {
     return {
-      fail: 'conflict', message: 'A run on this column is still active. Wait for it to finish, or stop it first.',
+      fail: 'conflict', message: autorunFillingColumn(sheetId, userId, statusColumn)
+        ?? 'A run on this column is still active. Wait for it to finish, or stop it first.',
     };
   }
   const own = ownOutputs(sheetId, userId, statusColumn);

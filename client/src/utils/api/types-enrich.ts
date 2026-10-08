@@ -12,7 +12,9 @@ export interface EnrichToolPrice {
   overflowUsd: number | null
 }
 
-export interface EnrichToolObserved { okRate: number | null; hitRate: number | null; samples: number | null; hitSamples: number | null }
+export interface EnrichToolObserved {
+  okRate: number | null; hitRate: number | null; samples: number | null; hitSamples: number | null
+}
 
 // A card in the Find step (Popular jobs or search results).
 export interface EnrichToolCard {
@@ -85,6 +87,7 @@ export interface EnrichToolAccess {
 export interface EnrichSheetSetup {
   rows: { all: number; filter: number | null }   // filter: null when no filter is on
   columns: { count: number; max: number }
+  hasWebhook?: boolean   // rows can arrive from outside: Set up's auto-run choice warns
 }
 
 export interface EnrichEstimateRequest {

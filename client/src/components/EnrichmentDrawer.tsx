@@ -13,6 +13,7 @@ import { useEnrichmentDraft } from './enrich-modal/useEnrichmentDraft'
 import { runActive, useEnrichRun } from './enrich-modal/useEnrichRun'
 import { useOpenRequest, type EnrichOpenRequest } from './enrich-modal/useOpenRequest'
 import { drawerSubtitle, drawerTitle } from './enrich-modal/drawer-copy'
+import { saveDraftAutorun } from './enrich-modal/autorun-save'
 
 interface Props {
   isOpen: boolean
@@ -95,6 +96,12 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
       ...(test ? { rowsStatus: 'not_enriched' as const } : {}),
     })
     p.onRunStarted(runId)
+    // Auto-run goes with the full run: a test on a few rows changes nothing yet.
+    if (test) return
+    const autoRun = draft.autoRun
+    void saveDraftAutorun(sheetId, statusColumn, draft).then(saved => {
+      if (saved) { update({ autoRunWas: autoRun }); p.onRunChanged() }
+    })
   }
   const shared = {
     sheetId, draft, update, columns, selectedCount: selectedRows.length, selectedRows, rowGeneration: p.rowGeneration,

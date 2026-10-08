@@ -17,7 +17,10 @@ import type { EstimateInput } from '../lib/enrich-estimate-input';
 import { getTool, type CatalogFailure } from './enrich-catalog';
 import { dailyLimitView, getTregToken, type DailyLimitView } from './treg-key';
 
-export interface SheetSetupInfo { rows: { all: number; filter: number | null }; columns: { count: number; max: number } }
+// hasWebhook: rows can arrive from outside, so Set up's auto-run choice warns.
+export interface SheetSetupInfo {
+  rows: { all: number; filter: number | null }; columns: { count: number; max: number }; hasWebhook: boolean;
+}
 
 // All rows (index count), the rows the sheet's saved filters show (the same
 // clause the grid's read counts with, so the numbers match), and room for columns.
@@ -34,6 +37,8 @@ export function sheetSetupInfo(userId: string, sheetId: string): SheetSetupInfo 
   return {
     rows: { all: count('', []), filter: clause ? count(clause, [...empty.params, ...contains.params]) : null },
     columns: { count: getSheetColumns(sheetId, userId).length, max: MAX_COLUMNS_PER_SHEET },
+    hasWebhook: !!db.prepare('SELECT 1 FROM webhook_sources WHERE sheet_id = ? AND user_id = ? LIMIT 1')
+      .get(sheetId, userId),
   };
 }
 
@@ -52,7 +57,9 @@ export interface EnrichEstimateView {
 
 // The estimate box. The default per-row cap lets every provider picked
 // answer; the verified email preset also budgets for its checks and re-finds.
-export async function estimateEnrichment(userId: string, input: EstimateInput): Promise<{ ok: EnrichEstimateView } | CatalogFailure> {
+export async function estimateEnrichment(
+  userId: string, input: EstimateInput,
+): Promise<{ ok: EnrichEstimateView } | CatalogFailure> {
   const found = await getTool(input.toolId);
   if (!('ok' in found)) return found;
   const tool = found.ok;
@@ -69,13 +76,16 @@ export async function estimateEnrichment(userId: string, input: EstimateInput): 
       defaultMaxCostPerRowUsd: cap,
       providersOn: providersOn ? [...new Set(providersOn)] : null,
       noProvider: noProviderCanRun(tool, pick),
-      priceKnown: tool.kind === 'waterfall' || tool.price.usd !== null || tool.price.type === 'free' || tool.price.overflowUsd !== null,
+      priceKnown: tool.kind === 'waterfall' || tool.price.usd !== null ||
+        tool.price.type === 'free' || tool.price.overflowUsd !== null,
       dailyLimit: dailyLimitView(userId),
     },
   };
 }
 
-export type BalanceRead = { ok: { balanceUsd: number; onHoldUsd: number } } | { fail: 'no_key' | 'unavailable'; message: string };
+export type BalanceRead =
+  | { ok: { balanceUsd: number; onHoldUsd: number } }
+  | { fail: 'no_key' | 'unavailable'; message: string };
 
 // Best effort: the estimate box simply leaves the balance out when treg
 // can't say.

@@ -1,6 +1,6 @@
 // Shared wording for enrichment money and limits (Settings, estimate boxes,
 // pause notices). Plain words, no em dashes.
-import { formatCost } from '@/components/ai-modal/format'
+import { formatCost } from '../components/ai-modal/format'
 
 export const TREG_APP_URL = 'https://treg.to/app'
 export const TREG_TOPUP_URL = 'https://treg.to/app#billing'

@@ -17,7 +17,8 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'add_column',
     {
       description:
-        'Add a column (empty on every existing row). Names are Google-Sheets-permissive; case/token variants of existing names are rejected.',
+        'Add a column (empty on every existing row). ' +
+        'Names are Google-Sheets-permissive; case/token variants of existing names are rejected.',
       inputSchema: { sheet_id: z.string(), name: z.string() },
     },
     async ({ sheet_id, name }) => {
@@ -34,7 +35,10 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'rename_column',
     {
       description:
-        'Rename a column. Cascades everywhere (cell data, ordering, filters, webhook mappings, and the /references in saved AI prompts and HTTP request templates). Fails while an active run either WRITES this column or READS it (an AI prompt or an HTTP request): the remaining rows would lose its values. Stop the run first.',
+        'Rename a column. Cascades everywhere (cell data, ordering, filters, webhook mappings, and the ' +
+        '/references in saved AI prompts and HTTP request templates). Fails while an active run either ' +
+        'WRITES this column or READS it (an AI prompt or an HTTP request): the remaining rows would lose ' +
+        'its values. Stop the run first.',
       inputSchema: { sheet_id: z.string(), column: z.string(), new_name: z.string() },
     },
     async ({ sheet_id, column, new_name }) => {
@@ -53,7 +57,8 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'delete_column',
     {
       description:
-        'PERMANENTLY delete a column and its data from every row (there is no undo). Fails for run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column.',
+        'PERMANENTLY delete a column and its data from every row (there is no undo). Fails for run-owned ' +
+        'columns, columns an active run reads, webhook marker columns, and the last remaining column.',
       inputSchema: { sheet_id: z.string(), column: z.string() },
     },
     async ({ sheet_id, column }) => {
@@ -72,7 +77,8 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'sort_sheet',
     {
       description:
-        'ONE-TIME physical sort (Google Sheets semantics): rows are permanently reordered by the column; there is no live sort view. Row ids stay stable; row indexes change. Fails while any run is active.',
+        'ONE-TIME physical sort (Google Sheets semantics): rows are permanently reordered by the column; ' +
+        'there is no live sort view. Row ids stay stable; row indexes change. Fails while any run is active.',
       inputSchema: { sheet_id: z.string(), column: z.string(), direction: z.enum(['asc', 'desc']) },
     },
     async ({ sheet_id, column, direction }) => {
@@ -82,9 +88,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       const result = await physicalSortSheet(sheet_id, ctx.userId, column, direction, { bumpDataVersion: true });
       if ('fail' in result) {
         if (result.fail === 'busy') return err(result.error);
-        return err(result.fail === 'column_not_found'
-          ? `Column "${column}" not found in this sheet`
-          : 'Cannot sort while a run is active on this sheet. Stop or finish the run first.');
+        return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.message);
       }
       return ok({ rows_reordered: result.rowsReordered });
     },

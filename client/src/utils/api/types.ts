@@ -1,3 +1,4 @@
+import type { ColumnSpend, SheetAutorun } from './types-autorun'
 export interface Table {
   id: string
   name: string
@@ -45,6 +46,9 @@ export interface SheetData {
     columns: string[]
     totalRows: number
     columnTypes?: Record<string, ColumnType>
+    // Auto-run per column, and what each enrichment column spent (header ⚡ and tooltip).
+    autorun?: SheetAutorun
+    columnSpend?: Record<string, ColumnSpend>
   }
 }
 
@@ -188,4 +192,5 @@ export interface HTTPColumnAssociation {
 export * from './types-settings'
 export * from './types-enrich'
 export * from './types-enrich-run'
+export * from './types-autorun'
 export * from './types-enrich-answer'

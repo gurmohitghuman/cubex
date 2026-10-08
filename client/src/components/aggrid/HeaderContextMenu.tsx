@@ -4,6 +4,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { ColumnType } from '@/utils/api/types'
+import type { AutorunColumn } from '@/utils/api/types-autorun'
 import { ContainsFilterInput } from './ContainsFilterInput'
 import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
@@ -19,6 +20,8 @@ export interface HeaderContextMenuProps {
   setRenaming: (r: { x: number; y: number; oldName: string; value: string }) => void
   // Authoritative per-column type (server, run-record derived). Absent → plain.
   columnTypes: Record<string, ColumnType>
+  // Auto-run per status column: the run blocks' ⚡ items.
+  autorunColumns?: Record<string, AutorunColumn>
   emptyFilter?: Record<string, 'empty' | 'not_empty'>
   columnFilters?: Record<string, { type: 'contains'; value: string }>
   setConfirmDeleteColumn: (col: string | null) => void
@@ -35,7 +38,7 @@ export interface HeaderContextMenuProps {
 
 export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   const {
-    menu, setMenu, setRenaming, columnTypes, emptyFilter, columnFilters,
+    menu, setMenu, setRenaming, columnTypes, autorunColumns, emptyFilter, columnFilters,
     setConfirmDeleteColumn, setConfirmDeleteRows, activeHTTPRunsByColumn, activeAIRunsByColumn,
     onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows, runActions,
   } = props
@@ -45,7 +48,9 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   // One type per column → the AI, HTTP and enrichment blocks are mutually
   // exclusive (the old heuristics could match both at once and stack both menus).
   const columnType = columnTypes[menu.columnId]
-  const runProps = { columnId: menu.columnId, setMenu, actions: runActions }
+  const runProps = {
+    columnId: menu.columnId, setMenu, actions: runActions, autorun: autorunColumns?.[menu.columnId],
+  }
   // An emptiness filter replaces the column's text filter.
   const emptiness = (value: 'empty' | 'not_empty') => {
     onColumnFilterChange?.(menu.columnId, null)

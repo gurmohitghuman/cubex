@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
 import type { SourcesCell } from '@/components/ScrapedDataModal'
+import { toastBlocked } from '@/components/sheet/blockedToast'
 
 interface UseSheetViewArgs {
   activeSheet: Sheet | null
@@ -72,7 +73,9 @@ export const useSheetView = ({
     } catch (error: any) {
       // reloadSheet didn't run (or failed) — clear the loader ourselves.
       setIsLoading(false)
-      toast.error(error.response?.data?.error || 'Failed to sort sheet')
+      // A paused run holding the sheet is named, with "Cancel it" (blockedToast).
+      if (error?.response?.status === 409) toastBlocked(error, 'Failed to sort sheet', { onCancelled: reloadSheet })
+      else toast.error(error.response?.data?.error || 'Failed to sort sheet')
     }
   }, [activeSheet, reloadSheet, waitForSaves, clearSelection, setIsLoading])
 

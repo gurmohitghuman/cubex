@@ -1,7 +1,10 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter, DatabaseZap } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap, Zap } from 'lucide-react'
 import type { ColumnType } from '@/utils/api/types'
+import type { AutorunColumn, ColumnSpend } from '@/utils/api/types-autorun'
+import { HeaderTip } from './autorun/HeaderTip'
+import { headerTip, pauseShort } from './autorun/autorun-copy'
 
 interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   onDeleteColumn: (columnId: string) => void
@@ -10,10 +13,14 @@ interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   isFiltered?: boolean
   // The server's type for the column: an enrichment's status column shows DatabaseZap.
   columnType?: ColumnType
+  // Its auto-run (⚡, amber while paused) and what it spent: the icons' tooltip.
+  autorun?: AutorunColumn
+  spend?: ColumnSpend
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
-  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType } = params
+  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend } = params
+  const tip = headerTip(spend, autorun)
 
   const colDef = column.getColDef()
   const columnName = (colDef.field as string) || column.getColId()
@@ -49,12 +56,21 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
     <div className="ag-header-cell-text flex items-center justify-between w-full h-full group">
       <div
         className="truncate flex-1 cursor-pointer select-none flex items-center gap-1"
-        title={displayName}
         onClick={handleHeaderClick}
       >
-        {columnType === 'enrich-status' && (
-          <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
-            data-testid="enrich-status-icon" />
+        {(columnType === 'enrich-status' || autorun?.enabled) && (
+          <HeaderTip text={tip?.text ?? ''} amber={tip?.paused}>
+            {columnType === 'enrich-status' && (
+              <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
+                data-testid="enrich-status-icon" />
+            )}
+            {autorun?.enabled && (
+              <Zap size={12} data-testid="autorun-icon" data-paused={autorun.pausedReason ? 'true' : 'false'}
+                aria-label={autorun.pausedReason
+                  ? `Auto-run paused: ${pauseShort(autorun.pausedReason)}` : 'Auto-run on'}
+                className={`flex-shrink-0 ${autorun.pausedReason ? 'text-amber-600' : 'text-cube-black'}`} />
+            )}
+          </HeaderTip>
         )}
         {isAIColumn && (
           <Sparkles
@@ -63,7 +79,7 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
             aria-label="AI-generated column"
           />
         )}
-        <span className="truncate">{displayName}</span>
+        <span className="truncate" title={displayName}>{displayName}</span>
         {isFiltered && (
           <Filter size={12} className="flex-shrink-0 text-cube-black" aria-label="Filtered">
             <title>Filtered: some rows are hidden</title>

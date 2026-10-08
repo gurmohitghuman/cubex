@@ -31,7 +31,9 @@ const TOKEN_RE = /\{\{([^}]+)\}\}/g;
 // registry (column_order): stored rows are sparse, so a column the row lacks is
 // an empty cell, and only a name missing from the registry is unknown. An exact
 // (case-insensitive) name wins over a normalized match.
-export function fillTemplate(template: string, row: Record<string, string>, columns: string[]): { value: string } | { unknown: string } {
+export function fillTemplate(
+  template: string, row: Record<string, string>, columns: string[],
+): { value: string } | { unknown: string } {
   const miss: { name: string | null } = { name: null };
   const value = template.replace(TOKEN_RE, (_full, inner) => {
     const name = String(inner).trim();
@@ -51,7 +53,9 @@ function typed(input: ToolInput, raw: string): { value: unknown } | { invalid: s
   const t = input.type.toLowerCase();
   if (t === 'integer' || t === 'int' || t === 'number' || t === 'float') {
     const n = Number(raw);
-    if (!Number.isFinite(n) || (t.startsWith('int') && !Number.isSafeInteger(n))) return { invalid: `${input.name} must be a number, got "${raw.slice(0, 40)}".` };
+    if (!Number.isFinite(n) || (t.startsWith('int') && !Number.isSafeInteger(n))) {
+      return { invalid: `${input.name} must be a number, got "${raw.slice(0, 40)}".` };
+    }
     return { value: n };
   }
   if (t === 'boolean' || t === 'bool') {
@@ -90,7 +94,9 @@ function checkValue(input: ToolInput, value: unknown): string | null {
   if (input.enum && input.enum.length) {
     const allowed = new Set(input.enum.map(String));
     const bad = values.find(v => !allowed.has(String(v)));
-    if (bad !== undefined) return `${input.name} must be one of ${input.enum.slice(0, 8).join(', ')} (got "${String(bad).slice(0, 40)}").`;
+    if (bad !== undefined) {
+      return `${input.name} must be one of ${input.enum.slice(0, 8).join(', ')} (got "${String(bad).slice(0, 40)}").`;
+    }
   }
   for (const v of values) {
     if (typeof v !== 'number') continue;
@@ -123,13 +129,17 @@ export function buildRequest(
   tool: RequestTool, inputMap: Record<string, string>, row: Record<string, string>,
   opts: { cleanDomains: boolean; columns: string[] },
 ): BuiltRequest {
-  if (!TREG_TOOL_ID_PATTERN.test(tool.id)) return { ok: false, invalid: `"${tool.id.slice(0, 60)}" isn't a treg tool id.` };
+  if (!TREG_TOOL_ID_PATTERN.test(tool.id)) {
+    return { ok: false, invalid: `"${tool.id.slice(0, 60)}" isn't a treg tool id.` };
+  }
   const sent: Record<string, unknown> = {};
   for (const input of tool.inputs) {
     const template = inputMap[input.name];
     if (typeof template !== 'string') continue;
     const filled = fillTemplate(template, row, opts.columns);
-    if ('unknown' in filled) return { ok: false, invalid: `The column "${filled.unknown}" isn't in this sheet anymore.` };
+    if ('unknown' in filled) {
+      return { ok: false, invalid: `The column "${filled.unknown}" isn't in this sheet anymore.` };
+    }
     let raw = filled.value.trim();
     if (opts.cleanDomains && DOMAIN_INPUT_NAMES.has(input.name)) raw = cleanDomain(raw);
     if (!raw) continue;
@@ -159,7 +169,9 @@ export function buildRequest(
   };
 }
 
-export interface KeyParts { method: string; path: string; query: string; body: string | null; prefer?: string[]; exclude?: string[] }
+export interface KeyParts {
+  method: string; path: string; query: string; body: string | null; prefer?: string[]; exclude?: string[];
+}
 
 // What makes two calls the same lookup. treg's idempotency fingerprint ignores
 // headers, so the waterfall's provider order and skips are hashed in too.
@@ -170,9 +182,13 @@ export function requestFingerprint(p: KeyParts): string {
     .digest('hex');
 }
 
-// Same run, row, attempt and request → same key → treg replays a paid answer
-// for free (24 h). A rerun (new run id) or an edited cell (new hash) is a new
-// call. Well under treg's 200-character limit.
-export function idempotencyKey(runId: string, rowIndex: number, attempt: string, parts: KeyParts): string {
-  return `cbx1:${runId}:${rowIndex}:${attempt}:${requestFingerprint(parts).slice(0, 32)}`;
+// Same scope, row, attempt and request → same key → treg replays a paid answer
+// for free (24 h). A run's scope is its id and the row its position, so a rerun
+// (new run id) or an edited cell (new hash) is a new call. An auto-run's scope
+// is its entry and the row its id (services/enrich-step.ts keyScope). Well
+// under treg's 200-character limit.
+export const keyPrefix = (scope: string, row: number | string): string => `cbx1:${scope}:${row}:`;
+
+export function idempotencyKey(scope: string, row: number | string, attempt: string, parts: KeyParts): string {
+  return `${keyPrefix(scope, row)}${attempt}:${requestFingerprint(parts).slice(0, 32)}`;
 }

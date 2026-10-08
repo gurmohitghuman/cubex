@@ -3,6 +3,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
 import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
 import type { ColumnType } from '@/utils/api/types'
+import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import { useSheetGridRunActions } from '@/hooks/sheet/useSheetGridRunActions'
 import { useEnrichColumnActions } from '@/hooks/sheet/useEnrichColumnActions'
 import type { CellClickInfo, RunByColumn, RunMenuActions } from '@/components/aggrid/types'
@@ -22,6 +23,10 @@ export interface SheetGridProps {
   columnFilters: Record<string, { type: 'contains'; value: string }>
   lastRenamedColumn: { from: string; to: string; at: number } | null
   columnTypes: Record<string, ColumnType>
+  // Auto-run and spend per column (header ⚡, tooltip, menu items) and the menu's ⚡ action.
+  autorun?: SheetAutorun
+  columnSpend?: Record<string, ColumnSpend>
+  onAutorunAction?: (column: string, action: 'open' | 'off') => void
   activeHTTPRuns: HTTPRun[]
   activeAIRunsList: AIRun[]
   activeHTTPRunsByColumn: RunByColumn
@@ -68,7 +73,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onSelectedRowsChange, onRenameColumn, onDeleteColumn, onDeleteRows,
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
-    onOpenEnrichment,
+    onOpenEnrichment, autorun, columnSpend, onAutorunAction,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -119,6 +124,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,
+    onAutorunAction,
   }
 
   return (
@@ -157,7 +163,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onDeleteColumn={(col) => actions.handleDeleteColumnWithWidthCleanup(col, onDeleteColumn)}
       onDeleteRows={onDeleteRows}
       runActions={runActions}
-      columnTypes={columnTypes}
+      columnTypes={columnTypes} autorun={autorun} columnSpend={columnSpend}
       activeHTTPRunsByColumn={activeHTTPRunsByColumn}
       activeAIRunsByColumn={activeAIRunsByColumn}
       onColumnReorder={onColumnReorder}

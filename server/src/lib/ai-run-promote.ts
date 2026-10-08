@@ -4,6 +4,7 @@ import { jsonPath } from './sql-helpers';
 import { getDraft, computeConfigHash, computeInputHash, type DraftConfig } from './ai-drafts';
 import { clampCellChars } from './csv-safety';
 import { CELL_MAX_ENRICHMENT } from './constants';
+import { markAutorunInputs } from './autorun-mark';
 
 // Credit reuse: when
 // "Run All Rows" starts and a persisted preview is still valid, its results are
@@ -107,5 +108,7 @@ export function promotePreviewReuse(args: {
     insertResult.run(uuidv4(), runId, userId, c.rowIndex, dataJson, value);
     promoted.push(c.rowIndex);
   }
+  // An auto-run that reads the output column sees these rows filled.
+  markAutorunInputs(sheetId, userId, [outputColumn], { indexes: promoted });
   return promoted;
 }

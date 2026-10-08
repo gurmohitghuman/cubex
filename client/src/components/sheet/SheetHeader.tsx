@@ -32,6 +32,8 @@ interface SheetHeaderProps {
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
   onOpenWebhook: () => void
+  // Auto-run's chip, shown while any column has auto-run on (components/autorun/AutorunChip).
+  autorunChip?: React.ReactNode
 }
 
 export const SheetHeader: React.FC<SheetHeaderProps> = ({
@@ -56,6 +58,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onAddEnrichment,
   onAddHTTPColumn,
   onOpenWebhook,
+  autorunChip,
 }) => {
   return (
     <header className="bg-white border-b border-gray-200 flex-shrink-0">
@@ -64,7 +67,10 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
           <div className="flex items-center space-x-3">
             <Link
               to="/dashboard"
-              className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors duration-200"
+              className={
+                'p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded ' +
+                'transition-colors duration-200'
+              }
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -81,12 +87,20 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             {anyActiveRuns && (
               <div className="flex items-center space-x-1 ml-2">
                 {anyRunning ? (
-                  <button onClick={onPauseAll} className="btn-secondary flex items-center space-x-1" title="Pause all runs">
+                  <button
+                    onClick={onPauseAll}
+                    className="btn-secondary flex items-center space-x-1"
+                    title="Pause all runs"
+                  >
                     <Pause className="h-3 w-3" />
                     <span>Pause</span>
                   </button>
                 ) : (
-                  <button onClick={onResumeAll} className="btn-secondary flex items-center space-x-1" title="Resume all runs">
+                  <button
+                    onClick={onResumeAll}
+                    className="btn-secondary flex items-center space-x-1"
+                    title="Resume all runs"
+                  >
                     <Play className="h-3 w-3" />
                     <span>Resume</span>
                   </button>
@@ -97,6 +111,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 </button>
               </div>
             )}
+            {autorunChip}
           </div>
 
           <div className="flex items-center space-x-2">
@@ -117,12 +132,17 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                   onClick={onDeleteSelectedRows}
                   className="btn-danger flex items-center space-x-1"
                   title={onlyWindowSelected
-                    ? `Delete the ${selectedRowCount.toLocaleString()} loaded rows. ${(totalRows - loadedRowsCount).toLocaleString()} more rows aren't loaded and won't be deleted — scroll to load them first.`
+                    ? `Delete the ${selectedRowCount.toLocaleString()} loaded rows. ` +
+                      `${(totalRows - loadedRowsCount).toLocaleString()} more rows aren't loaded and ` +
+                      `won't be deleted: scroll to load them first.`
                     : 'Delete selected rows'}
                 >
                   <Trash2 className="h-3 w-3" />
                   <span>
-                    Delete ({selectedRowCount.toLocaleString()}{onlyWindowSelected ? ` of ${totalRows.toLocaleString()}` : ''})
+                    Delete (
+                    {selectedRowCount.toLocaleString()}
+                    {onlyWindowSelected ? ` of ${totalRows.toLocaleString()}` : ''}
+                    )
                   </span>
                 </button>
               )
