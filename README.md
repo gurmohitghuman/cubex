@@ -32,7 +32,7 @@ Only this computer can open Cubex until you change that. To use it from other de
 curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.sh | bash -s -- --public
 ```
 
-Other options include `--port` and `--dir` (install somewhere other than `~/.cubex`); `--help` lists them all. Prefer Coolify, Docker or running from a checkout? See [Other ways to run Cubex](#other-ways-to-run-cubex).
+It installs the latest [release](https://github.com/gurmohitghuman/cubex/releases); `--ref main` follows the newest code instead. Other options include `--port` and `--dir` (install somewhere other than `~/.cubex`); `--help` lists them all. Prefer Coolify, Docker or running from a checkout? See [Other ways to run Cubex](#other-ways-to-run-cubex).
 
 ## Run
 
@@ -48,7 +48,7 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 | `cubex open` | Open Cubex in your browser |
 | `cubex stop`, `cubex start`, `cubex restart` | Stop, start or restart it |
 | `cubex logs` | Follow the server log |
-| `cubex update` | Update to the latest version; your data and settings are kept |
+| `cubex update` | Update to the latest release; your data and settings are kept |
 | `cubex config` | Show the settings file, `~/.cubex/config.env` |
 | `cubex reset-password` | Choose a new password |
 | `cubex uninstall` | Remove Cubex but keep your data (`--delete-data` removes that too) |
@@ -218,6 +218,8 @@ E2E_SPEC=tests/e2e scripts/e2e-harness.sh   # full browser + API suite on a thro
 ```
 
 The end-to-end suite needs Playwright: `npm install --no-save @playwright/test && npx playwright install chromium`.
+
+How a release is cut: [docs/releasing.md](docs/releasing.md).
 
 Stack: Express and SQLite (better-sqlite3) on the server, React, Vite and AG Grid in the browser, Sidequest for background runs. Runs, autosave and column handling rely on rules that the comments at the top of those files explain; read them before changing anything there.
 
