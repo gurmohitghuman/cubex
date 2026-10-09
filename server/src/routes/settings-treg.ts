@@ -7,6 +7,7 @@ import { checkTregKey } from '../lib/treg';
 import { getTregToken, saveTregToken, clearTregToken, setDailyLimitMicro, dailyLimitView } from '../services/treg-key';
 import { TREG_KEY_MAX_CHARS, ENRICH_DAILY_LIMIT_MIN_MICRO, ENRICH_DAILY_LIMIT_MAX_USD } from '../lib/constants';
 import { clearKeyPauses } from '../services/autorun-entry';
+import { noteTregReach } from '../services/treg-reach';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -53,6 +54,7 @@ router.post('/test-treg-key', async (req: AuthRequest, res) => {
     const key = typed ?? getTregToken(req.userId!);
     if (!key) return res.status(400).json({ error: 'Paste your treg API key first.' });
     const result = await checkTregKey(key);
+    noteTregReach(req.userId!, result.ok || result.problem !== 'unreachable');
     if (!result.ok) return res.json({ valid: false, problem: result.problem, message: result.message });
     const parts = ['Valid'];
     if (result.balanceMicro !== null) {

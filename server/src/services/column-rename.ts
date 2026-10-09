@@ -7,12 +7,13 @@
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
-import { copyColumnKey, recordPurge, forgetPurge, purgeColumnKey } from '../lib/column-purge';
+import { copyColumnKey, recordPurge, forgetPurge } from '../lib/column-purge';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import { renameWebhookColumnRefs } from '../lib/webhook-columns';
-import { renameHttpRunColumnRefs } from '../lib/http-columns';
+import { renameListDestColumn } from '../lib/http-columns';
+import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-config-rewrite';
 import { renameAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { renameAutorunColumnRefs } from '../lib/autorun-columns';
@@ -128,6 +129,8 @@ export async function renameSheetColumn(
   // restart mid-way finishes the strip (lib/column-purge.ts): the partial
   // copies before the switch, the old keys after it.
   const outcome = await withSheetBusy(sheetId, 'renaming a column', async () => {
+    // A column change a failure left half-done is finished first.
+    await finishRunRewrites(sheetId);
     recordPurge(sheetId, userId, trimmedNew);
     await copyColumnKey(sheetId, userId, columnName, trimmedNew);
     db.transaction(() => {
@@ -143,7 +146,7 @@ export async function renameSheetColumn(
       forgetPurge(sheetId, trimmedNew);
       recordPurge(sheetId, userId, columnName);
     })();
-    await purgeColumnKey(sheetId, userId, columnName);
+    await finishColumnChange(sheetId, userId, columnName);
     return { ok: true as const, newName: trimmedNew };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
@@ -197,7 +200,9 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameAiRunColumnRefs(sheetId, userId, columnName, trimmedNew);
   // The STORED HTTP run config (master_column_name, responseMapping[].columnName):
   // a rerun reads it to decide where the worker writes results.
-  renameHttpRunColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // The sheet's own runs: the newest page now, the rest after the switch.
+  recordRunRewrite(sheetId, userId, columnName, trimmedNew);
+  renameListDestColumn(sheetId, userId, columnName, trimmedNew);
   // Webhook mappings and the raw marker name.
   renameWebhookColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Auto-run settings: the status column, the columns it reads, "Only run if".

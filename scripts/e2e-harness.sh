@@ -52,6 +52,16 @@ case "$SPEC" in
     ;;
 esac
 
+# The live smoke (tests/e2e/enrich-live-smoke.spec.ts): with CUBEX_SMOKE_TREG_TOKEN
+# set, enrichments go to the real treg and spend cents of that team's balance,
+# so that spec runs alone; every other spec expects the mock.
+LIVE=0
+if [ -n "${CUBEX_SMOKE_TREG_TOKEN:-}" ]; then
+  [ "$SPEC" = "tests/e2e/enrich-live-smoke.spec.ts" ] \
+    || { echo "[x] CUBEX_SMOKE_TREG_TOKEN is set: run only E2E_SPEC=tests/e2e/enrich-live-smoke.spec.ts"; exit 1; }
+  LIVE=1
+fi
+
 # Another run (or a stale server) on our ports would be adopted as ours, and
 # this run's cleanup would delete its data. Check before touching anything.
 for url in "http://localhost:$PORT/api/health" "http://127.0.0.1:$TREG_PORT/health"; do
@@ -95,18 +105,25 @@ export PUBLIC_URL="http://localhost:$PORT"
 export LOGIN_RATE_MAX="${LOGIN_RATE_MAX:-100000}"
 # Enables the transfer_rows / transform_column MCP tools so their specs run.
 export MCP_EFFICIENT_ROWS_ENABLED="${MCP_EFFICIENT_ROWS_ENABLED:-1}"
-# Enrichments talk to a mock treg (tests/mock-treg), never the real treg.to.
-# TREG_BASE_URL is an operator setting (never user input); specs drive the
-# mock's state through E2E_TREG.
-export TREG_BASE_URL="http://127.0.0.1:$TREG_PORT"
+# Enrichments talk to a mock treg (tests/mock-treg), never the real treg.to,
+# except in the live smoke. TREG_BASE_URL is an operator setting (never user
+# input); specs drive the mock's state through E2E_TREG.
+if [ "$LIVE" -eq 1 ]; then
+  export TREG_BASE_URL="${CUBEX_SMOKE_TREG_BASE:-https://treg.to}"
+else
+  export TREG_BASE_URL="http://127.0.0.1:$TREG_PORT"
+fi
 # Auto-run looks for rows to fill every half second here (15 s by default), and
 # specs move "today" forward through this file to test daily caps (lib/clock.ts).
 export AUTORUN_SWEEP_MS="${AUTORUN_SWEEP_MS:-500}"
 export AUTORUN_USER_YIELD_MS="${AUTORUN_USER_YIELD_MS:-6000}"
 # List results become rows on this beat (5 s in production).
 export ENRICH_LIST_DRAIN_MS="${ENRICH_LIST_DRAIN_MS:-500}"
+# Older answers of rows enriched again are pruned on this beat (30 s in production).
+export ANSWER_PRUNE_SWEEP_MS="${ANSWER_PRUNE_SWEEP_MS:-500}"
 export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
 
+if [ "$LIVE" -eq 0 ]; then
 echo "[boot] mock treg on :$TREG_PORT ..."
 node tests/mock-treg/server.mjs "$TREG_PORT" >/tmp/cubex-e2e-treg.log 2>&1 &
 TREG_PID=$!
@@ -117,6 +134,9 @@ for _ in $(seq 1 20); do
 done
 curl -fsS -o /dev/null "$TREG_BASE_URL/health" && kill -0 "$TREG_PID" 2>/dev/null \
   || { echo "[x] mock treg never became ready"; tail -20 /tmp/cubex-e2e-treg.log; exit 1; }
+else
+  echo "[live] enrichments go to $TREG_BASE_URL (live smoke)"
+fi
 
 echo "[boot] prod server on :$PORT (data: server/data/e2e) ..."
 NODE_ENV=production PORT="$PORT" node server/dist/index.js >/tmp/cubex-e2e-server.log 2>&1 &

@@ -48,6 +48,15 @@ export function runMigrations() {
 
   const insertMigration = db.prepare('INSERT INTO _migrations (name) VALUES (?)');
 
+  // An upgrade can rebuild indexes over every stored result (a big database
+  // takes a while): say so before the first one starts, so a quiet boot
+  // doesn't look like a hang.
+  const pending = files.filter(f => !applied.has(f));
+  if (applied.size > 0 && pending.length > 0) {
+    console.log(`Upgrading the database (${pending.length} step${pending.length === 1 ? '' : 's'}). `
+      + 'A big database can take a minute.');
+  }
+
   let appliedAny = false;
   for (const file of files) {
     if (applied.has(file)) continue;

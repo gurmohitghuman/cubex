@@ -2,6 +2,7 @@
 // classifier says (lib/enrich-errors.ts), each answer written to the ledger
 // before anything else looks at it. Retries re-send the SAME Idempotency-Key,
 // so a call treg already ran (and charged) is replayed for free.
+// Over 200 lines: one call's retry loop with its ledger and key rules, which only hold together.
 import {
   ENRICH_FIRST_RETRY_MS, ENRICH_IDEMPOTENCY_WAIT_MS, ENRICH_SATURATION_RETRIES, ENRICH_UNREACHABLE_PAUSE_AFTER,
 } from '../lib/constants';
@@ -10,6 +11,7 @@ import { idempotencyKey, keyPrefix, requestFingerprint, type KeyParts } from '..
 import { tregCall, type TregCallRequest } from '../lib/treg-call';
 import type { TregMeta } from '../lib/treg-meta';
 import { heldKeys, keysUsed, keyUsedByOtherRun, recordCall, seenCallId } from './enrich-ledger';
+import { noteTregReach, tregAnswered } from './treg-reach';
 
 export const UNREACHABLE_MESSAGE = "Can't reach treg. Check the server's internet connection, then Resume.";
 const PROVIDER_RETRIES = 2;
@@ -95,6 +97,7 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
     // No abort signal: a call treg is running is billed whatever we do, so it
     // always finishes and its cost lands in the ledger.
     const ans = await tregCall(ctx.token, { ...s.request, idempotencyKey: key });
+    noteTregReach(ctx.userId, tregAnswered({ ...ans, callId: ans.meta.callId, tregError: ans.meta.tregError }));
     // treg answers a repeated key from its store with the first call id.
     const replayed = ans.meta.replay || seenCallId(ctx.userId, s.rowId, key, ans.meta.callId);
     const replayedRefusal = ans.meta.tregError && replayed;

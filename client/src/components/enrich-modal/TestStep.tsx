@@ -12,6 +12,8 @@ import { RunResultRows } from './RunResultRows'
 import { PausedNotice } from './PausedNotice'
 import { runActive, type EnrichRunControls } from './useEnrichRun'
 import { confirmMessage, quotedLimit } from './RunButtons'
+import { useChainedAutorun } from './useChainedAutorun'
+import { CHAIN_LOADING } from './chain-copy'
 import { ListTestPanel } from './ListTestPanel'
 
 interface Props {
@@ -76,6 +78,7 @@ export const TestStep: React.FC<Props> = (p) => {
   const blocked = waiting ?? m.problem ?? nothingFound ?? m.fullProblem
   // Like Set up's full run: a confirm with the estimate, and the limit it quotes is kept.
   const quote = { draft: p.draft, rows: m.rows, estimate: est, unpriced: billed, listDest: m.listDestName }
+  const chain = useChainedAutorun(p.sheetId, confirming, p.draft, m.rows, est, m.listDestName)
   const more = () => start(runRequest(p.draft, {
     mode: effectiveMode(p.draft.rowsMode, m.counts), selectedRows: p.selectedRows, test: false, order: m.order,
     rowGeneration: p.rowGeneration, status: 'not_enriched', spendLimitUsd: quotedLimit(quote),
@@ -141,8 +144,10 @@ export const TestStep: React.FC<Props> = (p) => {
             : 'Adds to the same column, on the rows not enriched yet.')}
         </p>
       </div>
-      <ConfirmDialog isOpen={confirming} title="Run the enrichment" message={confirmMessage(quote)} confirmText="Run"
-        zClassName="z-[20010]" isLoading={starting} onCancel={() => setConfirming(false)}
+      <ConfirmDialog isOpen={confirming} title="Run the enrichment"
+        message={confirmMessage(quote, chain ?? CHAIN_LOADING)}
+        confirmText="Run" zClassName="z-[20010]" isLoading={starting} confirmDisabled={chain === null}
+        onCancel={() => setConfirming(false)}
         onConfirm={() => { setConfirming(false); more() }} />
     </div>
   )

@@ -9,6 +9,8 @@ import type { EnrichEstimate } from '@/utils/api'
 import { type OnStarted, effectiveMode, type EnrichDraft, type RowCounts } from './draft'
 import { canTest, continuing, rowsPhrase, runRequest, runStatusOf } from './run-request'
 import { useRunStart } from './useRunStart'
+import { useChainedAutorun } from './useChainedAutorun'
+import { CHAIN_LOADING } from './chain-copy'
 
 interface Props {
   sheetId: string
@@ -38,8 +40,15 @@ interface Props {
 export const quotedLimit = (p: Pick<Props, 'draft' | 'estimate' | 'unpriced'>): number | null =>
   (p.unpriced ? null : p.draft.spendLimitUsd ?? p.estimate?.estimate.highUsd ?? null)
 
-// The confirm before a full run repeats the estimate for the rows it takes.
-export function confirmMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest'>): string {
+// The confirm before a full run repeats the estimate for the rows it takes,
+// then the auto-runs the run sets off (`chain`, chain-copy.ts).
+export function confirmMessage(
+  p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest'>, chain = '',
+): string {
+  return `${runMessage(p)}${chain ? ` ${chain}` : ''}`
+}
+
+function runMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest'>): string {
   const title = p.draft.card?.title ?? 'this enrichment'
   const more = continuing(p.draft)
   const status = runStatusOf(p.draft)
@@ -66,6 +75,7 @@ export function confirmMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'u
 export const RunButtons: React.FC<Props> = (p) => {
   const [confirming, setConfirming] = useState(false)
   const { start, starting, error } = useRunStart(p.sheetId, p.onStarted, p.onFieldError)
+  const chain = useChainedAutorun(p.sheetId, confirming, p.draft, p.rows, p.estimate, p.listDest ?? null)
   const waiting = !p.unpriced && !p.estimate ? 'Waiting for the estimate…' : null
   const blocked = p.problem ?? waiting
   const fullBlocked = blocked ?? p.fullProblem ?? null
@@ -102,8 +112,9 @@ export const RunButtons: React.FC<Props> = (p) => {
       <p className={`text-xs ${error ? 'text-red-600' : 'text-gray-500'}`} data-testid="enrich-run-reason">
         {error ?? blocked ?? p.fullProblem ?? reason}
       </p>
-      <ConfirmDialog isOpen={confirming} title="Run the enrichment" message={confirmMessage(p)} confirmText="Run"
-        zClassName="z-[20010]" isLoading={starting}
+      <ConfirmDialog isOpen={confirming} title="Run the enrichment"
+        message={confirmMessage(p, chain ?? CHAIN_LOADING)}
+        confirmText="Run" zClassName="z-[20010]" isLoading={starting} confirmDisabled={chain === null}
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false)

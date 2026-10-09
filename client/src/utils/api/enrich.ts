@@ -3,7 +3,7 @@ import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
   EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
   EnrichRowCounts, EnrichRowsScope, EnrichRerunRequest, EnrichRerunEstimate, EnrichColumnSetup, EnrichSpend,
-  AnswerView, AnswerFieldAdded, EnrichListField, EnrichListFieldChoices,
+  AnswerView, AnswerFieldAdded, EnrichListField, EnrichListFieldChoices, StoredAnswers,
 } from './types'
 
 // The drawer shows its own error for each of these (inline, in place), so the
@@ -90,4 +90,11 @@ export const enrichAPI = {
 
   spend: (days: number): Promise<EnrichSpend> =>
     api.get('/enrich/spend', { ...noServerToast, params: { days } }).then(res => res.data),
+
+  // The stored answers' size (a count starts in the background when it's old) and the last prune.
+  storedAnswers: (): Promise<StoredAnswers> =>
+    api.get('/enrich/stored-answers', noServerToast).then(res => res.data),
+
+  pruneStoredAnswers: (): Promise<StoredAnswers> =>
+    api.post('/enrich/stored-answers/prune', {}, noServerToast).then(res => res.data),
 }

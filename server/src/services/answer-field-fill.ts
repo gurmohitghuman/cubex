@@ -1,99 +1,167 @@
-// Filling a column added from an answer (enrichment_field_jobs, migration
-// 010): every row gets what its stored answer holds at the path, from the
-// newest run of the status column with a result at that row. No treg calls,
-// no requests, no cost. It walks the rows in storage order a slice at a time
-// with the sheet busy (lib/sheet-busy.ts). Each slice reads and works out its
-// cells outside the write lock (the sheet is busy and the column's runs are
-// stopped, so nothing it reads can change), then writes them and moves the
-// job's cursor in one short transaction, so a restart picks up where it
-// stopped (resumeFieldJobs at boot). Writes are idempotent; a slice that fails
-// is retried a few times, then the job ends as failed and frees the sheet.
+// Filling a column added from an answer (enrichment_field_jobs, migrations
+// 010 and 018).
+// Over 200 lines: the two stages share the job's cursor and its resume.
+// Every row gets what its stored answer holds at the path, from
+// the newest run of the status column with a result at that row. No treg
+// calls, no requests, no cost. It runs with the sheet busy (lib/sheet-busy.ts)
+// and the column's runs stopped, so nothing it reads can change, in two stages:
+//   link: the new column is linked to each of the column's older runs (the
+//     newest got it when the column was added), a batch per transaction;
+//   fill: the runs newest first, each one's results read once in row order;
+//     a row takes the first run that answered it (completed or failed), later
+//     (older) runs skip it.
+// So the work follows the results, never runs x rows: auto-run leaves a run
+// per batch, and a column can hold tens of thousands of them. Each slice
+// works out its cells outside the write lock, then writes them and moves the
+// job's cursor in one short transaction; a restart goes on from the cursor
+// (resumeFieldJobs at boot). Writes are idempotent; a slice that fails is
+// retried a few times, then the job ends as failed and frees the sheet.
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-helpers';
-import { sheetRowIds } from '../lib/row-order';
-import { runInSlices } from '../lib/slices';
+import { runInSlices, yieldToRequests } from '../lib/slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
-import { statusColumnRuns } from './answer-runs';
+import { statusColumnRuns, type ColumnRunRef } from './answer-runs';
 import { markAutorunInputs } from '../lib/autorun-mark';
 
 export { FILL_PLACEHOLDER, fillingColumns } from '../lib/field-fill-columns';
 const FILLING = 'filling a column';
 const FILL_ATTEMPTS = 5;
+const LINK_BATCH = 200;
 
 interface FieldJob {
-  id: string; user_id: string; sheet_id: string; status_column: string;
-  column_name: string; json_path: string; cursor_rowid: number; status: string;
+  id: string; user_id: string; sheet_id: string; status_column: string; column_name: string; json_path: string;
+  status: string; stage: 'link' | 'fill'; run_pos: number; row_cursor: number;
 }
 
 const loadJob = (id: string): FieldJob | undefined =>
   db.prepare('SELECT * FROM enrichment_field_jobs WHERE id = ?').get(id) as FieldJob | undefined;
 
-// First index in the ascending `ids` past `cursor`.
-function firstAfter(ids: Float64Array, cursor: number): number {
-  let lo = 0, hi = ids.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (ids[mid] <= cursor) lo = mid + 1; else hi = mid; }
-  return lo;
-}
-
-// The column's runs, newest first: an enrichment run fills by its own rule
-// (a single tool's "not found" only meant its picked outputs were empty, so a
-// new field from its answer fills, as a rerun with that output would).
-function fillRuns(job: FieldJob): Array<{ id: string; cell: (r: StoredResult) => string | null }> {
-  return statusColumnRuns(job.sheet_id, job.user_id, job.status_column).map(r => {
-    const e = r.enrichment?.enrichment;
-    const single = !!e && e.kind === 'single' && !e.email;
-    return {
-      id: r.id,
-      cell: e ? (s: StoredResult) => enrichmentFieldCell(s, job.json_path, single)
-        : (s: StoredResult) => httpFieldCell(s, job.json_path),
-    };
-  });
-}
-
-async function fill(job: FieldJob): Promise<void> {
-  const runs = fillRuns(job);
-  const ids = await sheetRowIds(job.sheet_id, job.user_id);
-  const rowsOf = db.prepare(`SELECT rowid, row_index FROM rows
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
-  const resultsOf = db.prepare(`SELECT row_index, status, response_data FROM http_results
-    WHERE run_id = ? AND +user_id = ? AND row_index IN (SELECT value FROM json_each(?))`);
-  const write = db.prepare('UPDATE rows SET data = json_set(data, ?, ?) WHERE rowid = ? AND +user_id = ?');
-  const moveCursor = db.prepare(`UPDATE enrichment_field_jobs SET cursor_rowid = ?, updated_at = datetime('now')
-    WHERE id = ? AND user_id = ? AND status = 'running'`);
-  const cellPath = jsonPath(job.column_name);
-  let i = firstAfter(ids, job.cursor_rowid);
-  await runInSlices(() => {
-    if (i >= ids.length) return false;
-    const slice = Array.from(ids.subarray(i, Math.min(ids.length, i + HEAVY_SLICE_ROWS)));
-    const rows = rowsOf.all(JSON.stringify(slice), job.sheet_id, job.user_id) as
-      Array<{ rowid: number; row_index: number }>;
-    // Newest run first; each older run is asked only about rows still open.
-    const open = new Map(rows.map(r => [r.row_index, r.rowid]));
-    const cells: Array<[number, string]> = [];
-    for (const run of runs) {
-      if (open.size === 0) break;
-      const found = resultsOf.all(run.id, job.user_id, JSON.stringify([...open.keys()])) as
-        Array<StoredResult & { row_index: number }>;
-      for (const r of found) {
-        const rowid = open.get(r.row_index);
-        if (rowid === undefined || (r.status !== 'completed' && r.status !== 'failed')) continue;
-        open.delete(r.row_index);
-        const cell = run.cell(r);
-        if (cell !== null) cells.push([rowid, cell]);
-      }
+// Rows a newer run already answered: a byte per row index, grown as needed.
+class RowSet {
+  private bits = new Uint8Array(1024);
+  has(i: number): boolean { return i < this.bits.length && this.bits[i] === 1; }
+  add(i: number): void {
+    if (i >= this.bits.length) {
+      const next = new Uint8Array(Math.max(i + 1, this.bits.length * 2));
+      next.set(this.bits);
+      this.bits = next;
     }
+    this.bits[i] = 1;
+  }
+}
+
+// How a run's answers become this column's cells: an enrichment by its own
+// rule (a single tool's "not found" only meant its picked outputs were empty,
+// so a new field from its answer fills, as a rerun with that output would).
+function cellRule(runId: string, userId: string, path: string): (r: StoredResult) => string | null {
+  const k = db.prepare(`SELECT json_type(config, '$.enrichment') AS e,
+      json_extract(config, '$.enrichment.kind') AS kind, json_type(config, '$.enrichment.email') AS email
+    FROM http_runs WHERE id = ? AND user_id = ?`)
+    .get(runId, userId) as { e: string | null; kind: string | null; email: string | null } | undefined;
+  if (!k?.e) return r => httpFieldCell(r, path);
+  const single = k.kind === 'single' && (k.email === null || k.email === 'null');
+  return r => enrichmentFieldCell(r, path, single);
+}
+
+// Stage 1: link the column to every run of the status column, a batch a transaction.
+async function link(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
+  const insert = db.prepare(`INSERT INTO http_column_associations
+      (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id)
+    SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM http_column_associations
+      WHERE run_id = ? AND extracted_column_name = ? AND +sheet_id = ? AND +user_id = ?)`);
+  const move = db.prepare(`UPDATE enrichment_field_jobs SET run_pos = ?, updated_at = datetime('now')
+    WHERE id = ? AND user_id = ? AND status = 'running'`);
+  for (let i = job.run_pos; i < runs.length; i += LINK_BATCH) {
+    const batch = runs.slice(i, i + LINK_BATCH);
     db.transaction(() => {
-      for (const [rowid, cell] of cells) write.run(cellPath, cell, rowid, job.user_id);
-      // A column another column's auto-run reads queues these rows for it.
-      markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { rowids: cells.map(c => c[0]) });
-      moveCursor.run(slice[slice.length - 1], job.id, job.user_id);
+      for (const r of batch) {
+        insert.run(uuidv4(), job.sheet_id, job.user_id, job.status_column, job.column_name, r.id,
+          r.id, job.column_name, job.sheet_id, job.user_id);
+      }
+      move.run(i + batch.length, job.id, job.user_id);
     }).immediate();
-    i += slice.length;
-    return i < ids.length;
+    await yieldToRequests();
+  }
+  db.prepare(`UPDATE enrichment_field_jobs SET stage = 'fill', run_pos = 0, row_cursor = -1,
+    updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`).run(job.id, job.user_id);
+}
+
+const readSlice = (runId: string, userId: string, after: number) => db.prepare(`SELECT row_index, status,
+    response_data FROM http_results WHERE run_id = ? AND row_index > ? AND +user_id = ? ORDER BY row_index LIMIT ?`)
+  .all(runId, after, userId, HEAVY_SLICE_ROWS) as Array<StoredResult & { row_index: number }>;
+
+const answered = (r: { status: string }) => r.status === 'completed' || r.status === 'failed';
+
+// After a restart: the rows the runs before the cursor answered (and, for the
+// run at the cursor, the rows before its row cursor) are taken already.
+async function rebuildTaken(job: FieldJob, runs: ColumnRunRef[], taken: RowSet): Promise<void> {
+  const read = db.prepare(`SELECT row_index, status FROM http_results WHERE run_id = ? AND row_index > ?
+    AND row_index <= ? AND +user_id = ? ORDER BY row_index LIMIT ?`);
+  for (let p = 0; p <= Math.min(job.run_pos, runs.length - 1); p++) {
+    const upTo = p < job.run_pos ? Number.MAX_SAFE_INTEGER : job.row_cursor;
+    for (let after = -1; ;) {
+      const rows = read.all(runs[p].id, after, upTo, job.user_id, HEAVY_SLICE_ROWS) as
+        Array<{ row_index: number; status: string }>;
+      for (const r of rows) if (answered(r)) taken.add(r.row_index);
+      if (rows.length < HEAVY_SLICE_ROWS) break;
+      after = rows[rows.length - 1].row_index;
+      await yieldToRequests();
+    }
+  }
+}
+
+// Stage 2: each run's results once, newest run first.
+async function fill(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
+  const taken = new RowSet();
+  if (job.run_pos > 0 || job.row_cursor > -1) await rebuildTaken(job, runs, taken);
+  const write = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?)
+    WHERE sheet_id = ? AND user_id = ? AND row_index = ?`);
+  const move = db.prepare(`UPDATE enrichment_field_jobs SET run_pos = ?, row_cursor = ?,
+    updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`);
+  const cellPath = jsonPath(job.column_name);
+  let pos = job.run_pos;
+  let after = job.row_cursor;
+  let cell = pos < runs.length ? cellRule(runs[pos].id, job.user_id, job.json_path) : null;
+  await runInSlices(() => {
+    if (pos >= runs.length || !cell) return false;
+    const results = readSlice(runs[pos].id, job.user_id, after);
+    const cells: Array<[number, string]> = [];
+    for (const r of results) {
+      if (!answered(r) || taken.has(r.row_index)) continue;
+      taken.add(r.row_index);
+      const value = cell(r);
+      if (value !== null) cells.push([r.row_index, value]);
+    }
+    const done = results.length < HEAVY_SLICE_ROWS;
+    const nextPos = done ? pos + 1 : pos;
+    const nextAfter = done ? -1 : results[results.length - 1].row_index;
+    db.transaction(() => {
+      for (const [rowIndex, value] of cells) write.run(cellPath, value, job.sheet_id, job.user_id, rowIndex);
+      // A column another column's auto-run reads queues these rows for it.
+      markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { indexes: cells.map(c => c[0]) });
+      move.run(nextPos, nextAfter, job.id, job.user_id);
+    }).immediate();
+    pos = nextPos;
+    after = nextAfter;
+    if (done && pos < runs.length) cell = cellRule(runs[pos].id, job.user_id, job.json_path);
+    return pos < runs.length;
   });
   finishJob(job, 'done', null);
+}
+
+async function work(job: FieldJob): Promise<void> {
+  // The sheet is busy and the column's runs stopped: this list doesn't change.
+  const runs = statusColumnRuns(job.sheet_id, job.user_id, job.status_column);
+  if (job.stage !== 'fill') {
+    await link(job, runs);
+    const next = loadJob(job.id);
+    if (!next || next.status !== 'running') return;
+    job = next;
+  }
+  await fill(job, runs);
 }
 
 function finishJob(job: FieldJob, status: 'done' | 'failed', error: string | null): void {
@@ -111,7 +179,7 @@ export async function runFieldJob(jobId: string): Promise<void> {
   const job = loadJob(jobId);
   if (!job || job.status !== 'running') return;
   try {
-    await fill(job);
+    await work(job);
   } catch (err) {
     console.error(`Filling column "${job.column_name}" on sheet ${job.sheet_id} failed, retrying:`, err);
     let attempts = 1;
@@ -119,7 +187,7 @@ export async function runFieldJob(jobId: string): Promise<void> {
       const again = loadJob(jobId);
       if (!again || again.status !== 'running') return;
       try {
-        await fill(again);
+        await work(again);
       } catch (e) {
         if (++attempts < FILL_ATTEMPTS) throw e;
         console.error(`Filling column "${job.column_name}" on sheet ${job.sheet_id} gave up:`, e);

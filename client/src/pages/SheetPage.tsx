@@ -1,16 +1,15 @@
+// Over 200 lines: the page wires the sheet's hooks to each other (state, loads, saves, runs) as one piece.
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Sheet, SheetData, Table, tablesAPI } from '@/utils/api'
+import { Sheet, SheetData, Table } from '@/utils/api'
 
-import { SheetGrid } from '@/components/sheet/SheetGrid'
+import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
-import { SheetEmptyState } from '@/components/sheet/SheetEmptyState'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
 import { useSheetOps } from '@/hooks/sheet/useSheetOps'
 import { SheetModals } from '@/components/sheet/SheetModals'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { SheetWebhookOverlays } from '@/components/webhook/SheetWebhookOverlays'
 import { useLiveSheetUpdates } from '@/hooks/sheet/useLiveSheetUpdates'
 import { useExternalSheetSync } from '@/hooks/sheet/useExternalSheetSync'
@@ -33,6 +32,7 @@ import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 import { useAutorun } from '@/hooks/sheet/useAutorun'
+import { useTableRouting } from '@/hooks/sheet/useTableRouting'
 import { useFollowRuns } from '@/hooks/sheet/useFollowRuns'
 import { AutorunChip } from '@/components/autorun/AutorunChip'
 import { AutorunDialogHost } from '@/components/autorun/AutorunDialogHost'
@@ -62,10 +62,8 @@ export const SheetPage: React.FC = () => {
 
   // Webhook payload viewer (opened by clicking a read-only webhook marker cell).
   const [webhookPayloadRow, setWebhookPayloadRow] = useState<number | null>(null)
-
   // Clear-selection + first-rendered-row handles the grid registers (useGridHandles).
   const grid = useGridHandles()
-
   const runs = useActiveRuns()
   const modals = useSheetModals()
 
@@ -221,70 +219,11 @@ export const SheetPage: React.FC = () => {
     },
   })
 
-  // Table load — runs once per tableId. NOTE: this effect re-fires when the user
-  // navigates BETWEEN tables (e.g. "create a new table for the webhook" routes to
-  // a different /table/:id). The auto-pick-sheet effect below only picks a sheet
-  // when `!activeSheet`, so we MUST clear activeSheet (+ its derived state) here —
-  // otherwise the old table's sheet stays selected, the new table's sheet is never
-  // picked, the sheet-data load never fires, and the page hangs on the loader.
-  useEffect(() => {
-    if (!tableId) return
-    setIsLoading(true)
-    setActiveSheet(null)
-    setSheetData(null)
-    setTable(null)
-    tablesAPI.getById(tableId)
-      .then(setTable)
-      .catch(() => { toast.error('Failed to load table'); navigate('/dashboard') })
-  }, [tableId, navigate])
-
-  // Auto-pick a sheet of a freshly-loaded table: the URL's sheet if present + valid,
-  // else the first sheet. Only when nothing is active yet (no loop; back/forward on an
-  // already-active table is handled by the [urlSheetId] sync effect below).
-  useEffect(() => {
-    if (!table?.sheets) return
-    if (table.sheets.length > 0 && !activeSheet) {
-      const fromUrl = urlSheetId ? table.sheets.find(s => s.id === urlSheetId) : undefined
-      setActiveSheet(fromUrl ?? table.sheets[0])
-    }
-    // A table with no sheets never picks an activeSheet, so the activeSheet
-    // effect's loadSheetData (the only thing that clears the table-load
-    // setIsLoading(true)) never runs — without this the FullPageLoader would
-    // hang forever. Not reachable via today's UI (every table is created with a
-    // sheet, no per-sheet delete exists), but a safety net for any future
-    // sheet-delete / partial-migration path. SheetTabsBar + SheetEmptyState
-    // render a sane empty state with activeSheet null.
-    else if (table.sheets.length === 0) setIsLoading(false)
-  }, [table]) // intentionally not depending on activeSheet — would loop
-
-  // Same-table URL change (browser back/forward, or an external deep-link swap between
-  // two sheets of the SAME table). The auto-pick effect above only fires on !activeSheet,
-  // so this keeps activeSheet in sync when the URL sheetId changes while a sheet is
-  // already active. Always route through selectSheet (never a raw setActiveSheet) so the
-  // waitForSaves barrier runs; selectSheet skips its own navigate when the URL already
-  // matches, so this can't loop.
-  useEffect(() => {
-    if (!urlSheetId || !table?.sheets || !activeSheet) return
-    if (urlSheetId === activeSheet.id) return
-    const target = table.sheets.find(s => s.id === urlSheetId)
-    if (target) void sheetOps.selectSheet(target)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlSheetId])
-
-  // When activeSheet changes, kick off its data load.
-  useEffect(() => {
-    if (!activeSheet) return
-    currentSheetIdRef.current = activeSheet.id
-    setLoadedRowsCount(0)
-    // Clear row selection — it's stored by row_index, which means different
-    // logical rows on a different sheet. A loud reload remounts the grid with
-    // no selection but fires no selectionChanged, so the stale parent state
-    // would otherwise drive the header "Delete (N)" button against the wrong
-    // sheet's rows. Same reasoning applies after sort/import (handled there).
-    cellOps.setSelectedRowIndices([])
-    setIsLoading(true)
-    loadSheetData(activeSheet.id)
-  }, [activeSheet]) // intentionally not depending on loadSheetData — would re-fire on every render
+  useTableRouting({
+    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
+    setLoadedRowsCount, currentSheetIdRef, selectSheet: sheetOps.selectSheet,
+    clearSelection: () => cellOps.setSelectedRowIndices([]), loadSheetData,
+  })
 
   // Refill the row window when a delete leaves it empty or too short to scroll (see hook).
   useRowWindowRefill(activeSheet, isLoading, sheetData, reloadActiveSheet)
@@ -311,54 +250,15 @@ export const SheetPage: React.FC = () => {
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         autorunChip={<AutorunChip autorun={autorun} />}
       />
-      <div className="flex-1 overflow-hidden">
-        {gridArea === 'loading' ? (
-          <LoadingSpinner size="md" message="Loading spreadsheet…" className="h-full" />
-        ) : gridArea === 'import' ? (
-          <SheetEmptyState onImport={() => modals.setShowImportModal(true)}
-            onAddColumn={() => modals.setShowNewColumnModal(true)} />
-        ) : (
-          <SheetGrid
-            activeSheet={activeSheet} forceUpdate={0}
-            columns={columnOps.columnHeaders} rows={view.sortedRows} totalRows={totalDisplayedRows}
-            emptyFilter={emptyFilter}
-            columnFilters={columnFilters}
-            lastRenamedColumn={columnOps.lastRenamedColumn}
-            columnTypes={sheetData?.data.columnTypes ?? {}}
-            autorun={autorun.view} columnSpend={autorun.spend} onAutorunAction={autorun.onAction}
-            activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
-            activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
-            structuredAIColumns={runs.aiStructuredColumns}
-            onCellEdit={cellOps.handleOptimizedCellEdit}
-            onCellClick={(rowIndex, columnName, value) => {
-              // Clicking the read-only webhook marker cell opens the raw payload.
-              if (webhookColumn && columnName === webhookColumn) { setWebhookPayloadRow(rowIndex); return }
-              view.handleCellClick(rowIndex, columnName, value)
-            }}
-            onLoadMore={loadMoreData} onSortChange={view.handleSortChange}
-            onEmptyFilterChange={onEmptyFilterChange}
-            onColumnFilterChange={onColumnFilterChange}
-            onSelectedRowsChange={cellOps.setSelectedRowIndices}
-            onRenameColumn={columnOps.handleRenameColumn}
-            onDeleteColumn={columnOps.handleColumnDelete}
-            onDeleteRows={cellOps.handleDeleteRows}
-            onColumnReorder={columnOps.handleColumnReorder}
-            onAddColumn={() => modals.setShowNewColumnModal(true)}
-            registerClearSelection={grid.registerClearSelection} registerViewport={grid.registerViewport}
-            onOpenEnrichment={modals.openEnrichment}
-            setShowAddColumnModal={modals.setShowAddColumnModal}
-            setupSSEConnection={sse.setupSSEConnection}
-            fetchActiveHTTPRuns={runs.fetchHTTPRuns} fetchActiveAIRuns={runs.fetchAIRuns}
-            // Live generation source for the selected-rows rerun fence (P2-5) —
-            // the same ref every write path uses, seeded from sheetData on load.
-            rowGenerationRef={rowGenerationRef}
-            // SILENT reload (no FullPageLoader flash; scroll + selection kept). Its
-            // side-load chain still runs reconnectToActiveRuns to (re)attach SSE.
-            // Used by the run/rerun/stop menu actions in useSheetGridRunActions.
-            reloadSheetData={(id) => silentReloadRef.current(id)}
-          />
-        )}
-      </div>
+      <SheetGridArea
+        gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
+        emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}
+        onColumnFilterChange={onColumnFilterChange} loadMoreData={loadMoreData}
+        columnOps={columnOps} cellOps={cellOps} view={view} runs={runs} modals={modals} grid={grid}
+        autorun={autorun} sse={sse} rowGenerationRef={rowGenerationRef}
+        silentReload={(id) => silentReloadRef.current(id)}
+        webhookColumn={webhookColumn} onWebhookCell={setWebhookPayloadRow}
+      />
       {/* Bottom tab bar (Excel/Google-Sheets placement): sits below the grid. */}
       <SheetTabsBar
         sheets={table?.sheets ?? []}

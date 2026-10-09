@@ -154,3 +154,13 @@ export interface EnrichSpend {
   otherUsd: number
   otherColumns: number
 }
+
+// Settings' "Stored answers" (GET /api/enrich/stored-answers).
+export interface StoredAnswers {
+  bytes: number | null
+  answers: number | null
+  countedAt: string | null
+  counting: boolean
+  pruneDays: number
+  prune: { status: 'running' | 'done' | 'failed'; pruned: number; startedAt: string; endedAt: string | null } | null
+}

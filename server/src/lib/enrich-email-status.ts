@@ -17,7 +17,9 @@ const NOT_CHECKED = new Set(['timeout', 'error', 'unavailable', 'verifying', 'pe
 const squash = (w: string) => w.toLowerCase().replace(/[\s_-]+/g, '');
 const isCatchAll = (n: string) => n.includes('catch') || n === 'acceptall';
 
-export function classifyVerify(output: { valid?: unknown; status?: unknown } | null | undefined): { verdict: EmailVerdict; word: string | null } {
+export function classifyVerify(
+  output: { valid?: unknown; status?: unknown } | null | undefined,
+): { verdict: EmailVerdict; word: string | null } {
   const word = typeof output?.status === 'string' && output.status.trim() ? output.status.trim() : null;
   const n = word ? squash(word) : '';
   // A catch-all or a risky word is never a plain "valid", even if a provider
@@ -39,8 +41,12 @@ export function acceptedBy(strategy: EmailStrategy, verdict: EmailVerdict): bool
   return false;
 }
 
-// The "Email status" cell: our word, then the provider's when it differs.
-export function statusLabel(verdict: EmailVerdict, word: string | null): string {
-  const ours = { valid: 'valid', catch_all: 'catch-all', risky: 'risky', invalid: 'invalid', no_verdict: 'not checked' }[verdict];
-  return word && word.toLowerCase() !== ours ? `${ours} (${word})` : ours;
+// The "Email status" cell: one of a fixed set of words, so "Only run if Email
+// status is valid", filters and sorts can rely on it. The checker's own word
+// ("deliverable", "accept_all") shows in the answer panel's steps.
+export function statusLabel(verdict: EmailVerdict): string {
+  const words = {
+    valid: 'valid', catch_all: 'catch-all', risky: 'risky', invalid: 'invalid', no_verdict: 'not checked',
+  };
+  return words[verdict];
 }

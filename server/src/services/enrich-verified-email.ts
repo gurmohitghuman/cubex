@@ -71,7 +71,7 @@ export async function verifiedEmailRow(
   const accept = (j: Judged): RowResult => done({
     status: 'completed', statusCell: acceptedCell(j.verdict), fill: 'all', reason: null,
     answer: withCubex(lastAnswer ?? {}, {
-      email: j.email, email_status: statusLabel(j.verdict, j.word), found_by: j.foundBy, checked_by: j.checkedBy, steps,
+      email: j.email, email_status: statusLabel(j.verdict), found_by: j.foundBy, checked_by: j.checkedBy, steps,
     }),
   });
   const keep = (j: Judged) => { if (!best || VERDICT_RANK[j.verdict] > VERDICT_RANK[best.verdict]) best = j; };
@@ -126,7 +126,7 @@ export async function verifiedEmailRow(
     return done({
       status: 'completed', statusCell: rejectedCell(b.verdict), fill: 'cubex', reason: null,
       answer: withCubex(lastAnswer ?? {}, {
-        email_status: statusLabel(b.verdict, b.word), checked_by: b.checkedBy, rejected_email: b.email, steps,
+        email_status: statusLabel(b.verdict), checked_by: b.checkedBy, rejected_email: b.email, steps,
       }),
     });
   }

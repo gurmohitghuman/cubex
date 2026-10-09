@@ -3,7 +3,7 @@
 // logic lives in services/autorun-*.ts (MCP set_auto_run will call the same).
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { MAX_ROWS_PER_SHEET, UUID_PATTERN } from '../lib/constants';
+import { AUTORUN_NOTICE_PRICE_MS, MAX_ROWS_PER_SHEET, UUID_PATTERN } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { parseConditions } from '../lib/enrich-run-input';
 import { runFailHttpStatus } from '../services/run-shared';
@@ -82,7 +82,8 @@ router.post('/sheets/:id/pause', (req: AuthRequest, res) => {
   }
 });
 
-// What N new rows (a CSV import) would set off through auto-run. A pure read.
+// What N new rows (a CSV import), or a run writing N rows, would set off
+// through auto-run. A pure read.
 router.post('/sheets/:id/estimate', async (req: AuthRequest, res) => {
   try {
     if (!UUID_PATTERN.test(req.params.id)) return badSheet(res);
@@ -90,7 +91,19 @@ router.post('/sheets/:id/estimate', async (req: AuthRequest, res) => {
     if (typeof rows !== 'number' || !Number.isSafeInteger(rows) || rows < 0 || rows > MAX_ROWS_PER_SHEET) {
       return res.status(400).json({ error: 'rows must be a row count.' });
     }
-    const out = await estimateAutorunRows(req.userId!, req.params.id, rows);
+    // after: the columns a run writes (the drawer's Run confirm): what it sets off on its rows.
+    const after = (req.body as { after?: unknown }).after;
+    if (after !== undefined && !(Array.isArray(after) && after.length <= 200
+      && after.every(c => typeof c === 'string' && c.length <= 200))) {
+      return res.status(400).json({ error: 'after must be a list of column names.' });
+    }
+    // quick (or after): the Run confirm waits on this, so a price treg's
+    // catalog doesn't give in time is left out ("no estimate").
+    const quick = after !== undefined || (req.body as { quick?: unknown }).quick === true;
+    const out = await estimateAutorunRows(req.userId!, req.params.id, rows, {
+      ...(after === undefined ? {} : { afterWriting: after as string[] }),
+      ...(quick ? { priceWithinMs: AUTORUN_NOTICE_PRICE_MS } : {}),
+    });
     if (!out) return res.status(404).json({ error: 'Sheet not found' });
     res.json({ autoRuns: out, dailyLimit: dailyLimitView(req.userId!) });
   } catch (error) {

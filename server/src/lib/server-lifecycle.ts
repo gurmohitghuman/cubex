@@ -7,6 +7,8 @@ import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startListDrainLoop } from '../services/enrich-list-drain';
+import { startAnswerPruneLoop } from '../services/answer-prune';
+import { resumeAgePrunes } from '../services/answer-prune-age';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -33,6 +35,10 @@ let webhookBucketSweep: ReturnType<typeof setInterval> | null = null;
 export const startBackground = (recovered?: RecoveredRuns) => {
   // List results journaled before a restart are added as rows (services/enrich-list-drain.ts).
   startListDrainLoop();
+  // Stored answers: older answers of rows enriched again, and an unfinished
+  // "Prune details older than 90 days" (services/answer-prune*.ts).
+  startAnswerPruneLoop();
+  resumeAgePrunes();
   startQueue()
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).

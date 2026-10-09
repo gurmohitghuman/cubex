@@ -3,8 +3,9 @@
 // calls, no requests). In ONE transaction inside the sheet's busy window: the
 // column joins the registry, the fill is journaled (enrichment_field_jobs),
 // the newest run's responseMapping gains the path so later runs fill it too,
-// and the column is linked to every run whose answers it reads. The fill then
-// runs in the background with the sheet still busy (answer-field-fill.ts).
+// and the column is linked to the newest run. The fill then runs in the
+// background with the sheet still busy (answer-field-fill.ts): it links the
+// column to the older runs whose answers it reads, then fills the rows.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
@@ -16,7 +17,10 @@ import { validateHttpJsonPath } from '../lib/jsonpath-extract';
 import { busyMessage, continueInBackground, sheetBusyWith, withSheetBusy } from '../lib/sheet-busy';
 import { parseStored, readStored } from '../lib/answer-store';
 import { droppedLabel, droppedPartFor } from '../lib/answer-paths';
-import { columnRuns, isActiveRun, resultAtRow, statusColumnRuns, type ColumnRunRef } from './answer-runs';
+import {
+  columnRuns, newestColumnRun, resultAtRow, runDetail, statusColumnRuns, type ColumnRunRef, type RunDetail,
+} from './answer-runs';
+import { columnRunActive } from './autorun-entry';
 import { runFieldJob } from './answer-field-fill';
 import type { RunFail } from './run-shared';
 
@@ -60,7 +64,7 @@ function nameProblem(sheetId: string, userId: string, name: string): RunFail | n
 
 // The newest run fills the path from now on; an enrichment remembers it came
 // from an answer, so a rerun doesn't check it against the tool's catalog.
-function addToNewestRun(run: ColumnRunRef, userId: string, name: string, path: string): void {
+function addToNewestRun(run: RunDetail, userId: string, name: string, path: string): void {
   if (!run.config) return;
   const mapping = [...run.config.responseMapping, { columnName: name, jsonPath: path }];
   const config = { ...run.config, responseMapping: mapping };
@@ -82,14 +86,18 @@ export async function addAnswerField(
   const owner = columnRuns(sheetId, userId, input.column);
   if (!owner) return bad(`"${input.column}" isn't an enrichment or HTTP API column.`);
   const runs = statusColumnRuns(sheetId, userId, owner.statusColumn);
-  if (runs[0]?.enrichment?.enrichment.list) {
+  const newest = runs.length ? runDetail(runs[0].id, userId) : null;
+  if (!newest) return bad(`"${input.column}" isn't an enrichment or HTTP API column.`);
+  if (newest.enrichment?.enrichment.list) {
     return bad('This column adds its results as rows in another sheet. Pick the fields it keeps with Edit enrichment.');
   }
-  if (runs.some(isActiveRun)) return { fail: 'conflict', message: activeMessage(owner.statusColumn) };
+  if (columnRunActive(sheetId, userId, owner.statusColumn)) {
+    return { fail: 'conflict', message: activeMessage(owner.statusColumn) };
+  }
   // One column per path: a second would read the same value, and later runs fill outputs by path.
-  const mapped = runs[0].config?.responseMapping.find(m => m.jsonPath === input.jsonPath);
+  const mapped = newest.config?.responseMapping.find(m => m.jsonPath === input.jsonPath);
   if (mapped) return bad(`That value is already a column: ${mapped.columnName}.`);
-  if (runs[0].enrichment) {
+  if (newest.enrichment) {
     const dropped = droppedProblem(runs, userId, input);
     if (dropped) return dropped;
   }
@@ -104,8 +112,9 @@ export async function addAnswerField(
     let problem = null as RunFail | null;
     db.transaction(() => {
       // Again inside the write lock: a run may have started since the checks.
-      const now = statusColumnRuns(sheetId, userId, owner.statusColumn);
-      if (now.length === 0 || now.some(isActiveRun)) {
+      const top = newestColumnRun(sheetId, userId, owner.statusColumn);
+      const now = top ? runDetail(top.id, userId) : null;
+      if (!now || columnRunActive(sheetId, userId, owner.statusColumn)) {
         problem = { fail: 'conflict', message: activeMessage(owner.statusColumn) };
         return;
       }
@@ -114,10 +123,13 @@ export async function addAnswerField(
       appendColumnsToOrder(sheetId, userId, [name]);
       db.prepare(`INSERT INTO enrichment_field_jobs (id, user_id, sheet_id, status_column, column_name, json_path)
         VALUES (?, ?, ?, ?, ?, ?)`).run(jobId, userId, sheetId, owner.statusColumn, name, input.jsonPath);
-      addToNewestRun(now[0], userId, name, input.jsonPath);
-      const link = db.prepare(`INSERT INTO http_column_associations
-          (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`);
-      for (const run of now) link.run(uuidv4(), sheetId, userId, owner.statusColumn, name, run.id);
+      addToNewestRun(now, userId, name, input.jsonPath);
+      // The newest run now; the column's other runs in the fill's first stage
+      // (answer-field-fill.ts), so a column with thousands of runs doesn't
+      // hold the write lock here.
+      db.prepare(`INSERT INTO http_column_associations
+          (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(uuidv4(), sheetId, userId, owner.statusColumn, name, now.id);
       db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
         WHERE id = ? AND user_id = ?`).run(sheetId, userId);
     }).immediate();

@@ -11,6 +11,7 @@ import { enrichSpend, spendWindow } from '../services/enrich-spend';
 import runRoutes from './enrich-runs';
 import answerRoutes from './enrich-answers';
 import listRoutes from './enrich-lists';
+import storedRoutes from './enrich-stored';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -125,5 +126,6 @@ router.get('/spend', async (req: AuthRequest, res) => {
 router.use(runRoutes);
 router.use(answerRoutes);
 router.use(listRoutes);
+router.use(storedRoutes);
 
 export default router;

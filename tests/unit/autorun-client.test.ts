@@ -6,7 +6,8 @@ import {
 } from '../../client/src/components/autorun/autorun-copy'
 import { countCsvRows } from '../../client/src/components/sheet/import-csv/countCsvRows'
 import { noticeLine } from '../../client/src/components/sheet/import-csv/notice-copy'
-import type { AutorunColumn } from '../../client/src/utils/api/types-autorun'
+import { chainText } from '../../client/src/components/enrich-modal/chain-copy'
+import type { AutorunColumn, AutorunRowsEstimate } from '../../client/src/utils/api/types-autorun'
 
 let failures = 0
 function check(label: string, cond: boolean) {
@@ -79,7 +80,26 @@ async function main() {
     lowUsd: null, highUsd: null, dailyCapUsd: null, dailyRowCap: 50 }, { rows: 3, exact: true })
     === 'Push sends a request for these 3 rows, one per row (at most 50 rows a day).')
 
-  if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
+  // The Run confirm's "Also runs" line.
+const chained = (o: Partial<AutorunRowsEstimate>): AutorunRowsEstimate => ({
+  column: 'Verify email', kind: 'enrichment', rows: 1204, lowUsd: 0.2, highUsd: 2.4, dailyCapUsd: null,
+  dailyRowCap: null, pausedBy: null, ...o,
+})
+check('nothing set off, no line', chainText([]) === '')
+const push = chained({ column: 'Add to Smartlead', kind: 'http', lowUsd: null, highUsd: null })
+check('a chain', chainText([chained({}), push])
+  === 'Also runs: Verify email (about $0.200 to $2.40), Add to Smartlead (sends up to 1,204 requests).')
+check('a cap below the range', chainText([chained({ dailyCapUsd: 1 })]).includes('at most $1.00 a day'))
+check('paused by you',
+  chainText([chained({ pausedBy: 'user' })]).includes('paused by you; it runs them when you resume it'))
+check('own key',
+  chainText([chained({ lowUsd: null, highUsd: null })]) === 'Also runs: Verify email (your provider bills it).')
+check('no price in time',
+  chainText([chained({ lowUsd: null, highUsd: null, priceTimedOut: true })]).includes('no estimate'))
+check('a list job\'s destination', chainText([], { name: 'People', runs: [chained({ column: 'Find email' })] })
+  === 'In People, the new rows also run: Find email (about $0.200 to $2.40).')
+
+if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nall auto-run client checks passed')
 }
 

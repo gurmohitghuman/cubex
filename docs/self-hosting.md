@@ -96,6 +96,8 @@ sudo ufw enable
 
 If your provider has its own firewall in its dashboard (Hetzner Cloud Firewall, AWS security groups, Oracle Cloud security lists and similar), allow ports 22, 80 and 443 there too. Cubex's own port, 3002, stays closed: Cubex only answers on the server itself, and Caddy (step 4) is the way in.
 
+Cubex also needs to reach out. `ufw` lets outgoing connections through by default, but if your provider's firewall limits them, allow outgoing HTTPS (port 443) to `openrouter.ai` for AI columns, `treg.to` for [enrichments](enrichments.md), and the APIs your HTTP columns call. Cubex can't use an HTTP proxy for these calls.
+
 **Only if the server has less than 2 GB of memory**, add 2 GB of swap so the install doesn't run out of memory:
 
 ```bash
@@ -168,7 +170,7 @@ Cubex only needed the password in the settings file to create your account, so r
 sed -i '/^INITIAL_PASSWORD=/d' ~/.cubex/config.env
 ```
 
-From here, everything works as the [README](../README.md#run) describes: add your OpenRouter key and default model in **Settings → AI**. Webhook URLs and the agent (MCP) setup shown in the app already use your domain.
+From here, everything works as the [README](../README.md#run) describes: add your OpenRouter key and default model in **Settings → AI**, and your treg key in **Settings → Enrichment** if you'll use [enrichments](enrichments.md). Webhook URLs and the agent (MCP) setup shown in the app already use your domain.
 
 ## 6. Back up every night
 
@@ -188,7 +190,7 @@ Then schedule it for 03:00 every night, keeping the last 14 days:
 `crontab -l` shows the schedule, and `tail ~/backups/backup.log` shows how the last runs went. Old backups are only deleted after a new one succeeds. A backup on the same server is lost along with the server, so also:
 
 - Turn on your provider's automatic backups or snapshots (most offer them for a small fee), or copy `~/backups` to another machine now and then.
-- Keep a copy of `~/.cubex/data/.encryption-key` somewhere safe off the server, such as your password manager. `cat ~/.cubex/data/.encryption-key` prints it. Without it, the API keys saved in a backup can't be decrypted.
+- Keep a copy of `~/.cubex/data/.encryption-key` somewhere safe off the server, such as your password manager. `cat ~/.cubex/data/.encryption-key` prints it. Without it, the keys saved in a backup (your OpenRouter key, treg key and saved API keys) can't be decrypted, and you'd have to enter them again.
 
 To restore, stop Cubex, delete the `-wal` and `-shm` files (they belong to the database you're replacing), copy the backup in, and start Cubex again. `ls ~/backups` lists your backups. For the one from 31 January 2026, for example:
 
@@ -201,10 +203,22 @@ cp ~/backups/cubex-2026-01-31.jwt-secret ~/.cubex/data/.jwt-secret
 cubex start
 ```
 
+Enrichments keep each row's answer in the database, and pruning old answers frees space inside the file without making the file smaller. To shrink it, see [Stored answers and disk space](enrichments.md#stored-answers-and-disk-space): stop Cubex, back up, compact, start again. Put the backup in `~/backups` as above.
+
 ## 7. Keep it up to date
 
 - **Cubex:** run `cubex update`. Your data and settings stay, and if the new version doesn't start, the previous one comes back.
 - **The server and Caddy:** run `sudo apt update && sudo apt upgrade -y` now and then. Ubuntu also installs security updates by itself.
+
+## Check its health
+
+Cubex answers a health check at `/api/health`, which an uptime monitor can call at `https://cubex.example.com/api/health`. On the server:
+
+```bash
+curl -s http://127.0.0.1:3002/api/health
+```
+
+It returns `200` with `"status": "ok"` when the database, the run queue and the encryption key all work, and `503` with `"status": "degraded"` when one doesn't (`checks` says which). Once you've saved a treg key and Cubex has called treg, it also has `"treg": "ok"` or `"treg": "unreachable"`, with `tregSince` saying since when. That's the outcome of Cubex's last call to treg: the health check makes no call of its own, and treg being unreachable never turns the check to `503`, since restarting Cubex can't fix it.
 
 ## Troubleshooting
 
@@ -215,6 +229,7 @@ cubex start
 | Cubex is down after a reboot, or `cubex status` says `a background process` | Usually the install ran in a session started with `su` or `sudo -u`. Sign in directly (`ssh cubex@203.0.113.10`) and run `cubex stop`, then `sed -i 's/^CUBEX_SERVICE=.*/CUBEX_SERVICE=systemd/' ~/.cubex/config.env`, then `sudo loginctl enable-linger $USER`, then `cubex start`. |
 | `cubex: command not found` | Open a new SSH session, or run `source ~/.bashrc`. |
 | The install fails while building | Usually it ran out of memory: add swap (step 2) and run the install command again. If the log mentions `node-gyp` or a compiler, run `sudo apt install -y build-essential python3` first. |
+| Enrichment runs pause with "Can't reach treg", or `/api/health` says `"treg": "unreachable"` | The server can't reach treg.to. Check with `curl -sI https://treg.to` on the server. If that fails, allow outgoing HTTPS in your provider's firewall (see step 2). Then click **Resume** on the run; auto-runs try again on their own a few minutes later. |
 | Large CSV imports fail | Something between your browser and Cubex limits upload size: nginx (see below) or Cloudflare's proxy (100 MB on the free plan). Caddy has no limit. |
 | You forgot the password | Run `cubex reset-password` on the server. It signs out every browser. |
 
