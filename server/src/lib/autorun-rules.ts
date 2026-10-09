@@ -3,12 +3,11 @@
 // still empty (a ❌ row counts too when an input is written: a fixed input gets
 // another try). A row whose cell says it ran (✅, ⏭️) or is running (⏳) is
 // left alone, so edits never re-run it and A<->B chains end.
-import { PLACEHOLDER } from './placeholder-cells';
 import { normalizeColumnName } from './prompt';
 import { extractTemplateTokenNames, type HTTPAPIConfig } from './http-request-template';
 import { inputTemplates, isEnrichmentConfig, type EnrichCondition } from './enrich-run-config';
 import { buildRequest } from './enrich-request';
-import { conditionPasses, trimBlank, FAILED_MARK, SKIPPED_MARK } from './enrich-seed';
+import { conditionPasses, holdsRunMarker, trimBlank, FAILED_MARK } from './enrich-seed';
 
 export type AutorunKind = 'enrichment' | 'http';
 
@@ -65,16 +64,12 @@ export interface CandidatePlan {
 export type CandidateVerdict = 'take' | 'done' | 'waiting';
 
 // A cell holding a run's own marker reads as empty: another run is still
-// filling it (⏳), or its run found nothing (⏭️) or failed (❌). Those are
-// Cubex's words, not data, so they never count as an input (an HTTP column
-// must not send "❌ Error" as a lead).
-const RUN_MARKERS = [FAILED_MARK, SKIPPED_MARK];
+// filling it (⏳), its run found nothing (⏭️) or failed (❌), or its rows are
+// being added elsewhere (➕). Those are Cubex's words, not data, so they never
+// count as an input (an HTTP column must not send "❌ Error" as a lead).
 const settled = (data: Record<string, string>): Record<string, string> => {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data)) {
-    const t = trimBlank(v ?? '');
-    out[k] = v === PLACEHOLDER || RUN_MARKERS.some(m => t.startsWith(m)) ? '' : v;
-  }
+  for (const [k, v] of Object.entries(data)) out[k] = holdsRunMarker(v ?? '') ? '' : v;
   return out;
 };
 

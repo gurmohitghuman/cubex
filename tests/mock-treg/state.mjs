@@ -31,6 +31,9 @@ const defaults = () => ({
   // A hit for a request mentioning one of these carries a long raw.sources
   // list (about 30 KB), so Cubex keeps only part of it (lib/answer-trim.ts).
   bigRawDomains: [],
+  // List jobs: a search mentioning one of these words returns at most that
+  // many rows (lists.mjs; default 10, never above the request's limit).
+  listSizes: {},
   // Set when a call reached an async provider (Cubex must exclude those).
   asyncCalled: false,
 })

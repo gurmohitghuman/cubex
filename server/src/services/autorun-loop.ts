@@ -23,6 +23,7 @@ import {
 import { autorunCapacity } from './autorun-capacity';
 import { pickRows } from './autorun-pick';
 import { prepareAutorunRun, startAutorunRun } from './autorun-start';
+import { destHasRoom } from './autorun-list';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -61,6 +62,7 @@ function pauseLifted(e: AutorunEntry): boolean {
   let lifted = false;
   if (RETRY_PAUSES.has(reason)) lifted = pausedMs(e.paused_at) >= AUTORUN_RETRY_MS;
   else if (reason === 'missing_input' || reason === 'no_key') lifted = !('reason' in setupOf(e));
+  else if (reason === 'dest_full') lifted = destHasRoom(e);
   else if (CAPACITY_PAUSES.has(reason)) {
     const s = setupOf(e);
     lifted = !('reason' in s) && 'rows' in autorunCapacity(e, s.config);
@@ -132,7 +134,7 @@ export async function autorunTick(id: string): Promise<void> {
     prep = await prepareAutorunRun(e, setup.newest, setup.config, plan, picked.rows.length, priced.runLimitUsd);
   }
   if ('pause' in prep) { pauseEntry(e.id, prep.pause.reason, prep.pause.message); return; }
-  if ('repriced' in prep) return;
+  if ('repriced' in prep || 'retry' in prep) return;
   await startAutorunRun(e, plan, picked, prep.ok);
 }
 

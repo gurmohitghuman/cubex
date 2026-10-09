@@ -3,7 +3,7 @@ import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
 import { validateSheetName } from '../lib/sheet-validation';
-import { abortRunsForSheets } from '../services/run-control';
+import { abortListRunsInto, abortRunsForSheets, clearListRunCells } from '../services/run-control';
 import { dropBucketsForSheets } from '../lib/webhook-bucket';
 import {
   verifyTableOwnership, verifySheetInTable, listSheets, getSheetForClient,
@@ -139,6 +139,7 @@ router.delete('/:sheetId', (req: AuthRequest, res) => {
     // surviving sheet. Bucket drop is in-memory → runs POST-commit (must not fire on rollback).
     let isLastSheet = false;
     let sourceIds: string[] = [];
+    let listRuns: string[] = [];
     db.transaction(() => {
       const { c } = db.prepare(
         'SELECT COUNT(*) AS c FROM sheets WHERE table_id = ? AND user_id = ?',
@@ -149,8 +150,10 @@ router.delete('/:sheetId', (req: AuthRequest, res) => {
         'SELECT id FROM webhook_sources WHERE sheet_id = ?',
       ).all(sheetId) as Array<{ id: string }>).map(r => r.id);
       abortRunsForSheets([sheetId]);
+      listRuns = abortListRunsInto([sheetId]);
       db.prepare('DELETE FROM sheets WHERE id = ? AND user_id = ?').run(sheetId, req.userId!);
     }).immediate();
+    clearListRunCells(listRuns);
 
     if (isLastSheet) {
       return res.status(400).json({ error: 'A table must have at least one sheet.' });

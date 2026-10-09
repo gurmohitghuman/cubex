@@ -9,6 +9,7 @@
 // The import is journaled in import_jobs (migration 004). If it fails or a
 // restart cuts it short, its rows are removed (lib/import-undo.ts): an append
 // leaves the sheet as it was, a replace leaves it empty with the file's columns.
+// Over 200 lines: one import flow (checks, journal, slices, undo); split, the journal steps would scatter.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { appendColumnsToOrder, touchSheet } from '../lib/sql-helpers';
@@ -25,6 +26,7 @@ import { abortRunsForSheets } from './run-control';
 import { isPristineSeedSheet } from './transfer-seed';
 import { getLockedRunColumns } from '../routes/sheets-shared';
 import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../lib/autorun-mark';
+import { listRunInto } from './enrich-list-guard';
 
 export type CsvImportOutcome =
   | { ok: {
@@ -60,6 +62,9 @@ export async function importCsv(
   // land in AI/HTTP output/master columns mid-run, and placeholder-driven resume
   // could pick up the appended rows outside the run's target set. Replace mode
   // is exempt — it aborts every run below before touching rows.
+  // Replacing the rows a list job is adding to would mix them up: it waits (409).
+  const into = replace ? listRunInto(sheetId, userId) : null;
+  if (into) return { fail: 'busy', error: into.message };
   if (!replace) {
     const locked = getLockedRunColumns(sheetId, userId);
     const hit = csvColumns.filter(c => locked.has(c));

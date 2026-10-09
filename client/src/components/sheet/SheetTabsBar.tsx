@@ -118,9 +118,17 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                 onClick={() => onSelectSheet(sheet)}
                 onDoubleClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}
                 aria-current={isActive ? 'page' : undefined}
-                className={`pl-3.5 pr-1.5 text-[13px] cursor-grab active:cursor-grabbing ${isActive ? 'font-semibold' : 'font-medium'}`}
+                className={`pl-3.5 pr-1.5 text-[13px] cursor-grab active:cursor-grabbing flex items-center gap-1.5 ${
+                  isActive ? 'font-semibold' : 'font-medium'}`}
               >
                 {sheet.name}
+                {/* A list enrichment is adding rows to this sheet. */}
+                {!!sheet.adding_rows && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-cube-black animate-pulse" title="Rows are being added"
+                    data-testid="sheet-tab-adding">
+                    <span className="sr-only">(rows are being added)</span>
+                  </span>
+                )}
               </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -160,7 +168,8 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
           onClick={onAddSheet}
           title="Add sheet"
           aria-label="Add sheet"
-          className="px-2 flex items-center text-gray-500 hover:text-cube-black hover:bg-gray-100 transition-colors duration-150"
+          className={'px-2 flex items-center text-gray-500 hover:text-cube-black hover:bg-gray-100 transition-colors'
+            + ' duration-150'}
         >
           <Plus className="h-4 w-4" />
         </button>

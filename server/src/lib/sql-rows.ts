@@ -121,7 +121,8 @@ export function upsertCellsBatch(
 // own, so we scope through the owning run (ai_runs/http_runs.sheet_id).
 //
 // Caller should run this in the SAME transaction as the DELETE FROM rows so a
-// crash can't leave rows gone but results dangling.
+// crash can't leave rows gone but results dangling. `+user_id`: without planner
+// stats (a fresh install) the user index would read every result of the account.
 export function purgeResultsForRows(
   sheetId: string,
   userId: string,
@@ -131,12 +132,12 @@ export function purgeResultsForRows(
   const ph = rowIndices.map(() => '?').join(',');
   db.prepare(`
     DELETE FROM ai_results
-     WHERE user_id = ? AND row_index IN (${ph})
+     WHERE +user_id = ? AND row_index IN (${ph})
        AND run_id IN (SELECT id FROM ai_runs WHERE sheet_id = ? AND user_id = ?)
   `).run(userId, ...rowIndices, sheetId, userId);
   db.prepare(`
     DELETE FROM http_results
-     WHERE user_id = ? AND row_index IN (${ph})
+     WHERE +user_id = ? AND row_index IN (${ph})
        AND run_id IN (SELECT id FROM http_runs WHERE sheet_id = ? AND user_id = ?)
   `).run(userId, ...rowIndices, sheetId, userId);
 }

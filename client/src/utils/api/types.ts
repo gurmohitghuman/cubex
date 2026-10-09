@@ -30,6 +30,8 @@ export interface Sheet {
   // change poll so a write landing between the sheet GET and the first poll
   // still triggers a reload.
   data_version?: number
+  // A list enrichment is adding rows to this sheet: its tab shows a dot.
+  adding_rows?: number
 }
 
 // Authoritative per-column type, server-derived from run records (NOT guessed
@@ -194,3 +196,4 @@ export * from './types-enrich'
 export * from './types-enrich-run'
 export * from './types-autorun'
 export * from './types-enrich-answer'
+export * from './types-enrich-list'

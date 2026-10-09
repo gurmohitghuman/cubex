@@ -15,7 +15,9 @@ export type RunFailKind =
   | 'forbidden'     // 403 — missing scope (e.g. 'secrets' for a key-referencing run)
   | 'cap'           // 400 — column cap
   | 'upstream';     // 502 — a service Cubex reads can't answer now (treg's catalog)
-export interface RunFail { fail: RunFailKind; message: string }
+// field: the request field the failure is about (a new sheet's name: 'destName'),
+// so a form can show it in place.
+export interface RunFail { fail: RunFailKind; message: string; field?: string }
 
 export const runFailHttpStatus = (f: RunFail): number =>
   f.fail === 'not_found' ? 404
@@ -38,7 +40,8 @@ export function resolveRowIdsToIndexes(
     const known = new Set(found.map(r => r.id));
     const missing = unique.filter(id => !known.has(id));
     return {
-      error: `Unknown row id(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` (+${missing.length - 5} more)` : ''}`,
+      error: `Unknown row id(s): ${missing.slice(0, 5).join(', ')}`
+        + (missing.length > 5 ? ` (+${missing.length - 5} more)` : ''),
     };
   }
   return { indexes: found.map(r => r.row_index).sort((a, b) => a - b) };

@@ -6,7 +6,9 @@
 import { buildRequest, idempotencyKey, type BuiltRequest } from '../lib/enrich-request';
 import { readTregMeta } from '../lib/treg-meta';
 import { inputTemplates, type EnrichRunConfig } from '../lib/enrich-run-config';
-import { answerCells, missingCells, verdictCells } from '../lib/enrich-outcome';
+import { answerCells, listAnswerCells, missingCells, verdictCells } from '../lib/enrich-outcome';
+import { copyValues } from '../lib/enrich-list';
+import type { TregMeta } from '../lib/treg-meta';
 import { failedCell, type RowCells } from '../lib/enrich-cells';
 import { trimAnswer } from '../lib/answer-trim';
 import { keyScope, runStep, type RunCtx, type StepResult } from './enrich-step';
@@ -18,8 +20,27 @@ import type { HTTPRunRow } from './http-runner-status';
 
 export interface EnrichRow { rowIndex: number; rowId: string | null; data: Record<string, string> }
 
-// What a row produced: cells to write, or nothing (the run stopped).
-export interface RowResult { cells: RowCells; stored: unknown; costMicro: number }
+// What a row produced: cells to write, or nothing (the run stopped). A list
+// job's results (items) are journaled with them, to become rows elsewhere.
+export interface RowResult { cells: RowCells; stored: unknown; costMicro: number; items?: unknown[] }
+
+// An answer as the row's cells: outputs, or a list job's results.
+function answered(
+  config: EnrichRunConfig, routed: boolean, body: unknown, meta: TregMeta, sameAsRow: number | null,
+  costMicro: number,
+): RowResult {
+  const e = config.enrichment;
+  if (e.list) {
+    const { cells, items } = listAnswerCells({
+      routed, body, meta, providerNames: e.providerNames, list: e.list, sameAsRow,
+    });
+    return { cells, stored: trimAnswer(cells.answer, routed), costMicro, items };
+  }
+  const cells = answerCells({
+    routed, body, meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow,
+  });
+  return { cells, stored: trimAnswer(cells.answer, routed), costMicro };
+}
 
 type Built = Extract<BuiltRequest, { ok: true }>;
 
@@ -58,11 +79,7 @@ async function singleStep(
         attempt: 't1', idempotencyKey: idempotencyKey(at.scope, at.row, 't1', parts), httpStatus: 200,
         tregErrorCode: null, tier: null, meta,
       });
-      const cells = answerCells({
-        routed, body: recovered.body, meta, providerNames: e.providerNames, mapping: config.responseMapping,
-        sameAsRow: null,
-      });
-      return { cells, stored: trimAnswer(cells.answer, routed), costMicro: 0 };
+      return answered(config, routed, recovered.body, meta, null, 0);
     }
   }
   const r: StepResult = await runStep(ctx, {
@@ -74,11 +91,7 @@ async function singleStep(
       const cells = verdictCells('row_fail', "The answer was too big to read (over treg's 8 MB limit).");
       return { cells, stored: undefined, costMicro: r.costMicro };
     }
-    const cells = answerCells({
-      routed, body: r.body, meta: r.meta, providerNames: e.providerNames, mapping: config.responseMapping,
-      sameAsRow: r.sameAsRow,
-    });
-    return { cells, stored: trimAnswer(cells.answer, routed), costMicro: r.costMicro };
+    return answered(config, routed, r.body, r.meta, r.sameAsRow, r.costMicro);
   }
   if (r.kind === 'row_skip' || r.kind === 'row_fail') {
     return { cells: verdictCells(r.kind, r.message), stored: undefined, costMicro: r.costMicro };
@@ -101,8 +114,11 @@ export async function processEnrichmentRow(
       body: req.built.body,
     }
     : { toolId: config.enrichment.toolId };
+  const list = config.enrichment.list;
   writeEnrichmentResult({
     run, generation, rowIndex: row.rowIndex, cells: result.cells, stored: result.stored,
     mapping: config.responseMapping, costMicro: result.costMicro, request,
+    ...(list && result.items?.length
+      ? { list: { items: result.items, copy: copyValues(list, row.data), rowId: row.rowId } } : {}),
   });
 }

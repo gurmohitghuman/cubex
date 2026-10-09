@@ -7,6 +7,8 @@
 import { CUBEX_PATHS, inputTemplates, type EnrichCondition, type EnrichRunConfig } from './enrich-run-config';
 import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichRunInput, InputBinding, OutputInput } from './enrich-run-input';
+import type { ListInput } from './enrich-list-input';
+import type { EstimateList } from './enrich-estimate-input';
 
 export interface RecalledChoices {
   toolId: string;
@@ -24,6 +26,8 @@ export interface RecalledChoices {
   conditions: EnrichCondition[];
   maxCostPerRowUsd: number | null;
   fresh: boolean;
+  // A list job: where its results go and the fields it keeps.
+  list: ListInput | null;
 }
 
 const COLUMN_REF = /^\{\{(.+)\}\}$/;
@@ -42,10 +46,22 @@ function recallOutput(m: { columnName: string; jsonPath: string }, fromAnswer: S
   return { key, path: m.jsonPath, columnName: m.columnName };
 }
 
+function recallList(config: EnrichRunConfig): ListInput | null {
+  const l = config.enrichment.list;
+  if (!l) return null;
+  return {
+    dest: { sheetId: l.destSheetId }, provider: l.provider, maxItems: l.maxItems,
+    fields: l.fields?.length ? l.fields.map(f => ({ ...f })) : null,
+    copy: l.copy.map(c => ({ from: c.from, to: c.to })), dedupePath: l.dedupe?.path ?? null,
+  };
+}
+
 export function recallChoices(config: EnrichRunConfig, statusColumn: string): RecalledChoices {
   const e = config.enrichment;
   const inputs: Record<string, InputBinding> = {};
   for (const [name, template] of Object.entries(inputTemplates(config))) {
+    // A list job's page size comes from its results per row.
+    if (e.list && name === 'limit') continue;
     const ref = COLUMN_REF.exec(template);
     inputs[name] = ref ? { column: ref[1] } : { value: template };
   }
@@ -56,7 +72,7 @@ export function recallChoices(config: EnrichRunConfig, statusColumn: string): Re
     email: e.email ? { accept: e.email.strategy, guess: e.email.guess, pattern: e.email.pattern } : null,
     outputs: config.responseMapping.map(m => recallOutput(m, new Set(e.answerFields ?? []))),
     conditions: e.rows.where.map(c => ({ ...c })),
-    maxCostPerRowUsd: e.maxCostPerRowUsd, fresh: e.fresh,
+    maxCostPerRowUsd: e.maxCostPerRowUsd, fresh: e.fresh, list: recallList(config),
   };
 }
 
@@ -70,6 +86,15 @@ export function rerunInput(
     toolId: c.toolId, preset: c.preset, columnName: c.columnName, continueColumn: true, inputs: c.inputs,
     cleanDomains: c.cleanDomains, providerOrder: c.providerOrder, skipProviders: c.skipProviders,
     stopAtFirst: c.stopAtFirst, email: c.email, outputs: c.outputs, rows, conditions: c.conditions,
-    maxCostPerRowUsd: c.maxCostPerRowUsd, spendLimitUsd, fresh: c.fresh, rowGeneration,
+    maxCostPerRowUsd: c.maxCostPerRowUsd, spendLimitUsd, fresh: c.fresh, rowGeneration, list: c.list,
+  };
+}
+
+// The estimate's list part for a column's own setup (reruns, auto-run's notices).
+export function estimateListOf(c: RecalledChoices): EstimateList | null {
+  if (!c.list) return null;
+  return {
+    provider: c.list.provider, maxItems: c.list.maxItems,
+    destSheetId: 'sheetId' in c.list.dest ? c.list.dest.sheetId : null,
   };
 }

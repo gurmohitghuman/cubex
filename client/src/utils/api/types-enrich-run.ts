@@ -4,6 +4,7 @@
 // './types'.
 import type { EnrichToolCard } from './types-enrich'
 import type { EnrichDailyLimit } from './types-settings'
+import type { EnrichListProgress, EnrichListRequest } from './types-enrich-list'
 
 export type EnrichRunBinding = { column: string } | { value: string }
 
@@ -33,9 +34,14 @@ export interface EnrichRunRequest {
   fresh: boolean
   // The sheet's row_generation when rows were selected (a sort since: 409).
   rowGeneration?: number
+  // A list job: where its results go as rows (null: outputs fill this sheet).
+  list?: EnrichListRequest | null
 }
 
-export interface EnrichRunStarted { runId: string; statusColumn: string; outputColumns: string[] }
+// destSheetId: where a list job's rows go (a new sheet the start made).
+export interface EnrichRunStarted {
+  runId: string; statusColumn: string; outputColumns: string[]; destSheetId?: string | null
+}
 
 // One row's result as the grid shows it.
 export interface EnrichRowResult {
@@ -70,6 +76,7 @@ export interface EnrichRunStatus {
   dailyLimit: EnrichDailyLimit
   // The newest rows (highest row numbers first).
   latest: EnrichRowResult[]
+  list?: EnrichListProgress | null
 }
 
 export interface EnrichRowCounts { total: number; notEnriched: number; noResult: number; failed: number }
@@ -97,6 +104,8 @@ export interface EnrichRerunEstimate {
   maxCostPerRowUsd: number | null
   spendLimitUsd: number | null
   dailyLimit: EnrichDailyLimit
+  // A list job: the sheet its rows go to, and how many it may add.
+  addsRowsTo?: { name: string; addUpTo: number } | null
 }
 
 // "Edit enrichment": what the column was set up with (its newest run).
@@ -116,6 +125,7 @@ export interface EnrichRecalledChoices {
   conditions: Array<{ column: string; op: string; value: string }>
   maxCostPerRowUsd: number | null
   fresh: boolean
+  list?: EnrichListRequest | null
 }
 
 export interface EnrichColumnSetup {

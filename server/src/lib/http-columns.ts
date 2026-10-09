@@ -69,12 +69,40 @@ export function renameHttpRunColumnRefs(
         rc.headers = headers;
       }
     }
-    // An enrichment's "Only run if" conditions name columns too.
+    // An enrichment's "Only run if" conditions name columns too, and a list
+    // job's copied columns (read from this sheet).
     const where = config?.enrichment?.rows?.where;
     if (Array.isArray(where)) {
       for (const c of where) if (c && c.column === oldName) { c.column = newName; changed = true; }
     }
+    const copy = config?.enrichment?.list?.copy;
+    if (Array.isArray(copy)) {
+      for (const c of copy) if (c && c.from === oldName) { c.from = newName; changed = true; }
+    }
     if (changed) update.run(JSON.stringify(config), run.id);
+  }
+  renameListDestColumn(sheetId, userId, oldName, newName);
+}
+
+// List jobs adding rows to this sheet (from another one) name its columns:
+// the fields they keep and the columns they copy into.
+function listRunsInto(sheetId: string, userId: string): Array<{ id: string; config: any }> {
+  const rows = db.prepare('SELECT id, config FROM http_runs WHERE dest_sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as Array<{ id: string; config: string }>;
+  return rows.flatMap(r => {
+    try { const config = JSON.parse(r.config); return config?.enrichment?.list ? [{ id: r.id, config }] : []; }
+    catch { return []; }
+  });
+}
+
+function renameListDestColumn(sheetId: string, userId: string, oldName: string, newName: string): void {
+  const update = db.prepare('UPDATE http_runs SET config = ? WHERE id = ?');
+  for (const run of listRunsInto(sheetId, userId)) {
+    const list = run.config.enrichment.list;
+    let changed = false;
+    for (const f of list.fields ?? []) if (f.columnName === oldName) { f.columnName = newName; changed = true; }
+    for (const c of list.copy ?? []) if (c.to === oldName) { c.to = newName; changed = true; }
+    if (changed) update.run(JSON.stringify(run.config), run.id);
   }
 }
 
@@ -106,12 +134,29 @@ export function deleteHttpRunColumnRefs(
   for (const run of runs) {
     let config: any;
     try { config = JSON.parse(run.config); } catch { continue; }
+    let changed = false;
     const mappings = config?.responseMapping;
-    if (!Array.isArray(mappings)) continue;
-    const pruned = mappings.filter((m: any) => !m || m.columnName !== columnName);
-    if (pruned.length !== mappings.length) {
-      config.responseMapping = pruned;
-      update.run(JSON.stringify(config), run.id);
+    if (Array.isArray(mappings)) {
+      const pruned = mappings.filter((m: any) => !m || m.columnName !== columnName);
+      if (pruned.length !== mappings.length) { config.responseMapping = pruned; changed = true; }
     }
+    // A list job stops copying a deleted column into its new rows.
+    const list = config?.enrichment?.list;
+    if (Array.isArray(list?.copy) && list.copy.some((c: any) => c?.from === columnName)) {
+      list.copy = list.copy.filter((c: any) => c?.from !== columnName);
+      changed = true;
+    }
+    if (changed) update.run(JSON.stringify(config), run.id);
+  }
+  // List jobs adding rows here stop filling the deleted column.
+  for (const run of listRunsInto(sheetId, userId)) {
+    const list = run.config.enrichment.list;
+    const fields = (list.fields ?? []).filter((f: any) => f.columnName !== columnName);
+    const copy = (list.copy ?? []).filter((c: any) => c.to !== columnName);
+    if (fields.length === (list.fields ?? []).length && copy.length === (list.copy ?? []).length) continue;
+    // No field left: its results wait until fields are picked again (never blank rows).
+    if (list.fields) list.fields = fields.length ? fields : null;
+    list.copy = copy;
+    update.run(JSON.stringify(run.config), run.id);
   }
 }

@@ -7,7 +7,7 @@ import { SheetGrid } from '@/components/sheet/SheetGrid'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { SheetEmptyState } from '@/components/sheet/SheetEmptyState'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
 import { useSheetOps } from '@/hooks/sheet/useSheetOps'
 import { SheetModals } from '@/components/sheet/SheetModals'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
@@ -370,18 +370,9 @@ export const SheetPage: React.FC = () => {
         onReorderSheets={sheetOps.reorderSheets}
         onAddRows={cellOps.handleAddRows}
       />
-      <ConfirmDialog
-        isOpen={!!confirmDeleteSheet}
-        title="Delete Sheet"
-        message={`Delete "${confirmDeleteSheet?.name}" and all its data? This cannot be undone.`}
-        confirmText="Delete Sheet"
-        onConfirm={() => {
-          if (confirmDeleteSheet) void sheetOps.deleteSheet(confirmDeleteSheet.id)
-          setConfirmDeleteSheet(null)
-        }}
-        onCancel={() => setConfirmDeleteSheet(null)}
-        isDestructive
-      />
+      <DeleteSheetConfirm sheet={confirmDeleteSheet}
+        onConfirm={s => { void sheetOps.deleteSheet(s.id); setConfirmDeleteSheet(null) }}
+        onCancel={() => setConfirmDeleteSheet(null)} />
       <SheetModals
         activeSheet={activeSheet} sheetData={sheetData}
         selectedRowIndices={cellOps.selectedRowIndices}

@@ -30,15 +30,22 @@ import {
   columnOutputs, columnRunActive, loadEntry, pauseEntry, type AutorunEntry, type ColumnRunRow,
 } from './autorun-entry';
 import { requeueUnfinished } from './autorun-stop';
+import { autorunListDest } from './autorun-list';
 import type { Picked } from './autorun-pick';
 import { enqueueHTTPRerun } from '../queue';
 
-export interface PreparedRun { config: HTTPAPIConfig; allowSecrets: number; outputs: string[] }
+// dest: a list job's destination sheet and the columns it still needs there.
+export interface PreparedRun {
+  config: HTTPAPIConfig; allowSecrets: number; outputs: string[];
+  dest: { destSheetId: string; newColumns: string[] } | null;
+}
 // repriced: the newest run was billed by the team's own key and treg prices
 // the tool now; the room auto-run read had no dollar figure, so the tick reads
 // it again at these prices and prepares once more with that run limit.
+// retry: not now (a list job's destination is busy); the next tick tries again.
 export type Prepared =
-  | { ok: PreparedRun } | { pause: { reason: string; message: string } } | { repriced: HTTPAPIConfig };
+  | { ok: PreparedRun } | { pause: { reason: string; message: string } } | { repriced: HTTPAPIConfig }
+  | { retry: true };
 
 export async function prepareAutorunRun(
   e: AutorunEntry, newest: ColumnRunRow, config: HTTPAPIConfig, plan: CandidatePlan,
@@ -46,7 +53,7 @@ export async function prepareAutorunRun(
 ): Promise<Prepared> {
   if (!isEnrichmentConfig(config)) {
     const outputs = columnOutputs(e.sheet_id, e.user_id, e.status_column);
-    return { ok: { config, allowSecrets: newest.allow_secrets ?? 1, outputs } };
+    return { ok: { config, allowSecrets: newest.allow_secrets ?? 1, outputs, dest: null } };
   }
   const tool = await getTool(config.enrichment.toolId);
   if (!('ok' in tool)) {
@@ -66,7 +73,11 @@ export async function prepareAutorunRun(
     }
     if (config.enrichment.maxCostPerRowUsd === null && runLimitUsd === null) return { repriced: built.ok };
   }
-  return { ok: { config: built.ok, allowSecrets: 0, outputs: built.ok.responseMapping.map(m => m.columnName) } };
+  const dest = autorunListDest(e, input.list, built.ok, plan.columns);
+  if (!('ok' in dest)) return dest;
+  return {
+    ok: { config: built.ok, allowSecrets: 0, outputs: built.ok.responseMapping.map(m => m.columnName), dest: dest.ok },
+  };
 }
 
 export type StartOutcome =
@@ -97,6 +108,15 @@ export async function startAutorunRun(
       if (!listed.has(e.status_column)) return;
       const unlisted = prep.outputs.filter(c => !listed.has(c));
       if (listed.size + unlisted.length > MAX_COLUMNS_PER_SHEET) { out = { full: true }; return; }
+      // A list job's destination: still there, with room for its columns
+      // (before the queue is touched, so a refusal here keeps its rows queued).
+      const dest = prep.dest;
+      const destHave = dest ? getSheetColumns(dest.destSheetId, e.user_id, false) : [];
+      const destAdd = dest ? dest.newColumns.filter(c => !destHave.includes(c)) : [];
+      if (dest && !db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ?').get(dest.destSheetId, e.user_id)) {
+        return;
+      }
+      if (destHave.length + destAdd.length > MAX_COLUMNS_PER_SHEET) { out = { full: true }; return; }
       const queued = new Map(picked.rows.map(r => [r.id, r.fromPending]));
       const found = db.prepare(`SELECT id, row_index, data FROM rows WHERE id IN (SELECT value FROM json_each(?))
         AND +sheet_id = ? AND +user_id = ?`).all(JSON.stringify([...queued.keys()]), e.sheet_id, e.user_id) as
@@ -113,13 +133,14 @@ export async function startAutorunRun(
         .run(picked.watermark, sheet.v + (keep.length ? 1 : 0), e.id);
       if (keep.length === 0) { out = { none: true }; return; }
 
+      if (dest) appendColumnsToOrder(dest.destSheetId, e.user_id, destAdd);
       if (unlisted.length) appendColumnsToOrder(e.sheet_id, e.user_id, unlisted);
       targets = keep.map(r => r.row_index).sort((a, b) => a - b);
       db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-          target_rows, allow_secrets, placeholder_work, autorun_id, autorun_day)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?)`)
+          target_rows, allow_secrets, placeholder_work, autorun_id, autorun_day, dest_sheet_id)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?, ?)`)
         .run(runId, e.sheet_id, e.user_id, JSON.stringify(prep.config), keep.length, e.status_column,
-          JSON.stringify(targets), prep.allowSecrets, e.id, utcDay());
+          JSON.stringify(targets), prep.allowSecrets, e.id, utcDay(), dest?.destSheetId ?? null);
       // Every output is linked to this run: clearing a stopped run's ⏳ finds its columns this way.
       const assoc = db.prepare(`INSERT INTO http_column_associations
           (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`);

@@ -36,12 +36,24 @@ export function conditionPasses(data: Record<string, string>, c: EnrichCondition
 // start with ❌, rows without an answer (not found, over budget) with ⏭️.
 export const FAILED_MARK = '❌';
 export const SKIPPED_MARK = '⏭️';
+// A list job's row whose results are on their way to another sheet (never ⏳).
+export const LIST_MARK = '➕';
+// A run's placeholder ('⏳ Processing...', lib/placeholder-cells.ts) starts with it.
+const RUNNING_MARK = '⏳';
 
 // What counts as blank around a status cell: the same set in the seeding check
 // here and in the SQL count (TRIM(cell, BLANK_CHARS)), so the two never disagree.
 export const BLANK_CHARS = ' \t\n\r\u00a0';
 const BLANK_EDGES = /^[ \t\n\r\u00a0]+|[ \t\n\r\u00a0]+$/g;
 export const trimBlank = (s: string): string => s.replace(BLANK_EDGES, '');
+
+// A cell holding a run's own word: still filling (⏳), found nothing (⏭️),
+// failed (❌), or adding rows elsewhere (➕). Cubex's words, not data: as an
+// input (auto-run) or a copied value it reads as empty.
+export function holdsRunMarker(value: string): boolean {
+  const t = trimBlank(value);
+  return [RUNNING_MARK, FAILED_MARK, SKIPPED_MARK, LIST_MARK].some(m => t.startsWith(m));
+}
 
 export function statusMatches(cell: string | undefined, status: EnrichRowsStatus): boolean {
   const s = trimBlank(cell ?? '');

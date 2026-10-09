@@ -14,7 +14,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_table',
     {
       description:
-        `Create, rename, or delete a table (a workspace that holds one or more sheet tabs). create returns the new table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. DELETE IS PERMANENT: it removes every sheet and row in the table and cancels its active runs.`,
+        'Create, rename, or delete a table (a workspace that holds one or more sheet tabs). create returns the new '
+        + 'table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. DELETE IS PERMANENT: '
+        + 'it removes every sheet and row in the table and cancels its active runs.',
       inputSchema: {
         action: z.enum(['create', 'rename', 'delete']),
         table_id: z.string().optional().describe('Required for rename/delete'),
@@ -45,7 +47,11 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_sheet',
     {
       description:
-        `Create, rename, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). create auto-names the sheet when name is omitted and can insert after a given tab. DELETE IS PERMANENT: it removes the sheet's rows and cancels its active runs. Returns the table's updated tab list.`,
+        'Create, rename, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
+        + 'create auto-names the sheet when name is omitted and can insert after a given tab. DELETE IS PERMANENT: '
+        + "it removes the sheet's rows and cancels its active runs; enrichment results its columns bought that were "
+        + 'not yet added as rows in another sheet are dropped too (list_results_dropped says how many and for which '
+        + "sheets). Returns the table's updated tab list.",
       inputSchema: {
         action: z.enum(['create', 'rename', 'delete', 'reorder']),
         table_id: z.string(),
@@ -74,7 +80,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         ? renameSheet(ctx.userId, table_id, sheet_id, name)
         : deleteSheet(ctx.userId, table_id, sheet_id);
       if ('fail' in result) return err(result.message);
-      return action === 'delete' ? ok({ deleted: true, sheets: result.ok.sheets }) : ok(result.ok);
+      if (action !== 'delete') return ok(result.ok);
+      const dropped = result.ok.notAdded;
+      return ok({ deleted: true, sheets: result.ok.sheets, ...(dropped ? { list_results_dropped: dropped } : {}) });
     },
   );
 }

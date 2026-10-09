@@ -103,6 +103,8 @@ export TREG_BASE_URL="http://127.0.0.1:$TREG_PORT"
 # specs move "today" forward through this file to test daily caps (lib/clock.ts).
 export AUTORUN_SWEEP_MS="${AUTORUN_SWEEP_MS:-500}"
 export AUTORUN_USER_YIELD_MS="${AUTORUN_USER_YIELD_MS:-6000}"
+# List results become rows on this beat (5 s in production).
+export ENRICH_LIST_DRAIN_MS="${ENRICH_LIST_DRAIN_MS:-500}"
 export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
 
 echo "[boot] mock treg on :$TREG_PORT ..."

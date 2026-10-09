@@ -54,7 +54,8 @@ router.delete('/tables/:tableId/sheets/:sheetId', requireScope('write'), (req: T
   try {
     const result = deleteSheet(req.userId!, req.params.tableId, req.params.sheetId);
     if ('fail' in result) return res.status(tableFailHttpStatus(result)).json({ error: result.message });
-    res.json({ deleted: true, sheets: result.ok.sheets });
+    const dropped = result.ok.notAdded;
+    res.json({ deleted: true, sheets: result.ok.sheets, ...(dropped ? { list_results_dropped: dropped } : {}) });
   } catch (error) {
     console.error('DELETE /v1/tables/:tableId/sheets/:sheetId error:', error);
     res.status(500).json({ error: 'Failed to delete sheet' });

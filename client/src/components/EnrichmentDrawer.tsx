@@ -90,11 +90,13 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
   const runBlock = !ownRun ? null
     : !run.status ? (draft.runEnded ? null : 'Loading the run on this column…')
       : runActive(run.status) ? 'A run is still filling this column. Wait for it to finish, or stop it above.' : null
-  const onStarted = (runId: string, statusColumn: string, test: boolean) => {
-    update({
+  const onStarted = (runId: string, statusColumn: string, test: boolean, destSheetId?: string | null) => {
+    update(d => ({
       continueColumn: statusColumn, columnName: statusColumn, runId, runEnded: false, step: test ? 'test' : 'run',
       ...(test ? { rowsStatus: 'not_enriched' as const } : {}),
-    })
+      // A list job's new sheet now exists: the next runs add to it.
+      ...(d.list && destSheetId ? { list: { ...d.list, dest: { kind: 'sheet' as const, sheetId: destSheetId } } } : {}),
+    }))
     p.onRunStarted(runId)
     // Auto-run goes with the full run: a test on a few rows changes nothing yet.
     if (test) return

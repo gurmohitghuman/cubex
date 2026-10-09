@@ -18,7 +18,8 @@ export function JsonTree({
   value: any
   path: string
   mappingByPath: Map<string, string>
-  onPick: (jsonPath: string, columnName: string) => void
+  // Omitted: values show without a pick button (read-only).
+  onPick?: (jsonPath: string, columnName: string) => void
   depth?: number
   expandSignal?: number
   forceOpenState?: boolean
@@ -35,7 +36,7 @@ export function JsonTree({
 }
 
 interface NodeProps {
-  path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void
+  path: string; mappingByPath: Map<string, string>; onPick?: (p: string, c: string) => void
   depth: number; expandSignal?: number; forceOpenState?: boolean; pickLabel: string
 }
 
@@ -111,7 +112,7 @@ function ArrayNode({
 
 function Leaf({
   value, path, mappingByPath, onPick, pickLabel,
-}: { value: unknown; path: string; mappingByPath: Map<string, string>; onPick: (p: string, c: string) => void
+}: { value: unknown; path: string; mappingByPath: Map<string, string>; onPick?: (p: string, c: string) => void
   pickLabel: string }) {
   const existing = mappingByPath.get(path)
   const [naming, setNaming] = useState(false)
@@ -148,16 +149,18 @@ function Leaf({
             if (e.key !== 'Enter' && e.key !== 'Escape') return
             e.preventDefault(); e.stopPropagation()
             if (e.key === 'Escape') setNaming(false)
-            else if (name.trim()) { onPick(path, name.trim()); setNaming(false) }
+            else if (name.trim()) { onPick?.(path, name.trim()); setNaming(false) }
           }}
         />
-        <button type="button" onClick={() => { if (name.trim()) { onPick(path, name.trim()); setNaming(false) } }}
+        <button type="button" onClick={() => { if (name.trim()) { onPick?.(path, name.trim()); setNaming(false) } }}
           className="text-xs bg-cube-black text-white px-1.5 py-0.5">Save</button>
         <button type="button" onClick={() => setNaming(false)}
           className="text-xs text-gray-500 hover:text-cube-black">Cancel</button>
       </span>
     )
   }
+
+  if (!onPick) return <span className="inline-flex items-center gap-2" data-json-path={path}>{display}</span>
 
   return (
     <span className="inline-flex items-center gap-2" data-json-path={path}>

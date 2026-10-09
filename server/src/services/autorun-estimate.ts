@@ -7,7 +7,7 @@
 // will return the same list as auto_run (M3).
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
-import { recallChoices } from '../lib/enrich-run-recall';
+import { estimateListOf, recallChoices } from '../lib/enrich-run-recall';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { estimateEnrichment } from './enrich-setup';
 import { newestRunOf, sheetEntries, usageToday } from './autorun-entry';
@@ -50,6 +50,7 @@ export async function estimateAutorunRows(
     const est = await estimateEnrichment(userId, {
       toolId: c.toolId, rows, preset: c.preset, given: Object.keys(c.inputs).sort(), skip: c.skipProviders,
       order: c.providerOrder, stopAtFirst: c.stopAtFirst, maxCostPerRowUsd: c.maxCostPerRowUsd, limit: null,
+      list: estimateListOf(c),
     });
     const range = 'ok' in est && est.ok.priceKnown ? est.ok.estimate : null;
     out.push({ ...base, kind: 'enrichment', rows, lowUsd: range?.lowUsd ?? null, highUsd: range?.highUsd ?? null });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import type { EnrichRunStatus } from '@/utils/api'
 import { TREG_APP_URL, TREG_TOPUP_URL, limitText, resetsAtText, spent, usd } from '@/lib/enrich-format'
@@ -46,6 +46,7 @@ const RaiseAndResume: React.FC<{
 // key in Settings, or resume once treg is reachable again. A pause the user
 // clicked needs no notice: the header's Resume is the fix.
 export const PausedNotice: React.FC<Props> = ({ status, run }) => {
+  const { tableId } = useParams<{ tableId: string }>()
   if (status.status !== 'paused' || !status.pauseReason) return null
   const cap = status.maxCostPerRowUsd ?? 0
   // Enough for the rows still to run, each at its per-row cap (an upper bound).
@@ -93,6 +94,19 @@ export const PausedNotice: React.FC<Props> = ({ status, run }) => {
       fix = (
         <div className="flex flex-wrap gap-2">
           <Link to="/settings/http-enrichment" className={btn}>Open Settings</Link>{resume}
+        </div>
+      )
+      break
+    case 'dest_full':
+      // The fix is in the sheet the rows go to: room first, then Resume.
+      fix = (
+        <div className="flex flex-wrap gap-2">
+          {tableId && status.list?.destSheetId && (
+            <Link to={`/table/${tableId}/${status.list.destSheetId}`} className={btn}>
+              Open {status.list.destName ?? 'the sheet'}
+            </Link>
+          )}
+          {resume}
         </div>
       )
       break

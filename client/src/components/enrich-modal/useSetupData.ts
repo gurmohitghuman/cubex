@@ -11,6 +11,8 @@ interface SetupData {
   toolError: string | null
   access: EnrichToolAccess | null
   setup: EnrichSheetSetup | null
+  // The sheet's read failed (a list job can't start without the table's sheets).
+  setupError: boolean
   balance: TregBalance | null
 }
 
@@ -18,9 +20,14 @@ interface SetupData {
 // key is served for it (own keys, free routes), the sheet's row counts and
 // room for columns, and the treg balance. The last three are best effort:
 // Set up still works without them, it just says less.
-export function useSetupData(sheetId: string, toolId: string | null, hasKey: boolean | undefined, active: boolean) {
-  const [data, setData] = useState<SetupData>({ tool: null, toolError: null, access: null, setup: null, balance: null })
+export function useSetupData(
+  sheetId: string, toolId: string | null, hasKey: boolean | undefined, active: boolean, refresh = '',
+) {
+  const [data, setData] = useState<SetupData>({
+    tool: null, toolError: null, access: null, setup: null, setupError: false, balance: null,
+  })
   const [attempt, setAttempt] = useState(0)
+  const [setupAttempt, setSetupAttempt] = useState(0)
 
   useEffect(() => {
     if (!active || !toolId) return
@@ -31,7 +38,8 @@ export function useSetupData(sheetId: string, toolId: string | null, hasKey: boo
     enrichAPI.tool(toolId)
       .then(tool => { tools.set(toolId, tool); if (alive) setData(d => ({ ...d, tool })) })
       .catch(err => {
-        if (alive) setData(d => ({ ...d, toolError: err?.response?.data?.error || "Couldn't load this enrichment. Try again." }))
+        const toolError = err?.response?.data?.error || "Couldn't load this enrichment. Try again."
+        if (alive) setData(d => ({ ...d, toolError }))
       })
     return () => { alive = false }
   }, [toolId, active, attempt])
@@ -47,9 +55,13 @@ export function useSetupData(sheetId: string, toolId: string | null, hasKey: boo
   useEffect(() => {
     if (!active) return
     let alive = true
-    enrichAPI.sheetSetup(sheetId).then(setup => { if (alive) setData(d => ({ ...d, setup })) }).catch(() => {})
+    // A retry shows the loading state again, so a second failure is seen as one.
+    setData(d => (d.setupError ? { ...d, setupError: false } : d))
+    enrichAPI.sheetSetup(sheetId)
+      .then(setup => { if (alive) setData(d => ({ ...d, setup, setupError: false })) })
+      .catch(() => { if (alive) setData(d => ({ ...d, setupError: true })) })
     return () => { alive = false }
-  }, [sheetId, active])
+  }, [sheetId, active, refresh, setupAttempt])
 
   useEffect(() => {
     if (!active || !hasKey) { setData(d => ({ ...d, balance: null })); return }
@@ -58,5 +70,5 @@ export function useSetupData(sheetId: string, toolId: string | null, hasKey: boo
     return () => { alive = false }
   }, [hasKey, active])
 
-  return { ...data, retryTool: () => setAttempt(a => a + 1) }
+  return { ...data, retryTool: () => setAttempt(a => a + 1), retrySetup: () => setSetupAttempt(a => a + 1) }
 }

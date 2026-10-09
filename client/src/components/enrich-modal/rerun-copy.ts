@@ -5,6 +5,7 @@
 import type { EnrichRerunEstimate, EnrichRowsStatus } from '@/utils/api'
 import { formatCost } from '../ai-modal/format'
 import { plural } from '../../lib/utils'
+import { spent } from '../../lib/enrich-format'
 
 export type RerunAction = 'not_enriched' | 'failed' | 'selected' | 'all'
 
@@ -34,14 +35,18 @@ const NOTHING: Record<RerunAction, string> = {
 export function rerunMessage(action: RerunAction, e: EnrichRerunEstimate): string {
   if (e.rows === 0) return NOTHING[action].replace('{col}', e.column)
   // The confirm opens from the column's own menu: no need to name it again.
+  const list = e.addsRowsTo ?? null
   const replaced = action === 'not_enriched' ? ''
-    : e.rows === 1 ? ' Its current result is replaced, and it costs again.'
-      : ' Their current results are replaced, and each row costs again.'
-  const head = `Run ${e.toolName} on ${rowsText(action, e.rows)}?${replaced}`
+    : list ? ` The rows ${e.rows === 1 ? 'it' : 'they'} added to ${list.name} before are replaced, `
+      + `and ${e.rows === 1 ? 'it costs' : 'each row costs'} again.`
+      : e.rows === 1 ? ' Its current result is replaced, and it costs again.'
+        : ' Their current results are replaced, and each row costs again.'
+  const adds = list ? ` May add up to ${plural(list.addUpTo, 'row')} to ${list.name}.` : ''
+  const head = `Run ${e.toolName} on ${rowsText(action, e.rows)}?${replaced}${adds}`
   if (!e.priceKnown) return `${head} Your provider bills these calls directly.`
   const daily = e.dailyLimit.limitUsd !== null
     ? ` Today's limit: ${formatCost(e.dailyLimit.limitUsd)}, ${formatCost(e.dailyLimit.remainingUsd ?? 0)} left.` : ''
-  return `${head} Estimated ${formatCost(e.lowUsd)} to ${formatCost(e.highUsd)}.`
+  return `${head} Estimated ${spent(e.lowUsd)} to ${spent(e.highUsd)}.`
     + (e.spendLimitUsd !== null ? ` The run stops at ${formatCost(e.spendLimitUsd)}.` : '')
     + daily
     + ' Rows missing an input are skipped and cost nothing.'

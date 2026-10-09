@@ -34,6 +34,8 @@ export interface AnswerView {
   prunedAt: string | null;      // when the raw part was removed to save space
   mapping: Array<{ columnName: string; jsonPath: string }>;
   enrichment: EnrichAnswerInfo | null;
+  // A list job: its results became rows in this sheet (null: deleted since).
+  addsRowsTo: { sheetId: string | null; name: string | null } | null;
 }
 
 type Json = Record<string, unknown>;
@@ -81,8 +83,14 @@ function readAnswerNow(
     kind: run.enrichment ? 'enrichment' : 'http', column, statusColumn: owner.statusColumn, rowIndex,
     runId: run.id, runAt: run.createdAt, status: hit.status === 'failed' ? 'failed' : 'completed',
     reason: hit.error_message, result, answer: stored.body ?? null,
-    trimmed: stored.trimmedPaths, prunedAt: stored.prunedAt, mapping, enrichment: null,
+    trimmed: stored.trimmedPaths, prunedAt: stored.prunedAt, mapping, enrichment: null, addsRowsTo: null,
   };
+  const list = run.enrichment?.enrichment.list;
+  if (list) {
+    const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+      .get(list.destSheetId, userId) as string | undefined;
+    view.addsRowsTo = { sheetId: name === undefined ? null : list.destSheetId, name: name ?? null };
+  }
   const e = run.enrichment?.enrichment;
   if (e) {
     const ledger = db.prepare(`SELECT attempt, tool_id, call_id, cost_micro, original_cost_micro, http_status,

@@ -7,6 +7,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { getLockedRunColumns } from '../routes/sheets-shared';
 import { CELL_MAX_BASIC } from '../lib/constants';
 import { isWebhookRawColumn } from '../lib/webhook-columns';
+import { listRunInto } from './enrich-list-guard';
 
 // Every programmatic data mutation bumps sheets.data_version INSIDE its
 // transaction — the live-update signal an open tab's change poll watches.
@@ -18,13 +19,14 @@ export function bumpDataVersion(sheetId: string, userId: string): void {
   ).run(sheetId, userId);
 }
 
-// Sheet-wide active-run guard — same predicate as sort and bulk-delete.
+// Sheet-wide active-run guard: the same predicate as sort and bulk-delete (a
+// list job adding rows here from another sheet counts too).
 export function sheetHasActiveRun(sheetId: string, userId: string): boolean {
   return !!db.prepare(`
     SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
     UNION SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
     LIMIT 1
-  `).get(sheetId, userId, sheetId, userId);
+  `).get(sheetId, userId, sheetId, userId) || !!listRunInto(sheetId, userId);
 }
 
 // Typed in-transaction failure results shared by the write flows. better-sqlite3

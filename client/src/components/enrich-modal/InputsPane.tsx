@@ -17,12 +17,17 @@ interface Props {
   columns: string[]
   cleanDomains: boolean
   setCleanDomains: (v: boolean) => void
+  // A list job asks one provider: more inputs widen the choice, not the tries.
+  addsRows?: boolean
 }
 
-export const InputsPane: React.FC<Props> = ({ tool, bindings, setBinding, columns, cleanDomains, setCleanDomains }) => {
+export const InputsPane: React.FC<Props> = ({
+  tool, bindings, setBinding, columns, cleanDomains, setCleanDomains, addsRows,
+}) => {
   const [showMore, setShowMore] = useState(false)
   const row = (input: EnrichToolInput) => (
-    <InputRow key={input.name} input={input} label={inputLabel(input.name, tool.capability)} binding={bindings[input.name]}
+    <InputRow key={input.name} input={input} label={inputLabel(input.name, tool.capability)}
+      binding={bindings[input.name]}
       columns={columns} onChange={b => setBinding(input.name, b)} />
   )
   const sent = boundInputs(bindings, columns)
@@ -40,7 +45,8 @@ export const InputsPane: React.FC<Props> = ({ tool, bindings, setBinding, column
           {ready.length > 0 && <Check className="h-3.5 w-3.5 mt-px flex-shrink-0" />}
           <span>
             {ready.length > 0
-              ? 'Ready. Each other input you map lets more providers try.'
+              ? (addsRows ? 'Ready. More inputs let you pick from more providers.'
+                : 'Ready. Each other input you map lets more providers try.')
               : `Needs ${identityText(tool)}. Each other input you map lets more providers try.`}
           </span>
         </p>
@@ -56,16 +62,19 @@ export const InputsPane: React.FC<Props> = ({ tool, bindings, setBinding, column
     )
   }
 
-  // Single tools: required inputs first; the rest behind "More options".
-  const required = tool.inputs.filter(i => i.required)
-  const optional = tool.inputs.filter(i => !i.required)
+  // Single tools: required inputs first; the rest behind "More options". A
+  // list job's page size (limit) is its results per row, set below.
+  const shown = tool.inputs.filter(i => !(addsRows && i.name === 'limit'))
+  const required = shown.filter(i => i.required)
+  const optional = shown.filter(i => !i.required)
   const visible = showMore ? optional : optional.filter(i => bindings[i.name])
   return (
     <div className="space-y-3">
-      {tool.inputs.length === 0 && <p className="text-xs text-gray-500">This tool takes no inputs.</p>}
+      {shown.length === 0 && <p className="text-xs text-gray-500">This tool takes no inputs.</p>}
       <div className="space-y-2">{required.map(row)}{visible.map(row)}</div>
       {optional.length > visible.length && (
-        <button type="button" onClick={() => setShowMore(true)} className="text-xs text-gray-600 underline hover:no-underline">
+        <button type="button" onClick={() => setShowMore(true)}
+          className="text-xs text-gray-600 underline hover:no-underline">
           More options ({optional.length - visible.length})
         </button>
       )}
@@ -76,10 +85,13 @@ export const InputsPane: React.FC<Props> = ({ tool, bindings, setBinding, column
 
 const CleanDomains: React.FC<{ value: boolean; onChange: (v: boolean) => void }> = ({ value, onChange }) => (
   <label className="flex items-start gap-2 text-sm text-gray-700">
-    <input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)} className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" />
+    <input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)}
+      className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" />
     <span>
       Clean up to a domain
-      <span className="block text-xs text-gray-500">https://www.stripe.com/about becomes stripe.com, so more providers match it.</span>
+      <span className="block text-xs text-gray-500">
+        https://www.stripe.com/about becomes stripe.com, so more providers match it.
+      </span>
     </span>
   </label>
 )

@@ -6,6 +6,7 @@ import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
+import { startListDrainLoop } from '../services/enrich-list-drain';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -30,6 +31,8 @@ let webhookBucketSweep: ReturnType<typeof setInterval> | null = null;
 // The queue runs Sidequest in-process (worker threads), so it shares the
 // lifecycle of this Node process.
 export const startBackground = (recovered?: RecoveredRuns) => {
+  // List results journaled before a restart are added as rows (services/enrich-list-drain.ts).
+  startListDrainLoop();
   startQueue()
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).

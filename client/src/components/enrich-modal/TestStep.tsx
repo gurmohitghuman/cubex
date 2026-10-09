@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { plural } from '@/lib/utils'
 import { spent } from '@/lib/enrich-format'
-import { effectiveMode, type EnrichDraft } from './draft'
+import { type OnStarted, effectiveMode, type EnrichDraft } from './draft'
 import { runRequest } from './run-request'
 import { useSetupModel } from './useSetupModel'
 import { useRunStart } from './useRunStart'
@@ -12,6 +12,7 @@ import { RunResultRows } from './RunResultRows'
 import { PausedNotice } from './PausedNotice'
 import { runActive, type EnrichRunControls } from './useEnrichRun'
 import { confirmMessage, quotedLimit } from './RunButtons'
+import { ListTestPanel } from './ListTestPanel'
 
 interface Props {
   sheetId: string
@@ -26,7 +27,16 @@ interface Props {
   filledColumns: Set<string> | null
   run: EnrichRunControls
   onBack: () => void
-  onStarted: (runId: string, statusColumn: string, test: boolean) => void
+  onStarted: OnStarted
+}
+
+// A list job's test names its sheet only when rows went there.
+function doneLine(s: NonNullable<EnrichRunControls['status']>): string {
+  const l = s.list
+  if (!l) return 'Done. Check the rows here and in the sheet.'
+  if (l.added + l.adding.results > 0) return `Done. Check the rows here and in ${l.destName ?? 'the other sheet'}.`
+  return l.waitingFields.results > 0 ? 'Done. Pick the fields below to add these results as rows.'
+    : 'Done. Check the rows here.'
 }
 
 function headline(s: NonNullable<EnrichRunControls['status']>): string {
@@ -35,7 +45,7 @@ function headline(s: NonNullable<EnrichRunControls['status']>): string {
   if (s.status === 'paused') return 'The test run is paused.'
   if (s.status === 'completed') {
     return s.totalRows === 0
-      ? 'No rows could run: they are missing an input.' : 'Done. Check the rows here and in the sheet.'
+      ? 'No rows could run: they are missing an input.' : doneLine(s)
   }
   if (s.status === 'cancelled') return 'The test run was stopped.'
   return `The test run stopped: ${s.message ?? 'something went wrong.'}`
@@ -57,9 +67,15 @@ export const TestStep: React.FC<Props> = (p) => {
   const billed = m.unpriced || m.ownKeySingle
   const waiting = running ? 'Waiting for the test rows to finish…'
     : !m.ready ? 'Loading the enrichment…' : !billed && !est ? 'Waiting for the estimate…' : null
-  const blocked = waiting ?? m.problem
+  // A list job's next rows need the fields picked here first; a finished test
+  // whose rows returned no results has none to pick yet.
+  const l = s?.list
+  const nothingFound = !!p.draft.list && !p.draft.list.fields && s?.status === 'completed' && !!l
+    && l.added + l.adding.rows + l.waitingFields.rows + l.waitingRoom.rows === 0
+    ? 'No fields to pick yet: no test row returned results. Go back to setup to run on the next rows.' : null
+  const blocked = waiting ?? m.problem ?? nothingFound ?? m.fullProblem
   // Like Set up's full run: a confirm with the estimate, and the limit it quotes is kept.
-  const quote = { draft: p.draft, rows: m.rows, estimate: est, unpriced: billed }
+  const quote = { draft: p.draft, rows: m.rows, estimate: est, unpriced: billed, listDest: m.listDestName }
   const more = () => start(runRequest(p.draft, {
     mode: effectiveMode(p.draft.rowsMode, m.counts), selectedRows: p.selectedRows, test: false, order: m.order,
     rowGeneration: p.rowGeneration, status: 'not_enriched', spendLimitUsd: quotedLimit(quote),
@@ -81,6 +97,10 @@ export const TestStep: React.FC<Props> = (p) => {
           {results.length > 0 && (
             <RunResultRows results={results} statusColumn={s.statusColumn} outputColumns={s.outputColumns} />
           )}
+          {p.draft.list && s.statusColumn && (
+            <ListTestPanel sheetId={p.sheetId} column={s.statusColumn} list={p.draft.list} updateList={m.updateList}
+              status={s} running={running} active={p.active} onAdded={p.run.refresh} />
+          )}
           <p className="text-xs text-gray-600" data-testid="enrich-test-spent">
             Spent {spent(s.spentUsd)} on {plural(results.length, 'row')} so far.
             {s.skippedRows > 0 && ` ${plural(s.skippedRows, 'row')} had an empty input and cost nothing.`}
@@ -99,6 +119,7 @@ export const TestStep: React.FC<Props> = (p) => {
         <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows}
           balance={m.data.balance} spendLimit={p.draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys}
           blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider}
+          listDest={m.listDestName}
           label={m.rows === null ? undefined : `Estimated for the other ${plural(m.rows, 'row')}`} />
       )}
 
@@ -115,7 +136,9 @@ export const TestStep: React.FC<Props> = (p) => {
           )}
         </div>
         <p className={`text-xs ${error ? 'text-red-600' : 'text-gray-500'}`} data-testid="enrich-run-reason">
-          {error ?? blocked ?? 'Adds to the same column, on the rows not enriched yet.'}
+          {error ?? blocked ?? (p.draft.list
+            ? 'Adds these results too, then runs the rows not enriched yet.'
+            : 'Adds to the same column, on the rows not enriched yet.')}
         </p>
       </div>
       <ConfirmDialog isOpen={confirming} title="Run the enrichment" message={confirmMessage(quote)} confirmText="Run"
