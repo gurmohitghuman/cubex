@@ -4,11 +4,13 @@ import { enrichAPI, type EnrichSpend } from '@/utils/api'
 import { plural } from '@/lib/utils'
 import { ENRICH_SPEND_WINDOWS } from '@/lib/constants'
 import { TREG_APP_URL, spent } from '@/lib/enrich-format'
+import { StoredAnswersLine } from './StoredAnswersLine'
 
 // "Spending on enrichments": what this Cubex's enrichments cost at treg over
 // the last 7, 30 or 90 days, in total and per enrichment column, from Cubex's
 // own record of each treg call. treg's dashboard has the bill itself, which
-// also covers any other use of the same treg key.
+// also covers any other use of the same treg key. At its foot, the space the
+// stored answers take and the prune of old answers' details.
 export const EnrichmentSpendCard: React.FC = () => {
   const [days, setDays] = useState<number>(30)
   const [spend, setSpend] = useState<EnrichSpend | null>(null)
@@ -80,6 +82,7 @@ export const EnrichmentSpendCard: React.FC = () => {
             Open treg<ExternalLink className="h-3 w-3" />
           </a>
         </p>
+        <StoredAnswersLine />
       </div>
     </div>
   )

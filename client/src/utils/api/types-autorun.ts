@@ -56,4 +56,6 @@ export interface AutorunRowsEstimate {
   dailyRowCap: number | null
   // Paused by the person (it runs these rows when resumed) or by a stop that lifts on its own.
   pausedBy: 'user' | 'system' | null
+  // treg's catalog didn't give the price in time (the Run confirm doesn't wait for it).
+  priceTimedOut?: boolean
 }

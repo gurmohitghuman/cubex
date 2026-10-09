@@ -8,13 +8,14 @@ Import a CSV, then add columns that fill themselves row by row: ask a model abou
 
 > "Import leads.csv into a new table called Leads. Add an AI column that scores each company 1 to 10 for fit, using /company and /domain. Try it on 5 rows, show me the results, then run it on the rest and tell me how many scored 8 or more."
 
-- **Agent access (MCP).** Your agent can create tables, import and export CSVs, edit rows, and start, pause and re-run AI and HTTP runs. Each access token gets only the scopes you give it, so an agent can be read-only. There's also a REST API.
+- **Agent access (MCP).** Your agent can create tables, import and export CSVs, edit rows, and start, pause and re-run AI, HTTP and enrichment runs. Each access token gets only the scopes you give it, so an agent can be read-only. There's also a REST API.
 - **AI columns.** Write a prompt that references other columns (`Score /company 1-10 for fit`). Runs on any of 300+ models through your own [OpenRouter](https://openrouter.ai) key. Through the API or MCP, one run can fill several typed columns at once (a score and the reason for it).
 - **HTTP API columns.** Call any JSON API once per row with values from the row (`https://api.example.com/people?email={{email}}`), then pick fields from the response to become columns.
+- **Enrichments.** Find verified work emails, phone numbers, and person and company data for each row through [treg.to](https://treg.to), which can ask one provider after another until one finds it. Lists, such as the people at a company, become rows in another sheet. treg bills your own balance, and Cubex stops at the per-row, per-run and daily limits you set.
 - **Webhooks.** Give a sheet a secret URL; every JSON event POSTed to it becomes a new row.
 - **A real spreadsheet underneath.** Multiple sheets per table, CSV import and export, sort, filters, live progress while runs fill cells, pause and resume.
 
-Your data stays in one SQLite file on your machine. The server only calls out to OpenRouter for AI columns (including its price list for web search engines) and to the APIs you put in HTTP columns. (The web page loads its fonts from Google Fonts.)
+Your data stays in one SQLite file on your machine. The server only calls out to OpenRouter for AI columns (including its price list for web search engines), to the APIs you put in HTTP columns, and to [treg.to](https://treg.to) for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment. (The web page loads its fonts from Google Fonts.)
 
 ## Install
 
@@ -39,6 +40,8 @@ Other options include `--port` and `--dir` (install somewhere other than `~/.cub
 Open http://localhost:3002. **Whoever opens Cubex first chooses the password,** unless `INITIAL_PASSWORD` is set (`--public` sets it for you). There's one account and no email, so there's no reset link either. If you forget the password, run `cubex reset-password` on the computer Cubex runs on. Changing or resetting the password signs out every browser.
 
 To use AI columns, create an API key at [openrouter.ai/keys](https://openrouter.ai/keys) (OpenRouter bills you directly for what your runs use), then add it and pick a default model in **Settings → AI**. Cubex never picks a model for you.
+
+To use enrichments, add a treg team API key in **Settings → Enrichment**. The [enrichments guide](docs/enrichments.md) walks through it.
 
 Cubex keeps running in the background and comes back after a restart: on macOS when you log in, on Linux when the computer starts (if the installer can't set that up, it tells you the one command that does). Everything else goes through the `cubex` command:
 
@@ -73,6 +76,8 @@ Cubex keeps running in the background and comes back after a restart: on macOS w
 
 ![Adding an HTTP API column that calls the GitHub API for each company and saves location, public repos and followers as columns](docs/media/cubex-http.gif)
 
+**Enrichment.** Click **Enrichment** to look things up for each row through [treg.to](https://treg.to) with your own treg key: verified work emails, phone numbers, person and company data, and lists such as the people at a company, which become rows in another sheet. Pick a job, match its inputs to your columns, run it on 5 rows, then on the rest. You see the estimated cost before each run, every run stops at the limits you set, and a daily limit ($10 by default) covers all enrichments. Turn on auto-run and the column fills new rows by itself, for example rows a webhook adds. See [docs/enrichments.md](docs/enrichments.md).
+
 **Webhook.** Open a sheet and click **Webhook**, or let it create a table of its own. Send one test event and click the fields you want as columns; every event after that becomes a row with those fields filled in. See [docs/webhooks.md](docs/webhooks.md).
 
 ![Creating a webhook table, picking fields from a test event, then new events arriving as rows](docs/media/cubex-webhook.gif)
@@ -89,7 +94,7 @@ Then ask for the work in chat:
 - "The last run left some cells blank. Show me why, then re-run only those rows."
 - "Export the rows where Status is Qualified, with just Email and Company."
 
-Give each token only the scopes it needs: `read`, `write`, `run` (starts runs, which spend your OpenRouter credits) and `secrets` (HTTP runs that use your saved API keys). Setup for Cursor, Codex, VS Code and Claude Desktop, and the full list of tools, is in [docs/mcp.md](docs/mcp.md).
+Give each token only the scopes it needs: `read`, `write`, `run` (starts runs, which spend your OpenRouter credits and treg balance) and `secrets` (HTTP runs that use your saved API keys). Setup for Cursor, Codex, VS Code and Claude Desktop, and the full list of tools, is in [docs/mcp.md](docs/mcp.md).
 
 ![The Agent access page with the MCP endpoint and setup commands for Claude Code and Codex](docs/media/cubex-agents.png)
 
@@ -110,7 +115,7 @@ Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` 
 | `HTTP_MAX_CONCURRENCY` | `20` | Most concurrent requests one HTTP run makes. |
 | `SIDEQUEST_MAX_CONCURRENT_JOBS` | `4` | AI and HTTP runs that execute at once; more wait in line. |
 | `ENRICH_DEFAULT_CONCURRENCY` | `5` | Requests one enrichment run sends to treg at once. |
-| `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider answer is kept for the answer panel. |
+| `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **+ Column**. |
 | `TREG_BASE_URL` | `https://treg.to` | Where enrichment calls go. Only for testing or a self-hosted treg. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes, for the whole instance. |
 | `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |
@@ -137,6 +142,9 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Receive a webhook (adds row 1,000,001) | 0.08 s | 0.04 s | 850 MB |
 | Start an HTTP run on every row | answers in 0.1 s; the run starts 2.8 s later | 0.08 s | 890 MB |
 | Stop that run | answers in 0.03 s; leftover cells clear 3.2 s later | 0.04 s | 620 MB |
+| Start an enrichment with "Only run if" (158,000 rows match) | answers in about 1 s; the rows are ready 2.8 s later | 0.04 s | 440 MB |
+| Add a column from stored answers (900,000 answers over 20,000 auto-run runs) | 13 s | 0.17 s | 450 MB |
+| Rename an enrichment column with 20,000 runs | 6.9 s | 0.18 s | 495 MB |
 
 The database for this sheet is 600 MB on disk.
 
@@ -151,7 +159,7 @@ Everything Cubex keeps lives in one directory, `~/.cubex/data`:
 | `cubex.db` | Your tables, settings and encrypted keys. |
 | `jobs.db` | The run queue, so runs survive a restart. |
 | `.jwt-secret` | Signs sign-in sessions. |
-| `.encryption-key` | Encrypts your OpenRouter key, saved API keys and webhook URLs. |
+| `.encryption-key` | Encrypts your OpenRouter key, treg key, saved API keys and webhook URLs. |
 | `uploads/` | CSV files while they import. Emptied when Cubex starts; no need to back it up. |
 
 Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](docs/self-hosting.md#6-back-up-every-night).
@@ -169,7 +177,7 @@ Cubex is built to run on your own machine or server. **[Run Cubex on your own se
   ```
 - Set `INITIAL_PASSWORD` so the install is never open for someone else to claim, or choose the password before you open it up.
 - Use a strong password. Failed sign-ins are limited for the whole instance (10 per 15 minutes), not per IP: someone hammering the login can delay new sign-ins, but browsers that are already signed in keep working.
-- Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app.
+- Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app. With auto-run on in a sheet, its webhook URL can spend your treg balance and send HTTP requests, up to the caps you set.
 
 For webhooks on a laptop, a tunnel (`cloudflared tunnel`, `ngrok`) works. Set `PUBLIC_URL` to the tunnel address so the app shows the right webhook URL and agents get working file links.
 

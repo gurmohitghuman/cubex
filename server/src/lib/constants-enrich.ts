@@ -107,6 +107,15 @@ export const ENRICH_LIST_DRAIN_BATCH = 200;
 // this close to the row limit it counts again (rows appended meanwhile count).
 export const ENRICH_LIST_RECOUNT_SLACK = 10_000;
 
+// Stored answers (services/answer-prune.ts): ended runs that enriched rows
+// again are looked for this often; results are read and pruned this many at a time.
+export const ANSWER_PRUNE_SWEEP_MS = envInt('ANSWER_PRUNE_SWEEP_MS', 30_000);
+export const ANSWER_PRUNE_SLICE = 500;
+// Settings' "Prune details older than 90 days", and how old the stored
+// answers' size may get before opening Settings counts it again.
+export const STORED_ANSWERS_PRUNE_DAYS = 90;
+export const STORED_ANSWERS_RECOUNT_MS = 60 * 60 * 1000;
+
 // The checker the "Verified work email" preset runs on each found address.
 export const ENRICH_VERIFY_TOOL_ID = 'treg.people.email.verify';
 // Bounds for a setup estimate request (a pure read; it sizes nothing), and

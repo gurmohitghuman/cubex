@@ -102,8 +102,15 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   }
   // A list job's rows set off the destination's own auto-runs.
   const list = parsed.ok.list;
-  const destNotice = out.ok.destSheetId && list
-    ? await appendAutorunNotice(c.userId, out.ok.destSheetId, out.ok.rowsInScope * list.maxItems) : {};
+  // The auto-runs here that read what this run writes (and what those write
+  // in turn). Both are read at once, so the answer waits one price lookup.
+  const runRows = parsed.ok.rows.test ? Math.min(parsed.ok.rows.test, out.ok.rowsInScope) : out.ok.rowsInScope;
+  const [destNotice, chain] = await Promise.all([
+    out.ok.destSheetId && list
+      ? appendAutorunNotice(c.userId, out.ok.destSheetId, out.ok.rowsInScope * list.maxItems)
+      : Promise.resolve<{ auto_run?: unknown[] }>({}),
+    appendAutorunNotice(c.userId, sheetId, runRows, [out.ok.statusColumn, ...out.ok.outputColumns]),
+  ]);
   const payload = {
     run_id: out.ok.runId, run_type: 'enrichment', status_column: out.ok.statusColumn,
     output_columns: out.ok.outputColumns, destination_sheet_id: out.ok.destSheetId,
@@ -111,6 +118,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
     max_cost_per_row_usd: e.maxCostPerRowUsd, spend_limit_usd: e.spendLimitUsd,
     daily_limit: dailyLimitOf(c.userId), ...autoRunPart,
     ...(destNotice.auto_run ? { destination_auto_run: destNotice.auto_run } : {}),
+    ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}),
   };
   if (typeof a.idempotency_key === 'string') {
     writeRunLedger(c.userId, a.idempotency_key, hash, 'enrichment_run', payload);

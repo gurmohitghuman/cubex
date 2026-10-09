@@ -7,12 +7,13 @@
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
-import { recordPurge, purgeColumnKey } from '../lib/column-purge';
+import { recordPurge } from '../lib/column-purge';
 import { isWebhookRawColumn, deleteWebhookMappingsForColumn } from '../lib/webhook-columns';
-import { deleteHttpRunColumnRefs } from '../lib/http-columns';
+import { deleteListDestColumn } from '../lib/http-columns';
+import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-config-rewrite';
 import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
-import { deleteAutorunColumnRefs } from '../lib/autorun-columns';
+import { deleteAutorunColumnRefs, dropAutorunQueueOf } from '../lib/autorun-columns';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 
@@ -158,6 +159,11 @@ export async function deleteSheetColumn(
   // the rows in slices between requests, with the sheet busy (lib/sheet-busy.ts)
   // and the strip recorded so a restart finishes it (lib/column-purge.ts).
   const outcome = await withSheetBusy(sheetId, 'deleting a column', async () => {
+    // A column change a failure left half-done is finished first.
+    await finishRunRewrites(sheetId);
+    // If the transaction below then fails, the delete reports it and is retried;
+    // until then that column's auto-run has lost rows it had queued.
+    await dropAutorunQueueOf(sheetId, userId, columnName);
     db.transaction(() => {
       recordPurge(sheetId, userId, columnName);
       // http_column_associations references columns by name string (not FK), so
@@ -173,7 +179,9 @@ export async function deleteSheetColumn(
       deleteAiRunColumnRefs(sheetId, userId, columnName);
       // Prune the deleted column from any stored HTTP run config's
       // responseMapping so a later rerun doesn't re-create it.
-      deleteHttpRunColumnRefs(sheetId, userId, columnName);
+      // (The sheet's own runs: the newest page now, the rest after the switch.)
+      recordRunRewrite(sheetId, userId, columnName, null);
+      deleteListDestColumn(sheetId, userId, columnName);
       // Drop any webhook mapping that targeted this column (the raw marker is
       // already protected above).
       deleteWebhookMappingsForColumn(sheetId, userId, columnName);
@@ -200,7 +208,7 @@ export async function deleteSheetColumn(
         touchSheet(sheetId, userId);
       }
     })();
-    await purgeColumnKey(sheetId, userId, columnName);
+    await finishColumnChange(sheetId, userId, columnName);
     return { ok: true as const };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;

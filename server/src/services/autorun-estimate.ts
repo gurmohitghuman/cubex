@@ -5,6 +5,9 @@
 // daily cap (the notice says the cap stops it), an HTTP API column with how
 // many of the N its row cap leaves room for today. MCP and /api/v1 appends
 // return the same list as auto_run (services/enrich-agent-autorun.ts).
+// `afterWriting`: what a run that writes these columns sets off on its rows
+// instead (the drawer's Run confirm, an agent's run start): the auto-runs that
+// read one of them, then the ones those set off in turn.
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
 import type { CatalogFailure } from './enrich-catalog';
 import type { EnrichEstimateView } from './enrich-setup';
@@ -12,7 +15,9 @@ import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { estimateListOf, recallChoices } from '../lib/enrich-run-recall';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { estimateEnrichment } from './enrich-setup';
-import { newestRunOf, sheetEntries, usageToday } from './autorun-entry';
+import {
+  columnOutputs, inputColumnsOf, newestRunOf, sheetEntries, usageToday, type AutorunEntry,
+} from './autorun-entry';
 
 export interface AutorunRowsEstimate {
   column: string;
@@ -38,19 +43,41 @@ function within(p: Promise<Estimated>, ms: number | undefined): Promise<Estimate
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
+// The entries that read a written column, in chain order (each one's status
+// column and outputs count as written next). The writing column's own entry
+// is left out: auto-run never fills a row a run just filled.
+function chained(sheetId: string, userId: string, entries: AutorunEntry[], columns: string[]): AutorunEntry[] {
+  const written = new Set(columns);
+  const picked: AutorunEntry[] = [];
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const e of entries) {
+      if (picked.includes(e) || written.has(e.status_column)) continue;
+      if (!inputColumnsOf(e).some(c => written.has(c))) continue;
+      picked.push(e);
+      grew = true;
+      for (const c of [e.status_column, ...columnOutputs(sheetId, userId, e.status_column)]) written.add(c);
+    }
+  }
+  return picked;
+}
+
 // priceWithinMs: an answer that can't wait on treg (an agent's append) prices
 // each enrichment from the catalog within this long, else says it couldn't.
 export async function estimateAutorunRows(
-  userId: string, sheetId: string, rows: number, opts: { priceWithinMs?: number } = {},
+  userId: string, sheetId: string, rows: number, opts: { priceWithinMs?: number; afterWriting?: string[] } = {},
 ): Promise<AutorunRowsEstimate[] | null> {
   if (!verifySheetOwnership(sheetId, userId)) return null;
   const out: AutorunRowsEstimate[] = [];
-  for (const e of sheetEntries(sheetId, userId)) {
-    // An auto-run paused by the person still counts: resumed, it runs these rows too.
-    if (!e.enabled) continue;
+  // An auto-run paused by the person still counts: resumed, it runs these rows too.
+  const on = sheetEntries(sheetId, userId).filter(e => e.enabled);
+  // Each entry is priced at once (in parallel), so a slow catalog costs the
+  // answer one wait, not one per auto-run.
+  const picked = opts.afterWriting ? chained(sheetId, userId, on, opts.afterWriting) : on;
+  const priced = picked.map(async (e): Promise<AutorunRowsEstimate | null> => {
     let config: unknown = null;
     try { config = JSON.parse(newestRunOf(sheetId, userId, e.status_column)?.config ?? 'null'); } catch { /* skip */ }
-    if (!config) continue;
+    if (!config) return null;
     const used = usageToday(e.id);
     const base = {
       column: e.status_column,
@@ -59,8 +86,7 @@ export async function estimateAutorunRows(
     };
     if (!isEnrichmentConfig(config)) {
       const left = Math.max(0, (e.daily_row_cap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS) - used.rows);
-      out.push({ ...base, kind: 'http', rows: Math.min(rows, left), lowUsd: null, highUsd: null });
-      continue;
+      return { ...base, kind: 'http', rows: Math.min(rows, left), lowUsd: null, highUsd: null };
     }
     const c = recallChoices(config, e.status_column);
     const est = await within(estimateEnrichment(userId, {
@@ -69,11 +95,11 @@ export async function estimateAutorunRows(
       list: estimateListOf(c),
     }), opts.priceWithinMs);
     if (est === TIMED_OUT) {
-      out.push({ ...base, kind: 'enrichment', rows, lowUsd: null, highUsd: null, priceTimedOut: true });
-      continue;
+      return { ...base, kind: 'enrichment', rows, lowUsd: null, highUsd: null, priceTimedOut: true };
     }
     const range = 'ok' in est && est.ok.priceKnown ? est.ok.estimate : null;
-    out.push({ ...base, kind: 'enrichment', rows, lowUsd: range?.lowUsd ?? null, highUsd: range?.highUsd ?? null });
-  }
+    return { ...base, kind: 'enrichment', rows, lowUsd: range?.lowUsd ?? null, highUsd: range?.highUsd ?? null };
+  });
+  for (const r of await Promise.all(priced)) if (r) out.push(r);
   return out;
 }

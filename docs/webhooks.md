@@ -1,6 +1,6 @@
 # Webhooks
 
-Give a sheet a secret URL, and every JSON event POSTed to it becomes a new row. Use it to collect form submissions, CRM events, or anything a tool like Zapier, Make or n8n can send, then enrich the new rows with AI or HTTP columns.
+Give a sheet a secret URL, and every JSON event POSTed to it becomes a new row. Use it to collect form submissions, CRM events, or anything a tool like Zapier, Make or n8n can send, then enrich the new rows with AI, HTTP API or [enrichment](enrichments.md) columns.
 
 ## Set it up
 
@@ -49,6 +49,7 @@ Cubex keeps the raw events for the newest 1,000 deliveries (up to 10 MB) per web
 ## Keeping it safe
 
 - **The URL is the password.** Anyone who has it can add rows to that sheet, up to its row limit (by default 1,000,000 rows, which can take several GB at the per-event maximum). Cubex stores only a hash of the token, so the URL can't be recovered after the first event.
+- **Auto-run makes new rows do work.** With [auto-run](enrichments.md#auto-run) on in the sheet, every row someone adds through the URL can spend your treg balance (up to each column's daily cap and your daily limit) or send a real HTTP request (up to the column's rows a day). A job billed on your own provider key at treg has no cap in Cubex. Set the caps to amounts you'd accept if the URL leaked.
 - **Rotate** in the Webhook panel if a URL leaks. The old URL stops working immediately.
 - **Disable** to pause intake without losing the setup. Events sent while disabled get `404`.
 - One webhook per sheet.

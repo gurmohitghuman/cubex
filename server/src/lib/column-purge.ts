@@ -1,7 +1,7 @@
 import { db } from './db';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
-import { whenSheetFree } from './sheet-busy';
+import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
 
 // Copying or removing a key across every row of a big sheet is a heavy job, so
 // it runs in slices between requests (lib/slices.ts). A removal is recorded in
@@ -16,7 +16,8 @@ import { whenSheetFree } from './sheet-busy';
 export async function copyColumnKey(sheetId: string, userId: string, from: string, to: string): Promise<void> {
   const copy = db.prepare(`
     UPDATE rows SET data = json_set(data, ?, json_extract(data, ?))
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND json_type(data, ?) IS NOT NULL
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
+      AND json_type(data, ?) IS NOT NULL
   `);
   const [toPath, fromPath] = [jsonPath(to), jsonPath(from)];
   const rowIds = await sheetRowIds(sheetId, userId);
@@ -42,7 +43,8 @@ export function forgetPurge(sheetId: string, name: string): void {
 }
 
 export function pendingPurges(sheetId: string): Set<string> {
-  return new Set(db.prepare('SELECT column_name FROM column_purges WHERE sheet_id = ?').pluck().all(sheetId) as string[]);
+  return new Set(db.prepare('SELECT column_name FROM column_purges WHERE sheet_id = ?').pluck()
+    .all(sheetId) as string[]);
 }
 
 // Removes the key from every row, then forgets the record. Call recordPurge
@@ -50,7 +52,8 @@ export function pendingPurges(sheetId: string): Set<string> {
 export async function purgeColumnKey(sheetId: string, userId: string, name: string): Promise<void> {
   const strip = db.prepare(`
     UPDATE rows SET data = json_remove(data, ?)
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND json_type(data, ?) IS NOT NULL
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
+      AND json_type(data, ?) IS NOT NULL
   `);
   const path = jsonPath(name);
   await eachRowIdSlice(await sheetRowIds(sheetId, userId), ids => { strip.run(path, ids, sheetId, userId, path); });
@@ -67,8 +70,19 @@ export function resumeColumnPurges(): void {
   const bySheet = new Map<string, typeof pending>();
   for (const p of pending) bySheet.set(p.sheet_id, [...(bySheet.get(p.sheet_id) ?? []), p]);
   for (const [sheetId, purges] of bySheet) {
+    const finish = async () => {
+      // Read again: another job may have finished a strip while this waited,
+      // and a name no longer recorded may be a real column again.
+      const still = pendingPurges(sheetId);
+      for (const p of purges) {
+        if (still.has(p.column_name)) await purgeColumnKey(sheetId, p.user_id, p.column_name);
+      }
+    };
     whenSheetFree(sheetId, 'finishing a column change', async () => {
-      for (const p of purges) await purgeColumnKey(sheetId, p.user_id, p.column_name);
+      try { await finish(); } catch (err) {
+        console.error(`Finishing the column change on sheet ${sheetId} failed, retrying:`, err);
+        stayBusyToFinish(sheetId, 'finishing a column change', finish);
+      }
     }).catch(err => console.error(`Finishing the column change on sheet ${sheetId} failed:`, err));
   }
 }

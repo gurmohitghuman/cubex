@@ -30,6 +30,7 @@ import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeImports } from './lib/import-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
+import { resumeRunRewrites } from './services/run-config-rewrite';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
 import tableSheetsRoutes from './routes/tables-sheets';
@@ -188,6 +189,7 @@ createAccountFromEnv().then((result) => {
   // before the first request.
   resumeSorts();
   resumeImports();
+  resumeRunRewrites();
   resumeColumnPurges();
   resumeFieldJobs();
   resumeRunCleanups();

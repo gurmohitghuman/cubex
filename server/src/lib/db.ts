@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
+import { DB_CHECK_NOTICE_BYTES } from './constants';
 
 if (!fs.existsSync(dataDir)) {
   // mode: 0o700 — rwx for owner only. Sibling files (cubex.db, jobs.db,
@@ -95,7 +96,16 @@ process.on('beforeExit', () => {
 // are [{ integrity_check: 'ok' }] when clean, otherwise an array of error
 // descriptions. We log loudly but don't crash — operator decides whether
 // to restore from backup or accept the risk; crashing on every boot of a
-// corrupt DB makes recovery harder.
+// corrupt DB makes recovery harder. It reads the whole file (about 20 s for
+// 2.5 GB), so the log says so first and a slow boot doesn't look like a hang.
+console.log(`📁 SQLite database: ${dbPath}`);
+try {
+  const bytes = fs.statSync(dbPath).size;
+  if (bytes > DB_CHECK_NOTICE_BYTES) {
+    const gb = (bytes / 1024 ** 3).toFixed(1);
+    console.log(`Checking the database file (${gb} GB) before starting. This can take a minute.`);
+  }
+} catch { /* a new database */ }
 try {
   const result = db.pragma('integrity_check(10)') as Array<{ integrity_check: string }>;
   const ok = Array.isArray(result) && result.every(r => r.integrity_check === 'ok');
@@ -105,5 +115,3 @@ try {
 } catch (err) {
   console.error('⚠️  SQLite integrity_check threw:', (err as Error).message);
 }
-
-console.log(`📁 SQLite database: ${dbPath}`);

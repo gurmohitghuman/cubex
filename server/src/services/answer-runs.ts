@@ -3,12 +3,18 @@
 // http_column_associations), that column's runs newest first, and the newest
 // of them with a result at the row, read through the UNIQUE (run_id,
 // row_index) index. Enrichment and HTTP API columns alike; pure reads.
+//
+// Auto-run makes a run per batch, so a column can hold tens of thousands of
+// runs: the list is ids and times only (from the column/time index), and a
+// run's config (several KB) is read for the run that answered, never for all.
 import { db } from '../lib/db';
 import { isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 
-export interface ColumnRunRef {
-  id: string; createdAt: string; status: string; placeholderWork: string | null;
+export interface ColumnRunRef { id: string; createdAt: string }
+
+export interface RunDetail extends ColumnRunRef {
+  status: string; placeholderWork: string | null;
   config: HTTPAPIConfig | null; enrichment: EnrichRunConfig | null;
 }
 
@@ -19,7 +25,7 @@ export interface ColumnRuns {
 }
 
 export interface RowResult {
-  run: ColumnRunRef;
+  run: RunDetail;
   status: string; response_data: string | null; error_message: string | null; cost_usd: number | null;
 }
 
@@ -31,18 +37,30 @@ function parseConfig(raw: string | null): HTTPAPIConfig | null {
 }
 
 export function statusColumnRuns(sheetId: string, userId: string, statusColumn: string): ColumnRunRef[] {
-  const rows = db.prepare(`SELECT id, created_at, status, placeholder_work, config FROM http_runs
+  return db.prepare(`SELECT id, created_at AS createdAt FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-    ORDER BY created_at DESC, rowid DESC`).all(sheetId, userId, statusColumn) as Array<{
+    ORDER BY created_at DESC, rowid DESC`).all(sheetId, userId, statusColumn) as ColumnRunRef[];
+}
+
+// The column's newest run (the index's last entry), or undefined.
+export function newestColumnRun(sheetId: string, userId: string, statusColumn: string): ColumnRunRef | undefined {
+  return db.prepare(`SELECT id, created_at AS createdAt FROM http_runs
+    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(sheetId, userId, statusColumn) as ColumnRunRef | undefined;
+}
+
+// One run with its config, or null when it's gone.
+export function runDetail(runId: string, userId: string): RunDetail | null {
+  const r = db.prepare(`SELECT id, created_at, status, placeholder_work, config FROM http_runs
+    WHERE id = ? AND user_id = ?`).get(runId, userId) as {
       id: string; created_at: string; status: string; placeholder_work: string | null; config: string | null;
-    }>;
-  return rows.map(r => {
-    const config = parseConfig(r.config);
-    return {
-      id: r.id, createdAt: r.created_at, status: r.status, placeholderWork: r.placeholder_work, config,
-      enrichment: isEnrichmentConfig(config) ? config : null,
-    };
-  });
+    } | undefined;
+  if (!r) return null;
+  const config = parseConfig(r.config);
+  return {
+    id: r.id, createdAt: r.created_at, status: r.status, placeholderWork: r.placeholder_work, config,
+    enrichment: isEnrichmentConfig(config) ? config : null,
+  };
 }
 
 // An output column reads the runs linked to it (a later run that dropped it
@@ -61,18 +79,17 @@ export function columnRuns(sheetId: string, userId: string, column: string): Col
   return runs.length > 0 ? { statusColumn, output: true, runs } : null;
 }
 
-export function isActiveRun(r: ColumnRunRef): boolean {
-  return ['pending', 'running', 'paused'].includes(r.status) || r.placeholderWork !== null;
-}
-
 // The newest result at the row among `runs` (a rerun of other rows leaves
-// this row's answer in the run that made it).
+// this row's answer in the run that made it). One index probe per run until
+// a hit; rows a recent run answered stop at once.
 export function resultAtRow(runs: ColumnRunRef[], userId: string, rowIndex: number): RowResult | null {
   const probe = db.prepare(`SELECT status, response_data, error_message, cost_usd FROM http_results
-    WHERE run_id = ? AND row_index = ? AND user_id = ?`);
-  for (const run of runs) {
-    const hit = probe.get(run.id, rowIndex, userId) as Omit<RowResult, 'run'> | undefined;
-    if (hit && (hit.status === 'completed' || hit.status === 'failed')) return { run, ...hit };
+    WHERE run_id = ? AND row_index = ? AND +user_id = ?`);
+  for (const ref of runs) {
+    const hit = probe.get(ref.id, rowIndex, userId) as Omit<RowResult, 'run'> | undefined;
+    if (!hit || (hit.status !== 'completed' && hit.status !== 'failed')) continue;
+    const run = runDetail(ref.id, userId);
+    if (run) return { run, ...hit };
   }
   return null;
 }

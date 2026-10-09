@@ -24,6 +24,10 @@ export const autorunAPI = {
       .then(res => res.data),
 
   // What `rows` new rows (a CSV import) would set off. A pure read.
-  estimate: (sheetId: string, rows: number): Promise<AutorunEstimate> =>
-    api.post(`/autorun/sheets/${sheetId}/estimate`, { rows }, noServerToast).then(res => res.data),
+  // after: the columns a run writes; then only what that run sets off on its
+  // rows. quick: prices treg's catalog doesn't give within a few seconds are left out.
+  estimate: (
+    sheetId: string, rows: number, opts: { after?: string[]; quick?: boolean } = {},
+  ): Promise<AutorunEstimate> =>
+    api.post(`/autorun/sheets/${sheetId}/estimate`, { rows, ...opts }, noServerToast).then(res => res.data),
 }

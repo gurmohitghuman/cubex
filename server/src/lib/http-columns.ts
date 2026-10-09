@@ -3,6 +3,7 @@ import { renameTemplateColumnRefs } from './column-ref-rename';
 
 // HTTP-run ↔ column lifecycle cascade, called from the column rename route
 // (sheets-columns-order.ts). Mirrors lib/webhook-columns.ts.
+// Over 200 lines: rename and delete rewrite the same stored run configs, by page.
 //
 // Why this is needed: an HTTP run stores its column names in TWO places —
 // http_column_associations (kept in sync by name in the rename handler already)
@@ -25,17 +26,56 @@ import { renameTemplateColumnRefs } from './column-ref-rename';
 export function renameHttpRunColumnRefs(
   sheetId: string, userId: string, oldName: string, newName: string,
 ): void {
+  for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
+    before = renameHttpRunsPage(sheetId, userId, oldName, newName, before, RUNS_PAGE);
+  }
+  renameListDestColumn(sheetId, userId, oldName, newName);
+}
+
+// A sheet's runs a page at a time, newest first (rowid < before): a column
+// with tens of thousands of runs is rewritten in slices
+// (services/run-config-rewrite.ts). Returns the page's lowest rowid, or null
+// when no run is left.
+export const RUNS_PAGE = 200;
+const pageOf = (sheetId: string, userId: string, before: number, limit: number) => db.prepare(
+  `SELECT rowid AS rid, id, master_column_name AS master, config FROM http_runs
+   WHERE sheet_id = ? AND user_id = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
+).all(sheetId, userId, before, limit) as PageRun[];
+
+export function renameHttpRunsPage(
+  sheetId: string, userId: string, oldName: string, newName: string, before: number, limit: number,
+): number | null {
+  const page = pageOf(sheetId, userId, before, limit);
+  if (page.length === 0) return null;
+  renameRuns(page, oldName, newName);
+  return page[page.length - 1].rid;
+}
+
+// The renamed or deleted column's own newest runs (the switch does these
+// first, so the column keeps its runs while the rest are rewritten).
+const columnNewest = (sheetId: string, userId: string, column: string, limit: number) => db.prepare(
+  `SELECT rowid AS rid, id, master_column_name AS master, config FROM http_runs
+   WHERE sheet_id = ? AND user_id = ? AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+).all(sheetId, userId, column, limit) as PageRun[];
+
+export function renameColumnNewest(sheetId: string, userId: string, oldName: string, newName: string): void {
+  renameRuns(columnNewest(sheetId, userId, oldName, RUNS_PAGE), oldName, newName);
+}
+
+export function deleteColumnNewest(sheetId: string, userId: string, columnName: string): void {
+  deleteRuns(columnNewest(sheetId, userId, columnName, RUNS_PAGE), columnName);
+}
+
+type PageRun = { rid: number; id: string; master: string | null; config: string | null };
+
+function renameRuns(page: PageRun[], oldName: string, newName: string): void {
   // Master column lives in its own column — a plain UPDATE.
-  db.prepare(
-    `UPDATE http_runs SET master_column_name = ?
-       WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?`,
-  ).run(newName, sheetId, userId, oldName);
+  const master = db.prepare('UPDATE http_runs SET master_column_name = ? WHERE id = ?');
+  for (const r of page) if (r.master === oldName) master.run(newName, r.id);
 
   // responseMapping[].columnName lives inside the config JSON. Rewrite in JS —
   // only the runs whose config actually references oldName get re-serialized.
-  const runs = db.prepare(
-    `SELECT id, config FROM http_runs WHERE sheet_id = ? AND user_id = ? AND config IS NOT NULL`,
-  ).all(sheetId, userId) as Array<{ id: string; config: string }>;
+  const runs = page.filter((r): r is typeof r & { config: string } => r.config !== null);
 
   const update = db.prepare(`UPDATE http_runs SET config = ? WHERE id = ?`);
   for (const run of runs) {
@@ -81,7 +121,6 @@ export function renameHttpRunColumnRefs(
     }
     if (changed) update.run(JSON.stringify(config), run.id);
   }
-  renameListDestColumn(sheetId, userId, oldName, newName);
 }
 
 // List jobs adding rows to this sheet (from another one) name its columns:
@@ -95,7 +134,7 @@ function listRunsInto(sheetId: string, userId: string): Array<{ id: string; conf
   });
 }
 
-function renameListDestColumn(sheetId: string, userId: string, oldName: string, newName: string): void {
+export function renameListDestColumn(sheetId: string, userId: string, oldName: string, newName: string): void {
   const update = db.prepare('UPDATE http_runs SET config = ? WHERE id = ?');
   for (const run of listRunsInto(sheetId, userId)) {
     const list = run.config.enrichment.list;
@@ -119,16 +158,28 @@ function renameListDestColumn(sheetId: string, userId: string, oldName: string, 
 export function deleteHttpRunColumnRefs(
   sheetId: string, userId: string, columnName: string,
 ): void {
+  for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
+    before = deleteHttpRunsPage(sheetId, userId, columnName, before, RUNS_PAGE);
+  }
+  deleteListDestColumn(sheetId, userId, columnName);
+}
+
+export function deleteHttpRunsPage(
+  sheetId: string, userId: string, columnName: string, before: number, limit: number,
+): number | null {
+  const page = pageOf(sheetId, userId, before, limit);
+  if (page.length === 0) return null;
+  deleteRuns(page, columnName);
+  return page[page.length - 1].rid;
+}
+
+function deleteRuns(page: PageRun[], columnName: string): void {
   // (1) Retire the master ref if this column WAS a master column.
-  db.prepare(
-    `UPDATE http_runs SET master_column_name = NULL
-       WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?`,
-  ).run(sheetId, userId, columnName);
+  const master = db.prepare('UPDATE http_runs SET master_column_name = NULL WHERE id = ?');
+  for (const r of page) if (r.master === columnName) master.run(r.id);
 
   // (2) Prune extracted-column mappings from stored configs.
-  const runs = db.prepare(
-    `SELECT id, config FROM http_runs WHERE sheet_id = ? AND user_id = ? AND config IS NOT NULL`,
-  ).all(sheetId, userId) as Array<{ id: string; config: string }>;
+  const runs = page.filter((r): r is typeof r & { config: string } => r.config !== null);
 
   const update = db.prepare(`UPDATE http_runs SET config = ? WHERE id = ?`);
   for (const run of runs) {
@@ -148,7 +199,12 @@ export function deleteHttpRunColumnRefs(
     }
     if (changed) update.run(JSON.stringify(config), run.id);
   }
-  // List jobs adding rows here stop filling the deleted column.
+}
+
+// List jobs adding rows here stop filling the deleted column. Call inside the
+// delete's transaction (a sheet has few runs adding rows into it).
+export function deleteListDestColumn(sheetId: string, userId: string, columnName: string): void {
+  const update = db.prepare('UPDATE http_runs SET config = ? WHERE id = ?');
   for (const run of listRunsInto(sheetId, userId)) {
     const list = run.config.enrichment.list;
     const fields = (list.fields ?? []).filter((f: any) => f.columnName !== columnName);

@@ -4,6 +4,7 @@
 // status column removes its auto-run; deleting a column it reads pauses it
 // until a column by that name is back (services/autorun-loop.ts lifts it).
 import { db } from './db';
+import { autorunDropPending } from './autorun-mark';
 
 interface Row { id: string; status_column: string; input_columns: string; where_json: string | null }
 
@@ -25,6 +26,16 @@ export function renameAutorunColumnRefs(sheetId: string, userId: string, oldName
     update.run(r.status_column === oldName ? newName : r.status_column, JSON.stringify(inputs),
       r.where_json === null ? null : JSON.stringify(where), r.id);
   }
+}
+
+// A status column's auto-run queue can hold a row per sheet row: deleting the
+// column drops it in slices first (call before the delete's transaction, with
+// the sheet busy), so the cascade in that transaction only takes what was
+// queued meanwhile.
+export async function dropAutorunQueueOf(sheetId: string, userId: string, column: string): Promise<void> {
+  const id = db.prepare('SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND status_column = ?')
+    .pluck().get(sheetId, userId, column) as string | undefined;
+  if (id) await autorunDropPending(sheetId, userId, id);
 }
 
 export function deleteAutorunColumnRefs(sheetId: string, userId: string, column: string): void {

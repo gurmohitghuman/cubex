@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { encrypt, decrypt } from '../lib/crypto';
 import { redactSecrets } from '../lib/http-request';
 import { JOBS_DB_PATH } from '../queue';
+import { tregReach } from '../services/treg-reach';
 
 // Liveness/readiness probe. Mounted at /api/health in index.ts.
 const router = express.Router();
@@ -44,9 +45,19 @@ router.get('/', (_req, res) => {
     console.error('Health check: crypto probe failed:', redactSecrets(String(err)));
   }
   const ok = checks.db === 'ok' && checks.jobsDb === 'ok' && checks.crypto === 'ok';
+  // treg (enrichments): the outcome of Cubex's last call to it, with a key
+  // saved. Informational: it never makes this probe fail, since a restart
+  // can't fix treg or the network path to it.
+  let treg: ReturnType<typeof tregReach> = null;
+  if (checks.db === 'ok') {
+    try { treg = tregReach(); } catch (err) {
+      console.error('Health check: treg status read failed:', redactSecrets(String(err)));
+    }
+  }
   res.status(ok ? 200 : 503).json({
     status: ok ? 'ok' : 'degraded',
     checks,
+    ...(treg ? { treg: treg.treg, tregSince: treg.since } : {}),
     timestamp: new Date().toISOString(),
   });
 });

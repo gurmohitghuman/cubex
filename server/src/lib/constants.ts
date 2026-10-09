@@ -177,3 +177,7 @@ export const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 365;
 export const ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
 // /api/v1 body/rate/paging/batch caps live in api-v1-constants.ts.
 
+
+// Boot reads the whole database file to check it (lib/db.ts); above this size
+// the log says so first, so a slow boot doesn't look like a hang.
+export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
