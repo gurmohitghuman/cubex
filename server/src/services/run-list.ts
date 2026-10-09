@@ -6,8 +6,7 @@
 // Returns the same RunSummary shape as get{Ai,Http}RunSummary so a caller can
 // hand any element straight to get_run_status / get_run_results / control_run.
 import { db } from '../lib/db';
-import { parseTargetRows } from '../lib/run-targets';
-import { RunSummary, rowOutcomes, aiRunSummaryFromRow } from './run-status';
+import { RunSummary, aiRunSummaryFromRow, httpRunSummaryFromRow } from './run-status';
 
 export type RunListFilter = 'active' | 'terminal' | 'all';
 
@@ -53,19 +52,14 @@ export function listRuns(
 
   const httpRows = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
-           error_message, target_rows, created_at, updated_at
+           error_message, target_rows, created_at, updated_at,
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added
     FROM http_runs WHERE user_id = ? ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
 
   const ai: RunSummary[] = aiRows.map(aiRunSummaryFromRow);
-  const http: RunSummary[] = httpRows.map(r => ({
-    id: r.id, sheet_id: r.sheet_id, type: 'http', column_name: r.master_column_name,
-    model: null, status: r.status, processed_rows: r.processed_rows,
-    total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...rowOutcomes('http_results', r.id),
-    created_at: r.created_at, updated_at: r.updated_at,
-  }));
+  const http: RunSummary[] = httpRows.map(r => ({ ...httpRunSummaryFromRow(r, userId, false), model: null }));
 
   return [...ai, ...http]
     .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))

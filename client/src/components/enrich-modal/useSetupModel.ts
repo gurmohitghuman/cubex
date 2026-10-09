@@ -75,9 +75,12 @@ export function useSetupModel(a: Args) {
   }
   const more = continuing(draft)
   const mode = effectiveMode(draft.rowsMode, counts)
+  // "Only run if" narrows the rows the estimate counts (once its conditions are complete).
+  const where = draft.conditions.length && !conditionsProblem(draft.conditions, columns) ? draft.conditions : []
   const byStatus = useRowCounts(sheetId, more ? draft.continueColumn : null, mode, a.selectedRows, active,
-    `${draft.runId ?? ''}:${draft.runEnded}:${a.countsKey ?? ''}`)
-  const rows = more ? countFor(byStatus, draft.rowsStatus) : rowsFor(draft.rowsMode, counts)
+    `${draft.runId ?? ''}:${draft.runEnded}:${a.countsKey ?? ''}`, where)
+  const rows = more ? countFor(byStatus, draft.rowsStatus)
+    : where.length ? byStatus?.total ?? null : rowsFor(draft.rowsMode, counts)
   const room = data.setup ? data.setup.columns.max - data.setup.columns.count : null
   // A list job asks one provider (its own pick), so the waterfall's provider list isn't shown.
   const list = draft.list
@@ -104,7 +107,8 @@ export function useSetupModel(a: Args) {
     ?? limitsProblem
     ?? conditionsProblem(draft.conditions, columns)
     ?? statusNameProblem ?? outputNameProblem
-    ?? (rows === 0 ? (more ? 'No rows here match. Pick other rows to run.' : 'There are no rows to run on.') : null)
+    ?? (rows !== 0 ? null
+      : more || where.length ? 'No rows here match. Pick other rows to run.' : 'There are no rows to run on.')
 
   // treg tries the team's own keys and free sources first, whatever the order.
   const pinned = (r: { access: string | null }) => r.access === 'own' || r.access === 'free'
@@ -119,7 +123,10 @@ export function useSetupModel(a: Args) {
   const listCost = !list ? null
     : (tool ? perRowProblem(list.maxItems, tool) : null)
       ?? (tool?.kind === 'waterfall' && !list.provider ? 'Pick a provider to see the cost.' : null)
-  const blocked = inputsProblem || noProvider ? 'Pick the inputs above to see the cost.' : limitsProblem ?? listCost
+  // No rows to run (none pass "Only run if", or none fit the status): nothing to price.
+  const noRows = ready && rows === 0 ? 'No rows here match, so there is nothing to estimate.' : null
+  const blocked = inputsProblem || noProvider ? 'Pick the inputs above to see the cost.'
+    : noRows ?? limitsProblem ?? listCost
   const estimate = useEstimate(blocked ? null : request)
 
   // A tool with no listed price runs on the team's own provider key, which

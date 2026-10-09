@@ -9,6 +9,7 @@ import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
 } from '../lib/api-v1-constants';
 import { batchUpdateRows } from '../services/rows-batch-update';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 
 const router = express.Router();
 
@@ -17,7 +18,8 @@ function ownsSheet(sheetId: string, userId: string): boolean {
 }
 
 // POST /v1/sheets/:id/rows — append a batch. Body: { rows: [{data: {col: val}}] }.
-router.post('/sheets/:id/rows', requireScope('write'), (req: TokenAuthRequest, res) => {
+// The answer lists the auto-runs that will fill the new rows (auto_run).
+router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
     if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
@@ -38,7 +40,7 @@ router.post('/sheets/:id/rows', requireScope('write'), (req: TokenAuthRequest, r
 
     const result = appendRows(sheetId, req.userId!, parsedRows);
     if ('fail' in result) return failResponse(res, result);
-    res.status(201).json(result.ok);
+    res.status(201).json({ ...result.ok, ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rows.length) });
   } catch (error) {
     console.error('POST /v1/sheets/:id/rows error:', error);
     res.status(500).json({ error: 'Failed to append rows' });
@@ -83,8 +85,12 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
     }
     const result = batchUpdateRows(sheetId, req.userId!, parsed);
     if ('fail' in result) {
-      if (result.fail === 'duplicate_rows') return res.status(400).json({ error: 'updates must not contain duplicate row ids' });
-      if (result.fail === 'not_found') return res.status(404).json({ error: 'One or more rows were not found in the supplied sheet.' });
+      if (result.fail === 'duplicate_rows') {
+        return res.status(400).json({ error: 'updates must not contain duplicate row ids' });
+      }
+      if (result.fail === 'not_found') {
+        return res.status(404).json({ error: 'One or more rows were not found in the supplied sheet.' });
+      }
       return failResponse(res, result);
     }
     return res.json(result.ok);

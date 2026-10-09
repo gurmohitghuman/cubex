@@ -132,6 +132,19 @@ const tally = (st: 'not_enriched' | 'no_result' | 'failed') => many.filter(c => 
 check('SQL count == seeding rule, with odd blanks and sparse row numbers over several slices',
   oddCounts.total === many.length && oddCounts.notEnriched === tally('not_enriched')
   && oddCounts.noResult === tally('no_result') && oddCounts.failed === tally('failed'))
+// "Only run if" narrows the count with the seeding's own check, over several slices too.
+const onlyIf = await enrichRowCounts(oddSheet, uid, 'S', {
+  mode: 'all', rowIndexes: null, where: [{ column: 'S', op: 'contains', value: 'found' }],
+})
+const passing = many.filter(c => c.toLowerCase().includes('found'))
+check('Only run if counts just the rows passing it, by status',
+  onlyIf.total === passing.length && passing.length > 0
+  && onlyIf.noResult === passing.filter(c => statusMatches(c, 'no_result')).length
+  && onlyIf.notEnriched === passing.filter(c => statusMatches(c, 'not_enriched')).length)
+const none = await enrichRowCounts(sheetId, uid, null, {
+  mode: 'selected', rowIndexes: [0, 1], where: [{ column: 'Name', op: 'eq', value: 'P6' }],
+})
+check('a condition no selected row passes counts none', none.total === 0)
 
 db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, master_column_name) VALUES (?,?,?,?,?,?)`)
   .run(uuid(), sheetId, uid, JSON.stringify(config), 'completed', 'Work email')

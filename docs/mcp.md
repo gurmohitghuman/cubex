@@ -13,7 +13,7 @@ Choose the token's scopes:
 |---|---|
 | `read` | List tables, read rows, check runs. |
 | `write` | Also create and change tables, sheets, columns and rows. |
-| `run` | Also start, pause, resume, stop and re-run AI and HTTP runs. These spend your OpenRouter credits and call your APIs. |
+| `run` | Also start, pause, resume, stop and re-run AI, HTTP and enrichment runs, and turn auto-run on or off. These spend your OpenRouter credits and your treg balance, and call your APIs. |
 | `secrets` | Also start HTTP runs that use your saved API keys. Needs `run`. |
 
 `write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password or saved keys.
@@ -70,6 +70,9 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Call `https://api.example.com/people?email={{email}}` for each row and add the job title and LinkedIn URL as columns."
 - "The last run left some cells blank. Show me why, then re-run only those rows."
 - "Export the rows where Status is Qualified, with just Email and Company."
+- "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
+- "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
+- "Keep finding work emails for new rows in Leads automatically, up to $5 a day."
 
 ## Tools
 
@@ -93,10 +96,49 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
+| `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
+| `run_enrichment` | Run an enrichment per row: work emails, phones, person or company data, or lists that become rows in another sheet. Can estimate first, test on 5 rows, and turn on auto-run. |
+| `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
+| `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
+| `set_auto_run` | Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. |
 
 Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
+When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
+
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
+
+## Enrichments
+
+Enrichments look things up per row through [treg.to](https://treg.to) with the treg key saved in Cubex (Settings, Enrichment): verified work emails, phone numbers, person and company data, and lists (people at a company, similar companies) that become rows in another sheet. Every row is a paid call on your treg balance, so the assistant should estimate first and tell you what it found.
+
+**The usual flow**
+
+1. `search_enrichments` (for example "work email") finds the tool; `get_enrichment` lists its inputs, its output fields, its price and, for a waterfall (treg asks many providers in turn), each provider with its price, hit rate and whether your team's own key or a free route serves it.
+2. `run_enrichment` with `estimate_only: true` checks everything a run would check and returns the rows it would take, the cost range, the per-row cap and run limit it would use, your treg balance and `daily_limit`. It creates nothing.
+3. `run_enrichment` with `test: true` runs the first 5 rows; without it, every row in scope. It returns a `run_id` at once.
+4. `get_run_status` (run type `enrichment`) follows it: `cost_usd` is what its treg calls cost so far, and `enrichment.pause_reason` says why it paused (its run limit, the daily limit, the treg balance, a missing key, treg unreachable). `control_run` resumes it once that's fixed, and with `spend_limit_usd` raises a run limit. `get_run_results` gives each row's cost and the provider that found it.
+
+**Money**
+
+- `max_cost_per_row_usd` is sent to treg as each row's cap (the default lets every provider you kept answer). `spend_limit_usd` is the run's limit: it pauses there (default: the rows in scope times the per-row cap).
+- **The daily limit** for all enrichments is $10 a day by default (UTC days), counting the app, auto-runs and agents together. Estimates, run starts and run status return it as `daily_limit {limit_usd, used_today_usd, remaining_usd}`. Only you can change it, in Settings: a token can't. Runs going at the same moment can pass it by about one batch each.
+- A `run` token can spend your treg balance, up to these limits. Providers on your team's own keys at treg bill your team directly, outside every Cubex limit.
+
+**Status cells are Cubex's words, not data.** The status column says per row: `✅ Found` (the outputs are filled), `⏭️ Not found`, `⏭️ Budget ran out` (the per-row cap stopped the waterfall before a provider found it), other `⏭️ …` skips with their reason, `❌ …` failures with their reason, and `⏳ Processing...` while it runs. Verified work email writes `✅ Valid`, `✅ Catch-all` or `✅ Risky`; on a row it rejected (`⏭️ Only a catch-all address (not accepted)` and the like) it still fills Email status and Checked by, never Email. Jobs that add rows write `➕ Adding N rows…`, `➕ N results, waiting for fields`, `➕ N rows waiting for room in <sheet>`, `✅ N rows added` (with `, M already there` when duplicates were skipped), `✅ Already there` and `❌ Rows not added: <reason>`. Output columns are empty on rows that found nothing, and a column added from stored answers says `⏭️ No data` where an answer had no value. An empty status means the row hasn't run; rows missing an input are skipped and stay empty.
+
+**Jobs that add rows** (`adds_rows: true`): treg returns each provider's own fields, so a list job asks one provider and you keep the fields its real results have.
+
+1. `run_enrichment` with `test: true` and `list: {new_sheet_name or destination_sheet_id, provider, results_per_row, copy_columns}` runs 5 rows; their results wait for fields.
+2. `get_run_status` shows them in `enrichment.list.waiting_for_fields`; `get_list_fields` lists the fields (path, label, how many results have it, a sample).
+3. `add_list_rows` picks the fields (and `dedupe_path` to skip results added before) and adds those rows, for free.
+4. `control_run` rerun with mode `empty` runs the rest of the rows with the same fields.
+
+`results_per_row` is the price dial: providers that charge per result charge for each. Deleting a sheet whose results aren't rows yet drops them: `manage_sheet` and `manage_table` deletes (and the REST deletes) say how many in `list_results_dropped`.
+
+**Auto-run** (`set_auto_run`, or `auto_run` on `run_enrichment`) keeps an enrichment or HTTP API column filling new rows, and rows whose inputs get filled, at most once a row. Rows already in the sheet when you turn it on are left alone. An enrichment auto-run has a daily cap (default $5, never above the daily limit); an HTTP API auto-run has a daily row cap (default 500) and **sends real requests**, for example adding leads to a sequencer. With a webhook on the sheet, anyone with its URL can add rows that spend.
+
+**More from stored answers.** `get_run_results` with `include_answers: true` shows each row's stored answer (10 rows a page, rows that answered unless you pass `status_filter`; `answer_cut` lists parts left out of a very big answer; a run that used saved API keys needs the `secrets` scope). `add_enrichment_field` turns any value in it (a JSONPath such as `$.output.company.linkedin_url`) into a new column, filled from the answers already stored with no new calls. It fills in the background: `get_sheet` lists it in `filling_columns`, and reads show its cells as `⏳ Processing...` until it's done.
 
 ## Big CSV files
 
@@ -214,6 +256,19 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 - Also optional: `body` (for POST and PUT), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 20) and `timeout_ms` (per request, default 30,000).
 - The earlier shape, `{"config": {"requestConfig": {...}, "responseMapping": [{"jsonPath", "columnName"}], "batchSize": 5}}`, still works.
 
+**Enrichment run:** `POST /sheets/:id/enrichment-runs` takes `run_enrichment`'s arguments as JSON:
+
+```json
+{
+  "tool_id": "treg.people.email.find",
+  "preset": "verified_email",
+  "column_name": "Work email",
+  "inputs": { "full_name": "Name", "domain": "Website" },
+  "test": true,
+  "estimate_only": true
+}
+```
+
 **Retrying safely:** send an `Idempotency-Key` header (or `idempotency_key` in the body). Repeating a start with the same key and arguments returns the original `run_id` instead of starting (and paying for) a second run.
 
 | Endpoint | Body or query |
@@ -223,7 +278,22 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. AI rows also carry `cost_usd`, and with web search `searches` and `search_queries`. |
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
-| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. |
+| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd`. |
+| `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it. |
+
+An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by`, plus its stored `answer` with `?answers=true` (10 rows a page).
+
+### Enrichments
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /enrichments` | `?q=work email`. Without `q`, the popular jobs. |
+| `GET /enrichments/:toolId` | A tool's inputs, outputs, price and providers. |
+| `POST /sheets/:id/enrichment-runs` | `run_enrichment`'s arguments (above). `202` with the `run_id`; an estimate or a replay answers `200`. |
+| `GET /sheets/:id/enrichment-list-fields` | `?column=People`: the fields a list job's results have. |
+| `POST /sheets/:id/enrichment-list-fields` | `{"column": "People", "fields": [{"path": "$.first_name", "column_name": "First name"}], "dedupe_path": null}`: adds the waiting results as rows. |
+| `POST /sheets/:id/enrichment-fields` | `{"column": "Work email", "json_path": "$.output.linkedin_url", "column_name": "LinkedIn"}`: a column from stored answers (`202`; it fills in the background). |
+| `PUT /sheets/:id/enrichment-auto-run` | `{"column": "Work email", "enabled": true, "daily_cap_usd": 5}`, or `{"paused": true}` for every auto-run on the sheet. |
 
 ### Responses and errors
 

@@ -85,6 +85,13 @@ export const AUTORUN_MAX_ROWS = 500;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
 export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
+// An agent's append answers with the auto-runs it sets off (auto_run); pricing
+// them reads treg's catalog, which waits at most this long (then no estimate).
+export const AUTORUN_NOTICE_PRICE_MS = 3_000;
+// A stored answer an agent reads (get_run_results include_answers) is cut to
+// this many characters of JSON, largest parts first, so a page stays readable
+// in its context (agents' context is counted in characters, not bytes).
+export const AGENT_ANSWER_MAX_CHARS = 32 * 1024;
 // A sort, row delete or column change refused because auto-run was busy holds
 // new auto-runs on that sheet this long, so the user's retry goes through.
 export const AUTORUN_USER_YIELD_MS = envInt('AUTORUN_USER_YIELD_MS', 2 * 60 * 1000);

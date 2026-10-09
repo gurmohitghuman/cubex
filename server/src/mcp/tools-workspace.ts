@@ -24,7 +24,8 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         + 'COST WARNING: the CSV comes back as a STRING IN YOUR CONTEXT, so exporting a wide or long '
         + 'sheet is EXPENSIVE — always pass columns and where to fetch only what you need. '
         + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the result says `
-        + 'truncated: true (with the total row count when there is no where); get the rest with read_rows (same columns/where, paged), '
+        + 'truncated: true (with the total row count when there is no where); get the rest with read_rows '
+        + '(same columns/where, paged), '
         + 'or save it all as a file of any size with create_download_link. '
         + 'Use this when you want CSV specifically (to hand to another tool, or save verbatim); '
         + 'for reading data to reason over, read_rows with the same columns/where is usually cheaper '
@@ -78,7 +79,9 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         'List recent AI and HTTP runs, newest first — use this to FIND a run_id you no longer have '
         + '(after a failed start, a disconnect, or a run someone else kicked off), then pass it to '
         + "get_run_status, get_run_results, or control_run. filter 'active' shows only runs still "
-        + "pending/running/paused; 'terminal' shows finished ones. Omit sheet_id for the whole workspace.",
+        + "pending/running/paused; 'terminal' shows finished ones. Omit sheet_id for the whole workspace. "
+        + 'Enrichment runs are listed as type http with an enrichment block (the tool) and cost_usd; use run_type '
+        + "'enrichment' (or 'http') for them.",
       inputSchema: {
         sheet_id: z.string().optional().describe('Limit to one sheet; omit for every sheet'),
         filter: z.enum(['active', 'terminal', 'all']).optional().describe("Default 'all'"),

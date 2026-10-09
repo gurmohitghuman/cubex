@@ -1,4 +1,4 @@
-// What the drawer (and later MCP) reads while an enrichment runs: a lean
+// What the drawer reads while an enrichment runs: a lean
 // status from the run row, the ledger and the results' covering index (run_id,
 // status, cost_usd), plus the newest few rows' cells. Never every result; a run
 // can have a million. And Resume with a new run limit, for a run its limit paused.
@@ -98,7 +98,9 @@ function latestRows(run: RunRow, userId: string, config: EnrichRunConfig): Enric
   });
 }
 
-function listProgress(row: RunRow, config: EnrichRunConfig, userId: string): EnrichListProgress | null {
+export function listProgress(
+  row: Pick<RunRow, 'id' | 'dest_sheet_id' | 'list_rows_added'>, config: EnrichRunConfig, userId: string,
+): EnrichListProgress | null {
   const l = config.enrichment.list;
   if (!l) return null;
   const waits = db.prepare(`SELECT wait_reason AS w, COUNT(*) AS n, IFNULL(SUM(item_count), 0) AS k

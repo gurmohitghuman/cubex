@@ -1,6 +1,7 @@
-// Starting an enrichment run: the flow behind POST /api/enrich/sheets/:id/runs
-// and the column menu's reruns (services/enrich-rerun.ts; MCP and /api/v1 will
-// call it too). Checks the key, the tool and the request, then in ONE immediate
+// Starting an enrichment run: the flow behind POST /api/enrich/sheets/:id/runs,
+// the column menu's reruns (services/enrich-rerun.ts), MCP run_enrichment and
+// /api/v1 (services/enrich-token-run.ts). Checks the key, the tool and the
+// request (services/enrich-run-prepare.ts), then in ONE immediate
 // transaction inside the sheet's busy window: the column cap, the new columns
 // (appendColumnsToOrder), the run row and its column associations. Seeding
 // (only the rows the run takes) and queueing follow in the background
@@ -10,93 +11,27 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
-import { findColumnNameCollision, columnCollisionMessage } from '../lib/column-names';
-import { validateHttpRunColumns } from '../lib/http-run-validate';
-import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
-import { asRunStart, sheetRowSpan } from './run-seed';
-import { buildEnrichmentConfig } from './enrich-run-build';
+import { asRunStart } from './run-seed';
 import { rowFilterSql } from './enrich-rows-filter';
-import { countFor, enrichRowCounts } from './enrich-row-count';
 import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
 import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
-import { autorunFillingColumn } from './autorun-block';
-import { applyListStart, listRowsBeingAdded, planListStart } from './enrich-list-start';
+import { applyListStart, listRowsBeingAdded } from './enrich-list-start';
+import { activeRunOn, prepareEnrichmentStart } from './enrich-run-prepare';
 
 // destSheetId: where a list job's rows go (a new sheet is made by the start).
+// rowsInScope: the most rows the run can take (seeding skips rows missing an input).
 export type EnrichStartOutcome = {
-  ok: { runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null };
+  ok: { runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null; rowsInScope: number };
 } | RunFail;
 
-const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const ROLLBACK = new Error('rollback');
-
-// The enrichment that owns `name` as its status column, if any.
-function enrichmentColumnOwner(sheetId: string, userId: string, name: string): boolean {
-  const runs = db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-    ORDER BY created_at DESC, rowid DESC LIMIT 1`).all(sheetId, userId, name) as Array<{ config: string | null }>;
-  return runs.some(r => { try { return isEnrichmentConfig(JSON.parse(r.config ?? 'null')); } catch { return false; } });
-}
-
-function activeRunOn(sheetId: string, userId: string, name: string): boolean {
-  return !!db.prepare(`SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-    AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL) LIMIT 1`).get(sheetId, userId, name);
-}
-
-const ownOutputs = (sheetId: string, userId: string, statusColumn: string): Set<string> => new Set(db.prepare(
-  `SELECT extracted_column_name FROM http_column_associations
-    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?`,
-).pluck().all(sheetId, userId, statusColumn) as string[]);
-
-// Adding to a column a run already made: it must be an enrichment column with
-// no run active on it, and new output names may only clash with its own.
-function continueProblem(
-  sheetId: string, userId: string, statusColumn: string, outputNames: string[], columns: string[],
-): RunFail | null {
-  if (!enrichmentColumnOwner(sheetId, userId, statusColumn)) {
-    return bad(`"${statusColumn}" isn't an enrichment column.`);
-  }
-  if (activeRunOn(sheetId, userId, statusColumn)) {
-    return {
-      fail: 'conflict', message: autorunFillingColumn(sheetId, userId, statusColumn)
-        ?? 'A run on this column is still active. Wait for it to finish, or stop it first.',
-    };
-  }
-  const adding = listRowsBeingAdded(sheetId, userId, statusColumn);
-  if (adding) return { fail: 'conflict', message: adding };
-  const own = ownOutputs(sheetId, userId, statusColumn);
-  const others = columns.filter(c => c !== statusColumn && !own.has(c));
-  for (const name of outputNames) {
-    const clash = findColumnNameCollision(name, others);
-    if (clash) return bad(columnCollisionMessage(name, clash));
-  }
-  return null;
-}
 
 const generationOf = (sheetId: string, userId: string): number | undefined => db.prepare(
   'SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?',
 ).pluck().get(sheetId, userId) as number | undefined;
-
-const NOTHING_TO_RUN: Record<string, string> = {
-  not_enriched: 'Every row here is enriched already. Pick other rows to run.',
-  no_result: 'Every row here has a result already.',
-  failed: 'No rows here failed.',
-};
-
-// How many rows the run can take at most (it sizes the default run limit):
-// the test rows, else the rows in scope, counted by status on a column a run
-// already made. Rows missing an input still count; seeding skips them.
-async function rowsToRun(
-  sheetId: string, userId: string, input: EnrichRunInput, statusColumn: string, all: number,
-): Promise<number> {
-  const { mode, status, rowIndexes } = input.rows;
-  const byStatus = input.continueColumn && status !== 'any';
-  if (!byStatus && mode !== 'filter') return mode === 'selected' ? rowIndexes?.length ?? 0 : all;
-  const counts = await enrichRowCounts(sheetId, userId, byStatus ? statusColumn : null, { mode, rowIndexes });
-  return byStatus ? countFor(counts, status) : counts.total;
-}
 
 export async function startEnrichmentRun(
   userId: string, sheetId: string, input: EnrichRunInput,
@@ -105,31 +40,9 @@ export async function startEnrichmentRun(
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   if (!getTregToken(userId)) return { fail: 'conflict', message: 'Add your treg key in Settings first.' };
-  const columns = getSheetColumns(sheetId, userId, false);
-  const span = sheetRowSpan(sheetId, userId);
-  if (span.count === 0) return bad('There are no rows to run on.');
-
-  // Names: a new status column, or an existing enrichment column to add to.
-  const mapping = input.outputs.map(o => ({ columnName: o.columnName, jsonPath: '$.x' }));
-  const v = validateHttpRunColumns(sheetId, userId, mapping, input.columnName, !input.continueColumn);
-  if (!v.ok) return bad(v.error!);
-  const statusColumn = v.sanitizedMaster!;
-  const outputNames = v.sanitizedMappingColumns!;
-  if (input.continueColumn) {
-    const problem = continueProblem(sheetId, userId, statusColumn, outputNames, columns);
-    if (problem) return problem;
-  }
-  if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
-  const inScope = await rowsToRun(sheetId, userId, input, statusColumn, span.count);
-  if (inScope === 0) return bad(NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.');
-  const upperBound = Math.min(input.rows.test ?? inScope, inScope);
-
-  const named = { ...input, outputs: input.outputs.map((o, i) => ({ ...o, columnName: outputNames[i] })) };
-  const built = await buildEnrichmentConfig(named, columns, upperBound);
-  if ('fail' in built) return built;
-  const config = built.ok;
-  const listPlan = planListStart(userId, sheetId, input, config, columns);
-  if ('fail' in listPlan) return listPlan;
+  const prepared = await prepareEnrichmentStart(userId, sheetId, input);
+  if ('fail' in prepared) return prepared;
+  const { statusColumn, outputNames, config, listPlan, columns, span, upperBound } = prepared.ok;
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
 
@@ -155,8 +68,8 @@ export async function startEnrichmentRun(
         const added = runColumns.filter(c => !current.has(c)).length;
         if (current.size + added > MAX_COLUMNS_PER_SHEET) { capNeeded = added; return; }
         // A list job's destination (a new sheet too) and columns: rolled back with the run.
-        if (listPlan.ok) {
-          const dest = applyListStart(userId, sheetId, statusColumn, listPlan.ok, config);
+        if (listPlan) {
+          const dest = applyListStart(userId, sheetId, statusColumn, listPlan, config);
           if ('raced' in dest) { raced = dest.raced; destRaced = dest.field === 'destName'; throw ROLLBACK; }
           destSheetId = dest.destSheetId;
         }
@@ -195,6 +108,6 @@ export async function startEnrichmentRun(
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,
       lastRow: span.lastRow, test: input.rows.test,
     });
-    return { ok: { runId, statusColumn, outputColumns: outputNames, destSheetId } };
+    return { ok: { runId, statusColumn, outputColumns: outputNames, destSheetId, rowsInScope: upperBound } };
   });
 }

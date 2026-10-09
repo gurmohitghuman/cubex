@@ -13,6 +13,7 @@ import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth'
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { csvUploadMiddleware } from './sheets-shared';
 
 const router = express.Router();
@@ -56,7 +57,9 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
     }
 
     // The import streams the file again, so the upload is removed only after it.
-    const result = await importCsv(sheetId, req.userId!, scanned, replace, { bumpDataVersion: true, seedEmptyRow: false });
+    const result = await importCsv(
+      sheetId, req.userId!, scanned, replace, { bumpDataVersion: true, seedEmptyRow: false },
+    );
     cleanupUpload();
     if ('fail' in result) {
       if (result.fail === 'busy') return res.status(409).json({ error: result.error });
@@ -76,6 +79,7 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
       truncated_cells: result.ok.truncatedCells,
       replaced: replace,
       dropped_blank_starter_rows: result.ok.droppedSeedRows,
+      ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rowsImported),
     });
   } catch (error) {
     console.error('POST /v1/sheets/:id/import error:', error);

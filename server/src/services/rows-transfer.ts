@@ -125,7 +125,7 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
   // Moved rows leave the source: auto-run's fence there follows. The copies are
   // new rows in the destination, which auto-run fills when it is on there.
-  // TODO(enrichments M3): the answer will list the auto-runs they set off (auto_run).
+  // The MCP and /api/v1 answers list the auto-runs they set off (enrich-agent-autorun.ts).
   if (request.operation === 'move') autorunRowsRemoved(request.sourceSheetId, userId);
   bumpDataVersion(request.destinationSheetId, userId);
   if (request.operation === 'move') bumpDataVersion(request.sourceSheetId, userId);

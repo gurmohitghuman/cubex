@@ -37,7 +37,7 @@ export async function rerunEnrichmentColumn(
   }
 
   const { mode, rowIndexes } = req.rows;
-  const counts = await enrichRowCounts(sheetId, userId, req.column, { mode, rowIndexes });
+  const counts = await enrichRowCounts(sheetId, userId, req.column, { mode, rowIndexes, where: choices.conditions });
   const rows = countFor(counts, req.rows.status);
   const est = await estimateEnrichment(userId, {
     toolId: choices.toolId, rows, preset: choices.preset, given: Object.keys(choices.inputs).sort(),

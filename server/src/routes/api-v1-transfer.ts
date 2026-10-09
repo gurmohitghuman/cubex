@@ -4,6 +4,7 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
 import { parseRowQueryBody } from '../services/row-selection';
 import { TransferSelection } from '../services/transfer-selection';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 
 const router = express.Router();
 
@@ -22,13 +23,15 @@ function parseSelection(value: unknown): TransferSelection | null {
   return null;
 }
 
-router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), (req: TokenAuthRequest, res) => {
+router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     const body = req.body as Record<string, unknown>;
     const key = req.get('Idempotency-Key');
     const selection = parseSelection(body.selection);
     if (!key || !selection || !['copy', 'move'].includes(String(body.operation))) {
-      return res.status(400).json({ error: 'Idempotency-Key, operation, and exactly one valid selection are required.' });
+      return res.status(400).json({
+        error: 'Idempotency-Key, operation, and exactly one valid selection are required.',
+      });
     }
     if (typeof body.destination_sheet_id !== 'string') {
       return res.status(400).json({ error: 'destination_sheet_id is required.' });
@@ -43,7 +46,9 @@ router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), (req: Toke
     }
     if (body.column_mapping !== undefined
         && (!body.column_mapping || typeof body.column_mapping !== 'object' || Array.isArray(body.column_mapping)
-          || Object.entries(body.column_mapping).some(([source, destination]) => !source || typeof destination !== 'string'))) {
+          || Object.entries(body.column_mapping).some(
+            ([source, destination]) => !source || typeof destination !== 'string',
+          ))) {
       return res.status(400).json({ error: 'column_mapping must be an object.' });
     }
     const request: TransferRequest = {
@@ -64,7 +69,9 @@ router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), (req: Toke
         : result.fail === 'rate' ? 429 : 400;
       return res.status(status).json({ error: result.error });
     }
-    return res.json({ ...result.ok, replayed: result.replayed ?? false });
+    const notice = result.replayed ? {}
+      : await appendAutorunNotice(req.userId!, body.destination_sheet_id as string, result.ok.copied + result.ok.moved);
+    return res.json({ ...result.ok, replayed: result.replayed ?? false, ...notice });
   } catch (error) {
     console.error('POST /v1/sheets/:sourceId/rows/transfer error:', error);
     return res.status(500).json({ error: 'Failed to transfer rows' });

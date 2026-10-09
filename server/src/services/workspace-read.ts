@@ -2,6 +2,7 @@
 // routes/api-v1-tables.ts / api-v1-sheets.ts so both share one implementation.
 import { db } from '../lib/db';
 import { getSheetColumns, countRows, parseRowData } from '../lib/sql-helpers';
+import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -32,13 +33,16 @@ export interface SheetMeta {
   columns: string[]; row_count: number; data_version: number;
   default_ai_model: string | null; // sheet override; account default applies when null
   row_generation: number;
+  // Columns still filling from stored answers: their cells read "⏳ Processing..." until done.
+  filling_columns: string[];
 }
 
 export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
   const sheet = db.prepare(
-    'SELECT id, table_id, name, data_version, row_generation, default_ai_model FROM sheets WHERE id = ? AND user_id = ?',
+    'SELECT id, table_id, name, data_version, row_generation, default_ai_model FROM sheets WHERE id = ? AND user_id = ?'
   ).get(sheetId, userId) as {
-    id: string; table_id: string; name: string; data_version: number; row_generation: number; default_ai_model: string | null;
+    id: string; table_id: string; name: string; data_version: number; row_generation: number;
+    default_ai_model: string | null;
   } | undefined;
   if (!sheet) return null;
   return {
@@ -50,6 +54,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     data_version: sheet.data_version,
     row_generation: sheet.row_generation,
     default_ai_model: sheet.default_ai_model,
+    filling_columns: fillingColumns(sheetId, userId),
   };
 }
 
@@ -74,8 +79,10 @@ export function readRowsPage(sheetId: string, userId: string, after: number, lim
   `).all(sheetId, userId, after, limit + 1) as Array<{ id: string; row_index: number; data: string }>;
   const hasMore = fetched.length > limit;
   const rows = hasMore ? fetched.slice(0, limit) : fetched;
+  const page = rows.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
+  overlayFilling(page, fillingColumns(sheetId, userId));
   return {
-    rows: rows.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) })),
+    rows: page,
     // Full page → there may be more; a short page is definitive end-of-sheet.
     next_cursor: hasMore ? rows[rows.length - 1].row_index : null,
     ...versions,

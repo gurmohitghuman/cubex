@@ -3,16 +3,22 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
 import { TransferSelection } from '../services/transfer-selection';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, rowConditionSchema as condition } from './tool-helpers';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
+import {
+  McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, rowConditionSchema as condition,
+} from './tool-helpers';
 
 
 export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'transfer_rows', {
     description:
       'Atomically copy or move rows between two sheets entirely server-side (no cell data returns to you). ' +
-      'Missing destination columns are created by default (column_mode create_missing) and reported in created_columns; ' +
+      'Missing destination columns are created by default (column_mode create_missing) and reported in ' +
+      'created_columns; ' +
       'columns limits the transfer to a subset of source columns. A stable idempotency_key is required: ' +
-      'retrying with the same key returns the original result instead of duplicating rows.',
+      'retrying with the same key returns the original result instead of duplicating rows. When auto-run is on in ' +
+      'the destination, auto_run lists the columns that will fill the new rows (an enrichment spends treg credit, ' +
+      'an HTTP API column sends real requests).',
     inputSchema: {
       source_sheet_id: z.string(),
       destination_sheet_id: z.string(),
@@ -30,7 +36,8 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
   }, async input => {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
-    const choices = [input.selection.all === true, !!input.selection.row_ids, !!input.selection.where].filter(Boolean).length;
+    const choices = [input.selection.all === true, !!input.selection.row_ids, !!input.selection.where]
+      .filter(Boolean).length;
     if (choices !== 1) return err('selection must contain exactly one of all:true, row_ids, or where.');
     const selection: TransferSelection = input.selection.all === true ? { all: true }
       : input.selection.row_ids ? { row_ids: input.selection.row_ids }
@@ -47,6 +54,9 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       idempotencyKey: input.idempotency_key,
     };
     const result = transferRows(ctx.userId, request);
-    return 'fail' in result ? err(result.error) : ok({ ...result.ok, replayed: result.replayed ?? false });
+    if ('fail' in result) return err(result.error);
+    const notice = result.replayed ? {}
+      : await appendAutorunNotice(ctx.userId, input.destination_sheet_id, result.ok.copied + result.ok.moved);
+    return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice });
   });
 }

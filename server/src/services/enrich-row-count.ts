@@ -1,8 +1,9 @@
 // How many rows an enrichment run would take, by the status of its column:
 // all of them, not enriched yet (empty), without a result (empty, ⏭️ or ❌)
 // and failed (❌), for a scope (every row, the saved filter's rows, or the
-// selected rows). The same rules as lib/enrich-seed.ts statusMatches (and its
-// blank characters). Rows missing an input are counted too: a run skips them
+// selected rows), and only rows passing the run's "Only run if" conditions.
+// The same rules as lib/enrich-seed.ts statusMatches (and its blank
+// characters). Rows missing an input are counted too: a run skips them
 // at no cost. A count reads JSON from every row, about a second at a million
 // rows, so it goes a range of row numbers at a time and lets other requests in
 // between (lib/slices.ts), like the sliced jobs.
@@ -10,13 +11,16 @@ import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
-import { BLANK_CHARS, FAILED_MARK, SKIPPED_MARK } from '../lib/enrich-seed';
-import type { EnrichRowsMode, EnrichRowsStatus } from '../lib/enrich-run-config';
+import { parseRowData } from '../lib/sql-helpers';
+import { BLANK_CHARS, FAILED_MARK, SKIPPED_MARK, conditionPasses, statusMatches } from '../lib/enrich-seed';
+import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from '../lib/enrich-run-config';
 import { rowFilterSql } from './enrich-rows-filter';
 
 export interface EnrichRowCounts { total: number; notEnriched: number; noResult: number; failed: number }
 
-export interface CountScope { mode: EnrichRowsMode; rowIndexes: number[] | null }
+// where: the run's "Only run if" conditions; rows failing them are left out
+// (counted with the check seeding uses, so a row's JSON is read in each slice).
+export interface CountScope { mode: EnrichRowsMode; rowIndexes: number[] | null; where?: EnrichCondition[] }
 
 // Rows per counting slice: one scan of a million rows took about a second, so a
 // slice holds the server for about 20 ms.
@@ -51,7 +55,10 @@ async function countOnce(
     ORDER BY row_index LIMIT 1 OFFSET ?`).pluck();
   // The ⏭️/❌ marks and blank set bind first (the SELECT list), then the
   // column path (the subquery's SELECT), then its WHERE.
+  const where = scope.where?.length ? scope.where : null;
   const cell = column === null ? `''` : 'TRIM(COALESCE(json_extract(data, ?), \'\'), ?)';
+  const read = db.prepare(`SELECT data FROM rows
+    WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?${filter.clause}${selected}`).pluck();
   const count = db.prepare(`
     SELECT COUNT(*) AS total,
       COALESCE(SUM(s = ''), 0) AS not_enriched,
@@ -63,11 +70,24 @@ async function countOnce(
   const head = [FAILED_MARK, SKIPPED_MARK, FAILED_MARK, ...(column === null ? [] : [jsonPath(column), BLANK_CHARS])];
   const tail = [...filter.params, ...(selected ? [JSON.stringify(scope.rowIndexes ?? [])] : [])];
   for (let lo = first; ;) {
-    const next = edge.get(sheetId, userId, lo, COUNT_SLICE_ROWS) as number | undefined;
-    const r = count.get(...head, sheetId, userId, lo, next ?? Number.MAX_SAFE_INTEGER, ...tail) as {
-      total: number; not_enriched: number; no_result: number; failed: number;
-    };
-    out.total += r.total; out.notEnriched += r.not_enriched; out.noResult += r.no_result; out.failed += r.failed;
+    const next = edge.get(sheetId, userId, lo, where ? HEAVY_SLICE_ROWS : COUNT_SLICE_ROWS) as number | undefined;
+    const hi = next ?? Number.MAX_SAFE_INTEGER;
+    if (where) {
+      for (const raw of read.iterate(sheetId, userId, lo, hi, ...tail) as Iterable<string>) {
+        const data = parseRowData(raw);
+        if (!where.every(c => conditionPasses(data, c))) continue;
+        const cellValue = column === null ? '' : data[column];
+        out.total++;
+        if (statusMatches(cellValue, 'not_enriched')) out.notEnriched++;
+        if (statusMatches(cellValue, 'no_result')) out.noResult++;
+        if (statusMatches(cellValue, 'failed')) out.failed++;
+      }
+    } else {
+      const r = count.get(...head, sheetId, userId, lo, hi, ...tail) as {
+        total: number; not_enriched: number; no_result: number; failed: number;
+      };
+      out.total += r.total; out.notEnriched += r.not_enriched; out.noResult += r.no_result; out.failed += r.failed;
+    }
     if (next === undefined) return out;
     lo = next;
     await yieldToRequests();

@@ -1,3 +1,4 @@
+// Over 200 lines: the summary and results readers of both run kinds, one contract for MCP and /api/v1.
 // Lean run-status + per-row-results readers for the programmatic surfaces
 // (/api/v1 run endpoints + the MCP get_run_status tool). Deliberately NOT the
 // UI's SELECT-* dumps: summaries omit prompts/configs (fetchable elsewhere,
@@ -8,12 +9,14 @@ import { parseTargetRows } from '../lib/run-targets';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { parseSearchQueries } from '../lib/ai-data-cell';
 import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-outcomes';
+import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 
 export interface RunSummary {
   id: string;
   sheet_id: string;
   type: 'ai' | 'http';
-  column_name: string | null;   // AI: "<name> (Output)", or "<name> (Status)" with output_columns; HTTP: master/status column
+  // AI: "<name> (Output)", or "<name> (Status)" with output_columns; HTTP: master/status column
+  column_name: string | null;
   model?: string | null;        // AI only
   output_columns?: string[];    // AI structured run: the typed columns it fills
   data_column?: string;         // AI run with web tools: the "(Data)" column listing its sources
@@ -28,8 +31,11 @@ export interface RunSummary {
   succeeded_rows: number;
   // AI runs: what the rows so far cost (OpenRouter's usage.cost, web fees
   // included; null when none reported it) and how many searches ran.
+  // Enrichment runs: what the run's treg calls cost so far (Cubex's ledger).
   cost_usd?: number | null;
   searches?: number | null;
+  enrichment?: Record<string, unknown>;
+  daily_limit?: Record<string, unknown>;
   // AI runs with web search: the engine sent, the engine the searches run on,
   // the billed mode and the per-row cap. engine null: a run from before
   // engines could be chosen (OpenRouter's default).
@@ -40,7 +46,9 @@ export interface RunSummary {
 
 // An index-only range scan on (run_id, status) (migrations 005, 008): about
 // 30 ms for a run with a million results, so list_runs over many huge runs adds up.
-export function rowOutcomes(table: 'ai_results' | 'http_results', runId: string): { failed_rows: number; succeeded_rows: number } {
+export function rowOutcomes(
+  table: 'ai_results' | 'http_results', runId: string,
+): { failed_rows: number; succeeded_rows: number } {
   const counts = db.prepare(`SELECT status, COUNT(*) AS n FROM ${table} WHERE run_id = ? GROUP BY status`)
     .all(runId) as Array<{ status: string; n: number }>;
   const n = (s: string) => counts.find(c => c.status === s)?.n ?? 0;
@@ -84,15 +92,22 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
 export function getHttpRunSummary(runId: string, userId: string): RunSummary | null {
   const r = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
-           error_message, target_rows, created_at, updated_at
+           error_message, target_rows, created_at, updated_at,
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added
     FROM http_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
-  if (!r) return null;
+  return r ? httpRunSummaryFromRow(r, userId, true) : null;
+}
+
+// One http_runs row as a summary; an enrichment run adds its tool, cost and
+// limits (run-status-enrich.ts). full: one run's status (list progress too).
+export function httpRunSummaryFromRow(r: any, userId: string, full: boolean): RunSummary {
   return {
     id: r.id, sheet_id: r.sheet_id, type: 'http', column_name: r.master_column_name,
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...rowOutcomes('http_results', r.id),
+    ...enrichSummaryPart(r, userId, full),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -107,7 +122,11 @@ export interface RunResultsPage {
     error_message: string | null;
     // AI: what the row cost (null: not reported), the searches that ran and
     // every search call ({query, ran}); the last two only with web search.
+    // Enrichments: what the row's treg calls cost, and who found it.
     cost_usd?: number | null;
+    found_by?: string | null;
+    answer?: unknown;
+    answer_cut?: string[];
     searches?: number;
     search_queries?: Array<{ query: string; ran: boolean }>;
   }>;
@@ -160,13 +179,15 @@ export function getAiRunResults(
   };
 }
 
+// answers: each row's stored answer too (the paths add_enrichment_field takes).
 export function getHttpRunResults(
   runId: string, userId: string, after: number, limit: number,
-  filter: RunResultStatusFilter = 'all',
+  filter: RunResultStatusFilter = 'all', answers = false,
 ): RunResultsPage | null {
-  const run = db.prepare('SELECT sheet_id FROM http_runs WHERE id = ? AND user_id = ?')
-    .get(runId, userId) as { sheet_id: string } | undefined;
+  const run = db.prepare('SELECT sheet_id, config FROM http_runs WHERE id = ? AND user_id = ?')
+    .get(runId, userId) as { sheet_id: string; config: string | null } | undefined;
   if (!run) return null;
+  const enrichment = enrichConfigOf(run.config) !== null;
   const f = statusClause(filter);
   const rows = db.prepare(`
     SELECT res.row_index, res.status, res.extracted_fields, res.error_message, r.id AS row_id
@@ -175,13 +196,18 @@ export function getHttpRunResults(
     WHERE res.run_id = ? AND res.user_id = ? AND res.row_index > ? ${f.sql}
     ORDER BY res.row_index ASC LIMIT ?
   `).all(run.sheet_id, runId, userId, after, ...f.params, limit) as any[];
+  const extras = enrichment || answers
+    ? enrichResultExtras(runId, userId, rows.map(r => r.row_index), answers) : null;
   return {
     results: rows.map(r => {
       let extracted: Record<string, unknown> = {};
       try { extracted = r.extracted_fields ? JSON.parse(r.extracted_fields) : {}; } catch { /* {} */ }
+      const x = extras?.get(r.row_index);
       return {
         row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
         extracted_fields: extracted, error_message: r.error_message,
+        ...(enrichment ? { cost_usd: x?.cost_usd ?? null, found_by: x?.found_by ?? null } : {}),
+        ...(answers ? { answer: x?.answer ?? null, ...(x?.answer_cut ? { answer_cut: x.answer_cut } : {}) } : {}),
       };
     }),
     next_cursor: rows.length === limit ? rows[rows.length - 1].row_index : null,
