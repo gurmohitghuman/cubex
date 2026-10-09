@@ -18,7 +18,7 @@ import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/an
 import { statusColumnRuns } from './answer-runs';
 import { markAutorunInputs } from '../lib/autorun-mark';
 
-export const FILL_PLACEHOLDER = '⏳ Processing...';
+export { FILL_PLACEHOLDER, fillingColumns } from '../lib/field-fill-columns';
 const FILLING = 'filling a column';
 const FILL_ATTEMPTS = 5;
 
@@ -137,10 +137,4 @@ export function resumeFieldJobs(): void {
     whenSheetFree(j.sheet_id, FILLING, () => runFieldJob(j.id))
       .catch(err => console.error(`Finishing the column fill on sheet ${j.sheet_id} failed:`, err));
   }
-}
-
-// Columns still filling on a sheet: the grid shows them as ⏳ until done.
-export function fillingColumns(sheetId: string, userId: string): string[] {
-  return db.prepare(`SELECT DISTINCT column_name FROM enrichment_field_jobs
-    WHERE sheet_id = ? AND user_id = ? AND status = 'running'`).pluck().all(sheetId, userId) as string[];
 }

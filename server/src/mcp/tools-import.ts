@@ -9,6 +9,7 @@ import { scanCsvText, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { importSummary } from '../services/csv-upload';
 import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 // At most 5 imports a minute per access token: each one can parse a large CSV
@@ -21,7 +22,12 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
     'import_csv',
     {
       description:
-        'Import CSV text into a sheet. The header row names the columns; new columns are created, and columns matching existing names (exactly) append into them. mode "append" adds rows after the existing ones; mode "replace" DELETES all existing rows first (permanent). Fails on columns an active run owns. Max ~2MB of CSV per call. For a file, use create_upload_link instead: any size, and the contents never pass through your context.',
+        'Import CSV text into a sheet. The header row names the columns; new columns are created, and columns '
+        + 'matching existing names (exactly) append into them. mode "append" adds rows after the existing ones; mode '
+        + '"replace" DELETES all existing rows first (permanent). Fails on columns an active run owns. Max ~2MB of CSV '
+        + 'per call. For a file, use create_upload_link instead: any size, and the contents never pass through your '
+        + 'context. When auto-run is on in the sheet, auto_run lists the columns that will fill the imported rows on '
+        + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user.',
       inputSchema: {
         sheet_id: z.string(),
         csv: z.string().min(1).describe('Raw CSV content including the header row'),
@@ -47,14 +53,21 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
       }
 
       const replace = mode === 'replace';
-      const result = await importCsv(sheet_id, ctx.userId, scanned, replace, { bumpDataVersion: true, seedEmptyRow: false });
+      const result = await importCsv(
+        sheet_id, ctx.userId, scanned, replace, { bumpDataVersion: true, seedEmptyRow: false },
+      );
       if ('fail' in result) {
         if (result.fail === 'locked') {
-          return err(`Cannot import into column(s) an active run owns: ${result.columns.join(', ')}. Stop the run first.`);
+          return err(
+            `Cannot import into column(s) an active run owns: ${result.columns.join(', ')}. Stop the run first.`,
+          );
         }
         return err(result.error);
       }
-      return ok(importSummary(result.ok, replace));
+      return ok({
+        ...importSummary(result.ok, replace),
+        ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsImported),
+      });
     },
   );
 }

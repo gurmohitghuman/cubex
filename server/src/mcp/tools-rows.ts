@@ -4,10 +4,13 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS } from '../lib/api-v1-constants';
+import {
+  API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
+} from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
 import { appendRows, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { batchUpdateRows } from '../services/rows-batch-update';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -20,7 +23,11 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'append_rows',
     {
       description:
-        `Append rows to the end of a sheet. Each row is a {columnName: value} object; every column must already exist (use add_column first). Values: string/number/boolean; null clears. Max ${API_V1_MAX_APPEND_ROWS} rows per call. Returns the created stable row ids.`,
+        'Append rows to the end of a sheet. Each row is a {columnName: value} object; every column must already exist '
+        + `(use add_column first). Values: string/number/boolean; null clears. Max ${API_V1_MAX_APPEND_ROWS} rows per `
+        + 'call. Returns the created stable row ids. When auto-run is on in the sheet, '
+        + 'auto_run lists the columns that will fill the new rows on their own: an enrichment spends treg credit '
+        + '(estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the user.',
       inputSchema: {
         sheet_id: z.string(),
         rows: z.array(z.record(z.string(), cellValue)).min(1).max(API_V1_MAX_APPEND_ROWS),
@@ -38,7 +45,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       const result = appendRows(sheet_id, ctx.userId, parsedRows);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
-      return ok(result.ok);
+      return ok({ ...result.ok, ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rows.length) });
     },
   );
 
@@ -47,8 +54,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Set cells on rows addressed by stable row id, in one of two forms. '
-        + 'ONE ROW: {"row_id": "…", "data": {"Status": "Done"}} (sheet_id optional; when given, the row must be in it); returns the full row. '
-        + `MANY ROWS, all or nothing: {"sheet_id": "…", "updates": [{"row_id": "…", "data": {"Status": "Done"}}]} (up to ${API_V1_MAX_BATCH_UPDATES}); returns {updated}. `
+        + 'ONE ROW: {"row_id": "…", "data": {"Status": "Done"}} (sheet_id optional; when given, the row must be in '
+        + 'it); returns the full row. '
+        + 'MANY ROWS, all or nothing: {"sheet_id": "…", "updates": [{"row_id": "…", "data": {"Status": "Done"}}]} '
+        + `(up to ${API_V1_MAX_BATCH_UPDATES}); returns {updated}. `
         + 'Columns must already exist (add_column first). Values: string/number/boolean; null clears a cell. '
         + 'Columns a run is still filling are refused.',
       inputSchema: {
@@ -80,13 +89,16 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         const result = batchUpdateRows(sheet_id, ctx.userId, parsed);
         if ('fail' in result) {
           if (result.fail === 'duplicate_rows') return err('updates must not contain duplicate row ids');
-          return err(result.fail === 'not_found' ? 'One or more rows were not found in the supplied sheet.' : txnFailMessage(result, MAX_ROWS_PER_SHEET));
+          return err(result.fail === 'not_found'
+            ? 'One or more rows were not found in the supplied sheet.'
+            : txnFailMessage(result, MAX_ROWS_PER_SHEET));
         }
         return ok(result.ok);
       }
       if (!row_id || data === undefined) return err('The one-row form needs both row_id and data.');
       if (sheet_id !== undefined
-        && !db.prepare('SELECT 1 FROM rows WHERE id = ? AND sheet_id = ? AND user_id = ?').get(row_id, sheet_id, ctx.userId)) {
+        && !db.prepare('SELECT 1 FROM rows WHERE id = ? AND sheet_id = ? AND user_id = ?')
+          .get(row_id, sheet_id, ctx.userId)) {
         return err('Row not found in that sheet');
       }
       const p = parseCellMap(data, API_V1_MAX_PATCH_CELLS);
@@ -103,7 +115,8 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'delete_rows',
     {
       description:
-        `PERMANENTLY delete rows by their stable row ids (there is no undo). Fails while any AI/HTTP run is active on the sheet. Max ${API_V1_MAX_DELETE_ROWS} ids per call.`,
+        `PERMANENTLY delete rows by their stable row ids (there is no undo). Fails while any AI/HTTP run is active on `
+        + `the sheet. Max ${API_V1_MAX_DELETE_ROWS} ids per call.`,
       inputSchema: {
         sheet_id: z.string(),
         row_ids: z.array(z.string()).min(1).max(API_V1_MAX_DELETE_ROWS),

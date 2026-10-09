@@ -11,6 +11,8 @@ import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runStartWindow, runFailHttpStatus } from '../services/run-shared';
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
+import { resumeEnrichmentRun } from '../services/enrich-run-status';
 
 const router = express.Router();
 
@@ -44,9 +46,18 @@ function registerControls(prefix: string, kind: RunKind) {
     }
   });
 
+  // An enrichment run resumes with an optional new run limit ({spend_limit_usd}).
   router.post(`/${prefix}/:id/resume`, requireScope('run'), async (req: TokenAuthRequest, res) => {
     try {
-      const result = await resumeRun(kind, req.params.id, req.userId!, req.tokenScopes?.has('secrets') === true);
+      const limit = (req.body as { spend_limit_usd?: unknown } | undefined)?.spend_limit_usd;
+      const enrichment = kind === 'http' && isEnrichmentRun(req.params.id, req.userId!);
+      if (limit !== undefined && !enrichment) {
+        return res.status(400).json({ error: 'spend_limit_usd applies to enrichment runs only.' });
+      }
+      const result = enrichment
+        ? await resumeEnrichmentRun(req.params.id, req.userId!, limit)
+        : await resumeRun(kind, req.params.id, req.userId!, req.tokenScopes?.has('secrets') === true);
+      if ('fail' in result && result.fail === 'bad_request') return res.status(400).json({ error: result.message });
       if ('fail' in result) return res.status(controlStatus(result)).json({ error: result.message });
       res.json(summary(req.params.id, req.userId!));
     } catch (error) {
@@ -95,7 +106,8 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if ('error' in p) return res.status(400).json({ error: p.error });
     if (p.rowIds === undefined && body.mode === undefined) {
       return res.status(400).json({
-        error: `Pass row_ids, or mode (${AI_RERUN_MODES.join(', ')}): "errored" re-runs only the failed rows; "all" re-bills every row.`,
+        error: `Pass row_ids, or mode (${AI_RERUN_MODES.join(', ')}): "errored" re-runs only the failed rows; "all" `
+          + `re-bills every row.`,
       });
     }
     if (body.mode !== undefined && !AI_RERUN_MODES.includes(body.mode as AiRerunMode)) {
@@ -114,6 +126,30 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
   }
 });
 
+// An enrichment run's rerun: { row_ids? , mode? (errored|empty|missing|all),
+// spend_limit_usd? }, one of row_ids or mode required (every mode buys rows).
+async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: Record<string, unknown>) {
+  const p = parseRowIds(b.row_ids);
+  if ('error' in p) return res.status(400).json({ error: p.error });
+  const modes = Object.keys(ENRICH_RERUN_MODES);
+  if (p.rowIds === undefined && (typeof b.mode !== 'string' || !modes.includes(b.mode))) {
+    return res.status(400).json({ error: `Pass row_ids, or mode (${modes.join(', ')}).` });
+  }
+  const limit = b.spend_limit_usd;
+  if (limit !== undefined && (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0)) {
+    return res.status(400).json({ error: 'spend_limit_usd must be more than $0.' });
+  }
+  if (refuseRunStart(req, res)) return;
+  const out = await rerunEnrichmentRunById(req.userId!, req.params.id, {
+    rowIds: p.rowIds, mode: b.mode as string | undefined, spendLimitUsd: limit as number | undefined,
+  });
+  if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+  res.status(202).json({
+    run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
+    ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
+  });
+}
+
 // POST /v1/http-runs/:id/rerun — body { row_ids?, mode? ('missing' | 'all') }.
 // row_ids wins; mode 'missing' = rows whose status cell is empty/failed/
 // processing; default = every row. No secrets re-check: a rerun reuses the
@@ -122,6 +158,7 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
 router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
     const b = (req.body ?? {}) as Record<string, unknown>;
+    if (isEnrichmentRun(req.params.id, req.userId!)) return await rerunEnrichment(req, res, b);
     const p = parseRowIds(b.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
     if (b.mode !== undefined && b.mode !== 'missing' && b.mode !== 'all') {

@@ -1,6 +1,6 @@
 // Turning auto-run on, off or pausing it, for an enrichment or HTTP API
 // column (the column menu's dialog, the drawer's checkbox, the sheet header's
-// chip; MCP set_auto_run will call this too, in M3). Auto-run repeats the
+// chip; MCP set_auto_run and /api/v1 call it too). Auto-run repeats the
 // column's newest run on new rows and rows whose inputs get filled, once per
 // row (lib/autorun-rules.ts). Turning it on starts from the sheet as it is:
 // rows already there are left alone, so turning it on never spends on them.

@@ -4,8 +4,10 @@
 // rows up is listed: an enrichment with the range all N rows could cost and its
 // daily cap (the notice says the cap stops it), an HTTP API column with how
 // many of the N its row cap leaves room for today. MCP and /api/v1 appends
-// will return the same list as auto_run (M3).
+// return the same list as auto_run (services/enrich-agent-autorun.ts).
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
+import type { CatalogFailure } from './enrich-catalog';
+import type { EnrichEstimateView } from './enrich-setup';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { estimateListOf, recallChoices } from '../lib/enrich-run-recall';
 import { verifySheetOwnership } from '../lib/sql-helpers';
@@ -22,10 +24,24 @@ export interface AutorunRowsEstimate {
   dailyRowCap: number | null;
   // Paused by the person (it runs these rows when resumed) or by a stop that lifts on its own.
   pausedBy: 'user' | 'system' | null;
+  // An enrichment whose price treg's catalog didn't give in time (priceWithinMs).
+  priceTimedOut?: boolean;
 }
 
+const TIMED_OUT = Symbol('timed out');
+type Estimated = { ok: EnrichEstimateView } | CatalogFailure;
+
+function within(p: Promise<Estimated>, ms: number | undefined): Promise<Estimated | typeof TIMED_OUT> {
+  if (ms === undefined) return p;
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<typeof TIMED_OUT>(resolve => { timer = setTimeout(() => resolve(TIMED_OUT), ms); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+// priceWithinMs: an answer that can't wait on treg (an agent's append) prices
+// each enrichment from the catalog within this long, else says it couldn't.
 export async function estimateAutorunRows(
-  userId: string, sheetId: string, rows: number,
+  userId: string, sheetId: string, rows: number, opts: { priceWithinMs?: number } = {},
 ): Promise<AutorunRowsEstimate[] | null> {
   if (!verifySheetOwnership(sheetId, userId)) return null;
   const out: AutorunRowsEstimate[] = [];
@@ -47,11 +63,15 @@ export async function estimateAutorunRows(
       continue;
     }
     const c = recallChoices(config, e.status_column);
-    const est = await estimateEnrichment(userId, {
+    const est = await within(estimateEnrichment(userId, {
       toolId: c.toolId, rows, preset: c.preset, given: Object.keys(c.inputs).sort(), skip: c.skipProviders,
       order: c.providerOrder, stopAtFirst: c.stopAtFirst, maxCostPerRowUsd: c.maxCostPerRowUsd, limit: null,
       list: estimateListOf(c),
-    });
+    }), opts.priceWithinMs);
+    if (est === TIMED_OUT) {
+      out.push({ ...base, kind: 'enrichment', rows, lowUsd: null, highUsd: null, priceTimedOut: true });
+      continue;
+    }
     const range = 'ok' in est && est.ok.priceKnown ? est.ok.estimate : null;
     out.push({ ...base, kind: 'enrichment', rows, lowUsd: range?.lowUsd ?? null, highUsd: range?.highUsd ?? null });
   }

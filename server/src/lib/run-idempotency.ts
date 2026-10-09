@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 
-// Idempotency for run_ai_column / run_http_enrichment, on the same
+// Idempotency for run_ai_column / run_http_enrichment / run_enrichment, on the same
 // data_operation_ledger table transfer_rows uses (migration 040). A run returns
 // a run_id immediately and then executes asynchronously, so — unlike transfer —
 // the "result" is known at START, not after. Contract: retrying with the SAME
@@ -15,6 +15,8 @@ import { db } from './db';
 // on the same column 409s); this ledger turns a later retry into a clean replay
 // and makes retry-after-failure return the same run_id. We write the ledger only
 // AFTER a successful start, keyed UNIQUE(user_id, idempotency_key).
+
+export type RunLedgerKind = 'ai_run' | 'http_run' | 'enrichment_run';
 
 export interface RunLedgerResult {
   run_id: string;
@@ -51,7 +53,7 @@ export function readRunLedger(
 // stands (we don't clobber it); the caller's own run_id is still valid to return.
 // Prunes the per-user ledger to the most recent 1000 (shared with transfer).
 export function writeRunLedger(
-  userId: string, key: string, hash: string, kind: 'ai_run' | 'http_run', result: RunLedgerResult,
+  userId: string, key: string, hash: string, kind: RunLedgerKind, result: RunLedgerResult,
 ): void {
   db.prepare(`
     INSERT OR IGNORE INTO data_operation_ledger
@@ -66,6 +68,6 @@ export function writeRunLedger(
   `).run(userId);
 }
 
-export function runRequestHash(kind: 'ai_run' | 'http_run', config: Record<string, unknown>): string {
+export function runRequestHash(kind: RunLedgerKind, config: Record<string, unknown>): string {
   return canonicalHash(kind, config);
 }

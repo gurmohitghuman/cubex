@@ -18,7 +18,12 @@ import {
 } from '../services/run-status';
 import { classifyAiError, summarizeErrorClasses } from '../lib/ai-error-classify';
 import { classifyHttpError, summarizeHttpErrorClasses } from '../lib/http-error-classify';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { isEnrichmentRun } from '../services/enrich-agent-control';
+import { answersNeedSecrets } from '../services/run-status-enrich';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+
+// Stored answers can be large (a few KB each), so a page that carries them is short.
+const ANSWERS_PAGE_MAX = 10;
 
 export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server,
@@ -32,38 +37,57 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + 'the API has nothing for that row, or, on every row, a wrong URL path), "configuration" (URL, auth, '
         + 'headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), "unknown". '
         + 'error_summary counts each class across the page, with a hint. '
-        + 'AI rows also carry cost_usd (what the row cost, web fees included) and, with web search, searches (how many ran) '
-        + 'and search_queries ([{query, ran}]; ran:false is a search the per-row limit stopped), to check search quality and spend. '
-        + "With a model's own search (runs_on native), searches and their words appear only when the provider reports them. "
+        + 'AI rows also carry cost_usd (what the row cost, web fees included) and, with web search, searches (how many '
+        + 'ran) '
+        + 'and search_queries ([{query, ran}]; ran:false is a search the per-row limit stopped), to check search '
+        + 'quality and spend. '
+        + "With a model's own search (runs_on native), searches and their words appear only when the provider reports "
+        + "them. "
         + 'Use this when a run finished but cells are blank or wrong, instead of guessing and re-running blind. '
         + "DEFAULTS TO status_filter 'failed' — the failures are what you want, and returning every successful "
         + "row wastes your context. Then retry only the transient ones with control_run action 'rerun' "
-        + "(mode 'errored' for AI, 'missing' for HTTP). Pages by cursor like read_rows.",
+        + "(mode 'errored' for AI, 'missing' for HTTP). Pages by cursor like read_rows. "
+        + 'ENRICHMENT runs (run_type enrichment): each row also has cost_usd (what its treg calls cost) and found_by '
+        + '(the provider that found it), and extracted_fields holds its status cell (Cubex\'s words, not data) and '
+        + `outputs. include_answers:true adds each row's stored answer (at most ${ANSWERS_PAGE_MAX} rows a page, `
+        + 'status_filter completed unless you pass one; answer_cut lists parts left out of a very big answer), for '
+        + 'add_enrichment_field paths; it works for HTTP API runs too (a run that used saved API keys needs the '
+        + '\'secrets\' scope for it).',
       inputSchema: {
-        run_type: z.enum(['ai', 'http']),
+        run_type: z.enum(['ai', 'http', 'enrichment']),
         run_id: z.string(),
         status_filter: z.enum(['failed', 'completed', 'all']).optional()
-          .describe("Default 'failed'. 'completed' = successful rows only; 'all' = every row."),
+          .describe("Default 'failed' ('completed' with include_answers). 'completed' = successful rows only; "
+            + "'all' = every row."),
         cursor: z.number().int().min(0).optional()
           .describe('next_cursor from the previous page; omit for the first page'),
         limit: z.number().int().min(1).max(API_V1_MAX_ROWS_PAGE).optional()
           .describe(`Rows per page, default ${API_V1_DEFAULT_ROWS_PAGE}, max ${API_V1_MAX_ROWS_PAGE}`),
+        include_answers: lenientBoolean().optional()
+          .describe(`HTTP and enrichment runs: each row's stored answer (max ${ANSWERS_PAGE_MAX} rows a page)`),
       },
     },
-    async ({ run_type, run_id, status_filter, cursor, limit }) => {
+    async ({ run_type: asked, run_id, status_filter, cursor, limit, include_answers }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
+      if (asked === 'enrichment' && !isEnrichmentRun(run_id, ctx.userId)) return err('Enrichment run not found');
+      const run_type = asked === 'enrichment' ? 'http' : asked;
+      if (include_answers && run_type === 'ai') return err('include_answers is for HTTP and enrichment runs.');
+      const secrets = include_answers ? answersNeedSecrets(run_id, ctx.userId, ctx.scopes.has('secrets')) : null;
+      if (secrets) return err(secrets);
 
       // Cursor semantics match the v1 rows endpoint: -1 means "from the start".
       // A caller passing 0 legitimately means "after row_index 0", so the
       // absent case must be -1, not 0, or row 0 would be skipped.
       const after = typeof cursor === 'number' ? cursor : -1;
-      const pageSize = limit ?? API_V1_DEFAULT_ROWS_PAGE;
-      const filter = (status_filter ?? 'failed') as RunResultStatusFilter;
+      const pageSize = include_answers ? Math.min(limit ?? ANSWERS_PAGE_MAX, ANSWERS_PAGE_MAX)
+        : limit ?? API_V1_DEFAULT_ROWS_PAGE;
+      // Answers come from rows that answered: failed rows mostly have none.
+      const filter = (status_filter ?? (include_answers ? 'completed' : 'failed')) as RunResultStatusFilter;
 
       const page = run_type === 'ai'
         ? getAiRunResults(run_id, ctx.userId, after, pageSize, filter)
-        : getHttpRunResults(run_id, ctx.userId, after, pageSize, filter);
+        : getHttpRunResults(run_id, ctx.userId, after, pageSize, filter, include_answers === true);
       // null = unknown run OR a run outside this user's scope. Same generic
       // message either way — never confirm that a run id exists elsewhere.
       if (!page) return err(`${run_type === 'ai' ? 'AI' : 'HTTP'} run not found`);
@@ -84,7 +108,7 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
       const summarize = run_type === 'ai' ? summarizeErrorClasses : summarizeHttpErrorClasses;
 
       return ok({
-        run_type,
+        run_type: asked,
         run_id,
         status_filter: filter,
         results,

@@ -18,7 +18,9 @@ export interface ToolAnnotations {
 
 const read = (title: string, openWorldHint = false): ToolAnnotations =>
   ({ title, readOnlyHint: true, idempotentHint: true, openWorldHint });
-const write = (title: string, destructiveHint: boolean, idempotentHint: boolean, openWorldHint = false): ToolAnnotations =>
+const write = (
+  title: string, destructiveHint: boolean, idempotentHint: boolean, openWorldHint = false,
+): ToolAnnotations =>
   ({ title, readOnlyHint: false, destructiveHint, idempotentHint, openWorldHint });
 
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
@@ -51,4 +53,13 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   control_run: write('Pause, resume, cancel or rerun a run', true, false, true),
   transfer_rows: write('Copy or move rows between sheets', true, true),
   transform_column: write('Transform a column', true, false),
+  search_enrichments: read('Search enrichment tools', true),
+  get_enrichment: read('Get an enrichment tool', true),
+  get_list_fields: read('Get the fields of list results'),
+  // Spends the treg balance and calls providers through treg.
+  run_enrichment: write('Run an enrichment (paid)', true, false, true),
+  add_enrichment_field: write('Add a column from stored answers', false, false),
+  add_list_rows: write('Add list results as rows', false, false),
+  // Turning it on makes later rows spend (or send requests) on their own.
+  set_auto_run: write('Turn auto-run on, off or pause it', true, true, true),
 };

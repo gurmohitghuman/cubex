@@ -75,9 +75,11 @@ export const RunButtons: React.FC<Props> = (p) => {
     mode: effectiveMode(p.draft.rowsMode, p.counts), selectedRows: p.selectedRows, test, order: p.order,
     rowGeneration: p.rowGeneration,
   })
-  const testRows = Math.max(1, Math.min(ENRICH_TEST_ROWS, p.rows ?? ENRICH_TEST_ROWS))
-  const count = p.rows !== null ? ` ${p.rows.toLocaleString()}` : ''
-  const fullLabel = more ? `Run on ${p.rows === null ? 'these rows' : plural(p.rows, 'row')}` : `Run all${count}`
+  // No rows match (both buttons are off then): the labels don't count them.
+  const known = p.rows === null || p.rows === 0 ? null : p.rows
+  const testRows = Math.min(ENRICH_TEST_ROWS, known ?? ENRICH_TEST_ROWS)
+  const count = known !== null ? ` ${known.toLocaleString()}` : ''
+  const fullLabel = more ? `Run on ${known === null ? 'these rows' : plural(known, 'row')}` : `Run all${count}`
   const reason = more
     ? 'Runs add to the column you already made.'
     : 'Try it on a few rows first, then run the rest.'

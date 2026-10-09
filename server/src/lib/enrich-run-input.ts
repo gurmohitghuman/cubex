@@ -41,7 +41,9 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const MAX_NAME = 200;
 const MAX_FIXED = 2000;
 const MAX_CONDITIONS = 20;
-const MAX_SELECTED = 50_000;
+// Selected rows a run takes by number (MCP and /api/v1 target_row_ids too).
+export const MAX_SELECTED_ROWS = 50_000;
+const MAX_SELECTED = MAX_SELECTED_ROWS;
 const OPS = new Set(['not_empty', 'empty', 'eq', 'neq', 'contains', 'gt', 'lt']);
 const MODES = new Set(['all', 'filter', 'selected']);
 const STATUSES = new Set(['any', 'not_enriched', 'no_result', 'failed']);

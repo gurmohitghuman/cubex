@@ -12,6 +12,7 @@ import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-co
 import { searchModels } from '../lib/model-search';
 import { getAccountDefaultModel } from '../lib/ai-model-resolve';
 import { db } from '../lib/db';
+import { answersNeedSecrets } from '../services/run-status-enrich';
 import { listRuns, RUN_LIST_DEFAULT, RUN_LIST_MAX, type RunListFilter } from '../services/run-list';
 
 const router = express.Router();
@@ -28,7 +29,9 @@ router.get('/models', requireScope('read'), async (req: TokenAuthRequest, res) =
       const rawLimit = parseInt(String(req.query.limit ?? ''), 10);
       const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 50;
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      return res.json({ ...searchModels(models, search, limit), account_default_model: getAccountDefaultModel(req.userId!) });
+      return res.json({
+        ...searchModels(models, search, limit), account_default_model: getAccountDefaultModel(req.userId!),
+      });
     }
     res.status(502).json({ error: 'Failed to fetch models from OpenRouter' });
   } catch (error) {
@@ -128,7 +131,13 @@ router.get('/http-runs/:id/results', requireScope('read'), (req: TokenAuthReques
     const { after, limit } = pageParams(req);
     const filter = statusFilterParam(req);
     if (typeof filter !== 'string') return res.status(400).json({ error: filter.error });
-    const page = getHttpRunResults(req.params.id, req.userId!, after, limit, filter);
+    // ?answers=true: each row's stored answer (add-field paths), at most 10 rows a page.
+    const answers = req.query.answers === 'true';
+    const secrets = answers
+      ? answersNeedSecrets(req.params.id, req.userId!, req.tokenScopes?.has('secrets') === true) : null;
+    if (secrets) return res.status(403).json({ error: secrets });
+    const page = getHttpRunResults(req.params.id, req.userId!, after, answers ? Math.min(limit, 10) : limit,
+      filter, answers);
     if (!page) return res.status(404).json({ error: 'HTTP run not found' });
     res.json(page);
   } catch (error) {

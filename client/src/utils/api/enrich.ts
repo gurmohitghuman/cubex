@@ -44,11 +44,14 @@ export const enrichAPI = {
       .then(res => res.data),
 
   // Rows by status in a column (null: a new column), for a scope.
+  // conditions: the run's "Only run if"; rows failing them aren't counted.
   rowCounts: (
     sheetId: string, column: string | null, mode: EnrichRowsScope, rowIndexes?: number[],
+    conditions: Array<{ column: string; op: string; value: string }> = [],
   ): Promise<EnrichRowCounts> =>
-    api.post(`/enrich/sheets/${sheetId}/row-counts`, { column, mode, ...(mode === 'selected' ? { rowIndexes } : {}) },
-      noServerToast).then(res => res.data),
+    api.post(`/enrich/sheets/${sheetId}/row-counts`, {
+      column, mode, ...(mode === 'selected' ? { rowIndexes } : {}), ...(conditions.length ? { conditions } : {}),
+    }, noServerToast).then(res => res.data),
 
   // The column menu's reruns, and their confirm's figures (a pure read).
   rerun: (sheetId: string, body: EnrichRerunRequest): Promise<EnrichRunStarted> =>

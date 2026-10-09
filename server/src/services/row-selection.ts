@@ -1,6 +1,8 @@
+// Over 200 lines: one row-query contract (parse, validate, filter, page) for read_rows and /api/v1 rows/query.
 import { db } from '../lib/db';
 import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
 import { passesCondition, type TextConditionOp } from '../lib/row-conditions';
+import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 
 // Row filters take the flow condition grammar plus numeric comparisons.
 // Numeric ops are row-query-only: flow step conditions keep their own grammar.
@@ -47,19 +49,30 @@ export function parseRowQueryBody(
   if (b.limit !== undefined && (!int(b.limit) || b.limit === 0 || (b.limit as number) > maxLimit)) {
     return { error: `limit must be an integer from 1 to ${maxLimit}.` };
   }
-  if (b.expected_data_version !== undefined && !int(b.expected_data_version)) return { error: 'Invalid expected_data_version.' };
-  if (b.expected_row_generation !== undefined && !int(b.expected_row_generation)) return { error: 'Invalid expected_row_generation.' };
+  if (b.expected_data_version !== undefined && !int(b.expected_data_version)) {
+    return { error: 'Invalid expected_data_version.' };
+  }
+  if (b.expected_row_generation !== undefined && !int(b.expected_row_generation)) {
+    return { error: 'Invalid expected_row_generation.' };
+  }
   if (b.columns !== undefined && (!Array.isArray(b.columns) || b.columns.length === 0
       || b.columns.some(c => typeof c !== 'string'))) return { error: 'columns must be a non-empty string array.' };
   const operators = new Set(ROW_CONDITION_OPS as readonly string[]);
   if (b.where !== undefined) {
-    if (!Array.isArray(b.where) || b.where.length === 0) return { error: 'where must be a non-empty array of conditions.' };
+    if (!Array.isArray(b.where) || b.where.length === 0) {
+      return { error: 'where must be a non-empty array of conditions.' };
+    }
     for (const c of b.where) {
       if (!c || typeof c !== 'object' || Array.isArray(c) || typeof c.column !== 'string') {
-        return { error: 'Each where condition is an object with a column name, e.g. {"column":"Status","operator":"eq","value":"Done"}.' };
+        return {
+          error: 'Each where condition is an object with a column name, e.g. '
+            + '{"column":"Status","operator":"eq","value":"Done"}.',
+        };
       }
       if (!operators.has(String(c.operator))) {
-        return { error: `Unknown where operator "${String(c.operator)}". Use one of: ${ROW_CONDITION_OPS.join(', ')}.` };
+        return {
+          error: `Unknown where operator "${String(c.operator)}". Use one of: ${ROW_CONDITION_OPS.join(', ')}.`,
+        };
       }
       if (c.value !== undefined && typeof c.value !== 'string') {
         return { error: 'where values are strings, numbers included (send "1000", not 1000).' };
@@ -86,7 +99,9 @@ export function validateRowConditions(columns: string[], where: RowCondition[] =
   if (unknown.length) return `Unknown column(s): ${[...new Set(unknown)].join(', ')}`;
   const numeric = new Set(NUMERIC_ROW_OPS as readonly string[]);
   for (const condition of where) {
-    if (condition.operator === 'contains' && (condition.value ?? '') === '') return 'contains requires a non-empty value';
+    if (condition.operator === 'contains' && (condition.value ?? '') === '') {
+      return 'contains requires a non-empty value';
+    }
     if ((condition.operator === 'empty' || condition.operator === 'not_empty') && condition.value !== undefined) {
       return `${condition.operator} does not accept a value`;
     }
@@ -155,6 +170,14 @@ export function queryRows(sheetId: string, userId: string, q: RowQuery): RowQuer
     const columns = getSheetColumns(sheetId, userId, false);
     const invalid = validateQuery(columns, q);
     if (invalid) return { fail: 'invalid', error: invalid };
+    // A column still filling from stored answers is half filled: a filter on it
+    // would match some rows only by timing.
+    const filling = fillingColumns(sheetId, userId);
+    const filtering = filling.find(c => q.where?.some(w => w.column === c));
+    if (filtering) {
+      return { fail: 'invalid', error: `"${filtering}" is still filling from stored answers. Filter on it once `
+        + 'get_sheet no longer lists it in filling_columns.' };
+    }
 
     const raw = db.prepare(`
       SELECT id, row_index, data FROM rows
@@ -179,6 +202,7 @@ export function queryRows(sheetId: string, userId: string, q: RowQuery): RowQuer
     if (q.returnMode === 'count') return { ok: { count, ...versions } };
     const hasMore = matches.length > (q.limit ?? 100);
     const page = hasMore ? matches.slice(0, q.limit ?? 100) : matches;
+    if (q.returnMode !== 'ids') overlayFilling(page, filling, q.columns);
     const rows = q.returnMode === 'ids' ? page.map(({ id, index }) => ({ id, index })) : page;
     return {
       ok: {

@@ -17,7 +17,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'list_tables',
     {
       description:
-        'List every table in the Cubex workspace with its sheets (tabs), their ids, names, and row counts. Start here to resolve a table/sheet name to a sheet_id.',
+        'List every table in the Cubex workspace with its sheets (tabs), their ids, names, and row counts. '
+        + 'Start here to resolve a table/sheet name to a sheet_id.',
       inputSchema: {},
     },
     async () => missingScope(ctx, 'read') ?? ok({ tables: listTablesWithSheets(ctx.userId) }),
@@ -29,7 +30,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Sheet metadata: ordered column names, row count, data_version, row_generation, and the '
         + 'remaining row/column budget (limits). Check limits before a large append or import — '
-        + 'otherwise you discover the cap by having a write rejected.',
+        + 'otherwise you discover the cap by having a write rejected. filling_columns lists columns still '
+        + 'filling from stored answers (add_enrichment_field): their cells read "⏳ Processing..." until done.',
       inputSchema: { sheet_id: z.string() },
     },
     async ({ sheet_id }) => {
@@ -56,12 +58,17 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'read_rows',
     {
       description:
-        `Read rows as {id, index, data} ordered by index. Keyset paging: pass cursor = the index of the last row from the previous page; next_cursor is null at the end. Max ${MCP_MAX_ROWS_PAGE} rows per call. `
-        + 'Pass columns to fetch only the fields you need — reading every column of a wide sheet is the main way these calls get expensive. '
-        + 'PAGING A FILTERED READ: if you pass `where` AND a cursor, you must ALSO pass expected_data_version and expected_row_generation, '
+        'Read rows as {id, index, data} ordered by index. Keyset paging: pass cursor = the index of the last row '
+        + 'from the previous page; next_cursor is null at the end. '
+        + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
+        + 'Pass columns to fetch only the fields you need — reading every column of a wide sheet is the main way '
+        + 'these calls get expensive. '
+        + 'PAGING A FILTERED READ: if you pass `where` AND a cursor, you must ALSO pass expected_data_version and '
+        + 'expected_row_generation, '
         + 'echoing the values returned with the previous page (every response includes them). '
         + 'This is required only for filtered paging — an unfiltered read pages with just a cursor. '
-        + 'The fence exists because filtered paging keysets on row index: if the sheet changes mid-page-walk, rows would be silently skipped or repeated, '
+        + 'The fence exists because filtered paging keysets on row index: if the sheet changes mid-page-walk, rows '
+        + 'would be silently skipped or repeated, '
         + 'so you get a clean "restart paging" error instead of quietly wrong data. '
         + 'Row ids are STABLE across sorts — use them with update_cells and delete_rows.',
       inputSchema: {
@@ -75,15 +82,20 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         expected_data_version: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). Echo data_version from the previous page.'),
         expected_row_generation: z.number().int().min(0).optional()
-          .describe('REQUIRED when paging a filtered read (where + cursor). Echo row_generation from the previous page.'),
+          .describe('REQUIRED when paging a filtered read (where + cursor). '
+            + 'Echo row_generation from the previous page.'),
       },
     },
-    async ({ sheet_id, cursor, limit, columns, where, return_mode, expected_data_version, expected_row_generation }) => {
+    async ({
+      sheet_id, cursor, limit, columns, where, return_mode, expected_data_version, expected_row_generation,
+    }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
-      if (!columns && !where && !return_mode && expected_data_version === undefined && expected_row_generation === undefined) {
-        return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE)));
+      if (!columns && !where && !return_mode && expected_data_version === undefined
+        && expected_row_generation === undefined) {
+        const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
+        return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize));
       }
       const result = queryRows(sheet_id, ctx.userId, {
         after: cursor ?? -1,

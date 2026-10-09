@@ -28,7 +28,10 @@ export const rowConditionSchema = z.object({
 export const lenientBoolean = () =>
   z.preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
 export const lenientInt = (min: number, max: number) =>
-  z.preprocess(v => (typeof v === 'string' && /^\d+$/.test(v.trim()) ? Number(v.trim()) : v), z.number().int().min(min).max(max));
+  z.preprocess(
+    v => (typeof v === 'string' && /^\d+$/.test(v.trim()) ? Number(v.trim()) : v),
+    z.number().int().min(min).max(max),
+  );
 
 export interface McpAuthCtx {
   userId: string;
@@ -104,7 +107,7 @@ export function withToolErrors(nameOrHandler: string | ToolHandler, maybeHandler
 export function registerTool(
   server: McpServer,
   name: string,
-  config: { description: string; inputSchema?: Record<string, unknown>; [k: string]: unknown },
+  config: { description: string; inputSchema?: Record<string, unknown> | z.ZodTypeAny; [k: string]: unknown },
   handler: ToolHandler,
 ): void {
   // Title and behaviour hints come from one table (tool-annotations.ts); a tool
@@ -125,7 +128,7 @@ export function registerTool(
 // above the busy operation's reserved range).
 const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
-  'list_runs', 'get_run_status', 'get_run_results', 'append_rows',
+  'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
 ]);

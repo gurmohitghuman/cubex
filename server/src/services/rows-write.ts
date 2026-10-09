@@ -18,7 +18,7 @@ export type AppendOutcome =
 // ONE immediate txn: MAX(row_index)+1 and all N inserts are atomic vs
 // concurrent webhook/UI adds. Caller has validated cell maps + batch size.
 // The new rows sit above every auto-run watermark, so auto-run fills them.
-// TODO(enrichments M3): the answer will list the auto-runs they set off (auto_run).
+// MCP and /api/v1 answers list the auto-runs they set off (enrich-agent-autorun.ts).
 export function appendRows(
   sheetId: string, userId: string, parsedRows: Array<Record<string, string>>,
 ): AppendOutcome {

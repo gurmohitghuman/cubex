@@ -24,6 +24,7 @@ import runsV1 from './api-v1-runs';
 import runReadsV1 from './api-v1-run-reads';
 import runControlV1 from './api-v1-run-control';
 import transferV1 from './api-v1-transfer';
+import enrichV1 from './api-v1-enrich';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
@@ -54,6 +55,8 @@ router.use(importV1);
 router.use(runsV1);
 router.use(runReadsV1);
 router.use(runControlV1);
+// Enrichments (treg.to): catalog, run starts, fields, auto-run.
+router.use(enrichV1);
 
 // GET /api/v1/me — who am I, and what can this token do. Lets a script or MCP
 // client validate its configuration before touching data.

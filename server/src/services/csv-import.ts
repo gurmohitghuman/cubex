@@ -51,7 +51,7 @@ export async function importCsv(
   // seedEmptyRow: as in column-add.ts (web app only).
   // skipAutorun: auto-run leaves the imported rows alone ("Pause auto-run for
   // this import"); otherwise they are new rows it fills where it is on.
-  // TODO(enrichments M3): v1/MCP answers will list the auto-runs they set off (auto_run).
+  // v1/MCP answers list the auto-runs they set off (enrich-agent-autorun.ts).
   opts: { bumpDataVersion?: boolean; seedEmptyRow?: boolean; skipAutorun?: boolean } = {},
 ): Promise<CsvImportOutcome> {
   const result = validateCsvImport(csv.summary, sheetId, userId, replace);

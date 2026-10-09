@@ -16,6 +16,7 @@ import { redactError } from '../lib/redact';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TOKEN_PATTERN } from '../lib/api-v1-constants';
 import { importSummary, importUploadedCsv, tooBigMessage } from '../services/csv-upload';
+import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 
 const router = express.Router();
 
@@ -31,7 +32,9 @@ async function upload(req: express.Request, res: express.Response) {
     await receiveUpload(req, res);
   } catch (error) {
     console.error('Upload link import failed:', redactError(error));
-    if (!res.headersSent && !res.destroyed) res.status(500).json({ error: 'The import failed. Ask for a new link and try again.' });
+    if (!res.headersSent && !res.destroyed) {
+      res.status(500).json({ error: 'The import failed. Ask for a new link and try again.' });
+    }
   }
 }
 
@@ -41,7 +44,8 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   // Refused before the link is looked up or used, so it still works after.
   if (req.is('multipart/form-data')) {
     return res.status(415).json({
-      error: `Send the file itself as the request body, as in: curl -T leads.csv '<this link>'. Form uploads (curl -F) aren't accepted.${stillWorks}`,
+      error: `Send the file itself as the request body, as in: curl -T leads.csv '<this link>'. Form uploads (curl `
+        + `-F) aren't accepted.${stillWorks}`,
     });
   }
   if (String(req.headers['content-encoding'] ?? 'identity').toLowerCase() !== 'identity') {
@@ -54,7 +58,8 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   const length = req.headers['content-length'];
   if (req.headers['transfer-encoding'] || length === undefined) {
     return res.status(411).json({
-      error: `Send the file with its size, as in: curl -T leads.csv '<this link>' (from a file, not a pipe).${stillWorks}`,
+      error: `Send the file with its size, as in: curl -T leads.csv '<this link>' (from a file, not a `
+        + `pipe).${stillWorks}`,
     });
   }
   if (Number(length) > MAX_CSV_UPLOAD_BYTES) return res.status(413).json({ error: tooBigMessage() + stillWorks });
@@ -68,7 +73,11 @@ async function receiveUpload(req: express.Request, res: express.Response) {
 
   const replace = linkOptions<{ mode: string }>(link).mode === 'replace';
   const result = await importUploadedCsv(req, link.sheet_id, link.user_id, replace);
-  if (!('fail' in result)) return void res.status(201).json(importSummary(result.ok, replace));
+  if (!('fail' in result)) {
+    // The new rows' auto-runs (an agent made the link; it should know what they spend).
+    const notice = await appendAutorunNotice(link.user_id, link.sheet_id, result.ok.rowsImported);
+    return void res.status(201).json({ ...importSummary(result.ok, replace), ...notice });
+  }
   // Busy (a heavy job or an export got there first): nothing was imported, so
   // the link may try again.
   const kept = result.fail === 'busy' && releaseFileLink(link);
@@ -78,7 +87,8 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   }
   if (result.fail === 'locked') {
     return void res.status(409).json({
-      error: `Cannot import into column(s) an active run owns: ${result.columns.join(', ')}. Stop the run first.${usedUp}`,
+      error: `Cannot import into column(s) an active run owns: ${result.columns.join(', ')}. Stop the run `
+        + `first.${usedUp}`,
       locked_columns: result.columns,
     });
   }
@@ -97,10 +107,14 @@ router.get('/download/:token', async (req, res) => {
   try {
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
-    const plan = planSheetExport(link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: RowCondition[] }>(link));
+    const plan = planSheetExport(
+      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: RowCondition[] }>(link),
+    );
     if ('fail' in plan) {
       return plan.fail === 'not_found' ? notFound(res)
-        : res.status(409).json({ error: `${plan.error} The sheet changed since this link was made; ask for a new one.` });
+        : res.status(409).json({
+          error: `${plan.error} The sheet changed since this link was made; ask for a new one.`,
+        });
     }
     // The link is used inside the read hold, so a busy sheet leaves it unused.
     const outcome = await withSheetRead(link.sheet_id, async () => {

@@ -4,7 +4,7 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
-import { parseEnrichRunInput, parseRerunInput, parseRows } from '../lib/enrich-run-input';
+import { parseConditions, parseEnrichRunInput, parseRerunInput, parseRows } from '../lib/enrich-run-input';
 import { startEnrichmentRun } from '../services/enrich-run-start';
 import { enrichRunStatus, resumeEnrichmentRun } from '../services/enrich-run-status';
 import { enrichRowCounts } from '../services/enrich-row-count';
@@ -65,7 +65,8 @@ router.post('/sheets/:id/reruns', async (req: AuthRequest, res) => {
 });
 
 // Rows by status in a column (not enriched yet, without a result, failed),
-// for a scope: the drawer's row choices and its "the other N rows".
+// for a scope and the run's "Only run if" conditions: the drawer's row
+// choices, its "the other N rows", and the rows its estimate counts.
 router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -74,8 +75,10 @@ router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
     const column = typeof b.column === 'string' && b.column.trim() && b.column.length <= 200 ? b.column : null;
     const rows = parseRows({ mode: b.mode, status: 'any', rowIndexes: b.rowIndexes }, true);
     if (typeof rows === 'string') return res.status(400).json({ error: rows });
+    const where = parseConditions(b.conditions);
+    if (typeof where === 'string') return res.status(400).json({ error: where });
     if (!verifySheetOwnership(id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
-    res.json(await enrichRowCounts(id, req.userId!, column, { mode: rows.mode, rowIndexes: rows.rowIndexes }));
+    res.json(await enrichRowCounts(id, req.userId!, column, { mode: rows.mode, rowIndexes: rows.rowIndexes, where }));
   } catch (error) {
     console.error('Enrichment row count error:', error);
     res.status(500).json({ error: 'Failed to count the rows' });
