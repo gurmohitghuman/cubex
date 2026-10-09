@@ -203,7 +203,7 @@ cubex start
 
 ## 7. Keep it up to date
 
-- **Cubex:** run `cubex update`. Your data and settings stay, and if the new version doesn't start, the previous one comes back.
+- **Cubex:** run `cubex update` to install the latest [release](https://github.com/gurmohitghuman/cubex/releases) (each one lists what changed). Your data and settings stay, and if the new version doesn't start, the previous one comes back.
 - **The server and Caddy:** run `sudo apt update && sudo apt upgrade -y` now and then. Ubuntu also installs security updates by itself.
 
 ## Troubleshooting

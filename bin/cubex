@@ -119,13 +119,19 @@ cmd_open() {
 # An update is the installer run again: it keeps data and settings, rebuilds,
 # and puts the previous version back if the new one doesn't start.
 cmd_update() {
-  local CUBEX_REPO='' CUBEX_REF='' CUBEX_SOURCE='' CUBEX_BIN_DIR='' script
+  local CUBEX_REPO='' CUBEX_REF='' CUBEX_SOURCE='' CUBEX_BIN_DIR='' script ref url
   # shellcheck disable=SC1091 # written by install.sh
   if [ -f "$CUBEX_HOME/install.env" ]; then . "$CUBEX_HOME/install.env"; fi
   export CUBEX_HOME CUBEX_REPO CUBEX_REF CUBEX_BIN_DIR
   if [ -n "$CUBEX_SOURCE" ]; then exec bash "$CUBEX_SOURCE/install.sh" --source "$CUBEX_SOURCE" "$@"; fi
+  CUBEX_REF="${CUBEX_REF:-stable}" ref="$CUBEX_REF"
+  if [ "$ref" = stable ]; then # the installer of the latest release (main until there is one)
+    url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$CUBEX_REPO/releases/latest")" \
+      || die "Couldn't reach GitHub. Check your internet connection."
+    case "$url" in */releases/tag/*) ref="${url##*/}" ;; *) ref=main ;; esac
+  fi
   script="$(mktemp)"
-  curl -fsSL "https://raw.githubusercontent.com/$CUBEX_REPO/$CUBEX_REF/install.sh" -o "$script" \
+  curl -fsSL "https://raw.githubusercontent.com/$CUBEX_REPO/$ref/install.sh" -o "$script" \
     || die "Couldn't download the installer. Check your internet connection."
   exec bash "$script" "$@"
 }
@@ -176,7 +182,7 @@ Usage: cubex <command>
   status           Is it running, where, which version
   open             Open Cubex in your browser
   logs             Follow the server log (Ctrl+C to stop)
-  update           Update to the latest version (data and settings are kept)
+  update           Update to the latest release (data and settings are kept)
   config           Show the settings file
   reset-password   Choose a new password (signs out every browser)
   uninstall        Remove Cubex but keep your data (--delete-data removes it too)
