@@ -82,6 +82,9 @@ export async function addAnswerField(
   const owner = columnRuns(sheetId, userId, input.column);
   if (!owner) return bad(`"${input.column}" isn't an enrichment or HTTP API column.`);
   const runs = statusColumnRuns(sheetId, userId, owner.statusColumn);
+  if (runs[0]?.enrichment?.enrichment.list) {
+    return bad('This column adds its results as rows in another sheet. Pick the fields it keeps with Edit enrichment.');
+  }
   if (runs.some(isActiveRun)) return { fail: 'conflict', message: activeMessage(owner.statusColumn) };
   // One column per path: a second would read the same value, and later runs fill outputs by path.
   const mapped = runs[0].config?.responseMapping.find(m => m.jsonPath === input.jsonPath);

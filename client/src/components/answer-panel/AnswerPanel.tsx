@@ -31,6 +31,23 @@ const FREE_HINT = {
   enrichment: '+ Column adds a column filled from the answers you already have. Free: no new calls to treg.',
   http: '+ Column adds a column filled from the responses you already have. Free: no new requests.',
 }
+// A list job's answer: its results become rows elsewhere (once fields are
+// picked, or once that sheet has room), as the row's status cell says.
+function listHint(dest: string | null, statusCell: string): string {
+  const cell = statusCell.trim()
+  if (!dest) return 'These results were for a sheet that was deleted since.'
+  if (cell.includes('waiting for fields')) {
+    return `These results become rows in ${dest} once you pick the fields to keep.`
+  }
+  if (cell.includes('waiting for room')) return `These results become rows in ${dest} once it has room.`
+  if (cell.startsWith('➕')) return `These results are being added as rows in ${dest}.`
+  if (cell.startsWith('✅')) {
+    return /rows? added/.test(cell) ? `These results became rows in ${dest}.`
+      : `These results were already in ${dest}, so none were added.`
+  }
+  if (cell.startsWith('⏭') && cell.includes('Not found')) return 'This row returned no results.'
+  return `No rows were added to ${dest}.`
+}
 
 // A cell's answer (Clay's cell details): who found it and what it cost, the
 // row's result, each step, and the whole answer as text, where any value can
@@ -98,7 +115,9 @@ export const AnswerPanel: React.FC<Props> = (p) => {
               </Section>
               {v.enrichment && <AnswerSteps e={v.enrichment} />}
               <Section title={enrich ? 'Full answer' : 'Full response'} testId="answer-full">
-                <p className="text-xs text-gray-600 mb-2">{FREE_HINT[v.kind]}</p>
+                <p className="text-xs text-gray-600 mb-2" data-testid="answer-hint">
+                  {v.addsRowsTo ? listHint(v.addsRowsTo.name, v.result[0]?.value ?? '') : FREE_HINT[v.kind]}
+                </p>
                 {notice && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 p-2 mb-2"
                   data-testid="answer-kept-notice">{notice}</p>}
                 <div ref={outcomeRef} />
@@ -114,8 +133,8 @@ export const AnswerPanel: React.FC<Props> = (p) => {
                   : (
                     <div className={`text-xs font-mono overflow-x-auto border border-gray-200 p-2${
                       p.adding ? ' opacity-60 pointer-events-none' : ''}`} data-testid="answer-tree">
-                      <JsonTree value={v.answer} path="$" mappingByPath={mapped} onPick={p.onAddField}
-                        pickLabel="Column" />
+                      <JsonTree value={v.answer} path="$" mappingByPath={mapped}
+                        onPick={v.addsRowsTo ? undefined : p.onAddField} pickLabel="Column" />
                     </div>
                   )}
               </Section>

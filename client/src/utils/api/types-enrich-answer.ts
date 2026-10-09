@@ -61,6 +61,8 @@ export interface AnswerView {
   prunedAt: string | null
   mapping: Array<{ columnName: string; jsonPath: string }>
   enrichment: EnrichAnswerInfo | null
+  // A list job: its results became rows in this sheet (sheetId null: deleted since).
+  addsRowsTo?: { sheetId: string | null; name: string | null } | null
 }
 
 export interface AnswerFieldAdded { column: string; jobId: string }

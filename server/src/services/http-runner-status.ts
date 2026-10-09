@@ -18,6 +18,7 @@ export interface HTTPRunRow {
   allow_secrets: number;             // run-level saved-key policy (migration 034); 0 = fallback disabled
   autorun_id?: string | null;        // the auto-run that started it (migration 013); null for a run a person started
   autorun_day?: string | null;       // the UTC day it started (an auto-run's daily cap counts it there)
+  dest_sheet_id?: string | null;     // a list job's destination sheet (migration 010)
   created_at: string;
   updated_at: string;
 }

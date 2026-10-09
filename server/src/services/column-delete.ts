@@ -14,6 +14,7 @@ import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { deleteAutorunColumnRefs } from '../lib/autorun-columns';
 import { autorunRunBlock } from './autorun-block';
+import { lastKeptField } from './enrich-list-guard';
 
 export type ColumnDeleteOutcome =
   | { ok: true }
@@ -94,7 +95,8 @@ export async function deleteSheetColumn(
   const autorunReader = reader ? autorunRunBlock(reader) : null;
   if (autorunReader) return { fail: 'active_run', error: autorunReader };
   // Guards above protect a run's OUTPUT columns; this protects its INPUTS.
-  const inputRunError = activeRunInputError(sheetId, userId, columnName, 'delete');
+  const inputRunError = activeRunInputError(sheetId, userId, columnName, 'delete')
+    ?? lastKeptField(sheetId, userId, columnName);
   if (inputRunError) return { fail: 'active_run', error: inputRunError };
 
   // The webhook's raw marker column is protected while the webhook exists —

@@ -19,6 +19,20 @@ const STATUS_WORD: Record<EnrichRunStatus['status'], string> = {
   pending: 'Starting', running: 'Running', paused: 'Paused', completed: 'Done', cancelled: 'Stopped', failed: 'Failed',
 }
 
+// A list job: rows added to its sheet, and results still on their way.
+function listLine(s: EnrichRunStatus): string | null {
+  const l = s.list
+  if (!l) return null
+  const dest = l.destName ?? 'a sheet that was deleted'
+  const parts = l.added > 0 ? [`${plural(l.added, 'row')} added to ${dest}`] : []
+  if (l.adding.results > 0) parts.push(`${plural(l.adding.results, 'row')} on the way to ${dest}`)
+  if (l.waitingRoom.results > 0) parts.push(`${plural(l.waitingRoom.results, 'row')} wait for room in ${dest}`)
+  if (l.waitingFields.results > 0) parts.push(`${plural(l.waitingFields.results, 'result')} wait for fields`)
+  if (parts.length === 0) return `No rows added to ${dest} yet.`
+  const text = parts.join(', ')
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`
+}
+
 function headline(s: EnrichRunStatus): string {
   if (s.status === 'pending' && s.totalRows === 0) return 'Getting the rows ready…'
   if (s.status === 'completed') {
@@ -75,6 +89,7 @@ export const RunStep: React.FC<Props> = ({ run, onViewResults, secondaryLabel, o
           {' · '}{active ? 'Spent so far' : 'Spent'}: {spent(s.spentUsd)}{ofLimit}
           {s.rows.failed > 0 && ` · ${plural(s.rows.failed, 'row')} failed`}
         </p>
+        {s.list && <p className="text-xs text-gray-700" data-testid="enrich-run-list">{listLine(s)}</p>}
         {s.skippedRows > 0 && (
           <p className="text-xs text-gray-600">
             {plural(s.skippedRows, 'row')} had an empty input and {s.skippedRows === 1 ? 'was' : 'were'} left out,

@@ -18,6 +18,7 @@ import { autorunDropPending } from '../lib/autorun-mark';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { columnOutputs, entryFor, newestRunOf, whereOf } from './autorun-entry';
 import { getDailyLimitMicro } from './treg-key';
+import { autorunListProblem } from './autorun-list';
 import type { RunFail } from './run-shared';
 
 export interface AutorunSettingsInput {
@@ -78,6 +79,9 @@ export async function saveAutorunSettings(
     return bad('Run this column once first: auto-run repeats its newest run.');
   }
   const kind = isEnrichmentConfig(config) ? 'enrichment' as const : 'http' as const;
+  // A column that adds rows elsewhere: its fields picked, its sheet there, no loop back here.
+  const listProblem = autorunListProblem(sheetId, userId, config);
+  if (listProblem) return bad(listProblem);
   const where = input.where ?? (prior ? whereOf(prior) : kind === 'enrichment' && isEnrichmentConfig(config)
     ? config.enrichment.rows.where : []);
   const missing = where.find(c => !columns.includes(c.column));

@@ -6,6 +6,7 @@
 // from an answer ("+ Column") stay, after the tool's own, read by their path.
 import type { EnrichRecalledChoices } from '@/utils/api'
 import type { Condition, EnrichDraft, InputBinding, OutputPick } from './draft'
+import type { ListDraft } from './list-draft'
 
 // Outputs Cubex fills itself, matched by key; treg's own fields by path.
 const CUBEX_KEYS = new Set(['email', 'email_status', 'found_by', 'checked_by'])
@@ -38,6 +39,21 @@ function recallOrder(built: string[], r: EnrichRecalledChoices): string[] {
   return [...first, ...built.filter(p => !first.includes(p))]
 }
 
+// A list job's choices: its sheet, provider, results per row, copied columns
+// and kept fields (the field list itself loads from the column's results).
+function recallList(built: ListDraft | null | undefined, r: EnrichRecalledChoices): ListDraft | null {
+  const l = r.list
+  if (!l || !built) return built ?? null
+  return {
+    dest: 'sheetId' in l.dest ? { kind: 'sheet', sheetId: l.dest.sheetId } : { kind: 'new', name: l.dest.newSheetName },
+    maxItems: l.maxItems, provider: l.provider, copy: l.copy.map(c => c.from),
+    fields: l.fields ? l.fields.map(f => ({
+      path: f.path, label: f.path.replace(/^\$\.?/, ''), enabled: true, columnName: f.columnName,
+    })) : null,
+    dedupePath: l.dedupePath,
+  }
+}
+
 export function applyRecall(
   built: Partial<EnrichDraft>, r: EnrichRecalledChoices, column: string,
 ): Partial<EnrichDraft> {
@@ -54,6 +70,6 @@ export function applyRecall(
     outputs: recallOutputs(built.outputs ?? [], r),
     conditions: r.conditions.map(c => ({ column: c.column, op: c.op as Condition['op'], value: c.value })),
     maxCostPerRowUsd: r.maxCostPerRowUsd, spendLimitUsd: null,
-    recall: null,
+    recall: null, list: recallList(built.list, r),
   }
 }

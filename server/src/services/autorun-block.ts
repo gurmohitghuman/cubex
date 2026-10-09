@@ -8,6 +8,7 @@ import { db } from '../lib/db';
 import { yieldSheetToUser } from '../lib/sheet-yield';
 import { autorunBusyMessage } from '../lib/autorun-rules';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { listRunInto } from './enrich-list-guard';
 
 export interface BlockingRun { id: string; kind: 'ai' | 'http'; column: string | null; paused: boolean }
 export interface RunBlock { message: string; run: BlockingRun }
@@ -50,6 +51,9 @@ export function sheetRunBlock(sheetId: string, userId: string, busy: string): Ru
     const paused = manual.find(r => r.paused);
     return paused ? { message: pausedWords(paused.column), run: paused } : { message: busy, run: manual[0] };
   }
+  // A list job adding rows here from another sheet holds it too.
+  const into = listRunInto(sheetId, userId);
+  if (into) return { message: into.message, run: { id: into.runId, kind: 'http', column: into.column, paused: false } };
   const auto = http.find(r => r.autorun_id);
   if (!auto) return null;
   return {

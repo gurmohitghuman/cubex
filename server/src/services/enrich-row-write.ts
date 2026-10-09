@@ -6,8 +6,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
-import { enrichCellValues, type RowCells } from '../lib/enrich-cells';
+import { enrichCellValues, failedCell, type RowCells } from '../lib/enrich-cells';
 import { withFill } from '../lib/answer-store';
+import { listCell } from '../lib/enrich-list';
 import type { ResponseMapping } from '../lib/http-request-template';
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
@@ -21,6 +22,36 @@ export interface EnrichWrite {
   mapping: ResponseMapping[];
   costMicro: number;
   request: Record<string, unknown>;
+  // A list job's results and the source row's copied cells: journaled here, in
+  // the result's transaction, and added as rows by the API process
+  // (services/enrich-list-drain.ts). Workers never append rows themselves.
+  list?: { items: unknown[]; copy: Record<string, string>; rowId: string | null };
+}
+
+const NO_DEST = 'Rows not added: the sheet for them was deleted.';
+
+// The journal row for a list job's results, and the status cell it shows: the
+// run's fields as they are now (a test's fields may be picked mid-run). False:
+// nowhere to add them.
+function journal(w: EnrichWrite, cells: Record<string, string>): boolean {
+  const l = w.list!;
+  const master = w.run.master_column_name;
+  // Read now, not from the run the worker loaded: a deleted sheet nulls it.
+  const now = db.prepare(`SELECT dest_sheet_id AS dest,
+      IFNULL(json_array_length(config, '$.enrichment.list.fields'), 0) > 0 AS ready FROM http_runs
+    WHERE id = ? AND user_id = ?`).get(w.run.id, w.run.user_id) as { dest: string | null; ready: number } | undefined;
+  const dest = now?.dest ?? null;
+  if (!dest || !l.rowId) {
+    if (master) cells[master] = failedCell(NO_DEST);
+    return false;
+  }
+  const ready = now?.ready === 1;
+  if (master) cells[master] = ready ? listCell.adding(l.items.length) : listCell.waitingFields(l.items.length);
+  db.prepare(`INSERT INTO enrichment_list_items (id, user_id, run_id, source_sheet_id, source_row_id,
+      dest_sheet_id, items_json, item_count, status, wait_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`)
+    .run(uuidv4(), w.run.user_id, w.run.id, w.run.sheet_id, l.rowId, dest,
+      JSON.stringify({ items: l.items, copy: l.copy }), l.items.length, ready ? null : 'fields');
+  return true;
 }
 
 // Returns false when the run was no longer ours (nothing written).
@@ -29,6 +60,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
   let written = false;
   db.transaction(() => {
     if (shouldStopHttpRun(w.run.id, w.generation)) return;
+    const lost = !!w.list && !journal(w, cells);
     db.prepare(`
       INSERT INTO http_results (id, run_id, user_id, row_index, request_config, response_data, extracted_fields,
         status, error_message, cost_usd)
@@ -40,7 +72,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
     `).run(
       uuidv4(), w.run.id, w.run.user_id, w.rowIndex, JSON.stringify(w.request),
       w.stored === undefined ? null : JSON.stringify(withFill(w.stored, w.cells.fill)), JSON.stringify(cells),
-      w.cells.status, w.cells.reason ? w.cells.reason.slice(0, 500) : null, w.costMicro / 1e6,
+      lost ? 'failed' : w.cells.status, lost ? NO_DEST : w.cells.reason?.slice(0, 500) ?? null, w.costMicro / 1e6,
     );
     writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells));
     touchSheet(w.run.sheet_id, w.run.user_id);

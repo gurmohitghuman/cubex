@@ -6,7 +6,8 @@
 // the delete txn, bucket drop after commit. (No sheets-per-table cap.)
 import { db } from '../lib/db';
 import { validateSheetName } from '../lib/sheet-validation';
-import { abortRunsForSheets } from './run-control';
+import { abortListRunsInto, abortRunsForSheets, clearListRunCells } from './run-control';
+import { resultsNotAdded, type ResultsNotAdded } from './enrich-list-guard';
 import { dropBucketsForSheets } from '../lib/webhook-bucket';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import {
@@ -16,7 +17,7 @@ import { TableCrudFail } from './table-crud';
 import { normalizeNameSpacing } from '../lib/name-safety';
 
 type Fail = TableCrudFail;
-export type SheetCrudOutcome = { ok: { sheet?: unknown; sheets: unknown[] } } | Fail;
+export type SheetCrudOutcome = { ok: { sheet?: unknown; sheets: unknown[]; notAdded?: ResultsNotAdded } } | Fail;
 
 export function createSheet(
   userId: string, tableId: string, rawName: unknown, afterSheetId: string | undefined,
@@ -75,6 +76,8 @@ export function deleteSheet(userId: string, tableId: string, sheetId: string): S
 
   let isLastSheet = false;
   let sourceIds: string[] = [];
+  let listRuns: string[] = [];
+  let notAdded: ResultsNotAdded | null = null;
   db.transaction(() => {
     const { c } = db.prepare('SELECT COUNT(*) AS c FROM sheets WHERE table_id = ? AND user_id = ?')
       .get(tableId, userId) as { c: number };
@@ -82,11 +85,15 @@ export function deleteSheet(userId: string, tableId: string, sheetId: string): S
     sourceIds = (db.prepare('SELECT id FROM webhook_sources WHERE sheet_id = ? AND user_id = ?')
       .all(sheetId, userId) as Array<{ id: string }>).map(r => r.id);
     abortRunsForSheets([sheetId]);
+    listRuns = abortListRunsInto([sheetId]);
+    // Results its list columns bought that aren't rows yet go with it: the answer says so.
+    notAdded = resultsNotAdded(sheetId, userId);
     db.prepare('DELETE FROM sheets WHERE id = ? AND user_id = ?').run(sheetId, userId);
   }).immediate();
+  clearListRunCells(listRuns);
   if (isLastSheet) return { fail: 'bad_request', message: 'A table must have at least one sheet.' };
   dropBucketsForSheets(sourceIds);
-  return { ok: { sheets: listSheets(tableId, userId) } };
+  return { ok: { sheets: listSheets(tableId, userId), ...(notAdded ? { notAdded } : {}) } };
 }
 
 export function reorderSheets(

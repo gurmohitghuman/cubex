@@ -63,6 +63,15 @@ export function activeRunReadsColumn(
 export function activeHttpRunReadsColumn(
   sheetId: string, userId: string, columnName: string,
 ): string | null {
+  return httpRunReader(sheetId, userId, columnName)?.id ?? null;
+}
+
+// The same, and how it reads it: its request, or (a list job) copying it into
+// every row it adds. The worker keeps the copy map it started with, so a rename
+// mid-run would leave the rest of the new rows without the value.
+function httpRunReader(
+  sheetId: string, userId: string, columnName: string,
+): { id: string; how: 'request' | 'copy' } | null {
   const rows = db.prepare(`
     SELECT id, config FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND status IN ('pending', 'running', 'paused')
@@ -70,8 +79,14 @@ export function activeHttpRunReadsColumn(
   const normCol = normalizeColumnName(columnName);
   const lowerCol = columnName.toLowerCase();
   for (const run of rows) {
-    let rc: { url?: unknown; headers?: unknown; body?: unknown } | undefined;
-    try { rc = JSON.parse(run.config || '{}')?.requestConfig; } catch { continue; }
+    let config: { requestConfig?: { url?: unknown; headers?: unknown; body?: unknown };
+      enrichment?: { list?: { copy?: Array<{ from?: unknown }> } } } | undefined;
+    try { config = JSON.parse(run.config || '{}'); } catch { continue; }
+    const copy = config?.enrichment?.list?.copy;
+    if (Array.isArray(copy) && copy.some(c => typeof c?.from === 'string' && c.from.toLowerCase() === lowerCol)) {
+      return { id: run.id, how: 'copy' };
+    }
+    const rc = config?.requestConfig;
     if (!rc) continue;
     const parts = [rc.url, rc.body];
     if (rc.headers && typeof rc.headers === 'object') {
@@ -80,7 +95,9 @@ export function activeHttpRunReadsColumn(
     for (const part of parts) {
       if (typeof part !== 'string') continue;
       for (const name of extractTemplateTokenNames(part)) {
-        if (name.toLowerCase() === lowerCol || normalizeColumnName(name) === normCol) return run.id;
+        if (name.toLowerCase() === lowerCol || normalizeColumnName(name) === normCol) {
+          return { id: run.id, how: 'request' };
+        }
       }
     }
   }
@@ -104,7 +121,12 @@ export function activeRunInputError(
     return `Cannot ${action} a column while an active AI run's prompt reads it — the remaining rows `
       + `would see "[MISSING]" instead of this column's values. Stop the run first, then ${action}.`;
   }
-  if (activeHttpRunReadsColumn(sheetId, userId, columnName)) {
+  const http = httpRunReader(sheetId, userId, columnName);
+  if (http?.how === 'copy') {
+    return `Cannot ${action} a column while a run copies it into the rows it adds: the rest of them would `
+      + `be added without its values. Stop the run first, then ${action}.`;
+  }
+  if (http) {
     return `Cannot ${action} a column while an active HTTP run's request uses it — the remaining rows `
       + `would be sent without this column's values. Stop the run first, then ${action}.`;
   }

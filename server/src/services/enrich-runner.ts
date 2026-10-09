@@ -19,6 +19,7 @@ import { runSpentMicro } from './enrich-ledger';
 import { processEnrichmentRow } from './enrich-row';
 import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
+import { destFullMessage, destRoom } from './enrich-list-room';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -56,7 +57,12 @@ function rowsAllowed(
       message: `Today's ${money((limit ?? 0) / 1e6)} enrichment limit is reached. It resets at midnight UTC.`,
     };
   }
-  return { n: Math.min(byRun, byDay) };
+  // A list job stops before buying results its destination has no room for,
+  // and buys at most the rows whose results fit.
+  const dest = e.list ? destRoom(e.list.destSheetId, run.user_id) : null;
+  if (dest && dest.room < 1) return { reason: 'dest_full', message: destFullMessage(dest.name) };
+  const byRoom = dest && e.list ? Math.max(1, Math.floor(dest.room / e.list.maxItems)) : Infinity;
+  return { n: Math.min(byRun, byDay, byRoom) };
 }
 
 export async function processEnrichmentRun(

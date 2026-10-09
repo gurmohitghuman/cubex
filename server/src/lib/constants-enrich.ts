@@ -53,7 +53,17 @@ export const ENRICH_SATURATION_RETRIES = 3;
 // silent one into a stored 410 after 15 minutes (idempotency.py stale lease).
 export const ENRICH_IDEMPOTENCY_WAIT_MS = 15 * 60 * 1000;
 export const ENRICH_STORED_RAW_MAX_BYTES = envInt('ENRICH_STORED_RAW_MAX_BYTES', 16 * 1024);
+// List results into rows: results kept per source row (treg's own cap on a
+// list page), the default ("results per row", the price dial), and how many
+// fields of a result Set up offers.
 export const ENRICH_LIST_MAX_ITEMS = 100;
+export const ENRICH_LIST_DEFAULT_ITEMS = 10;
+export const ENRICH_LIST_MAX_FIELDS = 100;
+export const ENRICH_LIST_MAX_COPY = 20;
+// The stored answers read to offer fields (the newest results of the column).
+export const ENRICH_LIST_FIELD_SAMPLE = 20;
+// Failed attempts to add a journal row's results before it's marked failed.
+export const ENRICH_LIST_DRAIN_ATTEMPTS = 5;
 // Waits before retrying a call with the same key: treg busy or a key still in
 // flight, treg unreachable, a provider's own rate limit.
 export const ENRICH_RETRY_MS = 5_000;
@@ -82,7 +92,13 @@ export const AUTORUN_USER_YIELD_MS = envInt('AUTORUN_USER_YIELD_MS', 2 * 60 * 10
 export const AUTORUN_RETRY_MS = envInt('AUTORUN_RETRY_MS', 5 * 60 * 1000);
 // Rows read per page while looking for rows to fill.
 export const AUTORUN_SCAN_PAGE = 2_000;
-export const LIST_DRAIN_MS = 5_000;
+// List results waiting in the journal are added as rows this often.
+export const ENRICH_LIST_DRAIN_MS = envInt('ENRICH_LIST_DRAIN_MS', 5_000);
+// Journal rows read per destination per drain round (each is added in its own transaction).
+export const ENRICH_LIST_DRAIN_BATCH = 200;
+// A drain round counts a destination's rows once and carries the number on;
+// this close to the row limit it counts again (rows appended meanwhile count).
+export const ENRICH_LIST_RECOUNT_SLACK = 10_000;
 
 // The checker the "Verified work email" preset runs on each found address.
 export const ENRICH_VERIFY_TOOL_ID = 'treg.people.email.verify';

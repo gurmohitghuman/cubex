@@ -13,6 +13,7 @@ export interface ProviderRow {
   provider: string
   name: string
   usd: number | null
+  usdMax: number | null   // its dearest endpoint (a list job may be served by either)
   billsMisses: boolean
   hitRate: number | null
   works: number | null
@@ -70,6 +71,7 @@ export function providerRows(providers: EnrichToolProvider[], access: EnrichTool
     return {
       provider: eps[0].provider, name: eps[0].name ?? eps[0].provider,
       usd: basis.reduce<number | null>((m, e) => minOf(m, e.usd), null),
+      usdMax: basis.reduce<number | null>((m, e) => maxOf(m, e.usd), null),
       billsMisses: basis.some(providerBillsMisses),
       hitRate: basis.reduce<number | null>((m, e) => maxOf(m, e.hitRate), null),
       works: basis.reduce<number | null>((m, e) => maxOf(m, e.works), null),

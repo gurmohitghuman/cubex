@@ -23,10 +23,15 @@ import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
 import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
 import { autorunFillingColumn } from './autorun-block';
+import { applyListStart, listRowsBeingAdded, planListStart } from './enrich-list-start';
 
-export type EnrichStartOutcome = { ok: { runId: string; statusColumn: string; outputColumns: string[] } } | RunFail;
+// destSheetId: where a list job's rows go (a new sheet is made by the start).
+export type EnrichStartOutcome = {
+  ok: { runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null };
+} | RunFail;
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
+const ROLLBACK = new Error('rollback');
 
 // The enrichment that owns `name` as its status column, if any.
 function enrichmentColumnOwner(sheetId: string, userId: string, name: string): boolean {
@@ -59,6 +64,8 @@ function continueProblem(
         ?? 'A run on this column is still active. Wait for it to finish, or stop it first.',
     };
   }
+  const adding = listRowsBeingAdded(sheetId, userId, statusColumn);
+  if (adding) return { fail: 'conflict', message: adding };
   const own = ownOutputs(sheetId, userId, statusColumn);
   const others = columns.filter(c => c !== statusColumn && !own.has(c));
   for (const name of outputNames) {
@@ -121,42 +128,56 @@ export async function startEnrichmentRun(
   const built = await buildEnrichmentConfig(named, columns, upperBound);
   if ('fail' in built) return built;
   const config = built.ok;
+  const listPlan = planListStart(userId, sheetId, input, config, columns);
+  if ('fail' in listPlan) return listPlan;
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
 
   return asRunStart(sheetId, async (): Promise<EnrichStartOutcome> => {
-    let capNeeded = -1, raced: string | null = null;
-    db.transaction(() => {
-      const current = new Set(getSheetColumns(sheetId, userId, false));
-      // Again inside the write lock: the catalog read above awaited the network.
-      if (input.continueColumn ? activeRunOn(sheetId, userId, statusColumn) : runColumns.some(c => current.has(c))) {
-        raced = 'Another run just started on these columns. Try again in a moment.';
-        return;
-      }
-      // Selected rows go by row number: a sort since they were picked (even
-      // during the catalog read) re-means them, so they'd run other rows.
-      const moved = input.rowGeneration !== null && generationOf(sheetId, userId) !== input.rowGeneration;
-      if (input.rows.mode === 'selected' && moved) {
-        raced = 'This sheet was reordered elsewhere. Reload before running selected rows.';
-        return;
-      }
-      const added = runColumns.filter(c => !current.has(c)).length;
-      if (current.size + added > MAX_COLUMNS_PER_SHEET) { capNeeded = added; return; }
-      appendColumnsToOrder(sheetId, userId, runColumns);
-      // allow_secrets 0: an enrichment never reads saved API keys.
-      db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-          target_rows, allow_secrets, placeholder_work)
-        VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, 0, 'seeding')`)
-        .run(runId, sheetId, userId, JSON.stringify(config), statusColumn);
-      // Every output is linked to THIS run, also on a column a run already made:
-      // clearing a stopped run's ⏳ and the column delete/rename guards find a
-      // run's columns through its own associations (as http-run-rerun.ts does).
-      const assoc = db.prepare(`INSERT INTO http_column_associations
-          (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id)
-        VALUES (?, ?, ?, ?, ?, ?)`);
-      for (const name of outputNames) assoc.run(uuidv4(), sheetId, userId, statusColumn, name, runId);
-    }).immediate();
-    if (raced) return { fail: 'conflict', message: raced };
+    let capNeeded = -1, raced: string | null = null, destSheetId: string | null = null, destRaced = false;
+    try {
+      db.transaction(() => {
+        const current = new Set(getSheetColumns(sheetId, userId, false));
+        // Again inside the write lock: the catalog read above awaited the network.
+        if (input.continueColumn ? activeRunOn(sheetId, userId, statusColumn) : runColumns.some(c => current.has(c))) {
+          raced = 'Another run just started on these columns. Try again in a moment.';
+          return;
+        }
+        raced = input.continueColumn ? listRowsBeingAdded(sheetId, userId, statusColumn) : null;
+        if (raced) return;
+        // Selected rows go by row number: a sort since they were picked (even
+        // during the catalog read) re-means them, so they'd run other rows.
+        const moved = input.rowGeneration !== null && generationOf(sheetId, userId) !== input.rowGeneration;
+        if (input.rows.mode === 'selected' && moved) {
+          raced = 'This sheet was reordered elsewhere. Reload before running selected rows.';
+          return;
+        }
+        const added = runColumns.filter(c => !current.has(c)).length;
+        if (current.size + added > MAX_COLUMNS_PER_SHEET) { capNeeded = added; return; }
+        // A list job's destination (a new sheet too) and columns: rolled back with the run.
+        if (listPlan.ok) {
+          const dest = applyListStart(userId, sheetId, statusColumn, listPlan.ok, config);
+          if ('raced' in dest) { raced = dest.raced; destRaced = dest.field === 'destName'; throw ROLLBACK; }
+          destSheetId = dest.destSheetId;
+        }
+        appendColumnsToOrder(sheetId, userId, runColumns);
+        // allow_secrets 0: an enrichment never reads saved API keys.
+        db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
+            target_rows, allow_secrets, placeholder_work, dest_sheet_id)
+          VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, 0, 'seeding', ?)`)
+          .run(runId, sheetId, userId, JSON.stringify(config), statusColumn, destSheetId);
+        // Every output is linked to THIS run, also on a column a run already made:
+        // clearing a stopped run's ⏳ and the column delete/rename guards find a
+        // run's columns through its own associations (as http-run-rerun.ts does).
+        const assoc = db.prepare(`INSERT INTO http_column_associations
+            (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id)
+          VALUES (?, ?, ?, ?, ?, ?)`);
+        for (const name of outputNames) assoc.run(uuidv4(), sheetId, userId, statusColumn, name, runId);
+      }).immediate();
+    } catch (error) {
+      if (error !== ROLLBACK) throw error;
+    }
+    if (raced) return { fail: 'conflict', message: raced, ...(destRaced ? { field: 'destName' } : {}) };
     if (capNeeded >= 0) {
       return {
         fail: 'cap',
@@ -174,6 +195,6 @@ export async function startEnrichmentRun(
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,
       lastRow: span.lastRow, test: input.rows.test,
     });
-    return { ok: { runId, statusColumn, outputColumns: outputNames } };
+    return { ok: { runId, statusColumn, outputColumns: outputNames, destSheetId } };
   });
 }

@@ -32,7 +32,10 @@ router.post('/sheets/:id/runs', async (req: AuthRequest, res) => {
       if (conflict) return res.status(409).json(conflict);
     }
     const out = await startEnrichmentRun(req.userId!, id, parsed.ok);
-    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    if ('fail' in out) {
+      const field = out.field ? { field: out.field } : {};
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...field });
+    }
     res.json(out.ok);
   } catch (error) {
     console.error('Enrichment run start error:', error);

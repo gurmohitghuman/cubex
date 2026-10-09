@@ -3,7 +3,8 @@
 // newest run, on other rows, through the same start as the drawer (the plain
 // HTTP rerun refuses enrichment columns). estimateOnly is a pure read for the
 // confirm: how many rows, what they could cost and where the run stops.
-import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
+import { db } from '../lib/db';
+import { estimateListOf, recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import type { RerunInput } from '../lib/enrich-run-input';
 import { countFor, enrichRowCounts } from './enrich-row-count';
 import { estimateEnrichment } from './enrich-setup';
@@ -19,6 +20,8 @@ export interface RerunEstimate {
   lowUsd: number; highUsd: number;
   maxCostPerRowUsd: number | null; spendLimitUsd: number | null;
   dailyLimit: DailyLimitView;
+  // A list job: the sheet its rows go to, and how many it may add.
+  addsRowsTo: { name: string; addUpTo: number } | null;
 }
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -39,20 +42,24 @@ export async function rerunEnrichmentColumn(
   const est = await estimateEnrichment(userId, {
     toolId: choices.toolId, rows, preset: choices.preset, given: Object.keys(choices.inputs).sort(),
     skip: choices.skipProviders, order: choices.providerOrder, stopAtFirst: choices.stopAtFirst,
-    maxCostPerRowUsd: choices.maxCostPerRowUsd, limit: null,
+    maxCostPerRowUsd: choices.maxCostPerRowUsd, limit: null, list: estimateListOf(choices),
   });
   if (!('ok' in est)) {
     const upstream = est.fail === 'unreachable' || est.fail === 'upstream';
     return { fail: upstream ? 'upstream' : 'bad_request', message: est.message } satisfies RunFail;
   }
   const { priceKnown, estimate, dailyLimit } = est.ok;
+  const destId = choices.list && 'sheetId' in choices.list.dest ? choices.list.dest.sheetId : null;
+  const dest = destId ? db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+    .get(destId, userId) as string | undefined : undefined;
+  const addsRowsTo = est.ok.list ? { name: dest ?? 'a deleted sheet', addUpTo: est.ok.list.addUpTo } : null;
   const cap = priceKnown ? choices.maxCostPerRowUsd ?? est.ok.defaultMaxCostPerRowUsd : null;
   return {
     ok: {
       estimate: {
         column: req.column, toolName: run.config.enrichment.toolName, rows, priceKnown,
         lowUsd: estimate.lowUsd, highUsd: estimate.highUsd, maxCostPerRowUsd: cap,
-        spendLimitUsd: cap === null ? null : round6(Math.max(rows, 1) * cap), dailyLimit,
+        spendLimitUsd: cap === null ? null : round6(Math.max(rows, 1) * cap), dailyLimit, addsRowsTo,
       },
     },
   };

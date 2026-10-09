@@ -1,15 +1,16 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { AccordionSection } from '../AccordionSection'
 import { TregNotice } from '../TregNotice'
 import { LoadingSpinner } from '../LoadingSpinner'
 import { formatCost } from '@/components/ai-modal/format'
-import type { EnrichDraft } from './draft'
+import type { OnStarted, EnrichDraft } from './draft'
 import { cardMeta } from './copy'
 import { InputsPane, inputsSummary } from './InputsPane'
 import { ProvidersPane, providersSummary } from './ProvidersPane'
 import { EmailChecksPane, acceptSummary } from './EmailChecksPane'
 import { OutputsPane, outputsSummary } from './OutputsPane'
 import { RowsLimitsPane } from './RowsLimitsPane'
+import { ListSetupSection } from './ListSetupSection'
 import { EstimateBox } from './EstimateBox'
 import { RunButtons } from './RunButtons'
 import { continuing } from './run-request'
@@ -28,7 +29,7 @@ interface Props {
   filledColumns: Set<string> | null
   onChangeTool: () => void
   onCancel: () => void
-  onStarted: (runId: string, statusColumn: string, test: boolean) => void
+  onStarted: OnStarted
   // Why no new run can start yet: a run on this column is still going (or loading).
   runBlock?: string | null
 }
@@ -38,6 +39,10 @@ interface Props {
 export const SetupStep: React.FC<Props> = (p) => {
   const { draft, update } = p
   const m = useSetupModel(p)
+  // The start's own word on a new sheet's name (taken meanwhile), until the name changes.
+  const [destError, setDestError] = useState<string | null>(null)
+  const destKey = draft.list ? JSON.stringify(draft.list.dest) : ''
+  useEffect(() => setDestError(null), [destKey])
   const card = m.card
   if (!card) return null
   const est = m.estimate.estimate
@@ -47,7 +52,8 @@ export const SetupStep: React.FC<Props> = (p) => {
   const more = continuing(draft)
   const rowsSummary = `${m.rows === null ? '…' : m.rows.toLocaleString()} rows`
     + (cap !== null ? ` · up to ${formatCost(cap)}/row` : '')
-  const problem = !m.ready || !m.tool ? 'Loading the enrichment…'
+  const problem = m.data.toolError || m.listSheetsError ? 'Try again above.'
+    : !m.ready || !m.tool ? 'Loading the enrichment…'
     : p.runBlock ?? m.problem ?? (p.hasKey === false ? 'Add your treg key in Settings first.' : null)
 
   return (
@@ -63,10 +69,11 @@ export const SetupStep: React.FC<Props> = (p) => {
         </button>
       </div>
 
-      {m.data.toolError ? (
+      {m.data.toolError || m.listSheetsError ? (
         <div className="border border-gray-200 p-3 text-sm text-gray-700 space-y-2">
-          <p>{m.data.toolError}</p>
-          <button type="button" onClick={m.data.retryTool} className="btn-secondary">Try again</button>
+          <p>{m.data.toolError ?? "Couldn't read this table's sheets."}</p>
+          <button type="button" onClick={m.data.toolError ? m.data.retryTool : m.data.retrySetup}
+            className="btn-secondary">Try again</button>
         </div>
       ) : !m.ready || !m.tool ? (
         <LoadingSpinner size="sm" message="Loading the enrichment…" className="py-8" />
@@ -83,12 +90,13 @@ export const SetupStep: React.FC<Props> = (p) => {
               : <p className="text-xs text-gray-500 mt-1">
                 {more
                   ? 'Runs add to this column. Rename it to make a new column instead.'
-                  : "Shows each row's result: found, not found, or why it failed."}
+                  : draft.list ? 'Shows how many rows each row added, or why it added none.'
+                    : "Shows each row's result: found, not found, or why it failed."}
               </p>}
           </div>
 
           <AccordionSection title="Inputs" summary={inputsSummary(draft.bindings)} defaultOpen>
-            <InputsPane tool={m.tool} bindings={draft.bindings} columns={p.columns}
+            <InputsPane tool={m.tool} bindings={draft.bindings} columns={p.columns} addsRows={!!draft.list}
               setBinding={(name, b) => {
                 const next = { ...draft.bindings }
                 if (b) next[name] = b; else delete next[name]
@@ -110,13 +118,10 @@ export const SetupStep: React.FC<Props> = (p) => {
             </AccordionSection>
           )}
 
-          {card.addsRows ? (
-            <AccordionSection title="Add results as rows" summary="Another sheet" defaultOpen>
-              <p className="text-xs text-gray-600">
-                This job adds each result as a row in another sheet, with a link back to this row. Picking the sheet,
-                the fields to keep and the number of results per row comes with list runs.
-              </p>
-            </AccordionSection>
+          {draft.list ? (
+            <ListSetupSection sheetId={p.sheetId} tool={m.tool} list={draft.list} updateList={m.updateList}
+              columns={p.columns} sheets={m.sheets} sent={m.sent} destProblem={m.listDest ?? destError}
+              column={more ? draft.columnName.trim() : null} active={p.active} />
           ) : (
             <AccordionSection title="Outputs" summary={outputsSummary(draft.outputs)} defaultOpen>
               <OutputsPane outputs={draft.outputs} onChange={outputs => update({ outputs })} />
@@ -133,13 +138,16 @@ export const SetupStep: React.FC<Props> = (p) => {
 
           <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows}
             balance={m.data.balance} spendLimit={draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys}
-            blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider} />
+            blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider}
+            listDest={m.listDestName} />
         </>
       )}
 
       <RunButtons sheetId={p.sheetId} draft={draft} rows={m.rows} counts={m.counts}
         selectedRows={p.selectedRows} rowGeneration={p.rowGeneration} order={m.order} estimate={est}
-        problem={problem} unpriced={billed} onCancel={p.onCancel} onStarted={p.onStarted} />
+        problem={problem} fullProblem={m.fullProblem} unpriced={billed} onCancel={p.onCancel}
+        onStarted={p.onStarted} listDest={m.listDestName}
+        onFieldError={(field, message) => { if (field === 'destName') setDestError(message) }} />
     </div>
   )
 }

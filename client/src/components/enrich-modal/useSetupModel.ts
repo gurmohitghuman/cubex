@@ -12,6 +12,7 @@ import { useSetupData } from './useSetupData'
 import { useEstimate } from './useEstimate'
 import { countFor, useRowCounts } from './useRowCounts'
 import { ENRICH_MAX_ROW_CAP_USD } from '@/lib/constants'
+import { destProblem, listProblem, listProviderRows, perRowProblem, type ListDraft } from './list-draft'
 
 interface Args {
   sheetId: string
@@ -27,6 +28,10 @@ interface Args {
   // Changes when the rows' statuses may have (a run's phase): re-count them.
   countsKey?: string
 }
+
+const estimateList = (l: ListDraft) => ({
+  provider: l.provider, maxItems: l.maxItems, destSheetId: l.dest.kind === 'sheet' ? l.dest.sheetId : null,
+})
 
 // What a miss costs with what's picked, for the estimate box.
 function missNoteFor(tool: ReturnType<typeof useSetupData>['tool'], anyBillsMisses: boolean): string {
@@ -48,16 +53,20 @@ function missNoteFor(tool: ReturnType<typeof useSetupData>['tool'], anyBillsMiss
 export function useSetupModel(a: Args) {
   const { sheetId, draft, update, columns, selectedCount, hasKey, active, filledColumns } = a
   const card = draft.card
-  const data = useSetupData(sheetId, card?.id ?? null, hasKey, active)
+  // Read again after each start: a list job's start can add a sheet to the table.
+  const data = useSetupData(sheetId, card?.id ?? null, hasKey, active, draft.runId ?? '')
   const tool = data.tool && card && data.tool.id === card.id ? data.tool : null
+  // A list job's rows go to another sheet of the table: its defaults wait for the sheets.
+  const addsRows = !!(tool?.addsRows ?? card?.addsRows)
+  const sheets = data.setup?.sheets ?? null
 
   // Set up's defaults for the tool, once; "Edit enrichment" lays the column's
   // own choices over them (recall.ts).
   useEffect(() => {
-    if (!tool || !card || draft.builtFor === tool.id) return
-    const built = buildSetup(card, tool, columns, filledColumns)
+    if (!tool || !card || draft.builtFor === tool.id || (addsRows && !sheets)) return
+    const built = buildSetup(card, tool, columns, filledColumns, sheets ?? [])
     update(draft.recall && draft.continueColumn ? applyRecall(built, draft.recall, draft.continueColumn) : built)
-  }, [tool?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tool?.id, !!sheets]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const ready = !!tool && draft.builtFor === tool.id
   const sent = boundInputs(draft.bindings, columns)
@@ -70,7 +79,9 @@ export function useSetupModel(a: Args) {
     `${draft.runId ?? ''}:${draft.runEnded}:${a.countsKey ?? ''}`)
   const rows = more ? countFor(byStatus, draft.rowsStatus) : rowsFor(draft.rowsMode, counts)
   const room = data.setup ? data.setup.columns.max - data.setup.columns.count : null
-  const providers = tool?.providers
+  // A list job asks one provider (its own pick), so the waterfall's provider list isn't shown.
+  const list = draft.list
+  const providers = tool?.providers && !list
     ? providerStates({ tool, access: data.access, order: draft.providerOrder, skip: draft.skipProviders, sent })
     : null
   const providersOn = providers ? providers.rows.filter(r => providers.stateOf(r) === 'on') : null
@@ -85,7 +96,9 @@ export function useSetupModel(a: Args) {
     ? namesProblem(draft.columnName, draft.outputs, taken, room === null ? null : room + reuse.size) : null
   const limitsProblem = (draft.maxCostPerRowUsd ?? 0) > ENRICH_MAX_ROW_CAP_USD
     ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.` : null
+  const listTest = ready && list && tool ? listProblem(list, tool, sent, sheets, true) : null
   const problem = !ready ? null : inputsProblem
+    ?? listTest
     ?? (noProvider
       ? 'No provider can run with these inputs and switches. Map more inputs or switch providers on.' : null)
     ?? limitsProblem
@@ -101,8 +114,12 @@ export function useSetupModel(a: Args) {
   const request: EnrichEstimateRequest | null = ready && rows !== null && tool && card ? {
     toolId: tool.id, rows, preset: card.preset ?? null, given: [...sent].sort(), skip: draft.skipProviders,
     order, stopAtFirst: draft.stopAtFirst, maxCostPerRowUsd: draft.maxCostPerRowUsd,
+    ...(list ? { list: estimateList(list) } : {}),
   } : null
-  const blocked = inputsProblem || noProvider ? 'Pick the inputs above to see the cost.' : limitsProblem
+  const listCost = !list ? null
+    : (tool ? perRowProblem(list.maxItems, tool) : null)
+      ?? (tool?.kind === 'waterfall' && !list.provider ? 'Pick a provider to see the cost.' : null)
+  const blocked = inputsProblem || noProvider ? 'Pick the inputs above to see the cost.' : limitsProblem ?? listCost
   const estimate = useEstimate(blocked ? null : request)
 
   // A tool with no listed price runs on the team's own provider key, which
@@ -114,10 +131,23 @@ export function useSetupModel(a: Args) {
   const ownKeySingle = !!tool && tool.kind === 'single' && !unpriced
     && (data.access?.tier === 'tool' || data.access?.tier === 'credential') && data.access?.metered !== true
 
+  // A list job's provider bills a miss or not (its row in treg's plan).
+  const listBills = !!list && !!tool && listProviderRows(tool, sent)
+    .some(r => r.provider.toLowerCase() === list.provider?.toLowerCase() && r.billsMisses)
   return {
     card, tool, data, ready, sent, counts, byStatus, rows, providers, providersOn, problem, statusNameProblem,
-    outputNameProblem, order, estimate, blocked, limitsProblem, unpriced, ownKeySingle,
-    missNote: missNoteFor(tool, (providersOn ?? []).some(r => r.billsMisses)),
+    outputNameProblem, order, estimate, blocked, limitsProblem, unpriced, ownKeySingle, sheets,
+    // A list job's defaults need the table's sheets: their read failed.
+    listSheetsError: addsRows && !sheets && data.setupError,
+    // A list job: its destination's problem (shown in place) and what stops a full run (fields not picked).
+    listDest: list ? destProblem(list, sheets) : null,
+    listDestName: !list ? null : list.dest.kind === 'new' ? list.dest.name.trim()
+      : sheets?.find(s => s.id === (list.dest as { sheetId: string }).sheetId)?.name ?? null,
+    fullProblem: ready && list && tool ? listProblem(list, tool, sent, sheets, false) : null,
+    updateList: (patch: Partial<ListDraft>) => { if (draft.list) update({ list: { ...draft.list, ...patch } }) },
+    missNote: list && tool?.kind === 'waterfall'
+      ? (listBills ? 'This provider charges for a miss too.' : 'You pay only when it finds results.')
+      : missNoteFor(tool, (providersOn ?? []).some(r => r.billsMisses)),
     ownKeys: !!providers?.rows.some(r => r.access === 'own'),
     ownKeyProvider: card?.providerName ?? card?.provider ?? 'the provider',
   }

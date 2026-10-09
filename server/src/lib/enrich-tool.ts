@@ -8,25 +8,34 @@ import {
 
 export type { ToolInput, ToolOutput, ToolList };
 
-export interface ToolPrice { type: string | null; unit: string | null; usd: number | null; varies: boolean; note?: string; overflowUsd: number | null }
+export interface ToolPrice {
+  type: string | null; unit: string | null; usd: number | null; varies: boolean; note?: string;
+  overflowUsd: number | null;
+}
 export interface ToolProvider {
   endpointId: string; provider: string; name?: string; usd: number | null; hitRate: number | null;
   usdPerHit: number | null; works: number | null; accepts: string[][]; exhausted: boolean;
   // A child a sheet run can't use: it answers later (async) or treg retired it.
   unavailable: 'async' | 'retired' | null;
 }
-export interface ToolObserved { okRate: number | null; hitRate: number | null; samples: number | null; hitSamples: number | null }
+export interface ToolObserved {
+  okRate: number | null; hitRate: number | null; samples: number | null; hitSamples: number | null;
+}
 
 export interface ToolSummary {
   id: string; name: string; summary: string; provider: string; providerName?: string;
   kind: 'waterfall' | 'single'; capability: string | null; capabilityDescription: string | null;
-  platformLabel: string | null; price: ToolPrice; observed: ToolObserved; childCount: number | null; needsOwnKey: boolean;
+  platformLabel: string | null; price: ToolPrice; observed: ToolObserved; childCount: number | null;
+  needsOwnKey: boolean;
 }
 
 export interface EnrichTool extends ToolSummary {
   method: string; inputs: ToolInput[]; identitySets: string[][] | null; derive: Record<string, string> | null;
   outputs: ToolOutput[]; list: ToolList | null; providers: ToolProvider[] | null;
   strictQuery: boolean; bodyType: string | null; queryArrayEncoding: string | null;
+  // A single tool's job waterfall (treg.<capability>), when treg lists it among
+  // the tool's siblings: whether the job answers with a list is read from it.
+  waterfallId: string | null;
 }
 
 type Json = Record<string, unknown>;
@@ -62,7 +71,10 @@ function priceOf(ep: Json): ToolPrice {
 
 function observedOf(ep: Json): ToolObserved {
   const o = isObj(ep.observed) ? ep.observed : {};
-  return { okRate: numOrNull(o.ok_rate), hitRate: numOrNull(o.hit_rate), samples: numOrNull(o.samples), hitSamples: numOrNull(o.hit_samples) };
+  return {
+    okRate: numOrNull(o.ok_rate), hitRate: numOrNull(o.hit_rate), samples: numOrNull(o.samples),
+    hitSamples: numOrNull(o.hit_samples),
+  };
 }
 
 // treg serves a tool on its own key only with a known price and when it's
@@ -113,10 +125,17 @@ function providersOf(routing: Json, siblings: unknown): ToolProvider[] | null {
     return {
       endpointId, provider: endpointId.split('.')[0], usd: numOrNull(p.usd), hitRate: numOrNull(p.hit_rate),
       usdPerHit: numOrNull(p.usd_per_hit), works: numOrNull(p.works),
-      accepts: Array.isArray(p.accepts) ? p.accepts.filter(Array.isArray).map(a => a.filter((k: unknown): k is string => typeof k === 'string')) : [],
+      accepts: Array.isArray(p.accepts)
+        ? p.accepts.filter(Array.isArray).map(a => a.filter((k: unknown): k is string => typeof k === 'string')) : [],
       exhausted: p.exhausted === true, unavailable: off.get(endpointId) ?? null,
     };
   }).filter(p => p.endpointId);
+}
+
+function waterfallIdOf(summary: ToolSummary, siblings: unknown): string | null {
+  if (summary.kind === 'waterfall' || !summary.capability || !Array.isArray(siblings)) return null;
+  const id = `treg.${summary.capability}`;
+  return siblings.some(s => isObj(s) && s.id === id) ? id : null;
 }
 
 // /catalog/endpoints/{id} body → tool, or null when it has no usable id.
@@ -140,5 +159,6 @@ export function normalizeTool(detail: Json): EnrichTool | null {
     strictQuery: ep.strict_query === true,
     bodyType: str(input.bodyType),
     queryArrayEncoding: str(input.queryArrayEncoding),
+    waterfallId: waterfallIdOf(summary, detail.siblings),
   };
 }

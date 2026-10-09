@@ -9,6 +9,7 @@ import type { RequestTool } from './enrich-request';
 import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichTool } from './enrich-tool';
 import type { HTTPAPIConfig } from './http-request-template';
+import type { EnrichListConfig } from './enrich-list';
 
 // Which rows a run takes: a scope (every row, the saved filter's rows, the
 // selected rows) narrowed, on a column a run already made, by the status cell:
@@ -52,6 +53,8 @@ export interface EnrichmentBlock {
   // read from answers, not the tool's listed outputs, so a rerun keeps them
   // without checking them against the catalog.
   answerFields?: string[];
+  // A list job: each result becomes a row in another sheet (lib/enrich-list.ts).
+  list?: EnrichListConfig;
 }
 
 export type EnrichRunConfig = HTTPAPIConfig & { enrichment: EnrichmentBlock };
@@ -59,6 +62,11 @@ export type EnrichRunConfig = HTTPAPIConfig & { enrichment: EnrichmentBlock };
 export function isEnrichmentConfig(config: unknown): config is EnrichRunConfig {
   const e = (config as { enrichment?: unknown } | null)?.enrichment;
   return !!e && typeof e === 'object' && (e as { v?: unknown }).v === 1;
+}
+
+// The list part of a stored config, when the run adds its results as rows.
+export function listOf(config: unknown): EnrichListConfig | null {
+  return isEnrichmentConfig(config) && config.enrichment.list ? config.enrichment.list : null;
 }
 
 // The input templates, {input name: "{{Column}}" or a fixed value}.

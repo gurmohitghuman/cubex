@@ -68,10 +68,17 @@ export function verifySheetInTable(sheetId: string, tableId: string, userId: str
 // REST / MCP / structure-op responses (needless internal-schema exposure —
 // flagged in a security review). Keep these in sync with the client `Sheet` /
 // `Table` interfaces (utils/api/types.ts).
+// adding_rows: a list enrichment is adding rows to the sheet (its run into it
+// is going, or its results are being added): the tab shows a dot.
+export const ADDING_ROWS_SQL = `(EXISTS (SELECT 1 FROM http_runs r WHERE r.dest_sheet_id = sheets.id
+    AND r.status IN ('pending', 'running'))
+  OR EXISTS (SELECT 1 FROM enrichment_list_items li WHERE li.dest_sheet_id = sheets.id
+    AND li.status = 'pending' AND li.wait_reason IS NULL AND li.user_id = sheets.user_id))`;
 const SHEET_CLIENT_COLUMNS =
   `id, table_id, name, position, created_at, updated_at,
    sort_state, empty_filter, column_filters,
-   default_ai_model, default_ai_concurrency, row_generation, data_version`;
+   default_ai_model, default_ai_concurrency, row_generation, data_version,
+   ${ADDING_ROWS_SQL} AS adding_rows`;
 const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at`;
 
 export function listSheets(tableId: string, userId: string): unknown[] {

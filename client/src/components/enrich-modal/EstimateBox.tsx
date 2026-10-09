@@ -25,6 +25,25 @@ interface Props {
   ownKeyProvider: string
   // The heading's words for the rows ("Estimated for the other 1,199 rows").
   label?: string
+  // A list job's destination sheet, for "May add up to N rows to People".
+  listDest?: string | null
+}
+
+// Amber from this share of the row limit on.
+const NEAR_FULL = 0.9
+
+function ListRowsLine({ list, dest }: { list: NonNullable<EnrichEstimate['list']>; dest: string }) {
+  const after = list.destRows + list.addUpTo
+  const room = Math.max(0, list.maxRows - list.destRows)
+  const near = after > list.maxRows * NEAR_FULL
+  return (
+    <p className={near ? 'text-amber-800' : ''} data-testid="enrich-list-estimate">
+      May add up to {plural(list.addUpTo, 'row')} to {dest} ({list.perRow.toLocaleString()} per row).
+      {after > list.maxRows
+        ? ` ${dest} has room for ${plural(room, 'more row')}; the run pauses when it's full.`
+        : near ? ` That brings ${dest} close to its ${list.maxRows.toLocaleString()}-row limit.` : ''}
+    </p>
+  )
 }
 
 const GRAY = 'bg-gray-50 border border-gray-200'
@@ -36,7 +55,7 @@ const AMBER = 'bg-amber-50 border-amber-200 text-amber-900'
 // could spend more than the balance.
 export const EstimateBox: React.FC<Props> = ({
   estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeySingle,
-  ownKeyProvider, label,
+  ownKeyProvider, label, listDest,
 }) => {
   if (unpriced || ownKeySingle) {
     return (
@@ -75,6 +94,7 @@ export const EstimateBox: React.FC<Props> = ({
         </span>
       </div>
       <p>Most rows cost less than the high end. {missNote}</p>
+      {estimate.list && <ListRowsLine list={estimate.list} dest={listDest || 'the other sheet'} />}
       {spendLimit !== null && spendLimit < highUsd && (
         <p>The run pauses at {limitText(spendLimit)}, your limit for this run.</p>
       )}

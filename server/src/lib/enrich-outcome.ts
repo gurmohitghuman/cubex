@@ -6,6 +6,7 @@
 import { ENRICH_CELL, enrichCellValues, failedCell, type RowCells } from './enrich-cells';
 import { providerOf, type TregMeta } from './treg-meta';
 import type { ResponseMapping } from './http-request-template';
+import { itemsOf, type EnrichListConfig } from './enrich-list';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -37,10 +38,15 @@ export function answerCells(a: {
     const t = isObj(a.body) && isObj(a.body._treg) ? a.body._treg : {};
     const servedBy = typeof t.served_by === 'string' ? t.served_by : a.meta.servedBy;
     const found = outcome === 'hit';
-    const answer = withCubex(a.body, { ...shared, outcome, ...(found ? { found_by: displayName(a.providerNames, servedBy) } : {}) });
+    const answer = withCubex(a.body, {
+      ...shared, outcome, ...(found ? { found_by: displayName(a.providerNames, servedBy) } : {}),
+    });
     if (found) return { status: 'completed', statusCell: ENRICH_CELL.found, answer, fill: 'all', reason: null };
     return outcome === 'capped'
-      ? { status: 'completed', statusCell: ENRICH_CELL.budget, answer, fill: 'none', reason: 'Every provider the budget allowed missed; the rest were skipped.' }
+      ? {
+        status: 'completed', statusCell: ENRICH_CELL.budget, answer, fill: 'none',
+        reason: 'Every provider the budget allowed missed; the rest were skipped.',
+      }
       : { status: 'completed', statusCell: ENRICH_CELL.notFound, answer, fill: 'none', reason: null };
   }
   // A single tool found something when any picked output has a value.
@@ -55,10 +61,13 @@ export function answerCells(a: {
 
 // A row the classifier skipped or failed (no usable answer).
 export function verdictCells(kind: 'row_skip' | 'row_fail', message: string): RowCells {
-  if (kind === 'row_fail') return { status: 'failed', statusCell: failedCell(message), answer: null, fill: 'none', reason: message };
+  if (kind === 'row_fail') {
+    return { status: 'failed', statusCell: failedCell(message), answer: null, fill: 'none', reason: message };
+  }
   const budget = /per-row budget/i.test(message);
   return {
-    status: 'completed', statusCell: budget ? ENRICH_CELL.budget : `⏭️ ${message}`, answer: null, fill: 'none', reason: message,
+    status: 'completed', statusCell: budget ? ENRICH_CELL.budget : `⏭️ ${message}`, answer: null, fill: 'none',
+    reason: message,
   };
 }
 
@@ -66,4 +75,28 @@ export function verdictCells(kind: 'row_skip' | 'row_fail', message: string): Ro
 // it reads as "not run yet" and a later run picks it up.
 export function missingCells(missing: string): RowCells {
   return { status: 'completed', statusCell: '', answer: null, fill: 'none', reason: `Missing inputs: ${missing}` };
+}
+
+// A list job's answer: its results (at most maxItems), and the row's cells
+// while they wait to become rows. The status cell of a row with results is
+// written with the journal row (services/enrich-row-write.ts).
+export function listAnswerCells(a: {
+  routed: boolean; body: unknown; meta: TregMeta; providerNames: Record<string, string>;
+  list: EnrichListConfig; sameAsRow: number | null;
+}): { cells: RowCells; items: unknown[] } {
+  const shared = a.sameAsRow !== null ? { same_as_row_index: a.sameAsRow } : {};
+  const outcome = a.routed ? waterfallOutcome(a.body, a.meta) : 'hit';
+  const items = outcome === 'hit' ? itemsOf(a.body, a.list.itemsPath, a.list.maxItems) : [];
+  const t = isObj(a.body) && isObj(a.body._treg) ? a.body._treg : {};
+  const servedBy = typeof t.served_by === 'string' ? t.served_by : a.meta.servedBy;
+  const answer = withCubex(a.body, {
+    ...shared, ...(a.routed ? { outcome } : {}),
+    ...(a.routed && items.length ? { found_by: displayName(a.providerNames, servedBy) } : {}),
+  });
+  if (outcome === 'capped') {
+    const reason = 'Every provider the budget allowed missed; the rest were skipped.';
+    return { cells: { status: 'completed', statusCell: ENRICH_CELL.budget, answer, fill: 'none', reason }, items };
+  }
+  const statusCell = items.length ? '' : ENRICH_CELL.notFound;
+  return { cells: { status: 'completed', statusCell, answer, fill: 'none', reason: null }, items };
 }

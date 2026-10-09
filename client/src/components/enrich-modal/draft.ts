@@ -3,6 +3,7 @@
 // (useEnrichmentDraft), so closing and reopening resumes; a reload starts fresh.
 // The run start reads the same shape (run-request.ts).
 import type { EnrichRecalledChoices, EnrichRowsStatus, EnrichToolCard } from '@/utils/api'
+import type { ListDraft } from './list-draft'
 
 // find → setup → test (after Run on 5 rows) or run (after a full run).
 export type EnrichStep = 'find' | 'setup' | 'test' | 'run'
@@ -79,7 +80,13 @@ export interface EnrichDraft {
   runEnded: boolean
   // "Edit enrichment": the column's choices, applied once the tool's details load.
   recall: EnrichRecalledChoices | null
+  // A list job: where its results go as rows (null: outputs fill this sheet).
+  list: ListDraft | null
 }
+
+// A run started: its status column, whether it was a test, and where a list
+// job's rows go (a new sheet the start made).
+export type OnStarted = (runId: string, statusColumn: string, test: boolean, destSheetId?: string | null) => void
 
 export const EMAIL_PATTERNS = ['first.last', 'firstlast', 'first', 'flast', 'f.last', 'first_last'] as const
 
@@ -90,7 +97,7 @@ export function emptyDraft(): EnrichDraft {
     emailChecks: { accept: 'safest', guess: true, pattern: 'first.last' },
     outputs: [], rowsMode: 'all', conditions: [], maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false,
     autoRun: false, autoRunCapUsd: null, autoRunWas: false,
-    continueColumn: null, rowsStatus: 'not_enriched', runId: null, runEnded: false, recall: null,
+    continueColumn: null, rowsStatus: 'not_enriched', runId: null, runEnded: false, recall: null, list: null,
   }
 }
 

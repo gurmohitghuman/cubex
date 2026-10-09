@@ -2,6 +2,7 @@
 // server/src/lib/enrich-tool*.ts, services/enrich-catalog.ts and
 // services/enrich-setup.ts. Re-exported from './types'.
 import type { EnrichDailyLimit } from './types-settings'
+import type { EnrichListEstimate } from './types-enrich-list'
 
 export interface EnrichToolPrice {
   type: string | null   // free | per_success | per_call | per_result
@@ -74,6 +75,8 @@ export interface EnrichToolDetail extends Omit<EnrichToolCard, 'title' | 'blurb'
   outputs: EnrichToolOutput[]
   list: { field: string; path: string } | null
   providers: EnrichToolProvider[] | null
+  // Its results become rows in another sheet (a list job).
+  addsRows?: boolean
 }
 
 // How the user's treg team is served for a tool; plan rows are treg's.
@@ -88,6 +91,8 @@ export interface EnrichSheetSetup {
   rows: { all: number; filter: number | null }   // filter: null when no filter is on
   columns: { count: number; max: number }
   hasWebhook?: boolean   // rows can arrive from outside: Set up's auto-run choice warns
+  // The table's sheets: where a list job's rows can go (not the current one, whose name is still taken).
+  sheets?: Array<{ id: string; name: string; current?: boolean }>
 }
 
 export interface EnrichEstimateRequest {
@@ -99,6 +104,8 @@ export interface EnrichEstimateRequest {
   order: string[]
   stopAtFirst: boolean
   maxCostPerRowUsd: number | null
+  // A list job: its provider, results per row and destination (null: a new sheet).
+  list?: { provider: string | null; maxItems: number; destSheetId: string | null } | null
 }
 
 export interface EnrichEstimate {
@@ -110,6 +117,7 @@ export interface EnrichEstimate {
   // false: no listed price (the tool runs on the team's own provider key).
   priceKnown: boolean
   dailyLimit: EnrichDailyLimit
+  list?: EnrichListEstimate | null
 }
 
 export interface TregBalance { balanceUsd: number; onHoldUsd: number }

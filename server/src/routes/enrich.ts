@@ -3,13 +3,14 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { TREG_TOOL_ID_PATTERN, UUID_PATTERN } from '../lib/constants';
-import { searchTools, getTool, featuredTools, type CatalogFailure } from '../services/enrich-catalog';
+import { searchTools, getTool, featuredTools, addsRows, type CatalogFailure } from '../services/enrich-catalog';
 import { estimateEnrichment, readEnrichBalance, sheetSetupInfo } from '../services/enrich-setup';
 import { parseEstimateInput } from '../lib/enrich-estimate-input';
 import { toolAccess } from '../services/enrich-access';
 import { enrichSpend, spendWindow } from '../services/enrich-spend';
 import runRoutes from './enrich-runs';
 import answerRoutes from './enrich-answers';
+import listRoutes from './enrich-lists';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -46,7 +47,9 @@ router.get('/tools/:toolId', async (req: AuthRequest, res) => {
     const { toolId } = req.params;
     if (!TREG_TOOL_ID_PATTERN.test(toolId)) return res.status(400).json({ error: 'Invalid tool id' });
     const tool = await getTool(toolId);
-    return 'ok' in tool ? res.json({ tool: tool.ok }) : sendFailure(res, tool);
+    if (!('ok' in tool)) return sendFailure(res, tool);
+    // addsRows: Set up shows "Add results as rows" in place of outputs.
+    res.json({ tool: { ...tool.ok, addsRows: await addsRows(tool.ok) } });
   } catch (error) {
     console.error('Enrichment tool detail error:', error);
     res.status(500).json({ error: 'Failed to load the tool' });
@@ -121,5 +124,6 @@ router.get('/spend', async (req: AuthRequest, res) => {
 // Starting, reading and resuming runs (routes/enrich-runs.ts).
 router.use(runRoutes);
 router.use(answerRoutes);
+router.use(listRoutes);
 
 export default router;

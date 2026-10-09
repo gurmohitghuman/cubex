@@ -3,7 +3,7 @@ import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
   EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
   EnrichRowCounts, EnrichRowsScope, EnrichRerunRequest, EnrichRerunEstimate, EnrichColumnSetup, EnrichSpend,
-  AnswerView, AnswerFieldAdded,
+  AnswerView, AnswerFieldAdded, EnrichListField, EnrichListFieldChoices,
 } from './types'
 
 // The drawer shows its own error for each of these (inline, in place), so the
@@ -70,6 +70,20 @@ export const enrichAPI = {
     sheetId: string, body: { column: string; jsonPath: string; name: string; row: number },
   ): Promise<AnswerFieldAdded> =>
     api.post(`/enrich/sheets/${sheetId}/fields`, body, noServerToast).then(res => res.data),
+
+  // A list column's results: the fields they have (to pick the ones to keep).
+  listFields: (sheetId: string, column: string): Promise<EnrichListFieldChoices> =>
+    api.get(`/enrich/sheets/${sheetId}/list-fields`, { ...noServerToast, params: { column } }).then(res => res.data),
+
+  // "Add these rows": the fields for results waiting for them.
+  pickListFields: (
+    sheetId: string, body: { column: string; fields: EnrichListField[]; dedupePath: string | null },
+  ): Promise<{ released: number }> =>
+    api.post(`/enrich/sheets/${sheetId}/list-fields`, body, noServerToast).then(res => res.data),
+
+  // Results this sheet bought that aren't rows in another sheet yet (null: none).
+  resultsNotAdded: (sheetId: string): Promise<{ results: number; sheets: string[] } | null> =>
+    api.get(`/enrich/sheets/${sheetId}/results-not-added`, noServerToast).then(res => res.data.notAdded),
 
   spend: (days: number): Promise<EnrichSpend> =>
     api.get('/enrich/spend', { ...noServerToast, params: { days } }).then(res => res.data),

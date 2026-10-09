@@ -4,6 +4,8 @@ import { ENRICH_RUN_POLL_MS } from '@/lib/constants'
 
 export const RUN_ENDED = new Set(['completed', 'cancelled', 'failed'])
 export const runActive = (s: EnrichRunStatus | null) => !!s && !RUN_ENDED.has(s.status)
+// Rows of a list job still on their way to their sheet (not those waiting for fields).
+export const listAdding = (s: EnrichRunStatus) => !!s.list && s.list.adding.rows + s.list.waitingRoom.rows > 0
 
 // Whether Resume alone can carry a paused run on: not when its own limit
 // stopped it, or today's limit has no room for another row (it would pause
@@ -44,7 +46,8 @@ export function useEnrichRun(
         if (!alive) return
         setStatus(next)
         setLoadError(null)
-        if (RUN_ENDED.has(next.status)) { ended.current(next); return }
+        // A list job's rows are still being added after its last call: keep reading.
+        if (RUN_ENDED.has(next.status) && !listAdding(next)) { ended.current(next); return }
       } catch (e) {
         if (!alive) return
         setLoadError(errorOf(e, "Couldn't read the run. Trying again."))
@@ -74,6 +77,9 @@ export function useEnrichRun(
     // Only this run's status: a stale one from the run before never shows.
     status: status && status.id === runId ? status : null,
     loadError, actionError, busy,
+    // Read again now (and on, while a list job's rows are being added); the
+    // sheet refreshes its cells too.
+    refresh: () => { setTick(t => t + 1); onChanged() },
     pause: () => act("Couldn't pause the run.", () => httpAPI.controlRun(runId!, 'pause')),
     resume: (spendLimitUsd?: number) =>
       act("Couldn't resume the run.", () => enrichAPI.resumeRun(runId!, spendLimitUsd)),

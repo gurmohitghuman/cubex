@@ -90,6 +90,17 @@ export async function getTool(toolId: string): Promise<{ ok: EnrichTool } | Cata
   return { ok: tool };
 }
 
+// Whether a tool adds its results as rows: a waterfall whose contract answers
+// with a list, or a single tool of such a job (treg lists the job's waterfall,
+// treg.<capability>, among the tool's siblings) whose example has a list.
+export async function addsRows(tool: EnrichTool): Promise<boolean> {
+  if (!tool.list) return false;
+  if (tool.kind === 'waterfall') return true;
+  if (!tool.waterfallId) return false;
+  const job = await getTool(tool.waterfallId);
+  return 'ok' in job && job.ok.kind === 'waterfall' && job.ok.list !== null;
+}
+
 function summaryOf(t: EnrichTool): ToolSummary {
   return {
     id: t.id, name: t.name, summary: t.summary, provider: t.provider,
@@ -121,7 +132,7 @@ export async function toolCard(
   return {
     ok: {
       ...t, summary: plainText(t.summary), title: toolTitle(t, job?.title), blurb: job?.blurb ?? '',
-      ...(preset ? { preset } : {}), addsRows: found.ok.list !== null,
+      ...(preset ? { preset } : {}), addsRows: await addsRows(found.ok),
     },
   };
 }

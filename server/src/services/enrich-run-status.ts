@@ -10,6 +10,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { runSpentMicro } from './enrich-ledger';
 import { dailyLimitView, type DailyLimitView } from './treg-key';
 import { resumeRun, type ControlOutcome } from './run-lifecycle';
+import { destFullMessage, destRoom } from './enrich-list-room';
 
 // One row's result as the grid shows it: its cells (status and outputs), what
 // it cost, and the row's first input value, so the drawer can say which row.
@@ -27,17 +28,28 @@ export interface EnrichRunStatus {
   spentUsd: number; spendLimitUsd: number | null; maxCostPerRowUsd: number | null;
   dailyLimit: DailyLimitView;
   latest: EnrichRowResult[];
+  // A list job: where its rows go, how many it added, and results still on the
+  // way (being added, waiting for fields to be picked, waiting for room).
+  list: EnrichListProgress | null;
+}
+
+export interface EnrichListProgress {
+  destSheetId: string | null; destName: string | null; maxItems: number; fieldsPicked: boolean;
+  added: number;
+  adding: { rows: number; results: number };
+  waitingFields: { rows: number; results: number };
+  waitingRoom: { rows: number; results: number };
 }
 
 type RunRow = {
   id: string; sheet_id: string; status: string; pause_reason: string | null; error_message: string | null;
   master_column_name: string | null; config: string | null; total_rows: number | null;
-  processed_rows: number | null; skipped_rows: number | null;
+  processed_rows: number | null; skipped_rows: number | null; dest_sheet_id: string | null; list_rows_added: number;
 };
 
 function loadRun(runId: string, userId: string): { row: RunRow; config: EnrichRunConfig } | null {
   const row = db.prepare(`SELECT id, sheet_id, status, pause_reason, error_message, master_column_name, config,
-      total_rows, processed_rows, skipped_rows
+      total_rows, processed_rows, skipped_rows, dest_sheet_id, list_rows_added
     FROM http_runs WHERE id = ? AND user_id = ?`).get(runId, userId) as RunRow | undefined;
   if (!row) return null;
   let config: unknown = null;
@@ -86,6 +98,25 @@ function latestRows(run: RunRow, userId: string, config: EnrichRunConfig): Enric
   });
 }
 
+function listProgress(row: RunRow, config: EnrichRunConfig, userId: string): EnrichListProgress | null {
+  const l = config.enrichment.list;
+  if (!l) return null;
+  const waits = db.prepare(`SELECT wait_reason AS w, COUNT(*) AS n, IFNULL(SUM(item_count), 0) AS k
+    FROM enrichment_list_items WHERE run_id = ? AND status = 'pending' AND user_id = ? GROUP BY wait_reason`)
+    .all(row.id, userId) as Array<{ w: string | null; n: number; k: number }>;
+  const of = (w: string | null) => {
+    const r = waits.find(x => x.w === w);
+    return { rows: r?.n ?? 0, results: r?.k ?? 0 };
+  };
+  const destName = row.dest_sheet_id ? db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+    .get(row.dest_sheet_id, userId) as string | undefined : undefined;
+  return {
+    destSheetId: row.dest_sheet_id, destName: destName ?? null, maxItems: l.maxItems,
+    fieldsPicked: !!l.fields?.length,
+    added: row.list_rows_added, adding: of(null), waitingFields: of('fields'), waitingRoom: of('room'),
+  };
+}
+
 export function enrichRunStatus(runId: string, userId: string): EnrichRunStatus | null {
   const run = loadRun(runId, userId);
   if (!run) return null;
@@ -106,6 +137,7 @@ export function enrichRunStatus(runId: string, userId: string): EnrichRunStatus 
     spentUsd: runSpentMicro(runId, userId) / 1e6, spendLimitUsd: e.spendLimitUsd, maxCostPerRowUsd: e.maxCostPerRowUsd,
     dailyLimit: dailyLimitView(userId),
     latest: latestRows(row, userId, config),
+    list: listProgress(row, config, userId),
   };
 }
 
@@ -130,6 +162,9 @@ export async function resumeEnrichmentRun(
       WHERE id = ? AND user_id = ? AND status = 'paused'`).run(spendLimitUsd, runId, userId);
     if (r.changes === 0) return { fail: 'not_paused', message: 'Run is not paused' };
   }
+  // A list job whose destination is still full would stop again at once.
+  const room = run.row.dest_sheet_id && run.config.enrichment.list ? destRoom(run.row.dest_sheet_id, userId) : null;
+  if (room && room.room < 1) return { fail: 'conflict', message: destFullMessage(room.name) };
   // Enrichments never read saved API keys (allow_secrets 0), so no scope gate applies.
   return resumeRun('http', runId, userId, true);
 }

@@ -3,6 +3,7 @@
 import type { EnrichRunRequest } from '@/utils/api'
 import { plural } from '../../lib/utils'
 import type { EnrichDraft, RowsMode, RowsStatus } from './draft'
+import { listRequest } from './list-draft'
 
 export interface RunChoice {
   mode: RowsMode            // the effective mode (a gone filter or selection is "all")
@@ -52,9 +53,11 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
     stopAtFirst: d.stopAtFirst,
     email: d.card.preset === 'verified_email'
       ? { accept: d.emailChecks.accept, guess: d.emailChecks.guess, pattern: d.emailChecks.pattern } : null,
-    outputs: d.outputs.filter(o => o.enabled).map(o => ({
+    // A list job has no output columns here: its results become rows elsewhere.
+    outputs: d.list ? [] : d.outputs.filter(o => o.enabled).map(o => ({
       key: o.key, path: o.path, columnName: o.columnName.trim(), ...(o.fromAnswer ? { fromAnswer: true } : {}),
     })),
+    list: d.list ? listRequest(d.list) : null,
     rows: {
       mode: c.mode, status: c.status ?? runStatusOf(d), test: c.test,
       ...(c.mode === 'selected' ? { rowIndexes: c.selectedRows } : {}),
@@ -70,5 +73,6 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
 // Columns a continuing run may reuse: its status column and its outputs.
 export function reusableNames(d: EnrichDraft): Set<string> {
   if (!continuing(d)) return new Set()
+  if (d.list) return new Set([d.columnName.trim()])
   return new Set([d.columnName.trim(), ...d.outputs.filter(o => o.enabled).map(o => o.columnName.trim())])
 }

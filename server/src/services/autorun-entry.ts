@@ -80,9 +80,9 @@ export function clearKeyPauses(userId: string): void {
 }
 
 // The newest run of a column: what auto-run repeats.
-export interface ColumnRunRow { id: string; config: string | null; allow_secrets: number }
+export interface ColumnRunRow { id: string; config: string | null; allow_secrets: number; dest_sheet_id: string | null }
 export function newestRunOf(sheetId: string, userId: string, column: string): ColumnRunRow | undefined {
-  return db.prepare(`SELECT id, config, allow_secrets FROM http_runs
+  return db.prepare(`SELECT id, config, allow_secrets, dest_sheet_id FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
     ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(sheetId, userId, column) as ColumnRunRow | undefined;
 }

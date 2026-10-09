@@ -9,6 +9,7 @@ import {
 import { GUESS_PATTERNS } from './enrich-email-guess';
 import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from './enrich-run-config';
+import { parseListInput, type ListInput } from './enrich-list-input';
 
 export type InputBinding = { column: string } | { value: string };
 // fromAnswer: a field added from a stored answer ("+ Column"), kept by its path.
@@ -32,6 +33,8 @@ export interface EnrichRunInput {
   // Selected rows: the sheet's row_generation when they were picked (a sort
   // since re-means their numbers: the start refuses). null: not sent.
   rowGeneration: number | null;
+  // A list job: where its results go as rows (null: outputs fill this sheet).
+  list: ListInput | null;
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -168,6 +171,8 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
   if (limit === undefined) return { error: 'The run limit must be more than $0.' };
   const email = b.preset === 'verified_email' ? parseEmail(b.email) : null;
   if (email === 'bad') return { error: 'Check the email settings.' };
+  const list = parseListInput(b.list);
+  if (typeof list === 'string') return { error: list };
   return {
     ok: {
       toolId: b.toolId, preset: b.preset === 'verified_email' ? 'verified_email' : null,
@@ -175,6 +180,7 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
       cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip,
       stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions,
       maxCostPerRowUsd: cap, spendLimitUsd: limit, fresh: b.fresh === true, rowGeneration: generationOf(b),
+      list,
     },
   };
 }

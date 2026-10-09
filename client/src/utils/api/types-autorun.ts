@@ -11,7 +11,7 @@ export interface AutorunCondition { column: string; op: string; value: string }
 export type AutorunPause =
   | 'user' | 'column_cap' | 'row_cap' | 'daily_limit' | 'no_key' | 'auth' | 'balance' | 'treg_cap' | 'team_rule'
   | 'provider_busy' | 'unreachable' | 'unconfirmed' | 'retired' | 'missing_input' | 'setup' | 'failed' | 'queue'
-  | 'priced'
+  | 'dest_full' | 'priced'
 
 export interface AutorunColumn {
   column: string

@@ -11,6 +11,7 @@ const SHORT: Record<AutorunPause, string> = {
   team_rule: 'treg team rule', provider_busy: 'provider busy', unreachable: "can't reach treg",
   unconfirmed: 'waiting on treg', retired: 'tool retired', missing_input: 'column missing',
   setup: 'needs a fix', failed: 'a run failed', queue: "couldn't queue", priced: 'needs a daily cap',
+  dest_full: 'the sheet it adds to is full',
 }
 
 export const pauseShort = (r: AutorunPause | null): string => (r ? SHORT[r] ?? 'paused' : '')

@@ -15,6 +15,7 @@ import type { EnrichRunInput } from '../lib/enrich-run-input';
 import type { HTTPRequestConfig, ResponseMapping } from '../lib/http-request-template';
 import type { EnrichTool } from '../lib/enrich-tool';
 import { getTool } from './enrich-catalog';
+import { listRowPrices, planListRun, type ListPlan } from './enrich-list-build';
 import type { RunFail } from './run-shared';
 
 const EMAIL_KEYS = new Set(['email', 'email_status', 'found_by', 'checked_by']);
@@ -80,8 +81,11 @@ export async function buildEnrichmentConfig(
     return bad(gone ? `${found.message} Pick another tool.` : found.message);
   }
   const tool = found.ok;
-  if (tool.kind === 'waterfall' && tool.list) {
-    return bad('Adding results as rows in another sheet arrives in a later step.');
+  if (!input.list && tool.kind === 'waterfall' && tool.list) {
+    return bad('This job adds its results as rows. Pick the sheet they go to.');
+  }
+  if (input.list && (input.preset || input.outputs.length)) {
+    return bad('A job that adds rows has no output columns here: pick the fields to keep instead.');
   }
   let verify: EnrichTool | null = null;
   if (input.preset === 'verified_email') {
@@ -95,12 +99,23 @@ export async function buildEnrichmentConfig(
   const filled = inputTemplatesFor(input, tool, columns);
   if ('fail' in filled) return filled;
   const { templates } = filled;
+  let list: ListPlan | null = null;
+  if (input.list) {
+    const planned = planListRun(tool, input.list, Object.keys(templates));
+    if ('fail' in planned) return planned;
+    list = planned;
+    // The page size is the list's results per row (treg's "price dial").
+    if (list.limitInput) templates[list.limitInput] = String(input.list.maxItems);
+  }
   const given = Object.keys(templates);
   const missing = missingInputs(requestToolOf(tool), new Set(given));
   if (missing) return bad(`Pick columns for ${missing}.`);
-  const pick: ProviderPick = {
-    skip: input.skipProviders, given, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
-  };
+  const pick: ProviderPick = list
+    ? {
+      skip: list.route.exclude, given, order: list.route.prefer, stopAtFirst: true,
+      limit: list.limitInput ? input.list!.maxItems : null,
+    }
+    : { skip: input.skipProviders, given, order: input.providerOrder, stopAtFirst: input.stopAtFirst };
   if (noProviderCanRun(tool, pick)) {
     return bad('No provider can run with these inputs and switches. Map more inputs or switch providers on.');
   }
@@ -113,9 +128,11 @@ export async function buildEnrichmentConfig(
     || tool.price.overflowUsd !== null;
   let cap: number | null = null;
   if (priceKnown) {
-    cap = input.maxCostPerRowUsd ?? (verify
-      ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick), defaultMaxCostPerRow(verify, { given: ['email'] }))
-      : defaultMaxCostPerRow(tool, pick));
+    cap = input.maxCostPerRowUsd ?? (list?.provider
+      ? (await listRowPrices(tool, list.provider, given, input.list!.maxItems)).highUsd
+      : verify
+        ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick), defaultMaxCostPerRow(verify, { given: ['email'] }))
+        : defaultMaxCostPerRow(tool, pick));
   }
   const spendLimit = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
   // A micro of slack: a quoted limit is the estimate rounded to 6 decimals.
@@ -130,8 +147,16 @@ export async function buildEnrichmentConfig(
     toolName: toolTitle(tool,
       ENRICH_FEATURED.find(j => j.id === tool.id && (j.preset ?? null) === input.preset)?.title),
     toolSnapshot: requestToolOf(tool), providerNames: providerNamesOf(tool, ...(verify ? [verify] : [])),
-    route: routeFor(tool, input.providerOrder, input.skipProviders, input.stopAtFirst),
+    route: list ? list.route : routeFor(tool, input.providerOrder, input.skipProviders, input.stopAtFirst),
     ...answerFieldsOf(input),
+    // The destination and its column names are settled at start (services/enrich-list-dest.ts).
+    ...(list && input.list ? {
+      list: {
+        destSheetId: '', itemsPath: list.itemsPath, provider: list.provider, maxItems: input.list.maxItems,
+        fields: input.list.fields, copy: [],
+        dedupe: input.list.dedupePath ? { path: input.list.dedupePath } : null,
+      },
+    } : {}),
     cleanDomains: input.cleanDomains, fresh: input.fresh, maxCostPerRowUsd: cap, spendLimitUsd: spendLimit,
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test, where: input.conditions },
     email: verify && input.email ? {
