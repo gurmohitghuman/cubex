@@ -1,18 +1,26 @@
 name: CI
 
 # Runs on every push to main and every pull request: typecheck, unit tests,
-# build. The Playwright e2e suite needs a browser and a booted server, so it
-# runs locally (scripts/e2e-harness.sh), not here.
+# build. The Release workflow calls it too, on the commit being released.
+# The Playwright e2e suite needs a browser and a booted server, so it runs
+# locally (scripts/e2e-harness.sh), not here.
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to test (the caller's commit when empty)
+        type: string
+        default: ''
 
 # Cancel in-progress runs when a new commit lands on the same branch.
-# Saves CI minutes during back-to-back pushes.
+# Saves CI minutes during back-to-back pushes. The workflow name (the
+# caller's, when called) keeps a Release run apart from the push run on main.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,6 +32,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v5
