@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 import type { EnrichToolCard } from '@/utils/api'
 import { TregNotice } from '../TregNotice'
@@ -30,6 +30,10 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
   const search = useToolSearch(query, active)
   const shown = search.tools ?? []
   const forQuery = search.shownFor
+  // Focus without scrolling: the drawer is still off-screen while it slides in,
+  // and a plain autoFocus scrolls it into view at once, so it pops in instead.
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.focus({ preventScroll: true }) }, [])
 
   return (
     <div className="p-4 space-y-4">
@@ -37,7 +41,7 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
         <input
-          autoFocus
+          ref={inputRef}
           type="text"
           className="input w-full pl-9 pr-16"
           placeholder="What do you want to find? For example: work email, phone"
