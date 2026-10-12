@@ -122,19 +122,19 @@ const reasoning = { type: 'reasoning', status: 'completed', content: [{ type: 'r
 // Recorded: max_uses 1, the model tried three searches; only the first ran.
 const capped = {
   status: 'completed',
-  output: [reasoning, search('Stripe CEO 2025', ['https://techcrunch.com/a', 'https://businessinsider.com/b']), search('Stripe headquarters city'),
-    reasoning, search('Stripe headquarters San Francisco'), reasoning,
-    message('Patrick Collison is the CEO of Stripe, headquartered in San Francisco.', [
-      { type: 'url_citation', url: 'https://techcrunch.com/a', title: 'TechCrunch', content: 'PATRICK COLLISON', start_index: 0, end_index: 0 }])],
+  output: [reasoning, search('Acme CEO 2025', ['https://techcrunch.com/a', 'https://businessinsider.com/b']), search('Acme headquarters city'),
+    reasoning, search('Acme headquarters London'), reasoning,
+    message('Ada Lovelace is the CEO of Acme, headquartered in London.', [
+      { type: 'url_citation', url: 'https://techcrunch.com/a', title: 'TechCrunch', content: 'ADA LOVELACE', start_index: 0, end_index: 0 }])],
   usage: { input_tokens: 6945, output_tokens: 420, cost: 0.00174595, server_tool_use_details: { web_search_requests: 3 } },
 }
 const c1 = completionFromResponse(capped)
-check('answer = the message after the last tool call', extractCompletionText(c1) === 'Patrick Collison is the CEO of Stripe, headquartered in San Francisco.')
+check('answer = the message after the last tool call', extractCompletionText(c1) === 'Ada Lovelace is the CEO of Acme, headquartered in London.')
 check('Responses citations read like chat ones', JSON.stringify(citationsFromCompletion(c1).map(c => c.url)) === '["https://techcrunch.com/a"]')
 check('usage: tokens and cost', JSON.stringify(usageOf(c1)) === JSON.stringify({ promptTokens: 6945, completionTokens: 420, costUsd: 0.00174595 }))
 const log1 = searchLogFromResponse(capped, { cap: 1, maxTotalResults: 5 })
 check('cap 1: of three calls one ran (the count OpenRouter billed, not the 3 it reported)', log1.searches === 1
-  && JSON.stringify(log1.queries.map(q => q.ran)) === '[true,false,false]' && log1.queries[2].query === 'Stripe headquarters San Francisco')
+  && JSON.stringify(log1.queries.map(q => q.ran)) === '[true,false,false]' && log1.queries[2].query === 'Acme headquarters London')
 // Recorded: a search that ran and found nothing has no sources either.
 const empty = { status: 'completed', output: [search('qzxv-nonexistent-site-81723.com'), message('Nothing there.')] }
 check('a search that found nothing still ran', searchLogFromResponse(empty, { cap: 2, maxTotalResults: 10 }).searches === 1)
@@ -155,7 +155,7 @@ check('a failed response gives its message, and still reads its usage',
   responseError({ status: 'failed', error: { message: 'Provider down' } }) === 'Provider down'
   && usageOf(completionFromResponse({ status: 'failed', output: null, usage: { cost: 0.001 } })).costUsd === 0.001)
 const preamble = { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' },
-  output: [message('I will look up the CEO of Stripe.'), search('stripe ceo', ['https://a']), reasoning] }
+  output: [message('I will look up the CEO of Acme.'), search('acme ceo', ['https://a']), reasoning] }
 check('text from before a search is never saved as the answer', throws(() => extractCompletionText(completionFromResponse(preamble)), 'output token limit'))
 const endsOnTool = { status: 'completed', output: [message('Let me check.'), search('q', ['https://a'])] }
 check('a response that ends on a tool call has no answer', throws(() => extractCompletionText(completionFromResponse(endsOnTool)), 'empty response'))

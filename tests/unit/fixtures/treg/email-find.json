@@ -11,7 +11,7 @@
   "tier": "core",
   "kind": "routed",
   "domain": "contacts",
-  "call_template": "treg call treg.people.email.find --method POST --data '{\"linkedin_url\":\"https://www.linkedin.com/in/patrickcollison\"}'",
+  "call_template": "treg call treg.people.email.find --method POST --data '{\"linkedin_url\":\"https://www.linkedin.com/in/ada-lovelace-example\"}'",
   "cost": {
    "type": "per_success",
    "value": 0.004834,
@@ -76,7 +76,7 @@
   },
   "test_request": {
    "body": {
-    "linkedin_url": "https://www.linkedin.com/in/patrickcollison"
+    "linkedin_url": "https://www.linkedin.com/in/ada-lovelace-example"
    }
   },
   "routed_children": [

@@ -368,7 +368,7 @@
    "tier": "core",
    "kind": "data",
    "domain": "people",
-   "call_template": "treg call tomba.people.enrich --query email=patrick@stripe.com",
+   "call_template": "treg call tomba.people.enrich --query email=ada@acme.example",
    "cost": {
     "type": "per_success",
     "value": 1,
@@ -398,13 +398,13 @@
       "type": "string",
       "required": true,
       "note": "the work email to enrich",
-      "example": "patrick@stripe.com"
+      "example": "ada@acme.example"
      }
     }
    },
    "test_request": {
     "queryParams": {
-     "email": "patrick@stripe.com"
+     "email": "ada@acme.example"
     }
    },
    "capability": "people.enrich",
@@ -501,7 +501,7 @@
    "tier": "core",
    "kind": "data",
    "domain": "people",
-   "call_template": "treg call tomba.people.enrich.combined --query email=patrick@stripe.com",
+   "call_template": "treg call tomba.people.enrich.combined --query email=ada@acme.example",
    "cost": {
     "type": "per_success",
     "value": 2,
@@ -531,13 +531,13 @@
       "type": "string",
       "required": true,
       "note": "the work email to enrich",
-      "example": "patrick@stripe.com"
+      "example": "ada@acme.example"
      }
     }
    },
    "test_request": {
     "queryParams": {
-     "email": "patrick@stripe.com"
+     "email": "ada@acme.example"
     }
    },
    "capability": "people.enrich",
