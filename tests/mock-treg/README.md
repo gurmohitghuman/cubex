@@ -50,7 +50,8 @@ replaced: people are fictional (Ada Lovelace, Grace Hopper), domains are `.examp
 `c0ffee…`, the team is `acme` (id 7), and the key never left the capture script.
 
 - `catalog/`: tool details for the Popular jobs and a few single tools, slimmed to the fields Cubex
-  reads (raw field names kept), and search rows for common words.
+  reads (raw field names kept), and search rows for common words. The people in treg's examples are
+  swapped for fictional ones too: keep real people's data out of this repo.
 - `access/`, `account/`: as treg answered.
 - `calls/`: one live answer each (status, `X-Treg-*` headers, body), with a `note` on what it
   shows: a hit, its free replay, a repeat lookup at 10% (treg's archive), a miss, a capped miss,

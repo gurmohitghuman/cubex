@@ -19,7 +19,7 @@
   "strict_query": true,
   "test_request": {
    "queryParams": {
-    "profile_url": "https://www.linkedin.com/in/satyanadella",
+    "profile_url": "https://www.linkedin.com/in/grace-hopper-example",
     "use_cache": "if-present"
    }
   },

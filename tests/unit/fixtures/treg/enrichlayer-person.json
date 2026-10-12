@@ -11,7 +11,7 @@
   "tier": "core",
   "kind": "data",
   "domain": "contacts",
-  "call_template": "treg call enrichlayer.person.profile --query profile_url=https://www.linkedin.com/in/satyanadella --query use_cache=if-present",
+  "call_template": "treg call enrichlayer.person.profile --query profile_url=https://www.linkedin.com/in/grace-hopper-example --query use_cache=if-present",
   "cost": {
    "type": "per_success",
    "value": 1,
@@ -99,7 +99,7 @@
   "strict_query": true,
   "test_request": {
    "queryParams": {
-    "profile_url": "https://www.linkedin.com/in/satyanadella",
+    "profile_url": "https://www.linkedin.com/in/grace-hopper-example",
     "use_cache": "if-present"
    }
   },

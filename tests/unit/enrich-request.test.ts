@@ -24,14 +24,14 @@ const findTool = {
 }
 // Stored rows are sparse: LinkedIn is a column, but this row has no value (no key) for it.
 const row: Record<string, string> = {
-  Name: 'Patrick Collison', Website: 'https://www.Stripe.com/about', Notes: 'say "hi"',
+  Name: 'Ada Lovelace', Website: 'https://www.Acme.example/about', Notes: 'say "hi"',
 }
 const columns = ['Name', 'Website', 'LinkedIn', 'Notes']
 const opts = { cleanDomains: true, columns }
 
 // --- Templates read columns only ------------------------------------------
 check('fills a column',
-  JSON.stringify(fillTemplate('{{Name}}', row, columns)) === JSON.stringify({ value: 'Patrick Collison' }))
+  JSON.stringify(fillTemplate('{{Name}}', row, columns)) === JSON.stringify({ value: 'Ada Lovelace' }))
 check('column match ignores case', 'value' in fillTemplate('{{website}}', row, columns))
 check('unknown column is reported',
   JSON.stringify(fillTemplate('{{Gone}}', row, columns)) === JSON.stringify({ unknown: 'Gone' }))
@@ -50,8 +50,8 @@ if (built.ok) {
   check('POST to /call/<tool>', built.method === 'POST' && built.path === '/call/treg.people.email.find')
   check('no query for a JSON tool', built.query === '')
   const body = JSON.parse(built.body!)
-  check('domain is cleaned', body.domain === 'stripe.com')
-  check('name is sent', body.full_name === 'Patrick Collison')
+  check('domain is cleaned', body.domain === 'acme.example')
+  check('name is sent', body.full_name === 'Ada Lovelace')
   check('body keys follow the tool order', Object.keys(body).join(',') === 'domain,full_name')
 }
 const quoted = buildRequest(findTool, { full_name: '{{Notes}}', domain: '{{Website}}' }, row,
@@ -88,7 +88,7 @@ check('GET builds', g.ok)
 if (g.ok) {
   check('no body on GET', g.body === null)
   check('query in declared order, encoded',
-    g.query === 'q=Patrick%20Collison&limit=25&country=GB&tags=a%2Cb&id=x%2F1&raw=true')
+    g.query === 'q=Ada%20Lovelace&limit=25&country=GB&tags=a%2Cb&id=x%2F1&raw=true')
 }
 check('required query input', !buildRequest(getTool, {}, row, opts).ok)
 const notNum = buildRequest(getTool, { q: 'x', limit: 'ten' }, row, opts)
@@ -126,10 +126,10 @@ const badId = buildRequest({ ...getTool, id: 'https://evil.example/x' }, { q: 'x
 check('a tool id can never be a URL', !badId.ok && 'invalid' in badId)
 
 // --- Input clean-up --------------------------------------------------------
-check('URL to domain', cleanDomain('https://www.Stripe.com/about?x=1#y') === 'stripe.com')
-check('email to domain', cleanDomain('pat@stripe.com') === 'stripe.com')
+check('URL to domain', cleanDomain('https://www.Acme.example/about?x=1#y') === 'acme.example')
+check('email to domain', cleanDomain('ada@acme.example') === 'acme.example')
 check('port and trailing dot',
-  cleanDomain('stripe.com:443.') === 'stripe.com' || cleanDomain('stripe.com.:443') === 'stripe.com')
+  cleanDomain('acme.example:443.') === 'acme.example' || cleanDomain('acme.example.:443') === 'acme.example')
 check('bare domain unchanged', cleanDomain('acme.io') === 'acme.io')
 check('accents stripped for guesses', asciiNamePart('José María') === 'josemaria')
 check('apostrophes dropped', asciiNamePart("O'Brien") === 'obrien')
