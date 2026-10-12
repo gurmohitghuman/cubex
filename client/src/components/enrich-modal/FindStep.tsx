@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 import type { EnrichToolCard } from '@/utils/api'
 import { TregNotice } from '../TregNotice'
+import { TregLogo } from '../TregLogo'
 import { LoadingSpinner } from '../LoadingSpinner'
 import { ToolCard } from './ToolCard'
 import { useToolSearch } from './useToolSearch'
@@ -38,6 +39,10 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
   return (
     <div className="p-4 space-y-4">
       <TregNotice hasKey={hasKey} />
+      <p className="flex items-center gap-1.5 text-xs text-gray-500" data-testid="treg-source">
+        <TregLogo className="h-4 w-4" />
+        Lookups run through treg.to, on your own treg key.
+      </p>
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
         <input
