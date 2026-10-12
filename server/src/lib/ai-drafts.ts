@@ -31,6 +31,9 @@ export interface DraftConfig {
   searchEngine?: string | null;
   searchMode?: string | null;
   maxSearchesPerRow?: number | null;
+  // "Only run if" rule as stored (lib/run-condition.ts), or null. Absent on
+  // drafts saved before rules.
+  runIf?: string | null;
 }
 
 // A draft's config from a parsed /ai/preview request and the model it resolved to.
@@ -38,6 +41,7 @@ export function draftConfigFrom(p: {
   cleanColumnName: string; prompt: string; systemPrompt?: string; safeTemperature: number;
   useOpenRouterWebSearch: boolean; useWebFetch: boolean; safeMaxChars: number | null; safeConcurrency: number;
   search: { engine: string; mode: string | null; maxPerRow: number | null } | null;
+  runIf?: string | null;
 }, model: string): DraftConfig {
   return {
     columnName: p.cleanColumnName, prompt: p.prompt, systemPrompt: p.systemPrompt || null,
@@ -45,6 +49,7 @@ export function draftConfigFrom(p: {
     useOpenRouterWebSearch: p.useOpenRouterWebSearch, useWebFetch: p.useWebFetch,
     maxChars: p.safeMaxChars, concurrency: p.safeConcurrency,
     searchEngine: p.search?.engine ?? null, searchMode: p.search?.mode ?? null, maxSearchesPerRow: p.search?.maxPerRow ?? null,
+    runIf: p.runIf ?? null,
   };
 }
 
@@ -88,6 +93,9 @@ export function computeConfigHash(c: DraftConfig): string {
     !!c.useOpenRouterWebSearch, !!c.useWebFetch, c.maxChars ?? null,
     // Search settings only when searching, so every other config hashes as before.
     ...(c.useOpenRouterWebSearch ? [c.searchEngine ?? null, c.searchMode ?? null, c.maxSearchesPerRow ?? null] : []),
+    // A rule picks which rows a preview samples and a run fills; only hashed
+    // when set, so drafts without one hash as before.
+    ...(c.runIf ? [c.runIf] : []),
   ]));
 }
 

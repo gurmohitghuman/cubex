@@ -45,7 +45,8 @@ export function listRuns(
   const aiRows = db.prepare(`
     SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
-           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
+           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
+           run_if, condition_skipped_rows
     FROM ai_runs WHERE user_id = ? ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
@@ -53,7 +54,7 @@ export function listRuns(
   const httpRows = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
            error_message, target_rows, created_at, updated_at,
-           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows
     FROM http_runs WHERE user_id = ? ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];

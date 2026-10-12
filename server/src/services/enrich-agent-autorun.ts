@@ -5,6 +5,7 @@
 import { parseConditions } from '../lib/enrich-run-input';
 import type { EnrichCondition } from '../lib/enrich-run-config';
 import { agentConditions, flagOf } from '../lib/enrich-agent-input';
+import { parseRuleField } from '../lib/run-condition';
 import { strayKey } from '../lib/enrich-agent-args';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { saveAutorunSettings, setSheetAutorunPaused } from './autorun-settings';
@@ -18,7 +19,7 @@ export function autorunColumnJson(v: AutorunColumnView) {
   return {
     column: v.column, kind: v.kind, enabled: v.enabled, sends_requests: v.kind === 'http',
     paused_reason: v.pausedReason, paused_message: v.pausedMessage,
-    where: v.where.map(c => ({ column: c.column, operator: c.op, value: c.value })),
+    where: v.where.map(c => ({ column: c.column, operator: c.op, value: c.value })), run_if: v.runIf,
     daily_cap_usd: v.dailyCapUsd, daily_row_cap: v.dailyRowCap,
     used_today_usd: v.usedTodayUsd, rows_today: v.rowsToday,
   };
@@ -33,7 +34,7 @@ export function sheetAutorunJson(sheetId: string, userId: string) {
 }
 
 export interface AgentAutorunArgs {
-  column?: unknown; enabled?: unknown; paused?: unknown; where?: unknown;
+  column?: unknown; enabled?: unknown; paused?: unknown; where?: unknown; run_if?: unknown;
   daily_cap_usd?: unknown; daily_row_cap?: unknown;
 }
 
@@ -48,7 +49,7 @@ export async function agentSetAutorun(
 ): Promise<{ ok: ReturnType<typeof sheetAutorunJson> } | RunFail> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const stray = strayKey(a as Record<string, unknown>,
-    ['column', 'enabled', 'paused', 'where', 'daily_cap_usd', 'daily_row_cap'], '');
+    ['column', 'enabled', 'paused', 'where', 'run_if', 'daily_cap_usd', 'daily_row_cap'], '');
   if (stray) return bad(`${stray} Nothing was changed.`);
   const column = a.column === undefined || a.column === null ? null : a.column;
   if (column !== null && (typeof column !== 'string' || !column.trim() || column.length > 200)) {
@@ -75,10 +76,14 @@ export async function agentSetAutorun(
     if (typeof parsed === 'string') return bad(parsed);
     where = parsed;
   }
+  // run_if absent keeps the rule; '' or null clears it.
+  const runIf = a.run_if === undefined ? undefined : parseRuleField(a.run_if, 'run_if');
+  if (runIf && 'error' in runIf) return bad(runIf.error);
   const cap = num(a.daily_cap_usd), rowCap = num(a.daily_row_cap);
   if (cap === undefined || rowCap === undefined) return bad('daily_cap_usd and daily_row_cap must be numbers.');
   const saved = await saveAutorunSettings(userId, sheetId, {
     column, enabled: enabled as boolean, where, dailyCapUsd: cap, dailyRowCap: rowCap,
+    ...(runIf ? { runIf: runIf.ok } : {}),
   }, { hasSecretsScope });
   return 'fail' in saved ? saved : { ok: sheetAutorunJson(sheetId, userId) };
 }

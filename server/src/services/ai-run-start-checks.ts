@@ -1,4 +1,5 @@
-// Column checks for a single-column AI run start (ai-run-start.ts).
+// Column checks for an AI run start (ai-run-start.ts, ai-run-start-multi.ts).
+import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
 import { structuredRunOwning } from '../lib/structured-run-owner';
@@ -24,4 +25,16 @@ export function runColumnConflict(
     }
   }
   return null;
+}
+
+// Is a run on this column still active? Two runs would race over the same
+// cells. A stopped run still clearing its ⏳ cells (migration 004) counts: its
+// clear would wipe the new run's placeholders in rows it hasn't reached.
+export function activeRunOnColumn(sheetId: string, userId: string, column: string): boolean {
+  return !!db.prepare(`
+    SELECT id FROM ai_runs
+    WHERE sheet_id = ? AND user_id = ? AND column_name = ?
+      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
+    LIMIT 1
+  `).get(sheetId, userId, column);
 }

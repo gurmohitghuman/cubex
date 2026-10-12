@@ -63,6 +63,8 @@ export interface EnrichDraft {
   outputs: OutputPick[]
   rowsMode: RowsMode
   conditions: Condition[]
+  // "Only run if" rule ('' = every row). Older condition lists come back as one.
+  runIf: string
   maxCostPerRowUsd: number | null   // null: the estimate's default
   spendLimitUsd: number | null      // null: the estimate's high end
   fresh: boolean
@@ -95,7 +97,7 @@ export function emptyDraft(): EnrichDraft {
     step: 'find', query: '', card: null, builtFor: null, columnName: '', bindings: {}, cleanDomains: true,
     providerOrder: [], skipProviders: [], stopAtFirst: false,
     emailChecks: { accept: 'safest', guess: true, pattern: 'first.last' },
-    outputs: [], rowsMode: 'all', conditions: [], maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false,
+    outputs: [], rowsMode: 'all', conditions: [], runIf: '', maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false,
     autoRun: false, autoRunCapUsd: null, autoRunWas: false,
     continueColumn: null, rowsStatus: 'not_enriched', runId: null, runEnded: false, recall: null, list: null,
   }

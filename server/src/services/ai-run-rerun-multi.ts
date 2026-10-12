@@ -17,6 +17,7 @@ import { getLockedRunColumns } from '../lib/run-locked-columns';
 import { findStructuredRun, outputColumnNames } from '../lib/structured-run-owner';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
+import { ruleSeed, storedRule } from './run-rule';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { type AIRunRow } from './ai-runner';
 import { enqueueAIRerun } from '../queue';
@@ -83,6 +84,8 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
   // The prompt's /references may name columns renamed or deleted since.
   const refsError = unknownPromptRefsError(p.sheetId, userId, latest.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
+  const rule = storedRule(p.sheetId, userId, latest.run_if);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
 
   const runId = uuidv4();
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
@@ -103,14 +106,14 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows,
           processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?)
       `).run(
         runId, p.sheetId, userId, statusColumn, latest.prompt, latest.system_prompt, model, latest.temperature,
         latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, latest.concurrency,
         targets.length, JSON.stringify(targets), JSON.stringify(specs), statusColumn, dataColumn,
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
-        latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null,
+        latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
       );
     }).immediate();
     if (capExceeded) return {
@@ -122,7 +125,7 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
     // (ai-run-start-multi.ts); a failure fails the run and clears them.
     seedThenEnqueue({
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns,
-      targets, lastRow: Number.MAX_SAFE_INTEGER,
+      targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, statusColumn),
       enqueue: () => enqueueAIRerun(runId, targets),
     });
     return { ok: { runId, targetCount: targets.length } };

@@ -5,10 +5,11 @@ import { db } from '../lib/db';
 import { utcDay } from '../lib/clock';
 import type { EnrichCondition } from '../lib/enrich-run-config';
 import type { AutorunKind } from '../lib/autorun-rules';
+import { parseRule, type RuleNode } from '../lib/run-condition-parse';
 
 export interface AutorunEntry {
   id: string; user_id: string; sheet_id: string; status_column: string; kind: AutorunKind;
-  enabled: number; input_columns: string; where_json: string | null;
+  enabled: number; input_columns: string; where_json: string | null; run_if: string | null;
   daily_cap_micro: number | null; daily_row_cap: number | null;
   watermark_row_index: number; rescan: number; row_generation_seen: number; data_version_seen: number;
   paused_reason: string | null; paused_message: string | null; paused_at: string | null;
@@ -36,6 +37,18 @@ export const inputColumnsOf = (e: Pick<AutorunEntry, 'input_columns'>): string[]
 export const whereOf = (e: Pick<AutorunEntry, 'where_json'>): EnrichCondition[] =>
   listOf(e.where_json).filter((c): c is EnrichCondition => !!c && typeof c === 'object'
     && typeof (c as EnrichCondition).column === 'string' && typeof (c as EnrichCondition).op === 'string');
+
+// Its "Only run if" rule, read (saved checked, renames rewrite it). One that no
+// longer reads lets no row through rather than every row.
+export function ruleReads(e: Pick<AutorunEntry, 'run_if'>): boolean {
+  if (!e.run_if) return true;
+  try { parseRule(e.run_if); return true; } catch { return false; }
+}
+
+export function ruleOf(e: Pick<AutorunEntry, 'run_if'>): RuleNode | null {
+  if (!e.run_if) return null;
+  try { return parseRule(e.run_if); } catch { return { kind: 'or', items: [] }; }
+}
 
 export function loadEntry(id: string): AutorunEntry | undefined {
   return db.prepare('SELECT * FROM autorun_columns WHERE id = ?').get(id) as AutorunEntry | undefined;

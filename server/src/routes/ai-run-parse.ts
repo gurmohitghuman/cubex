@@ -3,6 +3,7 @@ import { sanitizeAndValidateColumnName, findColumnNameCollision } from '../lib/c
 import { validateModelParam } from '../lib/ai-model-resolve';
 import { OutputColumnSpec, OutputColumnType, SOURCES_KEY } from '../lib/ai-multi-output';
 import { parseBooleanOption, parseSearchOptions, type SearchOptions } from '../lib/web-search-options';
+import { parseRuleField } from '../lib/run-condition';
 
 const OUTPUT_COLUMN_TYPES: OutputColumnType[] = ['string', 'number', 'boolean'];
 
@@ -78,6 +79,8 @@ export interface RunParams {
   outputColumns?: OutputColumnSpec[];
   // Web search engine, mode and per-row cap; null without web search.
   search: SearchOptions | null;
+  // "Only run if" rule text, checked against the sheet by the start service.
+  runIf: string | null;
 }
 
 // The two web-tool switches and the search options, shared with the preview
@@ -116,6 +119,8 @@ export function parseRunRequest(body: any): RunParams | RunParseError {
   if (modelParamError) return { ok: false, status: 400, error: modelParamError };
   const web = parseWebOptions(body);
   if ('error' in web) return { ok: false, status: 400, error: web.error };
+  const runIf = parseRuleField(body?.runIf);
+  if ('error' in runIf) return { ok: false, status: 400, error: runIf.error };
 
   // Structured multi-column output (optional). Combines with web search and web
   // fetch: the run then also fills a "(Data)" citations column
@@ -155,6 +160,6 @@ export function parseRunRequest(body: any): RunParams | RunParseError {
     sheetId, cleanColumnName: nameCheck.name, prompt, systemPrompt,
     model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
     ...web.ok,
-    safeTemperature, safeConcurrency, safeMaxChars, outputColumns,
+    safeTemperature, safeConcurrency, safeMaxChars, outputColumns, runIf: runIf.ok,
   };
 }

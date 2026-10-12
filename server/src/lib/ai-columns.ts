@@ -1,5 +1,6 @@
 import { db } from './db';
 import { renamePromptColumnRefs } from './column-ref-rename';
+import { renameRuleColumn } from './run-condition';
 import { computeConfigHash, type DraftConfig } from './ai-drafts';
 
 // Structured-AI-run ↔ column lifecycle cascade — the AI twin of lib/http-columns.ts,
@@ -64,14 +65,15 @@ export function renameAiRunColumnRefs(
     return changed;
   });
 
-  // Prompts that read the column (/token) follow the rename, or a re-run would
-  // reject them as referencing an unknown column.
-  const runs = db.prepare('SELECT id, prompt FROM ai_runs WHERE sheet_id = ? AND user_id = ?')
-    .all(sheetId, userId) as Array<{ id: string; prompt: string }>;
-  const setPrompt = db.prepare('UPDATE ai_runs SET prompt = ? WHERE id = ?');
+  // Prompts that read the column (/token) and "Only run if" rules that name it
+  // follow the rename, or a re-run would reject them as referencing an unknown column.
+  const runs = db.prepare('SELECT id, prompt, run_if FROM ai_runs WHERE sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as Array<{ id: string; prompt: string; run_if: string | null }>;
+  const setPrompt = db.prepare('UPDATE ai_runs SET prompt = ?, run_if = ? WHERE id = ?');
   for (const r of runs) {
     const prompt = renamePromptColumnRefs(r.prompt, oldName, newName);
-    if (prompt !== r.prompt) setPrompt.run(prompt, r.id);
+    const runIf = r.run_if === null ? null : renameRuleColumn(r.run_if, oldName, newName);
+    if (prompt !== r.prompt || runIf !== r.run_if) setPrompt.run(prompt, runIf, r.id);
   }
   // And the sheet's saved AI-panel draft, so reopening the panel restores a
   // prompt that still runs. Its previews stay reusable: the rewritten prompt
@@ -84,8 +86,10 @@ export function renameAiRunColumnRefs(
     try { config = JSON.parse(d.config_json); } catch { continue; }
     if (typeof config?.prompt !== 'string') continue;
     const prompt = renamePromptColumnRefs(config.prompt, oldName, newName);
-    if (prompt === config.prompt) continue;
+    const runIf = config.runIf ? renameRuleColumn(config.runIf, oldName, newName) : config.runIf;
+    if (prompt === config.prompt && runIf === config.runIf) continue;
     config.prompt = prompt;
+    config.runIf = runIf;
     setDraft.run(JSON.stringify(config), computeConfigHash(config), d.id);
   }
 }

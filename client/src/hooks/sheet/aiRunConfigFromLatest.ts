@@ -16,6 +16,8 @@ export function aiRunConfigFromLatest(latest: AIRun, columnName: string) {
     useWebFetch: !!r.use_web_fetch,
     maxChars: r.max_chars,
     concurrency: r.concurrency,
+    // Its "Only run if" rule ('' = every row).
+    runIf: r.run_if ?? '',
     // The run's search engine, mode and cap: a rerun or edit keeps what the
     // run used (the engine it actually sent, e.g. Exa when Auto was switched
     // so a cap would hold). Absent without web search or on older runs.

@@ -13,7 +13,8 @@ import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
 import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
 import type { SearchOptions } from '../lib/web-search-options';
-import { targetRowsAndSample } from './run-estimate-rows';
+import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
+import { checkRunRule } from './run-rule';
 import { tokenHistory } from './ai-token-history';
 import { estimateWebWork, webNote, webSearchEstimate } from './run-estimate-web';
 
@@ -28,10 +29,15 @@ export interface AiEstimateInput {
   maxChars: number | null;
   targetRowIndexes?: number[];
   search?: SearchOptions | null;
+  runIf?: string | null;
 }
 
 export interface AiEstimate {
   rows_to_process: number;
+  // With an "Only run if" rule: the rule as stored, and the rows it keeps out
+  // (they cost nothing and aren't in rows_to_process).
+  run_if?: string;
+  rows_skipped_by_rule?: number;
   model: string | null;
   pricing_available: boolean;
   // Tokens plus web fees.
@@ -69,8 +75,14 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const refsError = unknownPromptRefsError(input.sheetId, userId, input.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
 
-  const { count, sample } = targetRowsAndSample(input.sheetId, userId, input.targetRowIndexes);
-  if (count === 0) return { fail: 'no_rows', message: 'No rows to process.' };
+  const rule = checkRunRule(input.sheetId, userId, input.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const { count, sample, skipped } = rule.ok
+    ? await ruleRowsAndSample(input.sheetId, userId, rule.ok, input.targetRowIndexes)
+    : { ...targetRowsAndSample(input.sheetId, userId, input.targetRowIndexes), skipped: 0 };
+  if (count === 0) {
+    return { fail: 'no_rows', message: rule.ok ? 'No rows pass the "Only run if" rule.' : 'No rows to process.' };
+  }
 
   // Input tokens: render the prompt against sampled rows (+ system prompt, + a
   // structured run's JSON instruction) and average. Free — no API calls.
@@ -144,6 +156,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   return {
     ok: {
       rows_to_process: count,
+      ...(rule.ok ? { run_if: rule.ok.rule, rows_skipped_by_rule: skipped } : {}),
       model,
       pricing_available: pricingAvailable,
       estimated_cost_usd: cost,

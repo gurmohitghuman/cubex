@@ -18,7 +18,7 @@ import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { getTregToken } from './treg-key';
 import {
   CAPACITY_PAUSES, RETRY_PAUSES, clearEntryPause, columnRunActive, inputColumnsOf, loadEntry, newestRunOf,
-  pauseEntry, whereOf, type AutorunEntry,
+  pauseEntry, ruleOf, ruleReads, whereOf, type AutorunEntry,
 } from './autorun-entry';
 import { autorunCapacity } from './autorun-capacity';
 import { pickRows } from './autorun-pick';
@@ -34,11 +34,14 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
   if (!newest || !config?.requestConfig) {
     return { reason: 'setup', message: 'This column has no run to repeat. Run it once, then turn auto-run on again.' };
   }
+  if (!ruleReads(e)) {
+    return { reason: 'setup', message: 'Its "Only run if" rule no longer reads. Edit the rule in its auto-run settings.' };
+  }
   const columns = getSheetColumns(e.sheet_id, e.user_id, false);
   // The columns it watches follow the newest run (a run started elsewhere can read others).
   // A column it watched before still counts: an HTTP request's token for a deleted column
   // would otherwise read as plain text, and that column must come back first.
-  const reads = watchedColumns(requestColumns(config, [...columns, ...inputColumnsOf(e)]), whereOf(e));
+  const reads = watchedColumns(requestColumns(config, [...columns, ...inputColumnsOf(e)]), whereOf(e), e.run_if);
   // Its own column too: a CSV replace can drop it, and results would land in a column the grid doesn't list.
   const gone = [e.status_column, ...reads].find(c => !columns.includes(c));
   if (gone) {
@@ -114,7 +117,7 @@ export async function autorunTick(id: string): Promise<void> {
 
   const plan: CandidatePlan = {
     kind: e.kind, statusColumn: e.status_column, config: setup.config, columns: setup.columns,
-    requestCols: requestColumns(setup.config, setup.columns), where: whereOf(e),
+    requestCols: requestColumns(setup.config, setup.columns), where: whereOf(e), rule: ruleOf(e),
   };
   let picked = await pickRows(e, plan, Math.min(room.rows, AUTORUN_MAX_ROWS));
   if (picked.rows.length === 0) {

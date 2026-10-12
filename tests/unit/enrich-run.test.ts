@@ -9,6 +9,7 @@ import cfgMod from '../../server/src/lib/enrich-run-config'
 import outMod from '../../server/src/lib/enrich-outcome'
 import cellsMod from '../../server/src/lib/enrich-cells'
 import seedMod from '../../server/src/lib/enrich-seed'
+import ruleMod from '../../server/src/lib/run-condition'
 import guessMod from '../../server/src/lib/enrich-email-guess'
 import inputMod from '../../server/src/lib/enrich-run-input'
 import trimMod from '../../server/src/lib/answer-trim'
@@ -19,6 +20,7 @@ const { routeFor, requestToolOf, CUBEX_PATHS } = cfgMod as typeof import('../../
 const { answerCells, verdictCells, waterfallOutcome } = outMod as typeof import('../../server/src/lib/enrich-outcome')
 const { enrichCellValues } = cellsMod as typeof import('../../server/src/lib/enrich-cells')
 const { seedVerdict } = seedMod as typeof import('../../server/src/lib/enrich-seed')
+const { checkRule } = ruleMod as typeof import('../../server/src/lib/run-condition')
 const { guessEmail, guessParts } = guessMod as typeof import('../../server/src/lib/enrich-email-guess')
 const { parseEnrichRunInput } = inputMod as typeof import('../../server/src/lib/enrich-run-input')
 const { trimAnswer } = trimMod as typeof import('../../server/src/lib/answer-trim')
@@ -94,13 +96,27 @@ const config = {
   responseMapping: [], previewSize: 5,
   enrichment: { toolSnapshot: requestToolOf(find), cleanDomains: true } as never,
 }
-const plan = (over = {}) => ({ statusColumn: null, status: 'any' as const, where: [], config, columns: ['Name', 'Website', 'S', 'Size'], ...over })
+const plan = (over = {}) => ({
+  statusColumn: null, status: 'any' as const, where: [], rule: null, config, columns: ['Name', 'Website', 'S', 'Size'],
+  ...over,
+})
 check('a row with its inputs runs', seedVerdict({ Name: 'Ada L', Website: 'a.example' }, plan()) === 'run')
 check('a row without them is skipped as missing', seedVerdict({ Name: 'Ada L' }, plan()) === 'missing')
 check('not enriched: a row with a status is skipped', seedVerdict({ Name: 'A', Website: 'a.example', S: '⏭️ Not found' }, plan({ statusColumn: 'S', status: 'not_enriched' })) === 'skip')
 const where = [{ column: 'Size', op: 'gt' as const, value: '50' }]
 check('Only run if: passes', seedVerdict({ Name: 'A', Website: 'a.example', Size: '120' }, plan({ where })) === 'run')
-check('Only run if: fails, and a non-number never passes gt', seedVerdict({ Name: 'A', Website: 'a.example', Size: 'big' }, plan({ where })) === 'skip')
+const row = (over: Record<string, string>) => ({ Name: 'A', Website: 'a.example', ...over })
+check('Only run if: fails, and a non-number never passes gt',
+  seedVerdict(row({ Size: 'big' }), plan({ where })) === 'condition')
+const rule = checkRule('{{Size}} > 50 OR {{Name}} contains "vip"', ['Name', 'Website', 'S', 'Size']).tree
+check('Only run if rule: OR passes', seedVerdict(row({ Name: 'A vip', Size: '3' }), plan({ rule })) === 'run')
+check('Only run if rule: fails', seedVerdict(row({ Size: '3' }), plan({ rule })) === 'condition')
+check('rule and list both apply', seedVerdict(row({ Name: 'A vip', Size: '3' }), plan({ rule, where })) === 'condition')
+const notEnriched = { rule, statusColumn: 'S', status: 'not_enriched' as const }
+check('another status is skip, not condition',
+  seedVerdict(row({ Size: '3', S: '✅ Found' }), plan(notEnriched)) === 'skip')
+check('not enriched takes a row its rule kept out before',
+  seedVerdict(row({ Size: '90', S: '⏭️ Condition not met' }), plan(notEnriched)) === 'run')
 
 // --- The free guess ----------------------------------------------------------------
 const parts = guessParts({ full_name: 'José María Pérez', domain: 'https://www.Acme.example/x' })

@@ -18,6 +18,7 @@ import { saveAutorunSettings } from './autorun-settings';
 import { sheetAutorunView } from './autorun-view';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
+import { runIfReply } from './run-rule';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
@@ -66,7 +67,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   const body = agentRunBody(a, found.ok, pre.targetRowIndexes ?? null, pre.targetRowIndexes ? generation : null);
   if ('error' in body && typeof body.error === 'string') return bad(body.error);
   const parsed = parseEnrichRunInput(body);
-  if ('error' in parsed) return bad(parsed.error);
+  if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
 
@@ -74,7 +75,9 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
     const est = await agentEnrichEstimate(c.userId, sheetId, parsed.ok);
     return 'fail' in est ? est : { ok: est.ok, started: false };
   }
-  const { rowGeneration: _gen, rows, ...rest } = parsed.ok;
+  // runIf only when set, so a retry that spans the release still replays.
+  const { rowGeneration: _gen, rows, runIf, ...others } = parsed.ok;
+  const rest = runIf ? { ...others, runIf } : others;
   const hash = runRequestHash('enrichment_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun,
@@ -87,7 +90,10 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   if ('fail' in out) return out;
   const run = db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
     .get(out.ok.runId, c.userId) as string;
-  const e = JSON.parse(run).enrichment as { maxCostPerRowUsd: number | null; spendLimitUsd: number | null };
+  const stored = JSON.parse(run) as {
+    runIf?: string; enrichment: { maxCostPerRowUsd: number | null; spendLimitUsd: number | null };
+  };
+  const e = stored.enrichment;
 
   let autoRunPart: Record<string, unknown> = {};
   if (autoRun) {
@@ -116,7 +122,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
     output_columns: out.ok.outputColumns, destination_sheet_id: out.ok.destSheetId,
     rows_in_scope: out.ok.rowsInScope, test_rows: parsed.ok.rows.test,
     max_cost_per_row_usd: e.maxCostPerRowUsd, spend_limit_usd: e.spendLimitUsd,
-    daily_limit: dailyLimitOf(c.userId), ...autoRunPart,
+    daily_limit: dailyLimitOf(c.userId), ...(stored.runIf ? runIfReply(stored.runIf) : {}), ...autoRunPart,
     ...(destNotice.auto_run ? { destination_auto_run: destNotice.auto_run } : {}),
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}),
   };

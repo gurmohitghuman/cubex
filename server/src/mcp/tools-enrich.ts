@@ -10,6 +10,7 @@ import { GUESS_PATTERNS } from '../lib/enrich-email-guess';
 import { agentSearchTools, agentGetTool } from '../services/enrich-agent-tools';
 import { tokenStartEnrichmentRun, type TokenEnrichArgs } from '../services/enrich-token-run';
 import { DAILY_LIMIT_NOTE, STATUS_WORDS } from '../services/enrich-agent-shared';
+import { runIfSchema } from './run-if-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
 const condition = z.object({
@@ -40,7 +41,8 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'safest (valid only, default), balanced (+ catch-all) or wide (+ risky); email.guess tries a free '
   + 'first.last@domain guess first. Which rows: all by default; rows not_enriched / no_result / failed on a '
   + 'column a run made (add_to_column:true adds to an existing enrichment column), use_sheet_filter, '
-  + 'target_row_ids, and where (only rows matching). '
+  + 'target_row_ids, and run_if (only rows passing a rule; the others show "⏭️ Condition not met" and cost '
+  + 'nothing; the older where list still works). '
   + 'LIST JOBS (get_enrichment adds_rows:true): pass list {new_sheet_name or destination_sheet_id (same table), '
   + 'provider (one provider: treg returns each provider\'s own fields), results_per_row (the price dial), '
   + 'copy_columns}; no outputs. The fields to keep come from real results: run with test:true, poll '
@@ -119,7 +121,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       target_row_ids: z.array(z.string()).min(1).max(MAX_SELECTED_ROWS).optional()
         .describe(`Stable row ids (from read_rows) to run, up to ${MAX_SELECTED_ROWS.toLocaleString('en-US')}`),
       test: lenientBoolean().optional().describe(`Run the first ${ENRICH_TEST_ROWS} rows only`),
-      where: z.array(condition).max(20).optional().describe('Only rows matching all of these'),
+      where: z.array(condition).max(20).optional().describe('Older form of run_if: only rows matching all of these'),
+      run_if: runIfSchema,
       list: z.object({
         destination_sheet_id: z.string().optional(), new_sheet_name: z.string().max(200).optional(),
         provider: z.string().optional(),

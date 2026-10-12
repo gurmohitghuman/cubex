@@ -38,7 +38,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'daily_limit, and enrichment: the tool, max_cost_per_row_usd, spend_limit_usd, pause_reason (spend_limit, '
         + 'daily_limit, balance, no_key, unreachable…: resume with control_run once fixed; a run limit can be raised '
         + 'there), skipped_rows_missing_inputs, and for a job that adds rows list {destination_sheet_id, rows_added, '
-        + 'adding, waiting_for_fields, waiting_for_room}. '
+        + 'adding, waiting_for_fields, waiting_for_room}. A run started with run_if reports run_if and '
+        + 'condition_skipped_rows (rows the rule kept out; not in total_rows), counted once the run has started. '
         + `${STATUS_WORDS} Poll this after a run start; read the cells with read_rows once completed.`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment']),

@@ -16,7 +16,7 @@ export interface AgentRunArgs {
   inputs?: unknown; clean_domains?: unknown; outputs?: unknown; email?: unknown;
   provider_order?: unknown; skip_providers?: unknown; stop_at_first?: unknown;
   max_cost_per_row_usd?: unknown; spend_limit_usd?: unknown; rows?: unknown; use_sheet_filter?: unknown;
-  test?: unknown; where?: unknown; fresh?: unknown; list?: unknown;
+  test?: unknown; where?: unknown; run_if?: unknown; fresh?: unknown; list?: unknown;
 }
 
 // Verified work email's columns (Cubex fills them; client enrich-modal/outputs.ts).
@@ -172,7 +172,7 @@ export function agentRunBody(
   return {
     toolId: tool.id, preset, columnName: a.column_name, continueColumn: f.add_to_column === true, inputs,
     cleanDomains: f.clean_domains !== false, providerOrder: a.provider_order, skipProviders: a.skip_providers,
-    stopAtFirst: f.stop_at_first === true, outputs, rows, conditions,
+    stopAtFirst: f.stop_at_first === true, outputs, rows, conditions, runIf: a.run_if,
     maxCostPerRowUsd: a.max_cost_per_row_usd, spendLimitUsd: a.spend_limit_usd, fresh: f.fresh === true,
     rowGeneration, list,
     ...(preset === 'verified_email'

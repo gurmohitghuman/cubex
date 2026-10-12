@@ -4,6 +4,7 @@
 // chip, and GET /api/autorun/sheets/:id serves the dialog.
 import { db } from '../lib/db';
 import { isEnrichmentConfig, type EnrichCondition } from '../lib/enrich-run-config';
+import { ruleFromConditions } from '../lib/run-condition';
 import { columnOutputs, newestRunOf, sheetEntries, usageToday, whereOf } from './autorun-entry';
 
 export interface AutorunColumnView {
@@ -13,6 +14,7 @@ export interface AutorunColumnView {
   pausedReason: string | null;
   pausedMessage: string | null;
   where: EnrichCondition[];
+  runIf: string | null;           // its "Only run if" rule (lib/run-condition.ts)
   dailyCapUsd: number | null;     // enrichment columns
   dailyRowCap: number | null;     // HTTP API columns
   usedTodayUsd: number;
@@ -32,6 +34,8 @@ export function sheetAutorunView(sheetId: string, userId: string): SheetAutorunV
     columns[e.status_column] = {
       column: e.status_column, kind: e.kind, enabled: e.enabled === 1,
       pausedReason: e.paused_reason, pausedMessage: e.paused_message, where: whereOf(e),
+      // Older condition lists read as one rule (the dialog saves it back as one).
+      runIf: e.run_if ?? ruleFromConditions(whereOf(e)),
       dailyCapUsd: e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6, dailyRowCap: e.daily_row_cap,
       usedTodayUsd: used.spentMicro / 1e6, rowsToday: used.rows,
     };
@@ -42,15 +46,19 @@ export function sheetAutorunView(sheetId: string, userId: string): SheetAutorunV
 }
 
 // What the column dialog needs about its column: the columns its runs fill
-// ("Only run if" can't read them), and whether the team's own provider key
-// bills its tool (from the newest run, as auto-run repeats it: no dollar cap).
+// ("Only run if" can't read them), whether the team's own provider key bills
+// its tool (from the newest run, as auto-run repeats it: no dollar cap), and
+// the newest run's "Only run if" (a first turn-on starts from it).
 export function autorunTargetView(
   sheetId: string, userId: string, column: string,
-): { outputs: string[]; ownKey: boolean } {
+): { outputs: string[]; ownKey: boolean; runIf: string | null } {
   let config: unknown = null;
   try { config = JSON.parse(newestRunOf(sheetId, userId, column)?.config ?? 'null'); } catch { /* none */ }
-  const ownKey = isEnrichmentConfig(config) && config.enrichment.maxCostPerRowUsd === null;
-  return { outputs: columnOutputs(sheetId, userId, column), ownKey };
+  const enrichment = isEnrichmentConfig(config) ? config.enrichment : null;
+  const ownKey = !!enrichment && enrichment.maxCostPerRowUsd === null;
+  const rule = (config as { runIf?: unknown } | null)?.runIf;
+  const runIf = typeof rule === 'string' ? rule : enrichment ? ruleFromConditions(enrichment.rows.where) : null;
+  return { outputs: columnOutputs(sheetId, userId, column), ownKey, runIf };
 }
 
 // What each enrichment column has spent over all its runs, and on how many

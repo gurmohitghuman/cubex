@@ -7,7 +7,8 @@
 //
 // Target modes (keyed on the master/status column):
 //   rowIndices[]      → exactly those rows
-//   mode = 'missing'  → rows whose master cell is empty / ❌ Failed / still ⏳
+//   mode = 'missing'  → rows whose master cell is empty / ❌ Failed / still ⏳ /
+//                       ⏭️ Condition not met (the "Only run if" rule left it)
 //   otherwise         → every existing row
 // Targets are chosen, the run inserted and its placeholders seeded inside the
 // sheet's busy window (services/run-seed.ts).
@@ -19,6 +20,8 @@ import {
 } from '../lib/sql-helpers';
 import { existingRowIndexes, rowsWhere } from '../lib/run-rows';
 import { asRunStart, seedThenEnqueue } from './run-seed';
+import { ruleSeed, storedRule } from './run-rule';
+import { isConditionNotMet } from '../lib/run-markers';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { type HTTPRunRow } from './http-runner';
@@ -99,6 +102,9 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   if (isEnrichmentConfig(config)) {
     return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
   }
+  // The column's "Only run if" rule applies to its reruns too.
+  const rule = storedRule(p.sheetId, userId, config.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
 
   const newRunId = uuidv4();
 
@@ -111,7 +117,7 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
     } else if (p.mode === 'missing') {
       targets = await rowsWhere(p.sheetId, userId, cleanMaster, value => {
         const v = ((value as string | null) || '').toString();
-        return v.trim() === '' || v.includes('⏳') || v.startsWith('❌');
+        return v.trim() === '' || v.includes('⏳') || v.startsWith('❌') || isConditionNotMet(v);
       });
     } else {
       targets = await rowsWhere(p.sheetId, userId, cleanMaster, () => true);
@@ -172,7 +178,7 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
     // left with stuck ⏳ cells or a pending run that trips the 409 guard.
     seedThenEnqueue({
       kind: 'http', runId: newRunId, sheetId: p.sheetId, userId, columns: allColumns,
-      targets, lastRow: Number.MAX_SAFE_INTEGER,
+      targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, cleanMaster),
       enqueue: () => enqueueHTTPRerun(newRunId, targets),
     });
     return { ok: { runId: newRunId, targetCount: targets.length } };

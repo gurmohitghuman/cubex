@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Zap } from 'lucide-react'
 import { Modal } from '@/components/Modal'
-import { autorunAPI, enrichAPI, type EnrichDailyLimit } from '@/utils/api'
+import { autorunAPI, type EnrichDailyLimit } from '@/utils/api'
 import type { AutorunColumn, AutorunTargetInfo, SheetAutorun } from '@/utils/api/types-autorun'
-import { ConditionsField, conditionsProblem } from '@/components/enrich-modal/ConditionsField'
 import { MoneyInput } from '@/components/enrich-modal/MoneyInput'
-import type { Condition } from '@/components/enrich-modal/draft'
+import { RunIfField } from '@/components/run-if/RunIfField'
 import { limitText, utcMidnightLocal } from '@/lib/enrich-format'
 import {
   AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS, AUTORUN_HTTP_MAX_DAILY_ROWS,
@@ -18,27 +17,24 @@ export interface AutorunTarget { column: string; kind: 'enrichment' | 'http' }
 interface Props {
   target: AutorunTarget
   sheetId: string
-  columns: string[]
   current?: AutorunColumn
   hasWebhook: boolean
   onClose: () => void
   onSaved: (view: SheetAutorun) => void
 }
 
-const asConditions = (w: AutorunColumn['where']): Condition[] =>
-  w.map(c => ({ column: c.column, op: c.op as Condition['op'], value: c.value }))
-
 // "Turn On Auto-run" from the column menu (and the header chip's Settings):
 // auto-run repeats the column's newest run on new rows and rows whose inputs
 // get filled, once per row, under "Only run if" and a daily cap: dollars for
 // an enrichment, rows for an HTTP API column (each row sends a real request).
-export const AutorunDialog: React.FC<Props> = ({ target, sheetId, columns, current, hasWebhook, onClose, onSaved }) => {
-  const [where, setWhereState] = useState<Condition[]>(current ? asConditions(current.where) : [])
-  // A first turn-on starts from the enrichment's own "Only run if" (read below);
-  // until that read lands and while untouched, the server's default stands.
-  const [whereKnown, setWhereKnown] = useState(!!current || target.kind === 'http')
+export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWebhook, onClose, onSaved }) => {
+  // "Only run if" (older condition lists come as one rule). A first turn-on
+  // starts from the column's newest run's rule (read below); until that read
+  // lands and while untouched, the server's default stands.
+  const [runIf, setRunIfState] = useState(current?.runIf ?? '')
+  const [runIfKnown, setRunIfKnown] = useState(!!current)
   const touched = useRef(false)
-  const setWhere = (w: Condition[]) => { touched.current = true; setWhereKnown(true); setWhereState(w) }
+  const setRunIf = (r: string) => { touched.current = true; setRunIfKnown(true); setRunIfState(r) }
   const [capUsd, setCapUsd] = useState<number | null>(current?.dailyCapUsd ?? null)
   const [rowsText, setRowsText] = useState(String(current?.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS))
   const [limit, setLimit] = useState<EnrichDailyLimit | null>(null)
@@ -50,15 +46,11 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, columns, curre
   useEffect(() => {
     let alive = true
     autorunAPI.get(sheetId, target.column).then(v => {
-      if (alive) { setLimit(v.dailyLimit); setInfo(v.target ?? null) }
+      if (!alive) return
+      setLimit(v.dailyLimit); setInfo(v.target ?? null)
+      // A first turn-on starts from the column's own "Only run if".
+      if (!current && !touched.current && v.target) { setRunIfState(v.target.runIf ?? ''); setRunIfKnown(true) }
     }).catch(() => {})
-    // A first turn-on starts from the enrichment's own "Only run if".
-    if (!current && target.kind === 'enrichment') {
-      enrichAPI.columnSetup(sheetId, target.column).then(s => {
-        if (!alive || touched.current) return
-        setWhereState(asConditions(s.choices.conditions)); setWhereKnown(true)
-      }).catch(() => {})
-    }
     return () => { alive = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -66,9 +58,8 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, columns, curre
   const rows = Number(rowsText)
   const rowsProblem = http && !(Number.isInteger(rows) && rows >= 1 && rows <= AUTORUN_HTTP_MAX_DAILY_ROWS)
     ? `Rows a day must be a whole number from 1 to ${AUTORUN_HTTP_MAX_DAILY_ROWS.toLocaleString()}.` : null
-  // "Only run if" offers none of this column's outputs; one set elsewhere gets the server's refusal.
-  const readable = info ? columns.filter(c => !info.outputs.includes(c)) : columns
-  const problem = conditionsProblem(where, columns) ?? rowsProblem
+  // "Only run if" can't read this column's own outputs: the server refuses that, and the rule box shows why.
+  const problem = rowsProblem
   const cap = capUsd ?? Math.min(AUTORUN_DEFAULT_DAILY_CAP_USD, limit?.limitUsd ?? AUTORUN_DEFAULT_DAILY_CAP_USD)
   const paused = current?.pausedReason ?? null
   // The team's own provider key bills the tool: no dollar cap, until treg prices it ('priced').
@@ -92,7 +83,8 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, columns, curre
   const save = () => {
     if (problem) return
     void act(() => autorunAPI.save(sheetId, {
-      column: target.column, enabled: true, where: whereKnown ? where.map(c => ({ ...c })) : null,
+      // A rule read here replaces an older condition list (it came back as that rule).
+      column: target.column, enabled: true, ...(runIfKnown ? { where: [], runIf } : {}),
       ...(http ? { dailyRowCap: rows } : capBody),
     }))
   }
@@ -122,10 +114,8 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, columns, curre
             {pauseLabel(paused)}. {pauseSentence(current)}{capFix(paused) ? ` ${capFix(paused)}` : ''}
           </p>
         )}
-        <div className="space-y-1.5">
-          <p className="text-sm font-medium text-gray-700">Only run if</p>
-          <ConditionsField conditions={where} columns={readable} onChange={setWhere} />
-        </div>
+        <RunIfField sheetId={sheetId} value={runIf} onChange={setRunIf} active
+          skippedNote="Rows that don't pass wait, with no marker, until a column the rule reads changes." />
         {http ? (
           <div className="space-y-1">
             <label className="flex items-center gap-2 text-sm text-gray-700">

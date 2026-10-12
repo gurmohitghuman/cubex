@@ -8,6 +8,7 @@ import { ModelsHandle } from './useModels'
 import { PromptSuggestionsHandle } from './usePromptSuggestions'
 import { plural } from '@/lib/utils'
 import type { WebSearchSettings } from '@/utils/api'
+import { RunIfField } from '../run-if/RunIfField'
 
 interface Props {
   sheetId: string
@@ -20,6 +21,9 @@ interface Props {
   useWebFetch: boolean; setUseWebFetch: (b: boolean) => void
   columnSuggestions: Array<{ name: string; reference: string }>
   sugg: PromptSuggestionsHandle
+  // "Only run if" section ('' = every row); active: the drawer is open.
+  runIf: string; setRunIf: (v: string) => void
+  active: boolean
   // Configure section
   model: string; setModel: (m: string) => void
   systemPrompt: string; setSystemPrompt: (s: string) => void
@@ -83,6 +87,11 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         suggestFilter={p.sugg.filter} setSuggestFilter={p.sugg.setFilter}
         activeSuggestIndex={p.sugg.activeIndex} setActiveSuggestIndex={p.sugg.setActiveIndex}
         insertColumnReference={p.sugg.insert} />
+    </AccordionSection>
+
+    <AccordionSection title="Only run if" summary={p.runIf.trim() ? p.runIf : 'Every row'}
+      defaultOpen={!!p.runIf.trim()}>
+      <RunIfField sheetId={p.sheetId} value={p.runIf} onChange={p.setRunIf} active={p.active} untitled />
     </AccordionSection>
 
     {/* Open the Configure section by default while no model is resolved — the

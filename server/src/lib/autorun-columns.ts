@@ -5,26 +5,30 @@
 // until a column by that name is back (services/autorun-loop.ts lifts it).
 import { db } from './db';
 import { autorunDropPending } from './autorun-mark';
+import { renameRuleColumn } from './run-condition';
 
-interface Row { id: string; status_column: string; input_columns: string; where_json: string | null }
+interface Row {
+  id: string; status_column: string; input_columns: string; where_json: string | null; run_if: string | null;
+}
 
 const list = (raw: string | null): unknown[] => {
   try { const v = JSON.parse(raw ?? '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
 };
 
-const rowsOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, status_column, input_columns, where_json
-  FROM autorun_columns WHERE sheet_id = ? AND user_id = ?`).all(sheetId, userId) as Row[];
+const rowsOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, status_column, input_columns, where_json,
+  run_if FROM autorun_columns WHERE sheet_id = ? AND user_id = ?`).all(sheetId, userId) as Row[];
 
 export function renameAutorunColumnRefs(sheetId: string, userId: string, oldName: string, newName: string): void {
   // rescan: a sweep that read the old names before the switch can't start a run.
   const update = db.prepare(`UPDATE autorun_columns SET status_column = ?, input_columns = ?, where_json = ?,
-    rescan = 1, updated_at = datetime('now') WHERE id = ?`);
+    run_if = ?, rescan = 1, updated_at = datetime('now') WHERE id = ?`);
   for (const r of rowsOf(sheetId, userId)) {
     const inputs = list(r.input_columns).map(c => (c === oldName ? newName : c));
     const renamed = (c: unknown) => !!c && typeof c === 'object' && (c as { column?: unknown }).column === oldName;
     const where = list(r.where_json).map(c => (renamed(c) ? { ...(c as object), column: newName } : c));
     update.run(r.status_column === oldName ? newName : r.status_column, JSON.stringify(inputs),
-      r.where_json === null ? null : JSON.stringify(where), r.id);
+      r.where_json === null ? null : JSON.stringify(where),
+      r.run_if === null ? null : renameRuleColumn(r.run_if, oldName, newName), r.id);
   }
 }
 

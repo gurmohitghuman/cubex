@@ -10,6 +10,7 @@ import { GUESS_PATTERNS } from './enrich-email-guess';
 import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from './enrich-run-config';
 import { parseListInput, type ListInput } from './enrich-list-input';
+import { parseRuleField } from './run-condition';
 
 export type InputBinding = { column: string } | { value: string };
 // fromAnswer: a field added from a stored answer ("+ Column"), kept by its path.
@@ -27,6 +28,9 @@ export interface EnrichRunInput {
   outputs: OutputInput[];
   rows: { mode: EnrichRowsMode; status: EnrichRowsStatus; test: number | null; rowIndexes: number[] | null };
   conditions: EnrichCondition[];
+  // "Only run if" rule text (lib/run-condition.ts), checked against the sheet
+  // at start; null = none. ANDed with `conditions` (the older list form).
+  runIf: string | null;
   maxCostPerRowUsd: number | null;
   spendLimitUsd: number | null;
   fresh: boolean;
@@ -161,6 +165,8 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
   if (typeof outputs === 'string') return { error: outputs };
   const conditions = parseConditions(b.conditions);
   if (typeof conditions === 'string') return { error: conditions };
+  const runIf = parseRuleField(b.runIf);
+  if ('error' in runIf) return { error: runIf.error };
   const continueColumn = b.continueColumn === true;
   const rows = parseRows(isObj(b.rows) ? b.rows : {}, continueColumn);
   if (typeof rows === 'string') return { error: rows };
@@ -180,7 +186,7 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
       toolId: b.toolId, preset: b.preset === 'verified_email' ? 'verified_email' : null,
       columnName: columnName.trim(), continueColumn, inputs,
       cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip,
-      stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions,
+      stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions, runIf: runIf.ok,
       maxCostPerRowUsd: cap, spendLimitUsd: limit, fresh: b.fresh === true, rowGeneration: generationOf(b),
       list,
     },

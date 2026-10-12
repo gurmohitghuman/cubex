@@ -7,8 +7,12 @@ import {
 } from './RequestSections'
 import { ResponsePane } from './ResponsePane'
 import { SettingsPane } from './SettingsPane'
+import { RunIfField } from '../run-if/RunIfField'
 
 interface Props {
+  sheetId: string
+  // The drawer is open (the rule box checks its rule only then).
+  active: boolean
   config: HTTPAPIConfig
   errors: Record<string, string>
   masterColumnName: string
@@ -66,6 +70,13 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         <ResponsePane config={p.config} errors={p.errors} updateConfig={p.updateConfig}
           addResponseMapping={p.addResponseMapping} removeResponseMapping={p.removeResponseMapping}
           updateResponseMapping={p.updateResponseMapping} />
+      </AccordionSection>
+
+      <AccordionSection title="Only run if" summary={p.config.runIf?.trim() ? p.config.runIf : 'Every row'}
+        defaultOpen={!!p.config.runIf?.trim()}>
+        <RunIfField sheetId={p.sheetId} value={p.config.runIf ?? ''} active={p.active} untitled
+          onChange={runIf => p.updateConfig({ runIf })}
+          skippedNote={'Rows that don\'t pass get no request and show "⏭️ Condition not met".'} />
       </AccordionSection>
 
       <AccordionSection title="Run Settings">

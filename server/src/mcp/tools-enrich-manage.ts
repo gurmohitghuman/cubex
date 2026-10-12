@@ -7,6 +7,8 @@ import { agentAddField, agentAddListRows, agentListFields } from '../services/en
 import { agentSetAutorun } from '../services/enrich-agent-autorun';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
+import { RULE_LANGUAGE } from './run-if-schema';
+import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
 const condition = z.object({
@@ -75,7 +77,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       'Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. With auto-run on, the '
       + 'column repeats its newest run on new rows and on rows whose inputs get filled (by an import, another column, '
       + 'a webhook or an edit), at most once a row; rows already in the sheet when it is turned on are left alone. '
-      + 'enabled:true|false with column (and where: only rows matching; daily_cap_usd for an enrichment, '
+      + 'enabled:true|false with column (and run_if: only rows passing a rule, kept as is when omitted, and by '
+      + 'default the column\'s own rule on a first turn-on, "" to clear; daily_cap_usd for an enrichment, '
       + `default $${AUTORUN_DEFAULT_DAILY_CAP_USD}, never above the daily limit; daily_row_cap for an HTTP API `
       + `column, default ${AUTORUN_HTTP_DEFAULT_DAILY_ROWS}). `
       + 'paused:true|false pauses or resumes one column, or every auto-run on the sheet without column. '
@@ -86,6 +89,9 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       sheet_id: z.string(), column: z.string().optional(),
       enabled: lenientBoolean().optional(), paused: lenientBoolean().optional(),
       where: z.array(condition).max(20).optional(),
+      run_if: z.string().max(MAX_RULE_CHARS).optional().describe(
+        'Auto-run\'s "Only run if" rule; rows that fail it wait (no marker) until a column it reads changes. '
+        + RULE_LANGUAGE),
       daily_cap_usd: z.number().positive().optional(),
       daily_row_cap: z.number().int().min(1).optional(),
     }).strict(),

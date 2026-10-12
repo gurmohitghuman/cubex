@@ -7,7 +7,9 @@ import { normalizeColumnName } from './prompt';
 import { extractTemplateTokenNames, type HTTPAPIConfig } from './http-request-template';
 import { inputTemplates, isEnrichmentConfig, type EnrichCondition } from './enrich-run-config';
 import { buildRequest } from './enrich-request';
-import { conditionPasses, holdsRunMarker, trimBlank, FAILED_MARK } from './enrich-seed';
+import { passesRunConditions, holdsRunMarker, trimBlank, FAILED_MARK } from './enrich-seed';
+import { isConditionNotMet } from './run-markers';
+import { ruleColumns, type RuleNode } from './run-condition';
 
 export type AutorunKind = 'enrichment' | 'http';
 
@@ -44,9 +46,10 @@ export function requestColumns(config: HTTPAPIConfig, columns: string[]): string
 }
 
 // Everything a row change can matter through: the request's columns and the
-// "Only run if" columns. markAutorunInputs watches these.
-export function watchedColumns(requestCols: string[], where: EnrichCondition[]): string[] {
-  return [...new Set([...requestCols, ...where.map(c => c.column)])];
+// "Only run if" columns (the condition list's and the rule's). markAutorunInputs
+// watches these.
+export function watchedColumns(requestCols: string[], where: EnrichCondition[], rule: string | null = null): string[] {
+  return [...new Set([...requestCols, ...where.map(c => c.column), ...(rule ? ruleColumns(rule) : [])])];
 }
 
 export interface CandidatePlan {
@@ -56,6 +59,7 @@ export interface CandidatePlan {
   columns: string[];          // the sheet's column registry
   requestCols: string[];      // HTTP: every one must be filled
   where: EnrichCondition[];
+  rule: RuleNode | null;      // auto-run's "Only run if" rule
 }
 
 // take: run it. done: its status says it ran or is running (forget it).
@@ -77,9 +81,10 @@ export function candidateVerdict(
   data: Record<string, string>, p: CandidatePlan, failedCounts: boolean,
 ): CandidateVerdict {
   const status = trimBlank(data[p.statusColumn] ?? '');
-  if (status !== '' && !(failedCounts && status.startsWith(FAILED_MARK))) return 'done';
+  // A row an "Only run if" kept out of a run wasn't run: it goes on waiting.
+  if (status !== '' && !isConditionNotMet(status) && !(failedCounts && status.startsWith(FAILED_MARK))) return 'done';
   const live = settled(data);
-  if (!p.where.every(c => conditionPasses(live, c))) return 'waiting';
+  if (!passesRunConditions(live, p.where, p.rule)) return 'waiting';
   if (!isEnrichmentConfig(p.config)) {
     return p.requestCols.every(c => trimBlank(live[c] ?? '') !== '') ? 'take' : 'waiting';
   }

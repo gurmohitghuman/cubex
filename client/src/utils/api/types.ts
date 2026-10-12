@@ -1,3 +1,4 @@
+// Over 200 lines: the shared API types, one list kept in step with the server's shapes.
 import type { ColumnSpend, SheetAutorun } from './types-autorun'
 export interface Table {
   id: string
@@ -76,6 +77,9 @@ export interface AIRun {
   web_search_engine_used?: string | null
   web_search_mode?: string | null
   web_search_max_per_row?: number | null
+  // "Only run if" rule (null: every row) and the rows it kept out.
+  run_if?: string | null
+  condition_skipped_rows?: number | null
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   total_rows: number
   processed_rows: number
@@ -118,6 +122,7 @@ export interface AIDraft {
     searchEngine?: string | null
     searchMode?: string | null
     maxSearchesPerRow?: number | null
+    runIf?: string | null
   }
   previewResults: Array<{
     rowIndex: number

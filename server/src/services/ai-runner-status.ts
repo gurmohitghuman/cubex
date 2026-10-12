@@ -30,6 +30,9 @@ export interface AIRunRow {
   web_search_engine_used?: string | null;
   web_search_mode?: string | null;
   web_search_max_per_row?: number | null;
+  // "Only run if" rule (migration 019, lib/run-condition.ts); NULL = every row.
+  run_if?: string | null;
+  condition_skipped_rows?: number | null;
   worker_generation: number;         // bumped on each resume; old workers exit on mismatch
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   created_at: string;

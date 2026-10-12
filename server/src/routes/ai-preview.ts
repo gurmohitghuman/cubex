@@ -6,6 +6,7 @@ import { parsePreviewRequest, previewErrorMessage } from './ai-preview-parse';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { samplePreviewRows } from '../lib/ai-preview-sample';
+import { checkRunRule } from '../services/run-rule';
 import {
   upsertDraftConfig, saveDraftPreview, computeInputHash, draftConfigFrom, type DraftPreviewRow,
 } from '../lib/ai-drafts';
@@ -63,15 +64,13 @@ router.post('/preview', async (req: AuthRequest, res) => {
     const planned = await planIfSearching(req.userId!, model, useOpenRouterWebSearch, searchOptions);
     if ('error' in planned) return res.status(400).json({ error: planned.error });
 
-    // EXACT count of rows "Run All Rows" will process — UNFILTERED, matching
-    // ai-run-start.ts. The client's sheetData.totalRows is filter-aware (it shrinks
-    // when the empty-filter is on), so a cost estimate built from it would UNDERSTATE
-    // the run. Send the real target count so the estimate can't show less than billed.
-    const runTargetRows = (db.prepare('SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?')
-      .get(sheetId, req.userId!) as { c: number }).c;
-
-    const rows = samplePreviewRows(sheetId, req.userId!, safePreviewSize);
-    if (rows.length === 0) return res.status(400).json({ error: 'No data available for preview' });
+    const rule = checkRunRule(sheetId, req.userId!, parsed.runIf);
+    if ('error' in rule) return res.status(400).json({ error: rule.error });
+    const { rows, runTargetRows } = await samplePreviewRows(sheetId, req.userId!, safePreviewSize, rule.ok);
+    if (rows.length === 0) {
+      const error = rule.ok ? 'No rows pass the "Only run if" rule.' : 'No data available for preview';
+      return res.status(400).json({ error });
+    }
 
     let openai;
     try { openai = await getOpenRouterClient(req.userId!); }
@@ -85,7 +84,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // so run-start promotion compares like-for-like. The attempt id keys this
     // stream's end-of-stream save — a superseding preview re-upserts with a new
     // id, neutralizing this stream's late save.
-    const draftAttemptId = upsertDraftConfig(req.userId!, sheetId, draftConfigFrom(parsed, model), sheet.row_generation);
+    const draftConfig = draftConfigFrom({ ...parsed, runIf: rule.ok?.rule ?? null }, model);
+    const draftAttemptId = upsertDraftConfig(req.userId!, sheetId, draftConfig, sheet.row_generation);
 
     // Stream rows as newline-delimited JSON (NDJSON) so the client renders each row
     // the instant OpenRouter returns it, instead of waiting for the slowest of all 5.

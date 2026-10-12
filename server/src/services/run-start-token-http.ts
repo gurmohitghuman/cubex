@@ -11,11 +11,14 @@ import { startHttpRun } from './http-run-start';
 import { estimateHttpRun } from './run-estimate-http';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 import { parseBooleanOption } from '../lib/web-search-options';
+import { parseRuleField } from '../lib/run-condition';
+import { runIfReply } from './run-rule';
 
 export interface TokenHttpRunArgs {
   sheet_id: unknown; url?: unknown; method?: unknown; headers?: unknown; body?: unknown;
   response_mapping?: unknown; master_column_name?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; idempotency_key?: unknown; batch_size?: unknown; timeout_ms?: unknown;
+  run_if?: unknown;
 }
 
 const wholeIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -42,6 +45,8 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   if (a.timeout_ms !== undefined && !wholeIn(a.timeout_ms, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS)) {
     return bad(`timeout_ms must be a whole number from ${HTTP_MIN_TIMEOUT_MS} to ${HTTP_MAX_TIMEOUT_MS}`);
   }
+  const runIf = parseRuleField(a.run_if, 'run_if');
+  if ('error' in runIf) return bad(runIf.error);
   const config: HTTPAPIConfig = {
     requestConfig: {
       method: method as 'GET', url: a.url, headers: (a.headers as Record<string, string>) ?? {}, body: a.body as string | undefined,
@@ -50,6 +55,7 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
     responseMapping: mapping.map((m: { json_path: string; column_name: string }) => ({ jsonPath: m.json_path, columnName: m.column_name })),
     previewSize: 3,
     ...(a.batch_size === undefined ? {} : { batchSize: a.batch_size as number }),
+    ...(runIf.ok ? { runIf: runIf.ok } : {}),
   };
   const hasSecretsScope = c.scopes.has('secrets');
   const keyRefs = savedKeyRefsInConfig(c.userId, config.requestConfig);
@@ -61,13 +67,13 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   const templateError = httpTemplateError(config.requestConfig, getSheetColumns(sheetId, c.userId, false), c.userId);
   if (templateError) return bad(templateError);
   if (parseBooleanOption(a.estimate_only) === true) {
-    const est = estimateHttpRun(c.userId, sheetId, pre.targetRowIndexes);
+    const est = await estimateHttpRun(c.userId, sheetId, pre.targetRowIndexes, runIf.ok);
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
   }
   const hash = runRequestHash('http_run', {
     sheet_id: sheetId, url: a.url, method: a.method, headers: a.headers, body: a.body,
     response_mapping: a.response_mapping, master_column_name: a.master_column_name, target_row_ids: a.target_row_ids,
-    batch_size: a.batch_size, timeout_ms: a.timeout_ms,
+    batch_size: a.batch_size, timeout_ms: a.timeout_ms, ...(runIf.ok ? { run_if: runIf.ok } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -81,6 +87,7 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   const payload = {
     run_id: result.ok.runId, master_column: result.ok.masterColumn,
     mapped_columns: result.ok.mappedColumns, target_rows: result.ok.targetCount,
+    ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
   return { ok: payload, started: true };

@@ -35,13 +35,9 @@ export function useAutorun(a: {
     try { await autorunAPI.pause(sheetId, paused); refresh() }
     catch (e: any) { toast.error(e?.response?.data?.error || "Couldn't change auto-run.") }
   }
-  const types = a.sheetData?.data.columnTypes ?? {}
   return {
     view, spend: a.sheetData?.data.columnSpend, target, sheetId,
     anyOn: anyAutorunOn(view),
-    // "Only run if" can't read the column itself or the webhook's marker column.
-    conditionColumns: (column: string, all: string[]) =>
-      all.filter(c => c !== column && types[c] !== 'webhook-source'),
     open, close: () => setTarget(null), onSaved: refresh, pauseAll,
     onAction: (column: string, action: 'open' | 'off') => (action === 'off' ? void turnOff(column) : open(column)),
   }

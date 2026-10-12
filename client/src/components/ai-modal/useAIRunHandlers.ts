@@ -25,6 +25,8 @@ interface Args {
   webSearch: WebSearchSettings
   useWebFetch: boolean
   concurrency: number
+  // "Only run if" rule ('' = every row).
+  runIf: string
   nameError: string
   previewSize: number
   temperature: number
@@ -88,6 +90,7 @@ export const useAIRunHandlers = (a: Args) => {
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, concurrency: a.concurrency,
+    ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
   })
 
   const handleStartRun = async () => {

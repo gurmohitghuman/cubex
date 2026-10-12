@@ -130,7 +130,8 @@ export const SetupStep: React.FC<Props> = (p) => {
           )}
 
           <AccordionSection title="Rows and limits" defaultOpen={more} summary={rowsSummary}>
-            <RowsLimitsPane draft={draft} update={update} counts={m.counts} continuing={more} byStatus={m.byStatus}
+            <RowsLimitsPane sheetId={p.sheetId} active={p.active}
+              draft={draft} update={update} counts={m.counts} continuing={more} byStatus={m.byStatus}
               columns={p.columns} defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null}
               defaultSpendLimit={est?.estimate.highUsd ?? null} billedBy={billed ? m.ownKeyProvider : null}
               hasWebhook={!!m.data.setup?.hasWebhook} dailyLimitUsd={est?.dailyLimit.limitUsd ?? null} />

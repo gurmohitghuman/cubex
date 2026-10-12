@@ -40,6 +40,10 @@ export interface RunSummary {
   // the billed mode and the per-row cap. engine null: a run from before
   // engines could be chosen (OpenRouter's default).
   web_search?: RunSearchSettings;
+  // Its "Only run if" rule, and the rows it kept out ("⏭️ Condition not met",
+  // not in total_rows; counted once the run has started).
+  run_if?: string;
+  condition_skipped_rows?: number;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +58,16 @@ export function rowOutcomes(
   const n = (s: string) => counts.find(c => c.status === s)?.n ?? 0;
   return { failed_rows: n('failed'), succeeded_rows: n('completed') + n('accepted') };
 }
+
+const rulePart = (runIf: string | null | undefined, skipped: number | null | undefined) =>
+  (runIf ? { run_if: runIf, condition_skipped_rows: skipped ?? 0 } : {});
+
+const runIfOf = (config: string | null): string | null => {
+  try {
+    const c = JSON.parse(config ?? 'null');
+    return typeof c?.runIf === 'string' ? c.runIf : null;
+  } catch { return null; }
+};
 
 function outputColumnNames(json: string | null): string[] | null {
   if (!json) return null;
@@ -74,7 +88,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...aiRowOutcomes(r.id),
+    error_message: r.error_message, ...aiRowOutcomes(r.id), ...rulePart(r.run_if, r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -83,7 +97,8 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
   const r = db.prepare(`
     SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
-           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
+           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
+           run_if, condition_skipped_rows
     FROM ai_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId);
   return r ? aiRunSummaryFromRow(r) : null;
@@ -93,7 +108,7 @@ export function getHttpRunSummary(runId: string, userId: string): RunSummary | n
   const r = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
            error_message, target_rows, created_at, updated_at,
-           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows
     FROM http_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
   return r ? httpRunSummaryFromRow(r, userId, true) : null;
@@ -107,7 +122,7 @@ export function httpRunSummaryFromRow(r: any, userId: string, full: boolean): Ru
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...rowOutcomes('http_results', r.id),
-    ...enrichSummaryPart(r, userId, full),
+    ...enrichSummaryPart(r, userId, full), ...rulePart(runIfOf(r.config), r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }

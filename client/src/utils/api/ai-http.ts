@@ -27,6 +27,8 @@ type AIRunParams = {
   searchEngine?: string
   searchMode?: string
   maxSearchesPerRow?: number
+  // "Only run if" rule (empty/absent: every row).
+  runIf?: string
 }
 
 export const aiAPI = {

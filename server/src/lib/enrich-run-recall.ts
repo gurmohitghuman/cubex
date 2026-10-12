@@ -8,6 +8,7 @@ import { CUBEX_PATHS, inputTemplates, type EnrichCondition, type EnrichRunConfig
 import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichRunInput, InputBinding, OutputInput } from './enrich-run-input';
 import type { ListInput } from './enrich-list-input';
+import { ruleFromConditions } from './run-condition';
 import type { EstimateList } from './enrich-estimate-input';
 
 export interface RecalledChoices {
@@ -24,6 +25,9 @@ export interface RecalledChoices {
   email: { accept: EmailStrategy; guess: boolean; pattern: string } | null;
   outputs: OutputInput[];
   conditions: EnrichCondition[];
+  // "Only run if" as one rule: the run's own, or its older condition list
+  // written as one (then `conditions` is empty, so they aren't applied twice).
+  runIf: string | null;
   maxCostPerRowUsd: number | null;
   fresh: boolean;
   // A list job: where its results go and the fields it keeps.
@@ -71,7 +75,8 @@ export function recallChoices(config: EnrichRunConfig, statusColumn: string): Re
     stopAtFirst: e.route.stopAtFirst,
     email: e.email ? { accept: e.email.strategy, guess: e.email.guess, pattern: e.email.pattern } : null,
     outputs: config.responseMapping.map(m => recallOutput(m, new Set(e.answerFields ?? []))),
-    conditions: e.rows.where.map(c => ({ ...c })),
+    conditions: config.runIf ? e.rows.where.map(c => ({ ...c })) : [],
+    runIf: config.runIf ?? ruleFromConditions(e.rows.where),
     maxCostPerRowUsd: e.maxCostPerRowUsd, fresh: e.fresh, list: recallList(config),
   };
 }
@@ -85,7 +90,7 @@ export function rerunInput(
   return {
     toolId: c.toolId, preset: c.preset, columnName: c.columnName, continueColumn: true, inputs: c.inputs,
     cleanDomains: c.cleanDomains, providerOrder: c.providerOrder, skipProviders: c.skipProviders,
-    stopAtFirst: c.stopAtFirst, email: c.email, outputs: c.outputs, rows, conditions: c.conditions,
+    stopAtFirst: c.stopAtFirst, email: c.email, outputs: c.outputs, rows, conditions: c.conditions, runIf: c.runIf,
     maxCostPerRowUsd: c.maxCostPerRowUsd, spendLimitUsd, fresh: c.fresh, rowGeneration, list: c.list,
   };
 }

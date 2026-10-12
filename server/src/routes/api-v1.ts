@@ -26,6 +26,7 @@ import runControlV1 from './api-v1-run-control';
 import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
+import runConditionsV1 from './api-v1-run-conditions';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 const router = express.Router();
@@ -42,7 +43,9 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
-router.use('/sheets/:id', refuseChangesWhileBusy(['/rows', '/rows/query']));
+router.use('/sheets/:id', refuseChangesWhileBusy([
+  '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate',
+]));
 router.use(tablesV1);
 router.use(tableSheetsV1);
 router.use(sheetsV1);
@@ -55,6 +58,7 @@ router.use(importV1);
 router.use(runsV1);
 router.use(runReadsV1);
 router.use(runControlV1);
+router.use(runConditionsV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
 

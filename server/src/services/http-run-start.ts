@@ -22,6 +22,7 @@ import { enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
+import { checkRunRule, ruleSeed } from './run-rule';
 
 export interface HttpRunStartParams {
   sheetId: string;
@@ -36,7 +37,7 @@ export interface HttpRunStartParams {
 
 export type HttpRunStartOutcome =
   | { ok: {
-      runId: string; masterColumn: string; mappedColumns: string[]; targetCount: number;
+      runId: string; masterColumn: string; mappedColumns: string[]; targetCount: number; runIf: string | null;
     } }
   | RunFail;
 
@@ -68,6 +69,11 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   if (!verifySheetOwnership(p.sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const templateError = httpTemplateError(config.requestConfig, getSheetColumns(p.sheetId, userId, false), userId);
   if (templateError) return { fail: 'bad_request', message: templateError };
+  // "Only run if": kept in the config in Cubex's spelling, so reruns repeat it.
+  const rule = checkRunRule(p.sheetId, userId, config.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  if (rule.ok) config.runIf = rule.ok.rule;
+  else delete config.runIf;
 
   // Every existing row (a count and the last row_index, never the list: the
   // placeholders go in by range), or exactly the caller's rows, all of which
@@ -143,7 +149,7 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
     // and scopes the stuck-row finalize check to them.
     seedThenEnqueue({
       kind: 'http', runId, sheetId: p.sheetId, userId, columns: allColumns,
-      targets, lastRow: span.lastRow,
+      targets, lastRow: span.lastRow, rule: ruleSeed(rule.ok, finalMasterColumnName),
       enqueue: () => (targets ? enqueueHTTPRerun(runId, targets) : enqueueHTTPRun(runId)),
     });
 
@@ -151,7 +157,7 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
       ok: {
         runId, masterColumn: finalMasterColumnName,
         mappedColumns: config.responseMapping.map(m => m.columnName),
-        targetCount,
+        targetCount, runIf: rule.ok?.rule ?? null,
       },
     };
   });

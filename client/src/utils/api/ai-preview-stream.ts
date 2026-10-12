@@ -19,6 +19,7 @@ export interface PreviewStreamParams {
   searchEngine?: string
   searchMode?: string
   maxSearchesPerRow?: number
+  runIf?: string
 }
 
 // Streaming preview. The server responds with NDJSON (one JSON object per line):

@@ -1,3 +1,4 @@
+// Over 200 lines: the one AI Column drawer, its state and the hooks it wires; the steps live apart.
 import React, { useState } from 'react'
 import { Bot } from 'lucide-react'
 import { aiAPI, DEFAULT_WEB_SEARCH, webSearchFrom, type WebSearchSettings } from '@/utils/api'
@@ -48,6 +49,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   const [webSearch, setWebSearch] = useState<WebSearchSettings>(DEFAULT_WEB_SEARCH)
   const [useWebFetch, setUseWebFetch] = useState(false)
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
+  // "Only run if" rule ('' = every row).
+  const [runIf, setRunIf] = useState('')
 
   const temperature = 0.2
   const maxChars: number | undefined = undefined
@@ -62,7 +65,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
 
   const h = useAIRunHandlers({
     isOpen, sheetId, rowGeneration, columnName, prompt, systemPrompt, model: sel.model,
-    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, nameError,
+    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, runIf, nameError,
     previewSize, temperature, maxChars,
     setStep, onSuccess, onClose, onRunStarted, resetState: () => resetState(),
   })
@@ -76,6 +79,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
     sel.setModel(defaultAiModel || sel.accountDefaultModel || '')
     sel.resetPicked()
     setUseOpenRouterWebSearch(false); setWebSearch(DEFAULT_WEB_SEARCH); setUseWebFetch(false); setConcurrency(DEFAULT_CONCURRENCY)
+    setRunIf('')
     h.setPreviewResults([]); h.setCurrentRun(null); h.setIsPolling(false)
     try { localStorage.removeItem('ai_modal_initial') } catch {}
   }
@@ -83,7 +87,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   // Prefill on open from edit-mode payload or sheet defaults (once per open).
   const init = useAIModalInit(isOpen, sheetId, defaultAiModel, defaultAiConcurrency, sel.accountDefaultModel, {
     setColumnSuggestions, setColumnName, setPrompt, setSystemPrompt, setModel: sel.setModel, setEditingName,
-    setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setConcurrency,
+    setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setConcurrency, setRunIf,
     onEditPrefill: () => resetState(),
     // Retained config = the modal reopened with a kept draft still in state.
     // Reading current columnName/prompt is safe: the init effect runs on the
@@ -112,6 +116,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
       init.noteExplicitConcurrency(); setConcurrency(clampConcurrency(c.concurrency))
       setUseOpenRouterWebSearch(c.useOpenRouterWebSearch); setUseWebFetch(c.useWebFetch)
       setWebSearch(webSearchFrom(c.searchEngine, c.searchMode, c.maxSearchesPerRow))
+      setRunIf(c.runIf ?? '')
     },
     applyPreview: (rows, target, c) => { h.hydratePreview(rows, target, c); setStep('preview') },
     // Kept state + a column renamed since: take the draft's renamed /references.
@@ -154,6 +159,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             webSearch={webSearch} setWebSearch={setWebSearch}
             useWebFetch={useWebFetch} setUseWebFetch={setUseWebFetch}
             columnSuggestions={columnSuggestions}
+            runIf={runIf} setRunIf={setRunIf} active={isOpen}
             sugg={sugg} models={models}
             model={sel.model} setModel={sel.setModel}
             systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}

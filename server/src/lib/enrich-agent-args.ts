@@ -10,7 +10,7 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 const KNOWN: Record<string, string[]> = {
   '': ['sheet_id', 'tool_id', 'preset', 'column_name', 'add_to_column', 'inputs', 'clean_domains', 'outputs',
     'email', 'provider_order', 'skip_providers', 'stop_at_first', 'max_cost_per_row_usd', 'spend_limit_usd',
-    'rows', 'use_sheet_filter', 'test', 'where', 'fresh', 'list', 'target_row_ids', 'estimate_only',
+    'rows', 'use_sheet_filter', 'test', 'where', 'run_if', 'fresh', 'list', 'target_row_ids', 'estimate_only',
     'idempotency_key', 'auto_run'],
   list: ['destination_sheet_id', 'new_sheet_name', 'provider', 'results_per_row', 'fields', 'copy_columns',
     'dedupe_path'],

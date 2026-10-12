@@ -19,6 +19,8 @@ export interface HTTPAPIConfig {
   responseMapping: ResponseMapping[];
   previewSize: number;
   batchSize?: number;
+  // "Only run if" rule (lib/run-condition.ts) as stored; absent = every row.
+  runIf?: string;
 }
 
 // The two accepted template token forms:

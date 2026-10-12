@@ -1,3 +1,4 @@
+// Over 200 lines: preview generation and its commit, one flow over the same preview state.
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { aiAPI, sheetsAPI, webSearchBody, type AIDraft, type SearchPlanSummary, type WebSearchSettings } from '@/utils/api'
@@ -22,6 +23,7 @@ interface PreviewArgs {
   // Rides the preview request only so the server-side draft can restore the
   // user's slider on reopen — the preview itself doesn't use it.
   concurrency: number
+  runIf: string
   nameError: string
   previewSize: number
   temperature: number
@@ -65,6 +67,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, previewSize: a.previewSize, concurrency: a.concurrency,
+    ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
   })
 
   // Restore a persisted preview (draft hydration on modal open) — same state

@@ -16,6 +16,8 @@ import type { RunFail } from './run-shared';
 import { autorunFillingColumn } from './autorun-block';
 import { listRowsBeingAdded, planListStart } from './enrich-list-start';
 import type { DestPlan } from './enrich-list-dest';
+import { checkRunRule } from './run-rule';
+import type { CheckedRule, RuleNode } from '../lib/run-condition';
 
 export interface PreparedStart {
   statusColumn: string;
@@ -26,6 +28,8 @@ export interface PreparedStart {
   span: { count: number; lastRow: number };
   // The most rows the run can take (the test rows, else the rows in scope).
   upperBound: number;
+  // The "Only run if" rule, checked against the sheet (null: none).
+  rule: CheckedRule | null;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -83,13 +87,16 @@ const NOTHING_TO_RUN: Record<string, string> = {
 // a column a run already made. Rows
 // missing an input still count; seeding skips them.
 async function rowsInScope(
-  sheetId: string, userId: string, input: EnrichRunInput, statusColumn: string, all: number,
+  sheetId: string, userId: string, input: EnrichRunInput, statusColumn: string, all: number, rule: RuleNode | null,
 ): Promise<number> {
   const { mode, status, rowIndexes } = input.rows;
   const byStatus = input.continueColumn && status !== 'any';
   const where = input.conditions;
-  if (!byStatus && mode !== 'filter' && where.length === 0) return mode === 'selected' ? rowIndexes?.length ?? 0 : all;
-  const counts = await enrichRowCounts(sheetId, userId, byStatus ? statusColumn : null, { mode, rowIndexes, where });
+  if (!byStatus && mode !== 'filter' && where.length === 0 && !rule) {
+    return mode === 'selected' ? rowIndexes?.length ?? 0 : all;
+  }
+  const scope = { mode, rowIndexes, where, rule };
+  const counts = await enrichRowCounts(sheetId, userId, byStatus ? statusColumn : null, scope);
   return byStatus ? countFor(counts, status) : counts.total;
 }
 
@@ -112,8 +119,12 @@ export async function prepareEnrichmentStart(
     if (problem) return problem;
   }
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
-  const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count);
-  if (inScope === 0 && input.conditions.length) return bad('No rows here pass "Only run if". Pick other rows to run.');
+  const rule = checkRunRule(sheetId, userId, input.runIf);
+  if ('error' in rule) return bad(rule.error);
+  const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null);
+  if (inScope === 0 && (input.conditions.length || rule.ok)) {
+    return bad('No rows here pass "Only run if". Pick other rows to run.');
+  }
   if (inScope === 0) return bad(NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.');
   const upperBound = Math.min(input.rows.test ?? inScope, inScope);
 
@@ -122,7 +133,11 @@ export async function prepareEnrichmentStart(
   if ('fail' in built) return built;
   const listPlan = planListStart(userId, sheetId, input, built.ok, columns);
   if ('fail' in listPlan) return listPlan;
+  // Kept in the config in Cubex's spelling, so reruns and auto-run repeat it.
+  if (rule.ok) built.ok.runIf = rule.ok.rule;
   return {
-    ok: { statusColumn, outputNames, config: built.ok, listPlan: listPlan.ok, columns, span, upperBound },
+    ok: {
+      statusColumn, outputNames, config: built.ok, listPlan: listPlan.ok, columns, span, upperBound, rule: rule.ok,
+    },
   };
 }

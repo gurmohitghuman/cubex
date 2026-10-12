@@ -10,6 +10,7 @@ import { runFailHttpStatus } from '../services/run-shared';
 import { saveAutorunSettings, setSheetAutorunPaused } from '../services/autorun-settings';
 import { autorunTargetView, sheetAutorunView } from '../services/autorun-view';
 import { estimateAutorunRows } from '../services/autorun-estimate';
+import { parseRuleField } from '../lib/run-condition';
 import { dailyLimitView } from '../services/treg-key';
 
 const router = express.Router();
@@ -46,6 +47,9 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
     if (typeof b.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false.' });
     const where = b.where === undefined || b.where === null ? null : parseConditions(b.where);
     if (typeof where === 'string') return res.status(400).json({ error: where });
+    // runIf absent keeps the rule; '' or null clears it.
+    const runIf = b.runIf === undefined ? undefined : parseRuleField(b.runIf);
+    if (runIf && 'error' in runIf) return res.status(400).json({ error: runIf.error });
     const cap = num(b.dailyCapUsd), rowCap = num(b.dailyRowCap);
     if (cap === undefined || rowCap === undefined) {
       return res.status(400).json({ error: 'The daily cap must be a number.' });
@@ -53,6 +57,7 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
     // The account owner (cookie session) may set up auto-run on saved keys.
     const out = await saveAutorunSettings(req.userId!, req.params.id, {
       column: b.column, enabled: b.enabled, where, dailyCapUsd: cap, dailyRowCap: rowCap,
+      ...(runIf ? { runIf: runIf.ok } : {}),
     }, { hasSecretsScope: true });
     if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
     res.json(sheetAutorunView(req.params.id, req.userId!));

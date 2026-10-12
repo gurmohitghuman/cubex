@@ -3,10 +3,13 @@
 // runs): the ⏳ placeholder goes only into the rows the run takes
 // (lib/enrich-seed.ts), a slice of rows at a time in storage order, and only
 // then is the run queued. total_rows becomes the number seeded. A test run
-// ("Run on 5 rows") takes the first matching rows in row order instead.
+// ("Run on 5 rows") takes the first matching rows in row order instead. A full
+// run marks the rows its "Only run if" keeps out "⏭️ Condition not met" in its
+// status column, unless that cell holds an earlier result.
 import { db } from '../lib/db';
 import { continueInBackground } from '../lib/sheet-busy';
 import { PLACEHOLDER } from '../lib/placeholder-cells';
+import { CONDITION_NOT_MET, takesConditionMark } from '../lib/run-markers';
 import { eachRowIdSlice, sheetRowIds } from '../lib/row-order';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
@@ -53,31 +56,43 @@ async function firstMatching(job: SeedJob, n: number): Promise<{ targets: number
   return { targets, missing };
 }
 
-async function seed(job: SeedJob, live: () => boolean): Promise<{ seeded: number; missing: number } | null> {
+type Seeded = { seeded: number; missing: number; notMet: number };
+
+async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
   const paths = job.columns.map(jsonPath);
+  // The status column (the run's first) of a row "Only run if" keeps out.
+  const markPath = jsonPath(job.columns[0]);
+  const mark = db.prepare(`UPDATE rows SET data = json_set(data, ?, '${CONDITION_NOT_MET}')
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const set = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const read = db.prepare(`SELECT rowid AS id, data FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
     AND +sheet_id = ? AND +user_id = ?${job.rowFilter.clause}`);
   let targets = job.targets, missing = 0;
   if (job.test !== null) ({ targets, missing } = await firstMatching(job, job.test));
-  if (targets && targets.length === 0) return { seeded: 0, missing };
+  if (targets && targets.length === 0) return { seeded: 0, missing, notMet: 0 };
   const rowIds = await sheetRowIds(job.sheetId, job.userId, targets ? { targets } : { upTo: job.lastRow });
-  let seeded = 0, stopped = false;
+  let seeded = 0, notMet = 0, stopped = false;
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
-    const take: number[] = [];
+    const take: number[] = [], keptOut: number[] = [];
     const found = read.all(ids, job.sheetId, job.userId, ...job.rowFilter.params) as
       Array<{ id: number; data: string }>;
     for (const r of found) {
-      const v = job.test !== null ? 'run' : seedVerdict(parseRowData(r.data), job.plan);
+      const data = parseRowData(r.data);
+      const v = job.test !== null ? 'run' : seedVerdict(data, job.plan);
       if (v === 'run') take.push(r.id);
       else if (v === 'missing') missing++;
+      else if (v === 'condition') {
+        notMet++;
+        if (takesConditionMark(data[job.columns[0]])) keptOut.push(r.id);
+      }
     }
     if (take.length) set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);
+    if (keptOut.length) mark.run(markPath, JSON.stringify(keptOut), job.sheetId, job.userId);
     seeded += take.length;
   });
-  return stopped ? null : { seeded, missing };
+  return stopped ? null : { seeded, missing, notMet };
 }
 
 export function seedEnrichmentThenEnqueue(job: SeedJob): void {
@@ -95,9 +110,10 @@ export function seedEnrichmentThenEnqueue(job: SeedJob): void {
       // that took no rows is simply done.
       const ready = db.transaction(() => {
         const r = db.prepare(`UPDATE http_runs SET placeholder_work = NULL, total_rows = ?, skipped_rows = ?,
+          condition_skipped_rows = ?,
           status = CASE WHEN ? = 0 THEN 'completed' ELSE status END, updated_at = datetime('now')
           WHERE id = ? AND status = 'pending' AND placeholder_work = 'seeding'`)
-          .run(done.seeded, done.missing, done.seeded, job.runId);
+          .run(done.seeded, done.missing, done.notMet, done.seeded, job.runId);
         db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
           .run(job.sheetId, job.userId);
         return r.changes > 0;
