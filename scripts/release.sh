@@ -79,13 +79,13 @@ cmd_notes() {
       for (k = 2; k <= NF; k++) {
         if ($k ~ /^file/) f = $(k-1); if ($k ~ /^insert/) i = $(k-1); if ($k ~ /^delet/) d = $(k-1)
       }
-      printf "%s files changed · +%s / −%s", c(f), c(i), c(d) }')"
+      printf "%s file%s changed · +%s / −%s", c(f), (f == 1 ? "" : "s"), c(i), c(d) }')"
   file="${TMPDIR:-/tmp}"; file="${file%/}/cubex-release-$next.md"
   {
     echo "# Cubex $next"
     echo
     echo "**Release date:** $(LC_ALL=C date '+%B %-d, %Y')"
-    echo "**Since ${prev:-the first public commit}:** $count commits · $stats"
+    echo "**Since ${prev:-the first public commit}:** $count commit$([ "$count" = 1 ] || echo s) · $stats"
     echo
     echo '> <!-- TODO: one short paragraph, in plain words: what this release is about. -->'
     echo
