@@ -11,7 +11,7 @@
 set -euo pipefail
 
 CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
-CUBEX_REF="${CUBEX_REF:-main}"
+CUBEX_REF="${CUBEX_REF:-stable}" # stable = the latest release
 CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
 CUBEX_BIN_DIR="${CUBEX_BIN_DIR:-$HOME/.local/bin}"
 NODE_MAJOR=22
@@ -26,7 +26,7 @@ usage() {
 Usage: install.sh [options]   (with curl: ... | bash -s -- [options])
   --port N           Port to use (default 3002)
   --public           Reachable from other devices, with a generated password
-  --ref BRANCH|TAG   Version to install (default: main)
+  --ref BRANCH|TAG   Version to install (default: stable, the latest release)
   --dir DIR          Install folder (default: ~/.cubex)
   --no-start         Don't start Cubex afterwards
   --no-service       Plain background process, no launchd/systemd service
@@ -38,12 +38,12 @@ EOF
 
 main() {
   PORT_ARG='' PUBLIC=0 SOURCE='' NO_START=0 NO_SERVICE=0 NO_PATH=0 FORCE=0 PASSWORD='' LOCKED=0
-  NODE_SWAPPED=0 CONFIG_CHANGED=0
+  NODE_SWAPPED=0 CONFIG_CHANGED=0 REF_GIVEN=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --port) PORT_ARG="${2:?--port needs a number}"; shift 2 ;;
       --public) PUBLIC=1; shift ;;
-      --ref) CUBEX_REF="${2:?--ref needs a branch or tag}"; shift 2 ;;
+      --ref) CUBEX_REF="${2:?--ref needs a branch or tag}" REF_GIVEN=1; shift 2 ;;
       --dir) CUBEX_HOME="${2:?--dir needs a folder}"; shift 2 ;;
       --source) SOURCE="$(cd "${2:?--source needs a folder}" && pwd)"; shift 2 ;;
       --no-start) NO_START=1; shift ;;
@@ -66,6 +66,9 @@ main() {
     die "$CUBEX_HOME already has other files in it. Choose a new or empty folder with --dir."
   fi
   export CUBEX_HOME
+  # Installs from before releases existed recorded main, the only choice then: move them to releases.
+  if [ "$REF_GIVEN" = 0 ] && [ "$CUBEX_REF" = main ] && [ -f "$CUBEX_HOME/install.env" ] \
+    && ! grep -q '^CUBEX_FORMAT=' "$CUBEX_HOME/install.env"; then CUBEX_REF=stable; fi
 
   detect_platform
   say "${B}Installing Cubex into $CUBEX_HOME${N}"
@@ -82,7 +85,7 @@ main() {
   local built=0 cli="$CUBEX_HOME/app/bin/cubex"
   if fetch_source; then build_app; built=1; else ok "Already up to date ($(cat "$CUBEX_HOME/app/.cubex-version"))"; fi
   # Before starting anything, so `cubex logs` and `cubex uninstall` work even if the start fails.
-  printf 'CUBEX_REPO=%q\nCUBEX_REF=%q\nCUBEX_SOURCE=%q\nCUBEX_BIN_DIR=%q\n' \
+  printf 'CUBEX_FORMAT=2\nCUBEX_REPO=%q\nCUBEX_REF=%q\nCUBEX_SOURCE=%q\nCUBEX_BIN_DIR=%q\n' \
     "$CUBEX_REPO" "$CUBEX_REF" "$SOURCE" "$CUBEX_BIN_DIR" > "$CUBEX_HOME/install.env"
   install_launcher
   if [ "$built" = 1 ]; then
@@ -203,27 +206,40 @@ set_config() { # KEY VALUE: replace the line for KEY, or append one
   fi
 }
 
+# The newest published release's tag, or main while the repository has none yet.
+latest_release() {
+  local url
+  url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$CUBEX_REPO/releases/latest")" \
+    || die "Couldn't reach GitHub to look up the latest Cubex release. Check your internet connection."
+  case "$url" in */releases/tag/*) printf '%s\n' "${url##*/}" ;; *) echo main ;; esac
+}
+
 # Puts the source in $CUBEX_HOME/app.next and sets SRC_ID. Returns 1 when the
 # installed app is already this exact version (nothing to do).
 fetch_source() {
-  local next="$CUBEX_HOME/app.next" sha=''
+  local next="$CUBEX_HOME/app.next" sha='' ref="$CUBEX_REF"
   rm -rf "$next" && mkdir "$next"
   if [ -n "$SOURCE" ]; then
-    # Tracked and new files only: never node_modules, data or .env secrets.
+    # Tracked and new files only: never node_modules, data or .env secrets. A node_modules
+    # symlink isn't ignored by the node_modules/ rule, and npm ci would empty its target.
     (cd "$SOURCE" && git ls-files -z --cached --others --exclude-standard \
-      | while IFS= read -r -d '' f; do if [ -e "$f" ]; then printf '%s\0' "$f"; fi; done \
+      | while IFS= read -r -d '' f; do
+        case "/$f" in */node_modules|*/node_modules/*) continue ;; esac
+        if [ -e "$f" ]; then printf '%s\0' "$f"; fi
+      done \
       | tar -cf - --null -T -) | tar -xf - -C "$next" || die "Copying $SOURCE failed (it must be a git checkout of Cubex)."
     SRC_ID="local $(git -C "$SOURCE" rev-parse --short HEAD) $(date '+%Y-%m-%d %H:%M')"
     return 0
   fi
+  if [ "$ref" = stable ]; then ref="$(latest_release)"; fi
   sha="$(curl -fsSL -H 'Accept: application/vnd.github.sha' \
-    "https://api.github.com/repos/$CUBEX_REPO/commits/$CUBEX_REF" 2>/dev/null)" || sha=''
-  SRC_ID="$CUBEX_REF ${sha:0:7}"
+    "https://api.github.com/repos/$CUBEX_REPO/commits/$ref" 2>/dev/null)" || sha=''
+  SRC_ID="$ref ${sha:0:7}"
   if [ -n "$sha" ] && [ "$FORCE" = 0 ] && [ "$(cat "$CUBEX_HOME/app/.cubex-version" 2>/dev/null)" = "$SRC_ID" ]; then
     rm -rf "$next"; return 1
   fi
-  curl -fsSL "https://codeload.github.com/$CUBEX_REPO/tar.gz/${sha:-$CUBEX_REF}" \
-    | tar -xzf - -C "$next" --strip-components 1 || die "Downloading Cubex ($CUBEX_REPO, $CUBEX_REF) failed."
+  curl -fsSL "https://codeload.github.com/$CUBEX_REPO/tar.gz/${sha:-$ref}" \
+    | tar -xzf - -C "$next" --strip-components 1 || die "Downloading Cubex ($CUBEX_REPO, $ref) failed."
   ok "Downloaded Cubex ($SRC_ID)"
 }
 

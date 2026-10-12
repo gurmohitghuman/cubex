@@ -1,0 +1,107 @@
+name: Release
+
+# Publishes a draft release made by scripts/release.sh (see docs/releasing.md).
+# It tests the exact commit the draft points at (CI, plus a real install with
+# the one-line installer), and only then publishes the draft. Publishing is
+# what creates the vX.Y.Z tag, so a failed run leaves no tag behind, and
+# `cubex update` only ever sees versions that passed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release to test and publish (vX.Y.Z)
+        required: true
+
+# One release at a time; never cancel one halfway through publishing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Find the draft's commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # drafts are only visible to a token that can write
+    outputs:
+      sha: ${{ steps.draft.outputs.sha }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve the draft
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' isn't vX.Y.Z"; exit 1; }
+          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"
+          target="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
+          [ "$draft" = true ] || { echo "::error::$TAG is already published"; exit 1; }
+          sha="$(git rev-parse --verify "$target^{commit}")"
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "::error::$TAG points at $sha, which isn't on main"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "$TAG -> $sha"
+
+  ci:
+    name: CI
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+
+  install:
+    name: One-line install
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - name: Install, start and reach Cubex
+        env:
+          CUBEX_HOME: ${{ runner.temp }}/cubex/home
+          CUBEX_BIN_DIR: ${{ runner.temp }}/cubex/bin
+        run: |
+          set -euo pipefail
+          bash install.sh --source . --port 3091 --no-service --no-modify-path
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:3091/api/health
+          echo
+          "$CUBEX_BIN_DIR/cubex" status
+          "$CUBEX_BIN_DIR/cubex" stop
+
+  publish:
+    name: Publish
+    needs: [resolve, ci, install]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft (this creates the tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false --latest
+          tagged="$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)"
+          [ "$tagged" = "$SHA" ] || { echo "::error::$TAG was tagged at $tagged, expected $SHA"; exit 1; }
+          echo "Published $TAG at $SHA: https://github.com/$GH_REPO/releases/tag/$TAG"
