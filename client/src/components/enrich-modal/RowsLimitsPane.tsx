@@ -3,11 +3,13 @@ import { formatCost } from '@/components/ai-modal/format'
 import { ENRICH_MAX_ROW_CAP_USD } from '@/lib/constants'
 import type { EnrichRowCounts } from '@/utils/api'
 import { effectiveMode, type EnrichDraft, type RowCounts, type RowsMode, type RowsStatus } from './draft'
-import { ConditionsField } from './ConditionsField'
+import { RunIfField } from '@/components/run-if/RunIfField'
 import { MoneyInput } from './MoneyInput'
 import { AutorunField } from './AutorunField'
 
 interface Props {
+  sheetId: string
+  active: boolean
   draft: EnrichDraft
   update: (patch: Partial<EnrichDraft>) => void
   counts: RowCounts
@@ -82,11 +84,8 @@ export const RowsLimitsPane: React.FC<Props> = (p) => {
         </fieldset>
       )}
 
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-gray-700">Only run if</p>
-        <ConditionsField conditions={draft.conditions} columns={p.columns}
-          onChange={conditions => update({ conditions })} />
-      </div>
+      <RunIfField sheetId={p.sheetId} value={draft.runIf} onChange={runIf => update({ runIf })} active={p.active}
+        skippedNote={'Rows that don\'t pass aren\'t enriched, cost nothing, and show "⏭️ Condition not met".'} />
 
       {p.billedBy ? (
         <p className="text-xs text-gray-600">

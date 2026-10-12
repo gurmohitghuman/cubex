@@ -7,11 +7,13 @@
 // Each mode is one predicate over the
 // (Output) cell:
 //   errored — only ❌ cells (the retry-what-failed case)
-//   empty   — only blank cells (never populated, or cleared)
+//   empty   — only blank cells (never populated, or cleared), and cells an
+//             "Only run if" rule left ("⏭️ Condition not met": never run)
 //   missing — empty OR ❌ OR still-⏳ (the historical default; the UI's
 //             "Run Missing or Errors" button)
 //   all     — every row in the sheet. Re-bills the lot.
 import { rowsWhere } from '../lib/run-rows';
+import { isConditionNotMet } from '../lib/run-markers';
 
 export type AiRerunMode = 'errored' | 'empty' | 'missing' | 'all';
 
@@ -32,7 +34,7 @@ export function matchesRerunMode(value: string | null, mode: AiRerunMode): boole
   // Whether a 0-score cell SHOULD count as empty is a separate product question
   // — deliberately not decided inside a refactor.
   const v = (value || '').toString();
-  const isEmpty = v.trim() === '';
+  const isEmpty = v.trim() === '' || isConditionNotMet(v);
   // The worker writes '❌ Error: …' on a failed row and '⏳ Processing...' while
   // in flight; both are sentinels, not user data.
   const isErrored = v.startsWith('❌');

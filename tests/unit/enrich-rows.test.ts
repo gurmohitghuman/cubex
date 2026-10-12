@@ -93,8 +93,9 @@ check('email checks come back',
   c.email?.accept === 'balanced' && c.email.guess === false && c.email.pattern === 'flast')
 check('outputs: Cubex keys and treg paths',
   c.outputs.map(o => o.key).join() === 'email,found_by,title' && c.outputs[2].path === '$.output.title')
-check('the per-row cap and fresh stay; Only run if too',
-  c.maxCostPerRowUsd === 0.05 && c.fresh && c.conditions.length === 1)
+// An older condition list comes back as one "Only run if" rule (and not twice).
+check('the per-row cap and fresh stay; Only run if too, as a rule',
+  c.maxCostPerRowUsd === 0.05 && c.fresh && c.conditions.length === 0 && c.runIf === '{{Size}} > 50')
 const again = rerunInput(c, { mode: 'all', status: 'failed', test: null, rowIndexes: null })
 check('a rerun adds to the column with a new run limit',
   again.continueColumn && again.spendLimitUsd === null && again.rows.status === 'failed')

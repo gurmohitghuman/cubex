@@ -77,10 +77,11 @@ export function useSetupModel(a: Args) {
   const mode = effectiveMode(draft.rowsMode, counts)
   // "Only run if" narrows the rows the estimate counts (once its conditions are complete).
   const where = draft.conditions.length && !conditionsProblem(draft.conditions, columns) ? draft.conditions : []
+  const ruled = !!draft.runIf.trim()
   const byStatus = useRowCounts(sheetId, more ? draft.continueColumn : null, mode, a.selectedRows, active,
-    `${draft.runId ?? ''}:${draft.runEnded}:${a.countsKey ?? ''}`, where)
+    `${draft.runId ?? ''}:${draft.runEnded}:${a.countsKey ?? ''}`, where, draft.runIf)
   const rows = more ? countFor(byStatus, draft.rowsStatus)
-    : where.length ? byStatus?.total ?? null : rowsFor(draft.rowsMode, counts)
+    : where.length || ruled ? byStatus?.total ?? null : rowsFor(draft.rowsMode, counts)
   const room = data.setup ? data.setup.columns.max - data.setup.columns.count : null
   // A list job asks one provider (its own pick), so the waterfall's provider list isn't shown.
   const list = draft.list
@@ -108,7 +109,7 @@ export function useSetupModel(a: Args) {
     ?? conditionsProblem(draft.conditions, columns)
     ?? statusNameProblem ?? outputNameProblem
     ?? (rows !== 0 ? null
-      : more || where.length ? 'No rows here match. Pick other rows to run.' : 'There are no rows to run on.')
+      : more || where.length || ruled ? 'No rows here match. Pick other rows to run.' : 'There are no rows to run on.')
 
   // treg tries the team's own keys and free sources first, whatever the order.
   const pinned = (r: { access: string | null }) => r.access === 'own' || r.access === 'free'

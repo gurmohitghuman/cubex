@@ -10,7 +10,7 @@ export async function saveDraftAutorun(sheetId: string, column: string, d: Enric
   try {
     await autorunAPI.save(sheetId, d.autoRun ? {
       column, enabled: true, dailyCapUsd: d.autoRunCapUsd,
-      where: d.conditions.map(c => ({ column: c.column, op: c.op, value: c.value })),
+      where: d.conditions.map(c => ({ column: c.column, op: c.op, value: c.value })), runIf: d.runIf,
     } : { column, enabled: false })
     return true
   } catch (e: any) {

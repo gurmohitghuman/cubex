@@ -1,4 +1,6 @@
+// Over 200 lines: the whole HTTP-run side of a column rename or delete; split, the rewrites would scatter.
 import { db } from './db';
+import { renameRuleColumn } from './run-condition';
 import { renameTemplateColumnRefs } from './column-ref-rename';
 
 // HTTP-run ↔ column lifecycle cascade, called from the column rename route
@@ -109,8 +111,12 @@ function renameRuns(page: PageRun[], oldName: string, newName: string): void {
         rc.headers = headers;
       }
     }
-    // An enrichment's "Only run if" conditions name columns too, and a list
-    // job's copied columns (read from this sheet).
+    // "Only run if" names columns too (the rule, and an enrichment's older
+    // condition list), and so do a list job's copied columns (read from this sheet).
+    if (typeof config?.runIf === 'string') {
+      const runIf = renameRuleColumn(config.runIf, oldName, newName);
+      if (runIf !== config.runIf) { config.runIf = runIf; changed = true; }
+    }
     const where = config?.enrichment?.rows?.where;
     if (Array.isArray(where)) {
       for (const c of where) if (c && c.column === oldName) { c.column = newName; changed = true; }

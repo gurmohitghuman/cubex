@@ -22,6 +22,8 @@ import {
 import { existingRowIndexes } from '../lib/run-rows';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { findColumnNameCollision } from '../lib/column-names';
+import { activeRunOnColumn } from './ai-run-start-checks';
+import { checkRunRule, ruleSeed } from './run-rule';
 import { enqueueAIRun, enqueueAIRerun } from '../queue';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
@@ -99,21 +101,15 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
   }
 
   // Reject a second active run writing the same status column (its anchor).
-  const conflictingRun = db.prepare(`
-    SELECT id FROM ai_runs
-    WHERE sheet_id = ? AND user_id = ? AND column_name = ?
-      -- A stopped run still clearing its ⏳ cells (migration 004) counts: its
-      -- clear would wipe the new run's placeholders in rows it hasn't reached.
-      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
-    LIMIT 1
-  `).get(p.sheetId, userId, statusColumn);
-  if (conflictingRun) return {
+  if (activeRunOnColumn(p.sheetId, userId, statusColumn)) return {
     fail: 'conflict',
     message: `A structured run for "${p.cleanColumnName}" is still active, or still clearing the cells of a stopped run. Wait for it to finish, or stop it first.`,
   };
 
   const refsError = unknownPromptRefsError(p.sheetId, userId, p.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
+  const rule = checkRunRule(p.sheetId, userId, p.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
 
   const runId = uuidv4();
   const insertRun = db.prepare(`
@@ -121,8 +117,8 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?)
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?)
   `);
 
   // Cap check + run row + column_order append in ONE immediate txn (two
@@ -142,6 +138,7 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
         targetCount, targets ? JSON.stringify(targets) : null,
         JSON.stringify(specs), statusColumn, dataColumn,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
+        rule.ok?.rule ?? null,
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();
@@ -156,12 +153,15 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
     // together on cancel/fail (run-placeholders.aiRunColumns).
     seedThenEnqueue({
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns: allColumns,
-      targets, lastRow: span.lastRow,
+      targets, lastRow: span.lastRow, rule: ruleSeed(rule.ok, statusColumn),
       enqueue: () => (targets ? enqueueAIRerun(runId, targets) : enqueueAIRun(runId)),
     });
 
     return {
-      ok: { runId, statusColumn, outputColumns: outputNames, dataColumn, reusedRows: 0, targetCount, webSearch: plan },
+      ok: {
+        runId, statusColumn, outputColumns: outputNames, dataColumn, reusedRows: 0, targetCount, webSearch: plan,
+        runIf: rule.ok?.rule ?? null,
+      },
     };
   });
 }

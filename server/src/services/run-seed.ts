@@ -12,6 +12,7 @@
 import { db } from '../lib/db';
 import { continueInBackground, withSheetBusy } from '../lib/sheet-busy';
 import { seedProcessingPlaceholders } from '../lib/placeholder-cells';
+import { seedPlaceholdersByRule, type RuleSeed } from '../lib/placeholder-rule-seed';
 import { clearRunPlaceholders, type RunKind } from '../lib/run-placeholders';
 import { redactSecrets } from '../lib/redact';
 import type { RunFail } from './run-shared';
@@ -39,9 +40,11 @@ export function sheetRowSpan(sheetId: string, userId: string): { count: number; 
 // placeholder_work='seeding'. `queued` runs once the run is queued (not when
 // it was cancelled while starting; its cancel clears the cells). If seeding or
 // queueing throws, the run is failed with the reason and its cells cleared.
+// With an "Only run if" rule, rows that fail it are marked instead
+// (lib/placeholder-rule-seed.ts) and come off the run's total_rows.
 export function seedThenEnqueue(args: {
   kind: RunKind; runId: string; sheetId: string; userId: string; columns: string[];
-  targets: number[] | null; lastRow: number; skip?: Set<number>;
+  targets: number[] | null; lastRow: number; skip?: Set<number>; rule?: RuleSeed | null;
   enqueue: () => Promise<void>; queued?: () => void;
 }): void {
   continueInBackground(args.sheetId, 'starting a run', () => seedAndEnqueue(args));
@@ -64,21 +67,28 @@ async function seedAndEnqueue(args: Parameters<typeof seedThenEnqueue>[0]): Prom
     throw error;
   };
 
-  let seeded: boolean;
+  let notMet = 0;
   try {
-    seeded = await seedProcessingPlaceholders({ ...args, live });
+    if (args.rule) {
+      const done = await seedPlaceholdersByRule({ ...args, rule: args.rule, live });
+      if (!done) return;
+      notMet = done.notMet;
+    } else if (!await seedProcessingPlaceholders({ ...args, live })) {
+      return;
+    }
   } catch (error) {
     return giveUp(error);
   }
-  if (!seeded) return;
 
   // Fully seeded: drop the mark in the same tick as this check, so from here a
   // restart resumes the run like any other pending one. Open grids reload to
   // show the placeholders.
   const ready = db.transaction(() => {
     const r = db.prepare(
-      `UPDATE ${table} SET placeholder_work = NULL WHERE id = ? AND status = 'pending' AND placeholder_work = 'seeding'`,
-    ).run(args.runId);
+      `UPDATE ${table} SET placeholder_work = NULL, total_rows = MAX(0, total_rows - ?),
+         condition_skipped_rows = CASE WHEN ? THEN ? ELSE condition_skipped_rows END
+       WHERE id = ? AND status = 'pending' AND placeholder_work = 'seeding'`,
+    ).run(notMet, args.rule ? 1 : 0, notMet, args.runId);
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(args.sheetId, args.userId);
     return r.changes > 0;
   })();

@@ -63,6 +63,7 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
       ...(c.mode === 'selected' ? { rowIndexes: c.selectedRows } : {}),
     },
     conditions: d.conditions.map(x => ({ column: x.column, op: x.op, value: x.value })),
+    ...(d.runIf.trim() ? { runIf: d.runIf } : {}),
     maxCostPerRowUsd: d.maxCostPerRowUsd,
     spendLimitUsd: c.spendLimitUsd !== undefined ? c.spendLimitUsd : d.spendLimitUsd,
     fresh: d.fresh,

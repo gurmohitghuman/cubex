@@ -20,6 +20,7 @@ import { registerTransferTool } from './tools-transfer';
 import { registerTransformTool } from './tools-transform';
 import { registerEnrichTools } from './tools-enrich';
 import { registerEnrichManageTools } from './tools-enrich-manage';
+import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
@@ -52,6 +53,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerRowTools(server, ctx);
   registerColumnTools(server, ctx);
   registerRunStartTools(server, ctx);
+  registerRunConditionTools(server, ctx);
   registerRunManageTools(server, ctx);
   registerRunResultTools(server, ctx);
   registerWorkspaceTools(server, ctx);

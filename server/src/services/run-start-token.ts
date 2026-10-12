@@ -24,6 +24,7 @@ import { runStartWindow, resolveRowIdsToIndexes, type RunFailKind } from './run-
 import { tooManyMessage, type RateDecision } from '../lib/rate-window';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
+import { runIfReply } from './run-rule';
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
@@ -81,7 +82,7 @@ export interface TokenAiRunArgs {
   model?: unknown; concurrency?: unknown; system_prompt?: unknown; temperature?: unknown;
   web_search?: unknown; web_fetch?: unknown; max_chars?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
-  search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown;
+  search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown; run_if?: unknown;
 }
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
@@ -104,8 +105,9 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     model: a.model, temperature: a.temperature, concurrency: a.concurrency, maxChars: a.max_chars,
     useOpenRouterWebSearch: a.web_search, useWebFetch: a.web_fetch, outputColumns,
     searchEngine: a.search_engine, searchMode: a.search_mode, maxSearchesPerRow: a.max_searches_per_row,
+    runIf: a.run_if,
   });
-  if (!parsed.ok) return bad(parsed.error);
+  if (!parsed.ok) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   // A typo'd model used to start a run whose every row failed.
   if (typeof a.model === 'string' && a.model.trim()) {
     const catalog = await fetchModels(Date.now());
@@ -118,7 +120,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       outputColumns: parsed.outputColumns, maxChars: parsed.safeMaxChars,
-      targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
+      targetRowIndexes: pre.targetRowIndexes, search: parsed.search, runIf: parsed.runIf,
     });
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
   }
@@ -130,6 +132,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       maxChars: parsed.safeMaxChars, outputColumns: parsed.outputColumns,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
+      runIf: parsed.runIf,
     });
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
@@ -141,6 +144,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     // that sent true (or 1) instead of conflicting with it.
     web_search: parsed.useOpenRouterWebSearch, web_fetch: parsed.useWebFetch,
     ...(parsed.useOpenRouterWebSearch ? { search: parsed.search } : {}),
+    ...(parsed.runIf ? { run_if: parsed.runIf } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -152,11 +156,14 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
     safeTemperature: parsed.safeTemperature, safeConcurrency: parsed.safeConcurrency,
     safeMaxChars: parsed.safeMaxChars, targetRowIndexes: pre.targetRowIndexes,
-    outputColumns: parsed.outputColumns, search: parsed.search,
+    outputColumns: parsed.outputColumns, search: parsed.search, runIf: parsed.runIf,
   });
   if ('fail' in result) return result;
   // With web search: the engine it runs on, priced, and why if Cubex switched it.
-  const webSearch = result.ok.webSearch ? { web_search: webSearchSummary(result.ok.webSearch) } : {};
+  const webSearch = {
+    ...(result.ok.webSearch ? { web_search: webSearchSummary(result.ok.webSearch) } : {}),
+    ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
+  };
   const payload = result.ok.statusColumn ? {
     run_id: result.ok.runId, status_column: result.ok.statusColumn,
     output_columns: result.ok.outputColumns,

@@ -20,11 +20,15 @@ import { columnOutputs, entryFor, newestRunOf, whereOf } from './autorun-entry';
 import { getDailyLimitMicro } from './treg-key';
 import { autorunListProblem } from './autorun-list';
 import type { RunFail } from './run-shared';
+import { checkRunRule } from './run-rule';
 
 export interface AutorunSettingsInput {
   column: string;
   enabled: boolean;
   where: EnrichCondition[] | null;      // null: keep (or the run's own "Only run if" on a first turn-on)
+  // The "Only run if" rule (lib/run-condition.ts): undefined keeps it (or, on
+  // a first turn-on, takes the column's newest run's); '' or null clears it.
+  runIf?: string | null;
   dailyCapUsd: number | null;           // enrichment columns
   dailyRowCap: number | null;           // HTTP API columns
 }
@@ -86,11 +90,15 @@ export async function saveAutorunSettings(
     ? config.enrichment.rows.where : []);
   const missing = where.find(c => !columns.includes(c.column));
   if (missing) return bad(`"Only run if" reads ${missing.column}, which isn't in this sheet.`);
+  const ruleText = input.runIf !== undefined ? input.runIf : prior ? prior.run_if : config.runIf ?? null;
+  const rule = checkRunRule(sheetId, userId, ruleText);
+  if ('error' in rule) return bad(rule.error);
+  const runIf = rule.ok?.rule ?? null;
   const reads = requestColumns(config, columns);
   const gone = reads.find(c => !columns.includes(c));
   if (gone) return bad(`This column reads ${gone}, which isn't in this sheet anymore. Edit the column first.`);
   const own = new Set([input.column, ...columnOutputs(sheetId, userId, input.column)]);
-  const selfRead = watchedColumns(reads, where).filter(c => own.has(c));
+  const selfRead = watchedColumns(reads, where, runIf).filter(c => own.has(c));
   if (selfRead.length) {
     return bad(`Auto-run can't read this column's own results (${selfRead.join(', ')}). Pick other columns.`);
   }
@@ -107,7 +115,7 @@ export async function saveAutorunSettings(
   const caps = capsFor(userId, kind, input, prior, unpriced);
   if ('fail' in caps) return caps;
 
-  const watched = JSON.stringify(watchedColumns(reads, where));
+  const watched = JSON.stringify(watchedColumns(reads, where, runIf));
   // A first turn-on (or after it was off) starts from the rows there now.
   const fresh = !prior || !prior.enabled;
   if (prior && fresh) await autorunDropPending(sheetId, userId, prior.id);
@@ -118,15 +126,15 @@ export async function saveAutorunSettings(
       .pluck().get(sheetId, userId) as number;
     if (prior && fresh) db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(prior.id);
     db.prepare(`INSERT INTO autorun_columns (id, user_id, sheet_id, status_column, kind, enabled, input_columns,
-        where_json, daily_cap_micro, daily_row_cap, watermark_row_index, rescan, row_generation_seen)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?)
+        where_json, run_if, daily_cap_micro, daily_row_cap, watermark_row_index, rescan, row_generation_seen)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1, ?)
       ON CONFLICT(sheet_id, status_column) DO UPDATE SET enabled = 1, kind = excluded.kind,
-        input_columns = excluded.input_columns, where_json = excluded.where_json,
+        input_columns = excluded.input_columns, where_json = excluded.where_json, run_if = excluded.run_if,
         daily_cap_micro = excluded.daily_cap_micro, daily_row_cap = excluded.daily_row_cap,
         watermark_row_index = CASE WHEN ? THEN excluded.watermark_row_index ELSE watermark_row_index END,
         row_generation_seen = CASE WHEN ? THEN excluded.row_generation_seen ELSE row_generation_seen END,
         rescan = 1, paused_reason = NULL, paused_message = NULL, paused_at = NULL, updated_at = datetime('now')`)
-      .run(uuidv4(), userId, sheetId, input.column, kind, watched, JSON.stringify(where), caps.capMicro,
+      .run(uuidv4(), userId, sheetId, input.column, kind, watched, JSON.stringify(where), runIf, caps.capMicro,
         caps.rowCap, top, gen, fresh ? 1 : 0, fresh ? 1 : 0);
   }).immediate();
   return { ok: { column: input.column } };

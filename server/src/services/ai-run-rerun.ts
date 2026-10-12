@@ -14,6 +14,8 @@ import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { existingRowIndexes } from '../lib/run-rows';
+import { activeRunOnColumn } from './ai-run-start-checks';
+import { ruleSeed, storedRule } from './run-rule';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { columnReuseCollision } from '../lib/column-names';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -71,15 +73,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
 
   // Runs on a sheet are only created inside its busy window (services/run-seed.ts),
   // so no new one can appear between this check and the insert below.
-  const conflictingRun = db.prepare(`
-    SELECT id FROM ai_runs
-    WHERE sheet_id = ? AND user_id = ? AND column_name = ?
-      -- A stopped run still clearing its ⏳ cells (migration 004) counts: its
-      -- clear would wipe the new run's placeholders in rows it hasn't reached.
-      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
-    LIMIT 1
-  `).get(p.sheetId, userId, outputCol);
-  if (conflictingRun) return {
+  if (activeRunOnColumn(p.sheetId, userId, outputCol)) return {
     fail: 'conflict',
     message: 'A run on this column is still active, or still clearing the cells of a stopped run. Wait for it to finish, or stop it first.',
   };
@@ -120,6 +114,9 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   // the start-time gate in lib/prompt-ref-validate.ts).
   const refsError = unknownPromptRefsError(p.sheetId, userId, latestRun.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
+  // The column's "Only run if" rule applies to its reruns too.
+  const rule = storedRule(p.sheetId, userId, latestRun.run_if);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
 
   const newRunId = uuidv4();
   const wantCols = needsDataColumn ? [outputCol, dataCol] : [outputCol];
@@ -163,8 +160,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
           status, total_rows, processed_rows, target_rows, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?)
       `).run(
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
@@ -173,7 +170,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         JSON.stringify(targets),
         // The same search engine, mode and cap as the run it repeats.
         latestRun.web_search_engine ?? null, latestRun.web_search_engine_used ?? null,
-        latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null,
+        latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 
@@ -186,7 +183,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
     // left with stuck ⏳ cells or a pending run that trips the 409 guard.
     seedThenEnqueue({
       kind: 'ai', runId: newRunId, sheetId: p.sheetId, userId, columns: wantCols,
-      targets, lastRow: Number.MAX_SAFE_INTEGER,
+      targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, outputCol),
       enqueue: () => enqueueAIRerun(newRunId, targets),
     });
     return { ok: { runId: newRunId, targetCount: targets.length } };

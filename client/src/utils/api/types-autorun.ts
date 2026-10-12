@@ -20,6 +20,8 @@ export interface AutorunColumn {
   pausedReason: AutorunPause | null
   pausedMessage: string | null
   where: AutorunCondition[]
+  // Its "Only run if" rule (older condition lists come as one).
+  runIf: string | null
   dailyCapUsd: number | null
   dailyRowCap: number | null
   usedTodayUsd: number
@@ -33,7 +35,8 @@ export interface SheetAutorun {
 
 // The dialog's column: the columns its runs fill ("Only run if" can't read
 // them), and whether the team's own provider key bills its tool (no dollar cap).
-export interface AutorunTargetInfo { outputs: string[]; ownKey: boolean }
+// runIf: the newest run's "Only run if" (a first turn-on starts from it).
+export interface AutorunTargetInfo { outputs: string[]; ownKey: boolean; runIf: string | null }
 
 // What an enrichment column spent over all its runs, and on how many rows.
 export interface ColumnSpend { spentUsd: number; rows: number }
@@ -42,6 +45,8 @@ export interface AutorunSave {
   column: string
   enabled: boolean
   where?: AutorunCondition[] | null
+  // undefined keeps the rule (or, on a first turn-on, takes the run's); '' clears it.
+  runIf?: string
   dailyCapUsd?: number | null
   dailyRowCap?: number | null
 }

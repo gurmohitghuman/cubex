@@ -28,6 +28,8 @@ export interface AiRunStartParams {
   // Web search engine, mode and per-row cap (ignored without web search;
   // undefined/null with it: OpenRouter's default engine, no cap).
   search?: SearchOptions | null;
+  // "Only run if" rule text (lib/run-condition.ts); empty/undefined = every row.
+  runIf?: string | null;
 }
 
 export type AiRunStartOutcome =
@@ -39,5 +41,7 @@ export type AiRunStartOutcome =
       statusColumn?: string; outputColumns?: string[];
       // With web search: the engine its searches run on, priced.
       webSearch?: SearchPlan | null;
+      // The rule as stored (Cubex's spelling), or null.
+      runIf?: string | null;
     } }
   | RunFail;

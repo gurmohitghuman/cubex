@@ -53,7 +53,7 @@ Say you have a sheet of leads with **Name** and **Website** columns and you want
 4. **Providers.** The waterfall's providers, in the order they're asked. Drag them (or use the arrows) to change the order, and switch off any you don't want. Providers on your own keys and free sources always go first. **Only the first provider that can answer runs** is cheaper but finds less.
 5. **Email checks.** Choose which addresses count: **Valid only (safest)**, **Valid or catch-all**, or **Valid, catch-all or risky**. **Try a guess first** checks a common pattern (such as `first.last@domain`) before paying for a find; the guess costs only the check, which is free with some checkers. If a found address doesn't pass, it tries up to 3 finds per row, skipping providers already tried.
 6. **Outputs.** The new columns: **Work email**, **Email status** and **Found by** (and **Checked by**, off by default). Rename them if you like.
-7. **Rows and limits.** Which rows to run on (all rows, the rows in the current filter, or the rows you selected), **Only run if** conditions, **Max per row**, **Stop the run at**, **Always fetch fresh data** and **Auto-run**. See [Costs and limits](#costs-and-limits) and [Auto-run](#auto-run).
+7. **Rows and limits.** Which rows to run on (all rows, the rows in the current filter, or the rows you selected), **Only run if** (see [Only run if](#only-run-if)), **Max per row**, **Stop the run at**, **Always fetch fresh data** and **Auto-run**. See [Costs and limits](#costs-and-limits) and [Auto-run](#auto-run).
 8. Read the gray box: the estimated cost for the rows, your treg balance, and what's left of today's limit. Rows missing an input are skipped and cost nothing.
 9. Click **Run on 5 rows**. It runs the first 5 rows that match, and the drawer shows each row's result and what it cost.
 10. If the results look right, click **Run on N more rows** and confirm. The confirm repeats the estimate and the limit the run stops at.
@@ -71,8 +71,9 @@ What the status column says:
 | `⏭️ No valid email found`, `⏭️ Only a catch-all address (not accepted)` | Verified work email found nothing your email checks accept. Email status (and Checked by, if you added it) is still filled; Work email isn't. |
 | `❌ …` | The row failed, with the reason. |
 | `⏳ Processing...` | The row is running. |
+| `⏭️ Condition not met` | **Only run if** kept the row out. It wasn't enriched and cost nothing. |
 
-An empty status cell means the row hasn't run. Click the status column's header for its menu: **Run Rows Not Enriched**, **Retry Failed Rows**, **Run Selected Rows** (when you've selected rows), **Run All Rows Again**, **Edit Enrichment** and the auto-run settings. Each run shows its estimate in a confirm first. Running rows again replaces their results, and they cost again.
+An empty status cell means the row hasn't run. **Run Rows Not Enriched** also takes rows that show `⏭️ Condition not met`, and checks the rule on them again. Click the status column's header for its menu: **Run Rows Not Enriched**, **Retry Failed Rows**, **Run Selected Rows** (when you've selected rows), **Run All Rows Again**, **Edit Enrichment** and the auto-run settings. Each run shows its estimate in a confirm first. Running rows again replaces their results, and they cost again.
 
 ## Examples
 
@@ -80,7 +81,7 @@ An empty status cell means the row hasn't run. Click the status column's header 
 
 Follow [Your first enrichment](#your-first-enrichment). Two useful changes:
 
-- If some rows already have an email, add **Only run if**: `Email` **is empty**, so you only pay for the rows that need one.
+- If some rows already have an email, add **Only run if**: `{{Email}} is empty`, so you only pay for the rows that need one.
 - If you need more addresses and can live with some bounce risk, set **Email checks** to **Valid or catch-all**. Catch-all domains accept every address, so the checker can't confirm the mailbox.
 
 ### Company data from domains
@@ -125,7 +126,7 @@ New sign-ups arrive by webhook. You want each one to get a verified work email a
      ```
 
    Add other fields (first name, custom fields) the same way; Smartlead's API documentation lists them. Name the column `Add to Smartlead`, try it, and run it while the test row is the only row with an email. Both send a real request, so use a test campaign.
-5. **Turn on its auto-run.** Open the **Add to Smartlead** column's menu and click **Turn On Auto-run**. Add **Only run if**: `Email status` **is** `valid`, and set **At most** to the leads you want a day (500 by default). Click **Turn on**.
+5. **Turn on its auto-run.** Open the **Add to Smartlead** column's menu and click **Turn On Auto-run**. Add **Only run if**: `{{Email status}} is "valid"`, and set **At most** to the leads you want a day (500 by default). Click **Turn on**.
 
 From now on, each event adds a row, Verified work email fills it within its daily cap, and Add to Smartlead sends the lead. An HTTP API auto-run waits until every column its request uses is filled, and with **Valid only** the Work email column is only filled for addresses that passed, so rows without a valid email never go out.
 
@@ -134,6 +135,33 @@ Email status is always one of `valid`, `catch-all`, `risky`, `invalid` or `not c
 When you run a column that other auto-runs read, the run's confirm lists them before you start, for example "Also runs: Add to Smartlead (sends up to 1,204 requests)." An enrichment in that list shows its estimated cost.
 
 Anyone who has this sheet's webhook URL can now add rows that spend your treg balance and send leads to Smartlead, up to the caps you set. Treat the URL like a password.
+
+## Only run if
+
+**Only run if** runs the enrichment only on rows that pass a rule. You'll find it under **Rows and limits**, in the **AI Column** and **HTTP API** drawers, and in the auto-run settings.
+
+1. Click **Add a rule**.
+2. Say which rows should run, for example "SaaS or fintech companies with more than 50 people", and click **Write the rule**. Your default AI model writes it with one small call; the box says which model it uses. The model sees your column names and a few values from the first rows, so the rule uses the words your sheet really holds.
+3. Check the rule under **Rule**, and edit it if it isn't right. Cubex checks it on the whole sheet as you type and shows how many rows will run, with the first rows and whether each one runs.
+
+You can also skip step 2 and write the rule yourself:
+
+| Check | Example |
+|---|---|
+| is, is not | `{{Industry}} is "SaaS"` |
+| contains, does not contain | `{{Title}} contains "head"` |
+| is empty, is not empty | `{{Email}} is empty` |
+| >, <, >=, <= | `{{Employees}} > 50` |
+
+Join checks with `AND`, `OR` and `NOT`, and use brackets when you mix them: `({{Industry}} is "SaaS" OR {{Industry}} is "Fintech") AND {{Employees}} > 50`.
+
+- Columns go inside `{{ }}`, named as in the sheet. Text checks ignore upper and lower case.
+- `>` and `<` need a plain number in the cell. A cell like `51-200` isn't a number, so use `is` or `contains` on such columns.
+- Cells that hold Cubex's own words (`⏳`, `❌`, `⏭️`, `➕`) count as empty. A rule on a column that another rule left out keeps those rows out too, so you can chain columns: an AI column answers "Good fit: yes or no", and the enrichment runs only where `{{Good fit (Output)}} is "yes"`.
+- Rows the rule leaves out show `⏭️ Condition not met` and cost nothing. A cell that already holds a result from an earlier run keeps it.
+- A request that needs a judgment no column holds ("is a good fit") can't become a rule. Run an AI column that answers the question first, then write the rule on that column.
+- Reruns of the column use its rule too. Renaming a column updates the rules that name it.
+- In auto-run, a row that doesn't pass waits (with no marker) and is checked again when a column the rule reads changes.
 
 ## Costs and limits
 
@@ -160,7 +188,7 @@ Auto-run keeps an enrichment (or an HTTP API column) filling rows by itself. It 
 
 - Rows already in the sheet when you turn it on are left alone. Use the column menu's run actions for those.
 - A row it already ran isn't run again when you edit it. A row that failed gets another try when one of its inputs is written.
-- **Only run if** conditions apply to auto-run too.
+- **Only run if** applies to auto-run too: a row that doesn't pass waits until a column the rule reads changes.
 
 Turn it on with the **Auto-run** checkbox in the drawer (it turns on with the full run, not the 5-row test), or from the column menu with **Turn On Auto-run**. The column has to have run once first.
 

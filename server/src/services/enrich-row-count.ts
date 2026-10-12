@@ -1,6 +1,6 @@
 // How many rows an enrichment run would take, by the status of its column:
-// all of them, not enriched yet (empty), without a result (empty, ⏭️ or ❌)
-// and failed (❌), for a scope (every row, the saved filter's rows, or the
+// all of them, not enriched yet (empty, or "⏭️ Condition not met"), without a
+// result (empty, ⏭️ or ❌) and failed (❌), for a scope (every row, the saved filter's rows, or the
 // selected rows), and only rows passing the run's "Only run if" conditions.
 // The same rules as lib/enrich-seed.ts statusMatches (and its blank
 // characters). Rows missing an input are counted too: a run skips them
@@ -12,15 +12,20 @@ import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
 import { parseRowData } from '../lib/sql-helpers';
-import { BLANK_CHARS, FAILED_MARK, SKIPPED_MARK, conditionPasses, statusMatches } from '../lib/enrich-seed';
+import { BLANK_CHARS, FAILED_MARK, SKIPPED_MARK, passesRunConditions, statusMatches } from '../lib/enrich-seed';
+import { CONDITION_NOT_MET } from '../lib/run-markers';
+import type { RuleNode } from '../lib/run-condition';
 import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from '../lib/enrich-run-config';
 import { rowFilterSql } from './enrich-rows-filter';
 
 export interface EnrichRowCounts { total: number; notEnriched: number; noResult: number; failed: number }
 
-// where: the run's "Only run if" conditions; rows failing them are left out
-// (counted with the check seeding uses, so a row's JSON is read in each slice).
-export interface CountScope { mode: EnrichRowsMode; rowIndexes: number[] | null; where?: EnrichCondition[] }
+// where / rule: the run's "Only run if" (the older condition list, the rule);
+// rows failing them are left out (counted with the check seeding uses, so a
+// row's JSON is read in each slice).
+export interface CountScope {
+  mode: EnrichRowsMode; rowIndexes: number[] | null; where?: EnrichCondition[]; rule?: RuleNode | null;
+}
 
 // Rows per counting slice: one scan of a million rows took about a second, so a
 // slice holds the server for about 20 ms.
@@ -53,21 +58,23 @@ async function countOnce(
   // row numbers (rows parked high during a sort) still make even slices.
   const edge = db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= ?
     ORDER BY row_index LIMIT 1 OFFSET ?`).pluck();
-  // The ⏭️/❌ marks and blank set bind first (the SELECT list), then the
+  // The marks and blank set bind first (the SELECT list), then the
   // column path (the subquery's SELECT), then its WHERE.
-  const where = scope.where?.length ? scope.where : null;
+  const rule = scope.rule ?? null;
+  const where = scope.where?.length || rule ? scope.where ?? [] : null;
   const cell = column === null ? `''` : 'TRIM(COALESCE(json_extract(data, ?), \'\'), ?)';
   const read = db.prepare(`SELECT data FROM rows
     WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?${filter.clause}${selected}`).pluck();
   const count = db.prepare(`
     SELECT COUNT(*) AS total,
-      COALESCE(SUM(s = ''), 0) AS not_enriched,
+      COALESCE(SUM(s = '' OR s = ?), 0) AS not_enriched,
       COALESCE(SUM(s = '' OR instr(s, ?) = 1 OR instr(s, ?) = 1), 0) AS no_result,
       COALESCE(SUM(instr(s, ?) = 1), 0) AS failed
     FROM (SELECT ${cell} AS s FROM rows
       WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?${filter.clause}${selected})
   `);
-  const head = [FAILED_MARK, SKIPPED_MARK, FAILED_MARK, ...(column === null ? [] : [jsonPath(column), BLANK_CHARS])];
+  const marks = [CONDITION_NOT_MET, FAILED_MARK, SKIPPED_MARK, FAILED_MARK];
+  const head = [...marks, ...(column === null ? [] : [jsonPath(column), BLANK_CHARS])];
   const tail = [...filter.params, ...(selected ? [JSON.stringify(scope.rowIndexes ?? [])] : [])];
   for (let lo = first; ;) {
     const next = edge.get(sheetId, userId, lo, where ? HEAVY_SLICE_ROWS : COUNT_SLICE_ROWS) as number | undefined;
@@ -75,7 +82,7 @@ async function countOnce(
     if (where) {
       for (const raw of read.iterate(sheetId, userId, lo, hi, ...tail) as Iterable<string>) {
         const data = parseRowData(raw);
-        if (!where.every(c => conditionPasses(data, c))) continue;
+        if (!passesRunConditions(data, where, rule)) continue;
         const cellValue = column === null ? '' : data[column];
         out.total++;
         if (statusMatches(cellValue, 'not_enriched')) out.notEnriched++;

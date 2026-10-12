@@ -20,6 +20,8 @@ import { extractAllowedDomainsFromRow } from '../lib/prompt';
 import type { SearchOptions } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { planIfSearching } from './web-search-catalog';
+import { checkRunRule } from './run-rule';
+import { rowsByIndex, scanRule } from './run-condition-rows';
 
 export interface PreviewInput {
   sheetId: string;
@@ -33,6 +35,7 @@ export interface PreviewInput {
   useOpenRouterWebSearch?: boolean;
   useWebFetch?: boolean;
   search?: SearchOptions | null;
+  runIf?: string | null;
 }
 
 export type PreviewOutcome =
@@ -76,8 +79,25 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
   if ('error' in planned) return { fail: 'bad_request', message: planned.error };
 
   const n = Math.max(1, Math.min(input.previewRows, PREVIEW_MAX_ROWS));
-  const { count, sample } = sampleRows(input.sheetId, userId, n, input.targetRowIndexes);
-  if (sample.length === 0) return { fail: 'no_rows', message: 'No rows to preview.' };
+  // With an "Only run if" rule, the sample is the first rows that pass it.
+  const rule = checkRunRule(input.sheetId, userId, input.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  let skipped = 0;
+  let { count, sample } = rule.ok
+    ? { count: 0, sample: [] as Array<{ rowIndex: number; data: Record<string, string> }> }
+    : sampleRows(input.sheetId, userId, n, input.targetRowIndexes);
+  if (rule.ok) {
+    const scan = await scanRule({
+      sheetId: input.sheetId, userId, tree: rule.ok.tree, columns: rule.ok.columns,
+      targets: input.targetRowIndexes?.length ? input.targetRowIndexes : null, keepPassing: n,
+    });
+    count = scan.passing;
+    skipped = scan.considered - scan.passing;
+    sample = rowsByIndex(input.sheetId, userId, scan.passingRows);
+  }
+  if (sample.length === 0) {
+    return { fail: 'no_rows', message: rule.ok ? 'No rows pass the "Only run if" rule.' : 'No rows to preview.' };
+  }
 
   const specs = input.outputColumns;
   const web = { search: !!input.useOpenRouterWebSearch, fetch: !!input.useWebFetch };
@@ -155,6 +175,7 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
       preview,
       sampled_rows: sample.length,
       rows_in_full_run: count,
+      ...(rule.ok ? { run_if: rule.ok.rule, rows_skipped_by_rule: skipped } : {}),
       model,
       ...(planned.ok ? { web_search: webSearchSummary(planned.ok) } : {}),
       measured_cost_usd: measured,

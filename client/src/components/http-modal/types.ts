@@ -10,6 +10,8 @@ export interface HTTPAPIConfig {
   rateLimit?: number
   retries: number
   skipMissingFields: boolean
+  // "Only run if" rule ('' or absent: every row).
+  runIf?: string
 }
 
 export interface HTTPPreview {

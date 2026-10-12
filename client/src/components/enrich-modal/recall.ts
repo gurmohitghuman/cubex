@@ -69,6 +69,7 @@ export function applyRecall(
     ...(r.email ? { emailChecks: { accept: r.email.accept, guess: r.email.guess, pattern: r.email.pattern } } : {}),
     outputs: recallOutputs(built.outputs ?? [], r),
     conditions: r.conditions.map(c => ({ column: c.column, op: c.op as Condition['op'], value: c.value })),
+    runIf: r.runIf ?? '',
     maxCostPerRowUsd: r.maxCostPerRowUsd, spendLimitUsd: null,
     recall: null, list: recallList(built.list, r),
   }

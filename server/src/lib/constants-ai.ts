@@ -156,3 +156,10 @@ export const WEB_FETCH_PAGES_PER_ROW = { low: 1, high: 3 };
 // no history of runs with the same web tools to go by.
 export const WEB_SEARCH_TOKENS_PER_SEARCH = { low: 750, high: 2_500 };
 export const WEB_FETCH_TOKENS_PER_PAGE = { low: 1_000, high: 6_000 };
+
+// "Only run if" rules (lib/run-condition.ts): the rule box checks a rule on the
+// whole sheet and shows the first rows with their verdict; "Generate" shows the
+// model a few values from the first rows; plain words stay short.
+export const RULE_CHECK_SAMPLE_ROWS = 10;
+export const RULE_GENERATE_SAMPLE_ROWS = 200;
+export const RULE_WORDS_MAX_CHARS = 1000;

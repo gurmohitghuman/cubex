@@ -29,6 +29,8 @@ export interface EnrichRunRequest {
   outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   rows: { mode: EnrichRowsScope; status: EnrichRowsStatus; test: boolean; rowIndexes?: number[] }
   conditions: Array<{ column: string; op: string; value: string }>
+  // "Only run if" rule (absent: none).
+  runIf?: string
   maxCostPerRowUsd: number | null
   spendLimitUsd: number | null
   fresh: boolean
@@ -123,6 +125,8 @@ export interface EnrichRecalledChoices {
   // fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
   outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   conditions: Array<{ column: string; op: string; value: string }>
+  // The column's "Only run if" as one rule (older condition lists come back as one).
+  runIf: string | null
   maxCostPerRowUsd: number | null
   fresh: boolean
   list?: EnrichListRequest | null

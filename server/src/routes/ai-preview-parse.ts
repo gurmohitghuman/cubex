@@ -3,6 +3,7 @@ import { sanitizeAndValidateColumnName } from '../lib/column-names';
 import { validateModelParam } from '../lib/ai-model-resolve';
 import type { SearchOptions } from '../lib/web-search-options';
 import { parseWebOptions } from './ai-run-parse';
+import { parseRuleField } from '../lib/run-condition';
 
 // Parse + validate + numeric-bound the /ai/preview request body. Split out of
 // ai-preview.ts (200-line guardrail) — a self-contained "trust the client's
@@ -28,6 +29,8 @@ export interface PreviewParams {
   safeConcurrency: number;
   safeMaxChars: number | null;
   search: SearchOptions | null;
+  // "Only run if" rule text: the preview samples rows that pass it.
+  runIf: string | null;
 }
 
 // User-facing message for a pre-stream preview failure (validation, client
@@ -59,6 +62,8 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
   if (modelParamError) return { ok: false, status: 400, error: modelParamError };
   const web = parseWebOptions(body);
   if ('error' in web) return { ok: false, status: 400, error: web.error };
+  const runIf = parseRuleField(body?.runIf);
+  if ('error' in runIf) return { ok: false, status: 400, error: runIf.error };
 
   const nameCheck = sanitizeAndValidateColumnName(columnName);
   if ('error' in nameCheck) return { ok: false, status: 400, error: nameCheck.error };
@@ -80,6 +85,6 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
     sheetId, cleanColumnName: nameCheck.name, prompt, systemPrompt,
     model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
     ...web.ok,
-    safePreviewSize, safeTemperature, safeConcurrency, safeMaxChars,
+    safePreviewSize, safeTemperature, safeConcurrency, safeMaxChars, runIf: runIf.ok,
   };
 }

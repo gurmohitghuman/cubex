@@ -44,9 +44,13 @@ export function acceptedBy(strategy: EmailStrategy, verdict: EmailVerdict): bool
 // The "Email status" cell: one of a fixed set of words, so "Only run if Email
 // status is valid", filters and sorts can rely on it. The checker's own word
 // ("deliverable", "accept_all") shows in the answer panel's steps.
+const STATUS_WORDS = {
+  valid: 'valid', catch_all: 'catch-all', risky: 'risky', invalid: 'invalid', no_verdict: 'not checked',
+} as const;
+
 export function statusLabel(verdict: EmailVerdict): string {
-  const words = {
-    valid: 'valid', catch_all: 'catch-all', risky: 'risky', invalid: 'invalid', no_verdict: 'not checked',
-  };
-  return words[verdict];
+  return STATUS_WORDS[verdict];
 }
+
+// Every word an "Email status" cell can hold (an "Only run if" rule is written against them).
+export const EMAIL_STATUS_WORDS: string[] = Object.values(STATUS_WORDS);

@@ -73,6 +73,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
 - "Keep finding work emails for new rows in Leads automatically, up to $5 a day."
+- "In Leads, score each company's fit with AI. Then find work emails only where the score is 8 or more, and add those people to Smartlead only where the email is valid."
 
 ## Tools
 
@@ -90,6 +91,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
 | `run_http_enrichment` | Start an HTTP API column run. |
+| `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. |
 | `get_run_results` | Per-row results and errors, to see why cells are blank or wrong. |
 | `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, or all). |
@@ -107,6 +109,20 @@ Deletes are permanent; there's no undo. Every tool tells your client whether it 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
+
+## Only run if
+
+`run_ai_column`, `run_http_enrichment`, `run_enrichment` and `set_auto_run` take `run_if`, a rule a row must pass to run:
+
+```
+({{Industry}} is "SaaS" OR {{Industry}} is "Fintech") AND {{Employees}} > 50
+```
+
+Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not empty`, `>`, `<`, `>=` and `<=`, joined with `AND`, `OR`, `NOT` and brackets. Rows that fail it aren't sent anywhere, cost nothing, and show `⏭️ Condition not met` (a cell that already holds a result keeps it). Cells holding Cubex's own words (`⏳`, `❌`, `⏭️`, `➕`) count as empty, so a chain works: give each column a rule on the one before it, once that run has finished.
+
+- `check_run_condition` (free) says how many rows pass and shows the first rows with the values the rule read. A misspelled column is refused with the closest name.
+- `write_run_condition` writes a rule from plain words with one small call to your default model (or `model`), and returns it with the same check. The answer names the model and what the call cost.
+- `estimate_only` counts only the rows that pass (`rows_skipped_by_rule`). `get_run_status` reports `run_if` and `condition_skipped_rows`. Reruns repeat the rule, and renaming a column updates the rules that name it.
 
 ## Enrichments
 
@@ -236,6 +252,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
   - `max_searches_per_row`: a hard limit from 1 to 10. Exa, Parallel and Perplexity enforce it, and so does Anthropic models' own search; a row that reaches it is made to answer. OpenAI's, Google's and xAI's own search can't be limited: with `auto`, Cubex then uses Exa and says so (`switched: true`); with `native`, the run is refused.
 - The estimate names the engine the run will really use and prices that one. Its `web_search` block has `engine` (what the run sends to OpenRouter), `runs_on` (what runs the searches), `mode` (the one billed: the engine's default when you chose none), `price_per_search_usd`, `switched`, the searches it expects per row, and what your past runs with the same settings really cost per row.
 - Every row records what it searched for and what it cost. `GET /ai-runs/:id/results` (MCP `get_run_results`) returns `cost_usd`, `searches` (how many ran) and `search_queries` (`[{query, ran}]`, where `ran: false` is a search the limit stopped) for each row, and the run's status adds up `cost_usd` and `searches`. The `(Data)` cell shows the same, cost first: `📊 $0.0018 · 1 search: "stripe ceo" · 5 sources: …`. With a model's own search (`runs_on: native`), the searches and their words show up only when the provider reports them; the cost is always OpenRouter's own figure.
+- `run_if`: run only the rows that pass a rule. See [Only run if](#only-run-if).
 - Boolean options also take the text `"true"` or `"false"`.
 - Also optional: `system_prompt`, `temperature`, `max_chars`, `concurrency`.
 - `model` is required unless you've set a default (Settings → AI). `GET /models?search=deepseek` finds exact ids.
@@ -254,6 +271,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 
 - `{{name}}` takes a column's value or a saved API key (saved keys need the `secrets` scope). A name that matches neither is refused before anything is sent.
 - Also optional: `body` (for POST and PUT), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 20) and `timeout_ms` (per request, default 30,000).
+- `run_if`: run only the rows that pass a rule. See [Only run if](#only-run-if).
 - The earlier shape, `{"config": {"requestConfig": {...}, "responseMapping": [{"jsonPath", "columnName"}], "batchSize": 5}}`, still works.
 
 **Enrichment run:** `POST /sheets/:id/enrichment-runs` takes `run_enrichment`'s arguments as JSON:
@@ -273,6 +291,8 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 
 | Endpoint | Body or query |
 |---|---|
+| `POST /sheets/:id/run-conditions/check` | `{"rule": "{{Tier}} is \"A\""}`: how many rows pass, and the first rows with their verdict. `read` scope. |
+| `POST /sheets/:id/run-conditions/generate` | `{"text": "tier A companies", "model": "..."}`: writes a rule with one AI call (`model` optional). `run` scope. |
 | `GET /runs` | Recent runs, newest first. `?sheet_id=...&filter=active` (`active`, `terminal` or `all`) `&limit=20` (up to 50). |
 | `GET /ai-runs/:id` · `GET /http-runs/:id` | Status and progress. `completed` means every row was processed, not that every row worked: check `failed_rows`. A structured AI run also lists its `output_columns`, and a run with web search or fetch names its `data_column` (the sources). An AI run reports what its rows cost so far (`cost_usd`) and, with web search, the searches that ran (`searches`) and its `web_search` settings. |
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. AI rows also carry `cost_usd`, and with web search `searches` and `search_queries`. |

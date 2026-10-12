@@ -50,6 +50,9 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   set_default_model: write('Set the default AI model', true, true),
   run_ai_column: write('Run an AI column', true, false, true),
   run_http_enrichment: write('Run an HTTP enrichment', true, false, true),
+  check_run_condition: read('Check an "Only run if" rule'),
+  // Changes nothing, but spends one small AI call on OpenRouter.
+  write_run_condition: write('Write an "Only run if" rule with AI', false, false, true),
   control_run: write('Pause, resume, cancel or rerun a run', true, false, true),
   transfer_rows: write('Copy or move rows between sheets', true, true),
   transform_column: write('Transform a column', true, false),

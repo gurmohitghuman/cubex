@@ -14,6 +14,7 @@ interface InitSetters {
   setWebSearch: (v: WebSearchSettings) => void
   setUseWebFetch: (v: boolean) => void
   setConcurrency: (v: number) => void
+  setRunIf: (v: string) => void
   // Called BEFORE an edit-mode payload is applied. Closing the drawer keeps
   // its state now, so an explicit "edit column" open must first clear whatever
   // was retained (another column's form, a streaming preview) — otherwise the
@@ -106,6 +107,7 @@ export function useAIModalInit(
         if (typeof init.useOpenRouterWebSearch === 'boolean') s.setUseOpenRouterWebSearch(init.useOpenRouterWebSearch)
         s.setWebSearch(webSearchFrom(init.searchEngine, init.searchMode, init.maxSearchesPerRow))
         if (typeof init.useWebFetch === 'boolean') s.setUseWebFetch(init.useWebFetch)
+        if (typeof init.runIf === 'string') s.setRunIf(init.runIf)
         if (typeof init.concurrency === 'number') { explicitConcurrency.current = true; s.setConcurrency(clampConcurrency(init.concurrency)) }
       }
     } catch { /* corrupt prefill — fall back to sheet defaults below */ }

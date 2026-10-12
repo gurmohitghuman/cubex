@@ -42,7 +42,7 @@ export async function startEnrichmentRun(
   if (!getTregToken(userId)) return { fail: 'conflict', message: 'Add your treg key in Settings first.' };
   const prepared = await prepareEnrichmentStart(userId, sheetId, input);
   if ('fail' in prepared) return prepared;
-  const { statusColumn, outputNames, config, listPlan, columns, span, upperBound } = prepared.ok;
+  const { statusColumn, outputNames, config, listPlan, columns, span, upperBound, rule } = prepared.ok;
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
 
@@ -102,7 +102,7 @@ export async function startEnrichmentRun(
       runId, sheetId, userId, columns: runColumns,
       plan: {
         statusColumn: input.continueColumn ? statusColumn : null, status: input.rows.status,
-        where: input.conditions, config, columns,
+        where: input.conditions, rule: rule?.tree ?? null, config, columns,
       },
       rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,

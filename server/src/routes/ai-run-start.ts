@@ -28,11 +28,13 @@ router.post('/run', async (req: AuthRequest, res) => {
       safeConcurrency: parsed.safeConcurrency,
       safeMaxChars: parsed.safeMaxChars,
       search: parsed.search,
+      runIf: parsed.runIf,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 
     res.json({
       runId: result.ok.runId, message: 'AI run started and column created', reusedRows: result.ok.reusedRows,
+      runIf: result.ok.runIf ?? null,
       webSearch: result.ok.webSearch ? webSearchSummary(result.ok.webSearch) : null,
     });
   } catch (error) {

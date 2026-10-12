@@ -18,7 +18,8 @@ import {
   appendColumnsToOrder, countColumnsAndRows, getSheetColumns, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { existingRowIndexes } from '../lib/run-rows';
-import { runColumnConflict } from './ai-run-start-checks';
+import { activeRunOnColumn, runColumnConflict } from './ai-run-start-checks';
+import { checkRunRule, ruleSeed } from './run-rule';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { promotePreviewReuse } from '../lib/ai-run-promote';
 import { deleteDraftForColumn } from '../lib/ai-drafts';
@@ -85,15 +86,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
 
   // Reject submitting a second run on the same column while one is still active.
   // Without this, both runs race over the same cells and progress goes haywire.
-  const conflictingRun = db.prepare(`
-    SELECT id FROM ai_runs
-    WHERE sheet_id = ? AND user_id = ? AND column_name = ?
-      -- A stopped run still clearing its ⏳ cells (migration 004) counts: its
-      -- clear would wipe the new run's placeholders in rows it hasn't reached.
-      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
-    LIMIT 1
-  `).get(p.sheetId, userId, outputCol);
-  if (conflictingRun) return {
+  if (activeRunOnColumn(p.sheetId, userId, outputCol)) return {
     fail: 'conflict',
     message: `An AI run on column "${p.cleanColumnName}" is still active, or still clearing the cells of a stopped run. Wait for it to finish, or stop it first.`,
   };
@@ -112,6 +105,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // garbage (incident + rationale in lib/prompt-ref-validate.ts).
   const refsError = unknownPromptRefsError(p.sheetId, userId, p.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
+  const rule = checkRunRule(p.sheetId, userId, p.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
 
   const runId = uuidv4();
   const columns = needsDataColumn ? [outputCol, dataCol] : [outputCol];
@@ -121,8 +116,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, placeholder_work,
-      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?)
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?)
   `);
 
   // Cap check + mutation in ONE immediate() txn — otherwise two concurrent
@@ -149,6 +144,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
         p.safeMaxChars, resolvedConcurrency, targetCount,
         targets ? JSON.stringify(targets) : null,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
+        rule.ok?.rule ?? null,
       );
       // Credit reuse: promote still-valid persisted preview results into this
       // run's cells + ai_results, BEFORE placeholder seeding, so the worker's
@@ -160,7 +156,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
           columnName: p.cleanColumnName, prompt: p.prompt, systemPrompt: p.systemPrompt || null,
           model: resolvedModel, temperature: p.safeTemperature,
           useOpenRouterWebSearch: !!p.useOpenRouterWebSearch, useWebFetch: !!p.useWebFetch,
-          maxChars: p.safeMaxChars, concurrency: resolvedConcurrency,
+          maxChars: p.safeMaxChars, concurrency: resolvedConcurrency, runIf: rule.ok?.rule ?? null,
         },
       });
       if (promotedRows.length > 0) {
@@ -182,7 +178,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
     // and the draft is not consumed, so a retry promotes again.
     seedThenEnqueue({
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns,
-      targets, lastRow: span.lastRow, skip: new Set(promotedRows),
+      targets, lastRow: span.lastRow, skip: new Set(promotedRows), rule: ruleSeed(rule.ok, outputCol),
       enqueue: () => (targets ? enqueueAIRerun(runId, targets) : enqueueAIRun(runId)),
       // Consume the draft only AFTER the run is durably enqueued (owner decision:
       // Run All Rows deletes the preview — its values now live in the rows), and
@@ -193,7 +189,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
     return {
       ok: {
         runId, outputColumn: outputCol, dataColumn: needsDataColumn ? dataCol : null,
-        reusedRows: promotedRows.length, targetCount, webSearch: plan,
+        reusedRows: promotedRows.length, targetCount, webSearch: plan, runIf: rule.ok?.rule ?? null,
       },
     };
   });

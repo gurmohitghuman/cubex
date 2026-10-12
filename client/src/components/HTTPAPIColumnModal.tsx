@@ -129,6 +129,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
           <div className="p-4 space-y-4">
             <AIAssistBar sheetId={sheetId} sheetDefaultModel={defaultAiModel} onAutoFill={handleAutoFill} />
             <ConfigureStep
+              sheetId={sheetId} active={isOpen}
               config={config} errors={errors}
               masterColumnName={masterColumnName} setMasterColumnName={setMasterColumnName}
               updateConfig={updateConfig}

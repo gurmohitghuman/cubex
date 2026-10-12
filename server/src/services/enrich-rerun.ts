@@ -11,6 +11,7 @@ import { estimateEnrichment } from './enrich-setup';
 import { loadColumnRun } from './enrich-column';
 import { startEnrichmentRun, type EnrichStartOutcome } from './enrich-run-start';
 import type { DailyLimitView } from './treg-key';
+import { storedRule } from './run-rule';
 import type { RunFail } from './run-shared';
 
 export interface RerunEstimate {
@@ -37,7 +38,10 @@ export async function rerunEnrichmentColumn(
   }
 
   const { mode, rowIndexes } = req.rows;
-  const counts = await enrichRowCounts(sheetId, userId, req.column, { mode, rowIndexes, where: choices.conditions });
+  const rule = storedRule(sheetId, userId, choices.runIf);
+  if ('error' in rule) return { fail: 'bad_request', message: rule.error } satisfies RunFail;
+  const scope = { mode, rowIndexes, where: choices.conditions, rule: rule.ok?.tree ?? null };
+  const counts = await enrichRowCounts(sheetId, userId, req.column, scope);
   const rows = countFor(counts, req.rows.status);
   const est = await estimateEnrichment(userId, {
     toolId: choices.toolId, rows, preset: choices.preset, given: Object.keys(choices.inputs).sort(),

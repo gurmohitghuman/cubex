@@ -288,7 +288,7 @@ export const SheetPage: React.FC = () => {
         waitForSaves={cellOps.waitForSaves}
         dropAllPending={cellOps.dropAllPending}
       />
-      <AutorunDialogHost autorun={autorun} columns={columnOps.columnHeaders} />
+      <AutorunDialogHost autorun={autorun} />
       <SheetWebhookOverlays
         autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}

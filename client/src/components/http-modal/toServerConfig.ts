@@ -48,5 +48,6 @@ export function toServerConfig(c: HTTPAPIConfig) {
     rateLimit: c.rateLimit,
     retries: c.retries,
     skipMissingFields: c.skipMissingFields,
+    ...(c.runIf?.trim() ? { runIf: c.runIf } : {}),
   }
 }

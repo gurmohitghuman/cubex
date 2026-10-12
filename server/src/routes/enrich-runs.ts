@@ -12,6 +12,8 @@ import { columnSetup } from '../services/enrich-column';
 import { rerunEnrichmentColumn } from '../services/enrich-rerun';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { runFailHttpStatus } from '../services/run-shared';
+import { parseRuleField } from '../lib/run-condition';
+import { checkRunRule } from '../services/run-rule';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
 
 const router = express.Router();
@@ -65,7 +67,7 @@ router.post('/sheets/:id/reruns', async (req: AuthRequest, res) => {
 });
 
 // Rows by status in a column (not enriched yet, without a result, failed),
-// for a scope and the run's "Only run if" conditions: the drawer's row
+// for a scope and the run's "Only run if" (conditions, rule): the drawer's row
 // choices, its "the other N rows", and the rows its estimate counts.
 router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
   try {
@@ -77,8 +79,13 @@ router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
     if (typeof rows === 'string') return res.status(400).json({ error: rows });
     const where = parseConditions(b.conditions);
     if (typeof where === 'string') return res.status(400).json({ error: where });
+    const runIf = parseRuleField(b.runIf);
+    if ('error' in runIf) return res.status(400).json({ error: runIf.error });
     if (!verifySheetOwnership(id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
-    res.json(await enrichRowCounts(id, req.userId!, column, { mode: rows.mode, rowIndexes: rows.rowIndexes, where }));
+    const rule = checkRunRule(id, req.userId!, runIf.ok);
+    if ('error' in rule) return res.status(400).json({ error: rule.error });
+    const scope = { mode: rows.mode, rowIndexes: rows.rowIndexes, where, rule: rule.ok?.tree ?? null };
+    res.json(await enrichRowCounts(id, req.userId!, column, scope));
   } catch (error) {
     console.error('Enrichment row count error:', error);
     res.status(500).json({ error: 'Failed to count the rows' });

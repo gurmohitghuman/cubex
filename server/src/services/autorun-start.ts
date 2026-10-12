@@ -53,7 +53,10 @@ export async function prepareAutorunRun(
 ): Promise<Prepared> {
   if (!isEnrichmentConfig(config)) {
     const outputs = columnOutputs(e.sheet_id, e.user_id, e.status_column);
-    return { ok: { config, allowSecrets: newest.allow_secrets ?? 1, outputs, dest: null } };
+    // Its run keeps auto-run's rule, so the column's newest run says how rows were picked.
+    const { runIf: _old, ...rest } = config;
+    const own = e.run_if ? { ...rest, runIf: e.run_if } : rest;
+    return { ok: { config: own, allowSecrets: newest.allow_secrets ?? 1, outputs, dest: null } };
   }
   const tool = await getTool(config.enrichment.toolId);
   if (!('ok' in tool)) {
@@ -62,10 +65,11 @@ export async function prepareAutorunRun(
       ? { pause: { reason: 'retired', message: `${tool.message} Pick a replacement with Edit enrichment.` } }
       : { pause: { reason: 'unreachable', message: "Can't reach treg's catalog. Auto-run tries again soon." } };
   }
-  const choices = { ...recallChoices(config, e.status_column), conditions: plan.where };
+  const choices = { ...recallChoices(config, e.status_column), conditions: plan.where, runIf: e.run_if };
   const input = rerunInput(choices, { mode: 'selected', status: 'any', test: null, rowIndexes: null }, runLimitUsd);
   const built = await buildEnrichmentConfig(input, plan.columns, rows);
   if ('fail' in built) return { pause: { reason: 'setup', message: built.message } };
+  if (e.run_if) built.ok.runIf = e.run_if;
   // Turned on while the team's own key billed the tool (no dollar cap), and treg prices it now.
   if (built.ok.enrichment.maxCostPerRowUsd !== null) {
     if (e.daily_cap_micro === null) {

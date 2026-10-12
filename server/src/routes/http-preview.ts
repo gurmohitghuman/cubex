@@ -8,6 +8,8 @@ import { makeHTTPRequest, redactSecrets, type HTTPAPIConfig } from '../lib/http-
 import { extractOutcome } from '../lib/jsonpath-extract';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { trimForPreview } from '../lib/preview-trim';
+import { checkRunRule } from '../services/run-rule';
+import { scanRule } from '../services/run-condition-rows';
 import { HTTP_MAX_CONCURRENCY, HTTP_PREVIEW_CONCURRENCY } from '../lib/constants';
 
 const router = express.Router();
@@ -46,13 +48,23 @@ router.post('/preview', authenticateToken, async (req: AuthRequest, res) => {
     const previewSize = (typeof config.previewSize === 'number' && Number.isFinite(config.previewSize))
       ? Math.max(1, Math.min(Math.floor(config.previewSize), 20))
       : 5;
-    const distinctRows = db.prepare(`
+    // With an "Only run if" rule, the first rows that pass it (the rows a run would send).
+    const rule = checkRunRule(sheetId, req.userId!, typeof config.runIf === 'string' ? config.runIf : null);
+    if ('error' in rule) return res.status(400).json({ error: rule.error });
+    const distinctRows = rule.ok
+      ? (await scanRule({
+        sheetId, userId: req.userId!, tree: rule.ok.tree, columns: rule.ok.columns, keepPassing: previewSize,
+      })).passingRows.map(row_index => ({ row_index }))
+      : db.prepare(`
       SELECT row_index FROM rows
       WHERE sheet_id = ? AND user_id = ?
       ORDER BY row_index ASC LIMIT ?
     `).all(sheetId, req.userId!, previewSize) as Array<{ row_index: number }>;
 
-    if (distinctRows.length === 0) return res.status(400).json({ error: 'No data available for preview' });
+    if (distinctRows.length === 0) {
+      const error = rule.ok ? 'No rows pass the "Only run if" rule.' : 'No data available for preview';
+      return res.status(400).json({ error });
+    }
 
     const rowIndexes = distinctRows.map(r => r.row_index);
     const placeholders = rowIndexes.map(() => '?').join(',');
