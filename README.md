@@ -28,21 +28,19 @@
   <a href="docs/self-hosting.md"><strong>Run it on a server</strong></a>
 </p>
 
-<p align="center"><strong>Your agent runs it over MCP</strong></p>
+<p align="center"><strong>Works with your agent over MCP</strong></p>
 <p align="center">
-  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-D97757?style=for-the-badge&logo=claude&logoColor=white">
-  <img alt="Claude Desktop" src="https://img.shields.io/badge/Claude%20Desktop-D97757?style=for-the-badge&logo=claude&logoColor=white">
-  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-333333?style=for-the-badge&logo=cursor&logoColor=white">
-  <img alt="Codex" src="https://img.shields.io/badge/Codex-333333?style=for-the-badge">
-  <img alt="Any MCP client" src="https://img.shields.io/badge/Any%20MCP%20client-444444?style=for-the-badge&logo=modelcontextprotocol&logoColor=white">
+  <a href="docs/mcp.md" title="Claude Code"><img alt="Claude Code" src=".github/logos/claude-code.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Claude Desktop"><img alt="Claude Desktop" src=".github/logos/claude.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Cursor"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/cursor-white.svg"><img alt="Cursor" src=".github/logos/cursor.svg" width="36"></picture></a>&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Codex"><img alt="Codex" src=".github/logos/codex.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Any MCP client"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/mcp-white.svg"><img alt="Any MCP client" src=".github/logos/mcp.svg" width="36"></picture></a>
 </p>
 
-<p align="center"><strong>Columns fill themselves with</strong></p>
+<p align="center"><strong>Fills columns with</strong></p>
 <p align="center">
-  <img alt="300+ AI models through OpenRouter" src="https://img.shields.io/badge/300%2B%20AI%20models-OpenRouter-6566F1?style=for-the-badge&logo=openrouter&logoColor=white">
-  <img alt="Enrichments through treg.to" src="https://img.shields.io/badge/Enrichments-treg.to-0F766E?style=for-the-badge">
-  <img alt="Any JSON API" src="https://img.shields.io/badge/Any-JSON%20API-2563EB?style=for-the-badge">
-  <img alt="Webhooks" src="https://img.shields.io/badge/Incoming-Webhooks-7C3AED?style=for-the-badge">
+  <a href="https://openrouter.ai" title="OpenRouter: 300+ AI models"><img alt="OpenRouter: 300+ AI models" src=".github/logos/openrouter.png" width="36"></a>&nbsp;&nbsp;&nbsp;
+  <a href="docs/enrichments.md" title="treg.to: enrichments"><img alt="treg.to: enrichments" src="client/public/treg.svg" width="36"></a>
 </p>
 
 ![Claude Code connected to Cubex over MCP: asked to score 12 companies for fit, it adds Fit and Why columns, runs an AI column on every row while the sheet fills in, and reports the top 3](docs/media/cubex-agent.gif)
