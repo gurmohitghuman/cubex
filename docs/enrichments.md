@@ -269,7 +269,7 @@ Try asking:
 
 ## Known limits
 
-- **Speed.** A run enriches 5 rows at once (agents can set 1 to 20 with `concurrency`) and starts the next row as soon as one finishes, so a slow row doesn't hold up the others. A waterfall row takes as long as the providers it asks.
+- **Speed.** A run enriches 20 rows at once (agents can set 1 to 100 with `concurrency`) and starts the next row as soon as one finishes, so a slow row doesn't hold up the others. A waterfall row takes as long as the providers it asks. Each running row sets aside its max per row against the daily limit and the run limit, so a high max per row or a low limit means fewer rows at once.
 - **Provider rate limits.** treg passes each provider's own limit through and doesn't publish it. In a waterfall, a provider that answers "429 Too Many Attempts" goes straight to the next one; after three in a row, the run leaves that provider out for 5 minutes, then asks it again. `get_run_status` shows what each provider did.
 - **Cancelling** throws away answers still in flight (up to the run's rows at once), and their cost still counts. A later rerun of those rows gets them back for free when treg kept them; treg keeps single-provider answers, not waterfall ones.
 - **Pausing and resuming** replays answers treg already charged for, for free. The exception is calls on your own provider key at treg to a single provider, which can be sent to your provider again.

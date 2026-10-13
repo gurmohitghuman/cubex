@@ -121,6 +121,9 @@ export AUTORUN_USER_YIELD_MS="${AUTORUN_USER_YIELD_MS:-6000}"
 export ENRICH_LIST_DRAIN_MS="${ENRICH_LIST_DRAIN_MS:-500}"
 # Older answers of rows enriched again are pruned on this beat (30 s in production).
 export ANSWER_PRUNE_SWEEP_MS="${ANSWER_PRUNE_SWEEP_MS:-500}"
+# Enrichment runs take 5 rows at once here (20 in production): the limit, pause
+# and cancel specs need rows still waiting when they act on a run of a few rows.
+export ENRICH_DEFAULT_CONCURRENCY="${ENRICH_DEFAULT_CONCURRENCY:-5}"
 export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
 
 if [ "$LIVE" -eq 0 ]; then

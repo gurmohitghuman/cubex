@@ -80,7 +80,7 @@ export async function processHTTPRun(
 
     const rawBatch = typeof config.batchSize === 'number' && Number.isFinite(config.batchSize)
       ? config.batchSize : HTTP_DEFAULT_BATCH_SIZE;
-    // Clamp to HTTP_MAX_CONCURRENCY (default 20): most third-party APIs
+    // Clamp to HTTP_MAX_CONCURRENCY (default 100): most third-party APIs
     // rate-limit well below a bigger fan-out, so more mostly buys 429s.
     const batchSize = Math.max(1, Math.min(rawBatch, HTTP_MAX_CONCURRENCY));
 

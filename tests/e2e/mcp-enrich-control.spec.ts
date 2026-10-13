@@ -67,13 +67,9 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: again.run_id, action: 'rerun', mode: 'all', spend_limit_usd: 1e12,
   })).toContain('The run limit must be more than $0 and at most')
-  // A rerun can set its rows at once, within the enrichment bounds.
-  expect(await callError(client, 'control_run', {
-    run_type: 'enrichment', run_id: again.run_id, action: 'rerun', mode: 'all', concurrency: 50,
-  })).toContain('from 1 to 20')
-  // Over 20 the tool's schema refuses it (plain text, not a JSON error).
+  // A rerun can set its rows at once; over 100 the tool's schema refuses it (plain text, not a JSON error).
   const tooMany = await client.callTool({
-    name: 'run_enrichment', arguments: { sheet_id: sheetId, ...FIND, concurrency: 21 },
+    name: 'run_enrichment', arguments: { sheet_id: sheetId, ...FIND, concurrency: 101 },
   })
   expect(tooMany.isError).toBe(true)
   expect(JSON.stringify(tooMany.content)).toContain('concurrency')

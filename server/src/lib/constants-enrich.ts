@@ -38,7 +38,9 @@ export const ENRICH_DEFAULT_DAILY_LIMIT_MICRO = 10_000_000;
 export const ENRICH_MAX_DEFAULT_ROW_CAP_USD = 1;
 
 // Runs.
-export const ENRICH_DEFAULT_CONCURRENCY = envInt('ENRICH_DEFAULT_CONCURRENCY', 5);
+// Rows at once when a run doesn't say: treg itself has no concurrency limit
+// (providers' own limits come back as 429s the waterfall moves past).
+export const ENRICH_DEFAULT_CONCURRENCY = envInt('ENRICH_DEFAULT_CONCURRENCY', 20);
 export const ENRICH_TEST_ROWS = 5;
 // The newest rows the drawer's run screens show (lean status), and the spend
 // card's choice of windows in days.

@@ -35,6 +35,8 @@ export const TYPING_MAX_ACTIVE = 200;
 // rate-limit above FREE_MODEL_CONCURRENCY_WARN, so the modal warns past it.
 export const MAX_AI_CONCURRENCY = 100;
 export const FREE_MODEL_CONCURRENCY_WARN = 10;
+// HTTP column requests at once: the most a column may set (mirrors server HTTP_MAX_CONCURRENCY).
+export const HTTP_MAX_CONCURRENCY = 100;
 // Highest per-row web search limit (mirrors server MAX_SEARCHES_PER_ROW).
 export const MAX_SEARCHES_PER_ROW = 10;
 
