@@ -131,6 +131,7 @@ Click **HTTP API** and describe the request: method, URL, headers and body. `{{c
 - Responses must be JSON. HTML pages are rejected, so this isn't a scraper.
 - Requests can't reach private or internal addresses (localhost, your LAN, cloud metadata), so a value that came in through a webhook or an AI answer can't point Cubex at your own network.
 - A run makes up to 20 requests at a time (configurable).
+- Turn on auto-run from the column's menu and it calls the API for new rows by itself, such as rows a webhook adds, once every column the request uses is filled. It runs at most 500 rows a day unless you change that, since each row sends a real request.
 
 ![Adding an HTTP API column that calls the GitHub API for each company and saves location, public repos and followers as columns](docs/media/cubex-http.gif)
 
