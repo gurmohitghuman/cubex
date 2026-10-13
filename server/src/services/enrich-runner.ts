@@ -5,18 +5,19 @@
 // can cost up to the per-row cap, and what other batches hold for calls still
 // out counts as spent), holds that room (services/enrich-holds.ts) and pauses
 // when spending alone leaves no room for one more row (it waits when only
-// holds are in the way). A row that hits a run-level stop (treg refused
-// the key or the balance, treg can't be reached) halts the rest and pauses the
-// run with the reason; rows stay ⏳.
+// holds are in the way). A run with no per-row cap stops at a limit only
+// once what treg really billed reaches it. A row that hits a run-level stop
+// (treg refused the key or the balance, treg can't be reached) halts the rest
+// and pauses the run with the reason; rows stay ⏳.
 // An auto-run run cancels itself at those stops instead (services/autorun-stop.ts).
 import { db } from '../lib/db';
 import { ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY } from '../lib/constants';
 import { runRows, countRunRows, type RunRow } from '../lib/run-rows';
-import { rowsThatFit } from '../lib/enrich-estimate';
+import { limitReached, rowsThatFit, UNCAPPED_BILLED_NOTE } from '../lib/enrich-estimate';
 import type { PauseReason } from '../lib/enrich-errors';
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { redactError } from '../lib/redact';
+import { redactError, redactSecrets } from '../lib/redact';
 import { getDailyLimitMicro, getTregToken, spentTodayMicro } from './treg-key';
 import { runSpentMicro } from './enrich-ledger';
 import { dropHold, heldMicro, releaseRow, setHold, takeHold } from './enrich-holds';
@@ -32,11 +33,12 @@ const NO_KEY = 'No treg key. Add one in Settings, then Resume.';
 const money = (usd: number) => `$${usd >= 0.01 || usd === 0 ? usd.toFixed(2) : usd.toFixed(4)}`;
 
 // CAS on (running, our generation): a user's pause, cancel or resume wins.
+// Redacted: the message can carry treg's own detail text (lib/enrich-errors.ts).
 export function pauseEnrichmentRun(runId: string, generation: number, reason: PauseReason, message: string): void {
   db.prepare(`
     UPDATE http_runs SET status = 'paused', pause_reason = ?, error_message = ?, updated_at = datetime('now')
     WHERE id = ? AND status = 'running' AND worker_generation = ?
-  `).run(reason, message.slice(0, 500), runId, generation);
+  `).run(reason, redactSecrets(message).slice(0, 500), runId, generation);
 }
 
 type Allowed = { n: number; rowMicro: number } | { reason: PauseReason; message: string } | { wait: true };
@@ -46,28 +48,33 @@ type Allowed = { n: number; rowMicro: number } | { reason: PauseReason; message:
 // sized at once in other workers can't count the same room twice. Room that
 // only other batches' holds fill is waited for (their calls settle and give
 // back what they didn't spend), not paused on. A run with no per-row cap
-// (null: the team's own provider key bills it, outside every limit here) or a
-// $0 cap can't spend from treg: no limit stops it and it holds nothing.
+// (null: the team's own provider key should bill it) or a $0 cap holds
+// nothing; the null one still stops once what treg really billed reaches a
+// limit (lib/enrich-estimate.ts limitReached).
 function holdBatch(run: HTTPRunRow, config: EnrichRunConfig, generation: number, batchSize: number): Allowed {
   const e = config.enrichment;
   const cap = e.maxCostPerRowUsd ?? 0;
   const rowMicro = Math.max(0, Math.round(cap * 1e6));
+  // Said in the pause: the run has no per-row cap, so what treg charged stopped it.
+  const billed = e.maxCostPerRowUsd === null ? ` ${UNCAPPED_BILLED_NOTE}` : '';
   return db.transaction((): Allowed => {
     const spent = runSpentMicro(run.id, run.user_id) / 1e6;
-    if (rowsThatFit(e.spendLimitUsd, spent, cap) < 1) {
+    if (limitReached(e.spendLimitUsd, spent, e.maxCostPerRowUsd)) {
       return {
         reason: 'spend_limit',
-        message: `The run reached its ${money(e.spendLimitUsd ?? 0)} spend limit (${money(spent)} spent).`,
+        message: `The run reached its ${money(e.spendLimitUsd ?? 0)} spend limit (${money(spent)} spent).${billed}`,
       };
     }
     // Only an earlier worker of this run (paused and resumed) can hold some of it.
     const byRun = rowsThatFit(e.spendLimitUsd, spent + heldMicro(run.user_id, run.id) / 1e6, cap);
     const limit = getDailyLimitMicro(run.user_id);
     const today = limit === null ? 0 : spentTodayMicro(run.user_id) / 1e6;
-    if (limit !== null && rowsThatFit(limit / 1e6, today, cap) < 1) {
+    if (limit !== null && limitReached(limit / 1e6, today, e.maxCostPerRowUsd)) {
+      const spentToday = billed ? ` (${money(today)} spent today)` : '';
       return {
         reason: 'daily_limit',
-        message: `Today's ${money(limit / 1e6)} enrichment limit is reached. It resets at midnight UTC.`,
+        message: `Today's ${money(limit / 1e6)} enrichment limit is reached${spentToday}.`
+          + ` It resets at midnight UTC.${billed}`,
       };
     }
     const byDay = limit === null ? Infinity : rowsThatFit(limit / 1e6, today + heldMicro(run.user_id) / 1e6, cap);

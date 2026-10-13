@@ -34,7 +34,8 @@ const RaiseAndResume: React.FC<{
       </div>
       {short && (
         <p className="text-xs">
-          Each row can cost up to {spent(cap)}, so it needs at least {usd(cents(least))} to run another row.
+          {cap > 0 ? `Each row can cost up to ${spent(cap)}, so it` : 'It'} needs at least {usd(cents(least))} to
+          run another row.
         </p>
       )}
     </div>
@@ -69,15 +70,21 @@ export const PausedNotice: React.FC<Props> = ({ status, run }) => {
     case 'daily_limit': {
       const { limitUsd, usedTodayUsd } = status.dailyLimit
       const room = plainResumeWorks(status)
+      // No per-row cap: treg's real charges reached the limit, and any cent above them lets a row run.
+      const uncapped = status.maxCostPerRowUsd === null
       text = limitUsd === null
         ? 'The daily limit was reached. It is off now, so the run can go on.'
-        : `Today's ${usd(limitUsd)} enrichment limit is reached. It ${resetsAtText()}.`
+        : uncapped
+          ? `Today's ${usd(limitUsd)} enrichment limit is reached (${spent(usedTodayUsd)} spent). It `
+            + `${resetsAtText()}. This tool usually bills your own provider key, but what treg charges counts too.`
+          : `Today's ${usd(limitUsd)} enrichment limit is reached. It ${resetsAtText()}.`
+      const least = usedTodayUsd + (uncapped ? 0.01 : cap)
       fix = (
         <div className="space-y-2">
           {limitUsd !== null && !room && (
             <>
-              <RaiseAndResume label="Raise the daily limit to" suggest={cents(usedTodayUsd + toFinish)}
-                least={usedTodayUsd + cap} cap={cap} busy={run.busy} onRaise={v => run.raiseDailyAndResume(v)} />
+              <RaiseAndResume label="Raise the daily limit to" suggest={cents(Math.max(usedTodayUsd + toFinish, least))}
+                least={least} cap={cap} busy={run.busy} onRaise={v => run.raiseDailyAndResume(v)} />
               <p className="text-xs">It stays at the new amount every day until you change it in Settings.</p>
             </>
           )}

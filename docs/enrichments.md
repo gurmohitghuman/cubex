@@ -178,7 +178,7 @@ Other things that affect cost:
 - Rows missing an input are skipped and cost nothing.
 - Rows in the same run with the same lookup reuse one answer: the others make no call and cost nothing.
 - **Always fetch fresh data** asks treg not to answer from its store of earlier lookups. Without it, treg can answer a repeat lookup from that store, which can be cheaper.
-- Providers on your team's own keys at treg bill your team directly. Cubex can't estimate those calls, and no Cubex limit covers them.
+- Providers on your team's own keys at treg bill your team directly. Cubex can't estimate those calls, and no Cubex limit covers them. If treg does charge for one (for example, it starts pricing the tool), that charge counts toward your daily limit, and the run pauses once the day's charges reach it.
 
 To see what you spent: the run screen shows each row's cost, the status column's header shows what the column spent when you hover it, and **Settings → Enrichment → Spending on enrichments** shows the last 7, 30 or 90 days by column.
 
@@ -194,7 +194,7 @@ Turn it on with the **Auto-run** checkbox in the drawer (it turns on with the fu
 
 Each auto-run has a daily cap:
 
-- **An enrichment:** a dollar cap per column, $5 a day by default and never above your daily limit. The daily limit for all enrichments still applies. A job billed on your own provider key at treg has no cap here, since your provider bills it.
+- **An enrichment:** a dollar cap per column, $5 a day by default and never above your daily limit. The daily limit for all enrichments still applies. A job billed on your own provider key at treg has no cap here, since your provider bills it. If you set one anyway, it stops the column once treg's own charges for it reach the cap.
 - **An HTTP API column:** a number of rows a day, 500 by default. Each row sends a real request (for example, adding a lead to a sequencer), and only when every column the request uses is filled.
 
 Both reset at midnight UTC.
