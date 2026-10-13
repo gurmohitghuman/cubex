@@ -246,7 +246,7 @@ sqlite3 ~/.cubex/data/cubex.db 'VACUUM;'
 cubex start
 ```
 
-The second line takes a backup first ([Your data and backups](../README.md#your-data-and-backups) has more), and the third compacts the file. It can take a few minutes on a big database. `sqlite3` comes with macOS; on Ubuntu or Debian, install it with `sudo apt install -y sqlite3`. When Cubex is running again and your sheets look right, delete the backup copy if you need the space.
+The second line takes a backup first ([Your data and backups](configuration.md#your-data-and-backups) has more), and the third compacts the file. It can take a few minutes on a big database. `sqlite3` comes with macOS; on Ubuntu or Debian, install it with `sudo apt install -y sqlite3`. When Cubex is running again and your sheets look right, delete the backup copy if you need the space.
 
 ## Using enrichments from an agent
 

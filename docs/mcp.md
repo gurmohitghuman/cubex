@@ -58,7 +58,7 @@ codex mcp add cubex --url http://localhost:3002/mcp --bearer-token-env-var CUBEX
 { "mcpServers": { "cubex": { "command": "npx", "args": ["mcp-remote", "http://localhost:3002/mcp", "--header", "Authorization:${CUBEX_AUTH}"], "env": { "CUBEX_AUTH": "Bearer cubex_pat_..." } } } }
 ```
 
-**claude.ai connectors** connect from Anthropic's servers, so Cubex must be on the internet over HTTPS (see "Putting it on the internet" in the README). They are built around OAuth sign-in, which Cubex doesn't offer: it uses access tokens. If your connector form has no place for an `Authorization` header, use one of the clients above.
+**claude.ai connectors** connect from Anthropic's servers, so Cubex must be on the internet over HTTPS (see [Run Cubex on your own server](self-hosting.md)). They are built around OAuth sign-in, which Cubex doesn't offer: it uses access tokens. If your connector form has no place for an `Authorization` header, use one of the clients above.
 
 Any other client that speaks MCP over Streamable HTTP works the same way: point it at `<your Cubex address>/mcp` and send `Authorization: Bearer <token>`.
 

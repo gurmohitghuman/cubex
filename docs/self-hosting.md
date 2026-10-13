@@ -170,7 +170,7 @@ Cubex only needed the password in the settings file to create your account, so r
 sed -i '/^INITIAL_PASSWORD=/d' ~/.cubex/config.env
 ```
 
-From here, everything works as the [README](../README.md#run) describes: add your OpenRouter key and default model in **Settings → AI**, and your treg key in **Settings → Enrichment** if you'll use [enrichments](enrichments.md). Webhook URLs and the agent (MCP) setup shown in the app already use your domain.
+From here, everything works as the [README](../README.md#get-started) describes: add your OpenRouter key and default model in **Settings → AI**, and your treg key in **Settings → Enrichment** if you'll use [enrichments](enrichments.md). Webhook URLs and the agent (MCP) setup shown in the app already use your domain.
 
 ## 6. Back up every night
 
@@ -209,6 +209,15 @@ Enrichments keep each row's answer in the database, and pruning old answers free
 
 - **Cubex:** run `cubex update` to install the latest [release](https://github.com/gurmohitghuman/cubex/releases) (each one lists what changed). Your data and settings stay, and if the new version doesn't start, the previous one comes back.
 - **The server and Caddy:** run `sudo apt update && sudo apt upgrade -y` now and then. Ubuntu also installs security updates by itself.
+
+## Keep it safe
+
+The steps above already cover HTTPS and the password. If you set Cubex up your own way, or put it on the internet from a laptop, check these:
+
+- Put it behind HTTPS with a reverse proxy (Caddy, nginx, Traefik). The session cookie becomes `Secure` automatically when the proxy sends `X-Forwarded-Proto: https`. Keep the default `HOST=127.0.0.1` and run the proxy on the same server.
+- Set `INITIAL_PASSWORD` so the install is never open for someone else to claim, or choose the password before you open it up.
+- Use a strong password. Failed sign-ins are limited for the whole instance (10 per 15 minutes), not per IP: someone hammering the login can delay new sign-ins, but browsers that are already signed in keep working.
+- Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app. With auto-run on in a sheet, its webhook URL can spend your treg balance and send HTTP requests, up to the caps you set.
 
 ## Check its health
 
@@ -261,7 +270,7 @@ server {
 
 ### Docker instead of the installer
 
-Two changes make a Docker install as safe as the steps above. Make both in the folder you cloned (see [Docker](../README.md#docker) in the README). First, in `docker-compose.override.yaml`, change the port line to `"127.0.0.1:3002:3002"`. Ports that Docker publishes skip the `ufw` firewall, so the default `"3002:3002"` would put Cubex on the internet over plain HTTP. Second, set the password before the first start. The compose file reads it from `SERVICE_PASSWORD_CUBEX`:
+Two changes make a Docker install as safe as the steps above. Make both in the folder you cloned (see [Docker](other-ways-to-run.md#docker)). First, in `docker-compose.override.yaml`, change the port line to `"127.0.0.1:3002:3002"`. Ports that Docker publishes skip the `ufw` firewall, so the default `"3002:3002"` would put Cubex on the internet over plain HTTP. Second, set the password before the first start. The compose file reads it from `SERVICE_PASSWORD_CUBEX`:
 
 ```bash
 echo "SERVICE_PASSWORD_CUBEX=$(openssl rand -base64 18)" >> .env
@@ -277,7 +286,7 @@ docker compose exec cubex bash /app/scripts/backup-cubex-db.sh /app/server/data/
 
 ### No public IP (a home server or a laptop)
 
-Use a tunnel such as [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), which needs no open ports. If you open Cubex on a different address than the tunnel's (for example `http://localhost:3002`), set `PUBLIC_URL` in `~/.cubex/config.env` to the tunnel's address and run `cubex restart`, so the app shows the right webhook URL and agents get working file links. Cloudflare limits uploads to 100 MB on its free plan.
+Use a tunnel such as [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), which needs no open ports (`ngrok` works too). If you open Cubex on a different address than the tunnel's (for example `http://localhost:3002`), set `PUBLIC_URL` in `~/.cubex/config.env` to the tunnel's address and run `cubex restart`, so the app shows the right webhook URL and agents get working file links. Cloudflare limits uploads to 100 MB on its free plan.
 
 ### Only you need access
 
