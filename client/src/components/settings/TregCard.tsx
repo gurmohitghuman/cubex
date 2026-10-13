@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { AlertTriangle, Check, DatabaseZap, ExternalLink, Eye, EyeOff, Loader2, Save, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, ExternalLink, Eye, EyeOff, Loader2, Save, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Settings, settingsAPI } from '@/utils/api'
 import { TREG_APP_URL, TREG_TOPUP_URL } from '@/lib/enrich-format'
 import { DailyLimitControl } from './DailyLimitControl'
+import { TregLogo } from '@/components/TregLogo'
 
 interface TregCardProps {
   settings: Settings
@@ -70,7 +71,7 @@ export const TregCard: React.FC<TregCardProps> = ({ settings, reloadSettings }) 
     <div className="card mb-6" data-testid="treg-card">
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center space-x-3">
-          <div className="bg-cube-black p-2 rounded-sm"><DatabaseZap className="h-5 w-5 text-white" /></div>
+          <TregLogo className="h-9 w-9" />
           <div>
             <h3 className="text-title text-gray-900">treg API key</h3>
             <p className="text-sm text-gray-600">
