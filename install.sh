@@ -101,12 +101,12 @@ detect_platform() {
   case "$(uname -s)" in
     Darwin) OS=darwin ;;
     Linux) OS=linux ;;
-    *) die "This installer supports macOS and Linux. On Windows, use WSL2 or Docker (see the README)." ;;
+    *) die "This installer supports macOS and Linux. On Windows, use WSL2 or Docker (see docs/other-ways-to-run.md)." ;;
   esac
   case "$(uname -m)" in
     x86_64|amd64) ARCH=x64 ;;
     arm64|aarch64) ARCH=arm64 ;;
-    *) die "Unsupported processor: $(uname -m). Docker may still work (see the README)." ;;
+    *) die "Unsupported processor: $(uname -m). Docker may still work (see docs/other-ways-to-run.md)." ;;
   esac
   # A Terminal running under Rosetta reports x86_64 on Apple silicon.
   if [ "$OS" = darwin ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ]; then ARCH=arm64; fi
@@ -168,7 +168,7 @@ write_config() {
   if [ ! -f "$CONFIG" ]; then
     cat > "$CONFIG" <<'EOF'
 # Cubex settings, one KEY=value per line. After a change, run: cubex restart
-# Every setting is listed in the README under "Configuration".
+# Every setting is listed in docs/configuration.md.
 
 # Who can open Cubex. 127.0.0.1: only this computer. 0.0.0.0: any device that
 # can reach it; then also set INITIAL_PASSWORD, and put HTTPS in front if it's

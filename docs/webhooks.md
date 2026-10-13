@@ -27,7 +27,7 @@ The sender has to be able to reach Cubex.
 - **Cubex on your laptop.** Use a tunnel such as `cloudflared tunnel` or `ngrok`, and set `PUBLIC_URL` to the tunnel's address so the panel shows a URL the sender can use.
 - **Webhooks arrive at a different address than you browse on** (for example you open Cubex by LAN IP, but senders use a public domain). Set `PUBLIC_URL` to the public address.
 
-If Cubex is reachable from the internet, put it behind HTTPS. See "Putting it on the internet" in the [README](../README.md).
+If Cubex is reachable from the internet, put it behind HTTPS. [Run Cubex on your own server](self-hosting.md) walks through it, and [Keep it safe](self-hosting.md#keep-it-safe) lists what to check.
 
 ## What the endpoint accepts
 
