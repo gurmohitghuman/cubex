@@ -71,6 +71,8 @@ async function singleStep(
   if (!routed) {
     const recovered = await recoverPaidAnswer(ctx, row.rowId, row.rowIndex, e.toolId, parts);
     if (recovered) {
+      // Recorded as a free replay: the first charge is already in the ledger
+      // (and in this run's spend when this run paid it), so nothing moves.
       const meta = { ...readTregMeta({}), callId: recovered.callId, costMicro: 0, replay: true };
       const at = keyScope(ctx, row.rowIndex, row.rowId);
       recordCall({
@@ -79,7 +81,7 @@ async function singleStep(
         attempt: 't1', idempotencyKey: idempotencyKey(at.scope, at.row, 't1', parts), httpStatus: 200,
         tregErrorCode: null, tier: null, meta,
       });
-      return answered(config, routed, recovered.body, meta, null, 0);
+      return answered(config, routed, recovered.body, meta, null, recovered.costMicro);
     }
   }
   const r: StepResult = await runStep(ctx, {

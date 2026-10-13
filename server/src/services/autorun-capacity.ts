@@ -8,6 +8,7 @@ import { rowsThatFit } from '../lib/enrich-estimate';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { getDailyLimitMicro, spentTodayMicro } from './treg-key';
+import { heldMicro } from './enrich-holds';
 import { usageToday, type AutorunEntry } from './autorun-entry';
 
 export type Capacity =
@@ -32,11 +33,14 @@ export function autorunCapacity(e: AutorunEntry, config: HTTPAPIConfig): Capacit
   const perRow = config.enrichment.maxCostPerRowUsd;
   if (perRow === null) return { rows: AUTORUN_MAX_ROWS, runLimitUsd: null };
   const limit = getDailyLimitMicro(e.user_id);
-  const byDay = limit === null ? Infinity : rowsThatFit(limit / 1e6, spentTodayMicro(e.user_id) / 1e6, perRow);
-  if (byDay < 1) {
-    const today = money((limit ?? 0) / 1e6);
-    return { reason: 'daily_limit', message: `Today's ${today} enrichment limit is reached.` };
+  const spentToday = limit === null ? 0 : spentTodayMicro(e.user_id) / 1e6;
+  if (limit !== null && rowsThatFit(limit / 1e6, spentToday, perRow) < 1) {
+    return { reason: 'daily_limit', message: `Today's ${money(limit / 1e6)} enrichment limit is reached.` };
   }
+  // What running batches hold for their calls still out shrinks the run, but
+  // pauses nothing: it comes back as they settle, and the run waits for it.
+  const byDay = limit === null ? Infinity
+    : Math.max(1, rowsThatFit(limit / 1e6, spentToday + heldMicro(e.user_id) / 1e6, perRow));
   const capUsd = e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6;
   const spentUsd = used.spentMicro / 1e6;
   const byCap = rowsThatFit(capUsd, spentUsd, perRow);
