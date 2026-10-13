@@ -1,6 +1,49 @@
-# Cubex
+<p align="center">
+  <img src="client/public/cubex.svg" alt="Cubex logo" width="120">
+</p>
 
-**A self-hosted alternative to [Clay](https://www.clay.com) that your AI agent can run for you.** A spreadsheet where a column can be an AI prompt or an API call, run with your own [OpenRouter](https://openrouter.ai) key instead of credits. Connect Claude Code, Cursor, Codex or Claude Desktop over MCP and ask for the work in plain words.
+<h1 align="center">Cubex</h1>
+
+<p align="center">
+  <strong>A self-hosted alternative to <a href="https://www.clay.com">Clay</a> that your AI agent can run for you.</strong>
+</p>
+
+<p align="center">
+  A spreadsheet where a column can be an AI prompt, an API call or an enrichment, run with your own keys instead of credits.<br>
+  Connect Claude Code, Cursor, Codex or Claude Desktop over MCP and ask for the work in plain words.
+</p>
+
+<p align="center">
+  <a href="https://github.com/gurmohitghuman/cubex/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/gurmohitghuman/cubex?label=release&color=3a3a3a"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
+  <a href="#install"><img alt="Self-hosted on macOS, Linux or Docker" src="https://img.shields.io/badge/self--hosted-macOS%20%7C%20Linux%20%7C%20Docker-555"></a>
+  <a href="#your-data-and-backups"><img alt="Your data in one SQLite file" src="https://img.shields.io/badge/data-one%20SQLite%20file-003B57?logo=sqlite&logoColor=white"></a>
+</p>
+
+<p align="center">
+  <a href="#install"><strong>Install</strong></a> ·
+  <a href="#how-it-works"><strong>How it works</strong></a> ·
+  <a href="docs/mcp.md"><strong>Agents and API</strong></a> ·
+  <a href="docs/enrichments.md"><strong>Enrichments</strong></a> ·
+  <a href="docs/self-hosting.md"><strong>Run it on a server</strong></a>
+</p>
+
+<p align="center"><strong>Your agent runs it over MCP</strong></p>
+<p align="center">
+  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-D97757?style=for-the-badge&logo=claude&logoColor=white">
+  <img alt="Claude Desktop" src="https://img.shields.io/badge/Claude%20Desktop-D97757?style=for-the-badge&logo=claude&logoColor=white">
+  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-333333?style=for-the-badge&logo=cursor&logoColor=white">
+  <img alt="Codex" src="https://img.shields.io/badge/Codex-333333?style=for-the-badge">
+  <img alt="Any MCP client" src="https://img.shields.io/badge/Any%20MCP%20client-444444?style=for-the-badge&logo=modelcontextprotocol&logoColor=white">
+</p>
+
+<p align="center"><strong>Columns fill themselves with</strong></p>
+<p align="center">
+  <img alt="300+ AI models through OpenRouter" src="https://img.shields.io/badge/300%2B%20AI%20models-OpenRouter-6566F1?style=for-the-badge&logo=openrouter&logoColor=white">
+  <img alt="Enrichments through treg.to" src="https://img.shields.io/badge/Enrichments-treg.to-0F766E?style=for-the-badge">
+  <img alt="Any JSON API" src="https://img.shields.io/badge/Any-JSON%20API-2563EB?style=for-the-badge">
+  <img alt="Webhooks" src="https://img.shields.io/badge/Incoming-Webhooks-7C3AED?style=for-the-badge">
+</p>
 
 ![Claude Code connected to Cubex over MCP: asked to score 12 companies for fit, it adds Fit and Why columns, runs an AI column on every row while the sheet fills in, and reports the top 3](docs/media/cubex-agent.gif)
 
