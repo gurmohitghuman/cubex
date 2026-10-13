@@ -1,11 +1,11 @@
 import React from 'react'
 
-// OpenRouter's brand mark, vendored at client/public/openrouter.png. Was
-// previously hot-linked from cdn.brandfetch.io, but the CSP locks img-src to
-// 'self' + data: so the external load was blocked. Local file dodges CSP and
-// removes a runtime dependency on a third-party CDN. Use is nominative fair
-// use — identifying a service we integrate with, not implying endorsement.
-const OPENROUTER_LOGO_URL = '/openrouter.png'
+// OpenRouter's official glyph (Grape, for light backgrounds), downloaded unchanged from
+// openrouter.ai/brand and vendored at client/public/openrouter.svg: the CSP locks img-src to
+// 'self' + data:. Their guidelines forbid stretching or recolouring it, so it is only ever
+// scaled (object-contain: the glyph is wider than tall). Used to name the service we
+// integrate with, not to imply endorsement.
+const OPENROUTER_LOGO_URL = '/openrouter.svg'
 
 interface OpenRouterLogoProps {
   className?: string
@@ -19,7 +19,7 @@ export const OpenRouterLogo: React.FC<OpenRouterLogoProps> = ({
   <img
     src={OPENROUTER_LOGO_URL}
     alt={alt}
-    className={className}
+    className={`${className} object-contain`}
     loading="lazy"
     decoding="async"
   />

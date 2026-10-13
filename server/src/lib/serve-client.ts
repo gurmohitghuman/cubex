@@ -38,7 +38,7 @@ export function serveClientInProduction(app: express.Express) {
         // Vite hashed assets — safe to cache forever.
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       } else {
-        // Top-level files (cubex.svg, openrouter.png, etc.). Public 1 hour
+        // Top-level files (cubex.svg, openrouter.svg, etc.). Public 1 hour
         // edge + 5 min browser; lets ops swap them mid-day if needed.
         res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600');
       }
