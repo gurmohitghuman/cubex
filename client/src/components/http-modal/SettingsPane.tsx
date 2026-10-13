@@ -2,6 +2,7 @@ import React from 'react'
 import { Slider } from '@/components/ui/slider'
 import { HTTPAPIConfig } from './types'
 import { plural } from '@/lib/utils'
+import { HTTP_MAX_CONCURRENCY } from '@/lib/constants'
 
 interface Props {
   config: HTTPAPIConfig
@@ -27,9 +28,9 @@ export const SettingsPane: React.FC<Props> = ({ config, updateConfig }) => (
           Concurrency: {plural(config.concurrency, 'request')}
         </label>
         <Slider value={[config.concurrency]} onValueChange={(value) => updateConfig({ concurrency: value[0] })}
-          max={20} min={1} step={1} className="w-full" />
+          max={HTTP_MAX_CONCURRENCY} min={1} step={1} className="w-full" />
         <div className="flex justify-between text-xs text-gray-500 mt-1">
-          <span>1 (Slow)</span><span>20 (Fast)</span>
+          <span>1 (Slow)</span><span>{HTTP_MAX_CONCURRENCY} (Fast)</span>
         </div>
       </div>
 

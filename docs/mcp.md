@@ -271,7 +271,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 ```
 
 - `{{name}}` takes a column's value or a saved API key (saved keys need the `secrets` scope). A name that matches neither is refused before anything is sent. Once a column the request read is deleted, a saved key with its name never stands in for it: a rerun is refused until you edit the column or add the column back.
-- Also optional: `body` (for POST and PUT), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 20) and `timeout_ms` (per request, default 30,000).
+- Also optional: `body` (for POST and PUT), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 100) and `timeout_ms` (per request, default 30,000).
 - `run_if`: run only the rows that pass a rule. See [Only run if](#only-run-if).
 - The earlier shape, `{"config": {"requestConfig": {...}, "responseMapping": [{"jsonPath", "columnName"}], "batchSize": 5}}`, still works.
 
@@ -299,7 +299,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. AI rows also carry `cost_usd`, and with web search `searches` and `search_queries`. |
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Add `"concurrency"` (1 to 100) to change how many rows run at once; rows that failed on OpenRouter's in-flight credit budget need a lower one. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
-| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 20; default: the run's own). |
+| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 100; default: the run's own). |
 | `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it. |
 
 An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by`, plus its stored `answer` with `?answers=true` (10 rows a page).

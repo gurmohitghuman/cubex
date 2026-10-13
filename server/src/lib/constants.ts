@@ -83,11 +83,11 @@ export const HTTP_REQUEST_TIMEOUT_MS = 30000;
 export const HTTP_MIN_TIMEOUT_MS = 1_000;
 export const HTTP_MAX_TIMEOUT_MS = 120_000;
 export const HTTP_DEFAULT_BATCH_SIZE = 5;
-// Max in-run request fan-out for ONE HTTP run (the batch size clamp in
-// http-runner). Deliberately lower than the AI fan-out: most third-party APIs
-// rate-limit well below this, and a burst of hundreds of concurrent requests
-// mostly buys 429s. Env-overridable for APIs that allow more.
-export const HTTP_MAX_CONCURRENCY = envInt('HTTP_MAX_CONCURRENCY', 20);
+// Max in-run request fan-out for ONE HTTP or enrichment run (the batch size
+// clamp in http-runner and enrich-runner), the same as AI's. The user decides
+// how high to go: HTTP columns default to HTTP_DEFAULT_BATCH_SIZE because many
+// third-party APIs rate-limit low. Env-overridable.
+export const HTTP_MAX_CONCURRENCY = envInt('HTTP_MAX_CONCURRENCY', 100);
 // GET /api/http/runs: active runs plus each column's newest, at most this many.
 export const HTTP_RUNS_LIST_MAX = 500;
 // Requests an HTTP column preview makes at once (it previews up to 20 rows, so
