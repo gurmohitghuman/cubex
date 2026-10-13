@@ -16,6 +16,7 @@ import { normalizeColumnName } from './prompt';
 import {
   extractTemplateTokenNames, type HTTPRequestConfig, type HTTPAPIConfig,
 } from './http-request-template';
+import { goneColumnFor, goneColumnsOf } from './template-token-match';
 
 // Names of saved api_keys the authored config references, deduped. Empty array
 // = no secret involvement, safe for a run-scope-only token.
@@ -35,9 +36,12 @@ export function savedKeyRefsInConfig(userId: string, config: HTTPRequestConfig):
   for (const [k, v] of Object.entries(config.headers ?? {})) parts.push(k, v);
   if (config.body) parts.push(config.body);
 
+  // A deleted column's token never resolves to a key (lib/template-token-match.ts).
+  const gone = goneColumnsOf(config);
   const matched = new Set<string>();
   for (const part of parts) {
     for (const token of extractTemplateTokenNames(part)) {
+      if (goneColumnFor(token, gone) !== undefined) continue;
       const hit = byLower.get(token.toLowerCase()) ?? byNorm.get(normalizeColumnName(token));
       if (hit) matched.add(hit);
     }

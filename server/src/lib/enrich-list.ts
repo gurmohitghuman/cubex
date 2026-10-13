@@ -37,6 +37,9 @@ export const listCell = {
   adding: (n: number) => `${LIST_MARK} Adding ${count(n, 'row')}…`,
   waitingFields: (n: number) => `${LIST_MARK} ${count(n, 'result')}, waiting for fields`,
   waitingRoom: (n: number, dest: string) => `${LIST_MARK} ${count(n, 'row')} waiting for room in ${dest}`,
+  // A paused run on the destination may still fill the rows these replace: say what to do.
+  waitingPausedRun: (n: number, dest: string, column: string | null) => `${LIST_MARK} ${count(n, 'row')} wait: `
+    + `the ${column ? `${column} ` : ''}run in ${dest} is paused. Resume or cancel it`,
   // Nothing new: the useful number first (a grid cell cuts the end off).
   added: (n: number, skipped: number) => (n === 0 && skipped > 0
     ? (skipped === 1 ? '✅ Already there' : `✅ All ${skipped.toLocaleString('en-US')} already there`)

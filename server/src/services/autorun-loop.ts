@@ -12,13 +12,13 @@ import { AUTORUN_MAX_ROWS, AUTORUN_RETRY_MS, AUTORUN_SWEEP_MS } from '../lib/con
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { sheetYielding } from '../lib/sheet-yield';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { requestColumns, watchedColumns, type CandidatePlan } from '../lib/autorun-rules';
+import { missingRequestRead, requestColumns, watchedColumns, type CandidatePlan } from '../lib/autorun-rules';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { getTregToken } from './treg-key';
 import {
   CAPACITY_PAUSES, RETRY_PAUSES, clearEntryPause, columnRunActive, inputColumnsOf, loadEntry, newestRunOf,
-  pauseEntry, ruleOf, ruleReads, whereOf, type AutorunEntry,
+  pauseEntry, ruleOf, ruleReads, usableKeyNames, whereOf, type AutorunEntry,
 } from './autorun-entry';
 import { autorunCapacity } from './autorun-capacity';
 import { pickRows } from './autorun-pick';
@@ -40,10 +40,13 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
   const columns = getSheetColumns(e.sheet_id, e.user_id, false);
   // The columns it watches follow the newest run (a run started elsewhere can read others).
   // A column it watched before still counts: an HTTP request's token for a deleted column
-  // would otherwise read as plain text, and that column must come back first.
-  const reads = watchedColumns(requestColumns(config, [...columns, ...inputColumnsOf(e)]), whereOf(e), e.run_if);
+  // would otherwise read as plain text (or a saved key's value), and that column must come
+  // back first. A {{name}} that names no column or usable saved key waits too (lib/autorun-rules.ts).
+  const before = inputColumnsOf(e);
+  const reads = watchedColumns(requestColumns(config, [...columns, ...before]), whereOf(e), e.run_if);
   // Its own column too: a CSV replace can drop it, and results would land in a column the grid doesn't list.
-  const gone = [e.status_column, ...reads].find(c => !columns.includes(c));
+  const gone = [e.status_column, ...reads].find(c => !columns.includes(c))
+    ?? missingRequestRead(config, columns, before, usableKeyNames(e.user_id, newest.allow_secrets));
   if (gone) {
     return { reason: 'missing_input', message: `${gone} isn't in this sheet anymore. Auto-run waits until it's back.` };
   }

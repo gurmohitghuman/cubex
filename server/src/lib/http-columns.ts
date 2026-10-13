@@ -1,11 +1,10 @@
-// Over 200 lines: the whole HTTP-run side of a column rename or delete; split, the rewrites would scatter.
 import { db } from './db';
 import { renameRuleColumn } from './run-condition';
-import { renameTemplateColumnRefs } from './column-ref-rename';
+import { markTemplateColumnGone, renameTemplateColumnRefs } from './column-ref-rename';
+import { deleteListDestPage, renameListDestPage } from './list-dest-columns';
 
 // HTTP-run ↔ column lifecycle cascade, called from the column rename route
 // (sheets-columns-order.ts). Mirrors lib/webhook-columns.ts.
-// Over 200 lines: rename and delete rewrite the same stored run configs, by page.
 //
 // Why this is needed: an HTTP run stores its column names in TWO places —
 // http_column_associations (kept in sync by name in the rename handler already)
@@ -24,14 +23,18 @@ import { renameTemplateColumnRefs } from './column-ref-rename';
 //
 // Call INSIDE the rename transaction. Uses strict (case-sensitive) equality: the
 // rename route already rejects case-insensitive duplicates, and we only want to
-// rewrite the exact stored key.
+// rewrite the exact stored key. This does every page at once, the sheet's own
+// runs and the list jobs adding rows into it (lib/list-dest-columns.ts); the
+// rename itself goes by page (services/run-config-rewrite.ts).
 export function renameHttpRunColumnRefs(
   sheetId: string, userId: string, oldName: string, newName: string,
 ): void {
   for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
     before = renameHttpRunsPage(sheetId, userId, oldName, newName, before, RUNS_PAGE);
   }
-  renameListDestColumn(sheetId, userId, oldName, newName);
+  for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
+    before = renameListDestPage(sheetId, userId, oldName, newName, before, RUNS_PAGE);
+  }
 }
 
 // A sheet's runs a page at a time, newest first (rowid < before): a column
@@ -129,28 +132,6 @@ function renameRuns(page: PageRun[], oldName: string, newName: string): void {
   }
 }
 
-// List jobs adding rows to this sheet (from another one) name its columns:
-// the fields they keep and the columns they copy into.
-function listRunsInto(sheetId: string, userId: string): Array<{ id: string; config: any }> {
-  const rows = db.prepare('SELECT id, config FROM http_runs WHERE dest_sheet_id = ? AND user_id = ?')
-    .all(sheetId, userId) as Array<{ id: string; config: string }>;
-  return rows.flatMap(r => {
-    try { const config = JSON.parse(r.config); return config?.enrichment?.list ? [{ id: r.id, config }] : []; }
-    catch { return []; }
-  });
-}
-
-export function renameListDestColumn(sheetId: string, userId: string, oldName: string, newName: string): void {
-  const update = db.prepare('UPDATE http_runs SET config = ? WHERE id = ?');
-  for (const run of listRunsInto(sheetId, userId)) {
-    const list = run.config.enrichment.list;
-    let changed = false;
-    for (const f of list.fields ?? []) if (f.columnName === oldName) { f.columnName = newName; changed = true; }
-    for (const c of list.copy ?? []) if (c.to === oldName) { c.to = newName; changed = true; }
-    if (changed) update.run(JSON.stringify(run.config), run.id);
-  }
-}
-
 // On column DELETE: retire every stored HTTP-run reference to the deleted column.
 // Call INSIDE the delete transaction.
 //   1. If the deleted column is a run's MASTER column, NULL out
@@ -167,7 +148,9 @@ export function deleteHttpRunColumnRefs(
   for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
     before = deleteHttpRunsPage(sheetId, userId, columnName, before, RUNS_PAGE);
   }
-  deleteListDestColumn(sheetId, userId, columnName);
+  for (let before: number | null = Number.MAX_SAFE_INTEGER; before !== null;) {
+    before = deleteListDestPage(sheetId, userId, columnName, before, RUNS_PAGE);
+  }
 }
 
 export function deleteHttpRunsPage(
@@ -197,6 +180,10 @@ function deleteRuns(page: PageRun[], columnName: string): void {
       const pruned = mappings.filter((m: any) => !m || m.columnName !== columnName);
       if (pruned.length !== mappings.length) { config.responseMapping = pruned; changed = true; }
     }
+    // A request that read it never sends a saved key of its name instead
+    // (an enrichment's inputs name columns only: no key stands in).
+    const rc = config?.requestConfig;
+    if (!config?.enrichment && rc && typeof rc === 'object' && markTemplateColumnGone(rc, columnName)) changed = true;
     // A list job stops copying a deleted column into its new rows.
     const list = config?.enrichment?.list;
     if (Array.isArray(list?.copy) && list.copy.some((c: any) => c?.from === columnName)) {
@@ -204,21 +191,5 @@ function deleteRuns(page: PageRun[], columnName: string): void {
       changed = true;
     }
     if (changed) update.run(JSON.stringify(config), run.id);
-  }
-}
-
-// List jobs adding rows here stop filling the deleted column. Call inside the
-// delete's transaction (a sheet has few runs adding rows into it).
-export function deleteListDestColumn(sheetId: string, userId: string, columnName: string): void {
-  const update = db.prepare('UPDATE http_runs SET config = ? WHERE id = ?');
-  for (const run of listRunsInto(sheetId, userId)) {
-    const list = run.config.enrichment.list;
-    const fields = (list.fields ?? []).filter((f: any) => f.columnName !== columnName);
-    const copy = (list.copy ?? []).filter((c: any) => c.to !== columnName);
-    if (fields.length === (list.fields ?? []).length && copy.length === (list.copy ?? []).length) continue;
-    // No field left: its results wait until fields are picked again (never blank rows).
-    if (list.fields) list.fields = fields.length ? fields : null;
-    list.copy = copy;
-    update.run(JSON.stringify(run.config), run.id);
   }
 }

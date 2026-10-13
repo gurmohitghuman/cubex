@@ -69,6 +69,21 @@ check('normalized column name matches (company.domain → /company_domain)',
 check('non-string template coerces to empty',
   replaceTemplateVariables(undefined as unknown as string, {}, 'u', 'live', false), '');
 
+// --- A deleted column the request read (requestConfig.goneColumns) ---
+// Never filled with its saved-key namesake: allowSavedKeys is on here, and the
+// lookup is never reached (this DB has no api_keys table, so it would throw).
+const gone = (t: string, row: Record<string, string>, mode: 'live' | 'redact-secrets' = 'live') =>
+  replaceTemplateVariables(t, row, 'test-user', mode, true, undefined, ['Email']);
+const goneErr = (t: string) => {
+  try { gone(t, {}); return 'did not throw'; } catch (e) { return (e as Error).message; }
+};
+check('a deleted column\'s {{name}} fails the row, any case',
+  goneErr('{{email}}'), "This column reads Email, which isn't in this sheet anymore. Edit the column first.");
+check('... and its /token too', goneErr('{"e":"/Email"}'),
+  "This column reads Email, which isn't in this sheet anymore. Edit the column first.");
+check('the redacted record keeps a marker', gone('{{Email}}', {}, 'redact-secrets'), '[MISSING: {{Email}}]');
+check('a column by that name again is read as before', gone('{{Email}}', { Email: 'a@b.co' }), 'a@b.co');
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

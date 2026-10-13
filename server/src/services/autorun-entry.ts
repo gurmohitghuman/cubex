@@ -2,6 +2,7 @@
 // today's usage, and the pauses every part shares. Plain DB access, so the run
 // workers use the pause helpers too.
 import { db } from '../lib/db';
+import { redactSecrets } from '../lib/redact';
 import { utcDay } from '../lib/clock';
 import type { EnrichCondition } from '../lib/enrich-run-config';
 import type { AutorunKind } from '../lib/autorun-rules';
@@ -74,11 +75,13 @@ export function usageToday(entryId: string, day = utcDay()): { spentMicro: numbe
   return { spentMicro: r.s, rows: r.n };
 }
 
-// Never replaces a pause the person chose.
+// Never replaces a pause the person chose. Its words can carry treg's or a
+// run's own text, so what it keeps is redacted.
 export function pauseEntry(id: string, reason: string, message: string): void {
   db.prepare(`UPDATE autorun_columns SET paused_reason = ?, paused_message = ?, paused_at = datetime('now'),
       updated_at = datetime('now')
-    WHERE id = ? AND (paused_reason IS NULL OR paused_reason <> 'user')`).run(reason, message.slice(0, 500), id);
+    WHERE id = ? AND (paused_reason IS NULL OR paused_reason <> 'user')`)
+    .run(reason, redactSecrets(message).slice(0, 500), id);
 }
 
 // With `reason`, only while that is still the pause (a newer one stays).
@@ -100,6 +103,13 @@ export function newestRunOf(sheetId: string, userId: string, column: string): Co
   return db.prepare(`SELECT id, config, allow_secrets, dest_sheet_id FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
     ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(sheetId, userId, column) as ColumnRunRow | undefined;
+}
+
+// The saved keys an HTTP auto-run may fill a {{name}} with: none when the run
+// it repeats can't use saved keys (allow_secrets 0, as autorun-start.ts copies it).
+export function usableKeyNames(userId: string, allowSecrets: number | null): Set<string> {
+  if (allowSecrets === 0) return new Set();
+  return new Set(db.prepare('SELECT name FROM api_keys WHERE user_id = ?').pluck().all(userId) as string[]);
 }
 
 // The columns a column's runs fill (an enrichment's answer fields, an HTTP

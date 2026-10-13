@@ -12,7 +12,6 @@ import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import { renameWebhookColumnRefs } from '../lib/webhook-columns';
-import { renameListDestColumn } from '../lib/http-columns';
 import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-config-rewrite';
 import { renameAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
@@ -200,9 +199,9 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameAiRunColumnRefs(sheetId, userId, columnName, trimmedNew);
   // The STORED HTTP run config (master_column_name, responseMapping[].columnName):
   // a rerun reads it to decide where the worker writes results.
-  // The sheet's own runs: the newest page now, the rest after the switch.
+  // The sheet's own runs: the newest page now, the rest after the switch, then
+  // the list jobs adding rows here (the fields they keep, the columns they copy into).
   recordRunRewrite(sheetId, userId, columnName, trimmedNew);
-  renameListDestColumn(sheetId, userId, columnName, trimmedNew);
   // Webhook mappings and the raw marker name.
   renameWebhookColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Auto-run settings: the status column, the columns it reads, "Only run if".

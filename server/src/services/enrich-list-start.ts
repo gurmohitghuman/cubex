@@ -12,7 +12,8 @@ import type { RunFail } from './run-shared';
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
 // Results of this column still being added as rows (not those waiting for
-// fields or for room): a new run on it waits, as for a run still clearing.
+// fields, for room or for a paused run on their destination): a new run on it
+// waits, as for a run still clearing.
 export function listRowsBeingAdded(sheetId: string, userId: string, column: string): string | null {
   const row = db.prepare(`SELECT s.name FROM enrichment_list_items li
     JOIN http_runs r ON r.id = li.run_id JOIN sheets s ON s.id = li.dest_sheet_id

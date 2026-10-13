@@ -24,6 +24,7 @@ import { ruleSeed, storedRule } from './run-rule';
 import { isConditionNotMet } from '../lib/run-markers';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { httpTemplateError } from '../lib/http-template-validate';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
@@ -102,6 +103,10 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   if (isEnrichmentConfig(config)) {
     return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
   }
+  // The stored request is checked again: a column it read may be gone since
+  // (no saved key of its name stands in: lib/template-token-match.ts), or a key.
+  const templateError = httpTemplateError(config.requestConfig, getSheetColumns(p.sheetId, userId, false), userId);
+  if (templateError) return { fail: 'bad_request', message: templateError };
   // The column's "Only run if" rule applies to its reruns too.
   const rule = storedRule(p.sheetId, userId, config.runIf);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error };

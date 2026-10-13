@@ -6,11 +6,13 @@
 // auto-run pauses with the reason (cleared on its own for the stops that can
 // clear: midnight UTC, a key fix, treg reachable again), and its ⏳ cells clear.
 import { db } from '../lib/db';
+import { redactSecrets } from '../lib/redact';
 import { jsonPath } from '../lib/sql-rows';
 import { PLACEHOLDER } from '../lib/placeholder-cells';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
 import { parseTargetRows } from '../lib/run-targets';
 import { loadEntry, pauseEntry } from './autorun-entry';
+import { UNCAPPED_BILLED_NOTE } from '../lib/enrich-estimate';
 import { getDailyLimitMicro } from './treg-key';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -21,17 +23,19 @@ const bumpDataVersion = (sheetId: string, userId: string) => db.prepare(
 ).run(sheetId, userId);
 
 // The words the column's auto-run shows for a run-level stop. Today's caps
-// leave out when it goes on: the grid says so in the reader's own time.
+// leave out when it goes on: the grid says so in the reader's own time. A run
+// with no per-row cap keeps its note on what stopped it (as autorun-capacity.ts).
 function entryReason(
   run: HTTPRunRow, entryId: string, reason: string, message: string,
 ): { reason: string; message: string } {
+  const billed = message.includes(UNCAPPED_BILLED_NOTE) ? ` ${UNCAPPED_BILLED_NOTE}` : '';
   if (reason === 'spend_limit') {
     const cap = loadEntry(entryId)?.daily_cap_micro ?? 0;
-    return { reason: 'column_cap', message: `It reached today's ${money(cap / 1e6)} cap for this column.` };
+    return { reason: 'column_cap', message: `It reached today's ${money(cap / 1e6)} cap for this column.${billed}` };
   }
   if (reason === 'daily_limit') {
     const limit = getDailyLimitMicro(run.user_id) ?? 0;
-    return { reason, message: `Today's ${money(limit / 1e6)} enrichment limit is reached.` };
+    return { reason, message: `Today's ${money(limit / 1e6)} enrichment limit is reached.${billed}` };
   }
   return { reason, message };
 }
@@ -48,10 +52,12 @@ export function requeueUnfinished(
 }
 
 export async function stopAutorunRun(
-  run: HTTPRunRow, generation: number, reason: string, message: string, targets: number[] | null,
+  run: HTTPRunRow, generation: number, reason: string, raw: string, targets: number[] | null,
 ): Promise<void> {
   const entryId = run.autorun_id;
   if (!entryId) return;
+  // treg's own detail text can ride along: redacted before the run keeps it (as failHTTPRun).
+  const message = redactSecrets(raw);
   const stop = entryReason(run, entryId, reason, message);
   const stopped = db.transaction(() => {
     const r = db.prepare(`UPDATE http_runs SET status = 'cancelled', placeholder_work = 'clearing', pause_reason = ?,

@@ -16,7 +16,7 @@ import { utcDay } from '../lib/clock';
 import { PLACEHOLDER } from '../lib/placeholder-cells';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
 import { candidateVerdict, type CandidatePlan } from '../lib/autorun-rules';
-import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { isEnrichmentConfig, listOf } from '../lib/enrich-run-config';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
@@ -31,6 +31,7 @@ import {
 } from './autorun-entry';
 import { requeueUnfinished } from './autorun-stop';
 import { autorunListDest } from './autorun-list';
+import { destMoved } from './enrich-list-dest';
 import type { Picked } from './autorun-pick';
 import { enqueueHTTPRerun } from '../queue';
 
@@ -120,6 +121,9 @@ export async function startAutorunRun(
       if (dest && !db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ?').get(dest.destSheetId, e.user_id)) {
         return;
       }
+      // Busy (a column change rewrites the runs into it by page) or changed since the prep: next tick.
+      const fills = dest ? listOf(prep.config) : null;
+      if (dest && fills && destMoved(e.user_id, dest.destSheetId, '', fills, dest.newColumns)) return;
       if (destHave.length + destAdd.length > MAX_COLUMNS_PER_SHEET) { out = { full: true }; return; }
       const queued = new Map(picked.rows.map(r => [r.id, r.fromPending]));
       const found = db.prepare(`SELECT id, row_index, data FROM rows WHERE id IN (SELECT value FROM json_each(?))

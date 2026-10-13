@@ -4,7 +4,10 @@
 // own column, never one that reads none of them. HTTP API columns only, so no
 // treg catalog is asked. Then list auto-runs adding rows to each other's
 // sheets: a loop is refused on turn-on and on a run started by hand, and
-// paused on every tick (it goes on once the loop is broken).
+// paused on every tick (it goes on once the loop is broken). Then what an HTTP
+// request reads that isn't there: turning auto-run on and the tick refuse it
+// alike, and a stopped run's words are redacted.
+// Over 200 lines: one script over one throwaway DB; its three parts share the account and the sheets' fixtures.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -56,6 +59,7 @@ async function main() {
   const none = await estimateAutorunRows(uid, sheetId, 40, { afterWriting: ['Company'] })
   check('a run writing nothing they read sets nothing off', none?.length === 0)
   await listLoops()
+  await missingReads()
 
   if (failures) { console.log(`\n${failures} failed`); process.exit(1) }
   console.log('\nall passed')
@@ -117,6 +121,87 @@ async function listLoops() {
   db.prepare('UPDATE autorun_columns SET enabled = 0 WHERE id = ?').run(company)
   await loop.autorunTick(people)
   check('turning one off lets the other go on by itself', pauseOf(people).r === null)
+}
+
+// An HTTP column whose request reads {{Email}}, after Email is deleted.
+async function missingReads() {
+  const rules = await import('../../server/src/lib/autorun-rules')
+  const settings = await import('../../server/src/services/autorun-settings')
+  const loop = await import('../../server/src/services/autorun-loop')
+  const cols = await import('../../server/src/lib/autorun-columns')
+  const stop = await import('../../server/src/services/autorun-stop')
+  const req = (url: string, body = '{}') =>
+    ({ requestConfig: { method: 'POST', url, headers: {}, body }, responseMapping: [] }) as never
+  const miss = (url: string, columns: string[], before: string[], keys: string[]) =>
+    rules.missingRequestRead(req(url), columns, before, new Set(keys))
+  check('a column it watched before stays gone, even when a saved key has its name',
+    miss('https://x.test/{{Email}}', ['Name'], ['Email'], ['Email']) === 'Email')
+  check('a {{name}} matching no column or saved key is missing', miss('https://x.test/{{Email}}', ['Name'], [], [])
+    === 'Email' && miss('https://x.test/?k={{my_key}}', ['Name'], [], []) === 'my_key')
+  check('a saved key it may use is fine, as is a column in any case or a /path',
+    miss('https://x.test/v1/users?k={{my_key}}&e={{email}}', ['Email'], [], ['my_key']) === null)
+
+  const sheet = uuid()
+  db.prepare('INSERT INTO sheets (id, table_id, user_id, name, column_order) VALUES (?,?,?,?,?)')
+    .run(sheet, tableId, uid, 'Leads', JSON.stringify(['Email', 'Name', 'Push', 'Ping']))
+  const runOf = (column: string, config: unknown, allow = 1) => db.prepare(`INSERT INTO http_runs (id, sheet_id,
+    user_id, config, status, master_column_name, allow_secrets) VALUES (?,?,?,?, 'completed', ?, ?)`)
+    .run(uuid(), sheet, uid, JSON.stringify(config), column, allow)
+  runOf('Push', req('https://x.test/leads', '{"email":"{{Email}}","name":"{{Name}}"}'))
+  const save = (column: string, enabled = true) => settings.saveAutorunSettings(uid, sheet,
+    { column, enabled, where: null, dailyCapUsd: null, dailyRowCap: null }, { hasSecretsScope: true })
+  const entry = () => db.prepare(`SELECT id, paused_reason AS r, input_columns AS i FROM autorun_columns
+    WHERE sheet_id = ? AND status_column = 'Push'`).get(sheet) as { id: string; r: string | null; i: string }
+  check('turning it on works while its inputs are there', 'ok' in await save('Push'))
+  db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(JSON.stringify(['Name', 'Push', 'Ping']), sheet)
+  cols.deleteAutorunColumnRefs(sheet, uid, 'Email')
+  db.prepare(`INSERT INTO api_keys (id, user_id, name, key_type, key_value_encrypted)
+    VALUES (?,?, 'Email', 'custom', 'x')`).run(uuid(), uid)
+  await save('Push', false)
+  const again = await save('Push')
+  check('off and on again after an input was deleted is refused, a saved key of its name or not',
+    'fail' in again && again.message === "This column reads Email, which isn't in this sheet anymore. "
+      + 'Edit the column first.' && JSON.parse(entry().i).includes('Email'))
+  runOf('Ping', req('https://x.test/{{Phone}}'))
+  const first = await save('Ping')
+  check('a first turn-on whose request reads a name that is nothing here is refused',
+    'fail' in first && first.message.startsWith('This column reads Phone,'))
+
+  // An entry an older build saved without the deleted column: the tick finds it by its {{Email}}.
+  db.prepare("DELETE FROM api_keys WHERE user_id = ? AND name = 'Email'").run(uid)
+  db.prepare(`UPDATE autorun_columns SET enabled = 1, input_columns = '["Name"]', paused_reason = NULL
+    WHERE id = ?`).run(entry().id)
+  await loop.autorunTick(entry().id)
+  check('the tick pauses it as missing_input too', entry().r === 'missing_input')
+  db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?')
+    .run(JSON.stringify(['Email', 'Name', 'Push', 'Ping']), sheet)
+  await loop.autorunTick(entry().id)
+  check('... and goes on once Email is back', entry().r === null)
+
+  // A stopped auto-run run: treg's detail text can carry a key.
+  const runId = uuid()
+  db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, status, master_column_name, autorun_id, worker_generation)
+    VALUES (?,?,?, 'running', 'Push', ?, 1)`).run(runId, sheet, uid, entry().id)
+  const run = db.prepare('SELECT * FROM http_runs WHERE id = ?').get(runId) as never
+  await stop.stopAutorunRun(run, 1, 'unreachable', 'treg said: Bearer abcdefghijklmnop1234', null)
+  const saved = db.prepare(`SELECT r.error_message AS e, a.paused_message AS p FROM http_runs r
+    JOIN autorun_columns a ON a.id = r.autorun_id WHERE r.id = ?`).get(runId) as { e: string; p: string }
+  check('a stopped run keeps its words redacted, in the run and the pause',
+    saved.e === 'treg said: [REDACTED]' && saved.p === 'treg said: [REDACTED]')
+  // A run with no per-row cap keeps its note on what stopped it.
+  const { UNCAPPED_BILLED_NOTE } = await import('../../server/src/lib/enrich-estimate')
+  const { pauseEntry } = await import('../../server/src/services/autorun-entry')
+  const uncapped = uuid()
+  db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, status, master_column_name, autorun_id, worker_generation)
+    VALUES (?,?,?, 'running', 'Push', ?, 1)`).run(uncapped, sheet, uid, entry().id)
+  await stop.stopAutorunRun(db.prepare('SELECT * FROM http_runs WHERE id = ?').get(uncapped) as never, 1,
+    'daily_limit', `Today's limit is reached ($1.00 spent today). ${UNCAPPED_BILLED_NOTE}`, null)
+  const note = () => db.prepare('SELECT paused_message FROM autorun_columns WHERE id = ?').pluck().get(entry().id)
+  check("the daily limit's pause keeps the no-cap note",
+    /^Today's \$[\d.]+ enrichment limit is reached\. /.test(String(note()))
+    && String(note()).endsWith(UNCAPPED_BILLED_NOTE))
+  pauseEntry(entry().id, 'dest_full', 'Leads is full: x-api-key: abc123secret')
+  check('every pause keeps its words redacted', note() === 'Leads is full: x-api-key: [REDACTED]')
 }
 
 main().catch(err => { console.error(err); process.exit(1) })

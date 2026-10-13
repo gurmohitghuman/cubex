@@ -6,9 +6,12 @@
 // checked just before against a sort, an import or a column change on either
 // sheet (lib/sheet-busy.ts); the loop never holds the sheets itself, so a run
 // start or a pick of fields there is never refused as busy. Per destination
-// they go oldest first: one that has to wait (for room, for a run on that
-// sheet, for its source sheet to be free) holds the ones after it, so a
-// rerun's newer rows never land before older ones. One that keeps failing is
+// they go oldest first: one that has to wait (for room, for its source sheet
+// to be free) holds the ones after it, so a rerun's newer rows never land
+// before older ones. One that waits for a run on that sheet steps aside (only
+// a newer one of its own source row waits behind it): tried again each round,
+// or, behind a paused run, set aside until that run is resumed or ends
+// (services/enrich-list-dest-run.ts). One that keeps failing is
 // marked failed after a few tries (its results kept) and its row says why.
 // Started at boot (lib/server-lifecycle.ts), so rows still pending at a restart are added.
 // Deleting a source sheet drops its results not added yet (the journal goes
@@ -21,6 +24,7 @@ import { failedCell } from '../lib/enrich-cells';
 import { redactError, redactSecrets } from '../lib/redact';
 import { addListItems, type AddOutcome, type DestCount } from './enrich-list-add';
 import { waitForRoom, writeSourceCell } from './enrich-list-source';
+import { releaseDestRunWaits } from './enrich-list-dest-run';
 
 interface Pending { id: string; source_sheet_id: string }
 
@@ -78,6 +82,7 @@ export async function drainListItems(): Promise<void> {
   draining = true;
   try {
     releasePicked();
+    releaseDestRunWaits();
     const dests = db.prepare(`SELECT DISTINCT dest_sheet_id FROM enrichment_list_items
       WHERE status = 'pending' AND (wait_reason IS NULL OR wait_reason = 'room')`).pluck().all() as string[];
     for (const dest of dests) {
@@ -92,7 +97,7 @@ export async function drainListItems(): Promise<void> {
         const out = tryAdd(item.id, count);   // synchronous: nothing runs between the check and the add
         // The ones behind a full sheet wait for room as well.
         if ('wait' in out && out.wait === 'room') for (const behind of items.slice(i + 1)) waitForRoom(behind.id);
-        if ('error' in out || ('wait' in out && out.wait !== 'fields')) break;
+        if ('error' in out || ('wait' in out && out.wait === 'room')) break;
         await yieldToRequests();
       }
     }
