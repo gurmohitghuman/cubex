@@ -30,17 +30,16 @@
 
 <p align="center"><strong>Works with your agent over MCP</strong></p>
 <p align="center">
-  <a href="docs/mcp.md" title="Claude Code"><img alt="Claude Code" src=".github/logos/claude-code.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
-  <a href="docs/mcp.md" title="Claude Desktop"><img alt="Claude Desktop" src=".github/logos/claude.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
-  <a href="docs/mcp.md" title="Cursor"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/cursor-white.svg"><img alt="Cursor" src=".github/logos/cursor.svg" width="36"></picture></a>&nbsp;&nbsp;&nbsp;
-  <a href="docs/mcp.md" title="Codex"><img alt="Codex" src=".github/logos/codex.svg" width="36"></a>&nbsp;&nbsp;&nbsp;
-  <a href="docs/mcp.md" title="Any MCP client"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/mcp-white.svg"><img alt="Any MCP client" src=".github/logos/mcp.svg" width="36"></picture></a>
+  <a href="docs/mcp.md" title="Claude Code and Claude Desktop"><img alt="Claude Code and Claude Desktop" src=".github/logos/claude.svg" height="32" align="middle"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Cursor"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/cursor-for-dark.svg"><img alt="Cursor" src=".github/logos/cursor-for-light.svg" height="32" align="middle"></picture></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Codex by OpenAI"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/openai-blossom-white.svg"><img alt="Codex by OpenAI" src=".github/logos/openai-blossom-black.svg" height="64" align="middle"></picture></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="docs/mcp.md" title="Model Context Protocol: any MCP client"><img alt="Model Context Protocol: any MCP client" src=".github/logos/mcp.svg" height="32" align="middle"></a>
 </p>
 
 <p align="center"><strong>Fills columns with</strong></p>
 <p align="center">
-  <a href="https://openrouter.ai" title="OpenRouter: 300+ AI models"><img alt="OpenRouter: 300+ AI models" src=".github/logos/openrouter.png" width="36"></a>&nbsp;&nbsp;&nbsp;
-  <a href="docs/enrichments.md" title="treg.to: enrichments"><img alt="treg.to: enrichments" src="client/public/treg.svg" width="36"></a>
+  <a href="https://openrouter.ai" title="OpenRouter: 300+ AI models"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/logos/openrouter-volt.svg"><img alt="OpenRouter: 300+ AI models" src=".github/logos/openrouter-grape.svg" height="32"></picture></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="docs/enrichments.md" title="treg.to: enrichments"><img alt="treg.to: enrichments" src="client/public/treg.svg" height="32"></a>
 </p>
 
 ![Claude Code connected to Cubex over MCP: asked to score 12 companies for fit, it adds Fit and Why columns, runs an AI column on every row while the sheet fills in, and reports the top 3](docs/media/cubex-agent.gif)
@@ -194,6 +193,8 @@ Cubex is open source under the [GNU Affero General Public License v3.0](LICENSE)
 - You can use Cubex for free, host it yourself, use it in your business and run it for your clients.
 - You can change it. If you let other people use a changed version, including over the web, you have to give them the source code of your version under the same license.
 - The license covers the code, not the Cubex name or logo. If you share a changed version, give it its own name so people don't mistake it for Cubex.
+
+Other names and logos in this README belong to their owners: Claude and Claude Code to Anthropic, Cursor to Anysphere, Codex and the OpenAI logo to OpenAI, and OpenRouter to OpenRouter, Inc. The same goes for the Model Context Protocol and treg.to logos. They're shown only to say which tools Cubex works with. Cubex isn't affiliated with or endorsed by any of them.
 
 ## About this project
 
