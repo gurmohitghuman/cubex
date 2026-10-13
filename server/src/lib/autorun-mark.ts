@@ -15,6 +15,7 @@ import { jsonPath } from './sql-rows';
 import { eachRowIdSlice } from './row-order';
 import { yieldToRequests } from './slices';
 import { BLANK_CHARS } from './enrich-seed';
+import { CONDITION_NOT_MET } from './run-markers';
 
 export type RowRef = { ids: string[] } | { indexes: number[] } | { rowids: number[] };
 
@@ -25,10 +26,12 @@ const parseList = (raw: string): string[] => {
   catch { return []; }
 };
 
-// Rows that have not run yet in `statusColumn`: an empty cell, or ❌ (a failed
-// row gets another try once an input is written).
-const NOT_RUN = `(TRIM(COALESCE(json_extract(data, ?), ''), ?) = ''
+// Rows that have not run yet in `statusColumn`: an empty cell, "⏭️ Condition
+// not met" (an "Only run if" kept it out: it runs once it passes), or ❌ (a
+// failed row gets another try once an input is written). Params: notRunParams.
+const NOT_RUN = `(TRIM(COALESCE(json_extract(data, ?), ''), ?) IN ('', ?)
   OR LTRIM(COALESCE(json_extract(data, ?), ''), ?) LIKE '❌%')`;
+const notRunParams = (path: string) => [path, BLANK_CHARS, CONDITION_NOT_MET, path, BLANK_CHARS];
 
 function selector(rows: RowRef): { where: string; params: (sheetId: string, userId: string) => unknown[] } {
   if ('ids' in rows) {
@@ -61,7 +64,7 @@ function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef): void 
   const path = jsonPath(w.status_column);
   db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
     SELECT ?, user_id, id FROM rows WHERE ${sel.where} AND ${NOT_RUN}`)
-    .run(w.id, ...sel.params(sheetId, userId), path, BLANK_CHARS, path, BLANK_CHARS);
+    .run(w.id, ...sel.params(sheetId, userId), ...notRunParams(path));
 }
 
 // Call inside the transaction that wrote `columns` in each of these rows. For
@@ -110,13 +113,14 @@ const entriesOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, wa
   status_column FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND enabled = 1`)
   .all(sheetId, userId) as FencedEntry[];
 
-// A row above the fence counts as new only while its status cell is empty (a
-// row someone ran by hand, ❌ included, is not new), so only those are kept.
+// A row above the fence counts as new only while its status cell is empty or
+// "⏭️ Condition not met", as the scan reads it (a row someone ran by hand, ❌
+// included, is not new), so only those are kept.
 function keepByRowid(e: FencedEntry, sheetId: string, userId: string, idsJson: string): void {
   db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
     SELECT ?, user_id, id FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
-      AND +user_id = ? AND TRIM(COALESCE(json_extract(data, ?), ''), ?) = ''`)
-    .run(e.id, idsJson, sheetId, userId, jsonPath(e.status_column), BLANK_CHARS);
+      AND +user_id = ? AND TRIM(COALESCE(json_extract(data, ?), ''), ?) IN ('', ?)`)
+    .run(e.id, idsJson, sheetId, userId, jsonPath(e.status_column), BLANK_CHARS, CONDITION_NOT_MET);
 }
 
 // Drops queued rows in slices, so a big queue never holds the write lock in

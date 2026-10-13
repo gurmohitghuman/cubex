@@ -46,6 +46,9 @@ async function main() {
   check('"Only run if" failing waits', v({ 'Email status': 'invalid' }) === 'waiting')
   check("another run's markers are not inputs", v({ Email: '⏳ Processing...' }) === 'waiting'
     && v({ Email: '❌ Error: timeout' }) === 'waiting' && v({ Email: '⏭️ No data' }) === 'waiting')
+  check('"⏭️ Condition not met" has not run: taken once it passes, a real ⏭️ result never',
+    v({ Push: ' ⏭️ Condition not met ' }) === 'take' && v({ Push: '⏭️ Not found' }) === 'done'
+    && v({ Push: '⏭️ Condition not met', 'Email status': 'invalid' }) === 'waiting')
 
   const enrich = {
     ...http, kind: 'enrichment' as const, statusColumn: 'Work email', where: [], requestCols: ['Name', 'Website'],
@@ -111,22 +114,37 @@ async function main() {
     [{ column: 'Notes', rowId: ids[3] }, { column: 'Name', rowId: ids[4] }]))()
   check('a batch of edits queues a row only for the columns written in it',
     pending(on).includes(ids[4]) && !pending(on).includes(ids[3]))
+  // An "Only run if" kept row 3 out of a run; row 4 ran and found nothing.
+  const setStatus = (id: string, st: string) =>
+    db.prepare(`UPDATE rows SET data = json_set(data, '$."Work email"', ?) WHERE id = ?`).run(st, id)
+  setStatus(ids[3], '⏭️ Condition not met'); setStatus(ids[4], '⏭️ Not found')
+  db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(on)
+  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [3, 4] }))()
+  const kept = pending(on)
+  db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(on)
+  db.transaction(() => mark.markAutorunEdits(sheetId, uid,
+    [{ column: 'Name', rowId: ids[3] }, { column: 'Name', rowIndex: 4 }]))()
+  check('"⏭️ Condition not met" is queued again when an input is written, a real ⏭️ result is not',
+    kept.join() === ids[3] && pending(on).join() === ids[3])
 
   // --- The watermark -------------------------------------------------------------
   const wOf = () => db.prepare('SELECT watermark_row_index FROM autorun_columns WHERE id = ?').pluck().get(on) as number
   db.prepare('DELETE FROM rows WHERE sheet_id = ? AND row_index IN (3, 4)').run(sheetId)
   db.transaction(() => mark.autorunRowsRemoved(sheetId, uid))()
   check('a tail delete lowers the fence, so an append reusing row 3 is new', wOf() === 2)
-  const appended = uuid()
-  db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?,?,?,?,?)')
-    .run(appended, sheetId, uid, 3, '{}')
+  const appended = uuid(), keptOut = uuid(), notFound = uuid()
+  const addRow = (id: string, i: number, data: object) => db.prepare(
+    'INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?,?,?,?,?)',
+  ).run(id, sheetId, uid, i, JSON.stringify(data))
+  addRow(appended, 3, {}); addRow(keptOut, 4, { 'Work email': '⏭️ Condition not met' })
+  addRow(notFound, 5, { 'Work email': '⏭️ Not found' })
   db.prepare('UPDATE autorun_columns SET watermark_row_index = 0 WHERE id = ?').run(on)
   db.prepare('DELETE FROM autorun_pending').run()
   const rows = db.prepare('SELECT rowid, row_index FROM rows WHERE sheet_id = ? ORDER BY row_index')
     .raw().all(sheetId) as Array<[number, number]>
   await mark.autorunKeepUnswept(sheetId, uid, rows.map(r => r[0]), rows.map(r => r[1]))
-  check('a sort keeps the rows not swept yet (above the fence) by id, only those not run (✅ and ❌ stay out)',
-    pending(on).length === 1 && pending(on)[0] === appended)
+  check('a sort keeps the rows not swept yet (above the fence) by id, only those not run (✅, ❌, ⏭️ stay out)',
+    pending(on).sort().join() === [appended, keptOut].sort().join())
   mark.autorunAfterReorder(sheetId, uid, rows.length)
   check('after the sort the fence is the sorted count', wOf() === rows.length - 1)
   mark.autorunAfterReplace(sheetId, uid, null)

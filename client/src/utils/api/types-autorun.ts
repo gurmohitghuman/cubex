@@ -7,11 +7,12 @@ export interface AutorunCondition { column: string; op: string; value: string }
 // (column_cap, row_cap, daily_limit) lift at midnight UTC or on a raise; treg's
 // stops (and 'queue', a run that couldn't be queued) are retried a few minutes
 // on; missing_input lifts when the column is back. 'priced': treg prices a tool
-// the team's own key billed, and the column needs a daily cap.
+// the team's own key billed, and the column needs a daily cap. 'loop': rows it
+// adds would set off auto-run that adds rows back (lifts once that one is off).
 export type AutorunPause =
   | 'user' | 'column_cap' | 'row_cap' | 'daily_limit' | 'no_key' | 'auth' | 'balance' | 'treg_cap' | 'team_rule'
   | 'provider_busy' | 'unreachable' | 'unconfirmed' | 'retired' | 'missing_input' | 'setup' | 'failed' | 'queue'
-  | 'dest_full' | 'priced'
+  | 'dest_full' | 'priced' | 'loop'
 
 export interface AutorunColumn {
   column: string

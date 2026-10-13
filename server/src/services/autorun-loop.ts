@@ -6,7 +6,7 @@
 // clearing, and while it is paused. Pauses that can clear on their own are
 // cleared here: caps when today allows a row again (midnight UTC or a raise),
 // treg's stops after AUTORUN_RETRY_MS, a missing column once it is back, a
-// missing key once one is saved.
+// missing key once one is saved, a loop of list auto-runs once it is broken.
 import { db } from '../lib/db';
 import { AUTORUN_MAX_ROWS, AUTORUN_RETRY_MS, AUTORUN_SWEEP_MS } from '../lib/constants';
 import { sheetBusyWith } from '../lib/sheet-busy';
@@ -23,7 +23,7 @@ import {
 import { autorunCapacity } from './autorun-capacity';
 import { pickRows } from './autorun-pick';
 import { prepareAutorunRun, startAutorunRun } from './autorun-start';
-import { destHasRoom } from './autorun-list';
+import { autorunLoopProblem, destHasRoom } from './autorun-list';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -66,6 +66,7 @@ function pauseLifted(e: AutorunEntry): boolean {
   if (RETRY_PAUSES.has(reason)) lifted = pausedMs(e.paused_at) >= AUTORUN_RETRY_MS;
   else if (reason === 'missing_input' || reason === 'no_key') lifted = !('reason' in setupOf(e));
   else if (reason === 'dest_full') lifted = destHasRoom(e);
+  else if (reason === 'loop') lifted = autorunLoopProblem(e) === null;
   else if (CAPACITY_PAUSES.has(reason)) {
     const s = setupOf(e);
     lifted = !('reason' in s) && 'rows' in autorunCapacity(e, s.config);
@@ -110,6 +111,9 @@ export async function autorunTick(id: string): Promise<void> {
   if (sheetBusyWith(e.sheet_id) || sheetYielding(e.sheet_id)) return;
   if (generationMoved(e) || !hasWork(e)) return;
   if (columnRunActive(e.sheet_id, e.user_id, e.status_column)) return;
+  // Every time: a run started by hand can point a list column somewhere that adds rows back.
+  const loop = autorunLoopProblem(e);
+  if (loop) { pauseEntry(e.id, 'loop', loop); return; }
   const setup = setupOf(e);
   if ('reason' in setup) { pauseEntry(e.id, setup.reason, setup.message); return; }
   const room = autorunCapacity(e, setup.config);
