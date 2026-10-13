@@ -6,6 +6,7 @@
 // (services/run-control.ts).
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/sql-helpers';
+import { redactSecrets } from '../lib/redact';
 import { listCell, LIST_MARK } from '../lib/enrich-list';
 import { parseTargetRows } from '../lib/run-targets';
 import { markAutorunInputs } from '../lib/autorun-mark';
@@ -159,7 +160,8 @@ export function waitForRoom(journalId: string): void {
 export function stopForRoom(runId: string, name: string): void {
   const run = db.prepare('SELECT * FROM http_runs WHERE id = ?').get(runId) as HTTPRunRow | undefined;
   if (!run || !['pending', 'running'].includes(run.status)) return;
-  const message = destFullMessage(name);
+  // A sheet name is the user's own text: redacted like every run's error_message.
+  const message = redactSecrets(destFullMessage(name));
   if (!run.autorun_id) {
     db.prepare(`UPDATE http_runs SET status = 'paused', pause_reason = 'dest_full', error_message = ?,
         updated_at = datetime('now') WHERE id = ? AND status IN ('pending', 'running') AND placeholder_work IS NULL`)

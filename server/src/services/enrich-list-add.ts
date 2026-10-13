@@ -17,6 +17,7 @@ import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { dedupeKey, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { stopForRoom, writeSourceCell } from './enrich-list-source';
+import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-dest-run';
 
 interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
@@ -37,22 +38,28 @@ const bump = (sheetId: string, userId: string) => db.prepare(
   "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
 ).run(sheetId, userId);
 
-// A run on the destination itself is still writing its rows: removing rows
-// under it would leave its results nowhere (as a bulk delete would).
-const destRunActive = (destId: string, userId: string): boolean => !!db.prepare(`
-  SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending', 'running', 'paused')
-  UNION ALL SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('pending', 'running', 'paused')
-  LIMIT 1`).get(destId, userId, destId, userId);
-
 // The rows this source row added to the destination before through this
-// column (its runs: a renamed column keeps them), still there or not.
+// column (its runs: a renamed column keeps them), still there or not. From the
+// source row's own provenance rows, each run looked up by id: never every run
+// of the column (auto-run leaves one per batch).
 function earlierRows(j: Journal, column: string): Array<{ dest_row_id: string; row_index: number | null }> {
   return db.prepare(`SELECT l.dest_row_id, r.row_index FROM enrichment_list_rows l
     LEFT JOIN rows r ON r.id = l.dest_row_id
-    WHERE l.source_row_id = ? AND l.dest_sheet_id = ? AND l.user_id = ? AND l.run_id IN (SELECT id FROM http_runs
-      WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?)`)
+    WHERE l.source_row_id = ? AND l.dest_sheet_id = ? AND l.user_id = ? AND EXISTS (SELECT 1 FROM http_runs hr
+      WHERE hr.id = l.run_id AND hr.sheet_id = ? AND hr.user_id = ? AND hr.master_column_name = ?)`)
     .all(j.source_row_id, j.dest_sheet_id, j.user_id, j.source_sheet_id, j.user_id, column) as
     Array<{ dest_row_id: string; row_index: number | null }>;
+}
+
+// Waiting for a paused run on the destination (services/enrich-list-dest-run.ts):
+// recorded, and the source row names the run, the first time.
+function waitForRun(j: Journal, column: string | null, name: string, run: DestRun | null): AddOutcome {
+  if (j.wait_reason !== 'dest_run') {
+    db.prepare("UPDATE enrichment_list_items SET wait_reason = 'dest_run', updated_at = datetime('now') WHERE id = ?")
+      .run(j.id);
+    if (run?.paused) writeSourceCell(j, column, listCell.waitingPausedRun(j.item_count, name, run.column));
+  }
+  return { wait: 'dest_run' };
 }
 
 // Cells of each row to add, skipping results already added (when asked).
@@ -104,9 +111,15 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
       out = { wait: 'fields' };
       return;
     }
+    if (column && olderWaitsForRun(j, column)) {
+      out = waitForRun(j, column, name, destRunBlocker(j.dest_sheet_id, j.user_id));
+      return;
+    }
     const earlier = column ? earlierRows(j, column) : [];
     const live = earlier.filter(e => e.row_index !== null);
-    if (live.length && destRunActive(j.dest_sheet_id, j.user_id)) { out = { wait: 'dest_run' }; return; }
+    // A pending or running one ends by itself: still being added, tried again next round.
+    const blocker = live.length ? destRunBlocker(j.dest_sheet_id, j.user_id) : null;
+    if (blocker) { out = blocker.paused ? waitForRun(j, column, name, blocker) : { wait: 'dest_run' }; return; }
     const payload = JSON.parse(j.items_json) as Payload;
     const { rows, skipped } = rowsToAdd(list, payload, j, new Set(earlier.map(e => e.dest_row_id)));
 

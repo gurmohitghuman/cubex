@@ -32,7 +32,8 @@ const FREE_HINT = {
   http: '+ Column adds a column filled from the responses you already have. Free: no new requests.',
 }
 // A list job's answer: its results become rows elsewhere (once fields are
-// picked, or once that sheet has room), as the row's status cell says.
+// picked, once that sheet has room, or once a paused run there goes on or
+// stops), as the row's status cell says.
 function listHint(dest: string | null, statusCell: string): string {
   const cell = statusCell.trim()
   if (!dest) return 'These results were for a sheet that was deleted since.'
@@ -40,6 +41,9 @@ function listHint(dest: string | null, statusCell: string): string {
     return `These results become rows in ${dest} once you pick the fields to keep.`
   }
   if (cell.includes('waiting for room')) return `These results become rows in ${dest} once it has room.`
+  if (cell.includes('is paused')) {
+    return `These results become rows in ${dest} once the paused run there is resumed and done, or cancelled.`
+  }
   if (cell.startsWith('➕')) return `These results are being added as rows in ${dest}.`
   if (cell.startsWith('✅')) {
     return /rows? added/.test(cell) ? `These results became rows in ${dest}.`

@@ -21,6 +21,7 @@ const HTTP_MAX_RESPONSE_BYTES = parseInt(
 // Typed outbound errors live in the dependency-free lib/http-errors.ts. Imported
 // for use below and re-exported so existing importers see them here too.
 import { OutboundBlockedError } from './http-errors';
+import { goneColumnsOf } from './template-token-match';
 export { OutboundBlockedError };
 
 // JSON-only response validation (and the NonJsonResponseError it throws) lives in
@@ -65,7 +66,8 @@ export async function makeHTTPRequest(
   // allowSavedKeys is the start-time-frozen fast pre-filter; runId makes each
   // key lookup re-check allow_secrets atomically (closing the resume-freeze
   // TOCTOU — see replaceTemplateVariables / lookupApiKey).
-  const sub = (t: string) => replaceTemplateVariables(t, rowData, userId, 'live', allowSavedKeys, runId);
+  const gone = goneColumnsOf(config);
+  const sub = (t: string) => replaceTemplateVariables(t, rowData, userId, 'live', allowSavedKeys, runId, gone);
   const processedUrl = sub(config.url);
 
   const processedHeaders: Record<string, string> = {};

@@ -112,10 +112,13 @@ export function listProgress(
   };
   const destName = row.dest_sheet_id ? db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
     .get(row.dest_sheet_id, userId) as string | undefined : undefined;
+  const adding = of(null), run = of('dest_run');
   return {
     destSheetId: row.dest_sheet_id, destName: destName ?? null, maxItems: l.maxItems,
     fieldsPicked: !!l.fields?.length,
-    added: row.list_rows_added, adding: of(null), waitingFields: of('fields'), waitingRoom: of('room'),
+    // Waiting for a paused run on the destination counts as on their way (the source rows say which).
+    added: row.list_rows_added, adding: { rows: adding.rows + run.rows, results: adding.results + run.results },
+    waitingFields: of('fields'), waitingRoom: of('room'),
   };
 }
 

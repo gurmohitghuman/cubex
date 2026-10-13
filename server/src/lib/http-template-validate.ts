@@ -1,14 +1,16 @@
 import { db } from './db';
-import { normalizeColumnName } from './prompt';
 import { TEMPLATE_TOKEN_RE } from './http-request-template';
+import { goneColumnFor, goneColumnMessage, goneColumnsOf, templateTokenIs } from './template-token-match';
 
 // Checks an HTTP request template before anything is sent, so a typo fails the
 // start (or the preview) instead of every row:
 //   - a URL that starts with literal text must start with http:// or https://
 //     (one that starts with {{column}} gets its scheme from the cell);
 //   - every {{name}} in the URL, headers or body must be a column of the sheet
-//     or a saved key, resolved by the same rule as replaceTemplateVariables.
-// /name tokens aren't checked: they double as ordinary URL path segments.
+//     or a saved key, resolved by the same rule as replaceTemplateVariables;
+//   - a stored request (a rerun) must not read a column deleted since, in
+//     either form: no saved key stands in for it (lib/template-token-match.ts).
+// Otherwise /name tokens aren't checked: they double as ordinary URL path segments.
 export function httpTemplateError(
   rc: { url?: unknown; headers?: unknown; body?: unknown } | undefined,
   columns: string[],
@@ -33,15 +35,15 @@ export function httpTemplateError(
   const keyNames = new Set(
     (db.prepare('SELECT name FROM api_keys WHERE user_id = ?').all(userId) as Array<{ name: string }>).map(r => r.name),
   );
+  const gone = goneColumnsOf(rc);
   const unknown = new Set<string>();
   for (const part of parts) {
     for (const m of part.matchAll(TEMPLATE_TOKEN_RE)) {
-      if (m[1] === undefined) continue;
-      const name = m[1].trim();
-      if (!name) continue;
-      const isColumn = columns.some(c =>
-        c.toLowerCase() === name.toLowerCase() || normalizeColumnName(c) === normalizeColumnName(name));
-      if (!isColumn && !keyNames.has(name)) unknown.add(`{{${name}}}`);
+      const name = (m[1] ?? m[2]).trim();
+      if (!name || columns.some(c => templateTokenIs(name, c))) continue;
+      const deleted = goneColumnFor(name, gone);
+      if (deleted !== undefined) return goneColumnMessage(deleted);
+      if (m[1] !== undefined && !keyNames.has(name)) unknown.add(`{{${name}}}`);
     }
   }
   if (unknown.size === 0) return null;

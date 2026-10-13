@@ -3,8 +3,8 @@
 // still empty (a ❌ row counts too when an input is written: a fixed input gets
 // another try). A row whose cell says it ran (✅, ⏭️) or is running (⏳) is
 // left alone, so edits never re-run it and A<->B chains end.
-import { normalizeColumnName } from './prompt';
-import { extractTemplateTokenNames, type HTTPAPIConfig } from './http-request-template';
+import { goneColumnsOf, templateTokenIs } from './template-token-match';
+import { extractTemplateTokenNames, TEMPLATE_TOKEN_RE, type HTTPAPIConfig } from './http-request-template';
 import { inputTemplates, isEnrichmentConfig, type EnrichCondition } from './enrich-run-config';
 import { buildRequest } from './enrich-request';
 import { passesRunConditions, holdsRunMarker, trimBlank, FAILED_MARK } from './enrich-seed';
@@ -14,6 +14,20 @@ import { ruleColumns, type RuleNode } from './run-condition';
 export type AutorunKind = 'enrichment' | 'http';
 
 const COLUMN_REF = /^\{\{(.+)\}\}$/;
+
+// The parts of an HTTP request that hold template tokens.
+function requestParts(config: HTTPAPIConfig): string[] {
+  const rc = config.requestConfig;
+  const parts: unknown[] = [rc?.url, rc?.body];
+  if (rc?.headers && typeof rc.headers === 'object') {
+    for (const [k, v] of Object.entries(rc.headers)) parts.push(k, v);
+  }
+  return parts.filter((p): p is string => typeof p === 'string');
+}
+
+// The column a token names, as the run resolves it (exact, any case, or normalized).
+const columnFor = (name: string, columns: string[]): string | undefined =>
+  columns.find(c => templateTokenIs(name, c));
 
 // The sheet columns a request reads. An enrichment's inputs name their column
 // exactly ({{Website}}), kept even when the column is gone so auto-run can say
@@ -29,20 +43,35 @@ export function requestColumns(config: HTTPAPIConfig, columns: string[]): string
     }
     return [...out];
   }
-  const rc = config.requestConfig;
-  const parts: unknown[] = [rc?.url, rc?.body];
-  if (rc?.headers && typeof rc.headers === 'object') {
-    for (const [k, v] of Object.entries(rc.headers)) parts.push(k, v);
-  }
-  for (const part of parts) {
-    if (typeof part !== 'string') continue;
+  for (const part of requestParts(config)) {
     for (const name of extractTemplateTokenNames(part)) {
-      const norm = normalizeColumnName(name);
-      const col = columns.find(c => c.toLowerCase() === name.toLowerCase() || normalizeColumnName(c) === norm);
+      const col = columnFor(name, columns);
       if (col) out.add(col);
     }
   }
   return [...out];
+}
+
+// What a request reads that isn't there, or null. Turning auto-run on and its
+// tick (services/autorun-loop.ts) ask the same. `before`: the columns the
+// auto-run watched until now, and the ones its request read that were deleted
+// (lib/template-token-match.ts). One of those gone is gone, even when a saved key
+// has its name: the run never sends that key in its place, it refuses the row.
+// Then an HTTP request's {{name}} must name a column or a saved key the run may
+// use (`keys`): the run refuses every row on one that names neither.
+export function missingRequestRead(
+  config: HTTPAPIConfig, columns: string[], before: string[], keys: Set<string>,
+): string | null {
+  const was = [...before, ...goneColumnsOf(config.requestConfig)];
+  const gone = requestColumns(config, [...columns, ...was]).find(c => !columns.includes(c));
+  if (gone || isEnrichmentConfig(config)) return gone ?? null;
+  for (const part of requestParts(config)) {
+    for (const m of part.matchAll(TEMPLATE_TOKEN_RE)) {
+      const name = m[1]?.trim();
+      if (name && !columnFor(name, columns) && !keys.has(name)) return name;
+    }
+  }
+  return null;
 }
 
 // Everything a row change can matter through: the request's columns and the

@@ -9,7 +9,6 @@ import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
 import { recordPurge } from '../lib/column-purge';
 import { isWebhookRawColumn, deleteWebhookMappingsForColumn } from '../lib/webhook-columns';
-import { deleteListDestColumn } from '../lib/http-columns';
 import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-config-rewrite';
 import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
@@ -179,9 +178,9 @@ export async function deleteSheetColumn(
       deleteAiRunColumnRefs(sheetId, userId, columnName);
       // Prune the deleted column from any stored HTTP run config's
       // responseMapping so a later rerun doesn't re-create it.
-      // (The sheet's own runs: the newest page now, the rest after the switch.)
+      // (The sheet's own runs: the newest page now, the rest after the switch,
+      // then the list jobs adding rows here stop filling it.)
       recordRunRewrite(sheetId, userId, columnName, null);
-      deleteListDestColumn(sheetId, userId, columnName);
       // Drop any webhook mapping that targeted this column (the raw marker is
       // already protected above).
       deleteWebhookMappingsForColumn(sheetId, userId, columnName);

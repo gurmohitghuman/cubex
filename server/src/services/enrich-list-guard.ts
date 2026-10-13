@@ -1,8 +1,8 @@
 // A list job adding rows to a sheet holds that sheet like a run on it: a sort,
 // a CSV replace, row deletes and transfers there wait (409) while the run into
 // it is pending or running, or while its rows are being added. Not while they
-// wait for fields (a test nobody finished) or for room: deleting rows is how
-// a full sheet gets room.
+// wait for fields (a test nobody finished), for room (deleting rows is how a
+// full sheet gets room) or for a paused run on the sheet (that run holds it).
 import { db } from '../lib/db';
 
 export interface ListIntoBlock { runId: string; column: string | null; message: string }

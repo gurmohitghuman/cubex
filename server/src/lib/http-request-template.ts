@@ -1,5 +1,5 @@
-import { normalizeColumnName } from './prompt';
 import { lookupApiKey } from './http-api-key-lookup';
+import { goneColumnFor, goneColumnMessage, goneColumnsOf, templateTokenIs } from './template-token-match';
 
 export interface HTTPRequestConfig {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -7,6 +7,8 @@ export interface HTTPRequestConfig {
   headers?: Record<string, string>;
   body?: string;
   timeout?: number;
+  // Deleted columns this request read: never filled with a saved key (lib/template-token-match.ts).
+  goneColumns?: string[];
 }
 
 export interface ResponseMapping {
@@ -78,6 +80,7 @@ export function replaceTemplateVariables(
   mode: 'live' | 'redact-secrets' = 'live',
   allowSavedKeys = true,
   runId?: string,
+  gone: readonly string[] = [],
 ): string {
   // Defensive: AI Generate / AI Troubleshoot / saved templates / direct API
   // callers can hand us undefined or a non-string here. Coerce to '' so the
@@ -112,14 +115,16 @@ export function replaceTemplateVariables(
     // (lib/prompt.ts normalizeColumnName). Without this, columns with dots/brackets
     // — common in CSV headers like "company.domain" — would never match
     // /company_domain even though the UI suggests that form.
-    const normalizedName = normalizeColumnName(name);
-    const matchingColumn = Object.keys(rowData).find(col =>
-      col.toLowerCase() === name.toLowerCase() ||
-      normalizeColumnName(col) === normalizedName,
-    );
+    const matchingColumn = Object.keys(rowData).find(col => templateTokenIs(name, col));
 
     if (matchingColumn) {
       return rowData[matchingColumn] || '';
+    }
+    // A deleted column it read: never its saved-key namesake.
+    const goneColumn = goneColumnFor(name, gone);
+    if (goneColumn !== undefined) {
+      if (mode === 'live') throw new Error(goneColumnMessage(goneColumn));
+      return `[MISSING: ${full}]`;
     }
 
     // allowSavedKeys is the fast pre-filter (start-time frozen policy); runId
@@ -172,7 +177,9 @@ export function redactedRequestConfig(
   allowSavedKeys = true,
   runId?: string,
 ): HTTPRequestConfig {
-  const sub = (t: string) => replaceTemplateVariables(t, rowData, userId, 'redact-secrets', allowSavedKeys, runId);
+  const gone = goneColumnsOf(config);
+  const sub = (t: string) =>
+    replaceTemplateVariables(t, rowData, userId, 'redact-secrets', allowSavedKeys, runId, gone);
   const url = sub(config.url);
   const headers: Record<string, string> = {};
   if (config.headers) {

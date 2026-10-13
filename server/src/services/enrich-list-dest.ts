@@ -102,13 +102,32 @@ export function planListDest(
   return { ok: { tableId: source.table_id, sheetId, newName, name, ...cols } };
 }
 
+// Inside a start transaction, for an existing destination: why the plan no
+// longer holds, or null. A sort, an import or a column change there now (a
+// rename rewrites the runs into it a page at a time, newest first, so a run
+// inserted mid-way would keep the old name), or a column the rows fill that
+// it had then, renamed or deleted since (its rows would bring it back).
+export function destMoved(
+  userId: string, destId: string, name: string, fills: { fields: ListField[] | null; copy: ListCopy[] },
+  newColumns: string[],
+): string | null {
+  const busy = sheetBusyWith(destId);
+  if (busy) return `${name}: ${busyMessage(busy)}`;
+  const have = new Set(getSheetColumns(destId, userId, false));
+  const gone = [...fills.copy.map(c => c.to), ...(fills.fields ?? []).map(f => f.columnName)]
+    .find(c => !have.has(c) && !newColumns.includes(c));
+  return gone === undefined ? null : `The columns of ${name} changed meanwhile. Try again.`;
+}
+
 // Inside the start transaction: the new sheet (no starter rows), and the
-// columns the rows fill. raced: the name was taken, or the columns no longer
-// fit, since planListDest read them (the caller rolls back).
+// columns the rows fill. raced: the name was taken, the sheet changed, or the
+// columns no longer fit, since planListDest read them (the caller rolls back).
 export function applyListDest(
   userId: string, sourceSheetId: string, plan: DestPlan,
 ): { sheetId: string } | { raced: string; field?: 'destName' } {
   let sheetId = plan.sheetId;
+  const moved = sheetId ? destMoved(userId, sheetId, plan.name, plan, plan.newColumns) : null;
+  if (moved) return { raced: moved };
   if (!sheetId) {
     const made = createSheetTxn(plan.tableId, userId, plan.newName!, sourceSheetId, { seed: false });
     if (!made.ok) return { raced: nameTaken(plan.newName!), field: 'destName' };

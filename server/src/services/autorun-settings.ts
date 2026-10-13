@@ -13,10 +13,11 @@ import {
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { isEnrichmentConfig, type EnrichCondition } from '../lib/enrich-run-config';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
-import { requestColumns, watchedColumns } from '../lib/autorun-rules';
+import { missingRequestRead, requestColumns, watchedColumns } from '../lib/autorun-rules';
 import { autorunDropPending } from '../lib/autorun-mark';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
-import { columnOutputs, entryFor, newestRunOf, whereOf } from './autorun-entry';
+import { goneColumnMessage } from '../lib/template-token-match';
+import { columnOutputs, entryFor, inputColumnsOf, newestRunOf, usableKeyNames, whereOf } from './autorun-entry';
 import { getDailyLimitMicro } from './treg-key';
 import { autorunListProblem } from './autorun-list';
 import type { RunFail } from './run-shared';
@@ -94,9 +95,12 @@ export async function saveAutorunSettings(
   const rule = checkRunRule(sheetId, userId, ruleText);
   if ('error' in rule) return bad(rule.error);
   const runIf = rule.ok?.rule ?? null;
+  // As the tick asks (autorun-loop.ts setupOf): a column it watched before
+  // still counts, so turning it off and on can't forget a deleted input.
+  const gone = missingRequestRead(config, columns, prior ? inputColumnsOf(prior) : [],
+    usableKeyNames(userId, newest.allow_secrets));
+  if (gone) return bad(goneColumnMessage(gone));
   const reads = requestColumns(config, columns);
-  const gone = reads.find(c => !columns.includes(c));
-  if (gone) return bad(`This column reads ${gone}, which isn't in this sheet anymore. Edit the column first.`);
   const own = new Set([input.column, ...columnOutputs(sheetId, userId, input.column)]);
   const selfRead = watchedColumns(reads, where, runIf).filter(c => own.has(c));
   if (selfRead.length) {
