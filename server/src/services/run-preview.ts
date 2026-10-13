@@ -8,8 +8,6 @@ import { db } from '../lib/db';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { resolveAiModel, NO_MODEL_ERROR } from '../lib/ai-model-resolve';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
-import { fetchModels } from '../lib/openrouter';
-import { parseTokenPrice, roundUsd } from '../lib/ai-cost';
 import { getOpenRouterClient } from './openrouter';
 import { processOneRow } from '../routes/ai-preview-runner';
 import {
@@ -22,6 +20,7 @@ import { webSearchSummary } from '../lib/web-search-plan';
 import { planIfSearching } from './web-search-catalog';
 import { checkRunRule } from './run-rule';
 import { rowsByIndex, scanRule } from './run-condition-rows';
+import { previewCosts } from './run-preview-cost';
 
 export interface PreviewInput {
   sheetId: string;
@@ -36,6 +35,7 @@ export interface PreviewInput {
   useWebFetch?: boolean;
   search?: SearchOptions | null;
   runIf?: string | null;
+  concurrency: number;            // the full run's, resolved (explicit, else the sheet's default)
 }
 
 export type PreviewOutcome =
@@ -131,6 +131,7 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
       ...(web.search || web.fetch ? { sources: cited.map(c => c.url) } : {}),
       ...(r.searchQueries ? { searches: r.webSearches ?? 0, search_queries: r.searchQueries } : {}),
       cost_usd: r.costUsd ?? null,
+      ...(r.providerCostUsd !== undefined ? { provider_cost_usd: r.providerCostUsd } : {}),
     };
     if (specs) {
       const parsed = parseMultiOutput(r.value, specs);
@@ -141,34 +142,9 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
     return { row_index: r.rowIndex, output: r.value, ...extra };
   });
 
-  // MEASURED cost: what OpenRouter reports it charged (web fees included) when
-  // every row says; otherwise real token usage × model pricing.
-  const priced = results.filter(r => r.completionTokens !== undefined || r.promptTokens !== undefined || r.costUsd !== undefined);
-  let measured: number | null = null;
-  let perRow: number | null = null;
-  let webFeesIncluded = false;
-  if (priced.length > 0 && priced.every(r => r.costUsd !== undefined)) {
-    const total = priced.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
-    perRow = total / priced.length;
-    measured = roundUsd(total);
-    webFeesIncluded = true;
-  } else {
-    const modelsResult = await fetchModels(Date.now());
-    const m = (modelsResult.ok ? modelsResult.models : modelsResult.stale)?.find(x => x.id === model);
-    if (m && priced.length > 0) {
-      const p = parseTokenPrice(m.pricing.prompt);
-      const c = parseTokenPrice(m.pricing.completion);
-      const total = priced.reduce((sum, r) => sum + (r.promptTokens ?? 0) * p + (r.completionTokens ?? 0) * c, 0);
-      perRow = total / priced.length;
-      measured = roundUsd(total);
-    }
-  }
-  const notes = ['Preview only — nothing was created or saved. A full run re-processes these rows.'];
-  if ((web.search || web.fetch) && measured !== null) {
-    notes.push(webFeesIncluded
-      ? 'Cost is what OpenRouter charged, web search and fetch fees included.'
-      : 'Cost is tokens only; web search and fetch fees are not included.');
-  }
+  const costs = await previewCosts(userId, results, model, count, {
+    maxChars: input.maxChars, concurrency: input.concurrency, web: web.search || web.fetch,
+  });
 
   return {
     ok: {
@@ -178,10 +154,9 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
       ...(rule.ok ? { run_if: rule.ok.rule, rows_skipped_by_rule: skipped } : {}),
       model,
       ...(planned.ok ? { web_search: webSearchSummary(planned.ok) } : {}),
-      measured_cost_usd: measured,
-      per_row_usd: perRow === null ? null : roundUsd(perRow),
-      projected_full_run_usd: perRow === null ? null : roundUsd(perRow * count),
-      note: notes.join(' '),
+      ...costs.fields,
+      note: ['Preview only — nothing was created or saved. A full run re-processes these rows.', ...costs.notes]
+        .join(' '),
     },
   };
 }

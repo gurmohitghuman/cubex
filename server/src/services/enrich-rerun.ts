@@ -34,7 +34,8 @@ export async function rerunEnrichmentColumn(
   if ('fail' in run) return run;
   const choices = recallChoices(run.config, req.column);
   if (!req.estimateOnly) {
-    return startEnrichmentRun(userId, sheetId, rerunInput(choices, req.rows, req.spendLimitUsd, req.rowGeneration));
+    return startEnrichmentRun(userId, sheetId,
+      rerunInput(choices, req.rows, req.spendLimitUsd, req.rowGeneration, req.concurrency ?? null));
   }
 
   const { mode, rowIndexes } = req.rows;

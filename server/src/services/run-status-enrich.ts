@@ -5,13 +5,14 @@
 // row cost, who found it, and on request the stored answer whose paths
 // add_enrichment_field takes.
 import { db } from '../lib/db';
-import { isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
+import { enrichConcurrency, isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { parseStored, readStored } from '../lib/answer-store';
 import { budgetAnswer } from '../lib/answer-budget';
 import { AGENT_ANSWER_MAX_CHARS } from '../lib/constants';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { listProgress } from './enrich-run-status';
 import { dailyLimitOf } from './enrich-agent-shared';
+import { runProviders } from './enrich-providers';
 
 export interface EnrichRunRow {
   id: string; config: string | null; spent_micro: number | null; pause_reason: string | null;
@@ -35,6 +36,7 @@ export function enrichSummaryPart(r: EnrichRunRow, userId: string, full: boolean
       tool_id: e.toolId, tool_name: e.toolName, kind: e.kind, preset: e.preset,
       provider_order: e.route.prefer.map(p => e.providerNames[p] ?? p),
       max_cost_per_row_usd: e.maxCostPerRowUsd, spend_limit_usd: e.spendLimitUsd,
+      concurrency: enrichConcurrency(config),
       pause_reason: r.pause_reason, skipped_rows_missing_inputs: r.skipped_rows ?? 0, test_rows: e.rows.test,
       ...(e.list ? {
         list: {
@@ -48,7 +50,8 @@ export function enrichSummaryPart(r: EnrichRunRow, userId: string, full: boolean
         },
       } : {}),
     },
-    ...(full ? { daily_limit: dailyLimitOf(userId) } : {}),
+    // One run's status: what each provider did (a list of runs leaves it out).
+    ...(full ? { daily_limit: dailyLimitOf(userId), providers: runProviders(r.id, userId, e.providerNames) } : {}),
   };
 }
 

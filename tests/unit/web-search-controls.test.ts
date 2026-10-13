@@ -131,7 +131,19 @@ const capped = {
 const c1 = completionFromResponse(capped)
 check('answer = the message after the last tool call', extractCompletionText(c1) === 'Ada Lovelace is the CEO of Acme, headquartered in London.')
 check('Responses citations read like chat ones', JSON.stringify(citationsFromCompletion(c1).map(c => c.url)) === '["https://techcrunch.com/a"]')
-check('usage: tokens and cost', JSON.stringify(usageOf(c1)) === JSON.stringify({ promptTokens: 6945, completionTokens: 420, costUsd: 0.00174595 }))
+check('usage: tokens and cost', JSON.stringify(usageOf(c1))
+  === JSON.stringify({ promptTokens: 6945, completionTokens: 420, costUsd: 0.00174595, providerCostUsd: null }))
+// On the user's own provider key: OpenRouter's fee in cost, the provider's bill in upstream_inference_cost.
+const byok = usageOf({ usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0, is_byok: true,
+  cost_details: { upstream_inference_cost: 0.0042 } } })
+check('BYOK: the provider\'s charge is read', byok.costUsd === 0 && byok.providerCostUsd === 0.0042)
+check('not BYOK: no provider charge, even when OpenRouter sends one', usageOf({ usage: { cost: 0.01, is_byok: false,
+  cost_details: { upstream_inference_cost: 0.01 } } }).providerCostUsd === null)
+const viaResponses = usageOf(completionFromResponse({
+  status: 'completed', output: [message('ok')],
+  usage: { input_tokens: 3, output_tokens: 2, cost: 0, is_byok: true, cost_details: { upstream_inference_cost: 0.5 } },
+}))
+check('BYOK through the Responses API too', viaResponses.providerCostUsd === 0.5)
 const log1 = searchLogFromResponse(capped, { cap: 1, maxTotalResults: 5 })
 check('cap 1: of three calls one ran (the count OpenRouter billed, not the 3 it reported)', log1.searches === 1
   && JSON.stringify(log1.queries.map(q => q.ran)) === '[true,false,false]' && log1.queries[2].query === 'Acme headquarters London')
@@ -170,7 +182,9 @@ check('a 400 naming temperature, in the message or the provider detail', refuses
   && refusesTemperature({ status: 400, message: '400 Provider returned error', error: { metadata: { raw: '{"error":{"param":"temperature"}}' } } })
   && !refusesTemperature({ status: 400, message: '400 Provider returned error', error: { metadata: { raw: 'bad tools' } } })
   && !refusesTemperature({ status: 500, message: 'temperature' }))
-check('malformed usage is null, never a failure', JSON.stringify(usageOf({ usage: { prompt_tokens: 'x', cost: -1 } })) === JSON.stringify({ promptTokens: null, completionTokens: null, costUsd: null }))
+check('malformed usage is null, never a failure', JSON.stringify(usageOf({ usage: { prompt_tokens: 'x', cost: -1,
+  is_byok: true, cost_details: 'x' } }))
+  === JSON.stringify({ promptTokens: null, completionTokens: null, costUsd: null, providerCostUsd: null }))
 
 // --- the "(Data)" cell ----------------------------------------------------------
 check('rows from before searches were logged keep the old cell', aiDataCellSummary([{ title: 'A' }, { title: 'B' }]) === '📊 Searched 2 sources: A, B')

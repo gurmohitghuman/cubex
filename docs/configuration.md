@@ -43,7 +43,7 @@ Back up the whole directory together. **If `.encryption-key` is lost, saved keys
 
 Your data stays in one SQLite file on your machine. The server only calls out to:
 
-- **OpenRouter**, for AI columns, including its price list for web search engines.
+- **OpenRouter**, for AI columns, including its price list for web search engines, and to read what your key can still spend (Settings, `get_balances`, and an AI run's estimate and preview).
 - **The APIs you put in HTTP columns.**
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.
 

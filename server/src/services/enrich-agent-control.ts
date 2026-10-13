@@ -6,6 +6,7 @@
 import { db } from '../lib/db';
 import { ENRICH_DAILY_LIMIT_MAX_USD } from '../lib/constants';
 import type { EnrichRowsStatus } from '../lib/enrich-run-config';
+import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 import { enrichConfigOf } from './run-status-enrich';
 import { rerunEnrichmentColumn } from './enrich-rerun';
 import { appendAutorunNotice } from './enrich-agent-autorun';
@@ -22,7 +23,7 @@ export const ENRICH_RERUN_MODES: Record<string, EnrichRowsStatus> = {
 
 export async function rerunEnrichmentRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: string; spendLimitUsd?: number | null },
+  opts: { rowIds?: string[]; mode?: string; spendLimitUsd?: number | null; concurrency?: number },
 ): Promise<{ ok: { runId: string; rowsInScope: number; destinationAutoRun?: unknown[] } } | RunFail> {
   const limit = opts.spendLimitUsd;
   if (limit !== undefined && limit !== null
@@ -30,6 +31,8 @@ export async function rerunEnrichmentRunById(
     const max = ENRICH_DAILY_LIMIT_MAX_USD.toLocaleString('en-US');
     return { fail: 'bad_request', message: `The run limit must be more than $0 and at most $${max}.` };
   }
+  const concurrency = concurrencyOf(opts.concurrency);
+  if (concurrency === undefined) return { fail: 'bad_request', message: CONCURRENCY_ERROR };
   const run = db.prepare('SELECT sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?')
     .get(runId, userId) as { sheet_id: string; master_column_name: string | null } | undefined;
   if (!run?.master_column_name) return { fail: 'not_found', message: 'Enrichment run not found' };
@@ -59,7 +62,7 @@ export async function rerunEnrichmentRunById(
     };
   }
   const out = await rerunEnrichmentColumn(userId, run.sheet_id, {
-    column: run.master_column_name, estimateOnly: false, spendLimitUsd: opts.spendLimitUsd ?? null,
+    column: run.master_column_name, estimateOnly: false, spendLimitUsd: opts.spendLimitUsd ?? null, concurrency,
     rowGeneration: rowIndexes ? generation : null,
     rows: { mode: rowIndexes ? 'selected' : 'all', status, test: null, rowIndexes },
   });

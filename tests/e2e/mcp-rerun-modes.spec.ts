@@ -148,3 +148,76 @@ test('v1 AI rerun validates mode and keeps its back-compat default', async () =>
   expect(omitted.status()).toBe(400)
   expect((await omitted.json()).error).toContain('mode')
 })
+
+test('an AI rerun takes a new concurrency; other runs refuse it', async () => {
+  test.setTimeout(90_000)
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 2)
+  const token = await makeAccessToken(api, ['read', 'write', 'run'], 'rerun-concurrency')
+  const client = await mcpClient(token)
+  const call = async (name: string, args: Record<string, unknown>) =>
+    client.callTool({ name, arguments: args }) as Promise<any>
+  const settle = async (runId: string) => {
+    for (let i = 0; i < 80; i++) {
+      const s = parseResult(await call('get_run_status', { run_type: 'ai', run_id: runId }))
+      if (['completed', 'failed', 'cancelled'].includes(s?.status)) return s
+      await new Promise(r => setTimeout(r, 250))
+    }
+    throw new Error(`run ${runId} did not settle`)
+  }
+  // A stopped run frees its column a moment after its last placeholder is cleared.
+  const rerun = async (runId: string, how: Record<string, unknown>) => {
+    for (let i = 0; i < 20; i++) {
+      const r = await call('control_run', { run_type: 'ai', run_id: runId, action: 'rerun', ...how })
+      if (!(r.isError && errorText(r).includes('still clearing'))) return r
+      await new Promise(res => setTimeout(res, 250))
+    }
+    throw new Error('column stayed busy')
+  }
+
+  const started = parseResult(await call('run_ai_column', {
+    sheet_id: sheetId, column_name: 'Note', prompt: 'Say /val', model: 'openai/gpt-4o-mini', concurrency: 2,
+  }))
+  expect((await settle(started.run_id)).concurrency).toBe(2)
+
+  // Out of range: refused before anything runs.
+  for (const concurrency of [0, 101]) {
+    const bad = await call('control_run', {
+      run_type: 'ai', run_id: started.run_id, action: 'rerun', mode: 'all', concurrency,
+    })
+    expect(isError(bad)).toBe(true)
+  }
+  const lower = parseResult(await rerun(started.run_id, { mode: 'all', concurrency: 1 }))
+  expect((await settle(lower.run_id)).concurrency).toBe(1)
+  // Without one, the rerun keeps the run it repeats.
+  const kept = parseResult(await rerun(lower.run_id, { mode: 'all' }))
+  expect((await settle(kept.run_id)).concurrency).toBe(1)
+
+  // Only an AI or enrichment rerun takes it.
+  const paused = await call('control_run', { run_type: 'ai', run_id: kept.run_id, action: 'pause', concurrency: 3 })
+  expect(errorText(paused)).toContain('enrichment run only')
+  const http = await call('control_run', {
+    run_type: 'http', run_id: '00000000-0000-4000-8000-000000000000', action: 'rerun', concurrency: 3,
+  })
+  expect(errorText(http)).toContain('enrichment run only')
+
+  // v1: a number, from 1 to 100.
+  const v1 = async (data: Record<string, unknown>) => {
+    for (let i = 0; i < 20; i++) {
+      const r = await api.post(`${BASE}/api/v1/ai-runs/${kept.run_id}/rerun`, {
+        headers: { Authorization: `Bearer ${token}` }, data,
+      })
+      if (r.status() !== 409) return r
+      await new Promise(res => setTimeout(res, 250))
+    }
+    throw new Error('column stayed busy')
+  }
+  expect((await v1({ mode: 'all', concurrency: 'fast' })).status()).toBe(400)
+  const over = await v1({ mode: 'all', concurrency: 500 })
+  expect(over.status()).toBe(400)
+  expect((await over.json()).error).toContain('1 to 100')
+  const viaV1 = await v1({ mode: 'all', concurrency: 4 })
+  expect(viaV1.status()).toBe(202)
+  expect((await settle((await viaV1.json()).run_id)).concurrency).toBe(4)
+  await client.close()
+})

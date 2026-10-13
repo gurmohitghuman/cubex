@@ -18,6 +18,7 @@ export interface RunSummary {
   // AI: "<name> (Output)", or "<name> (Status)" with output_columns; HTTP: master/status column
   column_name: string | null;
   model?: string | null;        // AI only
+  concurrency?: number;         // AI only: rows processed at once
   output_columns?: string[];    // AI structured run: the typed columns it fills
   data_column?: string;         // AI run with web tools: the "(Data)" column listing its sources
   status: string;
@@ -33,6 +34,9 @@ export interface RunSummary {
   // included; null when none reported it) and how many searches ran.
   // Enrichment runs: what the run's treg calls cost so far (Cubex's ledger).
   cost_usd?: number | null;
+  // AI rows on the user's own provider key (BYOK): what that provider charged;
+  // cost_usd is then OpenRouter's fee alone. Absent when no row ran that way.
+  provider_cost_usd?: number;
   searches?: number | null;
   enrichment?: Record<string, unknown>;
   daily_limit?: Record<string, unknown>;
@@ -84,7 +88,8 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
   const search = searchSettings(r);
   return {
     id: r.id, sheet_id: r.sheet_id, type: 'ai', column_name: r.column_name,
-    model: r.model, ...(outputs ? { output_columns: outputs } : {}), ...(data ? { data_column: data } : {}),
+    model: r.model, concurrency: r.concurrency,
+    ...(outputs ? { output_columns: outputs } : {}), ...(data ? { data_column: data } : {}),
     ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
@@ -95,7 +100,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
 
 export function getAiRunSummary(runId: string, userId: string): RunSummary | null {
   const r = db.prepare(`
-    SELECT id, sheet_id, column_name, model, status, processed_rows, total_rows, error_message,
+    SELECT id, sheet_id, column_name, model, concurrency, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
            run_if, condition_skipped_rows
@@ -139,6 +144,7 @@ export interface RunResultsPage {
     // every search call ({query, ran}); the last two only with web search.
     // Enrichments: what the row's treg calls cost, and who found it.
     cost_usd?: number | null;
+    provider_cost_usd?: number;                  // AI on the user's own provider key: what it charged
     found_by?: string | null;
     answer?: unknown;
     answer_cut?: string[];
@@ -175,7 +181,7 @@ export function getAiRunResults(
   const f = statusClause(filter);
   const rows = db.prepare(`
     SELECT res.row_index, res.status, res.output_value, res.error_message, r.id AS row_id,
-           res.cost_usd, res.web_searches, res.web_search_queries
+           res.cost_usd, res.web_searches, res.web_search_queries, res.provider_cost_usd
     FROM ai_results res
     LEFT JOIN rows r ON r.sheet_id = ? AND r.user_id = res.user_id AND r.row_index = res.row_index
     WHERE res.run_id = ? AND res.user_id = ? AND res.row_index > ? ${f.sql}
@@ -187,6 +193,7 @@ export function getAiRunResults(
       return {
         row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
         value: r.output_value, error_message: r.error_message, cost_usd: r.cost_usd ?? null,
+        ...(r.provider_cost_usd === null ? {} : { provider_cost_usd: r.provider_cost_usd }),
         ...(queries ? { searches: r.web_searches ?? 0, search_queries: queries } : {}),
       };
     }),

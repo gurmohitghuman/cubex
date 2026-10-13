@@ -32,6 +32,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_run_status: read('Get run status'),
   get_run_results: read('Get run results'),
   list_models: read('List AI models', true),
+  get_balances: read('Read balances', true),
   append_rows: write('Append rows', false, false),
   update_cells: write('Update cells', true, true),
   delete_rows: write('Delete rows (permanent)', true, true),

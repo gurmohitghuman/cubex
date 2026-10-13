@@ -10,6 +10,13 @@ const { classifyHttpError: cls, summarizeHttpErrorClasses } =
 
 const cases: Array<[string | null, string]> = [
   ['HTTP 404 from upstream: {"error":"no such company"}', 'not_found'],
+  // Enrichment rows (lib/enrich-errors.ts), a provider's answer relayed by treg.
+  ['The provider answered 429: Too Many Attempts.', 'retryable'],
+  ['The provider answered 503.', 'retryable'],
+  ['The provider answered 404: not found.', 'not_found'],
+  ['The provider answered 400: bad email.', 'configuration'],
+  ["treg's shared key for contactout stayed busy (429, not charged). Rerun the row later, or connect your own "
+    + 'key at treg.', 'retryable'],
   ['HTTP 410 from upstream', 'not_found'],
   ['HTTP 429 from upstream: Too Many Requests', 'retryable'],
   ['HTTP 503 from upstream: <html>Service Unavailable</html>', 'retryable'],

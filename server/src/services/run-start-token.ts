@@ -15,6 +15,7 @@ import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { fetchModels } from '../lib/openrouter';
+import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, runRequestHash } from '../lib/run-idempotency';
 import { parseRunRequest } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
@@ -121,6 +122,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       outputColumns: parsed.outputColumns, maxChars: parsed.safeMaxChars,
       targetRowIndexes: pre.targetRowIndexes, search: parsed.search, runIf: parsed.runIf,
+      concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
     });
     return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
   }
@@ -132,7 +134,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       maxChars: parsed.safeMaxChars, outputColumns: parsed.outputColumns,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
-      runIf: parsed.runIf,
+      runIf: parsed.runIf, concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
     });
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }

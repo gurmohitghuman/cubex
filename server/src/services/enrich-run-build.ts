@@ -172,5 +172,7 @@ export async function buildEnrichmentConfig(
     method: tool.method as HTTPRequestConfig['method'], url: `${TREG_BASE_URL}/call/${encodeURIComponent(tool.id)}`,
     headers: {}, body: JSON.stringify(templates),
   };
-  return { ok: { requestConfig, responseMapping: mapping, previewSize: 5, enrichment } };
+  // batchSize: the rows the run keeps out at once (lib/enrich-run-config.ts enrichConcurrency).
+  const batch = input.concurrency === null ? {} : { batchSize: input.concurrency };
+  return { ok: { requestConfig, responseMapping: mapping, previewSize: 5, ...batch, enrichment } };
 }

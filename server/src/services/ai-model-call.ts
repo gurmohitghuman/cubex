@@ -8,7 +8,7 @@ import type OpenAI from 'openai';
 import { modelTakesTemperature } from '../lib/openrouter';
 import {
   completionFromResponse, responseError, searchLogFromResponse, usageOf,
-  type ChatLikeCompletion, type SearchLog, type SearchReplay,
+  type CallUsage, type ChatLikeCompletion, type SearchLog, type SearchReplay,
 } from '../lib/responses-adapter';
 import type { RowTokenUsage } from './ai-row-writers';
 
@@ -26,7 +26,7 @@ export interface ModelCallInput {
 
 export interface ModelCall {
   completion: ChatLikeCompletion;
-  usage: { promptTokens: number | null; completionTokens: number | null; costUsd: number | null };
+  usage: CallUsage;
   search: SearchLog | null;
 }
 

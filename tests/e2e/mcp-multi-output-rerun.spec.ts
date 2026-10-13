@@ -64,9 +64,12 @@ test('control_run reruns a structured run into the same columns', async () => {
   expect(JSON.stringify(none.content)).toContain('No target rows')
   const [, second] = await rows()
   await call('update_cells', { sheet_id: sheetId, row_id: second.id, data: { 'Score (Status)': '❌ Error: test' } })
-  const errored = parseResult(await rerun(started.run_id, { mode: 'errored' }))
+  // A rerun can change how many rows run at once (the fix for OpenRouter's
+  // in-flight budget 402); the next rerun keeps it.
+  const errored = parseResult(await rerun(started.run_id, { mode: 'errored', concurrency: 3 }))
   expect(errored.run_id).not.toBe(started.run_id)
   const erroredStatus = await settle(errored.run_id)
+  expect(erroredStatus.concurrency).toBe(3)
   expect(erroredStatus.column_name).toBe('Score (Status)')
   expect(erroredStatus.output_columns).toEqual(['Fit', 'Why'])
   expect(erroredStatus.target_row_count).toBe(1)
@@ -78,7 +81,9 @@ test('control_run reruns a structured run into the same columns', async () => {
 
   // "empty" picks every blank status cell; row_ids exactly the rows named.
   const empty = parseResult(await rerun(errored.run_id, { mode: 'empty' }))
-  expect((await settle(empty.run_id)).target_row_count).toBe(3)
+  const emptyStatus = await settle(empty.run_id)
+  expect(emptyStatus.target_row_count).toBe(3)
+  expect(emptyStatus.concurrency).toBe(3)
   const [first] = await rows()
   const picked = parseResult(await rerun(empty.run_id, { row_ids: [first.id] }))
   expect((await settle(picked.run_id)).target_row_count).toBe(1)

@@ -56,6 +56,15 @@ classifies('401 Unauthorized', 'configuration')
 classifies('No auth credentials found', 'configuration')
 classifies('402 Insufficient credits', 'configuration')
 
+// --- concurrency: OpenRouter's in-flight budget, not an empty balance ---------
+// The SDK message is "<status> <error.message>"; OpenRouter's words, verbatim.
+const IN_FLIGHT = '402 This request would exceed your available credits given your current in-flight requests. '
+  + 'Retry after in-flight requests settle, or add credits.'
+classifies(`${IN_FLIGHT} (in_flight_budget_exhausted)`, 'concurrency')
+classifies(IN_FLIGHT, 'concurrency')
+classifies('402 This request needs more credits than your balance. (weight_exceeds_budget)', 'configuration')
+check('in-flight hint names a lower concurrency', /lower concurrency/i.test(AI_ERROR_CLASS_HINT.concurrency))
+
 // --- unknown: refuse to guess ------------------------------------------------
 check('null → unknown', classifyAiError(null) === 'unknown')
 check('undefined → unknown', classifyAiError(undefined) === 'unknown')
@@ -94,7 +103,7 @@ check('empty input → empty summary', summarizeErrorClasses([]).length === 0)
 
 // --- hints -------------------------------------------------------------------
 check('a hint exists for every class',
-  (['retryable', 'prompt_content', 'model_output', 'configuration', 'unknown'] as const)
+  (['retryable', 'prompt_content', 'model_output', 'concurrency', 'configuration', 'unknown'] as const)
     .every(c => typeof AI_ERROR_CLASS_HINT[c] === 'string' && AI_ERROR_CLASS_HINT[c].length > 10))
 // The prompt_content hint must warn about cost — that is its whole job.
 check('prompt_content hint warns about re-billing',

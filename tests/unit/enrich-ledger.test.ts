@@ -138,7 +138,7 @@ const parts = { method: 'POST', path: '/call/x.people.email.find', query: '', bo
 const ctxOf = () => ({
   runId: run, userId: uid, sheetId, statusColumn: 'Email', token: 't', autorunId: null,
   signal: new AbortController().signal, stopped: () => false, halt: null, onHalt: () => {},
-  unreachableStreak: 0, sameLookup: new Map(),
+  unreachableStreak: 0, sameLookup: new Map(), cooldown: new Map(),
 })
 const step = () => runStep(ctxOf(), {
   toolId: 'x.people.email.find', attempt: 't1', rowIndex: 7, rowId: 'r-cut', parts,

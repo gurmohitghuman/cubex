@@ -15,7 +15,8 @@ export interface AgentRunArgs {
   tool_id?: unknown; preset?: unknown; column_name?: unknown; add_to_column?: unknown;
   inputs?: unknown; clean_domains?: unknown; outputs?: unknown; email?: unknown;
   provider_order?: unknown; skip_providers?: unknown; stop_at_first?: unknown;
-  max_cost_per_row_usd?: unknown; spend_limit_usd?: unknown; rows?: unknown; use_sheet_filter?: unknown;
+  max_cost_per_row_usd?: unknown; spend_limit_usd?: unknown; concurrency?: unknown; rows?: unknown;
+  use_sheet_filter?: unknown;
   test?: unknown; where?: unknown; run_if?: unknown; fresh?: unknown; list?: unknown;
 }
 
@@ -173,7 +174,8 @@ export function agentRunBody(
     toolId: tool.id, preset, columnName: a.column_name, continueColumn: f.add_to_column === true, inputs,
     cleanDomains: f.clean_domains !== false, providerOrder: a.provider_order, skipProviders: a.skip_providers,
     stopAtFirst: f.stop_at_first === true, outputs, rows, conditions, runIf: a.run_if,
-    maxCostPerRowUsd: a.max_cost_per_row_usd, spendLimitUsd: a.spend_limit_usd, fresh: f.fresh === true,
+    maxCostPerRowUsd: a.max_cost_per_row_usd, spendLimitUsd: a.spend_limit_usd, concurrency: a.concurrency,
+    fresh: f.fresh === true,
     rowGeneration, list,
     ...(preset === 'verified_email'
       ? { email: { accept: email.accept, guess: guess ?? true, pattern: email.pattern } }

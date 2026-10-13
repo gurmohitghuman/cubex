@@ -32,6 +32,12 @@ const bal = kind(ans(402,
   { detail: { error: 'insufficient_balance', balance_micro: 1200, topup_url: '/app#billing' } }))
 check('402 balance pauses', bal.kind === 'pause' && bal.reason === 'balance')
 const auto = kind(ans(402, { detail: { error: 'insufficient_balance', autotopup_enabled: true } }))
+// treg's shared key for a provider is busy: nothing billed; retry later under a new key.
+const busy = kind(ans(429, { detail: { error: 'share_busy', retry_after_s: 7, provider: 'contactout' } }))
+check('share_busy: retried after retry_after_s, never paused',
+  busy.kind === 'retry' && busy.counts === 'busy' && busy.afterMs === 7000 && busy.message.includes('contactout'))
+const busyLong = kind(ans(429, { detail: { error: 'share_busy', retry_after_s: 900 } }))
+check('share_busy: the wait is bounded', busyLong.kind === 'retry' && busyLong.afterMs === 60_000)
 check('auto top-up wording', auto.kind === 'pause' && auto.message.includes('Auto top-up is on'))
 check('402 route_max_cost skips the row', kind(ans(402, { detail: { error: 'route_max_cost' } })).kind === 'row_skip')
 check('401 pauses for the key',

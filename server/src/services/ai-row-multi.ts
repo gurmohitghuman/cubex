@@ -13,7 +13,7 @@ import { aiDataCellSummary } from '../lib/ai-data-cell';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { STOP_SENTINEL } from './ai-row-writers';
 import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-row-writers-multi';
-import { withConnectRetry, connectionCauseCode } from './openrouter-retry';
+import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
@@ -102,7 +102,7 @@ export async function processMultiRow(
       (error as { name?: string })?.name === 'APIUserAbortError' ||
       signal?.aborted === true;
     if (aborted || shouldStop(runId, myGeneration)) return;
-    const causeCode = connectionCauseCode(error);
+    const causeCode = errorCauseCode(error);
     const rawMsg = (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     const errorMessage = redactSecrets(rawMsg);
     console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);

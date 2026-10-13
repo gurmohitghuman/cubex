@@ -22,7 +22,7 @@ import { asRunStart, seedThenEnqueue } from './run-seed';
 import { type AIRunRow } from './ai-runner';
 import { enqueueAIRerun } from '../queue';
 import { DEFAULT_AI_RERUN_MODE, resolveRerunTargets } from './ai-rerun-modes';
-import type { AiRerunParams, RerunOutcome } from './ai-run-rerun';
+import { rerunConcurrency, type AiRerunParams, type RerunOutcome } from './ai-run-rerun';
 
 // For a caller holding only a base name (the sheet menu before it sent the
 // exact header): the run whose status or "(Data)" column that base names.
@@ -86,6 +86,8 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
   if (refsError) return { fail: 'bad_request', message: refsError };
   const rule = storedRule(p.sheetId, userId, latest.run_if);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const concurrency = rerunConcurrency(p.concurrency, latest.concurrency);
+  if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 
   const runId = uuidv4();
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
@@ -110,7 +112,7 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?)
       `).run(
         runId, p.sheetId, userId, statusColumn, latest.prompt, latest.system_prompt, model, latest.temperature,
-        latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, latest.concurrency,
+        latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, concurrency.value,
         targets.length, JSON.stringify(targets), JSON.stringify(specs), statusColumn, dataColumn,
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
         latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,

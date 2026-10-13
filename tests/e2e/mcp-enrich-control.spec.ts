@@ -21,10 +21,11 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   const { sheetId } = await seedLeadRows(api, LEADS)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e mcp control'))
   const started = await call(client, 'run_enrichment', {
-    sheet_id: sheetId, ...FIND, max_cost_per_row_usd: 0.01, spend_limit_usd: 0.02,
+    sheet_id: sheetId, ...FIND, max_cost_per_row_usd: 0.01, spend_limit_usd: 0.02, concurrency: 7,
   })
   expect(started.spend_limit_usd).toBe(0.02)
   const paused = await waitMcpRun(client, started.run_id, ['paused'])
+  expect(paused.enrichment.concurrency).toBe(7)
   expect(paused.enrichment.pause_reason).toBe('spend_limit')
   expect(paused.error_message).toContain('$0.02 spend limit')
   expect(paused.daily_limit.limit_usd).toBe(10)
@@ -57,6 +58,7 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   const second = await waitMcpRun(client, again.run_id, ['completed'])
   expect(second.total_rows).toBe(2)
   expect(second.enrichment.spend_limit_usd).toBe(0.5)
+  expect(second.enrichment.concurrency).toBe(7)
   // The first run is superseded now: its id names the latest.
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: started.run_id, action: 'rerun', mode: 'all',
@@ -65,6 +67,20 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: again.run_id, action: 'rerun', mode: 'all', spend_limit_usd: 1e12,
   })).toContain('The run limit must be more than $0 and at most')
+  // A rerun can set its rows at once, within the enrichment bounds.
+  expect(await callError(client, 'control_run', {
+    run_type: 'enrichment', run_id: again.run_id, action: 'rerun', mode: 'all', concurrency: 50,
+  })).toContain('from 1 to 20')
+  // Over 20 the tool's schema refuses it (plain text, not a JSON error).
+  const tooMany = await client.callTool({
+    name: 'run_enrichment', arguments: { sheet_id: sheetId, ...FIND, concurrency: 21 },
+  })
+  expect(tooMany.isError).toBe(true)
+  expect(JSON.stringify(tooMany.content)).toContain('concurrency')
+  const slower = await call(client, 'control_run', {
+    run_type: 'enrichment', run_id: again.run_id, action: 'rerun', row_ids: ids, concurrency: 1,
+  })
+  expect((await waitMcpRun(client, slower.run_id, ['completed'])).enrichment.concurrency).toBe(1)
   // run_type enrichment refuses a run that isn't one.
   expect(await callError(client, 'get_run_status', { run_type: 'enrichment', run_id: 'no-such-run' }))
     .toContain('Enrichment run not found')

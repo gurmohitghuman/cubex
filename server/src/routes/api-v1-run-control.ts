@@ -10,9 +10,10 @@ import { AI_RERUN_MODES, AiRerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runStartWindow, runFailHttpStatus } from '../services/run-shared';
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
-import { MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { MAX_AI_CONCURRENCY, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
+import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 
 const router = express.Router();
 
@@ -94,14 +95,15 @@ function parseRowIds(raw: unknown): { rowIds?: string[] } | { error: string } {
   return { rowIds: raw as string[] };
 }
 
-// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode? }. row_ids wins; mode is
-// one of errored|empty|missing|all and REQUIRED without row_ids, as on MCP: a
+// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode?, concurrency? }. row_ids
+// wins; mode is one of errored|empty|missing|all and REQUIRED without row_ids, as on MCP: a
 // default of 'missing' re-billed every empty row of the column (MCP dropped it
 // after a 10-row retry became a 9,675-row run). 409 when :id has been
 // superseded by a newer run on the same column (the message names the latest).
+// concurrency (1..MAX_AI_CONCURRENCY) replaces the repeated run's own.
 router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
-    const body = (req.body ?? {}) as { row_ids?: unknown; mode?: unknown };
+    const body = (req.body ?? {}) as { row_ids?: unknown; mode?: unknown; concurrency?: unknown };
     const p = parseRowIds(body.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
     if (p.rowIds === undefined && body.mode === undefined) {
@@ -113,10 +115,15 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if (body.mode !== undefined && !AI_RERUN_MODES.includes(body.mode as AiRerunMode)) {
       return res.status(400).json({ error: `mode must be one of: ${AI_RERUN_MODES.join(', ')}` });
     }
+    // Checked before the run-start window, like mode: a typo spends no slot.
+    const c = body.concurrency;
+    if (c !== undefined && (typeof c !== 'number' || !Number.isInteger(c) || c < 1 || c > MAX_AI_CONCURRENCY)) {
+      return res.status(400).json({ error: `concurrency must be a whole number from 1 to ${MAX_AI_CONCURRENCY}.` });
+    }
     // A rerun is a run start: same per-token window as MCP's control_run.
     if (refuseRunStart(req, res)) return;
     const result = await rerunAiRunById(req.userId!, req.params.id, {
-      rowIds: p.rowIds, mode: body.mode as AiRerunMode | undefined,
+      rowIds: p.rowIds, mode: body.mode as AiRerunMode | undefined, concurrency: c,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
     res.status(202).json({ run_id: result.ok.runId, target_rows: result.ok.targetCount });
@@ -139,9 +146,11 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
   if (limit !== undefined && (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0)) {
     return res.status(400).json({ error: 'spend_limit_usd must be more than $0.' });
   }
+  if (concurrencyOf(b.concurrency) === undefined) return res.status(400).json({ error: CONCURRENCY_ERROR });
   if (refuseRunStart(req, res)) return;
   const out = await rerunEnrichmentRunById(req.userId!, req.params.id, {
     rowIds: p.rowIds, mode: b.mode as string | undefined, spendLimitUsd: limit as number | undefined,
+    concurrency: b.concurrency as number | undefined,
   });
   if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
   res.status(202).json({

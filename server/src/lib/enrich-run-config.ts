@@ -10,6 +10,7 @@ import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichTool } from './enrich-tool';
 import type { HTTPAPIConfig } from './http-request-template';
 import type { EnrichListConfig } from './enrich-list';
+import { ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY } from './constants';
 
 // Which rows a run takes: a scope (every row, the saved filter's rows, the
 // selected rows) narrowed, on a column a run already made, by the status cell:
@@ -58,6 +59,12 @@ export interface EnrichmentBlock {
 }
 
 export type EnrichRunConfig = HTTPAPIConfig & { enrichment: EnrichmentBlock };
+
+// Rows a run keeps out at once: its own (config.batchSize, set at start), else
+// the default, never above the HTTP fan-out cap.
+export function enrichConcurrency(config: { batchSize?: number }): number {
+  return Math.max(1, Math.min(config.batchSize ?? ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY));
+}
 
 export function isEnrichmentConfig(config: unknown): config is EnrichRunConfig {
   const e = (config as { enrichment?: unknown } | null)?.enrichment;

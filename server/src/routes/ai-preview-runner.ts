@@ -39,6 +39,8 @@ export interface PreviewRowResult {
   // What OpenRouter charged for this row, web fees included, when the response
   // reports it (usage.cost). Absent otherwise; callers fall back to tokens.
   costUsd?: number
+  // On the user's own provider key (BYOK): what that provider charged.
+  providerCostUsd?: number
   // With web search: every search call and how many ran.
   searchQueries?: SearchQueryLog[]
   webSearches?: number
@@ -132,7 +134,7 @@ export const processOneRow = async (
     // A structured reply is JSON: cutting it would break it, and the real run
     // never does (ai-row-multi.ts clamps each cell instead).
     if (!args.rawText && args.maxChars && result.length > args.maxChars) result = result.substring(0, args.maxChars);
-    const { promptTokens, completionTokens, costUsd } = call.usage;
+    const { promptTokens, completionTokens, costUsd, providerCostUsd } = call.usage;
     return {
       rowIndex: row.rowIndex,
       value: result,
@@ -140,6 +142,7 @@ export const processOneRow = async (
       ...(completionTokens !== null ? { completionTokens } : {}),
       citations: citationsFromCompletion(call.completion),
       ...(costUsd !== null ? { costUsd } : {}),
+      ...(providerCostUsd !== null ? { providerCostUsd } : {}),
       ...(call.search ? { searchQueries: call.search.queries, webSearches: call.search.searches } : {}),
     };
   } catch (error) {

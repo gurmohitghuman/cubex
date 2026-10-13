@@ -10,7 +10,7 @@ import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
-import { withConnectRetry, connectionCauseCode } from './openrouter-retry';
+import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
@@ -71,8 +71,9 @@ export async function processRow(
     const model = run.model;
     if (!model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
 
-    // One retry for the stale-keep-alive-socket ECONNRESET only (nothing was
-    // generated/billed); every other failure keeps maxRetries:0 semantics.
+    // Retries only what was never generated or billed: a stale keep-alive socket
+    // (once) and OpenRouter's in-flight budget 402; every other failure keeps
+    // maxRetries:0 semantics.
     // Floored max_tokens so reasoning models can think AND answer (the old 1000
     // cap made them return null content → silent blank cells); max_chars raises it.
     call = await withConnectRetry(() => sendModelCall(openai, {
@@ -123,7 +124,7 @@ export async function processRow(
     // user-reported cell tells us WHICH transport failure it was — the SDK's
     // bare message hides whether the stale-socket retry missed or the retry
     // itself failed again.
-    const causeCode = connectionCauseCode(error);
+    const causeCode = errorCauseCode(error);
     const rawErrorMessage = (error instanceof Error ? error.message : 'Unknown error')
       + (causeCode ? ` (${causeCode})` : '');
     // Redact API-key-shaped tokens before logging or persisting. OpenRouter 401

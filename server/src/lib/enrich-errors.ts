@@ -2,7 +2,10 @@
 // from treg's source: its own refusals carry X-Treg-Error: 1 and a {"detail"}
 // body (a string, or {"error": code, …}); the pool-saturation 503 is the one
 // refusal without that header; provider errors are relayed verbatim.
-import { ENRICH_RETRY_MS, ENRICH_UNREACHABLE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MS } from './constants';
+import {
+  ENRICH_RETRY_MS, ENRICH_UNREACHABLE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MS, ENRICH_SHARE_BUSY_MIN_MS,
+  ENRICH_SHARE_BUSY_MAX_MS,
+} from './constants';
 export type PauseReason =
   | 'auth' | 'balance' | 'treg_cap' | 'team_rule' | 'provider_busy' | 'unreachable'
   | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key' | 'unconfirmed';
@@ -10,6 +13,9 @@ export type PauseReason =
 export type CallVerdict =
   | { kind: 'ok' }
   | { kind: 'retry'; afterMs: number; counts: 'unreachable' | 'saturation' | 'provider' | 'in_progress' }
+  // treg's shared key for a provider is busy: nothing was sent or billed. Retried
+  // under the same key; `message` if it stays busy.
+  | { kind: 'retry'; afterMs: number; counts: 'busy'; message: string }
   | { kind: 'retry_new_attempt'; message: string }
   | { kind: 'row_skip'; message: string }
   | { kind: 'row_fail'; message: string }
@@ -69,6 +75,16 @@ function tregRefusal(a: CallAnswer): CallVerdict {
   switch (code) {
     case 'insufficient_balance': return { kind: 'pause', reason: 'balance', message: balanceMessage(detail) };
     case 'route_max_cost': return { kind: 'row_skip', message: 'Over the per-row budget' };
+    case 'share_busy': {
+      const sec = typeof detail?.retry_after_s === 'number' ? detail.retry_after_s : a.retryAfterSec;
+      const ms = Math.min(ENRICH_SHARE_BUSY_MAX_MS, Math.max(ENRICH_SHARE_BUSY_MIN_MS, (sec ?? 0) * 1000));
+      const name = typeof detail?.provider === 'string' ? detail.provider : 'this provider';
+      return {
+        kind: 'retry', afterMs: ms, counts: 'busy',
+        message: `treg's shared key for ${name} stayed busy (429, not charged). Rerun the row later, or connect `
+          + 'your own key at treg.',
+      };
+    }
     case 'trial_allowance_reached': return { kind: 'row_skip', message: 'This provider is a free trial at treg with a daily allowance. Connect your own key at treg or pick another provider.' };
     case 'daily_cap_reached':
     case 'platform_daily_cap_reached':

@@ -29,6 +29,8 @@ export interface RecalledChoices {
   // written as one (then `conditions` is empty, so they aren't applied twice).
   runIf: string | null;
   maxCostPerRowUsd: number | null;
+  // Rows at once the run was started with (null: the default).
+  concurrency: number | null;
   fresh: boolean;
   // A list job: where its results go and the fields it keeps.
   list: ListInput | null;
@@ -77,21 +79,24 @@ export function recallChoices(config: EnrichRunConfig, statusColumn: string): Re
     outputs: config.responseMapping.map(m => recallOutput(m, new Set(e.answerFields ?? []))),
     conditions: config.runIf ? e.rows.where.map(c => ({ ...c })) : [],
     runIf: config.runIf ?? ruleFromConditions(e.rows.where),
-    maxCostPerRowUsd: e.maxCostPerRowUsd, fresh: e.fresh, list: recallList(config),
+    maxCostPerRowUsd: e.maxCostPerRowUsd, concurrency: config.batchSize ?? null, fresh: e.fresh,
+    list: recallList(config),
   };
 }
 
 // The same enrichment on the column it made, on other rows. The run limit is
-// the one the confirm quoted, else sized to the rows this run takes.
+// the one the confirm quoted, else sized to the rows this run takes; the
+// concurrency the caller's, else the column's own.
 export function rerunInput(
   c: RecalledChoices, rows: EnrichRunInput['rows'],
-  spendLimitUsd: number | null = null, rowGeneration: number | null = null,
+  spendLimitUsd: number | null = null, rowGeneration: number | null = null, concurrency: number | null = null,
 ): EnrichRunInput {
   return {
     toolId: c.toolId, preset: c.preset, columnName: c.columnName, continueColumn: true, inputs: c.inputs,
     cleanDomains: c.cleanDomains, providerOrder: c.providerOrder, skipProviders: c.skipProviders,
     stopAtFirst: c.stopAtFirst, email: c.email, outputs: c.outputs, rows, conditions: c.conditions, runIf: c.runIf,
-    maxCostPerRowUsd: c.maxCostPerRowUsd, spendLimitUsd, fresh: c.fresh, rowGeneration, list: c.list,
+    maxCostPerRowUsd: c.maxCostPerRowUsd, spendLimitUsd, concurrency: concurrency ?? c.concurrency, fresh: c.fresh,
+    rowGeneration, list: c.list,
   };
 }
 

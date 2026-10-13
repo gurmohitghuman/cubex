@@ -37,7 +37,7 @@ function latestRuns(userId: string, model: string, web?: WebTools, engine?: stri
   return (rows as Array<{ id: string }>).map(r => r.id);
 }
 
-// Up to ROWS_PER_RUN finished rows of each run, through idx_ai_results_run_outcome.
+// Up to ROWS_PER_RUN finished rows of each run, through idx_ai_results_run_spend.
 // The LIMIT bounds the rows read (missing token counts are dropped after it), so
 // a million-row run costs the same as a ten-row one.
 function finishedRows(runIds: string[]): Array<{ p: number | null; c: number | null }> {
@@ -75,7 +75,8 @@ export function tokenHistory(userId: string, model: string, web: WebTools, engin
 // searches, the mode sent, the per-row cap, and the fetch switch.
 export interface SearchSetup { used: string; mode: string | null; maxPerRow: number | null; fetch: boolean }
 
-// Searches per row and measured cost per row (OpenRouter's usage.cost), from
+// Searches per row and measured cost per row (OpenRouter's usage.cost, plus
+// what the provider charged a row on the user's own key), from
 // finished rows of the latest runs on this model with the same search setup.
 // Each null when there's too little of it. Bounded like tokenHistory.
 export function searchHistory(userId: string, model: string, s: SearchSetup): { searches: Range | null; costPerRow: Range | null } {
@@ -88,7 +89,7 @@ export function searchHistory(userId: string, model: string, s: SearchSetup): { 
   `).all(userId, model, s.fetch ? 1 : 0, s.used, s.mode, s.maxPerRow, AI_ESTIMATE_HISTORY_RUNS) as Array<{ id: string }>);
   // By run id: the runs above are the user's, and this stays a covering-index read.
   const stmt = db.prepare(`
-    SELECT web_searches AS n, cost_usd AS c FROM ai_results
+    SELECT web_searches AS n, cost_usd + IFNULL(provider_cost_usd, 0) AS c FROM ai_results
     WHERE run_id = ? AND status = 'completed' LIMIT ?
   `);
   const rows = runs.flatMap(r => stmt.all(r.id, AI_ESTIMATE_HISTORY_ROWS_PER_RUN) as Array<{ n: number | null; c: number | null }>);
@@ -99,4 +100,17 @@ export function searchHistory(userId: string, model: string, s: SearchSetup): { 
     return { low, high: Math.max(low, percentile(values, 75) ?? low) };
   };
   return { searches: range(rows.map(r => r.n).filter(ok)), costPerRow: range(rows.map(r => r.c).filter(ok)) };
+}
+
+// Whether the latest finished row on this model ran on the user's own provider
+// key through OpenRouter (usage.is_byok: its provider_cost_usd is set).
+export function ranOnOwnKey(userId: string, model: string): boolean {
+  const run = db.prepare(`
+    SELECT id FROM ai_runs WHERE user_id = ? AND model = ?
+      AND EXISTS (SELECT 1 FROM ai_results WHERE run_id = ai_runs.id AND status = 'completed')
+    ORDER BY created_at DESC LIMIT 1
+  `).pluck().get(userId, model) as string | undefined;
+  if (!run) return false;
+  return db.prepare(`SELECT provider_cost_usd IS NOT NULL FROM ai_results WHERE run_id = ? AND status = 'completed'
+    LIMIT 1`).pluck().get(run) === 1;
 }
