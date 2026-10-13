@@ -38,7 +38,10 @@ export function enabledProviders(tool: EnrichTool, pick: ProviderPick = {}): Too
     && (!sent || providerCanAnswer(p.accepts, sent, tool.derive, known)));
   if (!pick.stopAtFirst || usable.length === 0) return usable;
   const order = (pick.order ?? []).map(s => s.toLowerCase());
-  const rank = (p: ToolProvider) => { const i = order.indexOf(p.provider.toLowerCase()); return i === -1 ? order.length : i; };
+  const rank = (p: ToolProvider) => {
+    const i = order.indexOf(p.provider.toLowerCase());
+    return i === -1 ? order.length : i;
+  };
   return [[...usable].sort((a, b) => rank(a) - rank(b))[0]];
 }
 
@@ -107,3 +110,17 @@ export function rowsThatFit(limitUsd: number | null, spentUsd: number, maxCostPe
   if (limitUsd === null || maxCostPerRow <= 0) return Infinity;
   return Math.max(0, Math.floor((limitUsd - spentUsd + EPS) / maxCostPerRow));
 }
+
+// Whether a limit leaves no room for one more row. A run with no per-row cap
+// (null: the catalog listed no price, so the team's own provider key should
+// bill it) sends treg no X-Treg-Route-Max-Cost, and nothing stops treg billing
+// a call after all (it prices the tool now, or serves it on its own key): what
+// treg really charged stops that run, once it reaches the limit.
+export function limitReached(limitUsd: number | null, spentUsd: number, maxCostPerRow: number | null): boolean {
+  if (limitUsd === null) return false;
+  if (maxCostPerRow === null) return spentUsd + EPS >= limitUsd;
+  return rowsThatFit(limitUsd, spentUsd, maxCostPerRow) < 1;
+}
+
+// What such a run's pause says, after which limit it reached.
+export const UNCAPPED_BILLED_NOTE = 'This tool usually bills your own provider key, but what treg charges counts too.';

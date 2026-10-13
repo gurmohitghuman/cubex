@@ -2,7 +2,8 @@
 // against a migrated throwaway DB and a stubbed treg (global fetch): runs
 // sizing batches at the same time never commit more than the daily limit; a
 // hold counts while its worker may still have calls out, and boot drops them;
-// a run with no per-row cap is outside the limit; a run paused with calls out
+// a run with no per-row cap holds nothing but stops once what treg really
+// billed reaches a limit (auto-run's room too); a run paused with calls out
 // recovers their paid answers on resume instead of buying them again, and
 // never recovers over a row it wrote.
 // Over 200 lines: one script over one account's runs; split, each part would rebuild them.
@@ -41,12 +42,15 @@ async function main() {
   const { db } = await import('../../server/src/lib/db')
   const { runMigrations } = await import('../../server/src/db/migrate')
   const { saveTregToken, setDailyLimitMicro, spentTodayMicro } = await import('../../server/src/services/treg-key')
-  const { processEnrichmentRun } = await import('../../server/src/services/enrich-runner')
+  const { processEnrichmentRun, pauseEnrichmentRun } = await import('../../server/src/services/enrich-runner')
   const { heldMicro, takeHold } = await import('../../server/src/services/enrich-holds')
   const { runSpentMicro } = await import('../../server/src/services/enrich-ledger')
   const { recoverPaidAnswer } = await import('../../server/src/services/enrich-recover')
   const { rowRequest } = await import('../../server/src/services/enrich-row')
   const { resetOrphanedRuns } = await import('../../server/src/lib/orphan-runs')
+  const { autorunCapacity } = await import('../../server/src/services/autorun-capacity')
+  const { utcDay } = await import('../../server/src/lib/clock')
+  const { UNCAPPED_BILLED_NOTE } = await import('../../server/src/lib/enrich-estimate')
   const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
   type Run = import('../../server/src/services/http-runner-status').HTTPRunRow
   type Config = import('../../server/src/lib/enrich-run-config').EnrichRunConfig
@@ -138,14 +142,46 @@ async function main() {
   check("the running worker's hold counts", heldMicro(uid) === 20_000)
 
   // --- A run with no per-row cap -------------------------------------------------
-  // The team's own provider key bills it: no Cubex limit covers it, even one passed.
-  setDailyLimitMicro(uid, 1_000)
+  // The team's own provider key should bill it, so it holds nothing and a
+  // limit can't size it; but treg can still charge, and what it charged counts.
+  setDailyLimitMicro(uid, spentTodayMicro(uid) + 30_000)
   posts.length = 0
   stub = buying(null, 10)
-  const own = newRun(2, null)
+  const own = newRun(7, null)
   await go(own, 1)
-  check('a run billed on the own provider key runs past a spent daily limit',
-    load(own).status === 'running' && cells(own).every(r => r.Email) && posts.length === 2)
+  check('a run billed on the own provider key runs every row while treg charges nothing',
+    load(own).status === 'running' && cells(own).every(r => r.Email) && posts.length === 7)
+  posts.length = 0
+  stub = buying(10_000, 10)
+  const billed = newRun(7, null)
+  await go(billed, 1)
+  const billedRun = load(billed) as Run & { pause_reason: string | null; error_message: string | null }
+  check('... one treg bills after all stops at the daily limit once those charges reach it',
+    billedRun.status === 'paused' && billedRun.pause_reason === 'daily_limit' && posts.length === 5)
+  check('... and its pause says why', !!billedRun.error_message?.includes('spent today')
+    && billedRun.error_message.endsWith(UNCAPPED_BILLED_NOTE))
+  posts.length = 0
+  const late = newRun(1, null)
+  await go(late, 1)
+  check('... and another one starts nothing on a spent day',
+    load(late).status === 'paused' && load(late).pause_reason === 'daily_limit' && posts.length === 0)
+
+  // Auto-run's room for such a column: the same limits, on what treg charged.
+  const auto = uuid()
+  const entry = (capMicro: number | null) => ({ id: auto, user_id: uid, daily_cap_micro: capMicro }) as
+    Parameters<typeof autorunCapacity>[0]
+  const ownConfig = configOf(null) as unknown as Parameters<typeof autorunCapacity>[1]
+  const room = autorunCapacity(entry(null), ownConfig)
+  check('auto-run: a spent day stops an own-key column too',
+    'reason' in room && room.reason === 'daily_limit' && room.message.endsWith(UNCAPPED_BILLED_NOTE))
+  setDailyLimitMicro(uid, null)
+  const free = autorunCapacity(entry(30_000), ownConfig)
+  check('... no limit hit: as many rows as it may take, no run limit', 'rows' in free && free.runLimitUsd === null)
+  db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, autorun_id, autorun_day, spent_micro)
+    VALUES (?,?,?,'{}','completed',?,?,30000)`).run(uuid(), load(own).sheet_id, uid, auto, utcDay())
+  const capped = autorunCapacity(entry(30_000), ownConfig)
+  check("... and a column cap set anyway stops it once treg's charges for the column reach it",
+    'reason' in capped && capped.reason === 'column_cap')
 
   // --- A run paused with a call out, resumed after treg's replay window -----------
   setDailyLimitMicro(uid, null)
@@ -193,6 +229,12 @@ async function main() {
   const ctx = { runId: f, userId: uid, token: 'treg_test_key' } as Parameters<typeof recoverPaidAnswer>[0]
   check('a row the run wrote offers nothing to recover',
     await recoverPaidAnswer(ctx, row.id, 0, TOOL.id, parts) === null && gets === 0)
+
+  // A pause can carry treg's own words: never a key in them.
+  const said = newRun(0, 0.01)
+  pauseEnrichmentRun(said, 1, 'auth', 'treg said: key treg_abcdefghijklmnopqrstuvwxyz0123 is not valid')
+  const stored = db.prepare('SELECT error_message FROM http_runs WHERE id = ?').pluck().get(said) as string
+  check('a pause message is stored redacted', !stored.includes('treg_abcdef') && stored.includes('[REDACTED]'))
 
   // --- Boot ---------------------------------------------------------------------
   resetOrphanedRuns()

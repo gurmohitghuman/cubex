@@ -9,13 +9,15 @@ export const listAdding = (s: EnrichRunStatus) => !!s.list && s.list.adding.rows
 
 // Whether Resume alone can carry a paused run on: not when its own limit
 // stopped it, or today's limit has no room for another row (it would pause
-// again at once). The paused notice offers the raise for those.
+// again at once). The paused notice offers the raise for those. A run with no
+// per-row cap stopped once treg's real charges reached the limit: any room left carries it on.
 export function plainResumeWorks(s: EnrichRunStatus): boolean {
   if (s.status !== 'paused') return false
   if (s.pauseReason === 'spend_limit') return false
   if (s.pauseReason !== 'daily_limit') return true
   const left = s.dailyLimit.remainingUsd
-  return left === null || left + 1e-9 >= (s.maxCostPerRowUsd ?? 0)
+  if (left === null) return true
+  return s.maxCostPerRowUsd === null ? left > 1e-9 : left + 1e-9 >= s.maxCostPerRowUsd
 }
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback

@@ -2,19 +2,22 @@
 // throwaway DB: today's counter and each run's spend always equal the ledger
 // after a mixed run (paid, unmetered, replays, refusals, another day); a
 // replay whose first charge the ledger never saw records that charge; and the
-// key history behind treg's replayed refusals.
+// key history behind treg's replayed refusals. And a row's step
+// (services/enrich-step.ts, against a stubbed fetch) counts each charge once.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import ledgerMod from '../../server/src/services/enrich-ledger'
 import keyMod from '../../server/src/services/treg-key'
 import metaMod from '../../server/src/lib/treg-meta'
+import stepMod from '../../server/src/services/enrich-step'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { recordCall, runSpentMicro, seenCallId, keysUsed, keyUsedByOtherRun, heldKeys } =
   ledgerMod as typeof import('../../server/src/services/enrich-ledger')
 const { spentTodayMicro } = keyMod as typeof import('../../server/src/services/treg-key')
 const { readTregMeta } = metaMod as typeof import('../../server/src/lib/treg-meta')
+const { runStep } = stepMod as typeof import('../../server/src/services/enrich-step')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -115,5 +118,49 @@ const held = heldKeys(uid, 'r5', 'cbx1:s:5:', 'f1', 'fpA').map(h => h.attempt).j
 check('held keys: this step and request, answered or still running, oldest first (a refusal left out)',
   held === 'f1,f1.2,f1.4,f1.6')
 
-if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
-console.log('\nall enrichment ledger checks passed')
+// --- A row's step: a body cut off, then its replay --------------------------------
+// The first answer's headers carry the charge, its body breaks off; the same
+// key comes back as a replay echoing that charge. The row paid once.
+const answers: Array<() => Response> = []
+globalThis.fetch = (async () => {
+  const next = answers.shift()
+  if (!next) throw new Error('no stubbed answer left')
+  return next()
+}) as typeof fetch
+const cutOff = (micro: string) => () => new Response(new ReadableStream<Uint8Array>({
+  start(c) { c.enqueue(new TextEncoder().encode('{"output":')) },
+  pull(c) { c.error(new Error('connection reset')) },
+}), { status: 200, headers: { 'x-treg-call-id': 'c-cut', 'x-treg-cost-micro': micro } })
+const replayed = (micro: string) => () => new Response(JSON.stringify({ output: { email: 'a@x.example' } }), {
+  status: 200, headers: { 'content-type': 'application/json', 'x-treg-call-id': 'c-cut', ...replayOf(micro) },
+})
+const parts = { method: 'POST', path: '/call/x.people.email.find', query: '', body: '{"n":1}', prefer: [], exclude: [] }
+const ctxOf = () => ({
+  runId: run, userId: uid, sheetId, statusColumn: 'Email', token: 't', autorunId: null,
+  signal: new AbortController().signal, stopped: () => false, halt: null, onHalt: () => {},
+  unreachableStreak: 0, sameLookup: new Map(),
+})
+const step = () => runStep(ctxOf(), {
+  toolId: 'x.people.email.find', attempt: 't1', rowIndex: 7, rowId: 'r-cut', parts,
+  request: { ...parts, routed: false, maxCostUsd: 0.01, stopAtFirst: false, fresh: false },
+})
+const rowLedger = () => db.prepare(`SELECT IFNULL(SUM(cost_micro), 0) FROM enrichment_calls
+  WHERE user_id = ? AND row_id = 'r-cut'`).pluck().get(uid) as number
+
+async function steps() {
+  answers.push(cutOff('5000'), replayed('5000'))
+  const cut = await step()
+  check('a body cut off and replayed under its key: the row counts the charge once',
+    cut.kind === 'answer' && cut.costMicro === 5000 && answers.length === 0)
+  check('... and the ledger has it once', rowLedger() === 5000)
+  // A resume: a new worker's step meets that charge only as a replay.
+  answers.push(replayed('5000'))
+  const resumed = await step()
+  check('a resume that first sees the call as a replay counts what the row cost',
+    resumed.kind === 'answer' && resumed.costMicro === 5000 && rowLedger() === 5000)
+}
+
+steps().then(() => {
+  if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
+  console.log('\nall enrichment ledger checks passed')
+}, err => { console.error(err); process.exit(1) })

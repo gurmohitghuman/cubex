@@ -4,7 +4,7 @@
 // within its rows a day. Today is the UTC day (lib/clock.ts). The messages
 // leave out when it goes on: the grid says so in the reader's own time.
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS, AUTORUN_MAX_ROWS } from '../lib/constants';
-import { rowsThatFit } from '../lib/enrich-estimate';
+import { limitReached, rowsThatFit, UNCAPPED_BILLED_NOTE } from '../lib/enrich-estimate';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { getDailyLimitMicro, spentTodayMicro } from './treg-key';
@@ -29,25 +29,26 @@ export function autorunCapacity(e: AutorunEntry, config: HTTPAPIConfig): Capacit
     }
     return { rows: Math.min(left, AUTORUN_MAX_ROWS), runLimitUsd: null };
   }
-  // null: the team's own provider key bills these calls, outside every limit here.
+  // null: the team's own provider key should bill these calls, so a row can't
+  // be priced; what treg really charged still counts against both limits.
   const perRow = config.enrichment.maxCostPerRowUsd;
-  if (perRow === null) return { rows: AUTORUN_MAX_ROWS, runLimitUsd: null };
+  const billed = perRow === null ? ` ${UNCAPPED_BILLED_NOTE}` : '';
   const limit = getDailyLimitMicro(e.user_id);
   const spentToday = limit === null ? 0 : spentTodayMicro(e.user_id) / 1e6;
-  if (limit !== null && rowsThatFit(limit / 1e6, spentToday, perRow) < 1) {
-    return { reason: 'daily_limit', message: `Today's ${money(limit / 1e6)} enrichment limit is reached.` };
+  if (limit !== null && limitReached(limit / 1e6, spentToday, perRow)) {
+    return { reason: 'daily_limit', message: `Today's ${money(limit / 1e6)} enrichment limit is reached.${billed}` };
   }
+  const capUsd = e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6;
+  const spentUsd = used.spentMicro / 1e6;
+  if (limitReached(capUsd, spentUsd, perRow)) {
+    return { reason: 'column_cap', message: `It reached today's ${money(capUsd ?? 0)} cap for this column.${billed}` };
+  }
+  if (perRow === null) return { rows: AUTORUN_MAX_ROWS, runLimitUsd: null };
   // What running batches hold for their calls still out shrinks the run, but
   // pauses nothing: it comes back as they settle, and the run waits for it.
   const byDay = limit === null ? Infinity
     : Math.max(1, rowsThatFit(limit / 1e6, spentToday + heldMicro(e.user_id) / 1e6, perRow));
-  const capUsd = e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6;
-  const spentUsd = used.spentMicro / 1e6;
   const byCap = rowsThatFit(capUsd, spentUsd, perRow);
-  if (byCap < 1) {
-    const cap = money(capUsd ?? 0);
-    return { reason: 'column_cap', message: `It reached today's ${cap} cap for this column.` };
-  }
   return {
     rows: Math.min(byCap, byDay, AUTORUN_MAX_ROWS),
     runLimitUsd: capUsd === null ? null : round6(Math.max(0, capUsd - spentUsd)),

@@ -14,6 +14,7 @@ import guessMod from '../../server/src/lib/enrich-email-guess'
 import inputMod from '../../server/src/lib/enrich-run-input'
 import trimMod from '../../server/src/lib/answer-trim'
 import toolMod from '../../server/src/lib/enrich-tool'
+import estMod from '../../server/src/lib/enrich-estimate'
 const { readTregMeta } = metaMod as typeof import('../../server/src/lib/treg-meta')
 const { tregCallHeaders } = callMod as typeof import('../../server/src/lib/treg-call')
 const { routeFor, requestToolOf, CUBEX_PATHS } = cfgMod as typeof import('../../server/src/lib/enrich-run-config')
@@ -25,6 +26,7 @@ const { guessEmail, guessParts } = guessMod as typeof import('../../server/src/l
 const { parseEnrichRunInput } = inputMod as typeof import('../../server/src/lib/enrich-run-input')
 const { trimAnswer } = trimMod as typeof import('../../server/src/lib/answer-trim')
 const { normalizeTool } = toolMod as typeof import('../../server/src/lib/enrich-tool')
+const { limitReached } = estMod as typeof import('../../server/src/lib/enrich-estimate')
 
 let failures = 0
 function check(label: string, cond: boolean) {
@@ -57,6 +59,12 @@ check('Idempotency-Key and attribution', h['Idempotency-Key'] === 'cbx1:k' && h[
 const single = tregCallHeaders('t', { ...req, routed: false, fresh: false, maxCostUsd: null, body: null })
 check('no route headers, cap or content type on a bodiless single tool', !('X-Treg-Route-Prefer' in single) && !('X-Treg-Route-Max-Cost' in single) && !('Content-Type' in single))
 check('the firewall retry says base64', tregCallHeaders('t', req, true)['X-Treg-Body-Encoding'] === 'base64')
+// That uncapped call can still be billed, so the run stops on what treg charged.
+check('no per-row cap: a limit is reached only once real spend reaches it',
+  !limitReached(1, 0.99, null) && limitReached(1, 1, null) && limitReached(1, 1.2, null)
+    && !limitReached(null, 5, null))
+check('a per-row cap: a limit is reached once one more row could pass it',
+  limitReached(1, 0.95, 0.1) && !limitReached(1, 0.9, 0.1) && !limitReached(1, 5, 0))
 
 // --- Route headers -------------------------------------------------------------
 const find = normalizeTool(read('catalog/endpoints/treg.people.email.find.json'))!

@@ -71,8 +71,9 @@ const UNCONFIRMED = "treg hasn't confirmed a call for 15 minutes. "
 // Keys one call may move through: the ones its row's step already holds, then one new.
 const MAX_KEY_HOPS = 10;
 
-// rowCost is what the row's answer cost (a replay counts its first charge);
-// the ledger records what each call adds (enrich-ledger.ts).
+// rowCost is what the row's answer cost (a replay counts its first charge,
+// once: not when this step already counted that key's charge, as after a body
+// cut off mid-read); the ledger records what each call adds (enrich-ledger.ts).
 async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
   const at = keyScope(ctx, s.rowIndex, s.rowId);
   const keyOf = (a: string) => idempotencyKey(at.scope, at.row, a, s.parts);
@@ -82,6 +83,7 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
   // The next key to ask: one this row's step already sent for this request
   // (it may hold a paid answer treg replays for free), in order, then a new number.
   const asked = new Set<string>();
+  const counted = new Set<string>();   // keys whose charge rowCost holds
   let held: Array<{ key: string; attempt: string }> | null = null;
   const nextKey = () => {
     asked.add(key);
@@ -102,11 +104,17 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
     const replayed = ans.meta.replay || seenCallId(ctx.userId, s.rowId, key, ans.meta.callId);
     const replayedRefusal = ans.meta.tregError && replayed;
     if (ans.meta.callId || ans.meta.costMicro !== null) {
-      rowCost += recordCall({
+      const { rowMicro } = recordCall({
         userId: ctx.userId, sheetId: ctx.sheetId, runId: ctx.runId, rowId: s.rowId, statusColumn: ctx.statusColumn,
         toolId: s.toolId, attempt, idempotencyKey: key, httpStatus: ans.status,
         tregErrorCode: ans.meta.tregError ? detailOf(ans.body).code : null, tier: tierOf(ans.body), meta: ans.meta,
-      }).rowMicro;
+      });
+      // A replay of a charge this step counted is that same charge. One it
+      // didn't (a resume: an earlier worker's call) is what the row cost.
+      if (rowMicro > 0 && !(ans.meta.replay && counted.has(key))) {
+        rowCost += rowMicro;
+        counted.add(key);
+      }
     }
     // A body cut off mid-read is asked again under the same key (a free replay).
     const verdict = ans.incomplete
