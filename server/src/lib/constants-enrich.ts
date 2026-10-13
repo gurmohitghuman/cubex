@@ -52,6 +52,10 @@ export const ENRICH_SATURATION_RETRIES = 3;
 // treg answers 409 while the first call with a key is still running, and turns a
 // silent one into a stored 410 after 15 minutes (idempotency.py stale lease).
 export const ENRICH_IDEMPOTENCY_WAIT_MS = 15 * 60 * 1000;
+// How long a batch's hold on the daily limit still counts after its run left
+// that worker (paused, cancelled, resumed): the calls it had out still finish
+// and bill, and none outlasts the longest call clock (services/enrich-holds.ts).
+export const ENRICH_HOLD_GRACE_SEC = TREG_ROUTED_CALL_TIMEOUT_MS / 1000 + 60;
 export const ENRICH_STORED_RAW_MAX_BYTES = envInt('ENRICH_STORED_RAW_MAX_BYTES', 16 * 1024);
 // List results into rows: results kept per source row (treg's own cap on a
 // list page), the default ("results per row", the price dial), and how many

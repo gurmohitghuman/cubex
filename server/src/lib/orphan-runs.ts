@@ -51,6 +51,10 @@ export function resetOrphanedRuns(): RecoveredRuns {
     if (failed.changes > 0) console.log(`⚠️  ${failed.changes} run(s) in ${table} were starting when Cubex stopped; marked failed`);
   }
 
+  // No worker survives a restart, so neither do the holds enrichment batches
+  // took on the spend limits for their calls out (services/enrich-holds.ts).
+  db.prepare('DELETE FROM enrich_holds').run();
+
   const aiRunIds = (db.prepare(
     `SELECT id FROM ai_runs WHERE status IN ('running', 'pending')`,
   ).all() as Array<{ id: string }>).map(r => r.id);
