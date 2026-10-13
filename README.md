@@ -230,13 +230,17 @@ E2E_SPEC=tests/e2e scripts/e2e-harness.sh   # full browser + API suite on a thro
 
 The end-to-end suite needs Playwright: `npm install --no-save @playwright/test && npx playwright install chromium`.
 
-How a release is cut: [docs/releasing.md](docs/releasing.md).
+How a release is cut: [docs/releasing.md](docs/releasing.md). Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Stack: Express and SQLite (better-sqlite3) on the server, React, Vite and AG Grid in the browser, Sidequest for background runs. Runs, autosave and column handling rely on rules that the comments at the top of those files explain; read them before changing anything there.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). You're free to use, change and share Cubex however you like.
+Cubex is open source under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). Copyright (C) 2026 Gurmohit Ghuman.
+
+- You can use Cubex for free, host it yourself, use it in your business and run it for your clients.
+- You can change it. If you let other people use a changed version, including over the web, you have to give them the source code of your version under the same license.
+- The license covers the code, not the Cubex name or logo. If you share a changed version, give it its own name so people don't mistake it for Cubex.
 
 ## About this project
 
