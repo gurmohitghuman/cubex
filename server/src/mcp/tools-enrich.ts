@@ -4,7 +4,9 @@
 // :id/enrichment-runs use. The scope check stays the first statement.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ENRICH_LIST_MAX_ITEMS, ENRICH_TEST_ROWS } from '../lib/constants';
+import {
+  ENRICH_DEFAULT_CONCURRENCY, ENRICH_LIST_MAX_ITEMS, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY,
+} from '../lib/constants';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { GUESS_PATTERNS } from '../lib/enrich-email-guess';
 import { agentSearchTools, agentGetTool } from '../services/enrich-agent-tools';
@@ -35,6 +37,9 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + `test:true runs the first ${ENRICH_TEST_ROWS} rows only. max_cost_per_row_usd caps each row (sent to treg; the `
   + 'default lets every provider picked answer) and spend_limit_usd caps the run (it pauses there; default: rows in '
   + `scope x max per row). ${DAILY_LIMIT_NOTE} `
+  + `concurrency: rows enriched at once, default ${ENRICH_DEFAULT_CONCURRENCY}, max ${HTTP_MAX_CONCURRENCY}; a `
+  + 'new row starts as soon as one finishes. A waterfall row can take several seconds, so a higher concurrency is '
+  + 'the speed lever; a provider\'s own rate limit (its 429s) does not rise with it. Reruns and auto-run keep it. '
   + 'Waterfall tools ask providers in turn until one finds it: provider_order puts some first, skip_providers '
   + 'leaves some out, stop_at_first stops after the first answer even if empty. preset verified_email (the email '
   + 'finder only) checks each address and finds again with other providers until one passes email.accept: '
@@ -115,6 +120,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       fresh: lenientBoolean().optional().describe('Ask providers for fresh data, not treg\'s stored answers'),
       max_cost_per_row_usd: money().optional(),
       spend_limit_usd: money().optional(),
+      concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
+        .describe(`Rows at once (1-${HTTP_MAX_CONCURRENCY}, default ${ENRICH_DEFAULT_CONCURRENCY})`),
       rows: z.enum(['any', 'not_enriched', 'no_result', 'failed']).optional()
         .describe('no_result and failed need add_to_column. Default: any (not_enriched with add_to_column).'),
       use_sheet_filter: lenientBoolean().optional().describe('Only the rows the sheet\'s saved filter shows'),

@@ -13,6 +13,7 @@ import { agentGetTool, agentSearchTools } from '../services/enrich-agent-tools';
 import { tokenStartEnrichmentRun } from '../services/enrich-token-run';
 import { agentAddField, agentAddListRows, agentListFields } from '../services/enrich-agent-fields';
 import { agentSetAutorun } from '../services/enrich-agent-autorun';
+import { readBalances } from '../services/balances';
 
 const router = express.Router();
 
@@ -32,6 +33,12 @@ function handle(what: string, fn: (req: TokenAuthRequest, res: express.Response)
     }
   };
 }
+
+// GET /v1/balances: the treg balance, the enrichment daily limit and what
+// OpenRouter reports for the saved key (get_balances).
+router.get('/balances', requireScope('read'), handle('read the balances', async (req, res) => {
+  res.json(await readBalances(req.userId!));
+}));
 
 // GET /v1/enrichments?q= : treg's catalog (no q: the popular jobs).
 router.get('/enrichments', requireScope('read'), handle('search enrichments', async (req, res) => {

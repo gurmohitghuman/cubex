@@ -10,9 +10,11 @@
 //
 // This is classification ONLY — deliberately not retry policy:
 //   - Auto-retry already exists and is intentionally narrow. services/
-//     openrouter-retry.ts retries exactly one signature (pre-response
-//     ECONNRESET: nothing generated, nothing billed) because with stream:false a
-//     retry can land AFTER the provider already generated and charged. Widening
+//     openrouter-retry.ts retries only what never ran (a pre-response
+//     ECONNRESET, OpenRouter's in-flight budget 402: nothing generated, nothing
+//     billed; a row still failing after those retries is classed here)
+//     because with stream:false a retry can land AFTER the provider already
+//     generated and charged. Widening
 //     retries to everything this file marks 'retryable' would double-bill. Don't.
 //   - Leaked tool-call syntax is already FAILED (not stripped) by
 //     completion-text.ts, on purpose: stripping leaves a misleading half-answer
@@ -33,6 +35,10 @@ export type AiErrorClass =
   // (token budget exhausted, unresolved tool call, empty completion). Re-running
   // unchanged usually repeats; the fix is a different model or smaller prompt.
   | 'model_output'
+  // Too many calls at once for the OpenRouter balance: its in-flight budget
+  // (every running call holds an estimate of its cost) refused this one. A
+  // rerun at a lower concurrency fixes it; so do more credits.
+  | 'concurrency'
   // Account/config level: missing or rejected credentials, no model selected,
   // quota. A rerun cannot fix it — the user must change a setting.
   | 'configuration'
@@ -45,6 +51,15 @@ export type AiErrorClass =
 // Patterns match the messages actually written by lib/completion-text.ts,
 // services/ai-row.ts, and the OpenRouter SDK.
 const RULES: ReadonlyArray<{ cls: AiErrorClass; re: RegExp }> = [
+  // --- concurrency: a 402 that isn't an empty balance (before the 402 rule) --
+  // OpenRouter: "This request would exceed your available credits given your
+  // current in-flight requests. Retry after in-flight requests settle, or add
+  // credits.", saved with its reason in brackets (ai-row.ts). Its other budget
+  // 402, one call too big for the balance, is about credits, not concurrency.
+  { cls: 'concurrency', re: /\(in_flight_budget_exhausted\)/ },
+  { cls: 'configuration', re: /\(weight_exceeds_budget\)/ },
+  { cls: 'concurrency', re: /\bin-flight requests\b/i },
+
   // --- configuration: a rerun is futile until the user changes something -----
   { cls: 'configuration', re: /\bno ai model selected\b|\bmodel is required\b/i },
   { cls: 'configuration', re: /\b(401|403)\b|\bunauthorized\b|\binvalid api key\b|\bno auth credentials\b/i },
@@ -93,6 +108,10 @@ export const AI_ERROR_CLASS_HINT: Record<AiErrorClass, string> = {
     'The prompt or its wording caused this. Re-running unchanged will fail and bill again — edit the prompt first.',
   model_output:
     'The model produced nothing usable. Try a different model, a smaller prompt, or turn off web search / URL fetching.',
+  concurrency:
+    'Too many calls at once for your OpenRouter balance (each running call holds an estimate of its cost). Rerun '
+    + 'these rows at a lower concurrency (control_run action "rerun", mode "errored", concurrency e.g. 10), or add '
+    + 'OpenRouter credits.',
   configuration:
     'An account setting is wrong (API key, credits, or model choice). Fix it in Settings — a rerun cannot.',
   unknown:

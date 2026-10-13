@@ -28,7 +28,7 @@ function resolveTargets(
 
 export async function rerunAiRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: AiRerunMode } = {},
+  opts: { rowIds?: string[]; mode?: AiRerunMode; concurrency?: number } = {},
 ): Promise<RerunOutcome> {
   const run = db.prepare(
     'SELECT id, sheet_id, column_name, output_columns FROM ai_runs WHERE id = ? AND user_id = ?',
@@ -52,12 +52,13 @@ export async function rerunAiRunById(
   if (run.output_columns) {
     return rerunAiMultiColumn(userId, {
       sheetId: run.sheet_id, baseColumnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
+      concurrency: opts.concurrency,
     }, run.column_name);
   }
   // The rerun service keys on the BASE column name and re-appends " (Output)".
   const baseColumnName = run.column_name.replace(/ \(Output\)$/, '');
   return rerunAiColumn(userId, {
-    sheetId: run.sheet_id, baseColumnName, rowIndices: t.indexes, mode: opts.mode,
+    sheetId: run.sheet_id, baseColumnName, rowIndices: t.indexes, mode: opts.mode, concurrency: opts.concurrency,
   });
 }
 

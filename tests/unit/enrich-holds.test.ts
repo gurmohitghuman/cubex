@@ -1,6 +1,6 @@
 // Holds on the enrichment limits and a run recovering its own paid answers,
 // against a migrated throwaway DB and a stubbed treg (global fetch): runs
-// sizing batches at the same time never commit more than the daily limit; a
+// sizing rows at the same time never commit more than the daily limit; a
 // hold counts while its worker may still have calls out, and boot drops them;
 // a run with no per-row cap holds nothing but stops once what treg really
 // billed reaches a limit (auto-run's room too); a run paused with calls out
@@ -43,7 +43,7 @@ async function main() {
   const { runMigrations } = await import('../../server/src/db/migrate')
   const { saveTregToken, setDailyLimitMicro, spentTodayMicro } = await import('../../server/src/services/treg-key')
   const { processEnrichmentRun, pauseEnrichmentRun } = await import('../../server/src/services/enrich-runner')
-  const { heldMicro, takeHold } = await import('../../server/src/services/enrich-holds')
+  const { heldMicro, setRunHold } = await import('../../server/src/services/enrich-holds')
   const { runSpentMicro } = await import('../../server/src/services/enrich-ledger')
   const { recoverPaidAnswer } = await import('../../server/src/services/enrich-recover')
   const { rowRequest } = await import('../../server/src/services/enrich-row')
@@ -109,7 +109,7 @@ async function main() {
     posts.length === 5 && spentTodayMicro(uid) === 50_000)
   check('the run that found the room held waited for it, then paused at the limit',
     paused.length === 1 && paused[0].pause_reason === 'daily_limit')
-  check('no hold outlives its batch', holds() === 0)
+  check('no hold outlives its run', holds() === 0)
 
   // Rows that cost less than their cap give the rest back for other runs.
   setDailyLimitMicro(uid, 80_000)
@@ -118,10 +118,10 @@ async function main() {
   const c = newRun(5, 0.01), d = newRun(5, 0.01)
   await Promise.all([go(c, 1), go(d, 1)])
   const bought = cells(c).concat(cells(d)).filter(r => r.Email).length
-  check('room a batch held but did not spend comes back (more rows than the cap alone allows)',
+  check('room a row held but did not spend comes back (more rows than the cap alone allows)',
     bought === posts.length && bought > 3 && spentTodayMicro(uid) <= 80_000)
   check('... and still never past the limit', spentTodayMicro(uid) === 50_000 + bought * 4_000)
-  check('... the holds are gone with the batches', holds() === 0)
+  check('... the holds are gone with the runs', holds() === 0)
 
   // --- Which holds count ---------------------------------------------------------
   const p = newRun(0, 0.01)
@@ -135,7 +135,7 @@ async function main() {
   db.prepare(`UPDATE http_runs SET status = 'running', worker_generation = 2,
     updated_at = datetime('now', '-1 hour') WHERE id = ?`).run(p)
   check("an older worker's hold stops counting once the run moved on", heldMicro(uid) === 0)
-  db.transaction(() => takeHold(a, uid, 1, 0))()
+  db.transaction(() => setRunHold(a, uid, 1, 0))()
   check('taking a hold clears the ones that no longer count', holds() === 0)
   db.prepare('INSERT INTO enrich_holds (run_id, worker_generation, user_id, hold_micro) VALUES (?,?,?,?)')
     .run(p, 2, uid, 20_000)
@@ -153,11 +153,14 @@ async function main() {
     load(own).status === 'running' && cells(own).every(r => r.Email) && posts.length === 7)
   posts.length = 0
   stub = buying(10_000, 10)
-  const billed = newRun(7, null)
+  const billed = newRun(12, null)
   await go(billed, 1)
   const billedRun = load(billed) as Run & { pause_reason: string | null; error_message: string | null }
+  // $0.03 left at $0.01 a row: rows start while less than that is billed, so the
+  // rows still out then (at most the run's 5) are all it can go over by.
   check('... one treg bills after all stops at the daily limit once those charges reach it',
-    billedRun.status === 'paused' && billedRun.pause_reason === 'daily_limit' && posts.length === 5)
+    billedRun.status === 'paused' && billedRun.pause_reason === 'daily_limit'
+      && posts.length >= 3 && posts.length <= 2 + 5)
   check('... and its pause says why', !!billedRun.error_message?.includes('spent today')
     && billedRun.error_message.endsWith(UNCAPPED_BILLED_NOTE))
   posts.length = 0

@@ -17,7 +17,8 @@ import toolMod from '../../server/src/lib/enrich-tool'
 import estMod from '../../server/src/lib/enrich-estimate'
 const { readTregMeta } = metaMod as typeof import('../../server/src/lib/treg-meta')
 const { tregCallHeaders } = callMod as typeof import('../../server/src/lib/treg-call')
-const { routeFor, requestToolOf, CUBEX_PATHS } = cfgMod as typeof import('../../server/src/lib/enrich-run-config')
+const { routeFor, requestToolOf, CUBEX_PATHS, enrichConcurrency } =
+  cfgMod as typeof import('../../server/src/lib/enrich-run-config')
 const { answerCells, verdictCells, waterfallOutcome } = outMod as typeof import('../../server/src/lib/enrich-outcome')
 const { enrichCellValues } = cellsMod as typeof import('../../server/src/lib/enrich-cells')
 const { seedVerdict } = seedMod as typeof import('../../server/src/lib/enrich-seed')
@@ -141,6 +142,18 @@ check('a bad tool id is refused', 'error' in parseEnrichRunInput({ ...good, tool
 check('a zero run limit is refused', 'error' in parseEnrichRunInput({ ...good, spendLimitUsd: 0 }))
 const test5 = parseEnrichRunInput({ ...good, rows: { mode: 'filter', test: true } })
 check('test runs take 5 rows', 'ok' in test5 && test5.ok.rows.test === 5)
+
+// Rows at once: 1 to 20, the default when not sent; a column's reruns keep it.
+const fast = parseEnrichRunInput({ ...good, concurrency: 12 })
+check('a concurrency parses', 'ok' in fast && fast.ok.concurrency === 12)
+const plain = parseEnrichRunInput(good)
+check('no concurrency: the default', 'ok' in plain && plain.ok.concurrency === null)
+for (const bad of [0, 21, 1.5, '5']) {
+  check(`concurrency ${JSON.stringify(bad)} is refused`, 'error' in parseEnrichRunInput({ ...good, concurrency: bad }))
+}
+check('the run uses its own concurrency', enrichConcurrency({ batchSize: 12 }) === 12)
+check('... the default without one', enrichConcurrency({}) === 5)
+check('... never past the HTTP cap', enrichConcurrency({ batchSize: 500 }) === 20)
 
 // --- Stored answers ------------------------------------------------------------------
 const big = { output: { email: 'a@b.example' }, _treg: { outcome: 'hit' }, raw: { small: 1, huge: 'x'.repeat(40_000), list: Array.from({ length: 300 }, (_, i) => ({ i, pad: 'y'.repeat(50) })) } }

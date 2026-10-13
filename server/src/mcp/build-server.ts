@@ -20,6 +20,7 @@ import { registerTransferTool } from './tools-transfer';
 import { registerTransformTool } from './tools-transform';
 import { registerEnrichTools } from './tools-enrich';
 import { registerEnrichManageTools } from './tools-enrich-manage';
+import { registerBalanceTools } from './tools-balances';
 import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 
@@ -63,6 +64,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerModelTools(server, ctx);
   registerEnrichTools(server, ctx);
   registerEnrichManageTools(server, ctx);
+  registerBalanceTools(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);

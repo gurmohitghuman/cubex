@@ -13,7 +13,9 @@ export interface ChatLikeCompletion {
     message: { role: 'assistant'; content: string; refusal: string | null; annotations: unknown[] };
     finish_reason: string;
   }>;
-  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown };
+  usage?: {
+    prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; is_byok?: unknown; cost_details?: unknown;
+  };
 }
 
 // The search calls of one row, in order. ran: false for a call OpenRouter
@@ -74,7 +76,10 @@ export function completionFromResponse(resp: unknown): ChatLikeCompletion {
     : reason === 'max_output_tokens' ? 'length' : reason === 'content_filter' ? 'content_filter' : (reason || 'incomplete');
   return {
     choices: [{ message: { role: 'assistant', content, refusal: refusal || null, annotations }, finish_reason: finish }],
-    usage: { prompt_tokens: r?.usage?.input_tokens, completion_tokens: r?.usage?.output_tokens, cost: r?.usage?.cost },
+    usage: {
+      prompt_tokens: r?.usage?.input_tokens, completion_tokens: r?.usage?.output_tokens, cost: r?.usage?.cost,
+      is_byok: r?.usage?.is_byok, cost_details: r?.usage?.cost_details,
+    },
   };
 }
 
@@ -105,15 +110,27 @@ export function searchLogFromResponse(resp: unknown, replay: SearchReplay): Sear
 const count = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
 
+const usd = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+
+export interface CallUsage {
+  promptTokens: number | null; completionTokens: number | null;
+  costUsd: number | null;
+  // On the user's own provider key (usage.is_byok): what that provider charged
+  // (cost_details.upstream_inference_cost). null on every other call.
+  providerCostUsd: number | null;
+}
+
 // Tokens and what OpenRouter charged (usage.cost: tokens plus web fees) from
 // either API's answer. Anything missing or malformed is null, never a failure.
-export function usageOf(completion: { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown } }):
-  { promptTokens: number | null; completionTokens: number | null; costUsd: number | null } {
+export function usageOf(completion: { usage?: {
+  prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; is_byok?: unknown; cost_details?: unknown;
+} }): CallUsage {
   const u = completion?.usage;
-  const cost = u?.cost;
+  const details = u?.cost_details as { upstream_inference_cost?: unknown } | null | undefined;
   return {
     promptTokens: count(u?.prompt_tokens),
     completionTokens: count(u?.completion_tokens),
-    costUsd: typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null,
+    costUsd: usd(u?.cost),
+    providerCostUsd: u?.is_byok === true ? usd(details?.upstream_inference_cost) : null,
   };
 }

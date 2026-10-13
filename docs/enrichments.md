@@ -269,11 +269,13 @@ Try asking:
 
 ## Known limits
 
-- **Cancelling** throws away answers still in flight (up to one batch of rows), and their cost still counts. A later rerun of those rows gets them back for free when treg kept them; treg keeps single-provider answers, not waterfall ones.
+- **Speed.** A run enriches 5 rows at once (agents can set 1 to 20 with `concurrency`) and starts the next row as soon as one finishes, so a slow row doesn't hold up the others. A waterfall row takes as long as the providers it asks.
+- **Provider rate limits.** treg passes each provider's own limit through and doesn't publish it. In a waterfall, a provider that answers "429 Too Many Attempts" goes straight to the next one; after three in a row, the run leaves that provider out for 5 minutes, then asks it again. `get_run_status` shows what each provider did.
+- **Cancelling** throws away answers still in flight (up to the run's rows at once), and their cost still counts. A later rerun of those rows gets them back for free when treg kept them; treg keeps single-provider answers, not waterfall ones.
 - **Pausing and resuming** replays answers treg already charged for, for free. The exception is calls on your own provider key at treg to a single provider, which can be sent to your provider again.
 - **Replays last 24 hours and belong to one treg key.** After a longer pause, rows that were in flight get their answers back for free when treg kept them (single-provider answers, not waterfall ones). Otherwise, and after switching to another treg key, those rows can be paid for again.
 - **No cost shown for some calls.** Calls on your own provider key and free routes carry no cost from treg, so the drawer shows no cost for them and the answer panel says none was reported.
-- **Runs share the daily limit.** Before a batch starts, Cubex sets aside the most its rows can cost, so enrichments running at the same moment can't pass the limit together. A run that finds the rest of the day set aside waits for the other runs' rows to finish, then goes on or pauses at the limit.
+- **Runs share the daily limit.** Before rows start, Cubex sets aside the most they can cost, so enrichments running at the same moment can't pass the limit together. A run that finds the rest of the day set aside waits for the other runs' rows to finish, then goes on or pauses at the limit.
 - **Your treg balance** as Cubex shows it includes amounts on hold for calls in flight, and can lag behind treg.
 - **Unconfirmed calls.** If treg doesn't confirm a call (it keeps saying the first call with that key is still running), the run waits up to 15 minutes, then pauses: "treg hasn't confirmed a call for 15 minutes. Resume later to ask again; a call it finished is never charged twice." An auto-run asks again about every 20 minutes. Meanwhile the column counts as busy: renaming or deleting it, sorting the sheet, or another run on it waits.
 - **Internet access.** Enrichments need outbound access to treg.to.

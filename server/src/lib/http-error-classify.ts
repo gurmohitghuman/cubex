@@ -3,7 +3,8 @@
 // is neither a prompt nor a model problem, and came back "unknown"). Read-time
 // and pure: regexes over the messages http-row.ts records, which come from
 // http-request.ts ("HTTP 404 from upstream: …"), outbound-guard.ts,
-// http-response-json.ts and http-request-template.ts.
+// http-response-json.ts and http-request-template.ts, and the ones an
+// enrichment row records (lib/enrich-errors.ts: "The provider answered 429: …").
 
 export type HttpErrorClass =
   // Rate limits, timeouts, 5xx, dropped connections: a rerun will likely work.
@@ -24,6 +25,10 @@ const RULES: ReadonlyArray<{ cls: HttpErrorClass; re: RegExp }> = [
   { cls: 'configuration', re: /^HTTP (501|505) from upstream/ },
   { cls: 'retryable', re: /^HTTP (408|425|429|5\d\d) from upstream/ },
   { cls: 'configuration', re: /^HTTP [34]\d\d from upstream/ },
+  // Enrichments: a provider's own answer relayed by treg, and treg's busy shared key.
+  { cls: 'not_found', re: /^The provider answered (404|410)\b/ },
+  { cls: 'retryable', re: /^The provider answered (408|425|429|5\d\d)\b|shared key for .* stayed busy/ },
+  { cls: 'configuration', re: /^The provider answered [34]\d\d\b/ },
   { cls: 'configuration', re: /doesn't match a column or a saved key|not a valid header name|^JSONPath "/ },
   { cls: 'configuration', re: /private\/internal address|Only http\(s\) URLs|^Invalid URL|missing a hostname|^Could not resolve|^URL not allowed/ },
   { cls: 'response_format', re: /only supports (?:valid )?JSON|expects a JSON object or array|exceeds the \d+MB cap/ },

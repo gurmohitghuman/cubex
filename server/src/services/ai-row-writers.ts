@@ -39,16 +39,18 @@ export interface RowTokenUsage {
   // What OpenRouter charged for the row (usage.cost), web fees included. Kept
   // on a failed row too when its call came back: that call was still billed.
   costUsd?: number | null;
+  // On the user's own provider key (BYOK): what that provider charged.
+  providerCostUsd?: number | null;
   // With web search on: the searches that ran, and every search call as JSON
   // [{query, ran}] (lib/responses-adapter.ts). null without web search.
   webSearches?: number | null;
   searchQueries?: string | null;
 }
 
-// The ai_results spend columns, in INSERT order: tokens, cost, searches, queries.
+// The ai_results spend columns, in INSERT order: tokens, cost, searches, queries, provider cost.
 export const usageColumns = (u?: RowTokenUsage) => [
   u?.promptTokens ?? null, u?.completionTokens ?? null, u?.costUsd ?? null,
-  u?.webSearches ?? null, u?.searchQueries ?? null,
+  u?.webSearches ?? null, u?.searchQueries ?? null, u?.providerCostUsd ?? null,
 ];
 
 // Persist a successful row result: ai_results row + the output cell (and the
@@ -75,8 +77,8 @@ export function writeSuccess(
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson,
       ...usageColumns(usage),
@@ -126,8 +128,8 @@ export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTok
     if (shouldStop(ctx.runId, ctx.myGeneration)) return;
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries)
-      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
+      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
     if (ctx.needsDataColumn) {
       db.prepare(`

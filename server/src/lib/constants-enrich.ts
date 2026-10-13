@@ -148,3 +148,13 @@ export const ENRICH_FEATURED: FeaturedJob[] = [
   { id: 'treg.google.serp.organic', title: 'Google search results',
     blurb: "Adds the top Google results for each row's search as rows in another sheet." },
 ];
+
+// A provider that answers 429 this many times in a row within a run is left
+// out of that run's waterfalls for the cool-down, then asked again
+// (services/enrich-providers.ts). Its rows go to the next provider meanwhile.
+export const ENRICH_COOLDOWN_AFTER_429S = envInt('ENRICH_COOLDOWN_AFTER_429S', 3);
+export const ENRICH_PROVIDER_COOLDOWN_MS = envInt('ENRICH_PROVIDER_COOLDOWN_MS', 5 * 60 * 1000);
+// treg's own "shared key busy" 429 (share_busy) says when to retry: never sooner
+// than this, never later than the other.
+export const ENRICH_SHARE_BUSY_MIN_MS = 1_000;
+export const ENRICH_SHARE_BUSY_MAX_MS = 60_000;

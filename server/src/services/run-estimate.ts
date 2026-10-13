@@ -15,8 +15,10 @@ import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '
 import type { SearchOptions } from '../lib/web-search-options';
 import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
 import { checkRunRule } from './run-rule';
-import { tokenHistory } from './ai-token-history';
+import { ranOnOwnKey, tokenHistory } from './ai-token-history';
 import { estimateWebWork, webNote, webSearchEstimate } from './run-estimate-web';
+import { inFlightFor } from './ai-in-flight';
+import type { InFlight } from '../lib/ai-in-flight';
 
 export interface AiEstimateInput {
   sheetId: string;
@@ -30,6 +32,7 @@ export interface AiEstimateInput {
   targetRowIndexes?: number[];
   search?: SearchOptions | null;
   runIf?: string | null;
+  concurrency: number;            // resolved: explicit, else the sheet's default
 }
 
 export interface AiEstimate {
@@ -51,6 +54,12 @@ export interface AiEstimate {
   // 'measured': the search price is unknown, so the cost is what your past
   // runs with the same settings really cost per row.
   basis: 'history' | 'heuristic-no-history' | 'measured';
+  // What the run holds on OpenRouter's in-flight budget at its concurrency
+  // (lib/ai-in-flight.ts), with a warning when that passes what the key has.
+  in_flight?: InFlight;
+  // The latest run on this model ran on the user's own provider key (BYOK):
+  // the provider bills that key, OpenRouter only its fee.
+  own_provider_key?: true;
   assumptions: {
     avg_input_tokens: number;
     // Per row, with what the web tools read added in.
@@ -152,6 +161,16 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   if (!model) notes.push('No model resolved — set a model to price this run.');
   else if (!pricingAvailable) notes.push('OpenRouter pricing was unavailable; row count is exact, cost is not shown.');
   if (fees) notes.push(webNote(w, fees, !!history?.webInput));
+  // On the user's own provider key OpenRouter holds nothing in flight, unless
+  // a paid plugin (web search or fetch) runs too.
+  const ownKey = !!model && ranOnOwnKey(userId, model);
+  if (ownKey) {
+    notes.push('Your latest run on this model ran on your own provider key (BYOK): estimated_cost_usd is what that '
+      + 'provider bills your key at its list price, and OpenRouter charges only its BYOK fee (cost_usd, often $0).');
+  }
+  const inFlight = pricingAvailable && !(ownKey && !usesWeb)
+    ? await inFlightFor(userId, model, inputTokens.high, input.maxChars, input.concurrency) : null;
+  if (inFlight?.warning) notes.push(inFlight.warning);
 
   return {
     ok: {
@@ -164,6 +183,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       web_fees_usd: fees ? { low: roundUsd(fees.low * count), high: roundUsd(fees.high * count) } : null,
       web_search: webSearchEstimate(w),
       basis,
+      ...(inFlight ? { in_flight: inFlight } : {}),
+      ...(ownKey ? { own_provider_key: true as const } : {}),
       assumptions: {
         avg_input_tokens: avgInputTokens,
         input_tokens: inputTokens,

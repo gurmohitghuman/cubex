@@ -10,11 +10,16 @@ import { classifyCall, detailOf, type PauseReason } from '../lib/enrich-errors';
 import { idempotencyKey, keyPrefix, requestFingerprint, type KeyParts } from '../lib/enrich-request';
 import { tregCall, type TregCallRequest } from '../lib/treg-call';
 import type { TregMeta } from '../lib/treg-meta';
-import { heldKeys, keysUsed, keyUsedByOtherRun, recordCall, seenCallId } from './enrich-ledger';
+import { heldKeys, keyAnswered, keysUsed, keyUsedByOtherRun, recordCall, seenCallId } from './enrich-ledger';
 import { noteTregReach, tregAnswered } from './treg-reach';
+import { providerTries as triesOf } from '../lib/enrich-provider-tries';
+import { excludeWithCooldown, noteProviderTries, type Cooldown } from './enrich-providers';
 
 export const UNREACHABLE_MESSAGE = "Can't reach treg. Check the server's internet connection, then Resume.";
 const PROVIDER_RETRIES = 2;
+const BUSY_RETRIES = 3;
+// treg's refusals when no provider of a waterfall can take the row.
+const ROUTE_REFUSALS = new Set(['no_route_candidate', 'route_max_cost', 'route_failed']);
 const SAME_LOOKUP_MAX = 5000;
 
 export interface RunCtx {
@@ -26,6 +31,7 @@ export interface RunCtx {
   onHalt: () => void;                     // wakes the other rows' retry waits
   unreachableStreak: number;
   sameLookup: Map<string, { rowIndex: number; result: Promise<StepResult> }>;
+  cooldown: Cooldown;                     // providers its waterfalls leave out for now (enrich-providers.ts)
 }
 
 export type StepResult =
@@ -80,6 +86,9 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
   let attempt = s.attempt;
   let key = keyOf(attempt);
   let rowCost = 0, saturated = 0, providerTries = 0, waitedMs = 0, renewed = false, unanswered = 0, hops = 0;
+  let busy = 0, cool = true;
+  const triesCounted = new Set<string>();   // keys whose providers noteProviderTries counted
+  const cutOff = new Set<string>();         // keys whose answer came back cut off (not counted)
   // The next key to ask: one this row's step already sent for this request
   // (it may hold a paid answer treg replays for free), in order, then a new number.
   const asked = new Set<string>();
@@ -90,15 +99,25 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
     held ??= heldKeys(ctx.userId, s.rowId, keyPrefix(at.scope, at.row), s.attempt,
       requestFingerprint(s.parts).slice(0, 32));
     const h = held.find(k => !asked.has(k.key));
-    attempt = h ? h.attempt
-      : `${s.attempt}.${keysUsed(ctx.userId, s.rowId, keyPrefix(at.scope, at.row), s.attempt) + 1}`;
-    key = h ? h.key : keyOf(attempt);
+    if (h) { attempt = h.attempt; key = h.key; return; }
+    // A key the ledger never saw (no call id) isn't counted: step past those asked.
+    let n = keysUsed(ctx.userId, s.rowId, keyPrefix(at.scope, at.row), s.attempt) + 1;
+    while (asked.has(keyOf(`${s.attempt}.${n}`))) n++;
+    attempt = `${s.attempt}.${n}`;
+    key = keyOf(attempt);
   };
   for (;;) {
     if (ctx.halt || ctx.stopped()) return { kind: 'stopped', costMicro: rowCost };
     // No abort signal: a call treg is running is billed whatever we do, so it
     // always finishes and its cost lands in the ledger.
-    const ans = await tregCall(ctx.token, { ...s.request, idempotencyKey: key });
+    // A provider cooling down is left out of the header only (and of prefer):
+    // the key stays the column's, so a retry or resume replays what this call got.
+    const exclude = s.request.routed && cool
+      ? excludeWithCooldown(ctx, s.toolId, s.request.exclude) : s.request.exclude;
+    const cooled = exclude !== s.request.exclude;
+    const prefer = cooled ? s.request.prefer?.filter(p => !exclude?.includes(p)) : s.request.prefer;
+    const answeredBefore = keyAnswered(ctx.userId, s.rowId, key);
+    const ans = await tregCall(ctx.token, { ...s.request, exclude, prefer, idempotencyKey: key });
     noteTregReach(ctx.userId, tregAnswered({ ...ans, callId: ans.meta.callId, tregError: ans.meta.tregError }));
     // treg answers a repeated key from its store with the first call id.
     const replayed = ans.meta.replay || seenCallId(ctx.userId, s.rowId, key, ans.meta.callId);
@@ -115,6 +134,13 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
         rowCost += rowMicro;
         counted.add(key);
       }
+    }
+    // Counted once per key, from a whole answer: not again for a replay of one
+    // counted before, but yes for the replay of one whose reply was lost or cut off.
+    if (ans.incomplete) cutOff.add(key);
+    else if (!triesCounted.has(key) && (!answeredBefore || cutOff.has(key))) {
+      triesCounted.add(key);
+      noteProviderTries(ctx, s.toolId, triesOf(ans.body, ans.meta, ans.status));
     }
     // A body cut off mid-read is asked again under the same key (a free replay).
     const verdict = ans.incomplete
@@ -134,6 +160,16 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
     const oldFailure = !!ctx.autorunId && replayed && failed
       && keyUsedByOtherRun(ctx.userId, s.rowId, key, ctx.runId);
     if ((keptStop || oldFailure) && hops++ < MAX_KEY_HOPS) {
+      nextKey();
+      continue;
+    }
+    // No provider left for the row once a cool-down left some out (or such a
+    // refusal kept for this key): asked once more, without the cool-down, under
+    // a new key. These refusals bill nothing.
+    const routeRefusal = (verdict.kind === 'row_skip' || verdict.kind === 'row_fail')
+      && ROUTE_REFUSALS.has(detailOf(ans.body).code ?? '');
+    if (routeRefusal && cool && (cooled || replayedRefusal) && hops++ < MAX_KEY_HOPS) {
+      cool = false;
       nextKey();
       continue;
     }
@@ -167,6 +203,12 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
           }
         } else if (verdict.counts === 'provider') {
           providerTries++;
+        } else if (verdict.counts === 'busy') {
+          // Asked again under the same key, which can never be billed twice; a
+          // refusal treg kept for the key would only come back, so the row ends.
+          if (replayed || ++busy > BUSY_RETRIES) {
+            return { kind: 'row_fail', message: verdict.message, costMicro: rowCost };
+          }
         } else {
           // 409: treg is still running the first call with this key. The row
           // stays ⏳ past 15 minutes, so a resume asks with the same key.

@@ -8,7 +8,7 @@
 // answered; a failure there fails the run and clears its placeholders.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
+import { MAX_AI_CONCURRENCY, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
@@ -41,6 +41,18 @@ export interface AiRerunParams {
   // historical behavior) so the UI route is unchanged; programmatic surfaces
   // require it explicitly. See ai-rerun-modes.ts for why the modes exist.
   mode?: AiRerunMode;
+  // Rows in parallel for the new run (1..MAX_AI_CONCURRENCY); absent keeps the
+  // run it repeats. Lowering it is the fix for OpenRouter's in-flight budget 402.
+  concurrency?: number;
+}
+
+// The new run's concurrency: the caller's, else the run it repeats.
+export function rerunConcurrency(asked: number | undefined, previous: number): { value: number } | { error: string } {
+  if (asked === undefined) return { value: previous };
+  if (!Number.isInteger(asked) || asked < 1 || asked > MAX_AI_CONCURRENCY) {
+    return { error: `concurrency must be a whole number from 1 to ${MAX_AI_CONCURRENCY}.` };
+  }
+  return { value: asked };
 }
 
 export type RerunOutcome = { ok: { runId: string; targetCount: number } } | RunFail;
@@ -117,6 +129,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   // The column's "Only run if" rule applies to its reruns too.
   const rule = storedRule(p.sheetId, userId, latestRun.run_if);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const concurrency = rerunConcurrency(p.concurrency, latestRun.concurrency);
+  if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 
   const newRunId = uuidv4();
   const wantCols = needsDataColumn ? [outputCol, dataCol] : [outputCol];
@@ -166,7 +180,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
         latestRun.use_openrouter_web_search, latestRun.use_web_fetch,
-        latestRun.max_chars, latestRun.concurrency, targets.length,
+        latestRun.max_chars, concurrency.value, targets.length,
         JSON.stringify(targets),
         // The same search engine, mode and cap as the run it repeats.
         latestRun.web_search_engine ?? null, latestRun.web_search_engine_used ?? null,

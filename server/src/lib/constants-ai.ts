@@ -12,6 +12,11 @@ export const OPENROUTER_ATTRIBUTION_HEADERS: Record<string, string> = {
 // sheet default > account default (lib/ai-model-resolve.ts) — and is rejected
 // when none is set. Don't reintroduce a hardcoded fallback.
 export const OPENROUTER_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+// What OpenRouter says about the key's money (services/openrouter-balance.ts)
+// is read at most this often per key: estimates and get_balances can repeat.
+export const OPENROUTER_BALANCE_CACHE_MS = 30 * 1000;
+// An estimate waits at most this long for it (it is advisory).
+export const OPENROUTER_BALANCE_TIMEOUT_MS = 3_000;
 
 // Per-request timeout for an OpenRouter chat completion (one row). The OpenAI SDK
 // default is 10 MINUTES — far too long: a hung connection would block a worker slot
@@ -90,6 +95,13 @@ export function aiMaxTokens(maxChars: number | null | undefined): number {
 // the dead socket so the retry dials fresh; short enough to be invisible next
 // to a multi-second generation.
 export const AI_CONNECT_RETRY_DELAY_MS = 400;
+// OpenRouter's in-flight credit budget (402 in_flight_budget_exhausted): every
+// running call holds an estimate of its cost, and a call that would pass the
+// balance is refused before it runs (nothing billed). Each row waits out the
+// Retry-After (default and ceiling below) and tries again this many times.
+export const AI_IN_FLIGHT_RETRIES = 3;
+export const AI_IN_FLIGHT_DEFAULT_WAIT_MS = 2_000;
+export const AI_IN_FLIGHT_MAX_WAIT_MS = 30_000;
 // How long a socket may sit idle in the OpenRouter keep-alive pool before it's
 // closed (withIdleLimit in lib/openrouter-agent.ts). An idle connection can be
 // dropped upstream (or by a NAT) without the close ever reaching us; a run that

@@ -16,9 +16,11 @@ export interface FetchResult<T> { ok: boolean; status: number; body: T | null; }
 // { ok: false, body: null } (the body is not read). A network error, timeout
 // (AbortError), or JSON-parse failure THROWS — callers wrap the call to handle
 // those, and the thrown AbortError lets them distinguish a timeout.
-export async function fetchJsonWithTimeout<T>(url: string, headers: Record<string, string>): Promise<FetchResult<T>> {
+export async function fetchJsonWithTimeout<T>(
+  url: string, headers: Record<string, string>, timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<FetchResult<T>> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { headers, signal: controller.signal });
     if (!response.ok) return { ok: false, status: response.status, body: null };
@@ -31,6 +33,8 @@ export interface KeyAuthData {
   label?: string;
   usage?: number;
   limit?: number | null;
+  limit_remaining?: number | null;
+  byok_usage?: number;
   is_free_tier?: boolean;
 }
 
@@ -41,10 +45,10 @@ export type KeyValidation =
 // Validates a key against /auth/key. NOTE: this endpoint reports only the KEY's
 // lifetime usage + its optional per-key spend cap — NOT the account balance.
 // Use fetchAccountBalance for real remaining credits.
-export async function validateKey(apiKey: string): Promise<KeyValidation> {
+export async function validateKey(apiKey: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<KeyValidation> {
   const result = await fetchJsonWithTimeout<{ data?: KeyAuthData }>(`${OPENROUTER_BASE_URL}/auth/key`, {
     'Authorization': `Bearer ${apiKey}`, ...OPENROUTER_ATTRIBUTION_HEADERS,
-  });
+  }, timeoutMs);
   if (!result.ok) return { ok: false, status: result.status };
   return { ok: true, data: result.body?.data };
 }
@@ -53,11 +57,11 @@ export async function validateKey(apiKey: string): Promise<KeyValidation> {
 // total_usage). Best-effort: this endpoint may 403 for non-provisioning keys,
 // so any non-OK response or network error returns null and the caller falls
 // back to the key-usage view.
-export async function fetchAccountBalance(apiKey: string): Promise<number | null> {
+export async function fetchAccountBalance(apiKey: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<number | null> {
   try {
     const result = await fetchJsonWithTimeout<{ data?: { total_credits?: number; total_usage?: number } }>(
       `${OPENROUTER_BASE_URL}/credits`,
-      { 'Authorization': `Bearer ${apiKey}`, ...OPENROUTER_ATTRIBUTION_HEADERS },
+      { 'Authorization': `Bearer ${apiKey}`, ...OPENROUTER_ATTRIBUTION_HEADERS }, timeoutMs,
     );
     const d = result.body?.data;
     if (!result.ok || !d || typeof d.total_credits !== 'number' || typeof d.total_usage !== 'number') return null;

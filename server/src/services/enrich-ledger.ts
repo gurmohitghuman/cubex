@@ -84,6 +84,16 @@ export function seenCallId(userId: string, rowId: string | null, key: string, ca
     .get(userId, rowId, key, callId);
 }
 
+// Has this key already come back with an answer for this row (anything but
+// treg's 409 "still running")? Then a later answer to it was counted before.
+export function keyAnswered(userId: string, rowId: string | null, key: string): boolean {
+  return !!db.prepare(`
+    SELECT 1 FROM enrichment_calls
+    WHERE user_id = ? AND row_id IS ? AND idempotency_key = ? AND http_status IS NOT NULL AND http_status != 409
+    LIMIT 1
+  `).get(userId, rowId, key);
+}
+
 // Did another run already send this key for this row? (An auto-run's key is
 // the same in its next run.)
 export function keyUsedByOtherRun(userId: string, rowId: string | null, key: string, runId: string): boolean {

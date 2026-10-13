@@ -32,13 +32,15 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Per-row outcomes for a run — row id, status, error message, and an error_class telling you what to '
         + 'DO about it. AI runs: "retryable" (transient, re-running works), "prompt_content" (your wording caused it, '
-        + 'a rerun just bills again), "model_output" (try another model), "configuration" (fix a setting), '
+        + 'a rerun just bills again), "model_output" (try another model), "concurrency" (too many calls at once for '
+        + 'the OpenRouter balance: rerun with a lower concurrency), "configuration" (fix a setting), '
         + '"unknown" (read the message). HTTP runs: "retryable" (rate limit, timeout, 5xx), "not_found" (404/410: '
         + 'the API has nothing for that row, or, on every row, a wrong URL path), "configuration" (URL, auth, '
         + 'headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), "unknown". '
         + 'error_summary counts each class across the page, with a hint. '
-        + 'AI rows also carry cost_usd (what the row cost, web fees included) and, with web search, searches (how many '
-        + 'ran) '
+        + 'AI rows also carry cost_usd (what the row cost, web fees included; on the user\'s own provider key only '
+        + 'OpenRouter\'s fee, with provider_cost_usd what the provider billed) and, with web search, searches '
+        + '(how many ran) '
         + 'and search_queries ([{query, ran}]; ran:false is a search the per-row limit stopped), to check search '
         + 'quality and spend. '
         + "With a model's own search (runs_on native), searches and their words appear only when the provider reports "
