@@ -97,5 +97,5 @@ test('a list column auto-runs on new rows; it needs fields and refuses a loop', 
   const loop = await api.put(`/api/autorun/sheets/${dest}/columns`,
     { data: { column: 'Peers', enabled: true, dailyCapUsd: 2 } })
   expect(loop.status()).toBe(400)
-  expect((await loop.json()).error).toContain('would set off auto-run that adds rows back here')
+  expect((await loop.json()).error).toMatch(/would set off auto-run on "People" in .+, which adds rows back here/)
 })

@@ -15,6 +15,7 @@ import { countFor, enrichRowCounts } from './enrich-row-count';
 import type { RunFail } from './run-shared';
 import { autorunFillingColumn } from './autorun-block';
 import { listRowsBeingAdded, planListStart } from './enrich-list-start';
+import { manualListLoop } from './autorun-list';
 import type { DestPlan } from './enrich-list-dest';
 import { checkRunRule } from './run-rule';
 import type { CheckedRule, RuleNode } from '../lib/run-condition';
@@ -133,6 +134,10 @@ export async function prepareEnrichmentStart(
   if ('fail' in built) return built;
   const listPlan = planListStart(userId, sheetId, input, built.ok, columns);
   if ('fail' in listPlan) return listPlan;
+  // The column's auto-run repeats its newest run: rows it adds must not come back here.
+  const destSheetId = listPlan.ok?.sheetId;
+  const loop = destSheetId ? manualListLoop(sheetId, userId, statusColumn, destSheetId) : null;
+  if (loop) return loop;
   // Kept in the config in Cubex's spelling, so reruns and auto-run repeat it.
   if (rule.ok) built.ok.runIf = rule.ok.rule;
   return {

@@ -18,9 +18,11 @@ export interface AutorunEntry {
 // Why an auto-run stopped. Some clear on their own: the capacity ones once
 // today's caps allow a row again (midnight UTC, or a raise); the treg ones are
 // retried a few minutes on; a missing column once it is back; a key problem
-// when a key is saved. 'user', 'retired', 'setup', 'priced' (treg prices a tool
-// the team's own key billed: it needs a daily cap) and 'failed' wait for the
-// person (saving auto-run again, or a new run of the column).
+// when a key is saved; 'loop' (a list auto-run whose rows would come back and
+// set it off again) once nothing adds rows back. 'user', 'retired', 'setup',
+// 'priced' (treg prices a tool the team's own key billed: it needs a daily
+// cap) and 'failed' wait for the person (saving auto-run again, or a new run
+// of the column).
 export const CAPACITY_PAUSES = new Set(['column_cap', 'row_cap', 'daily_limit']);
 export const RETRY_PAUSES = new Set([
   'unreachable', 'balance', 'treg_cap', 'provider_busy', 'unconfirmed', 'team_rule', 'queue',
