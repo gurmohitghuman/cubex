@@ -2,7 +2,7 @@
 // the UI route and /api/v1 share one implementation. The cascade set is
 // load-bearing: rows.data key, column_order, empty_filter,
 // column_filters, http_column_associations, stored HTTP run configs, webhook
-// refs — miss one and a rename orphans state.
+// refs, auto-run and clean column settings — miss one and a rename orphans state.
 // Over 200 lines: one rename with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -16,6 +16,7 @@ import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-c
 import { renameAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { renameAutorunColumnRefs } from '../lib/autorun-columns';
+import { cleanRenameLoop, renameCleanColumnRefs } from '../lib/clean-columns';
 import { autorunRunBlock } from './autorun-block';
 
 export type ColumnRenameOutcome =
@@ -52,6 +53,10 @@ export async function renameSheetColumn(
   // being renamed) — coexistence makes /columnRef resolution non-deterministic.
   const collision = findColumnNameCollision(trimmedNew, allCols, { exclude: columnName });
   if (collision) return { fail: 'collision', error: columnCollisionMessage(trimmedNew, collision) };
+  const loop = cleanRenameLoop(sheetId, userId, columnName, trimmedNew);
+  if (loop) {
+    return { fail: 'invalid', error: `"${loop}" would be cleaned from itself. Pick another name.` };
+  }
 
   // Block rename while an AI or HTTP run that touches this column is active —
   // both runners cache column names at run start and would write to a name
@@ -206,4 +211,6 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameWebhookColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Auto-run settings: the status column, the columns it reads, "Only run if".
   renameAutorunColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Clean data columns: the column itself and the source it cleans.
+  renameCleanColumnRefs(sheetId, userId, columnName, trimmedNew);
 }

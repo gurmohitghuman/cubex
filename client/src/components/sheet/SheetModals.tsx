@@ -10,6 +10,8 @@ import { Sheet, SheetData } from '@/utils/api'
 import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 import { plural } from '@/lib/utils'
 import { anyAutorunOn } from '@/hooks/sheet/useAutorun'
+import { toastCleanStarted } from '@/hooks/sheet/useCleanColumnActions'
+import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -24,6 +26,8 @@ interface SheetModalsProps {
   enrichOpen: EnrichOpenRequest | null
   enrichWatch: string | null
   showNewColumnModal: boolean
+  // What the column menu opened the Add Column dialog on (Clean data, Edit cleaning).
+  cleanOpen: CleanOpenTarget | null
   scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
   // setters
   setConfirmTopbarDeleteOpen: (b: boolean) => void
@@ -34,6 +38,7 @@ interface SheetModalsProps {
   clearEnrichOpen: () => void
   stopEnrichWatch: () => void
   setShowNewColumnModal: (b: boolean) => void
+  clearCleanOpen: () => void
   setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
   setSelectedRowIndices: (rows: number[]) => void
   // Clears the grid row selection through AG Grid (deselectAll) — un-highlights the
@@ -62,6 +67,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     activeSheet, sheetData, selectedRowIndices,
     confirmTopbarDeleteOpen, showImportModal, showAddColumnModal,
     showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, enrichWatch, showNewColumnModal, scrapedDataModal,
+    cleanOpen, clearCleanOpen,
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal, setShowHTTPAPIColumnModal,
     setShowEnrichmentDrawer, clearEnrichOpen, stopEnrichWatch, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
@@ -69,6 +75,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
     waitForSaves, dropAllPending,
   } = props
+  const closeNewColumn = () => { setShowNewColumnModal(false); clearCleanOpen() }
 
   return (
     <>
@@ -147,7 +154,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
 
       <NewColumnModal
         isOpen={showNewColumnModal}
-        onClose={() => setShowNewColumnModal(false)}
+        onClose={closeNewColumn}
         onSubmit={async (name) => {
           // On an empty sheet the server also creates the first row; reload so
           // the grid replaces the empty state with a cell to type into.
@@ -158,6 +165,12 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           }
           return added
         }}
+        clean={activeSheet ? {
+          sheetId: activeSheet.id, columns: sheetData?.data.columns ?? [],
+          cleanColumns: sheetData?.data.cleanColumns ?? {}, request: cleanOpen,
+          // Silent reload: the new column and its values (or ⏳ while it fills) appear in place.
+          onStarted: (result) => { closeNewColumn(); void silentReload(activeSheet.id); toastCleanStarted(result) },
+        } : undefined}
       />
 
       <ScrapedDataModal

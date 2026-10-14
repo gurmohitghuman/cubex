@@ -1,7 +1,8 @@
 // Column delete — extracted verbatim from routes/sheets-columns-delete.ts so
 // the UI route and /api/v1 share one implementation. Cascades: rows.data key,
 // column_order, empty_filter, column_filters,
-// http_column_associations, stored HTTP run configs, webhook mappings; guards:
+// http_column_associations, stored HTTP run configs, webhook mappings, auto-run
+// and clean column settings; guards:
 // active-run 409, webhook raw-marker protection, last-column.
 // Over 200 lines: one delete with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
@@ -13,6 +14,7 @@ import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-c
 import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { deleteAutorunColumnRefs, dropAutorunQueueOf } from '../lib/autorun-columns';
+import { deleteCleanColumnRefs } from '../lib/clean-columns';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 
@@ -186,6 +188,8 @@ export async function deleteSheetColumn(
       deleteWebhookMappingsForColumn(sheetId, userId, columnName);
       // Auto-run settings: its own status column goes, a column it reads pauses it.
       deleteAutorunColumnRefs(sheetId, userId, columnName);
+      // A clean column's record goes with it (a column it cleans keeps its values).
+      deleteCleanColumnRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

@@ -196,8 +196,9 @@ export const SheetPage: React.FC = () => {
     }),
   })
 
-  // Auto-run: the headers' ⚡, the header chip and the column's dialog.
-  const autorun = useAutorun({ activeSheet, sheetData, silentReload: id => silentReloadRef.current(id) })
+  // Auto-run: the headers' ⚡, the header chip and the column's dialog (Edit cleaning for a clean column).
+  const autorun = useAutorun({ activeSheet, sheetData, silentReload: id => silentReloadRef.current(id),
+    openClean: column => modals.openClean({ mode: 'edit', column }) })
 
   // "Create a new table for the webhook" offer (only under the table cap).
   const { onCreateNewTable } = useWebhookNewTable()

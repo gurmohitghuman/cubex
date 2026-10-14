@@ -3,7 +3,9 @@
 import { plural } from '../../lib/utils'
 import { limitText, spent, utcMidnightLocal } from '../../lib/enrich-format'
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../../lib/constants'
-import type { AutorunColumn, AutorunPause, ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
+import type {
+  AutorunColumn, AutorunKind, AutorunPause, ColumnSpend, SheetAutorun,
+} from '@/utils/api/types-autorun'
 
 const SHORT: Record<AutorunPause, string> = {
   user: 'paused by you', column_cap: "this column's cap", row_cap: 'rows a day', daily_limit: 'the daily limit',
@@ -39,6 +41,8 @@ export function capFix(r: AutorunPause | null): string | null {
 }
 
 export function autorunUsage(a: AutorunColumn): string {
+  // A clean data column's auto-run has no caps: it costs nothing and sends nothing.
+  if (a.kind === 'clean') return 'cleans new and changed rows for free'
   if (a.kind === 'http') {
     return `${a.rowsToday.toLocaleString()} of ${plural(a.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS, 'row')} today`
   }
@@ -87,7 +91,8 @@ export function chipState(view: SheetAutorun | undefined): ChipState | null {
 
 // Turning auto-run on where a webhook adds rows: say who can add rows that spend.
 // ownKey: the provider bills the tool on the team's own key, outside every limit here.
-export function webhookWarning(kind: 'enrichment' | 'http', dailyLimitUsd: number | null, ownKey = false): string {
+export function webhookWarning(kind: AutorunKind, dailyLimitUsd: number | null, ownKey = false): string {
+  if (kind === 'clean') return "Anyone with this sheet's webhook URL can add rows. Each new row is cleaned, for free."
   if (kind === 'http') {
     return "Anyone with this sheet's webhook URL can add rows, and each new row sends this request. "
       + 'Your rows-a-day cap limits how many run.'

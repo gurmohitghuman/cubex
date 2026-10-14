@@ -11,7 +11,7 @@ import { passesRunConditions, holdsRunMarker, trimBlank, FAILED_MARK } from './e
 import { isConditionNotMet } from './run-markers';
 import { ruleColumns, type RuleNode } from './run-condition';
 
-export type AutorunKind = 'enrichment' | 'http';
+export type AutorunKind = 'enrichment' | 'http' | 'clean';
 
 const COLUMN_REF = /^\{\{(.+)\}\}$/;
 

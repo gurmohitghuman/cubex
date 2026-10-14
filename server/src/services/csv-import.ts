@@ -26,6 +26,7 @@ import { abortRunsForSheets } from './run-control';
 import { isPristineSeedSheet } from './transfer-seed';
 import { getLockedRunColumns } from '../routes/sheets-shared';
 import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../lib/autorun-mark';
+import { forgetUnlistedCleanColumns } from '../lib/clean-columns';
 import { listRunInto } from './enrich-list-guard';
 
 export type CsvImportOutcome =
@@ -164,6 +165,7 @@ export async function importCsv(
           ).run(replaceColumnOrder(job), sheetId, userId);
           // Every row is new to auto-run, unless it was paused for this import.
           autorunAfterReplace(sheetId, userId, opts.skipAutorun ? next - 1 : null);
+          forgetUnlistedCleanColumns(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {

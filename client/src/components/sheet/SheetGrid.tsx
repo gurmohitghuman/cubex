@@ -6,6 +6,9 @@ import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import { useSheetGridRunActions } from '@/hooks/sheet/useSheetGridRunActions'
 import { useEnrichColumnActions } from '@/hooks/sheet/useEnrichColumnActions'
+import { useCleanColumnActions } from '@/hooks/sheet/useCleanColumnActions'
+import type { CleanColumnView } from '@/utils/api/clean'
+import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { CellClickInfo, RunByColumn, RunMenuActions } from '@/components/aggrid/types'
 import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import { EnrichRerunConfirm } from './EnrichRerunConfirm'
@@ -27,6 +30,9 @@ export interface SheetGridProps {
   autorun?: SheetAutorun
   columnSpend?: Record<string, ColumnSpend>
   onAutorunAction?: (column: string, action: 'open' | 'off') => void
+  // Clean data columns' setups (header icon, menu) and the Add Column dialog opened on Clean data.
+  cleanColumns?: Record<string, CleanColumnView>
+  onOpenClean?: (target: CleanOpenTarget) => void
   activeHTTPRuns: HTTPRun[]
   activeAIRunsList: AIRun[]
   activeHTTPRunsByColumn: RunByColumn
@@ -73,7 +79,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onSelectedRowsChange, onRenameColumn, onDeleteColumn, onDeleteRows,
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
-    onOpenEnrichment, autorun, columnSpend, onAutorunAction,
+    onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -85,6 +91,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     activeSheet, activeHTTPRuns, setupSSEConnection, fetchActiveHTTPRuns, reloadSheetData, rowGenerationRef,
     onOpenEnrichment,
   })
+  const clean = useCleanColumnActions({ activeSheet, cleanColumns, reloadSheetData, onOpenClean })
   // A click on an enrichment or HTTP API cell opens its answer; "Rerun this
   // row" goes through the column menu's selected-rows run and its confirm.
   const answers = useAnswerPanel({
@@ -125,6 +132,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,
     onAutorunAction,
+    onCleanAction: clean.onCleanAction,
   }
 
   return (
@@ -163,7 +171,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onDeleteColumn={(col) => actions.handleDeleteColumnWithWidthCleanup(col, onDeleteColumn)}
       onDeleteRows={onDeleteRows}
       runActions={runActions}
-      columnTypes={columnTypes} autorun={autorun} columnSpend={columnSpend}
+      columnTypes={columnTypes} autorun={autorun} columnSpend={columnSpend} cleanColumns={cleanColumns}
       activeHTTPRunsByColumn={activeHTTPRunsByColumn}
       activeAIRunsByColumn={activeAIRunsByColumn}
       onColumnReorder={onColumnReorder}

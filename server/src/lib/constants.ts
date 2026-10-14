@@ -3,6 +3,8 @@
 export * from './constants-ai';
 // Enrichment (treg.to) constants, same split.
 export * from './constants-enrich';
+// Clean data columns, same split.
+export * from './constants-clean';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

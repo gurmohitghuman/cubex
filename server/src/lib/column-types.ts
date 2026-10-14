@@ -19,7 +19,8 @@ export type ColumnType =
   | 'enrich-status'  // an enrichment's status column (an HTTP run with an enrichment block)
   | 'http-extracted' // JSONPath-extracted HTTP response column
   | 'webhook-source' // the read-only "Webhook" marker column (row provenance)
-  | 'webhook-mapped'; // a column a webhook mapping writes into
+  | 'webhook-mapped' // a column a webhook mapping writes into
+  | 'clean';         // a clean data column (clean_columns: filled from its source by a cleaner)
 
 // Resolve every AI/HTTP-owned column on a sheet to its type. A column can match
 // more than one source (e.g. a name reused across an old HTTP assoc and a new AI
@@ -102,6 +103,13 @@ export function getColumnTypes(
     // Don't downgrade the raw marker if a mapping somehow reused its name.
     if (types[name] !== 'webhook-source') types[name] = 'webhook-mapped';
   }
+
+  // Clean data columns: their record says what made them. A record lives only
+  // while its column does (a delete or a CSV replace without it forgets it,
+  // lib/clean-columns.ts), and no other column can take a listed name.
+  const clean = db.prepare('SELECT column_name AS name FROM clean_columns WHERE sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as Array<{ name: string }>;
+  for (const { name } of clean) types[name] = 'clean';
 
   return types;
 }

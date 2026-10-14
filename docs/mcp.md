@@ -72,6 +72,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Export the rows where Status is Qualified, with just Email and Company."
 - "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
+- "In Leads, split Name into first and last name, turn Website into a domain and fix the phone numbers. Use the free cleaners."
 - "Keep finding work emails for new rows in Leads automatically, up to $5 a day."
 - "In Leads, score each company's fit with AI. Then find work emails only where the score is 8 or more, and add those people to Smartlead only where the email is valid."
 
@@ -80,7 +81,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | Tool | What it does |
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
-| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. |
+| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean columns too. |
 | `read_rows` | Rows, paged, with optional filters and column selection. |
 | `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
@@ -97,13 +98,14 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, or all). |
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
+| `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
 | `run_enrichment` | Run an enrichment per row: work emails, phones, person or company data, or lists that become rows in another sheet. Can estimate first, test on 5 rows, and turn on auto-run. |
 | `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
-| `set_auto_run` | Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. |
+| `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API or clean column, or pause and resume it. |
 
 Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
@@ -124,6 +126,28 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - `check_run_condition` (free) says how many rows pass and shows the first rows with the values the rule read. A misspelled column is refused with the closest name.
 - `write_run_condition` writes a rule from plain words with one small call to your default model (or `model`), and returns it with the same check. The answer names the model and what the call cost.
 - `estimate_only` counts only the rows that pass (`rows_skipped_by_rule`). `get_run_status` reports `run_if` and `condition_skipped_rows`. Reruns repeat the rule, and renaming a column updates the rules that name it.
+
+## Clean data
+
+`clean_column` cleans one column into a new column, for free: nothing is sent anywhere and no AI runs. Pick a `cleaner`:
+
+| Cleaner | What it does | Example |
+|---|---|---|
+| `person_name` | Fixes words typed in ALL CAPS or lowercase (`John SMITH` too), turns "Last, First" around, and drops titles (Mr, Dr), suffixes (Jr, III, PhD, MBA) and nicknames. Words typed in mixed case, like DeShawn or McDonald, keep their capitals. | `smith, john q.` → `John Q. Smith` |
+| `first_name`, `last_name` | The same, split. The last name keeps words like "van" and "de la". | `LUDWIG VAN BEETHOVEN` → `Ludwig`, `van Beethoven` |
+| `company_name` | Drops legal endings (Inc, LLC, Corp, Co, Ltd, PLC, GmbH, AG, S.A. and more) and a trailing ", a company of X", and fixes ALL CAPS. Keeps words like Holdings and Group. | `ACME CO., LTD.` → `Acme` |
+| `email` | Pulls the address out of `Name <address>` or `mailto:`, and lowercases it. Blank when the format is invalid. It doesn't check that mail gets delivered. | `John <John.Smith@Acme.COM>` → `john.smith@acme.com` |
+| `domain` | The root domain of a website or an email address. | `https://blog.acme.co.uk/about` → `acme.co.uk` |
+| `phone` | One format for every number: `phone_format` is `national` (default), `international` or `e164`, and `phone_country` (default `US`) is how numbers without a country code are read. A number from another country comes out in international form. Blank when it isn't a real number. | `1-212-555-0123 x9` → `(212) 555-0123 ext. 9` |
+| `title_case` | Capitalizes each word, keeps small words like "of" lowercase and acronyms like CEO upper. | `vp of sales` → `VP of Sales` |
+| `lowercase` | Every letter lowercase. | |
+| `trim` | Removes spaces at the ends, extra spaces and line breaks inside, and invisible characters. | |
+
+- The new column is named after its source unless you pass `column`: `Name (clean)`, `Name (first name)`, `Name (last name)` or `Website (domain)`.
+- `preview: true` shows the first rows before and after, and writes nothing.
+- The answer waits for the column to fill, up to 10 seconds, and says how many rows it cleaned (`cleaned_rows`) and how many values it couldn't read (`blank_rows`). A bigger sheet answers `status: "filling"`; its cells read `⏳ Processing...` until it's done.
+- Auto-run is on by default: new rows, and rows whose source cell changes, are cleaned on their own. If you fix a clean cell by hand, your fix stays until its source changes. Turn it off with `auto_run: false` or `set_auto_run`.
+- Calling `clean_column` again on a clean column changes it (another cleaner, format or source) and cleans every row again. Any other existing column is refused, so nothing typed by a person is overwritten.
 
 ## Enrichments
 
@@ -204,8 +228,9 @@ All paths below are relative to `/api/v1`.
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` |
 | `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
-| `GET /sheets/:id` | Columns, row count, `data_version` and `row_generation`. |
+| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation` and its clean columns. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
+| `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` (URL-encode the old name) |
 | `DELETE /sheets/:id/columns/:name` | |
 | `PUT /sheets/:id/columns/order` | `{"order": ["Email", "Company", "Status"]}` (every column, once) |

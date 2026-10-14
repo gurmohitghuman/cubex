@@ -8,6 +8,7 @@ import type { AutorunColumn } from '@/utils/api/types-autorun'
 import { ContainsFilterInput } from './ContainsFilterInput'
 import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
+import { CleanColumnActions } from './CleanColumnActions'
 import type { RunByColumn, RunMenuActions } from './types'
 
 export type MenuState = {
@@ -75,6 +76,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
         <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'desc'); setMenu(null) }}>
           Sort descending
         </DropdownMenuItem>
+        <CleanColumnActions {...runProps} isClean={columnType === 'clean'} />
 
         {columnType === 'http-master' && (
           <HTTPColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}

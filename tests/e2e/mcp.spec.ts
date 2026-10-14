@@ -40,7 +40,8 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   // both flag states. Keep this list sorted — it's compared with toEqual.
   const flagged = ['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase())
   expect(tools).toEqual([
-    'add_column', 'add_enrichment_field', 'add_list_rows', 'append_rows', 'check_run_condition', 'control_run',
+    'add_column', 'add_enrichment_field', 'add_list_rows', 'append_rows', 'check_run_condition', 'clean_column',
+    'control_run',
     'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'export_csv',
     'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status', 'get_sheet', 'import_csv',
     'list_models', 'list_runs', 'list_tables', 'manage_sheet', 'manage_table', 'read_rows', 'rename_column',

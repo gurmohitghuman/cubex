@@ -51,6 +51,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **AI columns.** A prompt for each row that uses other columns, on any of 300+ models through your own [OpenRouter](https://openrouter.ai) key.
 - **HTTP API columns.** Call any JSON API once per row and turn fields of the answer into columns.
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
+- **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters, up to a million rows per sheet.
@@ -142,6 +143,19 @@ Click **Enrichment** to look things up for each row through [treg.to](https://tr
 - Turn on auto-run and the column fills new rows by itself, for example rows a webhook adds.
 
 The [enrichments guide](docs/enrichments.md) has the details.
+
+### Clean data
+
+Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.
+
+- **Names.** Fix words typed in ALL CAPS or lowercase ("JOHN SMITH" and "John SMITH" both become "John Smith"), turn "Smith, John" around, drop titles (Mr, Dr), suffixes (Jr, PhD) and nicknames, or keep just the first or last name. Words typed in mixed case, like DeShawn or McDonald, keep their capitals.
+- **Company names.** Drop legal endings like Inc, LLC, Corp, Ltd and GmbH, and fix ALL CAPS: "ACME CO., LTD." becomes "Acme".
+- **Emails.** Lowercase them and leave a cell blank when the address isn't valid. This checks the format only, not whether mail gets delivered.
+- **Domains.** Get the root domain from a website or an email: "https://blog.acme.co.uk/about" and "pat@acme.co.uk" both become "acme.co.uk".
+- **Phone numbers.** One format for every number: (212) 555-0123, +1 212 555 0123 or +12125550123. Cells that don't hold a real number are left blank.
+- **Text.** Title Case, lowercase, or remove extra spaces and invisible characters.
+
+Auto-run is on by default, so new rows and rows whose source changes are cleaned on their own. Any column's menu has **Clean data…** too.
 
 ### Webhook
 

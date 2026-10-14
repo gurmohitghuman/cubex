@@ -27,6 +27,7 @@ import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
+import cleanV1 from './api-v1-clean';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 const router = express.Router();
@@ -53,6 +54,8 @@ router.use(sheetOpsV1);
 router.use(rowsV1);
 if (MCP_EFFICIENT_ROWS_ENABLED) router.use(transferV1);
 router.use(columnsV1);
+// Clean data columns: free cleaning into a new column (services/clean-agent.ts).
+router.use(cleanV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);

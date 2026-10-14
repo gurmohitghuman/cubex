@@ -1,10 +1,12 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter, DatabaseZap, Zap } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap, Zap, Brush } from 'lucide-react'
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn, ColumnSpend } from '@/utils/api/types-autorun'
+import type { CleanColumnView } from '@/utils/api/clean'
 import { HeaderTip } from './autorun/HeaderTip'
 import { headerTip, pauseShort } from './autorun/autorun-copy'
+import { cleanHeaderTip } from './clean/clean-copy'
 
 interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   onDeleteColumn: (columnId: string) => void
@@ -16,11 +18,16 @@ interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   // Its auto-run (⚡, amber while paused) and what it spent: the icons' tooltip.
   autorun?: AutorunColumn
   spend?: ColumnSpend
+  // A clean data column's setup: the brush icon's note ("Cleaned from Name (Full name)").
+  clean?: CleanColumnView
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
-  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend } = params
+  const { displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend, clean } = params
   const tip = headerTip(spend, autorun)
+  // A clean column's note comes first, then its auto-run's.
+  const cleanTip = columnType === 'clean' ? cleanHeaderTip(clean) : null
+  const tipText = [cleanTip?.text, tip?.text].filter(Boolean).join(' · ')
 
   const colDef = column.getColDef()
   const columnName = (colDef.field as string) || column.getColId()
@@ -58,11 +65,15 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
         className="truncate flex-1 cursor-pointer select-none flex items-center gap-1"
         onClick={handleHeaderClick}
       >
-        {(columnType === 'enrich-status' || autorun?.enabled) && (
-          <HeaderTip text={tip?.text ?? ''} amber={tip?.paused}>
+        {(columnType === 'enrich-status' || cleanTip || autorun?.enabled) && (
+          <HeaderTip text={tipText} amber={tip?.paused ?? cleanTip?.problem}>
             {columnType === 'enrich-status' && (
               <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
                 data-testid="enrich-status-icon" />
+            )}
+            {cleanTip && (
+              <Brush size={12} className="opacity-70 flex-shrink-0" aria-label={cleanTip.label}
+                data-testid="clean-icon" />
             )}
             {autorun?.enabled && (
               <Zap size={12} data-testid="autorun-icon" data-paused={autorun.pausedReason ? 'true' : 'false'}
