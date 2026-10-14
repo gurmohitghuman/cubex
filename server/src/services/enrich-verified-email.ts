@@ -3,7 +3,7 @@
 // until an address passes the user's strategy. A repeat address skips its
 // paid check; it stops after 2 repeats, 3 finds, or when the row's budget (the
 // per-row cap, shared by every call) runs out. Ledger attempts g1, f1, v1, f2…
-import { ENRICH_DUPLICATE_THRESHOLD, ENRICH_VERIFY_MAX_FINDS } from '../lib/constants';
+import { ENRICH_DUPLICATE_THRESHOLD, ENRICH_PROVIDER_RATE_RETRIES, ENRICH_VERIFY_MAX_FINDS } from '../lib/constants';
 import { buildRequest, type BuiltRequest } from '../lib/enrich-request';
 import { acceptedBy, classifyVerify, statusLabel, type EmailVerdict } from '../lib/enrich-email-status';
 import { acceptedCell, guessEmail, guessParts, rejectedCell, VERDICT_RANK } from '../lib/enrich-email-guess';
@@ -34,6 +34,7 @@ export async function verifiedEmailRow(
   const tried = new Set(e.route.exclude);
   const steps: Json[] = [];
   const left = () => (budget === null ? null : (budget - spent) / 1e6);
+  const rateRetries = { left: ENRICH_PROVIDER_RATE_RETRIES };   // shared by the row's finds and checks
 
   const call = async (
     attempt: string, toolId: string, built: Built, routed: boolean, exclude: string[], prefer: string[],
@@ -43,7 +44,7 @@ export async function verifiedEmailRow(
     if (remaining !== null && remaining <= 0) { budgetHit = true; return null; }
     const parts = { method: built.method, path: built.path, query: built.query, body: built.body, prefer, exclude };
     const r = await runStep(ctx, {
-      toolId, attempt, rowIndex: row.rowIndex, rowId: row.rowId, parts,
+      toolId, attempt, rowIndex: row.rowIndex, rowId: row.rowId, parts, rateRetries,
       request: { ...parts, routed, maxCostUsd: remaining, stopAtFirst, fresh: e.fresh },
     });
     spent += r.costMicro;

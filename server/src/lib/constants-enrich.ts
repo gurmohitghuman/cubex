@@ -51,6 +51,8 @@ export const ENRICH_VERIFY_MAX_FINDS = 3;
 export const ENRICH_DUPLICATE_THRESHOLD = 2;
 export const ENRICH_UNREACHABLE_PAUSE_AFTER = 5;
 export const ENRICH_SATURATION_RETRIES = 3;
+// treg's "too busy" Retry-After is waited out, but never longer than this.
+export const ENRICH_SATURATION_MAX_MS = 120_000;
 // treg answers 409 while the first call with a key is still running, and turns a
 // silent one into a stored 410 after 15 minutes (idempotency.py stale lease).
 export const ENRICH_IDEMPOTENCY_WAIT_MS = 15 * 60 * 1000;
@@ -72,12 +74,21 @@ export const ENRICH_LIST_FIELD_SAMPLE = 20;
 export const ENRICH_LIST_DRAIN_ATTEMPTS = 5;
 // Waits before retrying a call with the same key: treg busy or a key still in
 // flight, treg unreachable, a provider's own rate limit.
-export const ENRICH_RETRY_MS = 5_000;
+export const ENRICH_RETRY_MS = envInt('ENRICH_RETRY_MS', 5_000);
 export const ENRICH_UNREACHABLE_RETRY_MS = 10_000;
 // The first "no answer" of a call (often a reused connection the far end had
 // just closed) is retried sooner.
 export const ENRICH_FIRST_RETRY_MS = 1_000;
-export const ENRICH_PROVIDER_RATE_RETRY_MS = 15_000;
+// A provider's 429 (alone, or every provider of a waterfall) costs nothing and
+// frees the key at treg, so the row asks again: the wait doubles from the first
+// (or the provider's Retry-After) up to the most, half of it random so the
+// run's rows don't all ask at once. A free provider on treg's own key can be
+// shared by all of treg (ContactOut's verify: about 20 calls a minute).
+export const ENRICH_PROVIDER_RATE_RETRY_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MS', 15_000);
+export const ENRICH_PROVIDER_RATE_RETRY_MAX_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MAX_MS', 120_000);
+export const ENRICH_PROVIDER_RATE_RETRIES = 5;
+// A provider's 5xx (or no answer from it) is asked again this many times.
+export const ENRICH_PROVIDER_RETRIES = 2;
 
 // Settings bounds for the key and the daily limit.
 export const TREG_KEY_MAX_CHARS = 512;

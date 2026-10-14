@@ -1,7 +1,8 @@
 // What the drawer reads while an enrichment runs: a lean
 // status from the run row, the ledger and the results' covering index (run_id,
 // status, cost_usd), plus the newest few rows' cells. Never every result; a run
-// can have a million. And Resume with a new run limit, for a run its limit paused.
+// can have a million. And Resume with a new run limit (for a run its limit
+// paused) or concurrency.
 import { db } from '../lib/db';
 import { ENRICH_DAILY_LIMIT_MAX_USD, ENRICH_STATUS_LATEST } from '../lib/constants';
 import { inputTemplates, isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
@@ -11,6 +12,7 @@ import { runSpentMicro } from './enrich-ledger';
 import { dailyLimitView, type DailyLimitView } from './treg-key';
 import { resumeRun, type ControlOutcome } from './run-lifecycle';
 import { destFullMessage, destRoom } from './enrich-list-room';
+import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 
 // One row's result as the grid shows it: its cells (status and outputs), what
 // it cost, and the row's first input value, so the drawer can say which row.
@@ -147,13 +149,17 @@ export function enrichRunStatus(runId: string, userId: string): EnrichRunStatus 
 }
 
 // Resume, optionally with a higher run limit (the "Raise to $40 and resume"
-// fix for a run its limit paused). The limit is written before the resume's
-// own compare-and-set, only while the run is still paused.
+// fix for a run its limit paused) or another concurrency (rows at once; the
+// worker reads it when it starts). Both are written in one statement before
+// the resume's own compare-and-set, only while the run is still paused.
 export async function resumeEnrichmentRun(
-  runId: string, userId: string, spendLimitUsd: unknown,
+  runId: string, userId: string, spendLimitUsd: unknown, concurrencyAsked?: unknown,
 ): Promise<ControlOutcome | { fail: 'bad_request'; message: string }> {
   const run = loadRun(runId, userId);
   if (!run) return { fail: 'not_found', message: 'Enrichment run not found' };
+  const concurrency = concurrencyOf(concurrencyAsked);
+  if (concurrency === undefined) return { fail: 'bad_request', message: CONCURRENCY_ERROR };
+  const sets: Array<[string, number]> = [];
   if (spendLimitUsd !== undefined && spendLimitUsd !== null) {
     if (typeof spendLimitUsd !== 'number' || !Number.isFinite(spendLimitUsd) || spendLimitUsd <= 0
       || spendLimitUsd > ENRICH_DAILY_LIMIT_MAX_USD) {
@@ -163,13 +169,17 @@ export async function resumeEnrichmentRun(
     if (run.config.enrichment.maxCostPerRowUsd === null) {
       return { fail: 'bad_request', message: 'This run has no run limit (the provider bills it).' };
     }
-    const r = db.prepare(`UPDATE http_runs SET config = json_set(config, '$.enrichment.spendLimitUsd', ?)
-      WHERE id = ? AND user_id = ? AND status = 'paused'`).run(spendLimitUsd, runId, userId);
-    if (r.changes === 0) return { fail: 'not_paused', message: 'Run is not paused' };
+    sets.push(['$.enrichment.spendLimitUsd', spendLimitUsd]);
   }
+  if (concurrency !== null) sets.push(['$.batchSize', concurrency]);
   // A list job whose destination is still full would stop again at once.
   const room = run.row.dest_sheet_id && run.config.enrichment.list ? destRoom(run.row.dest_sheet_id, userId) : null;
   if (room && room.room < 1) return { fail: 'conflict', message: destFullMessage(room.name) };
+  if (sets.length > 0) {
+    const r = db.prepare(`UPDATE http_runs SET config = json_set(config, ${sets.map(() => '?, ?').join(', ')})
+      WHERE id = ? AND user_id = ? AND status = 'paused'`).run(...sets.flat(), runId, userId);
+    if (r.changes === 0) return { fail: 'not_paused', message: 'Run is not paused' };
+  }
   // Enrichments never read saved API keys (allow_secrets 0), so no scope gate applies.
   return resumeRun('http', runId, userId, true);
 }

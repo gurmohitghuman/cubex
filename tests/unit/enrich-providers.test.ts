@@ -7,6 +7,10 @@ import fs from 'fs'
 import { v4 as uuid } from 'uuid'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
+// Retry waits in milliseconds, not seconds (read when the modules load, in main).
+process.env.ENRICH_PROVIDER_RATE_RETRY_MS = '10'
+process.env.ENRICH_PROVIDER_RATE_RETRY_MAX_MS = '40'
+process.env.ENRICH_RETRY_MS = '10'
 
 let failures = 0
 function check(label: string, cond: boolean) {
@@ -44,6 +48,7 @@ async function main() {
   const { runMigrations } = await import('../../server/src/db/migrate')
   const { saveTregToken } = await import('../../server/src/services/treg-key')
   const { processEnrichmentRun } = await import('../../server/src/services/enrich-runner')
+  const { runStep } = await import('../../server/src/services/enrich-step')
   const { excludeWithCooldown, runProviders } = await import('../../server/src/services/enrich-providers')
   const { providerTries } = await import('../../server/src/lib/enrich-provider-tries')
   const { readTregMeta } = await import('../../server/src/lib/treg-meta')
@@ -144,6 +149,72 @@ async function main() {
   const keptRows = await runOn(uuid(), uuid(), ['kept@acme.example'])
   check('share_busy kept for the key: the row fails, without asking again and again',
     sent.length === 2 && keptRows[0].Verify.includes('stayed busy'))
+
+  // A waterfall where every provider answered 429 (route_failed, charged nothing):
+  // treg keeps no such refusal, so the row asks again under the same key.
+  const routeFailed = (provider: string, charged = 0, callId?: string) => refuse(502, {
+    error: 'route_failed', charged_micro: charged,
+    tried: [{ provider, outcome: 'error', status: 429, charged_micro: 0, detail: '{"message":"Too Many Attempts."}' }],
+  }, callId)
+  let slowLeft = 2
+  special = (email) => (email === 'slow@acme.example' && slowLeft-- > 0 ? routeFailed('contactout') : null)
+  sent.length = 0
+  const slowRun = uuid()
+  const slowRows = await runOn(uuid(), slowRun, ['slow@acme.example'])
+  check('route_failed on 429s: asked again under the same key until it answers',
+    sent.length === 3 && new Set(sent.map(x => x.key)).size === 1 && slowRows[0].Status === 'invalid')
+  const slowCo = runProviders(slowRun, uid, config.enrichment.providerNames).find(p => p.provider === 'ContactOut')
+  check('every asking is counted: two refusals and the answer, three rate limits',
+    slowCo?.tried === 3 && slowCo.rate_limited === 3)
+  special = (email) => (email === 'never@acme.example' ? routeFailed('contactout') : null)
+  sent.length = 0
+  const neverRows = await runOn(uuid(), uuid(), ['never@acme.example'])
+  check('route_failed on 429s: five more tries, then the row names the provider and its error',
+    sent.length === 6 && neverRows[0].Verify.includes('ContactOut answered 429: Too Many Attempts'))
+
+  // A row's steps share one 429 budget (a verified email's finds and checks):
+  // a step after the budget is used fails at its first 429.
+  const rateRetries = { left: 2 }
+  const stepCtx = {
+    runId: slowRun, userId: uid, sheetId, statusColumn: 'Verify', token: 't', autorunId: null,
+    signal: new AbortController().signal, stopped: () => false, halt: null, onHalt: () => {},
+    unreachableStreak: 0, sameLookup: new Map(), cooldown: new Map(),
+  }
+  const stepFor = (email: string) => {
+    const parts = { method: 'POST', path: `/call/${TOOL.id}`, query: '', body: JSON.stringify({ email }), prefer: [],
+      exclude: [] }
+    return runStep(stepCtx as never, {
+      toolId: TOOL.id, attempt: 't1', rowIndex: 0, rowId: null, parts, rateRetries,
+      request: { ...parts, routed: true, maxCostUsd: 0.02, stopAtFirst: false, fresh: false },
+    })
+  }
+  special = () => routeFailed('contactout')
+  sent.length = 0
+  const firstStep = await stepFor('budget1@acme.example')
+  const secondStep = await stepFor('budget2@acme.example')
+  check('a row\'s steps share its 429 retries',
+    firstStep.kind === 'row_fail' && secondStep.kind === 'row_fail' && rateRetries.left === 0
+      && sent.filter(x => x.email === 'budget1@acme.example').length === 3
+      && sent.filter(x => x.email === 'budget2@acme.example').length === 1)
+
+  // Met while ContactOut cools down, Kitt's 429 leaves no provider: the row is
+  // asked again without the cool-down at once, before any wait.
+  const warm = ['d', 'e', 'f'].map(x => `${x}@acme.example`)
+  special = (email, excluded) => (email === 'hop@acme.example' && excluded.includes('contactout')
+    ? routeFailed('trykitt') : null)
+  sent.length = 0
+  const hopRows = await runOn(uuid(), uuid(), [...warm, 'hop@acme.example'])
+  const hop = sent.filter(x => x.email === 'hop@acme.example')
+  check('a cooled-down row whose providers all 429 drops the cool-down before waiting',
+    hop.length === 2 && hop[0].exclude === 'contactout' && hop[1].exclude === null && hopRows[3].Status === 'invalid')
+  // One that charged something is kept by treg: a new key would buy it again.
+  special = (email, excluded) => (email === 'paid@acme.example' && excluded.includes('contactout')
+    ? routeFailed('trykitt', 5000, 'paid-call') : null)
+  sent.length = 0
+  const paidRows = await runOn(uuid(), uuid(), [...warm, 'paid@acme.example'])
+  check('a route_failed that charged something is never asked again under a new key',
+    sent.filter(x => x.email === 'paid@acme.example').length === 1
+      && paidRows[3].Verify.includes('Every provider failed for this row:'))
   special = null
 
   console.log(failures === 0 ? '\nenrich-providers: all passed' : `\n${failures} FAILURES`)

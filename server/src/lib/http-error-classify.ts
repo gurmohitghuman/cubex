@@ -38,10 +38,20 @@ const RULES: ReadonlyArray<{ cls: HttpErrorClass; re: RegExp }> = [
   { cls: 'retryable', re: /timeout|timed out|socket hang ?up|other side closed|fetch failed/i },
 ];
 
+// An enrichment waterfall's "Every provider failed for this row: hunter answered
+// 429: …; kitt gave no answer." (lib/enrich-route-failure.ts): retryable when
+// every provider it names was busy or down.
+const TEMPORARY = /^(408|425|429|5\d\d)$/;
+function classifyRouteFailure(msg: string): HttpErrorClass | null {
+  if (!msg.startsWith('Every provider failed for this row')) return null;
+  const statuses = [...msg.matchAll(/ (?:answered (\d{3})|gave no answer)\b/g)].map(m => m[1] ?? 'none');
+  return statuses.length > 0 && statuses.every(s => s === 'none' || TEMPORARY.test(s)) ? 'retryable' : 'unknown';
+}
+
 export function classifyHttpError(errorMessage: string | null | undefined): HttpErrorClass {
   const msg = typeof errorMessage === 'string' ? errorMessage.trim() : '';
   if (!msg) return 'unknown';
-  return RULES.find(rule => rule.re.test(msg))?.cls ?? 'unknown';
+  return classifyRouteFailure(msg) ?? RULES.find(rule => rule.re.test(msg))?.cls ?? 'unknown';
 }
 
 export const HTTP_ERROR_CLASS_HINT: Record<HttpErrorClass, string> = {

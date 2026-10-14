@@ -3,9 +3,10 @@
 // body (a string, or {"error": code, …}); the pool-saturation 503 is the one
 // refusal without that header; provider errors are relayed verbatim.
 import {
-  ENRICH_RETRY_MS, ENRICH_UNREACHABLE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MS, ENRICH_SHARE_BUSY_MIN_MS,
-  ENRICH_SHARE_BUSY_MAX_MS,
+  ENRICH_RETRY_MS, ENRICH_UNREACHABLE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MS, ENRICH_PROVIDER_RATE_RETRY_MAX_MS,
+  ENRICH_SHARE_BUSY_MIN_MS, ENRICH_SHARE_BUSY_MAX_MS, ENRICH_SATURATION_MAX_MS,
 } from './constants';
+import { providerText, routeFailure } from './enrich-route-failure';
 export type PauseReason =
   | 'auth' | 'balance' | 'treg_cap' | 'team_rule' | 'provider_busy' | 'unreachable'
   | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key' | 'unconfirmed';
@@ -13,6 +14,8 @@ export type PauseReason =
 export type CallVerdict =
   | { kind: 'ok' }
   | { kind: 'retry'; afterMs: number; counts: 'unreachable' | 'saturation' | 'provider' | 'in_progress' }
+  // A provider's 429: afterMs is its Retry-After (0: none); the step backs off (rateLimitWaitMs).
+  | { kind: 'retry'; afterMs: number; counts: 'rate_limit' }
   // treg's shared key for a provider is busy: nothing was sent or billed. Retried
   // under the same key; `message` if it stays busy.
   | { kind: 'retry'; afterMs: number; counts: 'busy'; message: string }
@@ -21,6 +24,9 @@ export type CallVerdict =
   | { kind: 'row_fail'; message: string }
   | { kind: 'pause'; reason: PauseReason; message: string }
   | { kind: 'fail_run'; message: string };
+
+// Whether a row may still ask again after a provider's 5xx, and after its 429.
+export interface RetriesLeft { provider: boolean; rateLimit: boolean }
 
 export interface CallAnswer {
   status: number | null;        // null: no response (network error, timeout)
@@ -46,14 +52,6 @@ const usd = (micro: unknown) => (typeof micro === 'number' ? `$${(micro / 1e6).t
 // "token" would also catch tool-policy refusals ("this token is not allowed").
 const KEY_REFUSALS = /invalid token|not authenticated|disabled key|revoked key|account suspended|org suspended|not a member of this org|membership removed|no session/i;
 
-// A provider's own error body: {detail}, {message}, {error: "…"} or {error: {message}}.
-function providerText(body: unknown): string {
-  if (!isObj(body)) return typeof body === 'string' ? body : '';
-  const e = body.error;
-  const pick = [body.detail, body.message, isObj(e) ? e.message : e].find(v => typeof v === 'string' && v.trim());
-  return typeof pick === 'string' ? pick : '';
-}
-
 function balanceMessage(d: Json | null): string {
   const left = usd(d?.balance_micro);
   if (d?.autotopup_enabled === true) {
@@ -62,7 +60,7 @@ function balanceMessage(d: Json | null): string {
   return `Your treg balance ran out${left ? ` (${left} left)` : ''}. Top up at treg, then Resume.`;
 }
 
-function tregRefusal(a: CallAnswer): CallVerdict {
+function tregRefusal(a: CallAnswer, left: RetriesLeft, names: Record<string, string>): CallVerdict {
   const { code, text, detail } = detailOf(a.body);
   const t = text.toLowerCase();
   const s = a.status ?? 0;
@@ -99,7 +97,17 @@ function tregRefusal(a: CallAnswer): CallVerdict {
     case 'identity_incomplete': return { kind: 'row_skip', message: 'Missing inputs' };
     case 'no_route_candidate': return { kind: 'row_skip', message: text || 'No provider can take these inputs' };
     case 'response_buffer_limit': return { kind: 'row_fail', message: 'The answer is over treg\'s 8 MB limit (not charged).' };
-    case 'route_failed': return { kind: 'row_fail', message: 'Every provider failed for this row (not charged).' };
+    case 'route_failed': {
+      // Every provider busy or down and nothing charged: asked again under the same key.
+      const f = routeFailure(detail, names);
+      if (f.temporary && f.rateLimited && left.rateLimit) return { kind: 'retry', afterMs: 0, counts: 'rate_limit' };
+      if (f.temporary && !f.rateLimited && left.provider) {
+        return { kind: 'retry', afterMs: ENRICH_RETRY_MS, counts: 'provider' };
+      }
+      return { kind: 'row_fail', message: f.message };
+    }
+    // The provider says the target doesn't exist (a scraped page's 404): an answer, not a fault.
+    case 'route_not_found': return { kind: 'row_skip', message: 'Not found' };
     case 'route_caller_fault': return { kind: 'row_fail', message: text || 'The provider rejected this request.' };
     case 'catalog_retired': return { kind: 'fail_run', message: `treg retired this tool.${text ? ` ${text}` : ''}` };
     case 'catalog_price_invalid': return { kind: 'fail_run', message: "treg can't price this tool right now." };
@@ -125,19 +133,33 @@ function tregRefusal(a: CallAnswer): CallVerdict {
   return { kind: 'row_fail', message: text || `treg answered ${s}.` };
 }
 
-export function classifyCall(a: CallAnswer, providerRetriesLeft: boolean): CallVerdict {
+// names: provider ids -> the names the run shows, for a waterfall's failure message.
+export function classifyCall(
+  a: CallAnswer, retriesLeft: boolean | RetriesLeft, names: Record<string, string> = {},
+): CallVerdict {
+  const left = typeof retriesLeft === 'boolean' ? { provider: retriesLeft, rateLimit: retriesLeft } : retriesLeft;
   if (a.status === null) return { kind: 'retry', afterMs: ENRICH_UNREACHABLE_RETRY_MS, counts: 'unreachable' };
   // Saturation: top-level body flag, no X-Treg-Error header.
   if (a.status === 503 && isObj(a.body) && a.body.treg_saturated === true) {
-    return { kind: 'retry', afterMs: Math.max(1, a.retryAfterSec ?? 2) * 1000, counts: 'saturation' };
+    const ms = Math.max(1, a.retryAfterSec ?? 2) * 1000;
+    return { kind: 'retry', afterMs: Math.min(ms, ENRICH_SATURATION_MAX_MS), counts: 'saturation' };
   }
-  if (a.tregError) return tregRefusal(a);
+  if (a.tregError) return tregRefusal(a, left, names);
   if (a.status >= 200 && a.status < 300) return { kind: 'ok' };
   // A 5xx with neither a call id nor treg's header never reached treg's code.
   if (a.status >= 500 && !a.callId) return { kind: 'retry', afterMs: ENRICH_UNREACHABLE_RETRY_MS, counts: 'unreachable' };
-  if ((a.status === 429 || a.status >= 500) && providerRetriesLeft) {
-    return { kind: 'retry', afterMs: a.status === 429 ? ENRICH_PROVIDER_RATE_RETRY_MS : ENRICH_RETRY_MS, counts: 'provider' };
+  if (a.status === 429 && left.rateLimit) {
+    return { kind: 'retry', afterMs: (a.retryAfterSec ?? 0) * 1000, counts: 'rate_limit' };
   }
+  if (a.status >= 500 && left.provider) return { kind: 'retry', afterMs: ENRICH_RETRY_MS, counts: 'provider' };
   const text = providerText(a.body);
   return { kind: 'row_fail', message: `The provider answered ${a.status}${text ? `: ${text.slice(0, 200)}` : ''}.` };
+}
+
+// How long a row waits before asking again after its `tries`-th 429: doubling
+// from the first wait, half of it random, never under the provider's
+// Retry-After, never over the most.
+export function rateLimitWaitMs(tries: number, retryAfterMs: number, random: () => number = Math.random): number {
+  const d = Math.min(ENRICH_PROVIDER_RATE_RETRY_MAX_MS, ENRICH_PROVIDER_RATE_RETRY_MS * 2 ** tries);
+  return Math.min(ENRICH_PROVIDER_RATE_RETRY_MAX_MS, Math.max(retryAfterMs, Math.round(d / 2 + random() * d / 2)));
 }

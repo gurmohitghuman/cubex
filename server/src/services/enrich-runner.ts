@@ -105,6 +105,7 @@ export async function processEnrichmentRun(
     autorunId: run.autorun_id ?? null,
     signal: wake.signal, stopped: () => shouldStopHttpRun(run.id, generation),
     halt: null, onHalt: () => wake.abort(), unreachableStreak: 0, sameLookup: new Map(), cooldown: new Map(),
+    providerNames: config.enrichment.providerNames,
   };
   const concurrency = enrichConcurrency(config);
   clearCooldowns(run.id, run.user_id);

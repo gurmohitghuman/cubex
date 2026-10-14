@@ -39,7 +39,10 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + `scope x max per row). ${DAILY_LIMIT_NOTE} `
   + `concurrency: rows enriched at once, default ${ENRICH_DEFAULT_CONCURRENCY}, max ${HTTP_MAX_CONCURRENCY}; a `
   + 'new row starts as soon as one finishes. A waterfall row can take several seconds, so a higher concurrency is '
-  + 'the speed lever; a provider\'s own rate limit (its 429s) does not rise with it. Each running row holds its '
+  + 'the speed lever; a provider\'s own rate limit (its 429s) does not rise with it: a row whose providers all '
+  + 'answered 429 waits and asks again for free, up to 5 times over a few minutes, then fails with their answers '
+  + '(lower concurrency for a provider that keeps answering 429; ContactOut\'s free email check on treg\'s own key '
+  + 'takes about 20 calls a minute for all of treg). Each running row holds its '
   + 'max_cost_per_row against the daily limit and the run limit, so those also cap how many run at once. Reruns '
   + 'and auto-run keep it. '
   + 'Waterfall tools ask providers in turn until one finds it: provider_order puts some first, skip_providers '
