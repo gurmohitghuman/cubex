@@ -47,16 +47,21 @@ function registerControls(prefix: string, kind: RunKind) {
     }
   });
 
-  // An enrichment run resumes with an optional new run limit ({spend_limit_usd}).
+  // An enrichment run resumes with an optional new run limit ({spend_limit_usd})
+  // and concurrency ({concurrency}).
   router.post(`/${prefix}/:id/resume`, requireScope('run'), async (req: TokenAuthRequest, res) => {
     try {
-      const limit = (req.body as { spend_limit_usd?: unknown } | undefined)?.spend_limit_usd;
+      const body = req.body as { spend_limit_usd?: unknown; concurrency?: unknown } | undefined;
+      const limit = body?.spend_limit_usd;
       const enrichment = kind === 'http' && isEnrichmentRun(req.params.id, req.userId!);
       if (limit !== undefined && !enrichment) {
         return res.status(400).json({ error: 'spend_limit_usd applies to enrichment runs only.' });
       }
+      if (body?.concurrency !== undefined && !enrichment) {
+        return res.status(400).json({ error: 'concurrency applies to resuming an enrichment run only.' });
+      }
       const result = enrichment
-        ? await resumeEnrichmentRun(req.params.id, req.userId!, limit)
+        ? await resumeEnrichmentRun(req.params.id, req.userId!, limit, body?.concurrency)
         : await resumeRun(kind, req.params.id, req.userId!, req.tokenScopes?.has('secrets') === true);
       if ('fail' in result && result.fail === 'bad_request') return res.status(400).json({ error: result.message });
       if ('fail' in result) return res.status(controlStatus(result)).json({ error: result.message });

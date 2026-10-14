@@ -4,7 +4,7 @@ import errMod from '../../server/src/lib/enrich-errors'
 import emailMod from '../../server/src/lib/enrich-email-status'
 import estMod from '../../server/src/lib/enrich-estimate'
 import fs from 'fs'
-const { classifyCall } = errMod as typeof import('../../server/src/lib/enrich-errors')
+const { classifyCall, rateLimitWaitMs } = errMod as typeof import('../../server/src/lib/enrich-errors')
 const { classifyVerify, acceptedBy, statusLabel } = emailMod as
   typeof import('../../server/src/lib/enrich-email-status')
 const { defaultMaxCostPerRow, estimateRun, billsMisses, rowsThatFit } = estMod as
@@ -20,7 +20,7 @@ const ans = (
   retryAfterSec: number | null = null,
 ) =>
   ({ status, body, tregError, callId, retryAfterSec })
-const kind = (a: ReturnType<typeof ans>, retries = true) => classifyCall(a, retries)
+const kind = (a: ReturnType<typeof ans>, retries: Parameters<typeof classifyCall>[1] = true) => classifyCall(a, retries)
 
 // --- treg refusals -----------------------------------------------------------
 check('2xx is ok', kind(ans(200, {}, false)).kind === 'ok')
@@ -68,6 +68,60 @@ check('bad params fail the row',
 check('no route candidate skips', kind(ans(422, { detail: { error: 'no_route_candidate' } })).kind === 'row_skip')
 check('buffer limit fails the row', kind(ans(502, { detail: { error: 'response_buffer_limit' } })).kind === 'row_fail')
 check('route failed fails the row', kind(ans(502, { detail: { error: 'route_failed' } })).kind === 'row_fail')
+// route_failed lists each provider treg asked (detail.tried, the provider's answer cut at 120 characters).
+const tried = (...t: Array<[string, number | null, string?]>) =>
+  t.map(([provider, status, detail]) => ({ provider, outcome: 'error', status, charged_micro: 0, detail }))
+const routeFailed = (t: unknown[], charged = 0) =>
+  ans(502, { detail: { error: 'route_failed', tried: t, charged_micro: charged } })
+const rf429 = routeFailed(tried(['contactout', 429, '{"message":"Too Many Attempts."}']))
+check('route failed on a 429 that charged nothing retries under the same key',
+  (k => k.kind === 'retry' && k.counts === 'rate_limit')(kind(rf429)))
+check('route failed names the provider and its error once retries are used',
+  (k => k.kind === 'row_fail'
+    && k.message === 'Every provider failed for this row (not charged): contactout answered 429: Too Many Attempts.')(
+    kind(rf429, false)))
+check('route failed: a provider that gave no answer is temporary too',
+  kind(routeFailed(tried(['hunter', 503], ['kitt', null]))).kind === 'retry')
+check('route failed with a provider fault is not retried',
+  (k => k.kind === 'row_fail' && k.message.includes('kitt answered 401: bad key'))(
+    kind(routeFailed(tried(['contactout', 429], ['kitt', 401, 'bad key'])))))
+check('route failed that charged something is kept by treg, so not retried, and not "not charged"',
+  (k => k.kind === 'row_fail' && !k.message.includes('not charged'))(
+    kind(routeFailed(tried(['contactout', 429]), 5000))))
+check('route failed: a provider answer cut off mid-JSON is kept as sent',
+  (k => k.kind === 'row_fail' && k.message.includes('hunter answered 502: {"errors":[{"code"'))(
+    kind(routeFailed(tried(['hunter', 502, '{"errors":[{"code"'])), false)))
+const many = kind(routeFailed(tried(
+  ...['a', 'b', 'c', 'd'].map((x): [string, number, string] => [x.repeat(60), 429, 'y'.repeat(200)]),
+  ['kitt', 401, 'z'.repeat(200)],
+)), false)
+check('route failed: at most 3 providers, a fault first, and the message fits the 500-character cut',
+  many.kind === 'row_fail' && many.message.length <= 500 && many.message.includes('kitt answered 401')
+    && many.message.endsWith('2 more busy or down.'))
+check('route not found skips the row (an answer, not a missing tool)',
+  (k => k.kind === 'row_skip' && k.message === 'Not found')(kind(ans(404, { detail: { error: 'route_not_found' } }))))
+check('treg\'s saturation wait is capped',
+  (k => k.kind === 'retry' && k.afterMs === 120_000)(
+    kind(ans(503, { detail: 'pool saturated', treg_saturated: true }, false, 'c', 9999))))
+check('a provider 429 with Retry-After carries it',
+  (k => k.kind === 'retry' && k.counts === 'rate_limit' && k.afterMs === 30_000)(kind(ans(429, {}, false, 'c', 30))))
+check('a provider 5xx uses the 5xx budget, a 429 the rate-limit one',
+  kind(ans(503, {}, false), { provider: false, rateLimit: true }).kind === 'row_fail'
+    && kind(ans(429, {}, false), { provider: false, rateLimit: true }).kind === 'retry')
+check('rate-limit waits double, half random, within bounds',
+  rateLimitWaitMs(0, 0, () => 0) === 7_500 && rateLimitWaitMs(0, 0, () => 1) === 15_000
+    && rateLimitWaitMs(2, 0, () => 1) === 60_000 && rateLimitWaitMs(9, 0, () => 1) === 120_000
+    && rateLimitWaitMs(0, 40_000, () => 0) === 40_000 && rateLimitWaitMs(0, 999_000, () => 0) === 120_000)
+check('route failed uses the names the run shows',
+  (k => k.kind === 'row_fail' && k.message.includes(': ContactOut answered 429'))(
+    classifyCall(rf429, false, { contactout: 'ContactOut' })))
+check('route failed whose providers say they charged is not retried, even without a total',
+  kind(ans(502, { detail: { error: 'route_failed', tried: [
+    { provider: 'kitt', outcome: 'error', status: 429, charged_micro: 1500 }] } })).kind === 'row_fail')
+check('route failed: misses are not listed as failures',
+  (k => k.kind === 'row_fail' && !k.message.includes('prospeo'))(kind(routeFailed([
+    { provider: 'prospeo', outcome: 'miss', status: 404, charged_micro: 0 }, ...tried(['kitt', 429]),
+  ]), false)))
 check('lost answer fails the row',
   kind(ans(410, { detail: { error: 'idempotency_response_lost' } })).kind === 'row_fail')
 check('retired tool fails the run', kind(ans(410, { detail: { error: 'catalog_retired' } })).kind === 'fail_run')
@@ -88,7 +142,7 @@ check('key reused for another request: new attempt',
 check('bare 5xx without call id counts as unreachable',
   JSON.stringify(kind(ans(500, null, false, null))).includes('unreachable'))
 check('provider 429 retries while retries are left',
-  (k => k.kind === 'retry' && k.counts === 'provider')(kind(ans(429, {}, false))))
+  (k => k.kind === 'retry' && k.counts === 'rate_limit')(kind(ans(429, {}, false))))
 check('provider 429 fails once retries are used', kind(ans(429, {}, false), false).kind === 'row_fail')
 check('provider 404 fails the row', kind(ans(404, { detail: 'not found' }, false)).kind === 'row_fail')
 check('provider {error:{message}} text is kept',

@@ -85,7 +85,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'back cheaper or free), with the column\'s own setup; it needs row_ids or mode: "errored" (❌ rows), '
         + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
         + '"all" (every row again). spend_limit_usd sets the new run\'s limit, or on resume raises a paused run\'s '
-        + 'limit (a run its limit paused), and concurrency sets its rows at once.',
+        + 'limit (a run its limit paused). concurrency sets its rows at once on a rerun or a resume, and the '
+        + 'column keeps it for later reruns and auto-run; lower it when a provider answers 429.',
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment']),
         run_id: z.string(),
@@ -98,8 +99,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             + 'HTTP: missing|all.',
           ),
         concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
-          .describe(`AI or enrichment rerun: rows at once (AI 1-${MAX_AI_CONCURRENCY}, enrichment `
-            + `1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
+          .describe(`AI rerun, or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
+            + `enrichment 1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
         spend_limit_usd: z.number().positive().optional()
           .describe('Enrichment runs only: the run limit for a rerun, or a raised limit on resume.'),
       },
@@ -113,8 +114,9 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       if (spend_limit_usd !== undefined && !(enrichment && (action === 'resume' || action === 'rerun'))) {
         return err('spend_limit_usd applies to resuming or rerunning an enrichment run only.');
       }
-      if (concurrency !== undefined && !(action === 'rerun' && (run_type === 'ai' || enrichment))) {
-        return err('concurrency applies to rerunning an AI or enrichment run only.');
+      if (concurrency !== undefined
+        && !((action === 'rerun' && (run_type === 'ai' || enrichment)) || (action === 'resume' && enrichment))) {
+        return err('concurrency applies only to rerunning an AI or enrichment run, or resuming an enrichment run.');
       }
       if (enrichment && action === 'rerun') {
         if (!row_ids && !mode) {
@@ -133,7 +135,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         });
       }
       if (enrichment && action === 'resume') {
-        const resumed = await resumeEnrichmentRun(run_id, ctx.userId, spend_limit_usd);
+        const resumed = await resumeEnrichmentRun(run_id, ctx.userId, spend_limit_usd, concurrency);
         if ('fail' in resumed) return err(resumed.message);
         return ok(getHttpRunSummary(run_id, ctx.userId));
       }

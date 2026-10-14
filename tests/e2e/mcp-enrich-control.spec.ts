@@ -5,8 +5,8 @@ import { call, callError, mcpClient, waitMcpRun } from './helpers-mcp'
 
 // Controlling an enrichment run through MCP (plan Features H): a pause by its
 // run limit says why and carries daily_limit, control_run resume raises the
-// limit, a rerun goes through the column's own setup with its modes, and
-// spend_limit_usd is refused where it means nothing.
+// limit and sets concurrency, a rerun goes through the column's own setup with
+// its modes, and spend_limit_usd is refused where it means nothing.
 
 const LEADS = Array.from({ length: 6 }, (_, i) => ({ Name: `Lead Person${i}`, Website: `co${i}.example` }))
 const FIND = {
@@ -35,10 +35,15 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: started.run_id, action: 'pause', spend_limit_usd: 1,
   })).toContain('spend_limit_usd')
+  // concurrency means nothing on a pause; a resume sets it (kept for the column's reruns).
+  expect(await callError(client, 'control_run', {
+    run_type: 'enrichment', run_id: started.run_id, action: 'pause', concurrency: 3,
+  })).toContain('resuming an enrichment run')
   const resumed = await call(client, 'control_run', {
-    run_type: 'enrichment', run_id: started.run_id, action: 'resume', spend_limit_usd: 1,
+    run_type: 'enrichment', run_id: started.run_id, action: 'resume', spend_limit_usd: 1, concurrency: 4,
   })
   expect(resumed.enrichment.spend_limit_usd).toBe(1)
+  expect(resumed.enrichment.concurrency).toBe(4)
   const done = await waitMcpRun(client, started.run_id, ['completed'])
   expect(done.enrichment.pause_reason).toBeNull()
   expect((await rowsOf(api, sheetId)).filter(r => r['Find email'] === '✅ Found')).toHaveLength(6)
@@ -58,7 +63,7 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   const second = await waitMcpRun(client, again.run_id, ['completed'])
   expect(second.total_rows).toBe(2)
   expect(second.enrichment.spend_limit_usd).toBe(0.5)
-  expect(second.enrichment.concurrency).toBe(7)
+  expect(second.enrichment.concurrency).toBe(4)
   // The first run is superseded now: its id names the latest.
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: started.run_id, action: 'rerun', mode: 'all',

@@ -134,7 +134,7 @@ Enrichments look things up per row through [treg.to](https://treg.to) with the t
 1. `search_enrichments` (for example "work email") finds the tool; `get_enrichment` lists its inputs, its output fields, its price and, for a waterfall (treg asks many providers in turn), each provider with its price, hit rate and whether your team's own key or a free route serves it.
 2. `run_enrichment` with `estimate_only: true` checks everything a run would check and returns the rows it would take, the cost range, the per-row cap and run limit it would use, your treg balance and `daily_limit`. It creates nothing.
 3. `run_enrichment` with `test: true` runs the first 5 rows; without it, every row in scope. It returns a `run_id` at once. When other columns in the sheet have auto-run on and read what this run writes, it also returns `chained_auto_run`: those auto-runs, which fill the same rows after it (and the ones they set off in turn), each with its estimated cost or, for an HTTP API column, `sends_requests: true`. HTTP ones send real requests.
-4. `get_run_status` (run type `enrichment`) follows it: `cost_usd` is what its treg calls cost so far, and `enrichment.pause_reason` says why it paused (its run limit, the daily limit, the treg balance, a missing key, treg unreachable). `control_run` resumes it once that's fixed, and with `spend_limit_usd` raises a run limit. `get_run_results` gives each row's cost and the provider that found it.
+4. `get_run_status` (run type `enrichment`) follows it: `cost_usd` is what its treg calls cost so far, and `enrichment.pause_reason` says why it paused (its run limit, the daily limit, the treg balance, a missing key, treg unreachable). `control_run` resumes it once that's fixed, with `spend_limit_usd` to raise a run limit and `concurrency` to change how many rows run at once. `get_run_results` gives each row's cost and the provider that found it.
 
 **Money**
 
@@ -300,7 +300,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}` or `{"row_ids": [...]}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Add `"concurrency"` (1 to 100) to change how many rows run at once; rows that failed on OpenRouter's in-flight credit budget need a lower one. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
 | `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 100; default: the run's own). |
-| `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it. |
+| `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it, and `concurrency` (rows at once, 1 to 100) to change its speed. |
 
 An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by`, plus its stored `answer` with `?answers=true` (10 rows a page).
 

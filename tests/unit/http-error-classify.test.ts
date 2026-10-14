@@ -17,6 +17,12 @@ const cases: Array<[string | null, string]> = [
   ['The provider answered 400: bad email.', 'configuration'],
   ["treg's shared key for contactout stayed busy (429, not charged). Rerun the row later, or connect your own "
     + 'key at treg.', 'retryable'],
+  // A waterfall's route_failed (lib/enrich-route-failure.ts): retryable only when every provider was busy or down.
+  ['Every provider failed for this row (not charged): contactout answered 429: Too Many Attempts.', 'retryable'],
+  ['Every provider failed for this row (not charged): hunter answered 503; kitt gave no answer.', 'retryable'],
+  ['Every provider failed for this row (not charged): hunter answered 429; kitt answered 401: bad key.', 'unknown'],
+  ['Every provider failed for this row: contactout answered 429.', 'retryable'],
+  ['Every provider failed for this row (not charged).', 'unknown'],
   ['HTTP 410 from upstream', 'not_found'],
   ['HTTP 429 from upstream: Too Many Requests', 'retryable'],
   ['HTTP 503 from upstream: <html>Service Unavailable</html>', 'retryable'],
