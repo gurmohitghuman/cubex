@@ -3,7 +3,9 @@
 // docs that lost their line endings) and every command the parser refuses, with
 // why. Pure: no DB. Real browser and docs commands: curl-parse.test.ts.
 import assert from 'node:assert/strict';
-import { parseCurl } from '../../server/src/lib/curl/parse';
+// server/src is type:commonjs → default-import + destructure (named imports fail under tsx on Node 22).
+import parseMod from '../../server/src/lib/curl/parse';
+const { parseCurl } = parseMod as typeof import('../../server/src/lib/curl/parse');
 import { finish, parses, ran, refuses } from './curl-test-kit';
 
 // ---- Quoting and option forms ----------------------------------------------

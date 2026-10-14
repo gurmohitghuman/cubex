@@ -4,7 +4,9 @@
 // the secret, several keys in one field, a key as a bare query parameter.
 // Pure: no DB. The everyday cases: curl-keys.test.ts.
 import assert from 'node:assert/strict';
-import { applyKeyChoices } from '../../server/src/lib/curl/key-apply';
+// server/src is type:commonjs → default-import + destructure (named imports fail under tsx on Node 22).
+import applyMod from '../../server/src/lib/curl/key-apply';
+const { applyKeyChoices } = applyMod as typeof import('../../server/src/lib/curl/key-apply');
 import { SLACK_DOCS_HOOK, finish, keysOf, ran } from './curl-test-kit';
 
 ran('more than 20 keys is refused before any naming or matching', () => {
