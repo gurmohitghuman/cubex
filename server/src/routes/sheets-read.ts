@@ -8,6 +8,7 @@ import {
 import { getColumnTypes } from '../lib/column-types';
 import { FILL_PLACEHOLDER, fillingColumns } from '../services/answer-field-fill';
 import { sheetCleanView } from '../services/clean-view';
+import { sheetFormulaView } from '../services/formula-view';
 import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
 import { parseEmptyFilter, buildEmptyFilterSql } from '../lib/empty-filter';
@@ -88,8 +89,11 @@ router.get('/:id', (req: AuthRequest, res) => {
       Object.keys(columnTypes).filter(c => columnTypes[c] === 'enrich-status'));
     // Clean data columns' setups: the column menu and the Edit cleaning dialog.
     const cleanColumns = sheetCleanView(id, req.userId!, columns);
+    // Formula columns' setups: the header tip, the column menu and the Edit formula dialog.
+    const formulaColumns = sheetFormulaView(id, req.userId!, columns);
     res.json({
-      sheet: sheetForClient, data: { rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns },
+      sheet: sheetForClient,
+      data: { rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns },
     });
   } catch (error) {
     console.error('Get sheet error:', error);

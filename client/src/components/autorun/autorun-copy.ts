@@ -13,7 +13,7 @@ const SHORT: Record<AutorunPause, string> = {
   team_rule: 'treg team rule', provider_busy: 'provider busy', unreachable: "can't reach treg",
   unconfirmed: 'waiting on treg', retired: 'tool retired', missing_input: 'column missing',
   setup: 'needs a fix', failed: 'a run failed', queue: "couldn't queue", priced: 'needs a daily cap',
-  dest_full: 'the sheet it adds to is full', loop: 'its rows would come back',
+  dest_full: 'the sheet it adds to is full', loop: 'its rows would come back', too_slow: 'the formula is too slow',
 }
 
 export const pauseShort = (r: AutorunPause | null): string => (r ? SHORT[r] ?? 'paused' : '')
@@ -43,6 +43,7 @@ export function capFix(r: AutorunPause | null): string | null {
 export function autorunUsage(a: AutorunColumn): string {
   // A clean data column's auto-run has no caps: it costs nothing and sends nothing.
   if (a.kind === 'clean') return 'cleans new and changed rows for free'
+  if (a.kind === 'formula') return 'works out new and changed rows for free'
   if (a.kind === 'http') {
     return `${a.rowsToday.toLocaleString()} of ${plural(a.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS, 'row')} today`
   }
@@ -93,6 +94,9 @@ export function chipState(view: SheetAutorun | undefined): ChipState | null {
 // ownKey: the provider bills the tool on the team's own key, outside every limit here.
 export function webhookWarning(kind: AutorunKind, dailyLimitUsd: number | null, ownKey = false): string {
   if (kind === 'clean') return "Anyone with this sheet's webhook URL can add rows. Each new row is cleaned, for free."
+  if (kind === 'formula') {
+    return "Anyone with this sheet's webhook URL can add rows. Each new row is worked out by the formula, for free."
+  }
   if (kind === 'http') {
     return "Anyone with this sheet's webhook URL can add rows, and each new row sends this request. "
       + 'Your rows-a-day cap limits how many run.'

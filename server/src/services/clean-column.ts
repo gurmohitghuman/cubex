@@ -21,7 +21,7 @@ import {
   defaultCleanColumnName, isCleaner, parseCleanOptions, unknownCleanerMessage, type CleanerId, type CleanOptions,
 } from '../lib/clean/cleaners';
 import { CLEANING, runCleanFill } from './clean-fill';
-import { setCleanAutorun } from './clean-autorun';
+import { setCleanAutorun } from './derived-autorun';
 import type { RunFail } from './run-shared';
 
 export interface CleanColumnInput {

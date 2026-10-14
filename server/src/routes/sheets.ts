@@ -14,6 +14,7 @@ import webhooksRoutes from './sheets-webhooks';
 import webhookDeliveriesRoutes from './sheets-webhook-deliveries';
 import changesRoutes from './sheets-changes';
 import cleanRoutes from './sheets-clean';
+import formulaRoutes from './sheets-formula';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
@@ -27,9 +28,11 @@ import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 // distinct /:id/webhook* and /:id/changes prefixes, so no collision.
 const router = express.Router();
 // A sheet that is busy sorting, importing or rewriting a column takes no other
-// change until it finishes; appending rows is safe, and a clean column's
-// preview only reads (lib/sheet-busy.ts).
-router.use('/:id', refuseChangesWhileBusy(['/rows', '/clean-columns/preview']));
+// change until it finishes; appending rows is safe, and a clean or formula
+// column's preview (and writing a formula with AI) only reads (lib/sheet-busy.ts).
+router.use('/:id', refuseChangesWhileBusy([
+  '/rows', '/clean-columns/preview', '/formula-columns/preview', '/formula-columns/write',
+]));
 router.use(readRoutes);
 router.use(dataRoutes);
 router.use(rowsMutateRoutes);
@@ -45,5 +48,6 @@ router.use(webhooksRoutes);
 router.use(webhookDeliveriesRoutes);
 router.use(changesRoutes);
 router.use(cleanRoutes);
+router.use(formulaRoutes);
 
 export default router;

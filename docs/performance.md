@@ -21,7 +21,9 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Add a column from stored answers (900,000 answers over 20,000 auto-run runs) | 13 s | 0.17 s | 450 MB |
 | Rename an enrichment column with 20,000 runs | 6.9 s | 0.18 s | 495 MB |
 | Clean a column into a new one (emails 6 s, domains 6.5 s, company names 7 s, names 10 s, phone numbers 11 s) | 6 to 11 s | 0.15 s | 750 MB |
+| Fill a formula column (two columns joined 6.8 s, the work email picked out of a JSON response 8.5 s, a Lodash formula 10.8 s) | 7 to 11 s | 0.06 s | 680 MB |
+| A formula that hangs on every row (it stops itself after 3 rows) | 1.2 s | 0.31 s | 710 MB |
 
 The database for this sheet is 600 MB on disk.
 
-While a big job (import, sort, column rename or delete, cleaning a column, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+While a big job (import, sort, column rename or delete, cleaning a column, filling a formula column, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.

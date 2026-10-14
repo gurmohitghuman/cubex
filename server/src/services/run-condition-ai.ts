@@ -14,9 +14,7 @@ import { EMAIL_STATUS_WORDS } from '../lib/enrich-email-status';
 import { columnSamples, readRuleReply, ruleUserMessage, RULE_SYSTEM_PROMPT } from '../lib/run-condition-prompt';
 import { RULE_CHECK_SAMPLE_ROWS, RULE_GENERATE_SAMPLE_ROWS, RULE_WORDS_MAX_CHARS } from '../lib/constants-ai';
 import { getOpenRouterClient } from './openrouter';
-import { refusesTemperature } from './ai-model-call';
-import { modelTakesTemperature } from '../lib/openrouter';
-import { usageOf } from '../lib/responses-adapter';
+import { askWriterModel } from './ai-writer-call';
 import { scanRule } from './run-condition-rows';
 import type { RunFail } from './run-shared';
 import { redactSecrets } from '../lib/redact';
@@ -83,27 +81,6 @@ function fixedWords(sheetId: string, userId: string): Record<string, string[]> {
   return out;
 }
 
-type Client = Awaited<ReturnType<typeof getOpenRouterClient>>;
-
-// One short call: temperature 0 where the model takes one (a 400 naming it
-// sends the call again without it, as a run's rows do).
-async function askModel(openai: Client, model: string, user: string): Promise<{ text: string; cost: number | null }> {
-  const body: Record<string, unknown> = {
-    model, max_tokens: 400, usage: { include: true },
-    messages: [{ role: 'system', content: RULE_SYSTEM_PROMPT }, { role: 'user', content: user }],
-  };
-  if (modelTakesTemperature(model) !== false) body.temperature = 0;
-  let completion: any;
-  try {
-    completion = await openai.chat.completions.create(body as never);
-  } catch (error) {
-    if (!('temperature' in body) || !refusesTemperature(error)) throw error;
-    delete body.temperature;
-    completion = await openai.chat.completions.create(body as never);
-  }
-  return { text: completion?.choices?.[0]?.message?.content ?? '', cost: usageOf(completion).costUsd };
-}
-
 export interface GeneratedRule {
   model: string; model_source: 'picked' | 'sheet' | 'account'; cost_usd: number | null; check: RuleCheckResult;
 }
@@ -130,7 +107,8 @@ export async function generateRule(
   for (let attempt = 0; attempt < 2; attempt++) {
     let answer: { text: string; cost: number | null };
     try {
-      answer = await askModel(openai, picked.model, ruleUserMessage(asked, samples, refused));
+      const user = ruleUserMessage(asked, samples, refused);
+      answer = await askWriterModel(openai, picked.model, RULE_SYSTEM_PROMPT, user, 400);
     } catch (error) {
       const why = error instanceof Error ? redactSecrets(error.message).slice(0, 200) : 'no answer';
       const message = `${picked.model} didn't answer (${why}). Try again, or write the rule yourself.`;

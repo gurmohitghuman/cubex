@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { getSheetColumns, countRows, parseRowData } from '../lib/sql-helpers';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { cleanColumnJson, sheetCleanView } from './clean-view';
+import { formulaColumnJson, sheetFormulaView } from './formula-view';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -34,11 +35,13 @@ export interface SheetMeta {
   columns: string[]; row_count: number; data_version: number;
   default_ai_model: string | null; // sheet override; account default applies when null
   row_generation: number;
-  // Columns still filling (from stored answers, or a clean column's fill): their
-  // cells read "⏳ Processing..." until done.
+  // Columns still filling (from stored answers, or a clean or formula column's
+  // fill): their cells read "⏳ Processing..." until done.
   filling_columns: string[];
   // Clean data columns: each one's source, cleaner and auto-run (services/clean-view.ts).
   clean_columns: Array<Record<string, unknown>>;
+  // Formula columns: each one's formula, what it reads and auto-run (services/formula-view.ts).
+  formula_columns: Array<Record<string, unknown>>;
 }
 
 export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
@@ -61,6 +64,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     default_ai_model: sheet.default_ai_model,
     filling_columns: fillingColumns(sheetId, userId),
     clean_columns: Object.values(sheetCleanView(sheetId, userId, columns)).map(cleanColumnJson),
+    formula_columns: Object.values(sheetFormulaView(sheetId, userId, columns)).map(formulaColumnJson),
   };
 }
 

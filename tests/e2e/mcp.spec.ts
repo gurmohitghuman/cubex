@@ -42,13 +42,13 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   expect(tools).toEqual([
     'add_column', 'add_enrichment_field', 'add_list_rows', 'append_rows', 'check_run_condition', 'clean_column',
     'control_run',
-    'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'export_csv',
+    'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'export_csv', 'formula_column',
     'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status', 'get_sheet', 'import_csv',
     'list_models', 'list_runs', 'list_tables', 'manage_sheet', 'manage_table', 'read_rows', 'rename_column',
     'run_ai_column', 'run_enrichment', 'run_http_enrichment', 'search_enrichments', 'set_auto_run',
     'set_default_model', 'sort_sheet',
     ...(flagged ? ['transfer_rows', 'transform_column'] : []),
-    'update_cells', 'write_run_condition',
+    'update_cells', 'write_formula', 'write_run_condition',
   ])
 
   // Discovery → read: resolve the seeded sheet, read its rows.

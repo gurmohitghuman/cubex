@@ -63,6 +63,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           columnTypes={sheetData?.data.columnTypes ?? {}}
           autorun={autorun.view} columnSpend={autorun.spend} onAutorunAction={autorun.onAction}
           cleanColumns={sheetData?.data.cleanColumns} onOpenClean={modals.openClean}
+          formulaColumns={sheetData?.data.formulaColumns} onOpenFormula={modals.openFormula}
           activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
           activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
           structuredAIColumns={runs.aiStructuredColumns}

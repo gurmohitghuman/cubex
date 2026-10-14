@@ -28,6 +28,7 @@ import enrichV1 from './api-v1-enrich';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
+import formulaV1 from './api-v1-formula';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 const router = express.Router();
@@ -45,7 +46,7 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
 router.use('/sheets/:id', refuseChangesWhileBusy([
-  '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate',
+  '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
 ]));
 router.use(tablesV1);
 router.use(tableSheetsV1);
@@ -56,6 +57,8 @@ if (MCP_EFFICIENT_ROWS_ENABLED) router.use(transferV1);
 router.use(columnsV1);
 // Clean data columns: free cleaning into a new column (services/clean-agent.ts).
 router.use(cleanV1);
+// Formula columns: a free JavaScript formula per row into a new column (services/formula-agent.ts).
+router.use(formulaV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);

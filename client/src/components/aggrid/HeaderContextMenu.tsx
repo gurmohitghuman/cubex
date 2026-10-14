@@ -9,6 +9,7 @@ import { ContainsFilterInput } from './ContainsFilterInput'
 import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
 import { CleanColumnActions } from './CleanColumnActions'
+import { FormulaColumnActions } from './FormulaColumnActions'
 import type { RunByColumn, RunMenuActions } from './types'
 
 export type MenuState = {
@@ -77,6 +78,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           Sort descending
         </DropdownMenuItem>
         <CleanColumnActions {...runProps} isClean={columnType === 'clean'} />
+        {columnType === 'formula' && <FormulaColumnActions {...runProps} />}
 
         {columnType === 'http-master' && (
           <HTTPColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}

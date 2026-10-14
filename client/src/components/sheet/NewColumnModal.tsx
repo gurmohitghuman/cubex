@@ -1,20 +1,27 @@
 import React, { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Brush, Plus } from 'lucide-react'
+import { Brush, FunctionSquare, Plus } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { CleanColumnForm } from '@/components/clean/CleanColumnForm'
+import { FormulaColumnForm } from '@/components/formula/FormulaColumnForm'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
-import type { CleanColumnView, CleanStartResult } from '@/utils/api'
+import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
+import type { CleanColumnView, CleanStartResult, FormulaColumnView, FormulaStartResult } from '@/utils/api'
 
-// Clean data in the dialog: the sheet, its columns and clean columns, what the
-// column menu opened it on (null: the dialog's own choice), and what happens
-// once cleaning starts.
-export interface NewColumnCleanProps {
+// What the column menu (or a header's auto-run icon) opened the dialog on.
+export type NewColumnOpenTarget = CleanOpenTarget | FormulaOpenTarget
+
+// Clean data and formulas in the dialog: the sheet, its columns, its clean and
+// formula columns, what the dialog was opened on (null: the dialog's own
+// choice), and what happens once one starts filling.
+export interface NewColumnSetupProps {
   sheetId: string
   columns: string[]
   cleanColumns: Record<string, CleanColumnView>
-  request: CleanOpenTarget | null
+  formulaColumns: Record<string, FormulaColumnView>
+  request: NewColumnOpenTarget | null
   onStarted: (result: CleanStartResult) => void
+  onFormulaStarted: (result: FormulaStartResult) => void
 }
 
 interface NewColumnModalProps {
@@ -23,44 +30,61 @@ interface NewColumnModalProps {
   // Resolves false when the column wasn't added; the dialog then stays open.
   onSubmit: (name: string) => Promise<boolean>
   // Absent: only an empty column is offered.
-  clean?: NewColumnCleanProps
+  setup?: NewColumnSetupProps
 }
 
-type Choice = 'empty' | 'clean'
+type Choice = 'empty' | 'clean' | 'formula'
 const CHOICES = [
   { id: 'empty', label: 'Empty column', hint: 'Type or paste the values yourself.', Icon: Plus },
   {
     id: 'clean', label: 'Clean data', hint: 'A tidy copy of a column: names, emails, phones and more. Free.',
     Icon: Brush,
   },
+  {
+    id: 'formula', label: 'Formula', hint: 'Worked out from each row, like a field picked from an API reply. Free.',
+    Icon: FunctionSquare,
+  },
 ] as const
 
-// "+ Add Column": an empty column, or Clean data. The column menu opens it on
-// Clean data with a source picked, or on a clean column's setup (Edit
-// cleaning). The body mounts afresh on each open, so every open starts clean.
-export const NewColumnModal: React.FC<NewColumnModalProps> = ({ isOpen, onClose, onSubmit, clean }) => (
+const isFormulaTarget = (t: NewColumnOpenTarget | null): t is FormulaOpenTarget =>
+  !!t && (t.mode === 'formula-new' || t.mode === 'formula-edit')
+
+// "+ Add Column": an empty column, Clean data or a Formula. The column menu
+// opens it on Clean data with a source picked, on a clean column's setup (Edit
+// cleaning) or on a formula column's (Edit formula). The body mounts afresh on
+// each open, so every open starts clean.
+export const NewColumnModal: React.FC<NewColumnModalProps> = ({ isOpen, onClose, onSubmit, setup }) => (
   <Modal isOpen={isOpen} onClose={onClose} panelClassName="max-w-xl">
-    <NewColumnBody onClose={onClose} onSubmit={onSubmit} clean={clean} />
+    <NewColumnBody onClose={onClose} onSubmit={onSubmit} setup={setup} />
   </Modal>
 )
 
-const NewColumnBody: React.FC<Omit<NewColumnModalProps, 'isOpen'>> = ({ onClose, onSubmit, clean }) => {
+const NewColumnBody: React.FC<Omit<NewColumnModalProps, 'isOpen'>> = ({ onClose, onSubmit, setup }) => {
   // Read once: what the dialog opened on (a reload while it's open doesn't change it).
-  const [request] = useState(clean?.request ?? null)
-  const [editing] = useState(() => (request?.mode === 'edit' ? clean?.cleanColumns[request.column] ?? null : null))
-  const [choice, setChoice] = useState<Choice>(request && clean ? 'clean' : 'empty')
+  const [request] = useState(setup?.request ?? null)
+  const formulaReq = isFormulaTarget(request) ? request : null
+  const cleanReq = request && !formulaReq ? request as CleanOpenTarget : null
+  const [editingClean] = useState(() => (
+    cleanReq?.mode === 'edit' ? setup?.cleanColumns[cleanReq.column] ?? null : null))
+  const [editingFormula] = useState(() => (
+    formulaReq?.mode === 'formula-edit' ? setup?.formulaColumns[formulaReq.column] ?? null : null))
+  const [choice, setChoice] = useState<Choice>(formulaReq ? 'formula' : cleanReq ? 'clean' : 'empty')
+  const editing = editingClean ?? editingFormula
+  const subtitle = editingClean
+    ? `"${editingClean.column}" is cleaned from "${editingClean.source}". Saving cleans every row again.`
+    : editingFormula ? `"${editingFormula.column}" is worked out from each row. Saving works every row out again.`
+      : 'Create a new column in this sheet'
   return (
     <>
       <div className="p-6 border-b border-gray-200">
-        <h3 className="text-title text-gray-900">{editing ? 'Edit cleaning' : 'Add Column'}</h3>
-        <p className="text-sm text-gray-600 mt-1">
-          {editing ? `"${editing.column}" is cleaned from "${editing.source}". Saving cleans every row again.`
-            : 'Create a new column in this sheet'}
-        </p>
+        <h3 className="text-title text-gray-900">
+          {editingClean ? 'Edit cleaning' : editingFormula ? 'Edit formula' : 'Add Column'}
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
       </div>
       <div className="p-6 space-y-4">
-        {clean && !editing && (
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="New column">
+        {setup && !editing && (
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="New column">
             {CHOICES.map(c => (
               <button key={c.id} type="button" role="radio" aria-checked={choice === c.id}
                 onClick={() => setChoice(c.id)} data-testid={`new-column-${c.id}`}
@@ -74,10 +98,13 @@ const NewColumnBody: React.FC<Omit<NewColumnModalProps, 'isOpen'>> = ({ onClose,
             ))}
           </div>
         )}
-        {clean && choice === 'clean' ? (
-          <CleanColumnForm sheetId={clean.sheetId} columns={clean.columns} editing={editing}
-            initialSource={request?.mode === 'create' ? request.source : undefined}
-            onCancel={onClose} onStarted={clean.onStarted} />
+        {setup && choice === 'clean' ? (
+          <CleanColumnForm sheetId={setup.sheetId} columns={setup.columns} editing={editingClean}
+            initialSource={cleanReq?.mode === 'create' ? cleanReq.source : undefined}
+            onCancel={onClose} onStarted={setup.onStarted} />
+        ) : setup && choice === 'formula' ? (
+          <FormulaColumnForm sheetId={setup.sheetId} columns={setup.columns} editing={editingFormula}
+            onCancel={onClose} onStarted={setup.onFormulaStarted} />
         ) : (
           <EmptyColumnForm onClose={onClose} onSubmit={onSubmit} />
         )}

@@ -20,6 +20,10 @@ export const ResponsePane: React.FC<Props> = ({
       <p className="text-xs text-cube-black">
         Use JSONPath expressions to extract specific fields from the API response into new columns.
       </p>
+      <p className="text-xs text-gray-600 mt-1">
+        To pick an item by a condition (the work email in a list of emails), extract $ (the whole response)
+        into a column, then add a Formula column that reads it.
+      </p>
     </div>
 
     <div>

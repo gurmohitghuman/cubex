@@ -73,6 +73,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
 - "In Leads, split Name into first and last name, turn Website into a domain and fix the phone numbers. Use the free cleaners."
+- "In Leads, the Response column holds each API reply. Add a Work email column with the email whose type is work, using a formula."
 - "Keep finding work emails for new rows in Leads automatically, up to $5 a day."
 - "In Leads, score each company's fit with AI. Then find work emails only where the score is 8 or more, and add those people to Smartlead only where the email is valid."
 
@@ -81,7 +82,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | Tool | What it does |
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
-| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean columns too. |
+| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean and formula columns too. |
 | `read_rows` | Rows, paged, with optional filters and column selection. |
 | `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
@@ -99,13 +100,14 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
+| `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
 | `run_enrichment` | Run an enrichment per row: work emails, phones, person or company data, or lists that become rows in another sheet. Can estimate first, test on 5 rows, and turn on auto-run. |
 | `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
-| `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API or clean column, or pause and resume it. |
+| `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean or formula column, or pause and resume it. |
 
 Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
@@ -148,6 +150,28 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - The answer waits for the column to fill, up to 10 seconds, and says how many rows it cleaned (`cleaned_rows`) and how many values it couldn't read (`blank_rows`). A bigger sheet answers `status: "filling"`; its cells read `⏳ Processing...` until it's done.
 - Auto-run is on by default: new rows, and rows whose source cell changes, are cleaned on their own. If you fix a clean cell by hand, your fix stays until its source changes. Turn it off with `auto_run: false` or `set_auto_run`.
 - Calling `clean_column` again on a clean column changes it (another cleaner, format or source) and cleans every row again. Any other existing column is refused, so nothing typed by a person is overwritten.
+
+## Formulas
+
+`formula_column` fills a new column for free with a formula worked out from each row: nothing is sent anywhere and no AI runs. A formula is one JavaScript expression that reads the row's cells as `{{Column name}}`, as in Clay:
+
+| Formula | What it gives |
+|---|---|
+| `{{Response}}?.emails?.find(e => e.type == "work")?.value` | The work email out of an API response |
+| `` `${{{First}}} ${{{Last}}}` `` | First and last name joined |
+| `Number({{Price}}) * 1.2` | Price plus 20% |
+| `{{Email}}?.split("@")[1]` | The part after the @ |
+| `_.startCase({{Name}})` | Name in Start Case (`_` is Lodash) |
+
+- Cells are text: use `Number()` for math. A cell holding JSON (text starting with `{` or `[`, like a whole response that `run_http_enrichment` wrote by mapping `$`) reaches the formula parsed, so `find`, `filter` and `map` work on it. That's how to pick an item by a condition: JSONPath mappings refuse filters.
+- Cells holding Cubex's own words (`⏳`, `❌`, `⏭️`, `➕`) read as empty. Use optional chaining (`?.`) so a row without the data gives an empty cell instead of an error.
+- The result is written as text; objects and lists as JSON; `null`, `undefined` and `NaN` as an empty cell. A row the formula can't work out shows `❌ <the error>`; the answer counts them in `error_rows` and names the first in `first_error`.
+- `preview: true` shows the first rows with the cells the formula reads and its result, and writes nothing.
+- The answer waits for the column to fill, up to 10 seconds. A bigger sheet answers `status: "filling"`; its cells read `⏳ Processing...` until it's done.
+- Auto-run is on by default: new rows, and rows where a column the formula reads changes, are worked out again on their own. A fix you make by hand stays until one of those columns changes. Turn it off with `auto_run: false` or `set_auto_run`.
+- Calling `formula_column` again on a formula column replaces its formula and works every row out again. Any other existing column is refused. Renaming a column a formula reads rewrites the formula.
+- `write_formula` writes a formula from plain words with one small call to your default model (or `model`). The model sees the column names and what the first rows hold, and the formula is checked on those rows before it comes back with a preview. Nothing is saved: pass the formula to `formula_column`. It needs the `run` scope, because the call costs money.
+- Formulas run in a sandbox inside Cubex, with no access to files, the network or the server, a memory limit and a time limit per row. A formula that keeps running out of time stops its column's fill (or pauses its auto-run) and says so.
 
 ## Enrichments
 
@@ -230,6 +254,8 @@ All paths below are relative to `/api/v1`.
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
 | `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation` and its clean columns. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
+| `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
+| `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
 | `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` (URL-encode the old name) |
 | `DELETE /sheets/:id/columns/:name` | |

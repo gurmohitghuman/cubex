@@ -196,9 +196,11 @@ export const SheetPage: React.FC = () => {
     }),
   })
 
-  // Auto-run: the headers' ⚡, the header chip and the column's dialog (Edit cleaning for a clean column).
+  // Auto-run: the headers' ⚡, the header chip and the column's dialog (Edit cleaning for a clean
+  // column, Edit formula for a formula column).
   const autorun = useAutorun({ activeSheet, sheetData, silentReload: id => silentReloadRef.current(id),
-    openClean: column => modals.openClean({ mode: 'edit', column }) })
+    openClean: column => modals.openClean({ mode: 'edit', column }),
+    openFormula: column => modals.openFormula({ mode: 'formula-edit', column }) })
 
   // "Create a new table for the webhook" offer (only under the table cap).
   const { onCreateNewTable } = useWebhookNewTable()

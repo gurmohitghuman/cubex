@@ -60,6 +60,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Adds a column, or cleans its own clean column again from the source (replacing what is in it, hand edits
   // included); no other column is written.
   clean_column: write('Clean a column (free)', true, true),
+  // Adds a column, or works its own formula column out again with a new formula (replacing what is in it, hand
+  // edits included); no other column is written.
+  formula_column: write('Fill a column with a formula (free)', true, true),
+  // Changes nothing, but spends one small AI call on OpenRouter.
+  write_formula: write('Write a formula with AI', false, false, true),
   search_enrichments: read('Search enrichment tools', true),
   get_enrichment: read('Get an enrichment tool', true),
   get_list_fields: read('Get the fields of list results'),

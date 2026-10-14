@@ -25,7 +25,8 @@ import { pickRows } from './autorun-pick';
 import { prepareAutorunRun, startAutorunRun } from './autorun-start';
 import { autorunLoopProblem, destHasRoom } from './autorun-list';
 import { generationMoved, hasWork } from './autorun-fence';
-import { cleanFollowTick } from './clean-follow';
+import { derivedFollowTick } from './derived-follow';
+import { isFollowKind } from '../lib/autorun-kick';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -85,8 +86,8 @@ export async function autorunTick(id: string): Promise<void> {
   // a sort, an import or a person may have moved this entry meanwhile.
   const e = loadEntry(id);
   if (!e || !e.enabled) return;
-  // A clean data column follows its source: free, no run, no caps (clean-follow.ts).
-  if (e.kind === 'clean') return cleanFollowTick(e);
+  // A clean or formula column follows its inputs: free, no run, no caps (derived-follow.ts).
+  if (isFollowKind(e.kind)) return derivedFollowTick(e);
   if (e.paused_reason && !pauseLifted(e)) return;
   if (sheetBusyWith(e.sheet_id) || sheetYielding(e.sheet_id)) return;
   if (generationMoved(e) || !hasWork(e)) return;

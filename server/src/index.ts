@@ -31,7 +31,8 @@ import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeImports } from './lib/import-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
-import { resumeCleanFills } from './services/clean-fill';
+import { resumeDerivedFills } from './services/derived-fill';
+import { DERIVED_KINDS } from './services/derived-kinds';
 import { resumeRunRewrites } from './services/run-config-rewrite';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
@@ -187,14 +188,14 @@ createAccountFromEnv().then((result) => {
   );
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
-  // 004, 010's column fills and 024's clean column fills). Each marks its
+  // 004, 010's column fills, 024's clean and 025's formula column fills). Each marks its
   // sheet busy synchronously, before the first request.
   resumeSorts();
   resumeImports();
   resumeRunRewrites();
   resumeColumnPurges();
   resumeFieldJobs();
-  resumeCleanFills();
+  for (const kind of DERIVED_KINDS) resumeDerivedFills(kind);
   resumeRunCleanups();
   setInterval(() => resumeRunCleanups(RUN_CLEANUP_STALE_MINUTES), RUN_CLEANUP_SWEEP_MS).unref();
 }, (err) => {

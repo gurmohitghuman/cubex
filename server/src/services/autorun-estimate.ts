@@ -9,6 +9,7 @@
 // instead (the drawer's Run confirm, an agent's run start): the auto-runs that
 // read one of them, then the ones those set off in turn.
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
+import { isFollowKind } from '../lib/autorun-kick';
 import type { CatalogFailure } from './enrich-catalog';
 import type { EnrichEstimateView } from './enrich-setup';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
@@ -75,8 +76,8 @@ export async function estimateAutorunRows(
   // answer one wait, not one per auto-run.
   const picked = opts.afterWriting ? chained(sheetId, userId, on, opts.afterWriting) : on;
   const priced = picked.map(async (e): Promise<AutorunRowsEstimate | null> => {
-    // A clean column costs nothing and sends nothing; it still counts in a chain (chained above).
-    if (e.kind === 'clean') return null;
+    // A clean or formula column costs nothing and sends nothing; it still counts in a chain (chained above).
+    if (isFollowKind(e.kind)) return null;
     let config: unknown = null;
     try { config = JSON.parse(newestRunOf(sheetId, userId, e.status_column)?.config ?? 'null'); } catch { /* skip */ }
     if (!config) return null;

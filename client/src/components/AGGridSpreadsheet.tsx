@@ -28,7 +28,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     onSortChange, onRenameColumn, onDeleteColumn, onDeleteRows, onAddColumn,
     emptyFilter, onEmptyFilterChange, columnFilters, onColumnFilterChange,
     onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
-    columnTypes = {}, autorun, columnSpend, cleanColumns,
+    columnTypes = {}, autorun, columnSpend, cleanColumns, formulaColumns,
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection, registerViewport,
@@ -97,10 +97,10 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
 
   const columnDefs = useMemo(() => buildColumnDefs({
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
+    formulaColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    onDeleteColumn, onAddColumn, openColumnMenu])
+    formulaColumns, onDeleteColumn, onAddColumn, openColumnMenu])
 
   const {
     onGridReady, onCellValueChanged, onCellClicked, onSelectionChanged,
