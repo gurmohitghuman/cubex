@@ -322,7 +322,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 ```
 
 - `{{name}}` takes a column's value or a saved API key (saved keys need the `secrets` scope). A name that matches neither is refused before anything is sent. Once a column the request read is deleted, a saved key with its name never stands in for it: a rerun is refused until you edit the column or add the column back.
-- Also optional: `body` (for POST and PUT), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 100) and `timeout_ms` (per request, default 30,000).
+- Also optional: `body` (for POST, PUT and DELETE), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 100) and `timeout_ms` (per request, default 30,000).
 - `run_if`: run only the rows that pass a rule. See [Only run if](#only-run-if).
 - The earlier shape, `{"config": {"requestConfig": {...}, "responseMapping": [{"jsonPath", "columnName"}], "batchSize": 5}}`, still works.
 
