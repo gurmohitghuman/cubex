@@ -52,9 +52,9 @@ router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthReq
 // POST /v1/sheets/:id/http-runs
 // Body: { url, method?, headers?, body?, response_mapping: [{ json_path,
 //         column_name }], master_column_name?, batch_size?, timeout_ms?,
-//         target_row_ids?, estimate_only?, idempotency_key? } (the MCP tool's
-//         fields), or the earlier shape { config: { requestConfig (timeout = ms),
-//         responseMapping: [{ jsonPath, columnName }], batchSize }, ... }.
+//         target_row_ids?, run_if?, estimate_only?, idempotency_key? } (the MCP
+//         tool's fields), or the earlier shape { config: { requestConfig (timeout
+//         = ms), responseMapping: [{ jsonPath, columnName }], batchSize, runIf }, ... }.
 router.post('/sheets/:id/http-runs', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
     const b = (req.body ?? {}) as Record<string, unknown>;
@@ -65,10 +65,10 @@ router.post('/sheets/:id/http-runs', requireScope('run'), async (req: TokenAuthR
       response_mapping: Array.isArray(cfg.responseMapping)
         ? cfg.responseMapping.map((m: any) => ({ json_path: m?.jsonPath, column_name: m?.columnName }))
         : cfg.responseMapping,
-      batch_size: cfg.batchSize, timeout_ms: rc?.timeout,
+      batch_size: cfg.batchSize, timeout_ms: rc?.timeout, run_if: b.run_if ?? cfg.runIf,
     } : {
       url: b.url, method: b.method, headers: b.headers, body: b.body, response_mapping: b.response_mapping,
-      batch_size: b.batch_size, timeout_ms: b.timeout_ms,
+      batch_size: b.batch_size, timeout_ms: b.timeout_ms, run_if: b.run_if,
     };
     send(res, await tokenStartHttpRun(caller(req), {
       ...args, sheet_id: req.params.id, master_column_name: b.master_column_name,

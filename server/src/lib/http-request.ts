@@ -141,7 +141,8 @@ export async function makeHTTPRequest(
     dispatcher,
   };
   if (signal) requestOptions.signal = signal;
-  if (processedBody && ['POST', 'PUT'].includes(config.method)) requestOptions.body = processedBody;
+  // DELETE carries a body too: the dialog offers one and some APIs (bulk deletes) read it.
+  if (processedBody && ['POST', 'PUT', 'DELETE'].includes(config.method)) requestOptions.body = processedBody;
 
   const response = await request(processedUrl, requestOptions);
 
