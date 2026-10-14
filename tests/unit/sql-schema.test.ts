@@ -28,8 +28,12 @@ db.exec('CREATE TEMP TABLE _sort_idx_map (old INTEGER PRIMARY KEY, new INTEGER N
 
 // Stand-ins for ${...}: placeholders, literals, identifiers, the run and result
 // tables (run-lifecycle/queue pick ai_runs or http_runs, sort-results picks
-// ai_results or http_results), and SQL fragments (empty or a SET/WHERE clause).
-const STAND_INS = ['?', "'x'", 'id', '1', `'$."x"'`, 'ai_runs', 'http_runs', 'ai_results', 'http_results', '', 'name = ?']
+// ai_results or http_results, derived-fill a derived kind's table), and SQL
+// fragments (empty or a SET/WHERE clause).
+const STAND_INS = [
+  '?', "'x'", 'id', '1', `'$."x"'`, 'ai_runs', 'http_runs', 'ai_results', 'http_results', 'clean_columns', '',
+  'name = ?',
+]
 
 function sourceFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {

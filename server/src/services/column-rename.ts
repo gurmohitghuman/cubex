@@ -16,7 +16,10 @@ import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-c
 import { renameAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { renameAutorunColumnRefs } from '../lib/autorun-columns';
-import { cleanRenameLoop, renameCleanColumnRefs } from '../lib/clean-columns';
+import { renameCleanColumnRefs } from '../lib/clean-columns';
+import { derivedRenameLoop } from '../lib/derived-loops';
+import { renameFormulaColumnRefs } from '../lib/formula-columns';
+import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 
 export type ColumnRenameOutcome =
@@ -53,10 +56,12 @@ export async function renameSheetColumn(
   // being renamed) — coexistence makes /columnRef resolution non-deterministic.
   const collision = findColumnNameCollision(trimmedNew, allCols, { exclude: columnName });
   if (collision) return { fail: 'collision', error: columnCollisionMessage(trimmedNew, collision) };
-  const loop = cleanRenameLoop(sheetId, userId, columnName, trimmedNew);
+  const loop = derivedRenameLoop(sheetId, userId, columnName, trimmedNew);
   if (loop) {
-    return { fail: 'invalid', error: `"${loop}" would be cleaned from itself. Pick another name.` };
+    return { fail: 'invalid', error: `"${loop}" would be worked out from itself. Pick another name.` };
   }
+  const formulaProblem = await formulaRenameProblem(sheetId, userId, columnName, trimmedNew);
+  if (formulaProblem) return { fail: 'invalid', error: formulaProblem };
 
   // Block rename while an AI or HTTP run that touches this column is active —
   // both runners cache column names at run start and would write to a name
@@ -213,4 +218,6 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameAutorunColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Clean data columns: the column itself and the source it cleans.
   renameCleanColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Formula columns: the column itself, and the {{reference}} of every formula reading it.
+  renameFormulaColumnRefs(sheetId, userId, columnName, trimmedNew);
 }

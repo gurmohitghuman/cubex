@@ -3,7 +3,7 @@
 // written by checkRule, with every column named exactly as in the sheet. Each
 // row is checked against it without any AI: a row that fails gets
 // "⏭️ Condition not met" instead of a run, and costs nothing.
-import { normalizeColumnName } from './prompt';
+import { resolveColumnRef, suggestColumn } from './column-ref-resolve';
 import { holdsRunMarker } from './run-markers';
 import { parseRule, RuleError, MAX_RULE_CHARS, type Compare, type RuleNode } from './run-condition-parse';
 import type { EnrichCondition } from './enrich-run-config';
@@ -17,16 +17,6 @@ function eachCompare(node: RuleNode, visit: (c: Compare) => void): void {
   if (node.kind === 'cmp') visit(node);
   else if (node.kind === 'not') eachCompare(node.item, visit);
   else node.items.forEach(n => eachCompare(n, visit));
-}
-
-// The sheet column a reference means: its exact name, else the one name it
-// matches ignoring case, else the one whose normalized form matches.
-function resolveColumn(ref: string, columns: string[]): string | null {
-  if (columns.includes(ref)) return ref;
-  const lower = columns.filter(c => c.toLowerCase() === ref.toLowerCase());
-  if (lower.length === 1) return lower[0];
-  const norm = columns.filter(c => normalizeColumnName(c) === normalizeColumnName(ref));
-  return norm.length === 1 ? norm[0] : null;
 }
 
 const quote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -57,36 +47,13 @@ export function checkRule(text: string, sheetColumns: string[]): CheckedRule {
   const tree = parseRule(text.trim());
   const used = new Set<string>();
   eachCompare(tree, c => {
-    const col = resolveColumn(c.column, sheetColumns);
-    if (!col) throw new RuleError(`There's no column named "${c.column}".${suggest(c.column, sheetColumns)}`);
+    const col = resolveColumnRef(c.column, sheetColumns);
+    if (!col) throw new RuleError(`There's no column named "${c.column}".${suggestColumn(c.column, sheetColumns)}`);
     if (col.includes('}}')) throw new RuleError(`"${col}" can't be used in a rule: rename it without "}}".`);
     c.column = col;
     used.add(col);
   });
   return { rule: formatRule(tree), tree, columns: [...used] };
-}
-
-function distance(a: string, b: string): number {
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-// The column a misspelled reference most likely meant: one containing it (or
-// contained in it), else the nearest by a few typos.
-function suggest(ref: string, columns: string[]): string {
-  const n = normalizeColumnName(ref);
-  const scored = columns.map(c => {
-    const cn = normalizeColumnName(c);
-    return { c, d: cn.includes(n) || n.includes(cn) ? 0 : distance(n, cn) };
-  }).filter(x => x.d <= Math.max(2, Math.floor(n.length / 4))).sort((a, b) => a.d - b.d);
-  return scored.length ? ` Did you mean "${scored[0].c}"?` : '';
 }
 
 // The columns a stored rule reads, without the sheet (a deleted column stays

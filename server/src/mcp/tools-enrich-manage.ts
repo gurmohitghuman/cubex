@@ -78,7 +78,9 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       + 'column repeats its newest run on new rows and on rows whose inputs get filled (by an import, another column, '
       + 'a webhook or an edit), at most once a row; rows already in the sheet when it is turned on are left alone. '
       + 'A clean column (clean_column) follows its source instead: turning it on cleans every row again, then each '
-      + 'new row and each row whose source changes; it is free and takes no run_if or caps. '
+      + 'new row and each row whose source changes; it is free and takes no run_if or caps. A formula column '
+      + '(formula_column) follows every column its formula reads the same way; turning it on again also lifts a '
+      + 'pause (a formula that ran too slow). '
       + 'enabled:true|false with column (and run_if: only rows passing a rule, kept as is when omitted, and by '
       + 'default the column\'s own rule on a first turn-on, "" to clear; daily_cap_usd for an enrichment, '
       + `default $${AUTORUN_DEFAULT_DAILY_CAP_USD}, never above the daily limit; daily_row_cap for an HTTP API `

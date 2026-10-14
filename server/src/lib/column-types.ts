@@ -20,7 +20,8 @@ export type ColumnType =
   | 'http-extracted' // JSONPath-extracted HTTP response column
   | 'webhook-source' // the read-only "Webhook" marker column (row provenance)
   | 'webhook-mapped' // a column a webhook mapping writes into
-  | 'clean';         // a clean data column (clean_columns: filled from its source by a cleaner)
+  | 'clean'          // a clean data column (clean_columns: filled from its source by a cleaner)
+  | 'formula';       // a formula column (formula_columns: worked out from the row by a formula)
 
 // Resolve every AI/HTTP-owned column on a sheet to its type. A column can match
 // more than one source (e.g. a name reused across an old HTTP assoc and a new AI
@@ -110,6 +111,10 @@ export function getColumnTypes(
   const clean = db.prepare('SELECT column_name AS name FROM clean_columns WHERE sheet_id = ? AND user_id = ?')
     .all(sheetId, userId) as Array<{ name: string }>;
   for (const { name } of clean) types[name] = 'clean';
+  // Formula columns, the same way (lib/formula-columns.ts).
+  const formula = db.prepare('SELECT column_name AS name FROM formula_columns WHERE sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as Array<{ name: string }>;
+  for (const { name } of formula) types[name] = 'formula';
 
   return types;
 }

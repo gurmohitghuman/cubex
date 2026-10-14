@@ -1,6 +1,7 @@
 import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
+import type { FormulaColumnView } from '@/utils/api/formula'
 
 export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
@@ -13,6 +14,10 @@ export type EnrichMenuAction = 'not_enriched' | 'failed' | 'selected' | 'all' | 
 // and on a clean column, edit how it's cleaned, clean every row again, and
 // turn its auto-run on or off.
 export type CleanMenuAction = 'new' | 'edit' | 'again' | 'autorun_on' | 'autorun_off'
+
+// A formula column's items: edit its formula, work every row out again, and
+// turn its auto-run on or off.
+export type FormulaMenuAction = 'edit' | 'again' | 'autorun_on' | 'autorun_off'
 
 export interface RunMenuActions {
   onRunHTTPForColumn?: (columnName: string) => void
@@ -31,6 +36,7 @@ export interface RunMenuActions {
   // ⚡ Turn On Auto-run / Auto-run Settings ('open', the dialog) and ⚡ Turn Off Auto-run.
   onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
   onCleanAction?: (action: CleanMenuAction, columnName: string) => void
+  onFormulaAction?: (action: FormulaMenuAction, columnName: string) => void
 }
 
 export interface AGGridSpreadsheetProps {
@@ -43,6 +49,8 @@ export interface AGGridSpreadsheetProps {
   columnSpend?: Record<string, ColumnSpend>
   // Clean data columns' setups: the header's brush icon and its hover note.
   cleanColumns?: Record<string, CleanColumnView>
+  // Formula columns' setups: the header's formula icon and its hover note.
+  formulaColumns?: Record<string, FormulaColumnView>
   data: Array<{ rowIndex: number; data: Record<string, string> }>
   totalRows: number
   onCellEdit: (rowIndex: number, column: string, value: string) => void

@@ -83,3 +83,6 @@ export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;
 // Clean data dialog: the preview (a free read of the first rows, before and
 // after) is asked for this long after the last change to the form.
 export const CLEAN_PREVIEW_DELAY_MS = 400;
+// Formula dialog: the same free preview, asked for this long after the last
+// keystroke in the formula (a formula is typed more than picked).
+export const FORMULA_PREVIEW_DELAY_MS = 500;

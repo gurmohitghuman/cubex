@@ -5,6 +5,7 @@
 // forgets its record; deleting its source keeps it, with the values already
 // cleaned, and its auto-run waits until a column by that name is back.
 import { db } from './db';
+import { derivedLoopThrough, derivedRenameLoop } from './derived-loops';
 
 export interface CleanColumnRow {
   id: string; user_id: string; sheet_id: string; column_name: string; source_column: string;
@@ -26,37 +27,13 @@ export function sheetCleanColumns(sheetId: string, userId: string): CleanColumnR
     .all(sheetId, userId) as CleanColumnRow[];
 }
 
-// Whether cleaning `source` into `column` would close a loop: the source is
-// itself cleaned, directly or down a chain, from `column`. Records count even
-// for columns not in the sheet now (a deleted source keeps its record), so a
-// column made later under that name can't close one either.
-export function cleanLoopThrough(sheetId: string, userId: string, column: string, source: string): string | null {
-  const sources = new Map(sheetCleanColumns(sheetId, userId).map(r => [r.column_name, r.source_column]));
-  const chain = [source];
-  for (let at: string | undefined = source; at !== undefined && chain.length <= sources.size + 1;) {
-    if (at === column) return chain.join(' ← ');
-    at = sources.get(at);
-    if (at !== undefined) chain.push(at);
-  }
-  return null;
-}
+// Whether cleaning `source` into `column` would close a loop (with clean and
+// formula columns alike, lib/derived-loops.ts): the chain, or null.
+export const cleanLoopThrough = (sheetId: string, userId: string, column: string, source: string): string | null =>
+  derivedLoopThrough(sheetId, userId, column, [source]);
 
-// Whether renaming a column would close a loop of clean columns: a record can
-// name a source that's gone (deleted, its values kept), and a column renamed
-// to that name would become the source of what it is cleaned from.
-export function cleanRenameLoop(sheetId: string, userId: string, oldName: string, newName: string): string | null {
-  const to = (c: string) => (c === oldName ? newName : c);
-  const records = sheetCleanColumns(sheetId, userId).map(r => [to(r.column_name), to(r.source_column)] as const);
-  const sources = new Map(records);
-  for (const [column] of records) {
-    let at = sources.get(column);
-    for (let steps = 0; at !== undefined && steps <= records.length; steps++) {
-      if (at === column) return column;
-      at = sources.get(at);
-    }
-  }
-  return null;
-}
+// Whether renaming a column would close a loop of derived columns: a column in it, or null.
+export const cleanRenameLoop = derivedRenameLoop;
 
 // Inside the rename's transaction.
 export function renameCleanColumnRefs(sheetId: string, userId: string, oldName: string, newName: string): void {

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import type { SourcesCell } from '@/components/ScrapedDataModal'
 import type { EnrichOpenRequest, EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
+import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
+import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 
 export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
@@ -20,11 +22,15 @@ export const useSheetModals = () => {
   }, [])
   const [showNewColumnModal, setShowNewColumnModal] = useState(false)
   // What the column menu opens the Add Column dialog on: Clean data with the
-  // column as its source, or a clean column's setup to edit. Null: the dialog's
-  // own choice (Empty column first).
-  const [cleanOpen, setCleanOpen] = useState<CleanOpenTarget | null>(null)
+  // column as its source, a clean column's setup to edit, or a formula
+  // column's. Null: the dialog's own choice (Empty column first).
+  const [newColumnOpen, setNewColumnOpen] = useState<NewColumnOpenTarget | null>(null)
   const openClean = useCallback((target: CleanOpenTarget) => {
-    setCleanOpen(target)
+    setNewColumnOpen(target)
+    setShowNewColumnModal(true)
+  }, [])
+  const openFormula = useCallback((target: FormulaOpenTarget) => {
+    setNewColumnOpen(target)
     setShowNewColumnModal(true)
   }, [])
   const [showWebhookDrawer, setShowWebhookDrawer] = useState(false)
@@ -40,7 +46,7 @@ export const useSheetModals = () => {
     enrichOpen, clearEnrichOpen: () => setEnrichOpen(null), openEnrichment,
     enrichWatch, stopEnrichWatch: () => setEnrichWatch(null),
     showNewColumnModal, setShowNewColumnModal,
-    cleanOpen, openClean, clearCleanOpen: () => setCleanOpen(null),
+    newColumnOpen, openClean, openFormula, clearNewColumnOpen: () => setNewColumnOpen(null),
     showWebhookDrawer, setShowWebhookDrawer,
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
     scrapedDataModal, setScrapedDataModal,

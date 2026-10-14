@@ -52,6 +52,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **HTTP API columns.** Call any JSON API once per row and turn fields of the answer into columns.
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
+- **Formulas, free.** Work a column out from each row with a JavaScript formula, as in Clay: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters, up to a million rows per sheet.
@@ -156,6 +157,22 @@ Click **+ Add Column**, choose **Clean data**, and pick the column to clean and 
 - **Text.** Title Case, lowercase, or remove extra spaces and invisible characters.
 
 Auto-run is on by default, so new rows and rows whose source changes are cleaned on their own. Any column's menu has **Clean data…** too.
+
+### Formulas
+
+Click **+ Add Column** and choose **Formula** to work a new column out from each row. A formula is one line of JavaScript that reads the row's cells as `{{Column name}}`, the way Clay formulas do:
+
+- `{{Response}}?.emails?.find(e => e.type == "work")?.value` picks the work email out of an API response.
+- `` `${{{First}}} ${{{Last}}}` `` joins two columns.
+- `Number({{Price}}) * 1.2` does math. Cells are text, so turn them into numbers first.
+
+You don't need anything to use them: formulas are free and run inside Cubex, with no AI and no requests. You see what the formula gives on the first rows before you save it.
+
+Not sure how to write one? Describe what you want, like "the work email from Response", and click **Write it with AI**. Your default model writes the formula once, for a fraction of a cent, and you check it in the preview. Every row after that costs nothing.
+
+A cell holding JSON, like a whole API response, reaches the formula as an object or a list. That's how you pick an item by a condition, which an HTTP API column's JSONPath fields don't do: extract `$` (the whole response) into a column, then add a formula column that reads it. A row the formula can't work out shows `❌` and the error.
+
+Auto-run is on by default, so new rows, and rows where a column the formula reads changes, are worked out again on their own. Formulas run in a sandbox with no access to your files, the network or the server, and with time and memory limits.
 
 ### Webhook
 

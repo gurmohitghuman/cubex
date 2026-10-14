@@ -3,7 +3,7 @@
 // (no rule, no caps). Keep in step with server services/autorun-view.ts and
 // autorun-estimate.ts.
 
-export type AutorunKind = 'enrichment' | 'http' | 'clean'
+export type AutorunKind = 'enrichment' | 'http' | 'clean' | 'formula'
 
 export interface AutorunCondition { column: string; op: string; value: string }
 
@@ -16,7 +16,7 @@ export interface AutorunCondition { column: string; op: string; value: string }
 export type AutorunPause =
   | 'user' | 'column_cap' | 'row_cap' | 'daily_limit' | 'no_key' | 'auth' | 'balance' | 'treg_cap' | 'team_rule'
   | 'provider_busy' | 'unreachable' | 'unconfirmed' | 'retired' | 'missing_input' | 'setup' | 'failed' | 'queue'
-  | 'dest_full' | 'priced' | 'loop'
+  | 'dest_full' | 'priced' | 'loop' | 'too_slow'
 
 export interface AutorunColumn {
   column: string

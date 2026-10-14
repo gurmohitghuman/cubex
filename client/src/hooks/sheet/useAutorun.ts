@@ -9,16 +9,17 @@ import type { AutorunTarget } from '@/components/autorun/AutorunDialog'
 // auto-run dialog, turning a column's auto-run off, and pausing every
 // auto-run on the sheet.
 // Is any column's auto-run on that spends or sends requests (the CSV import
-// and the webhook drawer warn then)? A clean data column's is free and sends nothing.
+// and the webhook drawer warn then)? A clean data or formula column's is free and sends nothing.
 export const anyAutorunOn = (view?: SheetAutorun | null): boolean =>
-  Object.values(view?.columns ?? {}).some(c => c.enabled && c.kind !== 'clean')
+  Object.values(view?.columns ?? {}).some(c => c.enabled && c.kind !== 'clean' && c.kind !== 'formula')
 
 export function useAutorun(a: {
   activeSheet: Sheet | null
   sheetData: SheetData | null
   silentReload: (sheetId: string) => unknown
-  // A clean data column has no auto-run dialog: its Edit cleaning dialog holds the switch.
+  // A clean data or formula column has no auto-run dialog: its Edit dialog holds the switch.
   openClean?: (column: string) => void
+  openFormula?: (column: string) => void
 }) {
   const view = a.sheetData?.data.autorun
   const [target, setTarget] = useState<(AutorunTarget & { nonce: number }) | null>(null)
@@ -26,13 +27,14 @@ export function useAutorun(a: {
   const refresh = () => { if (sheetId) void a.silentReload(sheetId) }
   const kindOf = (column: string): AutorunKind => {
     const type = a.sheetData?.data.columnTypes?.[column]
-    return view?.columns[column]?.kind
-      ?? (type === 'enrich-status' ? 'enrichment' : type === 'clean' ? 'clean' : 'http')
+    if (type === 'clean' || type === 'formula') return view?.columns[column]?.kind ?? type
+    return view?.columns[column]?.kind ?? (type === 'enrich-status' ? 'enrichment' : 'http')
   }
 
   const open = (column: string) => {
     const kind = kindOf(column)
     if (kind === 'clean') a.openClean?.(column)
+    else if (kind === 'formula') a.openFormula?.(column)
     else setTarget({ column, kind, nonce: Date.now() })
   }
   const turnOff = async (column: string) => {

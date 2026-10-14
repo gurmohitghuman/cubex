@@ -6,7 +6,7 @@ import { CLEAN_PREVIEW_ROWS, CLEAN_PREVIEW_SCAN_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { cleanerFn } from '../lib/clean/cleaners';
 import { checkCleanInput, type CleanColumnInput } from './clean-column';
-import { sourceText } from './clean-write';
+import { inputText as sourceText } from './derived-write';
 import type { RunFail } from './run-shared';
 
 export interface CleanPreview {

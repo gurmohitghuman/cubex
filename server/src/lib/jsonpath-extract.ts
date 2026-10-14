@@ -66,7 +66,9 @@ export function validateHttpJsonPath(path: string): PathValidation {
   if (!HTTP_SAFE_JSONPATH.test(path)) {
     return {
       ok: false,
-      reason: 'Path must be a valid JSONPath: a leading "$" then fields (.name), keys (["key"]), or array access ([0], [*], ..). No filters, scripts, slices, or unions.',
+      reason: 'Path must be a valid JSONPath: a leading "$" then fields (.name), keys (["key"]), or array access '
+        + '([0], [*], ..). No filters, scripts, slices, or unions. To pick an item by a condition, map "$" to a '
+        + 'column and add a formula column, like {{Response}}?.emails?.find(e => e.type == "work")?.value.',
     };
   }
   return { ok: true };

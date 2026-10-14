@@ -15,6 +15,7 @@ import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-
 import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-inputs';
 import { deleteAutorunColumnRefs, dropAutorunQueueOf } from '../lib/autorun-columns';
 import { deleteCleanColumnRefs } from '../lib/clean-columns';
+import { deleteFormulaColumnRefs } from '../lib/formula-columns';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 
@@ -190,6 +191,8 @@ export async function deleteSheetColumn(
       deleteAutorunColumnRefs(sheetId, userId, columnName);
       // A clean column's record goes with it (a column it cleans keeps its values).
       deleteCleanColumnRefs(sheetId, userId, columnName);
+      // So does a formula column's (a formula reading it keeps its values, and its auto-run pauses).
+      deleteFormulaColumnRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

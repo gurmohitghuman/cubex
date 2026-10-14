@@ -31,7 +31,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         'Sheet metadata: ordered column names, row count, data_version, row_generation, and the '
         + 'remaining row/column budget (limits). Check limits before a large append or import — '
         + 'otherwise you discover the cap by having a write rejected. filling_columns lists columns still '
-        + 'filling from stored answers (add_enrichment_field): their cells read "⏳ Processing..." until done.',
+        + 'filling (add_enrichment_field, clean_column, formula_column): their cells read "⏳ Processing..." '
+        + 'until done. clean_columns and formula_columns give each such column\'s setup and auto-run.',
       inputSchema: { sheet_id: z.string() },
     },
     async ({ sheet_id }) => {
