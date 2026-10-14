@@ -37,8 +37,10 @@ export interface HTTPAPIConfig {
 // We deliberately do NOT support single-brace {column}. ONE regex governs both
 // live substitution below and the PAT 'secrets'-scope scan (http-secrets-scan.ts)
 // — two copies would drift and open a scan bypass. matchAll clones the regex, so
-// the shared /g instance is safe.
-export const TEMPLATE_TOKEN_RE = /\{\{([^}]+)\}\}|(?<![/:\w])\/([a-zA-Z0-9_-]+)/g;
+// the shared /g instance is safe. The name excludes { as well as }: with [^}]
+// a long run of "{" made every match attempt scan to the end of the text, so a
+// big body took seconds to minutes (quadratic). A name with a { can't be a {{ref}}.
+export const TEMPLATE_TOKEN_RE = /\{\{([^{}]+)\}\}|(?<![/:\w])\/([a-zA-Z0-9_-]+)/g;
 
 // Every token NAME a template references ({{name}} → trimmed inner, /name →
 // bare name). Used by the run-start secrets scan.

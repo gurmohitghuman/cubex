@@ -25,7 +25,8 @@ export type BuiltRequest =
   | { ok: false; missing: string }   // required inputs are empty: skip the row, no call
   | { ok: false; invalid: string };  // a value can't be sent as the tool declares it
 
-const TOKEN_RE = /\{\{([^}]+)\}\}/g;
+// [^{}], not [^}]: a long run of "{" would make every match scan to the end.
+const TOKEN_RE = /\{\{([^{}]+)\}\}/g;
 
 // {{Column}} → that column's value in the row. `columns` is the sheet's column
 // registry (column_order): stored rows are sparse, so a column the row lacks is
