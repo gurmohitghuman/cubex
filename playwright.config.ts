@@ -11,7 +11,8 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3099',
+    // The harness sets E2E_BASE to its E2E_PORT, so relative page.request URLs follow it.
+    baseURL: process.env.E2E_BASE || 'http://localhost:3099',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
