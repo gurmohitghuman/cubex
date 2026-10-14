@@ -1,6 +1,8 @@
 // HTTP run starts for the token surfaces (/api/v1 and MCP): see run-start-token.ts
 // for what a token caller gets and why it lives in one place. On top of that,
 // the saved-key secrets gate, and estimate_only checks the request template.
+// `curl` (a pasted cURL command) stands in for url/method/headers/body; its keys
+// follow curl-token.ts, and are saved only once the run is about to start.
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { HTTP_MAX_CONCURRENCY, HTTP_MAX_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS } from '../lib/constants';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
@@ -13,12 +15,14 @@ import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenR
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
+import { curlForToken, curlStartProblem, type TokenCurl } from './curl-token';
+import { commitCurlKeys } from './curl-import';
 
 export interface TokenHttpRunArgs {
   sheet_id: unknown; url?: unknown; method?: unknown; headers?: unknown; body?: unknown;
   response_mapping?: unknown; master_column_name?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; idempotency_key?: unknown; batch_size?: unknown; timeout_ms?: unknown;
-  run_if?: unknown;
+  run_if?: unknown; curl?: unknown; save_keys?: unknown;
 }
 
 const wholeIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -27,7 +31,20 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   const pre = preamble(c, a);
   if ('fail' in pre) return pre;
   const sheetId = a.sheet_id as string;
-  if (typeof a.url !== 'string' || !a.url.trim()) return bad('url is required');
+  let curl: TokenCurl | null = null;
+  if (a.curl !== undefined) {
+    if ([a.url, a.method, a.headers, a.body].some(v => v !== undefined)) {
+      return bad('Pass either curl or url/method/headers/body, not both.');
+    }
+    const parsed = curlForToken(c, sheetId, a.curl, a.save_keys);
+    if ('fail' in parsed) return parsed;
+    curl = parsed.ok;
+    const rq = curl.prepared.request;
+    a = { ...a, url: rq.url, method: rq.method, headers: rq.headers, body: rq.body };
+  } else if (a.save_keys !== undefined) {
+    return bad('save_keys goes with curl.');
+  }
+  if (typeof a.url !== 'string' || !a.url.trim()) return bad('url (or curl) is required');
   const method = typeof a.method === 'string' ? a.method.toUpperCase() : 'GET';
   if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) return bad('method must be GET, POST, PUT or DELETE');
   if (a.headers !== undefined && (!a.headers || typeof a.headers !== 'object' || Array.isArray(a.headers)
@@ -64,30 +81,51 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   }
   // A bad URL or {{typo}} fails here, not on every row (and, for a start,
   // before it costs a run-start slot; startHttpRun checks again).
-  const templateError = httpTemplateError(config.requestConfig, getSheetColumns(sheetId, c.userId, false), c.userId);
+  // Keys a curl is about to save count as known here; they're saved just before the start.
+  const toSave = curl?.prepared.keys.map(k => k.name) ?? [];
+  const known = [...getSheetColumns(sheetId, c.userId, false), ...toSave];
+  const templateError = httpTemplateError(config.requestConfig, known, c.userId);
   if (templateError) return bad(templateError);
-  if (parseBooleanOption(a.estimate_only) === true) {
+  const estimateOnly = parseBooleanOption(a.estimate_only) === true;
+  const curlProblem = curl && curlStartProblem(
+    c.userId, sheetId, curl, config.responseMapping, a.master_column_name as string | undefined, config.runIf,
+    estimateOnly,
+  );
+  if (curlProblem) return curlProblem;
+  if (estimateOnly) {
     const est = await estimateHttpRun(c.userId, sheetId, pre.targetRowIndexes, runIf.ok);
-    return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
+    if ('fail' in est) return { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message };
+    const curlPart = curl ? { keys_to_save: [...new Set(toSave)], notes: curl.plan.notes } : {};
+    return { ok: { ...est.ok, ...curlPart }, started: false };
   }
   const hash = runRequestHash('http_run', {
     sheet_id: sheetId, url: a.url, method: a.method, headers: a.headers, body: a.body,
     response_mapping: a.response_mapping, master_column_name: a.master_column_name, target_row_ids: a.target_row_ids,
     batch_size: a.batch_size, timeout_ms: a.timeout_ms, ...(runIf.ok ? { run_if: runIf.ok } : {}),
+    ...(curl ? { curl: a.curl, save_keys: a.save_keys } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
   const limited = startWindow(c);
   if (limited) return limited;
+  const saved = curl ? commitCurlKeys(c.userId, curl.plan, curl.prepared.keys) : { ok: [] as string[] };
+  if ('fail' in saved) return saved;
   const result = await startHttpRun(c.userId, {
     sheetId, config, masterColumnName: a.master_column_name as string | undefined,
     targetRowIndexes: pre.targetRowIndexes, allowSecrets: hasSecretsScope,
   });
-  if ('fail' in result) return result;
+  if ('fail' in result) {
+    // Saved just before a start that then failed (a run began meanwhile): say so.
+    if (saved.ok.length === 0) return result;
+    const keys = saved.ok.join(', ');
+    return { ...result, message: `${result.message} (Saved as ${saved.ok.length > 1 ? 'keys' : 'a key'}: ${keys}. `
+      + `Next time, write {{${saved.ok[0]}}} in the command.)` };
+  }
   const payload = {
     run_id: result.ok.runId, master_column: result.ok.masterColumn,
     mapped_columns: result.ok.mappedColumns, target_rows: result.ok.targetCount,
     ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
+    ...(curl ? { saved_keys: saved.ok, notes: curl.plan.notes } : {}),
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
   return { ok: payload, started: true };

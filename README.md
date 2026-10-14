@@ -126,6 +126,8 @@ Click **AI Column**, name it, and write what you want. Type `/` to use another c
 
 Click **HTTP API** and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Preview a few rows, then click the response fields you want as columns.
 
+- Or click **Paste a cURL command** and paste one from the API's docs, or from your browser (right-click a request in DevTools, then **Copy as cURL**). Cubex fills in the method, URL, query, headers and body. It looks for keys in the command (sign-in headers and `-u`, headers and fields named like keys, and well-known key formats) and never keeps one it finds in the column: it asks to save each as a saved key, or to use one you already saved, and puts `{{name}}` in its place.
+
 - Save API keys in **Settings → Enrichment** and use them by name, for example `Authorization: Bearer {{apollo_key}}`. They're stored encrypted and never shown again.
 - Responses must be JSON. HTML pages are rejected, so this isn't a scraper.
 - Requests can't reach private or internal addresses (localhost, your LAN, cloud metadata), so a value that came in through a webhook or an AI answer can't point Cubex at your own network.

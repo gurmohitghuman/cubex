@@ -15,6 +15,8 @@ import { AIAssistBar } from './http-modal/AIAssistBar'
 import { useConfigArrayOps } from './http-modal/useConfigArrayOps'
 import { insertReferenceInto } from './http-modal/insertReference'
 import { blankHTTPConfig, templateToConfig, saveAsTemplate } from './http-modal/template-helpers'
+import { CurlPasteBox } from './http-modal/CurlPasteBox'
+import { useCurlImport } from './http-modal/useCurlImport'
 
 interface HTTPAPIColumnModalProps {
   isOpen: boolean
@@ -81,6 +83,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
 
   const updateConfig = (updates: Partial<HTTPAPIConfig>) => setConfig(prev => ({ ...prev, ...updates }))
   const sugg = useSuggestions(isOpen, sheetId, (ref, target) => insertReferenceInto(config, updateConfig, ref, target))
+  const curl = useCurlImport(sheetId, isOpen, updateConfig)
   const arrOps = useConfigArrayOps(config, updateConfig)
   const {
     addQueryParam, removeQueryParam, updateQueryParam,
@@ -128,7 +131,8 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
         {step === 'configure' && (
           <div className="p-4 space-y-4">
             <AIAssistBar sheetId={sheetId} sheetDefaultModel={defaultAiModel} onAutoFill={handleAutoFill} />
-            <ConfigureStep
+            <CurlPasteBox c={curl} />
+            <ConfigureStep key={curl.formKey} openFilled={curl.formKey > 0} onPasteCurl={curl.pasteFromUrl}
               sheetId={sheetId} active={isOpen}
               config={config} errors={errors}
               masterColumnName={masterColumnName} setMasterColumnName={setMasterColumnName}

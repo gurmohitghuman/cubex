@@ -14,9 +14,9 @@ Choose the token's scopes:
 | `read` | List tables, read rows, check runs. |
 | `write` | Also create and change tables, sheets, columns and rows. |
 | `run` | Also start, pause, resume, stop and re-run AI, HTTP and enrichment runs, and turn auto-run on or off. These spend your OpenRouter credits and your treg balance, and call your APIs. |
-| `secrets` | Also start HTTP runs that use your saved API keys. Needs `run`. |
+| `secrets` | Also start HTTP runs that use your saved API keys, and save the keys in a pasted cURL command as new saved keys. Needs `run`. |
 
-`write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password or saved keys.
+`write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password, and it can never read or change a saved key. With `secrets` it can add a new one, from a cURL command it passes to an HTTP run.
 
 ## Setup
 
@@ -92,7 +92,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
-| `run_http_enrichment` | Start an HTTP API column run. |
+| `run_http_enrichment` | Start an HTTP API column run, from a URL or a whole cURL command. |
 | `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. |
 | `get_run_results` | Per-row results and errors, to see why cells are blank or wrong. |
@@ -323,6 +323,14 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 
 - `{{name}}` takes a column's value or a saved API key (saved keys need the `secrets` scope). A name that matches neither is refused before anything is sent. Once a column the request read is deleted, a saved key with its name never stands in for it: a rerun is refused until you edit the column or add the column back.
 - Also optional: `body` (for POST, PUT and DELETE), `master_column_name` (the status column), `batch_size` (requests at once, default 5, up to 100) and `timeout_ms` (per request, default 30,000).
+- `curl`: a whole cURL command, copied from an API's docs or a browser, in place of `url`, `method`, `headers` and `body`. `{{column}}` works inside it. A key Cubex finds in the command (sign-in headers and `-u`, headers and fields named like keys, well-known key formats) is never stored in the column's setup: the call is refused and names where the key is, unless you pass `save_keys`. `"save_keys": true` saves each key as a saved key under a suggested name (a key already saved with the same value is used instead), and `"save_keys": {"Authorization header": "openai"}` names every key. Saving needs the `secrets` scope. Keys are saved just before the run starts, after its other checks pass (`estimate_only` lists them as `keys_to_save`). A `$VARIABLE` where a key goes uses the saved key with that name. The reply lists `saved_keys` and `notes` (what the command asked for that Cubex changed or left out).
+
+```json
+{
+  "curl": "curl https://api.example.com/people?email={{Email}} -H 'Authorization: Bearer $EXAMPLE_KEY'",
+  "response_mapping": [{ "json_path": "$.title", "column_name": "Job title" }]
+}
+```
 - `run_if`: run only the rows that pass a rule. See [Only run if](#only-run-if).
 - The earlier shape, `{"config": {"requestConfig": {...}, "responseMapping": [{"jsonPath", "columnName"}], "batchSize": 5}}`, still works.
 

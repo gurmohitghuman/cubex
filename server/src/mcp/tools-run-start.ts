@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   MAX_ROWS_PER_SHEET, HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_REQUEST_TIMEOUT_MS,
+  CURL_MAX_CHARS,
 } from '../lib/constants';
 import { PREVIEW_MAX_ROWS, MAX_AI_CONCURRENCY, FREE_MODEL_CONCURRENCY_WARN, MAX_SEARCHES_PER_ROW } from '../lib/constants-ai';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
@@ -75,13 +76,24 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
     'run_http_enrichment',
     {
       description:
-        `Call an HTTP JSON API once per row and extract response fields into new columns. url/headers/body templates substitute {{column_name}} (or /column_name) per row; an empty cell substitutes as empty, and a {{name}} that matches no column or saved key is rejected at start. Each response_mapping entry JSONPath-extracts one field (e.g. $.results[0].email) into column_name; a path matching several values keeps the first, and an object or array is stored as JSON text. JSONPath filters are refused: to pick an item by a condition, map $ (the whole response) and add a formula_column reading it. A master status column tracks per-row ✅/❌. JSON responses only. Requests go ${HTTP_DEFAULT_BATCH_SIZE} at a time (batch_size); GET/HEAD responses are cached for 5 minutes, so an identical re-run within that window reuses them; private and internal addresses are always blocked. Returns a run_id — poll get_run_status (it counts failed rows). run_if skips rows that fail a rule (no request sent, "⏭️ Condition not met"). estimate_only checks the URL and {{names}} without sending anything. Referencing a saved API key by name requires the token to have the "secrets" scope.`,
+        `Call an HTTP JSON API once per row and extract response fields into new columns. url/headers/body templates substitute {{column_name}} (or /column_name) per row; an empty cell substitutes as empty, and a {{name}} that matches no column or saved key is rejected at start. Each response_mapping entry JSONPath-extracts one field (e.g. $.results[0].email) into column_name; a path matching several values keeps the first, and an object or array is stored as JSON text. JSONPath filters are refused: to pick an item by a condition, map $ (the whole response) and add a formula_column reading it. A master status column tracks per-row ✅/❌. JSON responses only. Requests go ${HTTP_DEFAULT_BATCH_SIZE} at a time (batch_size); GET/HEAD responses are cached for 5 minutes, so an identical re-run within that window reuses them; private and internal addresses are always blocked. Returns a run_id — poll get_run_status (it counts failed rows). run_if skips rows that fail a rule (no request sent, "⏭️ Condition not met"). estimate_only checks the URL and {{names}} without sending anything. Referencing a saved API key by name requires the token to have the "secrets" scope. `
+        + 'Instead of url/method/headers/body you can pass curl: a whole cURL command, e.g. copied from the '
+        + "API's docs. A key Cubex finds in it is never stored in the column: pass save_keys: true to save each one "
+        + 'as a saved key (needs "secrets"; a key already saved with that value is used instead), or write '
+        + "{{key_name}} of a saved key in its place. A $VARIABLE in a key's spot uses the saved key with that name.",
       inputSchema: {
         sheet_id: z.string(),
-        url: z.string().describe('Request URL template, e.g. https://api.example.com/lookup?domain={{Domain}}'),
+        url: z.string().optional().describe(
+          'Request URL template, e.g. https://api.example.com/lookup?domain={{Domain}}. Required unless curl is given.',
+        ),
         method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().describe('Default GET'),
         headers: z.record(z.string(), z.string()).optional(),
-        body: z.string().optional().describe('Request body template (POST/PUT only)'),
+        body: z.string().optional().describe('Request body template (POST, PUT and DELETE)'),
+        curl: z.string().max(CURL_MAX_CHARS).optional()
+          .describe('A whole cURL command, in place of url/method/headers/body. {{column_name}} works inside it.'),
+        save_keys: z.union([lenientBoolean(), z.record(z.string(), z.string())]).optional()
+          .describe('With curl: true saves each key in the command as a saved key under a suggested name, or '
+            + '{ "<where>": "<name>" } for every key (e.g. { "Authorization header": "openai" }) picks the names.'),
         response_mapping: z.array(z.object({
           json_path: z.string().describe('JSONPath into the response, e.g. $.title'),
           column_name: z.string().describe('New column to hold the extracted value'),
