@@ -57,6 +57,9 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   control_run: write('Pause, resume, cancel or rerun a run', true, false, true),
   transfer_rows: write('Copy or move rows between sheets', true, true),
   transform_column: write('Transform a column', true, false),
+  // Adds a column, or cleans its own clean column again from the source (replacing what is in it, hand edits
+  // included); no other column is written.
+  clean_column: write('Clean a column (free)', true, true),
   search_enrichments: read('Search enrichment tools', true),
   get_enrichment: read('Get an enrichment tool', true),
   get_list_fields: read('Get the fields of list results'),

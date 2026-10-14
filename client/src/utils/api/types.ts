@@ -1,5 +1,6 @@
 // Over 200 lines: the shared API types, one list kept in step with the server's shapes.
 import type { ColumnSpend, SheetAutorun } from './types-autorun'
+import type { CleanColumnView } from './clean'
 export interface Table {
   id: string
   name: string
@@ -40,7 +41,7 @@ export interface Sheet {
 // in sync with server lib/column-types.ts.
 export type ColumnType =
   | 'ai-output' | 'ai-data' | 'http-master' | 'http-extracted' | 'enrich-status'
-  | 'webhook-source' | 'webhook-mapped'
+  | 'webhook-source' | 'webhook-mapped' | 'clean'
 
 export interface SheetData {
   sheet: Sheet
@@ -52,6 +53,8 @@ export interface SheetData {
     // Auto-run per column, and what each enrichment column spent (header ⚡ and tooltip).
     autorun?: SheetAutorun
     columnSpend?: Record<string, ColumnSpend>
+    // Clean data columns' setups, by column (the header icon, the column menu, Edit cleaning).
+    cleanColumns?: Record<string, CleanColumnView>
   }
 }
 

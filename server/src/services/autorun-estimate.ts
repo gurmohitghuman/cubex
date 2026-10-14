@@ -75,6 +75,8 @@ export async function estimateAutorunRows(
   // answer one wait, not one per auto-run.
   const picked = opts.afterWriting ? chained(sheetId, userId, on, opts.afterWriting) : on;
   const priced = picked.map(async (e): Promise<AutorunRowsEstimate | null> => {
+    // A clean column costs nothing and sends nothing; it still counts in a chain (chained above).
+    if (e.kind === 'clean') return null;
     let config: unknown = null;
     try { config = JSON.parse(newestRunOf(sheetId, userId, e.status_column)?.config ?? 'null'); } catch { /* skip */ }
     if (!config) return null;

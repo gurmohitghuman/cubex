@@ -1,3 +1,4 @@
+// Over 200 lines: the boot sequence (env, middleware, routes, resumed jobs) reads top to bottom as one piece.
 import dotenv from 'dotenv';
 import path from 'node:path';
 // Tighten the process umask BEFORE any file gets created. 0o077 means files
@@ -30,6 +31,7 @@ import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeImports } from './lib/import-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
+import { resumeCleanFills } from './services/clean-fill';
 import { resumeRunRewrites } from './services/run-config-rewrite';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
@@ -185,13 +187,14 @@ createAccountFromEnv().then((result) => {
   );
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
-  // 004, and 010's column fills). Each marks its sheet busy synchronously,
-  // before the first request.
+  // 004, 010's column fills and 024's clean column fills). Each marks its
+  // sheet busy synchronously, before the first request.
   resumeSorts();
   resumeImports();
   resumeRunRewrites();
   resumeColumnPurges();
   resumeFieldJobs();
+  resumeCleanFills();
   resumeRunCleanups();
   setInterval(() => resumeRunCleanups(RUN_CLEANUP_STALE_MINUTES), RUN_CLEANUP_SWEEP_MS).unref();
 }, (err) => {

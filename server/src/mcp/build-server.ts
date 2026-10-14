@@ -23,6 +23,7 @@ import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
 import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
+import { registerCleanTool } from './tools-clean';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   const server = new McpServer(
@@ -36,7 +37,9 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'Set up workspaces with manage_table/manage_sheet and bulk-load with ' +
         'import_csv. To move a CSV file in or out, create_upload_link and ' +
         'create_download_link return one-time links used with curl, so the file ' +
-        'never passes through your context. Enrich with run_ai_column (per-row AI prompt) or ' +
+        'never passes through your context. Clean names, companies, emails, domains, phones, case and ' +
+        'spaces with clean_column: free, no AI, into a new column. ' +
+        'Enrich with run_ai_column (per-row AI prompt) or ' +
         'run_http_enrichment (per-row HTTP JSON API + JSONPath extraction) — both ' +
         'return a run_id to poll via get_run_status; pause/resume/cancel/rerun ' +
         'with control_run. Enrich with treg.to data (work emails, phones, person and company data, lists of ' +
@@ -65,6 +68,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerEnrichTools(server, ctx);
   registerEnrichManageTools(server, ctx);
   registerBalanceTools(server, ctx);
+  registerCleanTool(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);

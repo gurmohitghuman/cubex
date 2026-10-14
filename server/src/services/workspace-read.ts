@@ -3,6 +3,7 @@
 import { db } from '../lib/db';
 import { getSheetColumns, countRows, parseRowData } from '../lib/sql-helpers';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
+import { cleanColumnJson, sheetCleanView } from './clean-view';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -33,8 +34,11 @@ export interface SheetMeta {
   columns: string[]; row_count: number; data_version: number;
   default_ai_model: string | null; // sheet override; account default applies when null
   row_generation: number;
-  // Columns still filling from stored answers: their cells read "⏳ Processing..." until done.
+  // Columns still filling (from stored answers, or a clean column's fill): their
+  // cells read "⏳ Processing..." until done.
   filling_columns: string[];
+  // Clean data columns: each one's source, cleaner and auto-run (services/clean-view.ts).
+  clean_columns: Array<Record<string, unknown>>;
 }
 
 export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
@@ -45,16 +49,18 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     default_ai_model: string | null;
   } | undefined;
   if (!sheet) return null;
+  const columns = getSheetColumns(sheetId, userId);
   return {
     id: sheet.id,
     table_id: sheet.table_id,
     name: sheet.name,
-    columns: getSheetColumns(sheetId, userId),
+    columns,
     row_count: countRows(sheetId, userId),
     data_version: sheet.data_version,
     row_generation: sheet.row_generation,
     default_ai_model: sheet.default_ai_model,
     filling_columns: fillingColumns(sheetId, userId),
+    clean_columns: Object.values(sheetCleanView(sheetId, userId, columns)).map(cleanColumnJson),
   };
 }
 

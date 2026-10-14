@@ -9,6 +9,8 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
   registerTool(server, 'transform_column', {
     description:
       'Transform a column server-side with NO AI calls and NO credits — use this instead of run_ai_column for mechanical string work. ' +
+      'For names, company names, emails, domains, phones, Title Case and spaces use clean_column, ' +
+      'which keeps the column cleaning new rows. ' +
       'operation: regex_extract (capture group 1 of pattern), split (by pattern delimiter, keep part index), template ("{{col}} …" from any columns), upper, lower, trim, to_number. ' +
       'Writes into target_column (created if missing). Example: turn "8 | B2B SaaS" into a numeric score with regex_extract pattern "^(\\\\d+)". Optional where limits which rows are transformed.',
     inputSchema: {

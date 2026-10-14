@@ -79,3 +79,7 @@ export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
 export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;
+
+// Clean data dialog: the preview (a free read of the first rows, before and
+// after) is asked for this long after the last change to the form.
+export const CLEAN_PREVIEW_DELAY_MS = 400;

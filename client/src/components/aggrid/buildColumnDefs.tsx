@@ -6,6 +6,7 @@ import { WebhookMarkerCell } from '../webhook/WebhookMarkerCell'
 import { AddColumnHeader } from '../AddColumnHeader'
 import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
+import type { CleanColumnView } from '@/utils/api/clean'
 
 interface BuildColumnDefsArgs {
   columns: string[]
@@ -25,6 +26,8 @@ interface BuildColumnDefsArgs {
   // Auto-run and spend per column: the header's ⚡ and its tooltip.
   autorun?: SheetAutorun
   columnSpend?: Record<string, ColumnSpend>
+  // Clean data columns' setups: the header's brush icon and its hover note.
+  cleanColumns?: Record<string, CleanColumnView>
 }
 
 // Build the colDef array AG Grid renders from. Extracted from AGGridSpreadsheet so the
@@ -36,7 +39,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
   const {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
-    emptyFilter = {}, columnFilters = {}, autorun, columnSpend,
+    emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -114,6 +117,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           columnType,
           autorun: autorun?.columns[column],
           spend: columnSpend?.[column],
+          clean: cleanColumns?.[column],
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);

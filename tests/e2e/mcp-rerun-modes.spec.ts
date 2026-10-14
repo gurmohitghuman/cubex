@@ -195,11 +195,11 @@ test('an AI rerun takes a new concurrency; other runs refuse it', async () => {
 
   // Only an AI or enrichment rerun takes it.
   const paused = await call('control_run', { run_type: 'ai', run_id: kept.run_id, action: 'pause', concurrency: 3 })
-  expect(errorText(paused)).toContain('enrichment run only')
+  expect(errorText(paused)).toContain('applies only to rerunning an AI or enrichment run')
   const http = await call('control_run', {
     run_type: 'http', run_id: '00000000-0000-4000-8000-000000000000', action: 'rerun', concurrency: 3,
   })
-  expect(errorText(http)).toContain('enrichment run only')
+  expect(errorText(http)).toContain('applies only to rerunning an AI or enrichment run')
 
   // v1: a number, from 1 to 100.
   const v1 = async (data: Record<string, unknown>) => {

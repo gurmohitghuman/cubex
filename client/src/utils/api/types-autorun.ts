@@ -1,5 +1,9 @@
-// Auto-run for enrichment and HTTP API columns (server services/autorun-*.ts).
-// Keep in step with server services/autorun-view.ts and autorun-estimate.ts.
+// Auto-run for enrichment and HTTP API columns (server services/autorun-*.ts),
+// and clean data columns, whose auto-run cleans new and changed rows for free
+// (no rule, no caps). Keep in step with server services/autorun-view.ts and
+// autorun-estimate.ts.
+
+export type AutorunKind = 'enrichment' | 'http' | 'clean'
 
 export interface AutorunCondition { column: string; op: string; value: string }
 
@@ -16,7 +20,7 @@ export type AutorunPause =
 
 export interface AutorunColumn {
   column: string
-  kind: 'enrichment' | 'http'
+  kind: AutorunKind
   enabled: boolean
   pausedReason: AutorunPause | null
   pausedMessage: string | null

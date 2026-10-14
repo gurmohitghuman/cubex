@@ -1,5 +1,6 @@
 import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
+import type { CleanColumnView } from '@/utils/api/clean'
 
 export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
@@ -7,6 +8,11 @@ export type RunByColumn = Record<string, { runId: string; status: 'running' | 'p
 // (not enriched yet, failed), on the selected rows or on every row; edit its
 // setup; watch or stop its active run.
 export type EnrichMenuAction = 'not_enriched' | 'failed' | 'selected' | 'all' | 'edit' | 'view' | 'stop'
+
+// The column menu's clean data items: clean any column into a new one ('new'),
+// and on a clean column, edit how it's cleaned, clean every row again, and
+// turn its auto-run on or off.
+export type CleanMenuAction = 'new' | 'edit' | 'again' | 'autorun_on' | 'autorun_off'
 
 export interface RunMenuActions {
   onRunHTTPForColumn?: (columnName: string) => void
@@ -24,6 +30,7 @@ export interface RunMenuActions {
   onEnrichAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
   // ⚡ Turn On Auto-run / Auto-run Settings ('open', the dialog) and ⚡ Turn Off Auto-run.
   onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
+  onCleanAction?: (action: CleanMenuAction, columnName: string) => void
 }
 
 export interface AGGridSpreadsheetProps {
@@ -34,6 +41,8 @@ export interface AGGridSpreadsheetProps {
   // Auto-run and spend per column: the header's ⚡ and tooltip, and the menu's auto-run items.
   autorun?: SheetAutorun
   columnSpend?: Record<string, ColumnSpend>
+  // Clean data columns' setups: the header's brush icon and its hover note.
+  cleanColumns?: Record<string, CleanColumnView>
   data: Array<{ rowIndex: number; data: Record<string, string> }>
   totalRows: number
   onCellEdit: (rowIndex: number, column: string, value: string) => void

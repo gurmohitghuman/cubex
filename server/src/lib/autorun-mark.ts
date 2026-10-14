@@ -1,5 +1,6 @@
 // Feeding auto-run (services/autorun-loop.ts), from inside the transactions
 // that change rows. Plain DB writes, so run workers call them too.
+// Over 200 lines: every way a row reaches auto-run keeps the one fence exact.
 //
 // Two ways a row reaches auto-run: it is new (above its entry's watermark, a
 // row_index fence), or one of its inputs was just written (autorun_pending, by
@@ -16,10 +17,11 @@ import { eachRowIdSlice } from './row-order';
 import { yieldToRequests } from './slices';
 import { BLANK_CHARS } from './enrich-seed';
 import { CONDITION_NOT_MET } from './run-markers';
+import { cleanQueued } from './autorun-kick';
 
 export type RowRef = { ids: string[] } | { indexes: number[] } | { rowids: number[] };
 
-interface Watcher { id: string; status_column: string; input_columns: string }
+interface Watcher { id: string; kind: string; status_column: string; input_columns: string }
 
 const parseList = (raw: string): string[] => {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; }
@@ -55,12 +57,20 @@ function selector(rows: RowRef): { where: string; params: (sheetId: string, user
 const rowCount = (rows: RowRef): number =>
   ('ids' in rows ? rows.ids : 'rowids' in rows ? rows.rowids : rows.indexes).length;
 
-const watchersOf = (sheetId: string, userId: string): Watcher[] => db.prepare(`SELECT id, status_column,
+const watchersOf = (sheetId: string, userId: string): Watcher[] => db.prepare(`SELECT id, kind, status_column,
   input_columns FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND enabled = 1`)
   .all(sheetId, userId) as Watcher[];
 
+// A clean data column follows its source: every written row is queued,
+// whatever its clean cell holds (services/clean-follow.ts), and told at once.
 function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef): void {
   const sel = selector(rows);
+  if (w.kind === 'clean') {
+    db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
+      SELECT ?, user_id, id FROM rows WHERE ${sel.where}`).run(w.id, ...sel.params(sheetId, userId));
+    cleanQueued(w.id);
+    return;
+  }
   const path = jsonPath(w.status_column);
   db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
     SELECT ?, user_id, id FROM rows WHERE ${sel.where} AND ${NOT_RUN}`)
@@ -107,16 +117,23 @@ export function autorunRowsRemoved(sheetId: string, userId: string): void {
     WHERE sheet_id = ? AND user_id = ?`).run(sheetId, userId, sheetId, userId);
 }
 
-interface FencedEntry { id: string; w: number; status_column: string }
+interface FencedEntry { id: string; w: number; kind: string; status_column: string }
 
-const entriesOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, watermark_row_index AS w,
+const entriesOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, watermark_row_index AS w, kind,
   status_column FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND enabled = 1`)
   .all(sheetId, userId) as FencedEntry[];
 
 // A row above the fence counts as new only while its status cell is empty or
 // "⏭️ Condition not met", as the scan reads it (a row someone ran by hand, ❌
-// included, is not new), so only those are kept.
+// included, is not new), so only those are kept. A clean column cleans every
+// new row, so it keeps them all.
 function keepByRowid(e: FencedEntry, sheetId: string, userId: string, idsJson: string): void {
+  if (e.kind === 'clean') {
+    db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
+      SELECT ?, user_id, id FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
+        AND +user_id = ?`).run(e.id, idsJson, sheetId, userId);
+    return;
+  }
   db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
     SELECT ?, user_id, id FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
       AND +user_id = ? AND TRIM(COALESCE(json_extract(data, ?), ''), ?) IN ('', ?)`)
@@ -161,12 +178,13 @@ export function autorunAfterReorder(sheetId: string, userId: string, rowCountSor
 
 // A CSV replace's last transaction (after row_generation moved): every row is
 // new, unless auto-run was paused for this import (then rows up to
-// `skipThrough` are passed over). Queued rows are gone with the old rows.
+// `skipThrough` are passed over; a clean column, which costs nothing, still
+// cleans them). Queued rows are gone with the old rows.
 export function autorunAfterReplace(sheetId: string, userId: string, skipThrough: number | null): void {
   db.prepare(`DELETE FROM autorun_pending WHERE autorun_id IN
     (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?)`).run(sheetId, userId);
-  db.prepare(`UPDATE autorun_columns SET watermark_row_index = ?, rescan = 1,
-      row_generation_seen = (SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?)
+  db.prepare(`UPDATE autorun_columns SET watermark_row_index = CASE WHEN kind = 'clean' THEN -1 ELSE ? END,
+      rescan = 1, row_generation_seen = (SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?)
     WHERE sheet_id = ? AND user_id = ?`).run(skipThrough ?? -1, sheetId, userId, sheetId, userId);
 }
 
@@ -181,7 +199,8 @@ export async function autorunSkipImport(
   const page = db.prepare(`SELECT row_index, rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
     AND row_index < ? ORDER BY row_index LIMIT ?`).raw();
   for (const e of entriesOf(sheetId, userId)) {
-    if (e.w >= lastRow) continue;
+    // A clean column costs nothing: it cleans the imported rows anyway.
+    if (e.kind === 'clean' || e.w >= lastRow) continue;
     for (let after = e.w; ;) {
       const rows = page.all(sheetId, userId, after, firstRow, HEAVY_SLICE_ROWS) as Array<[number, number]>;
       if (rows.length === 0) break;

@@ -6,6 +6,7 @@ import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
+import { startCleanFollow } from '../services/clean-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
 import { resumeAgePrunes } from '../services/answer-prune-age';
@@ -43,6 +44,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).
       startAutorunLoop();
+      // A write to a clean column's source cleans it again at once (services/clean-follow.ts).
+      startCleanFollow();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:
       // a failure rolls the individual run to 'failed' inside resumeRecoveredRuns.

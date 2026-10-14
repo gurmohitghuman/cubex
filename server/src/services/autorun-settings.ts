@@ -1,5 +1,5 @@
 // Turning auto-run on, off or pausing it, for an enrichment or HTTP API
-// column (the column menu's dialog, the drawer's checkbox, the sheet header's
+// column, or a clean data column (clean-column.ts) (the column menu's dialog, the drawer's checkbox, the sheet header's
 // chip; MCP set_auto_run and /api/v1 call it too). Auto-run repeats the
 // column's newest run on new rows and rows whose inputs get filled, once per
 // row (lib/autorun-rules.ts). Turning it on starts from the sheet as it is:
@@ -22,6 +22,8 @@ import { getDailyLimitMicro } from './treg-key';
 import { autorunListProblem } from './autorun-list';
 import type { RunFail } from './run-shared';
 import { checkRunRule } from './run-rule';
+import { cleanColumnFor } from '../lib/clean-columns';
+import { setCleanColumnAutorun } from './clean-column';
 
 export interface AutorunSettingsInput {
   column: string;
@@ -68,6 +70,14 @@ export async function saveAutorunSettings(
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   if (!columns.includes(input.column)) return bad(`There's no column named "${input.column}".`);
+  // A clean data column's auto-run follows its source; it has no rule or caps.
+  const clean = cleanColumnFor(sheetId, userId, input.column);
+  if (clean) {
+    const extra = (input.where?.length ?? 0) > 0 || !!input.runIf
+      || (input.dailyCapUsd ?? null) !== null || (input.dailyRowCap ?? null) !== null;
+    if (extra && input.enabled) return bad("A clean column's auto-run has no rule or cap: cleaning is free.");
+    return setCleanColumnAutorun(userId, sheetId, clean, input.enabled);
+  }
   const prior = entryFor(sheetId, userId, input.column);
   if (!input.enabled) {
     if (prior) {

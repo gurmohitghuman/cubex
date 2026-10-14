@@ -6,10 +6,11 @@ import { db } from '../lib/db';
 import { isEnrichmentConfig, type EnrichCondition } from '../lib/enrich-run-config';
 import { ruleFromConditions } from '../lib/run-condition';
 import { columnOutputs, newestRunOf, sheetEntries, usageToday, whereOf } from './autorun-entry';
+import type { AutorunKind } from '../lib/autorun-rules';
 
 export interface AutorunColumnView {
   column: string;
-  kind: 'enrichment' | 'http';
+  kind: AutorunKind;
   enabled: boolean;
   pausedReason: string | null;
   pausedMessage: string | null;
