@@ -50,8 +50,14 @@ export const validateHTTPConfig = (
   const dups = names.filter((n, i) => names.indexOf(n) !== i)
   if (dups.length > 0) errs.duplicateColumns = `Duplicate column names: ${dups.join(', ')}`
 
-  if (config.body && ['POST', 'PUT', 'DELETE'].includes(config.method)) {
-    try { JSON.parse(config.body) } catch { errs.body = 'Body must be valid JSON' }
+  // A form body (a pasted `curl -d a=b`) is fine with its Content-Type header; with
+  // none, or a JSON one, the body must be JSON.
+  const contentType = (config.headers ?? []).find(h => h.key?.trim().toLowerCase() === 'content-type')?.value ?? ''
+  const jsonBody = !contentType.trim() || /json/i.test(contentType)
+  if (config.body && ['POST', 'PUT', 'DELETE'].includes(config.method) && jsonBody) {
+    try { JSON.parse(config.body) } catch {
+      errs.body = 'Body must be valid JSON (or set a Content-Type header for another format)'
+    }
   }
 
   setErrors(errs)

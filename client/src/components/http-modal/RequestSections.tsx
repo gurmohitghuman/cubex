@@ -20,7 +20,13 @@ interface RequestProps {
   updateHeader: (i: number, field: 'key' | 'value', value: string) => void
   handleInputChange: (value: string, targetId: string, updateFn: () => void) => void
   handleSuggestionKeyDown: (e: React.KeyboardEvent, targetId: string) => void
+  onPasteCurl?: (text: string) => void
 }
+
+// A whole curl command pasted into the URL field: "curl …", "curl.exe …", after a
+// prompt ("$ ", "% ", "PS C:\> "), sudo or VAR=value.
+const CURL_PASTE_RE =
+  /^\s*(?:(?:\$|%|>|#|PS[^>\n]*>|[A-Za-z]:\\[^>\n]*>)\s*)?(?:sudo\s+)?(?:[A-Za-z_]\w*=\S*\s+)*curl(?:\.exe)?\s/i
 
 export function MasterColumnField({ masterColumnName, setMasterColumnName, errors }: {
   masterColumnName: string
@@ -45,7 +51,9 @@ export function MasterColumnField({ masterColumnName, setMasterColumnName, error
   )
 }
 
-export function MethodEndpointFields({ config, errors, updateConfig, handleInputChange, handleSuggestionKeyDown }: RequestProps) {
+export function MethodEndpointFields({
+  config, errors, updateConfig, handleInputChange, handleSuggestionKeyDown, onPasteCurl,
+}: RequestProps) {
   return (
     <>
       <div>
@@ -66,6 +74,10 @@ export function MethodEndpointFields({ config, errors, updateConfig, handleInput
           value={config.endpointUrl}
           onChange={(e) => handleInputChange(e.target.value, 'endpointUrl', () => updateConfig({ endpointUrl: e.target.value }))}
           onKeyDown={(e) => handleSuggestionKeyDown(e, 'endpointUrl')}
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData('text')
+            if (onPasteCurl && CURL_PASTE_RE.test(pasted)) { e.preventDefault(); onPasteCurl(pasted) }
+          }}
         />
         {errors.endpointUrl && <p className="text-xs text-cube-black mt-1">{errors.endpointUrl}</p>}
         <p className="text-xs text-gray-500 mt-1">Use /column_name or /api_key_name to reference columns and API keys</p>
@@ -151,7 +163,8 @@ export function BodyField({ config, errors, updateConfig, handleInputChange, han
       />
       {errors.body && <p className="text-xs text-cube-black mt-1">{errors.body}</p>}
       <p className="text-xs text-gray-500 mt-1">
-        JSON body supports /column_name and /api_key_name tokens. Ensure valid JSON after substitution.
+        Supports /column_name and /api_key_name tokens. A JSON body must stay valid JSON once they&apos;re filled
+        in; for a form body, set a Content-Type header.
       </p>
     </div>
   )

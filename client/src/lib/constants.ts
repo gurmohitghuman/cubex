@@ -86,3 +86,6 @@ export const CLEAN_PREVIEW_DELAY_MS = 400;
 // Formula dialog: the same free preview, asked for this long after the last
 // keystroke in the formula (a formula is typed more than picked).
 export const FORMULA_PREVIEW_DELAY_MS = 500;
+
+// Longest pasted cURL command the HTTP column dialog sends (mirrors server CURL_MAX_CHARS).
+export const CURL_MAX_CHARS = 100_000;

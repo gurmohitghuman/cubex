@@ -34,6 +34,10 @@ interface Props {
   onPreview: () => void | Promise<void>
   onCancel: () => void
   onShowTemplateModal: () => void
+  // Just filled from a pasted cURL command: open the sections that got content.
+  openFilled?: boolean
+  // A curl command pasted into the URL field.
+  onPasteCurl?: (text: string) => void
 }
 
 // Clay-style vertical accordion (replaces the old 3-tab horizontal layout). Each
@@ -41,9 +45,11 @@ interface Props {
 // so the narrow drawer reads as a workspace. Method & Endpoint is open by default;
 // the Body section only appears for methods that carry a body (was the same
 // POST/PUT/DELETE conditional). Collapsed summaries show counts / a truncated URL.
+// After a cURL paste the form remounts (a new key) with the filled sections open.
 export const ConfigureStep: React.FC<Props> = (p) => {
   const hasBody = ['POST', 'PUT', 'DELETE'].includes(p.config.method)
   const endpointSummary = `${p.config.method}${p.config.endpointUrl ? ` · ${p.config.endpointUrl}` : ''}`
+  const filled = (n: number) => !!p.openFilled && n > 0
   return (
     <div className="p-4 space-y-3">
       <MasterColumnField masterColumnName={p.masterColumnName} setMasterColumnName={p.setMasterColumnName} errors={p.errors} />
@@ -52,17 +58,19 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         <MethodEndpointFields {...p} />
       </AccordionSection>
 
-      <AccordionSection title="Query Parameters" summary={p.config.queryParams.length ? `${p.config.queryParams.length}` : undefined}>
+      <AccordionSection title="Query Parameters" defaultOpen={filled(p.config.queryParams.length)}
+        summary={p.config.queryParams.length ? `${p.config.queryParams.length}` : undefined}>
         <QueryParamsFields {...p} />
       </AccordionSection>
 
       {hasBody && (
-        <AccordionSection title="Request Body (JSON)">
+        <AccordionSection title="Request Body" defaultOpen={filled(p.config.body?.trim().length ?? 0)}>
           <BodyField {...p} />
         </AccordionSection>
       )}
 
-      <AccordionSection title="Headers" summary={p.config.headers.length ? `${p.config.headers.length}` : undefined}>
+      <AccordionSection title="Headers" defaultOpen={filled(p.config.headers.length)}
+        summary={p.config.headers.length ? `${p.config.headers.length}` : undefined}>
         <HeadersFields {...p} />
       </AccordionSection>
 
