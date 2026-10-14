@@ -1,8 +1,12 @@
 // Shared by the cURL-parser unit tests (curl-parse*.test.ts): run a check,
 // compare what a command parses to, or check that it's refused and why.
 import assert from 'node:assert/strict';
-import { parseCurl, type ParsedCurl } from '../../server/src/lib/curl/parse';
-import { findKeys, toDraft } from '../../server/src/lib/curl/key-detect';
+// server/src is type:commonjs → default-import + destructure (named imports fail under tsx on Node 22).
+import parseMod from '../../server/src/lib/curl/parse';
+import detectMod from '../../server/src/lib/curl/key-detect';
+import type { ParsedCurl } from '../../server/src/lib/curl/parse';
+const { parseCurl } = parseMod as typeof import('../../server/src/lib/curl/parse');
+const { findKeys, toDraft } = detectMod as typeof import('../../server/src/lib/curl/key-detect');
 
 // Stripe's and Slack's own documentation examples, built here from pieces: GitHub's
 // push protection refuses a push holding them whole, real or not.

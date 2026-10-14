@@ -4,10 +4,17 @@
 // a choice (save, use a saved key, leave out), and anything else is refused.
 // Pure: no DB.
 import assert from 'node:assert/strict';
-import { parseCurl } from '../../server/src/lib/curl/parse';
-import { findKeys, toDraft, type KeyFinding } from '../../server/src/lib/curl/key-detect';
-import { maskKey } from '../../server/src/lib/curl/key-rules';
-import { applyKeyChoices, suggestKeyNames, type KeyChoice } from '../../server/src/lib/curl/key-apply';
+// server/src is type:commonjs → default-import + destructure (named imports fail under tsx on Node 22).
+import parseMod from '../../server/src/lib/curl/parse';
+import detectMod from '../../server/src/lib/curl/key-detect';
+import rulesMod from '../../server/src/lib/curl/key-rules';
+import applyMod from '../../server/src/lib/curl/key-apply';
+import type { KeyFinding } from '../../server/src/lib/curl/key-detect';
+import type { KeyChoice } from '../../server/src/lib/curl/key-apply';
+const { parseCurl } = parseMod as typeof import('../../server/src/lib/curl/parse');
+const { findKeys, toDraft } = detectMod as typeof import('../../server/src/lib/curl/key-detect');
+const { maskKey } = rulesMod as typeof import('../../server/src/lib/curl/key-rules');
+const { applyKeyChoices, suggestKeyNames } = applyMod as typeof import('../../server/src/lib/curl/key-apply');
 import { STRIPE_DOCS_KEY, finish, keysOf, ran } from './curl-test-kit';
 
 const none = { resolves: () => false, variables: [] as string[] };

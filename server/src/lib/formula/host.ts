@@ -6,7 +6,7 @@
 // stops itself too when its WASM instance breaks (it sets CLOSING first).
 // Waiting blocks the API thread, as working the rows out on it would, but
 // never longer than the cap.
-import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from 'worker_threads';
+import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort, type WorkerOptions } from 'worker_threads';
 import { extname, join } from 'path';
 import { FORMULA_WORKER_HEAP_MB } from '../constants-formula';
 import { CLOSING, PROGRESS, READY, SLOTS, type Ask, type Dispose, type Reply } from './protocol';
@@ -15,6 +15,18 @@ export type Answer = Reply | { timedOut: number } | { gone: true };
 
 // The worker's file next to this one: worker.ts under tsx, worker.js once built.
 const workerFile = (): string => join(__dirname, `worker${extname(__filename)}`);
+
+// From source (tsx: the dev server, the tests) the worker registers tsx itself:
+// Node 22 doesn't hand a worker thread the parent's loaders and would read
+// worker.ts as plain CommonJS (server/src is CommonJS). Built, worker.js runs
+// as it is.
+function newWorker(opts: WorkerOptions): Worker {
+  const file = workerFile();
+  if (!file.endsWith('.ts')) return new Worker(file, opts);
+  const tsx = require.resolve('tsx/cjs/api');
+  const boot = `require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`;
+  return new Worker(boot, { ...opts, eval: true });
+}
 
 class FormulaHost {
   gen = 0;
@@ -36,7 +48,7 @@ class FormulaHost {
   private start(): Promise<void> {
     const flags = new Int32Array(new SharedArrayBuffer(SLOTS * 4));
     const { port1, port2 } = new MessageChannel();
-    const worker = new Worker(workerFile(), {
+    const worker = newWorker({
       workerData: { port: port2, shared: flags.buffer }, transferList: [port2],
       resourceLimits: { maxOldGenerationSizeMb: FORMULA_WORKER_HEAP_MB },
     });
