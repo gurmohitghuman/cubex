@@ -81,5 +81,13 @@ check('template substitutes', applyTemplate('{{First}} {{Last}}', { First: 'Ada'
 check('template unknown col → blank', applyTemplate('[{{nope}}]', { First: 'x' }) === '[]')
 check('template trims token spaces', applyTemplate('{{ First }}', { First: 'x' }) === 'x')
 
+{
+  // Long runs of spaces or "{" stay fast (the old pattern backtracked cubically on spaces).
+  const t = Date.now()
+  applyTemplate('{{' + ' '.repeat(8000) + 'x', {})
+  applyTemplate('{'.repeat(100_000), {})
+  check('template: long space and brace runs take well under a second', Date.now() - t < 1000)
+}
+
 if (failures) { console.error(`\n${failures} FAILED`); process.exit(1) }
 console.log('\nall transform-ops checks passed')

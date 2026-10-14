@@ -20,7 +20,9 @@ export function httpTemplateError(
   const url = rc.url.trim();
   if (!url.startsWith('{{')) {
     let ok = false;
-    try { ok = ['http:', 'https:'].includes(new URL(url.replace(/\{\{[^}]*\}\}/g, 'x')).protocol); } catch { ok = false; }
+    try {
+      ok = ['http:', 'https:'].includes(new URL(url.replace(/\{\{[^{}]*\}\}/g, 'x')).protocol);
+    } catch { ok = false; }
     if (!ok) return `The URL must start with http:// or https:// (got "${url.slice(0, 80)}").`;
   }
 

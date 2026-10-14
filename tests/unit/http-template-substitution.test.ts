@@ -84,6 +84,15 @@ check('... and its /token too', goneErr('{"e":"/Email"}'),
 check('the redacted record keeps a marker', gone('{{Email}}', {}, 'redact-secrets'), '[MISSING: {{Email}}]');
 check('a column by that name again is read as before', gone('{{Email}}', { Email: 'a@b.co' }), 'a@b.co');
 
+// --- A long run of "{" is linear (the name excludes "{"; with [^}] every match
+// attempt scanned to the end: 100k characters took seconds, a 2 MB body minutes) ---
+{
+  const t = Date.now();
+  sub('{'.repeat(200_000), {});
+  check('200,000 "{" substitute in well under a second', String(Date.now() - t < 1000), 'true');
+}
+check('{{{Domain}}} reads the column inside the outer braces', sub('{{{Domain}}}', { Domain: 'x.com' }), '{x.com}');
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

@@ -122,6 +122,10 @@ export function applyCellOp(
 // substitutes '' (blank), matching the HTTP request-template convention (not a
 // "[MISSING]" marker).
 export function applyTemplate(template: string, data: Record<string, string>): string {
-  return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, col: string) =>
-    Object.prototype.hasOwnProperty.call(data, col) ? (data[col] ?? '') : '');
+  // The name is trimmed in the callback: \s* around a lazy [^}]+? backtracked
+  // cubically on long runs of spaces, and [^}] quadratically on runs of "{".
+  return template.replace(/\{\{([^{}]+)\}\}/g, (_, raw: string) => {
+    const col = raw.trim();
+    return Object.prototype.hasOwnProperty.call(data, col) ? (data[col] ?? '') : '';
+  });
 }
