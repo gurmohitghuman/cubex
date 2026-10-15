@@ -109,7 +109,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
   }
 
   return (
-    // Clay-style narrow right-side drawer. The config is a vertical accordion
+    // A narrow right-side drawer. The config is a vertical accordion
     // (Method/Endpoint, Query, Body, Headers, Response, Settings — all stacked,
     // single-column), so this stays a true side panel at max-w-lg (~512px), a touch
     // roomier than the Webhook drawer for the denser config. (panelClassName

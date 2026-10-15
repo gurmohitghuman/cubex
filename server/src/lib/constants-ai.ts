@@ -54,7 +54,7 @@ export const AI_MAX_OUTPUT_TOKENS = 16000;
 // estimate_only (dry-run cost) tuning. Input tokens are estimated by rendering
 // the prompt against a sample of real rows (free — no API calls) and averaging.
 // Output tokens are the real variable: we prefer HISTORY (avg -> p75 of this
-// model's past completion_tokens, Clay's variable-price mechanism) and fall back
+// model's past completion_tokens) and fall back
 // to a modest typical-cell range only when history is too thin. We deliberately
 // do NOT use aiMaxTokens() (8k-16k) as the high bound — that's a reasoning-
 // headroom safety cap, not an expected cell size, and would inflate the estimate

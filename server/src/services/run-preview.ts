@@ -1,7 +1,7 @@
 // preview_rows for run_ai_column: actually run the prompt on the first N target
 // rows and return the sample outputs + a MEASURED cost (from real OpenRouter
-// usage) + a full-run projection — the accurate "run 10-50 first" check Clay
-// recommends. Spends real AI credits (bounded to PREVIEW_MAX_ROWS) but persists
+// usage) + a full-run projection — the accurate "run 10-50 first"
+// check. Spends real AI credits (bounded to PREVIEW_MAX_ROWS) but persists
 // NOTHING: no column, no draft, no run row (spec item 4). A later full run
 // re-bills these rows (reuse is a deferred optimization).
 import { db } from '../lib/db';

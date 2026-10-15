@@ -134,7 +134,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   const handleClose = drawer.handleClose
 
   return (
-    // Clay-style narrow right-side drawer (mirrors the HTTP API drawer). The config is
+    // A narrow right-side drawer (mirrors the HTTP API drawer). The config is
     // a 2-section accordion (Generate / Configure), so this stays a true side panel at
     // max-w-lg (~512px). (panelClassName overrides the Drawer's default max-w-md.)
     <Drawer isOpen={isOpen} onClose={handleClose} panelClassName="max-w-lg">

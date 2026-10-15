@@ -69,7 +69,7 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
   if ('error' in nameCheck) return { ok: false, status: 400, error: nameCheck.error };
 
   // Bound previewSize so a malicious value doesn't trigger 999999 rows of preview
-  // work. Clay's default is 5; > 20 is unhelpful UX too.
+  // work. The default is 5; > 20 is unhelpful UX too.
   const safePreviewSize = (typeof previewSize === 'number' && Number.isFinite(previewSize))
     ? Math.max(1, Math.min(Math.floor(previewSize), 20)) : 5;
   const safeTemperature = (typeof temperature === 'number' && Number.isFinite(temperature))

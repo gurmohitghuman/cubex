@@ -2,7 +2,7 @@ import React from 'react'
 import { Key, Minus, Plus } from 'lucide-react'
 import { HTTPAPIConfig } from './types'
 
-// The request field groups, restacked to a single column for the narrow Clay-style
+// The request field groups, restacked to a single column for the narrow
 // accordion drawer (~512px). Each export is the BODY of one AccordionSection; the
 // section chrome (title, chevron, summary) lives in ConfigureStep. Method sits above
 // Endpoint (was a md:grid-cols-4 row); param/header rows are Key-over-Value blocks

@@ -108,7 +108,7 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
   try {
     const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText);
     if (!result.ok) {
-      // Row cap reached -> 409 (mirror Clay's "webhook full").
+      // Row cap reached -> 409 ("webhook full").
       recordSourceError(source.id, result.reason);
       return res.status(409).json({ error: result.reason });
     }

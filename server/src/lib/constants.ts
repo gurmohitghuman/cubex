@@ -122,7 +122,7 @@ export const WEBHOOK_BUCKET_IDLE_EVICT_MS = 5 * 60 * 1000;
 // extraction/write). Bounds json_set cost and delivery-store size. Over -> 400.
 export const WEBHOOK_MAX_JSON_DEPTH = 10;
 export const WEBHOOK_MAX_JSON_NODES = 5000;
-// Per-cell size caps, two tiers (matches Clay: 8KB "basic" cells, 200KB
+// Per-cell size caps, two tiers (8KB "basic" cells, 200KB
 // "action/enrichment" cells). BASIC = hand-entered / typed / CSV / API-written /
 // webhook cells; ENRICHMENT = machine-generated AI output + HTTP-extracted
 // values, which legitimately run long. Enforced at every cell-write site

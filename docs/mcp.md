@@ -154,7 +154,7 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 
 ## Formulas
 
-`formula_column` fills a new column for free with a formula worked out from each row: nothing is sent anywhere and no AI runs. A formula is one JavaScript expression that reads the row's cells as `{{Column name}}`, as in Clay:
+`formula_column` fills a new column for free with a formula worked out from each row: nothing is sent anywhere and no AI runs. A formula is one JavaScript expression that reads the row's cells as `{{Column name}}`:
 
 | Formula | What it gives |
 |---|---|

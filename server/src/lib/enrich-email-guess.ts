@@ -1,4 +1,4 @@
-// Verified work email helpers (pure): the free guess (Clay's "infer email")
+// Verified work email helpers (pure): the free guess (an address worked out from the name and domain)
 // and the status cells the loop writes.
 import { asciiNamePart, cleanDomain } from './enrich-input-clean';
 import type { EmailVerdict } from './enrich-email-status';

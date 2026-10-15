@@ -24,7 +24,7 @@ export function conditionsProblem(conditions: Condition[], columns: string[]): s
   return null
 }
 
-// "Only run if": every condition must pass (AND), like Clay's conditional runs.
+// "Only run if": every condition must pass (AND).
 export const ConditionsField: React.FC<{ conditions: Condition[]; columns: string[]; onChange: (c: Condition[]) => void }> = ({
   conditions, columns, onChange,
 }) => {

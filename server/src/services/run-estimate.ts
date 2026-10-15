@@ -1,7 +1,7 @@
 // estimate_only (dry-run cost) for run_ai_column / run_http_enrichment. PURE
 // READ — no columns, placeholders, drafts, runs, or DB writes of any kind (risk
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
-// AI (Clay's variable-price shape: honest low/high, "actual depends on usage"),
+// AI (an honest low/high, "actual depends on usage"),
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
 import { db } from '../lib/db';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';

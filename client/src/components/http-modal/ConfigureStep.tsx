@@ -40,7 +40,7 @@ interface Props {
   onPasteCurl?: (text: string) => void
 }
 
-// Clay-style vertical accordion (replaces the old 3-tab horizontal layout). Each
+// A vertical accordion (replaces the old 3-tab horizontal layout). Each
 // request/response/settings group is an independently-collapsible AccordionSection
 // so the narrow drawer reads as a workspace. Method & Endpoint is open by default;
 // the Body section only appears for methods that carry a body (was the same
