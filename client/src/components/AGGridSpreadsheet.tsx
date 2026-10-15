@@ -7,7 +7,7 @@ import './aggrid/gridModules' // registers only the AG Grid modules the grid use
 import { useColIdMap } from './aggrid/useColIdMap'
 import { useColumnWidths } from './aggrid/useColumnWidths'
 import { useGridHandlers } from './aggrid/useGridHandlers'
-import { buildColumnDefs } from './aggrid/buildColumnDefs'
+import { useColumnDefs } from './aggrid/useColumnDefs'
 import { HeaderContextMenu, type MenuState } from './aggrid/HeaderContextMenu'
 import { RenameColumnPopover } from './aggrid/RenameColumnPopover'
 import { DeleteConfirms } from './aggrid/DeleteConfirms'
@@ -19,8 +19,10 @@ import { useRegisterViewport } from './aggrid/useRegisterViewport'
 import { useHeaderContextMenu } from './aggrid/useHeaderContextMenu'
 import { GridEmptyMessage } from './aggrid/GridEmptyMessage'
 import type { AGGridSpreadsheetProps, RunMenuActions } from './aggrid/types'
+import type { ColumnType } from '@/utils/api/types'
 
 const NO_RUN_ACTIONS: RunMenuActions = {}
+const NO_COLUMN_TYPES: Record<string, ColumnType> = {}
 
 export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   const {
@@ -28,7 +30,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     onSortChange, onRenameColumn, onDeleteColumn, onDeleteRows, onAddColumn,
     emptyFilter, onEmptyFilterChange, columnFilters, onColumnFilterChange,
     onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
-    columnTypes = {}, autorun, columnSpend, cleanColumns, formulaColumns,
+    columnTypes = NO_COLUMN_TYPES, autorun, columnSpend, cleanColumns, formulaColumns,
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection, registerViewport,
@@ -95,12 +97,10 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     onSortChange?.(columnId, direction)
   }, [onSortChange])
 
-  const columnDefs = useMemo(() => buildColumnDefs({
+  const columnDefs = useColumnDefs({
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
     formulaColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, onDeleteColumn, onAddColumn, openColumnMenu])
+  })
 
   const {
     onGridReady, onCellValueChanged, onCellClicked, onSelectionChanged,
