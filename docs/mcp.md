@@ -101,6 +101,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
+| `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
@@ -172,6 +173,22 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - Calling `formula_column` again on a formula column replaces its formula and works every row out again. Any other existing column is refused. Renaming a column a formula reads rewrites the formula.
 - `write_formula` writes a formula from plain words with one small call to your default model (or `model`). The model sees the column names and what the first rows hold, and the formula is checked on those rows before it comes back with a preview. Nothing is saved: pass the formula to `formula_column`. It needs the `run` scope, because the call costs money.
 - Formulas run in a sandbox inside Cubex, with no access to files, the network or the server, a memory limit and a time limit per row. A formula that keeps running out of time stops its column's fill (or pauses its auto-run) and says so.
+
+## Remove duplicates
+
+`remove_duplicates` finds rows that match on every column you list and removes all but one row of each group, for free: nothing is sent anywhere and no AI runs. It's a dry run unless you pass `dry_run: false`, so a first call only reports.
+
+```json
+{"sheet_id": "...", "columns": [{"column": "Website", "match": "domain"}, "Last name"], "keep": "first", "dry_run": true}
+```
+
+- `columns`: column names, or `{"column", "match", "phone_country"}`. `match` is `text` (the default), `email`, `domain`, `phone`, `company` or `person_name`. Upper/lower case and extra spaces never matter.
+- `keep`: `first` (the default, the highest row), `last`, or `most_complete` (the row filling the most cells; the highest of a tie).
+- Some things that tell rows apart are kept even where the matching is loose: an address at a free email provider (Gmail, Outlook, Yahoo and others) never matches by `domain`, a page on a shared site (Facebook, LinkedIn, Instagram, Google Sites, Yelp, Substack and others) matches only the same page, a `phone` extension keeps numbers apart, and so do Jr and Sr in a `person_name`.
+- A row with any listed column empty, unreadable as its match (an email column holding "n/a"), or holding a run status such as `⏭️ Not found` is never removed. The answer counts them in `rows_with_empty_key`.
+- The answer has `rows_checked`, `duplicate_groups`, `rows_to_remove` (or `rows_removed`), `rows_left`, up to 5 `samples` (the row that stays and up to 3 that go, each with its row `id`, row number and the listed cells), and the `largest_group` when it's bigger than those, so a value like "n/a" shared by thousands of rows shows up before anything goes.
+- A dry run needs the `read` scope; `dry_run: false` needs `write`. Removed rows are deleted for good, with their AI and HTTP results. The whole sheet is checked; filters don't apply.
+- Refused while a run is active on the sheet: stop or finish it first. Rows appended while a removal works are left alone.
 
 ## Enrichments
 
@@ -256,6 +273,7 @@ All paths below are relative to `/api/v1`.
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
 | `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
+| `POST /sheets/:id/remove-duplicates` | `{"columns": ["Email"], "keep": "first", "dry_run": false}`. Same as `remove_duplicates` (see [Remove duplicates](#remove-duplicates)): a dry run unless `dry_run` is `false`. `read` scope for a dry run, `write` to remove. |
 | `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` (URL-encode the old name) |
 | `DELETE /sheets/:id/columns/:name` | |

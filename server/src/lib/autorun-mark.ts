@@ -117,6 +117,15 @@ export function autorunRowsRemoved(sheetId: string, userId: string): void {
     WHERE sheet_id = ? AND user_id = ?`).run(sheetId, userId, sheetId, userId);
 }
 
+// Removing duplicates' last transaction, after row_generation moved: no row
+// moved, so the fence drops as on any delete and takes the new generation
+// (left behind, auto-run would read it as a reorder and pass over new rows).
+export function autorunAfterRemoval(sheetId: string, userId: string): void {
+  autorunRowsRemoved(sheetId, userId);
+  db.prepare(`UPDATE autorun_columns SET row_generation_seen = (SELECT row_generation FROM sheets
+    WHERE id = ? AND user_id = ?) WHERE sheet_id = ? AND user_id = ?`).run(sheetId, userId, sheetId, userId);
+}
+
 interface FencedEntry { id: string; w: number; kind: string; status_column: string }
 
 const entriesOf = (sheetId: string, userId: string) => db.prepare(`SELECT id, watermark_row_index AS w, kind,

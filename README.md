@@ -53,6 +53,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
 - **Formulas, free.** Work a column out from each row with a JavaScript formula, as in Clay: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
+- **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters, up to a million rows per sheet.
@@ -175,6 +176,21 @@ Not sure how to write one? Describe what you want, like "the work email from Res
 A cell holding JSON, like a whole API response, reaches the formula as an object or a list. That's how you pick an item by a condition, which an HTTP API column's JSONPath fields don't do: extract `$` (the whole response) into a column, then add a formula column that reads it. A row the formula can't work out shows `❌` and the error.
 
 Auto-run is on by default, so new rows, and rows where a column the formula reads changes, are worked out again on their own. Formulas run in a sandbox with no access to your files, the network or the server, and with time and memory limits.
+
+### Remove duplicates
+
+Click **Remove duplicates** in the toolbar and pick the columns rows must match on. Upper/lower case and extra spaces never matter, and each column can match as:
+
+- **Text.** "Acme Corp" matches "ACME  corp".
+- **Email.** "Jo@Acme.com" matches "jo@acme.com".
+- **Website or domain.** "https://www.acme.com/about", "jo@acme.com" and "acme.com" all match. A Gmail or Outlook address never matches by domain, and a page on a site many businesses share, like facebook.com/joespizza, only matches the same page.
+- **Phone.** "(212) 555-0123" matches "+1 212 555 0123". Numbers with different extensions stay apart.
+- **Company name.** "Acme, Inc." matches "ACME LLC".
+- **Person name.** "Smith, John" matches "john smith", while "John Smith Jr." and "John Smith Sr." stay apart.
+
+Then choose which row of each group stays: the first, the last (usually the newest), or the most filled-in. Before anything is removed you see how many rows would go and a few of the groups, including the biggest. It's free, and it checks the whole sheet: filters don't apply.
+
+A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows can't be brought back, so export a copy first if you might want them. While a run is going on the sheet, removing waits until the run finishes or you stop it.
 
 ### Webhook
 

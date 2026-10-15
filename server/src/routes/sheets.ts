@@ -15,6 +15,7 @@ import webhookDeliveriesRoutes from './sheets-webhook-deliveries';
 import changesRoutes from './sheets-changes';
 import cleanRoutes from './sheets-clean';
 import formulaRoutes from './sheets-formula';
+import dedupeRoutes from './sheets-dedupe';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
@@ -49,5 +50,6 @@ router.use(webhookDeliveriesRoutes);
 router.use(changesRoutes);
 router.use(cleanRoutes);
 router.use(formulaRoutes);
+router.use(dedupeRoutes);
 
 export default router;

@@ -40,6 +40,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   rename_column: write('Rename a column', true, true),
   delete_column: write('Delete a column (permanent)', true, true),
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
+  // A dry run (the default) changes nothing; a removal deletes rows for good. Repeating it removes nothing more.
+  remove_duplicates: write('Remove duplicate rows (permanent)', true, true),
   manage_table: write('Create, rename or delete a table', true, false),
   manage_sheet: write('Create, rename, delete or reorder sheets', true, false),
   import_csv: write('Import a CSV', true, false),

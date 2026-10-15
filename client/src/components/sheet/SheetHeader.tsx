@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowLeft, Download, Import, Loader2, Pause, Play, Square, Trash2,
+  ArrowLeft, CopyMinus, Download, Import, Loader2, Pause, Play, Square, Trash2,
 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
@@ -28,6 +28,7 @@ interface SheetHeaderProps {
   onDeleteSelectedRows: () => void
   onImport: () => void
   onExport: () => void
+  onRemoveDuplicates: () => void
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -54,6 +55,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onDeleteSelectedRows,
   onImport,
   onExport,
+  onRemoveDuplicates,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -161,6 +163,12 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               >
                 {isExporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
                 <span>Export</span>
+              </button>
+
+              <button onClick={onRemoveDuplicates} disabled={!hasRows} title="Find and remove duplicate rows"
+                className="btn-secondary flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                <CopyMinus className="h-3 w-3" />
+                <span>Remove duplicates</span>
               </button>
             </div>
 
