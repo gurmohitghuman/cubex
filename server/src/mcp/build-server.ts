@@ -25,6 +25,7 @@ import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import { registerCleanTool } from './tools-clean';
 import { registerFormulaTool } from './tools-formula';
+import { registerDedupeTool } from './tools-dedupe';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   const server = new McpServer(
@@ -41,7 +42,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'never passes through your context. Clean names, companies, emails, domains, phones, case and ' +
         'spaces with clean_column: free, no AI, into a new column. Compute a column from each row (pick an ' +
         'item of an HTTP response by a condition, join, split, math) with formula_column: a free JavaScript ' +
-        'formula, no AI. ' +
+        'formula, no AI. Remove duplicate rows with remove_duplicates (free; a dry run unless dry_run is ' +
+        'false). ' +
         'Enrich with run_ai_column (per-row AI prompt) or ' +
         'run_http_enrichment (per-row HTTP JSON API + JSONPath extraction) — both ' +
         'return a run_id to poll via get_run_status; pause/resume/cancel/rerun ' +
@@ -73,6 +75,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerBalanceTools(server, ctx);
   registerCleanTool(server, ctx);
   registerFormulaTool(server, ctx);
+  registerDedupeTool(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);

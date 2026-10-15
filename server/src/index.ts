@@ -29,6 +29,7 @@ import { createAccountFromEnv } from './services/account';
 import { resumeColumnPurges } from './lib/column-purge';
 import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
+import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
@@ -188,9 +189,11 @@ createAccountFromEnv().then((result) => {
   );
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
-  // 004, 010's column fills, 024's clean and 025's formula column fills). Each marks its
-  // sheet busy synchronously, before the first request.
+  // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
+  // duplicate removals). Each marks its sheet busy synchronously, before the
+  // first request.
   resumeSorts();
+  resumeDuplicateRemovals();
   resumeImports();
   resumeRunRewrites();
   resumeColumnPurges();

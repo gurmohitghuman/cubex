@@ -34,6 +34,7 @@ export const useSheetModals = () => {
     setShowNewColumnModal(true)
   }, [])
   const [showWebhookDrawer, setShowWebhookDrawer] = useState(false)
+  const [showDedupeModal, setShowDedupeModal] = useState(false)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
   const [scrapedDataModal, setScrapedDataModal] =
     useState<{ isOpen: boolean; cell: SourcesCell | null }>({ isOpen: false, cell: null })
@@ -48,6 +49,7 @@ export const useSheetModals = () => {
     showNewColumnModal, setShowNewColumnModal,
     newColumnOpen, openClean, openFormula, clearNewColumnOpen: () => setNewColumnOpen(null),
     showWebhookDrawer, setShowWebhookDrawer,
+    showDedupeModal, setShowDedupeModal,
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
     scrapedDataModal, setScrapedDataModal,
   }

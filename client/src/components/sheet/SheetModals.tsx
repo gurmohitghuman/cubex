@@ -1,3 +1,4 @@
+// Over 200 lines: every dialog the sheet page opens, wired to the page's state in one place.
 import React from 'react'
 import toast from 'react-hot-toast'
 import { INITIAL_ROW_LOAD } from '@/lib/constants'
@@ -6,6 +7,7 @@ import { ScrapedDataModal, type SourcesCell } from '@/components/ScrapedDataModa
 import { ImportCSVModal } from '@/components/sheet/ImportCSVModal'
 import { NewColumnModal } from '@/components/sheet/NewColumnModal'
 import { SheetRunDrawers } from '@/components/sheet/SheetRunDrawers'
+import { RemoveDuplicatesModal } from '@/components/dedupe/RemoveDuplicatesModal'
 import { Sheet, SheetData } from '@/utils/api'
 import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 import { plural } from '@/lib/utils'
@@ -30,6 +32,7 @@ interface SheetModalsProps {
   // What the column menu opened the Add Column dialog on (Clean data, Edit cleaning, Edit formula).
   newColumnOpen: NewColumnOpenTarget | null
   scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
+  showDedupeModal: boolean
   // setters
   setConfirmTopbarDeleteOpen: (b: boolean) => void
   setShowImportModal: (b: boolean) => void
@@ -41,6 +44,7 @@ interface SheetModalsProps {
   setShowNewColumnModal: (b: boolean) => void
   clearNewColumnOpen: () => void
   setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
+  setShowDedupeModal: (b: boolean) => void
   setSelectedRowIndices: (rows: number[]) => void
   // Clears the grid row selection through AG Grid (deselectAll) — un-highlights the
   // rows AND syncs the mirrors. The topbar confirm uses this instead of only
@@ -68,7 +72,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     activeSheet, sheetData, selectedRowIndices,
     confirmTopbarDeleteOpen, showImportModal, showAddColumnModal,
     showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, enrichWatch, showNewColumnModal, scrapedDataModal,
-    newColumnOpen, clearNewColumnOpen,
+    newColumnOpen, clearNewColumnOpen, showDedupeModal, setShowDedupeModal,
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal, setShowHTTPAPIColumnModal,
     setShowEnrichmentDrawer, clearEnrichOpen, stopEnrichWatch, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
@@ -77,6 +81,14 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     waitForSaves, dropAllPending,
   } = props
   const closeNewColumn = () => { setShowNewColumnModal(false); clearNewColumnOpen() }
+  // Rows that were selected may be gone after removing duplicates: start over from a fresh load.
+  const reloadAfterRemoval = async (sheetId: string) => {
+    setShowDedupeModal(false)
+    setSelectedRowIndices([])
+    clearGridSelection()
+    setLoadedRowsCount(0)
+    await loadSheetData(sheetId, INITIAL_ROW_LOAD, 0)
+  }
 
   return (
     <>
@@ -177,6 +189,20 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           },
         } : undefined}
       />
+
+      {activeSheet && (
+        <RemoveDuplicatesModal
+          isOpen={showDedupeModal} onClose={() => setShowDedupeModal(false)} sheetId={activeSheet.id}
+          columns={sheetData?.data.columns ?? []} cleanColumns={sheetData?.data.cleanColumns ?? {}}
+          onBeforeRemove={() => waitForSaves(5000)}
+          onRemoved={async ({ removed }) => {
+            await reloadAfterRemoval(activeSheet.id)
+            toast.success(removed === 0 ? 'No duplicates left to remove.'
+              : `Removed ${plural(removed, 'duplicate row')}`)
+          }}
+          onStoppedPartWay={() => void reloadAfterRemoval(activeSheet.id)}
+        />
+      )}
 
       <ScrapedDataModal
         isOpen={scrapedDataModal.isOpen}

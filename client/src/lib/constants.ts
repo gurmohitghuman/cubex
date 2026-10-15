@@ -89,3 +89,10 @@ export const FORMULA_PREVIEW_DELAY_MS = 500;
 
 // Longest pasted cURL command the HTTP column dialog sends (mirrors server CURL_MAX_CHARS).
 export const CURL_MAX_CHARS = 100_000;
+
+// Remove duplicates dialog: the check (a free read of the whole sheet) is
+// asked for this long after the last change to the columns or keep choice.
+// Checking and removing a million rows can take longer than the client's
+// usual 30 s request timeout, so both wait up to DEDUPE_REQUEST_TIMEOUT_MS.
+export const DEDUPE_CHECK_DELAY_MS = 400;
+export const DEDUPE_REQUEST_TIMEOUT_MS = 10 * 60_000;

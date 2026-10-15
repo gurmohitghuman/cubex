@@ -239,8 +239,7 @@ export const SheetPage: React.FC = () => {
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <SheetHeader
         tableName={table?.name} totalRows={totalDisplayedRows} loadedRowsCount={loadedRowsCount}
-        columnCount={columnOps.columnHeaders.length}
-        selectedRowCount={cellOps.selectedRowIndices.length}
+        columnCount={columnOps.columnHeaders.length} selectedRowCount={cellOps.selectedRowIndices.length}
         isExporting={exporter.isExporting} hasRows={!!sheetData?.data.rows.length}
         saveStatus={cellOps.saveStatus} retrySave={cellOps.retrySave}
         anyActiveRuns={runControls.anyActiveRuns} anyRunning={runControls.anyRunning}
@@ -251,6 +250,7 @@ export const SheetPage: React.FC = () => {
         onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
+        onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
         autorunChip={<AutorunChip autorun={autorun} />}
       />
       <SheetGridArea

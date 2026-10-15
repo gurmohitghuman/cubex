@@ -1,10 +1,13 @@
-// /v1 sheet operations: physical sort + CSV export. Both delegate to the
-// implementations shared with the UI routes (services/sheet-sort.ts,
-// lib/csv-export.ts).
+// /v1 sheet operations: physical sort, removing duplicates and CSV export.
+// Each delegates to the implementation shared with the UI routes
+// (services/sheet-sort.ts, services/dedupe-*.ts, lib/csv-export.ts).
 import express from 'express';
+import type { NextFunction, Response } from 'express';
 import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { physicalSortSheet } from '../services/sheet-sort';
+import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
+import { runFailHttpStatus } from '../services/run-shared';
 import { streamSheetCsv } from '../lib/csv-export';
 
 const router = express.Router();
@@ -40,6 +43,29 @@ router.post('/sheets/:id/sort', requireScope('write'), async (req: TokenAuthRequ
   } catch (error) {
     console.error('POST /v1/sheets/:id/sort error:', error);
     res.status(500).json({ error: 'Failed to sort sheet' });
+  }
+});
+
+// POST /v1/sheets/:id/remove-duplicates {columns, keep?, dry_run?}: the same
+// answer as the MCP tool remove_duplicates. A dry run (the default) only
+// reads; removing (dry_run: false) needs the write scope.
+const dedupeScope = (req: TokenAuthRequest, res: Response, next: NextFunction) =>
+  requireScope(dedupeDryRun((req.body ?? {}).dry_run) === false ? 'write' : 'read')(req, res, next);
+
+router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthRequest, res) => {
+  try {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Send a JSON object.' });
+    }
+    const out = await agentRemoveDuplicates(req.userId!, req.params.id, body);
+    if ('fail' in out) {
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+    }
+    res.json(out.ok);
+  } catch (error) {
+    console.error('POST /v1/sheets/:id/remove-duplicates error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to remove duplicates' });
   }
 });
 

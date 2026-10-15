@@ -14,10 +14,11 @@ interface BusyEntry {
   finish?: () => Promise<void>; // stayBusyToFinish
 }
 const busy = new Map<string, BusyEntry>();
-// A long read that walks the sheet in pages between requests (a CSV export)
-// holds the sheet against heavy operations, which move or rewrite rows under
-// its cursor. Any number can read at once; cell edits and appends go on.
-const readers = new Map<string, number>();
+// A long read that walks the sheet in pages between requests (a CSV export,
+// a duplicate check) holds the sheet against heavy operations, which move or
+// rewrite rows under its cursor. Any number can read at once; cell edits and
+// appends go on. `what` names the latest reader in a busy message.
+const readers = new Map<string, { n: number; what: string }>();
 // Bumped each time a heavy operation starts on a sheet, so a background reader
 // (lib/column-repair.ts) can tell whether one overlapped its scan.
 const epochs = new Map<string, number>();
@@ -45,7 +46,8 @@ export async function withSheetBusy<T>(
 ): Promise<T | { busy: string }> {
   const current = busy.get(sheetId);
   if (current) return { busy: busyMessage(current.what) };
-  if (readers.get(sheetId)) return { busy: busyMessage('exporting') };
+  const reading = readers.get(sheetId);
+  if (reading) return { busy: busyMessage(reading.what) };
   const entry: BusyEntry = { what, appendFloor: 0 };
   busy.set(sheetId, entry);
   epochs.set(sheetId, busyEpoch(sheetId) + 1);
@@ -110,15 +112,17 @@ export async function whenSheetFree(sheetId: string, what: string, work: (reserv
   }
 }
 
-export async function withSheetRead<T>(sheetId: string, work: () => Promise<T>): Promise<T | { busy: string }> {
+export async function withSheetRead<T>(
+  sheetId: string, work: () => Promise<T>, what = 'exporting',
+): Promise<T | { busy: string }> {
   const current = busy.get(sheetId);
   if (current) return { busy: busyMessage(current.what) };
-  readers.set(sheetId, (readers.get(sheetId) ?? 0) + 1);
+  readers.set(sheetId, { n: (readers.get(sheetId)?.n ?? 0) + 1, what });
   try {
     return await work();
   } finally {
-    const left = (readers.get(sheetId) ?? 1) - 1;
-    if (left > 0) readers.set(sheetId, left); else readers.delete(sheetId);
+    const left = (readers.get(sheetId)?.n ?? 1) - 1;
+    if (left > 0) readers.set(sheetId, { n: left, what: readers.get(sheetId)!.what }); else readers.delete(sheetId);
   }
 }
 
