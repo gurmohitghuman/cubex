@@ -12,6 +12,10 @@ import type { useSheetView } from '@/hooks/sheet/useSheetView'
 import type { useGridHandles } from '@/hooks/sheet/useGridHandles'
 import type { useAutorun } from '@/hooks/sheet/useAutorun'
 import type { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
+import type { ColumnType } from '@/utils/api/types'
+
+// One empty map, not a new {} per render: a new object rebuilds every grid column.
+const NO_COLUMN_TYPES: Record<string, ColumnType> = {}
 
 interface Props {
   gridArea: ReturnType<typeof gridAreaMode>
@@ -60,7 +64,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           emptyFilter={emptyFilter}
           columnFilters={columnFilters}
           lastRenamedColumn={columnOps.lastRenamedColumn}
-          columnTypes={sheetData?.data.columnTypes ?? {}}
+          columnTypes={sheetData?.data.columnTypes ?? NO_COLUMN_TYPES}
           autorun={autorun.view} columnSpend={autorun.spend} onAutorunAction={autorun.onAction}
           cleanColumns={sheetData?.data.cleanColumns} onOpenClean={modals.openClean}
           formulaColumns={sheetData?.data.formulaColumns} onOpenFormula={modals.openFormula}
