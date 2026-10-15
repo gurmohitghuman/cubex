@@ -7,7 +7,7 @@ import {
 import { percentile, average } from '../lib/ai-cost';
 import type { Range, WebTools } from '../lib/ai-web-cost';
 
-// avg as the low end, p75 as the high end (Clay's withholding rank).
+// avg as the low end, p75 as the high end.
 const spread = (values: number[]): Range => {
   const low = Math.round(average(values) ?? 0);
   return { low, high: Math.max(low, Math.round(percentile(values, 75) ?? low)) };

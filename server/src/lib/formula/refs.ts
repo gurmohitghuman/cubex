@@ -1,5 +1,5 @@
 // Formulas as people write them (pure): one JavaScript expression reading the
-// row as {{Column}}, as in Clay. compileFormula resolves each reference the way
+// row as {{Column}}. compileFormula resolves each reference the way
 // "Only run if" rules do (exact name, else the one matching ignoring case, else
 // by normalized name; a misspelling is refused with the closest name), keeps
 // the formula with every name written exactly, and writes the source the

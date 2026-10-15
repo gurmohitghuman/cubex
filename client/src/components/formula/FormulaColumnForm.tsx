@@ -17,7 +17,7 @@ const LABEL = 'block text-xs font-medium text-gray-700 mb-1'
 const EXAMPLE = '{{Response}}?.emails?.find(e => e.type == "work")?.value'
 
 // A formula column: a new column worked out for free from each row by one
-// JavaScript expression reading cells as {{Column}}, as in Clay. Describe it
+// JavaScript expression reading cells as {{Column}}. Describe it
 // and AI writes the formula once, or write it yourself. With auto-run on, new
 // rows and rows where a column it reads changes are worked out on their own.
 export const FormulaColumnForm: React.FC<Props> = ({ sheetId, columns, editing, onCancel, onStarted }) => {

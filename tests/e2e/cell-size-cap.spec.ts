@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { authedApi, seedSheet, getSheet } from './helpers'
 import { makeToken, bearer } from './api-v1-run-helpers'
 
-// P2-8 two-tier per-cell size cap (matches Clay: 8k basic / 200k enrichment).
+// P2-8 two-tier per-cell size cap (8k basic / 200k enrichment).
 // Tier is chosen by the write's `mode`: manual grid edits send mode:'update'
 // (basic, DROP oversize + report); AI/HTTP preview-commits send mode:'upsert'
 // (enrichment, TRUNCATE). Direct API/MCP cell writes are basic (REJECT).

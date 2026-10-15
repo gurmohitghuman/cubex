@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 // prompt. Reads the prompt string, finds every /token, intersects with the
 // real columns this sheet has, and shows valid refs as blue chips and unknown
 // refs as red chips. Click the × to strip that reference from the prompt.
-// Lives below the textarea (Clay-style chip strip) so the textarea stays
+// Lives below the textarea (a strip of chips) so the textarea stays
 // plain — no rich-text editor required.
 const TOKEN_REGEX = /\/([A-Za-z0-9_-]+)/g
 

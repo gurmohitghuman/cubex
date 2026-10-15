@@ -14,7 +14,7 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
       'Fill a column for FREE with a formula worked out from each row: no AI, no credits, no requests. Prefer it '
       + 'over run_ai_column whenever the value can be computed from the row: picking a field out of an API '
       + 'response, choosing an item of a list by a condition, joining or splitting text, math. The formula is ONE '
-      + 'JavaScript expression (as in Clay) reading cells as {{Column name}}, e.g. '
+      + 'JavaScript expression reading cells as {{Column name}}, e.g. '
       + '{{Response}}?.emails?.find(e => e.type == "work")?.value or `${{{First}}} ${{{Last}}}` or '
       + 'Number({{Price}}) * 1.2. Cells are text: use Number() for math. A cell holding JSON (text starting '
       + 'with { or [, like a whole HTTP response written by run_http_enrichment mapping "$") arrives parsed, so '

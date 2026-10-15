@@ -20,8 +20,8 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / AI_ESTIMATE_CHARS_PER_TOKEN);
 }
 
-// 75th percentile (nearest-rank) of a numeric sample. Clay withholds credits at
-// p75 of past runs; we use it as the HIGH end of the output-token range. Returns
+// 75th percentile (nearest-rank) of a numeric sample, from past runs; we use
+// it as the HIGH end of the output-token range. Returns
 // null for an empty sample so callers fall back to the heuristic default.
 export function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;

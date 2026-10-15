@@ -52,7 +52,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **HTTP API columns.** Call any JSON API once per row and turn fields of the answer into columns.
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
-- **Formulas, free.** Work a column out from each row with a JavaScript formula, as in Clay: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
+- **Formulas, free.** Work a column out from each row with a JavaScript formula: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
@@ -163,7 +163,7 @@ Auto-run is on by default, so new rows and rows whose source changes are cleaned
 
 ### Formulas
 
-Click **+ Add Column** and choose **Formula** to work a new column out from each row. A formula is one line of JavaScript that reads the row's cells as `{{Column name}}`, the way Clay formulas do:
+Click **+ Add Column** and choose **Formula** to work a new column out from each row. A formula is one line of JavaScript that reads the row's cells as `{{Column name}}`:
 
 - `{{Response}}?.emails?.find(e => e.type == "work")?.value` picks the work email out of an API response.
 - `` `${{{First}}} ${{{Last}}}` `` joins two columns.

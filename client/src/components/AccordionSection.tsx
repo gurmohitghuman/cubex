@@ -2,7 +2,7 @@ import React, { ReactNode } from 'react'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
-// One collapsible section of a Clay-style config accordion (used by the HTTP API and
+// One collapsible section of a config accordion (used by the HTTP API and
 // AI Column drawers). Built on Headless UI's Disclosure (accessible button semantics,
 // keyboard, ARIA state for free) with the codebase's ChevronRight/ChevronDown idiom
 // inside the button. Sections are INDEPENDENT (multiple can be open at once) — config

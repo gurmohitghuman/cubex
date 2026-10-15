@@ -53,7 +53,7 @@ function listHint(dest: string | null, statusCell: string): string {
   return `No rows were added to ${dest}.`
 }
 
-// A cell's answer (Clay's cell details): who found it and what it cost, the
+// A cell's answer (its details): who found it and what it cost, the
 // row's result, each step, and the whole answer as text, where any value can
 // become a column. HTTP API columns get the result and the full response.
 export const AnswerPanel: React.FC<Props> = (p) => {

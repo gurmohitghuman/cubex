@@ -10,7 +10,7 @@ const LEVELS: Array<{ value: AcceptLevel; label: string; hint: string }> = [
 export const acceptSummary = (level: AcceptLevel) => ({ safest: 'Valid only', balanced: 'Valid or catch-all', wide: 'Valid, catch-all or risky' }[level])
 
 // Verified work email: which checker verdicts count, and the free guess
-// (Clay's "infer email") tried before any paid find.
+// (the address worked out from the name and domain) tried before any paid find.
 export const EmailChecksPane: React.FC<{ value: EmailChecks; onChange: (v: EmailChecks) => void }> = ({ value, onChange }) => (
   <div className="space-y-3">
     <fieldset className="space-y-1.5">
