@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   dedupeAPI, type CleanColumnView, type DedupeBody, type DedupeCheckResult, type DedupeColumn,
 } from '@/utils/api'
-import { guessDedupeMatch, pickDedupeColumn, type DedupeKeep, type DedupeMatch } from '@/lib/dedupe'
+import { guessDedupeMatch, isPeopleSheet, pickDedupeKeys, type DedupeKeep, type DedupeMatch } from '@/lib/dedupe'
 import { DEDUPE_CHECK_DELAY_MS } from '@/lib/constants'
 
 export interface DedupeCheckState {
@@ -43,16 +43,16 @@ interface Args { sheetId: string; columns: string[]; cleanColumns: Record<string
 // The Remove duplicates dialog's choices: the columns to match on (each with
 // how it matches) and which row of a group stays, plus the live check.
 export function useDedupeForm({ sheetId, columns, cleanColumns, open }: Args) {
+  const people = isPeopleSheet(columns)
   const guess = useCallback((column: string): DedupeColumn =>
-    ({ column, match: guessDedupeMatch(column, cleanColumns[column]?.cleaner) }), [cleanColumns])
+    ({ column, match: guessDedupeMatch(column, cleanColumns[column]?.cleaner, people) }), [cleanColumns, people])
   const [keys, setKeys] = useState<DedupeColumn[]>([])
   const [keep, setKeep] = useState<DedupeKeep>('first')
   const [nonce, setNonce] = useState(0)
-  // Each opening starts fresh, on the column that tells rows apart best (lib/dedupe.ts).
+  // Each opening starts fresh, on the columns that tell rows apart best (lib/dedupe.ts).
   useEffect(() => {
     if (!open) return
-    const first = pickDedupeColumn(columns, c => cleanColumns[c]?.cleaner)
-    setKeys(first ? [guess(first)] : [])
+    setKeys(pickDedupeKeys(columns, c => cleanColumns[c]?.cleaner))
     setKeep('first')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])

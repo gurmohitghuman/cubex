@@ -7,7 +7,7 @@ import finderMod from '../../server/src/lib/dedupe/finder'
 const { keyPart, rowKey } = keyMod as typeof import('../../server/src/lib/dedupe/key')
 const { DuplicateFinder } = finderMod as typeof import('../../server/src/lib/dedupe/finder')
 // The dialog's first guesses (client, no imports of its own; tsx has no "@/").
-import { guessDedupeMatch, pickDedupeColumn } from '../../client/src/lib/dedupe'
+import { guessDedupeMatch, pickDedupeKeys } from '../../client/src/lib/dedupe'
 type Match = import('../../server/src/lib/dedupe/key').DedupeMatch
 
 let failures = 0
@@ -75,14 +75,25 @@ ok('person name: Jr and Sr stay apart', () => {
   same('person_name', 'John Smith Junior', 'john smith jr')
 })
 
-ok('the dialog opens on the column that tells rows apart best', () => {
+ok('the dialog opens on columns that never merge different people or companies by themselves', () => {
   const none = () => undefined
-  assert.equal(pickDedupeColumn(['First Name', 'Last Name', 'Title', 'Company', 'Email', 'Phone'], none), 'Email')
-  assert.equal(pickDedupeColumn(['First name', 'Last name', 'Company size', 'Mobile'], none), 'Mobile')
-  assert.equal(pickDedupeColumn(['Business name', 'Address', 'Website'], none), 'Website')
-  assert.equal(pickDedupeColumn(['Notes', 'Stage'], none), 'Notes')
-  const cleaned = (c: string) => (c === 'Work (clean)' ? 'email' : undefined)
-  assert.equal(pickDedupeColumn(['Notes', 'Work (clean)'], cleaned), 'Work (clean)')
+  const keys = (cols: string[], cleanerOf: (c: string) => string | undefined = none) =>
+    pickDedupeKeys(cols, cleanerOf).map(k => `${k.column}:${k.match}`)
+  assert.deepEqual(keys(['First Name', 'Last Name', 'Title', 'Company', 'Email', 'Phone']), ['Email:email'])
+  // A company list (from a search): "name" is the company, and its domain tells companies apart.
+  assert.deepEqual(keys(['aiark_id', 'domain', 'name', 'staff', 'industries']), ['domain:domain'])
+  assert.deepEqual(keys(['name', 'industry', 'staff']), ['name:company'])
+  assert.deepEqual(keys(['Business name', 'Address', 'Website']), ['Website:domain'])
+  // A people list without an email: the name never alone when a company is there.
+  assert.deepEqual(keys(['Full name', 'Title', 'Company domain']), ['Full name:person_name', 'Company domain:domain'])
+  assert.deepEqual(keys(['First name', 'Last name', 'Company']),
+    ['First name:text', 'Last name:text', 'Company:company'])
+  assert.deepEqual(keys(['First name', 'Last name', 'Company size', 'Mobile']), ['Mobile:phone'])
+  assert.deepEqual(keys(['Notes', 'Stage']), ['Notes:text'])
+  assert.deepEqual(keys(['Notes', 'Work (clean)'], c => (c === 'Work (clean)' ? 'email' : undefined)),
+    ['Work (clean):email'])
+  assert.equal(guessDedupeMatch('name', undefined, false), 'company')
+  assert.equal(guessDedupeMatch('name', undefined, true), 'person_name')
   assert.equal(guessDedupeMatch('Company size'), 'text')
   assert.equal(guessDedupeMatch('Email status'), 'text')
   assert.equal(guessDedupeMatch('Phone type'), 'text')
