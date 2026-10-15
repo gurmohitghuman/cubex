@@ -42,29 +42,54 @@ const BY_CLEANER: Record<string, DedupeMatch> = {
 // when it was sent) holds no address or number.
 const ABOUT = /\b(status|verified|verification|valid|validity|type|sent|opened|clicked|bounced?|date|count|score)\b/
 
+// A sheet of people, not companies: it has a first, last, full or contact
+// name column, or a job title. On any other sheet a bare "Name" column holds
+// a company's name (a list of companies from a search or a scrape).
+const PERSON_COLUMN = /^(first|last|full|contact|person)[ _-]?name$|^(job )?title$/
+export const isPeopleSheet = (columns: string[]): boolean =>
+  columns.some(c => PERSON_COLUMN.test(c.toLowerCase().trim()))
+
 // A first guess from a clean column's cleaner or the column's name. A URL
 // column stays text: "linkedin.com/in/jo" isn't a company's website.
-export function guessDedupeMatch(column: string, cleaner?: string): DedupeMatch {
+export function guessDedupeMatch(column: string, cleaner?: string, people = true): DedupeMatch {
   if (cleaner && BY_CLEANER[cleaner]) return BY_CLEANER[cleaner]
   const c = column.toLowerCase().trim()
   if (/\be-?mail\b/.test(c) && !ABOUT.test(c)) return 'email'
   if (/\b(domain|website|web site|homepage)\b/.test(c) && !ABOUT.test(c)) return 'domain'
   if (/\b(phone|mobile|cell)\b/.test(c) && !ABOUT.test(c)) return 'phone'
   if (/^(company|organi[sz]ation|employer|account)( name)?$/.test(c)) return 'company'
-  if (/^(full |contact |person )?name$/.test(c)) return 'person_name'
+  if (/^(full |contact |person )?name$/.test(c)) return c === 'name' && !people ? 'company' : 'person_name'
   return 'text'
 }
 
-// The column the dialog opens on: the one that tells people apart best (an
-// email, then a phone, a full name, a domain, a company), the first of a
-// kind in sheet order; else the first column.
-const RANK: DedupeMatch[] = ['email', 'phone', 'person_name', 'domain', 'company']
-export function pickDedupeColumn(
+export interface DedupeKeyGuess { column: string; match: DedupeMatch }
+
+// The columns the dialog opens on, never one that would merge different
+// people or companies by itself: an email; else, on a people sheet, the name
+// together with the company (its domain first), or a phone, or the name
+// alone; on any other sheet the domain, the company name or a phone; else
+// the first column as text. The check shows the groups before anything goes.
+export function pickDedupeKeys(
   columns: string[], cleanerOf: (column: string) => string | undefined,
-): string | undefined {
-  for (const match of RANK) {
-    const hit = columns.find(c => guessDedupeMatch(c, cleanerOf(c)) === match)
-    if (hit) return hit
+): DedupeKeyGuess[] {
+  const people = isPeopleSheet(columns)
+  const typed = columns.map(column => ({ column, match: guessDedupeMatch(column, cleanerOf(column), people) }))
+  const find = (m: DedupeMatch) => typed.find(k => k.match === m)
+  const named = (re: RegExp) => typed.find(k => re.test(k.column.toLowerCase().trim()))
+  const email = find('email')
+  if (email) return [email]
+  if (people) {
+    const full = find('person_name')
+    const first = named(/^first[ _-]?name$/), last = named(/^last[ _-]?name$/)
+    const names = full ? [full] : first && last ? [first, last] : []
+    const where = find('domain') ?? find('company')
+    if (names.length > 0 && where) return [...names, where]
+    const phone = find('phone')
+    if (phone) return [phone]
+    if (names.length > 0) return names
+  } else {
+    const key = find('domain') ?? find('company') ?? find('phone')
+    if (key) return [key]
   }
-  return columns[0]
+  return typed.slice(0, 1)
 }
