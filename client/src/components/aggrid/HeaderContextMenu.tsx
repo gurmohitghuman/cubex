@@ -12,6 +12,11 @@ import { CleanColumnActions } from './CleanColumnActions'
 import { FormulaColumnActions } from './FormulaColumnActions'
 import type { RunByColumn, RunMenuActions } from './types'
 
+// Columns a setup can hold: filled ones (lib/setups on the server says which can't, and why).
+const SAVABLE = new Set<ColumnType | undefined>([
+  'ai-output', 'ai-data', 'http-master', 'enrich-status', 'http-extracted', 'clean', 'formula',
+])
+
 export type MenuState = {
   x: number; y: number; columnId: string; selectedRowIndices?: number[]
 } | null
@@ -89,6 +94,13 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
             activeHTTPRunsByColumn={activeHTTPRunsByColumn} />
         )}
         <AIColumnActions {...runProps} columnType={columnType} activeAIRunsByColumn={activeAIRunsByColumn} />
+        {runActions.onSaveSetup && SAVABLE.has(columnType) && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { runActions.onSaveSetup!(menu.columnId); setMenu(null) }}
+              className="text-gray-700 focus:text-gray-900">💾 Save as setup…</DropdownMenuItem>
+          </>
+        )}
 
         {onColumnFilterChange && (
           <>

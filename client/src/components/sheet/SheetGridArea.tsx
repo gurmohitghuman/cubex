@@ -87,7 +87,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           onColumnReorder={columnOps.handleColumnReorder}
           onAddColumn={() => modals.setShowNewColumnModal(true)}
           registerClearSelection={grid.registerClearSelection} registerViewport={grid.registerViewport}
-          onOpenEnrichment={modals.openEnrichment}
+          onOpenEnrichment={modals.openEnrichment} onSaveSetup={modals.openSaveSetup}
           setShowAddColumnModal={modals.setShowAddColumnModal}
           setupSSEConnection={sse.setupSSEConnection}
           fetchActiveHTTPRuns={runs.fetchHTTPRuns} fetchActiveAIRuns={runs.fetchAIRuns}

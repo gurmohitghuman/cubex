@@ -15,6 +15,7 @@ import webhookDeliveriesRoutes from './sheets-webhook-deliveries';
 import changesRoutes from './sheets-changes';
 import cleanRoutes from './sheets-clean';
 import formulaRoutes from './sheets-formula';
+import setupRoutes from './sheets-setups';
 import dedupeRoutes from './sheets-dedupe';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
@@ -30,9 +31,10 @@ import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 const router = express.Router();
 // A sheet that is busy sorting, importing or rewriting a column takes no other
 // change until it finishes; appending rows is safe, and a clean or formula
-// column's preview (and writing a formula with AI) only reads (lib/sheet-busy.ts).
+// column's preview (and writing a formula with AI) only reads (lib/sheet-busy.ts),
+// as saving a setup does.
 router.use('/:id', refuseChangesWhileBusy([
-  '/rows', '/clean-columns/preview', '/formula-columns/preview', '/formula-columns/write',
+  '/rows', '/clean-columns/preview', '/formula-columns/preview', '/formula-columns/write', '/setups/plan', '/setups',
 ]));
 router.use(readRoutes);
 router.use(dataRoutes);
@@ -50,6 +52,7 @@ router.use(webhookDeliveriesRoutes);
 router.use(changesRoutes);
 router.use(cleanRoutes);
 router.use(formulaRoutes);
+router.use(setupRoutes);
 router.use(dedupeRoutes);
 
 export default router;

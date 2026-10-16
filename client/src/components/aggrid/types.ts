@@ -37,6 +37,8 @@ export interface RunMenuActions {
   onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
   onCleanAction?: (action: CleanMenuAction, columnName: string) => void
   onFormulaAction?: (action: FormulaMenuAction, columnName: string) => void
+  // Save as setup: the dialog opened on a filled column (it and what it reads start ticked).
+  onSaveSetup?: (columnName: string) => void
 }
 
 export interface AGGridSpreadsheetProps {

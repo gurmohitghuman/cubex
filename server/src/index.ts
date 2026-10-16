@@ -49,6 +49,7 @@ import mcpRoutes from './routes/mcp';
 import healthRoutes from './routes/health';
 import enrichRoutes from './routes/enrich';
 import autorunRoutes from './routes/autorun';
+import setupsRoutes from './routes/setups';
 import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
 
@@ -132,6 +133,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/http', httpRoutes);
 app.use('/api/enrich', enrichRoutes);
 app.use('/api/autorun', autorunRoutes);
+app.use('/api/setups', setupsRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Liveness/readiness probe (see routes/health.ts).

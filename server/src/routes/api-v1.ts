@@ -29,6 +29,7 @@ import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
+import setupsV1 from './api-v1-setups';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 const router = express.Router();
@@ -47,6 +48,7 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
 router.use('/sheets/:id', refuseChangesWhileBusy([
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
+  '/setups', '/setups/plan',
 ]));
 router.use(tablesV1);
 router.use(tableSheetsV1);
@@ -59,6 +61,8 @@ router.use(columnsV1);
 router.use(cleanV1);
 // Formula columns: a free JavaScript formula per row into a new column (services/formula-agent.ts).
 router.use(formulaV1);
+// Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
+router.use(setupsV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);
