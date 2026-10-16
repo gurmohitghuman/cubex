@@ -4,7 +4,8 @@ import { authedApi, seedSheet, BASE } from './helpers'
 // The app's setups: "Save as setup…" on a filled column ticks it and the
 // filled columns it reads, shows the order and what a sheet needs, and saves;
 // Settings → Setups lists it to rename, export as a file, delete, and import
-// the file back.
+// the file back. "Use a setup…" on another sheet: pick it, match its input to
+// a column, see the price, start; the chip follows it and its columns fill.
 
 async function seedChain(api: APIRequestContext) {
   const { tableId, sheetId } = await seedSheet(api, 2)
@@ -81,5 +82,42 @@ test('Save as setup from a column, then manage it in Settings', async ({ page, c
   await page.getByTestId('setup-import-file').setInputFiles(file)
   await expect(page.getByText('Imported the setup "Domain tag"')).toBeVisible()
   await expect(card).toContainText('Domain tag')
+  for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
+})
+
+test('Use a setup on another sheet from the Setups menu', async ({ page, context }) => {
+  test.setTimeout(120_000)
+  const api = await authedApi()
+  for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
+  const { tableId, sheetId } = await seedChain(api)
+  const saved = await api.post(`/api/sheets/${sheetId}/setups`, { data: { name: 'Domain label', columns: ['Label'] } })
+  expect(saved.status()).toBe(201)
+  // A second sheet whose site column has another name.
+  const other = (await (await api.post(`/api/tables/${tableId}/sheets`, { data: { name: 'Leads' } })).json()).sheet.id
+  await api.post(`/api/sheets/${other}/columns`, { data: { columnName: 'Site' } }) // into its 3 blank rows
+  const updates = ['stripe.com', 'figma.com', 'notion.so'].map((value, rowIndex) => ({ rowIndex, columnName: 'Site',
+    value }))
+  expect((await api.put(`/api/sheets/${other}/data`, { data: { updates } })).ok()).toBeTruthy()
+
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${tableId}/${other}`)
+  await expect(header(page, 'Site')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('setups-menu').click()
+  await page.getByRole('menuitem', { name: 'Use a setup…' }).click()
+  await page.getByTestId('use-setup-option').filter({ hasText: 'Domain label' }).click()
+  // Website has no column of its name here: picked by hand, then priced.
+  await expect(page.getByTestId('setup-estimate-error')).toContainText('Website')
+  await page.getByRole('combobox', { name: 'Column for Website' }).selectOption('Site')
+  const estimate = page.getByTestId('setup-estimate')
+  await expect(estimate).toContainText('Free')
+  await expect(page.getByTestId('setup-estimate-total')).toHaveText('$0.00')
+  await page.getByTestId('use-setup-start').click()
+  await expect(page.getByText('Started "Domain label"')).toBeVisible()
+  await expect(page.getByText('"Domain label" is done.')).toBeVisible({ timeout: 30_000 })
+  await expect(header(page, 'Label')).toBeVisible({ timeout: 15_000 })
+  await expect.poll(async () => (await (await api.get(`/api/sheets/${other}?limit=10&offset=0`)).json())
+    .data.rows.map((r: any) => r.data.Label), { timeout: 15_000 }).toEqual(['stripe!', 'figma!', 'notion!'])
+  await expect(page.locator('.ag-center-cols-container .ag-row[row-index="0"]')).toContainText('stripe!',
+    { timeout: 15_000 })
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
 })

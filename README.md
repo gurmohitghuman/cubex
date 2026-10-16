@@ -53,6 +53,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
 - **Formulas, free.** Work a column out from each row with a JavaScript formula: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
+- **Setups.** Save a chain of filled columns (the prompts, models, requests, formulas and rules) once, then build the same columns on a new client's sheet in one go. Each step runs once the columns it reads are filled.
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
@@ -191,6 +192,14 @@ Click **Remove duplicates** in the toolbar and pick the columns rows must match 
 Then choose which row of each group stays: the first, the last (usually the newest), or the most filled-in. Before anything is removed you see how many rows would go and a few of the groups, including the biggest. It's free, and it checks the whole sheet: filters don't apply.
 
 A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows can't be brought back, so export a copy first if you might want them. While a run is going on the sheet, removing waits until the run finishes or you stop it.
+
+### Setups
+
+When a chain of columns works on one sheet (say a formula pulls the domain, an HTTP API column looks the company up, and an AI column scores the fit), save it: open a filled column's menu and choose **Save as setup…**, or use **Setups** in the toolbar. The columns it reads come along, and you see the order the steps run in and which columns a sheet needs for it. Only how each column is filled is saved, never your rows, and saved API keys are kept by name only.
+
+On another sheet, choose **Setups**, then **Use a setup…**. Match each column the setup reads to a column of this sheet, rename any column the sheet already has, and see what it would cost before you start: AI steps priced on your rows, enrichments at treg's prices, clean and formula steps free. Test it on the first few rows, or run it on every row. The steps run in order, each once the columns it reads are filled, and a chip in the toolbar shows where it is, with pause and stop. After a run on every row, the auto-runs saved with the setup are turned on.
+
+Setups live in **Settings, Setups**, where you can rename, export one as a file for another Cubex, import one, or delete it. A setup is a copy: changing or deleting it never changes a sheet you used it on.
 
 ### Webhook
 

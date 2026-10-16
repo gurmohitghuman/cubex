@@ -6,6 +6,7 @@ import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
+import { startSetupLoop } from '../services/setup-runner';
 import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
@@ -44,6 +45,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).
       startAutorunLoop();
+      // Setups being used on sheets start their next steps (services/setup-runner.ts).
+      startSetupLoop();
       // A write to a clean or formula column's input works it out again at once (services/derived-follow.ts).
       startDerivedFollow();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to

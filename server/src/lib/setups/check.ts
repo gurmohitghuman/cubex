@@ -12,6 +12,7 @@ import { orderSteps } from './graph';
 import { stepReads } from './refs';
 import { KIND_LABEL, mainColumn, stepColumns, STEP_KINDS, type SetupSpec, type SetupStep } from './spec';
 import { readStep } from './check-shape';
+import { findColumnNameCollision } from '../column-names';
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const names = (v: unknown, max: number): v is string[] => Array.isArray(v) && v.length <= max
@@ -49,6 +50,19 @@ export function readSpec(raw: unknown): { ok: SetupSpec } | { problem: string } 
 // What's inconsistent in a setup, or null. The stored order must already be
 // one where each step follows what it reads (saving writes it that way).
 export function specProblem(spec: SetupSpec): string | null {
+  const g = specGraph(spec);
+  return 'problem' in g ? g.problem : null;
+}
+
+// When each step can start: 0 from the inputs alone, n after the steps it
+// reads (graph.ts), for a setup specProblem accepts.
+export function specLayers(spec: SetupSpec): number[] {
+  const g = specGraph(spec);
+  if ('problem' in g) throw new Error(g.problem);
+  return g.layers;
+}
+
+function specGraph(spec: SetupSpec): { layers: number[] } | { problem: string } {
   const keys = new Set(spec.keys);
   const known = [...spec.inputs];
   const graph = [];
@@ -56,19 +70,21 @@ export function specProblem(spec: SetupSpec): string | null {
     const made = stepColumns(s);
     // Its own columns count as known so reading one is reported as a loop, not as "isn't a column".
     const reads = stepReads(s, [...known, ...made], keys);
-    if (reads.problems.length) return `${stepLabel(s)}: ${reads.problems[0]}`;
+    if (reads.problems.length) return { problem: `${stepLabel(s)}: ${reads.problems[0]}` };
     graph.push({ label: stepLabel(s), makes: made, reads: reads.columns });
     known.push(...made);
   }
   const ordered = orderSteps(graph);
-  if ('problem' in ordered) return ordered.problem;
-  if (ordered.ok.order.some((at, i) => at !== i)) return 'Its steps are out of order.';
+  if ('problem' in ordered) return ordered;
+  if (ordered.ok.order.some((at, i) => at !== i)) return { problem: 'Its steps are out of order.' };
   const extra = ordered.ok.inputs.find(c => !spec.inputs.includes(c));
-  if (extra) return `It reads "${extra}" without listing it as an input.`;
-  const lower = new Set<string>();
+  if (extra) return { problem: `It reads "${extra}" without listing it as an input.` };
+  // Two names a reference can't tell apart (any case, or the same /token) are refused, as a sheet refuses them.
+  const seen: string[] = [];
   for (const c of known) {
-    if (lower.has(c.toLowerCase())) return `Two of its columns are named "${c}".`;
-    lower.add(c.toLowerCase());
+    const clash = findColumnNameCollision(c, seen);
+    if (clash) return { problem: `Two of its columns are named alike: "${clash.clash}" and "${c}".` };
+    seen.push(c);
   }
-  return null;
+  return { layers: ordered.ok.layers };
 }

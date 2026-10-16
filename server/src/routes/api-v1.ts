@@ -48,7 +48,7 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
 router.use('/sheets/:id', refuseChangesWhileBusy([
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
-  '/setups', '/setups/plan',
+  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/,
 ]));
 router.use(tablesV1);
 router.use(tableSheetsV1);

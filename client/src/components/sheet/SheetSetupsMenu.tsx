@@ -6,13 +6,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 interface Props {
+  onUseSetup: () => void
   // Save as setup with nothing ticked yet (the column menu opens it on a column).
   onSaveSetup: () => void
 }
 
-// The sheet header's Setups menu: save this sheet's filled columns as a setup,
-// or open the saved ones in Settings.
-export const SheetSetupsMenu: React.FC<Props> = ({ onSaveSetup }) => {
+// The sheet header's Setups menu: use a saved setup on this sheet, save this
+// sheet's filled columns as one, or open the saved ones in Settings.
+export const SheetSetupsMenu: React.FC<Props> = ({ onUseSetup, onSaveSetup }) => {
   const navigate = useNavigate()
   return (
     <DropdownMenu>
@@ -25,6 +26,7 @@ export const SheetSetupsMenu: React.FC<Props> = ({ onSaveSetup }) => {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuItem onClick={onUseSetup}>Use a setup…</DropdownMenuItem>
         <DropdownMenuItem onClick={onSaveSetup}>Save columns as a setup…</DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/settings/setups')}>Manage setups</DropdownMenuItem>
       </DropdownMenuContent>
