@@ -38,6 +38,7 @@ export const useSheetModals = () => {
   // Save as setup: open, on the column its menu was opened on (null: from the header, nothing ticked).
   const [saveSetupFor, setSaveSetupFor] = useState<{ column: string | null } | null>(null)
   const openSaveSetup = useCallback((column: string | null) => setSaveSetupFor({ column }), [])
+  const [showUseSetup, setShowUseSetup] = useState(false)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
   const [scrapedDataModal, setScrapedDataModal] =
     useState<{ isOpen: boolean; cell: SourcesCell | null }>({ isOpen: false, cell: null })
@@ -54,6 +55,7 @@ export const useSheetModals = () => {
     showWebhookDrawer, setShowWebhookDrawer,
     showDedupeModal, setShowDedupeModal,
     saveSetupFor, openSaveSetup, closeSaveSetup: () => setSaveSetupFor(null),
+    showUseSetup, setShowUseSetup,
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
     scrapedDataModal, setScrapedDataModal,
   }

@@ -14,6 +14,7 @@ const { readSpec, specProblem } = checkMod as typeof import('../../server/src/li
 const { stepColumns } = specMod as typeof import('../../server/src/lib/setups/spec')
 import typedMod from '../../server/src/lib/setups/typed-key'
 import refsMod from '../../server/src/lib/setups/refs'
+import applyMod from '../../server/src/lib/setups/apply-plan'
 
 let failures = 0
 function check(label: string, cond: boolean, detail?: unknown) {
@@ -164,6 +165,52 @@ check('an AI step with web search makes Output and Data', stepColumns(ai).join()
   long.steps[2].outputColumns = null
   long.steps[2].systemPrompt = 'x'.repeat(250_000)
   check('long text a column allows reads back', 'ok' in readSpec(long))
+}
+
+// ---- fitting a setup to the sheet it's used on ----
+{
+  const { planApply } = applyMod as typeof import('../../server/src/lib/setups/apply-plan')
+  const sheet = ['name', 'Company URL', 'Notes']
+  const missing = planApply(spec, sheet)
+  check('an input with no column of its name is missing', 'problem' in missing
+    && missing.missing?.join() === 'Website', missing)
+  const out = planApply(spec, sheet, { inputs: { Website: 'Company URL' } })
+  check('inputs match ignoring case, or as picked', 'ok' in out
+    && JSON.stringify(out.ok.inputs) === '{"Name":"name","Website":"Company URL"}', out)
+  const fitted = 'ok' in out ? out.ok.spec : null
+  const h = fitted?.steps[0] as Extract<SetupStep, { kind: 'http' }> | undefined
+  check('references follow the sheet\'s columns', !!h && h.request.url.endsWith('d={{Company URL}}')
+    && h.request.body === '{"a":"{{name}}","b":"{{Company URL}}"}', h?.request)
+  check('layers: each step after what it reads', 'ok' in out && out.ok.layers.join() === '0,0,1,2', out)
+  const taken = planApply(spec, [...sheet, 'score (output)'], { inputs: { Website: 'Company URL' } })
+  check('a column it would make that the sheet has is refused, ignoring case', 'problem' in taken
+    && taken.taken?.join() === 'Score (Output)', taken)
+  const renamed = planApply(spec, [...sheet, 'Score (Output)'],
+    { inputs: { Website: 'Company URL' }, names: { 'Score (Output)': 'Fit (Output)', Lookup: 'Find' } })
+  const steps = 'ok' in renamed ? renamed.ok.spec.steps : []
+  check('renamed steps make their new names and readers follow', 'ok' in renamed
+    && steps[0].name === 'Find' && steps[2].name === 'Fit'
+    && (steps[3] as Extract<SetupStep, { kind: 'clean' }>).source === 'Fit (Output)'
+    && (steps[2] as Extract<SetupStep, { kind: 'ai' }>).prompt.includes('/response'), renamed)
+  check('an unknown step to rename is refused',
+    'problem' in planApply(spec, sheet, { inputs: { Website: 'Company URL' }, names: { Nope: 'x' } }))
+
+  // Names a reference can't tell apart are taken too (the same /token), and so are names that clash inside it.
+  const token = planApply(spec, [...sheet, 'Score Output'], { inputs: { Website: 'Company URL' } })
+  check('a sheet column with the same /token is taken', 'problem' in token
+    && token.taken?.join() === 'Score (Output)', token)
+  const inside = planApply(spec, sheet, { inputs: { Website: 'Company URL' }, names: { Response: 'Score Output' } })
+  check('a rename clashing with another column of the setup is refused', 'problem' in inside, inside)
+  const symbols = planApply(spec, sheet, { inputs: { Website: 'Company URL' }, names: { Pair: '!!!' } })
+  check('a name a column can\'t have is refused', 'problem' in symbols, symbols)
+  // A /word in a request is text, unless the sheet has a column it would read.
+  const pathy = { ...spec, steps: [{ ...http, request: { ...(http as Extract<SetupStep, { kind: 'http' }>).request,
+    body: '{"path":"/users","n":"{{Name}}"}' } }, ...spec.steps.slice(1)] } as SetupSpec
+  check('a request path word is fine on a sheet without such a column',
+    'ok' in planApply(pathy, sheet, { inputs: { Website: 'Company URL' } }))
+  const stray = planApply(pathy, [...sheet, 'Users'], { inputs: { Website: 'Company URL' } })
+  check('but refused where the sheet has a column it would read', 'problem' in stray
+    && stray.problem.includes('"/users"'), stray)
 }
 
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1) }

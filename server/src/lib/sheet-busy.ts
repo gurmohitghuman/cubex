@@ -32,9 +32,16 @@ export function sheetBusyWith(sheetId: string): string | null {
   return busy.get(sheetId)?.what ?? null;
 }
 
+const BUSY_PREFIX = 'This sheet is busy ';
 export function busyMessage(what: string): string {
-  return `This sheet is busy ${what}. Try again when that finishes.`;
+  return `${BUSY_PREFIX}${what}. Try again when that finishes.`;
 }
+// A refusal that only means "not now": the sheet was busy (setups retry it).
+export const isBusyMessage = (message: string): boolean => message.startsWith(BUSY_PREFIX);
+
+// Whether a heavy operation would be refused right now: one is running, or a
+// long read (an export, a duplicate check) holds the sheet.
+export const sheetHeld = (sheetId: string): boolean => busy.has(sheetId) || readers.has(sheetId);
 
 // Runs `work` as the sheet's one heavy operation, or returns { busy } at once
 // when another is already running or an export is reading the sheet.
@@ -129,12 +136,14 @@ export async function withSheetRead<T>(
 // Express guard for a router mounted at a sheet id (`router.use('/:id', …)`):
 // while the sheet is busy, any change to it gets a 409 with the reason. Reads,
 // and the POSTs listed in `allowed` (appending rows lands above the reserved
-// range; a row query only reads), go through.
-export function refuseChangesWhileBusy(allowed: string[]) {
+// range; a row query only reads), go through. An entry can be a pattern for a
+// path with an id in it.
+export function refuseChangesWhileBusy(allowed: Array<string | RegExp>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     const what = sheetBusyWith(req.params.id);
-    if (!what || (req.method === 'POST' && allowed.includes(req.path))) return next();
+    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path : a.test(req.path)));
+    if (!what || (req.method === 'POST' && listed)) return next();
     res.status(409).json({ error: busyMessage(what), busy: true });
   };
 }

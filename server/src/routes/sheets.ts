@@ -35,6 +35,8 @@ const router = express.Router();
 // as saving a setup does.
 router.use('/:id', refuseChangesWhileBusy([
   '/rows', '/clean-columns/preview', '/formula-columns/preview', '/formula-columns/write', '/setups/plan', '/setups',
+  // Using a setup: its estimate only reads, and its start checks the sheet itself (services/setup-apply.ts).
+  /^\/setups\/[^/]+\/apply$/,
 ]));
 router.use(readRoutes);
 router.use(dataRoutes);

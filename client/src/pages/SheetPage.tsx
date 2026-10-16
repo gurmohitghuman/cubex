@@ -5,7 +5,8 @@ import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table } from '@/utils/api'
 
 import { SheetGridArea } from '@/components/sheet/SheetGridArea'
-import { SaveSetupModal } from '@/components/setups/SaveSetupModal'
+import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
+import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
@@ -253,7 +254,10 @@ export const SheetPage: React.FC = () => {
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
         onSaveSetup={() => modals.openSaveSetup(null)}
-        autorunChip={<AutorunChip autorun={autorun} />}
+        onUseSetup={() => modals.setShowUseSetup(true)}
+        autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
+          dataVersion={sheetData?.sheet?.data_version}
+          onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
@@ -294,8 +298,7 @@ export const SheetPage: React.FC = () => {
         dropAllPending={cellOps.dropAllPending}
       />
       <AutorunDialogHost autorun={autorun} />
-      {activeSheet && <SaveSetupModal isOpen={!!modals.saveSetupFor} onClose={modals.closeSaveSetup}
-        sheetId={activeSheet.id} column={modals.saveSetupFor?.column ?? null} />}
+      <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals} />
       <SheetWebhookOverlays
         autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}

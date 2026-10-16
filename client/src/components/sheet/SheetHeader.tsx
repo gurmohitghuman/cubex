@@ -31,6 +31,7 @@ interface SheetHeaderProps {
   onExport: () => void
   onRemoveDuplicates: () => void
   onSaveSetup: () => void
+  onUseSetup: () => void
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -59,6 +60,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onExport,
   onRemoveDuplicates,
   onSaveSetup,
+  onUseSetup,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -173,7 +175,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 <CopyMinus className="h-3 w-3" />
                 <span>Remove duplicates</span>
               </button>
-              <SheetSetupsMenu onSaveSetup={onSaveSetup} />
+              <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} />
             </div>
 
             {/* Divider between data-management (Import/Export) and the enrich

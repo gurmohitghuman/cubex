@@ -102,7 +102,8 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
-| `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup to build the same columns on another sheet; list and delete the saved ones. See [Setups](#setups). |
+| `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup; list and delete the saved ones. See [Setups](#setups). |
+| `apply_setup`, `get_setup_run`, `control_setup_run` | Build a saved setup's columns on another sheet and fill them in order (an estimate unless `estimate_only: false`), follow it, and pause, resume or stop it. See [Setups](#setups). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
@@ -205,6 +206,21 @@ A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API
 - `preview: true` shows what would be saved and saves nothing (`read` scope). Saving needs `write`. Names are unique, ignoring upper/lower case.
 - A column that adds rows to another sheet (a list enrichment) can't be saved yet.
 - `list_setups` lists them; pass `setup_id` for one in full. `delete_setup` deletes one for good; sheets it was used on keep their columns. A setup is a copy, never a link.
+- A column with a key typed straight into its request can't be saved: save the key in Settings and write `{{its name}}` instead.
+
+`apply_setup` builds a setup's columns on another sheet and fills them. It's an estimate unless you pass `estimate_only: false`, so a first call only prices it:
+
+```json
+{"sheet_id": "...", "setup_id": "...", "inputs": {"Website": "Company URL"}, "estimate_only": true}
+```
+
+- `inputs` maps each of the setup's inputs to a column of this sheet. An input left out uses the column with its name (any upper/lower case).
+- The steps run in order: each one starts once every step whose columns it reads has finished, and steps that don't depend on each other run side by side. A run that fails or is stopped ends the chain; rows that failed inside a run don't (they read as empty further on).
+- The estimate lists each step: AI steps priced on the sheet's rows, enrichments at treg's prices, HTTP API steps as one request a row, clean and formula steps free. A step reading what an earlier one writes is priced at the most it could take.
+- A column the setup makes that the sheet already has is refused (`taken`); give it another name in `names`, keyed by the column the setup makes (an AI step by its `(Output)` or `(Status)` column). `models` picks an AI step's model; by default it keeps the one it was saved with.
+- `first_rows` tests it on the top rows (up to 1,000). After a run on every row, the auto-runs saved with the setup are turned on; a test doesn't turn them on.
+- It needs the `run` scope, and `secrets` too when its requests read a saved key. Every saved key it names must exist in Settings.
+- The answer is a `setup_run` with each step's `run_id` (`get_run_status` works on those). `get_setup_run` follows the whole chain; `control_setup_run` pauses, resumes or stops it. Stopping keeps the columns and values made so far.
 
 ## Enrichments
 
@@ -308,6 +324,9 @@ All paths below are relative to `/api/v1`.
 | `DELETE /setups/:id` | Permanent. `write` scope. |
 | `GET /setups/:id/export` | `{file, filename}`: the setup as a file for another Cubex, saved keys by name only. Refused while a key is typed straight into a request. `read` scope. |
 | `POST /setups/import` | The `file` from an export. A name already taken gets " (2)". `write` scope. |
+| `POST /sheets/:id/setups/:setupId/apply` | `{"inputs": {"Website": "Company URL"}, "names": {}, "models": {}, "first_rows": 10, "estimate_only": true}`. Same as `apply_setup`, but `estimate_only` defaults to `false` here. `200` with the estimate, `201` with the `setup_run`; a missing input or a name taken answers `missing` or `taken`. `run` scope (and `secrets` for saved keys). |
+| `GET /sheets/:id/setup-runs` · `GET /setup-runs/:id` | The setups working on a sheet (newest first), or one of them. `read` scope. |
+| `POST /setup-runs/:id/control` | `{"action": "pause"}` (or `resume`, `cancel`). `run` scope. |
 
 ### Rows
 

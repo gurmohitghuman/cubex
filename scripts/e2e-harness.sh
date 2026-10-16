@@ -116,6 +116,8 @@ fi
 # Auto-run looks for rows to fill every half second here (15 s by default), and
 # specs move "today" forward through this file to test daily caps (lib/clock.ts).
 export AUTORUN_SWEEP_MS="${AUTORUN_SWEEP_MS:-500}"
+# Setups being used move on to their next step this often (3 s in production).
+export SETUP_SWEEP_MS="${SETUP_SWEEP_MS:-500}"
 export AUTORUN_USER_YIELD_MS="${AUTORUN_USER_YIELD_MS:-6000}"
 # List results become rows on this beat (5 s in production).
 export ENRICH_LIST_DRAIN_MS="${ENRICH_LIST_DRAIN_MS:-500}"

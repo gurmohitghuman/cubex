@@ -44,6 +44,38 @@ export interface SetupPlan {
 
 export interface SetupFileDownload { file: unknown; filename: string }
 
+// A setup in full: each step as saved (the dialog reads an AI step's model).
+export interface SetupDetail extends SetupSummary {
+  spec: { inputs: string[]; keys: string[]; steps: Array<{ kind: SetupKind; name: string; model?: string | null }> }
+}
+
+export interface ApplyBody {
+  inputs?: Record<string, string>
+  names?: Record<string, string>
+  models?: Record<string, string>
+  firstRows?: number | null
+  estimateOnly: boolean
+}
+
+// What one step could cost: dollars (null when free, an HTTP API's own bill, or no price), and why not.
+export interface StepEstimate {
+  column: string; kind: SetupKind; layer: number; rows: number
+  low_usd: number | null; high_usd: number | null; sends_requests: boolean; free: boolean; note: string | null
+}
+export interface SetupEstimate {
+  rows: number; low_usd: number; high_usd: number; unpriced: string[]; steps: StepEstimate[]
+}
+
+export type SetupRunStatus = 'running' | 'paused' | 'done' | 'failed' | 'cancelled'
+export interface SetupRunView {
+  id: string; setup_id: string | null; setup_name: string; sheet_id: string; status: SetupRunStatus
+  layer: number; layers: number; test_rows: number | null; error_message: string | null
+  created_at: string; updated_at: string
+  steps: Array<{
+    column: string; kind: SetupKind; layer: number; state: string; run_id: string | null; note: string | null
+  }>
+}
+
 // Each caller shows the server's error in place, so the generic server-error toast stays off.
 const quiet = { skipServerErrorToast: true } as const
 
@@ -54,6 +86,16 @@ export const setupsAPI = {
   remove: (id: string): Promise<void> => api.delete(`/setups/${id}`, quiet).then(() => {}),
   exportFile: (id: string): Promise<SetupFileDownload> => api.get(`/setups/${id}/export`, quiet).then(res => res.data),
   importFile: (file: unknown): Promise<SetupSummary> => api.post('/setups/import', file, quiet).then(res => res.data),
+
+  get: (id: string): Promise<SetupDetail> => api.get(`/setups/${id}`, quiet).then(res => res.data),
+  apply: (sheetId: string, setupId: string, body: ApplyBody, signal?: AbortSignal)
+    : Promise<{ estimate: SetupEstimate } | { setup_run: SetupRunView }> =>
+    api.post(`/sheets/${sheetId}/setups/${setupId}/apply`, body, { ...quiet, signal, timeout: 120_000 })
+      .then(res => res.data),
+  runs: (sheetId: string): Promise<SetupRunView[]> =>
+    api.get(`/sheets/${sheetId}/setup-runs`, quiet).then(res => res.data.setup_runs),
+  control: (id: string, action: 'pause' | 'resume' | 'cancel'): Promise<SetupRunView> =>
+    api.post(`/setup-runs/${id}/${action}`, null, quiet).then(res => res.data),
 
   sheetSteps: (sheetId: string): Promise<SheetSetupStep[]> =>
     api.get(`/sheets/${sheetId}/setup-steps`, quiet).then(res => res.data.steps),

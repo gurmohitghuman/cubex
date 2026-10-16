@@ -80,4 +80,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Adds a setup; the sheet is only read. preview: true saves nothing.
   save_setup: write('Save columns as a setup', false, false),
   delete_setup: write('Delete a setup (permanent)', true, true),
+  // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
+  apply_setup: write('Use a setup on a sheet', true, false, true),
+  get_setup_run: read('Get a setup run'),
+  control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
 };
