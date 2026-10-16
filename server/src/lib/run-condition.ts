@@ -122,6 +122,23 @@ export function renameRuleColumn(rule: string, oldName: string, newName: string)
   }
 }
 
+// Several columns renamed at once (setups, lib/setups/remap.ts): each column
+// through `to` in one pass, so swapping two names can't collide. Same rules
+// as renameRuleColumn for a rule that doesn't parse or a name with "}}".
+export function renameRuleColumns(rule: string, to: (column: string) => string | undefined): string {
+  try {
+    const tree = parseRule(rule);
+    let changed = false;
+    eachCompare(tree, c => {
+      const next = to(c.column);
+      if (next !== undefined && next !== c.column && !next.includes('}}')) { c.column = next; changed = true; }
+    });
+    return changed ? formatRule(tree) : rule;
+  } catch {
+    return rule;
+  }
+}
+
 // A request's rule field: text, or nothing (null/undefined/blank = every row).
 export function parseRuleField(raw: unknown, field = 'runIf'): { ok: string | null } | { error: string } {
   if (raw === undefined || raw === null) return { ok: null };

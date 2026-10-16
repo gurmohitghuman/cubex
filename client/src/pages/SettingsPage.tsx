@@ -1,10 +1,11 @@
 import React from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bot, DatabaseZap, Sparkles, UserRound } from 'lucide-react'
+import { ArrowLeft, Bookmark, Bot, DatabaseZap, Sparkles, UserRound } from 'lucide-react'
 import { SettingsAiTab } from '@/components/settings/SettingsAiTab'
 import { SettingsEnrichmentTab } from '@/components/settings/SettingsEnrichmentTab'
 import { SettingsAgentsTab } from '@/components/settings/SettingsAgentsTab'
 import { SettingsAccountTab } from '@/components/settings/SettingsAccountTab'
+import { SettingsSetupsTab } from '@/components/settings/SettingsSetupsTab'
 
 // Settings shell: route-backed tabs (/settings/:tab — refresh, back button,
 // and deep links like /settings/ai all work), one mental model per tab. Each
@@ -14,6 +15,7 @@ const TABS = [
   { slug: 'ai', label: 'AI', icon: Sparkles, element: <SettingsAiTab /> },
   // Slug kept from when this tab held only HTTP API keys, so old links still work.
   { slug: 'http-enrichment', label: 'Enrichment', icon: DatabaseZap, element: <SettingsEnrichmentTab /> },
+  { slug: 'setups', label: 'Setups', icon: Bookmark, element: <SettingsSetupsTab /> },
   { slug: 'agents', label: 'Agent access', icon: Bot, element: <SettingsAgentsTab /> },
   { slug: 'account', label: 'Account', icon: UserRound, element: <SettingsAccountTab /> },
 ] as const

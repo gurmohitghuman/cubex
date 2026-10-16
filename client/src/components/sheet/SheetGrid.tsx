@@ -1,3 +1,4 @@
+// Over 200 lines: the grid wired to every column menu action and its confirms, in one place.
 import React, { useState } from 'react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
@@ -74,6 +75,8 @@ export interface SheetGridProps {
   registerViewport?: (get: (() => number | null) | null) => void
   // Opens the enrichment drawer on a column's setup or a run (Enrichment Actions).
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
+  // Save as setup, from a filled column's menu.
+  onSaveSetup?: (column: string) => void
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -86,6 +89,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
+    onSaveSetup,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -141,6 +145,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onAutorunAction,
     onCleanAction: clean.onCleanAction,
     onFormulaAction: formula.onFormulaAction,
+    onSaveSetup,
   }
 
   return (

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table } from '@/utils/api'
 
 import { SheetGridArea } from '@/components/sheet/SheetGridArea'
+import { SaveSetupModal } from '@/components/setups/SaveSetupModal'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
@@ -251,6 +252,7 @@ export const SheetPage: React.FC = () => {
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
+        onSaveSetup={() => modals.openSaveSetup(null)}
         autorunChip={<AutorunChip autorun={autorun} />}
       />
       <SheetGridArea
@@ -292,6 +294,8 @@ export const SheetPage: React.FC = () => {
         dropAllPending={cellOps.dropAllPending}
       />
       <AutorunDialogHost autorun={autorun} />
+      {activeSheet && <SaveSetupModal isOpen={!!modals.saveSetupFor} onClose={modals.closeSaveSetup}
+        sheetId={activeSheet.id} column={modals.saveSetupFor?.column ?? null} />}
       <SheetWebhookOverlays
         autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}

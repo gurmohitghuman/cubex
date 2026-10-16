@@ -76,4 +76,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   add_list_rows: write('Add list results as rows', false, false),
   // Turning it on makes later rows spend (or send requests) on their own.
   set_auto_run: write('Turn auto-run on, off or pause it', true, true, true),
+  list_setups: read('List setups'),
+  // Adds a setup; the sheet is only read. preview: true saves nothing.
+  save_setup: write('Save columns as a setup', false, false),
+  delete_setup: write('Delete a setup (permanent)', true, true),
 };

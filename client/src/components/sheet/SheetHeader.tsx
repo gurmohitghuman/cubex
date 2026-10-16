@@ -6,6 +6,7 @@ import {
 import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
+import { SheetSetupsMenu } from './SheetSetupsMenu'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -29,6 +30,7 @@ interface SheetHeaderProps {
   onImport: () => void
   onExport: () => void
   onRemoveDuplicates: () => void
+  onSaveSetup: () => void
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -56,6 +58,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onImport,
   onExport,
   onRemoveDuplicates,
+  onSaveSetup,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -170,6 +173,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 <CopyMinus className="h-3 w-3" />
                 <span>Remove duplicates</span>
               </button>
+              <SheetSetupsMenu onSaveSetup={onSaveSetup} />
             </div>
 
             {/* Divider between data-management (Import/Export) and the enrich

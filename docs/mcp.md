@@ -102,6 +102,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
+| `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup to build the same columns on another sheet; list and delete the saved ones. See [Setups](#setups). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `search_enrichments`, `get_enrichment` | Find a treg.to enrichment tool, then read its inputs, outputs, price and providers. See [Enrichments](#enrichments). |
@@ -189,6 +190,21 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - The answer has `rows_checked`, `duplicate_groups`, `rows_to_remove` (or `rows_removed`), `rows_left`, up to 5 `samples` (the row that stays and up to 3 that go, each with its row `id`, row number and the listed cells), and the `largest_group` when it's bigger than those, so a value like "n/a" shared by thousands of rows shows up before anything goes.
 - A dry run needs the `read` scope; `dry_run: false` needs `write`. Removed rows are deleted for good, with their AI and HTTP results. The whole sheet is checked; filters don't apply.
 - Refused while a run is active on the sheet: stop or finish it first. Rows appended while a removal works are left alone.
+
+## Setups
+
+A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API, enrichment, clean data and formula columns, with their "Only run if" rules and auto-run. Save it once from a sheet, then build the same columns on another sheet.
+
+```json
+{"sheet_id": "...", "name": "Lead fit", "columns": ["Fit (Output)"]}
+```
+
+- `columns`: any column a step made (an AI column's `(Output)`, an HTTP API or enrichment status column or one of its output columns, a clean or formula column). With `include_upstream` (the default), every filled column they read comes too, down the chain.
+- Each step is saved as its column is set up now: the prompt, model, web search and output columns, the request and its JSONPaths, the enrichment's choices, the formula or cleaner, "Only run if" and auto-run. Rows are never saved, and the sheet doesn't change.
+- The answer lists the steps in the order they run, the `inputs` (columns the setup reads that none of its steps make: a sheet it's used on needs them) and the saved `keys` its requests name. A saved key is kept by name, never its value.
+- `preview: true` shows what would be saved and saves nothing (`read` scope). Saving needs `write`. Names are unique, ignoring upper/lower case.
+- A column that adds rows to another sheet (a list enrichment) can't be saved yet.
+- `list_setups` lists them; pass `setup_id` for one in full. `delete_setup` deletes one for good; sheets it was used on keep their columns. A setup is a copy, never a link.
 
 ## Enrichments
 
@@ -279,6 +295,19 @@ All paths below are relative to `/api/v1`.
 | `DELETE /sheets/:id/columns/:name` | |
 | `PUT /sheets/:id/columns/order` | `{"order": ["Email", "Company", "Status"]}` (every column, once) |
 | `POST /sheets/:id/sort` | `{"column": "Score", "direction": "desc"}`. Permanently reorders the rows. |
+
+### Setups
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /setups` · `GET /setups/:id` | The saved setups; one in full. `read` scope. |
+| `GET /sheets/:id/setup-steps` | The sheet's filled columns as steps: what each reads, or why it can't be saved. `read` scope. |
+| `POST /sheets/:id/setups/plan` | `{"columns": ["Fit (Output)"], "include_upstream": true}`. What a setup of them would hold; saves nothing. `read` scope. |
+| `POST /sheets/:id/setups` | `{"name": "Lead fit", "columns": ["Fit (Output)"]}`, plus optional `description` and `include_upstream`. Same as `save_setup`. `201`, `write` scope. |
+| `PATCH /setups/:id` | `{"name": "...", "description": "..."}`. `write` scope. |
+| `DELETE /setups/:id` | Permanent. `write` scope. |
+| `GET /setups/:id/export` | `{file, filename}`: the setup as a file for another Cubex, saved keys by name only. Refused while a key is typed straight into a request. `read` scope. |
+| `POST /setups/import` | The `file` from an export. A name already taken gets " (2)". `write` scope. |
 
 ### Rows
 
