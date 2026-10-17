@@ -75,6 +75,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
 - "In Leads, split Name into first and last name, turn Website into a domain and fix the phone numbers. Use the free cleaners."
 - "In Leads, the Response column holds each API reply. Add a Work email column with the email whose type is work, using a formula."
+- "Add an Industry column to Leads with the industry of each lead's company from the Companies sheet, matched on the domain."
 - "Keep finding work emails for new rows in Leads automatically, up to $5 a day."
 - "In Leads, score each company's fit with AI. Then find work emails only where the score is 8 or more, and add those people to Smartlead only where the email is valid."
 
@@ -83,7 +84,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | Tool | What it does |
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
-| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean and formula columns, and its saved views with their filters and hidden columns. |
+| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. |
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. See [Finding rows](#finding-rows). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
@@ -101,6 +102,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
+| `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
 | `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup; list and delete the saved ones. See [Setups](#setups). |
@@ -111,7 +113,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `run_enrichment` | Run an enrichment per row: work emails, phones, person or company data, or lists that become rows in another sheet. Can estimate first, test on 5 rows, and turn on auto-run. |
 | `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
-| `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean or formula column, or pause and resume it. |
+| `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
 
 Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
@@ -214,6 +216,26 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - Calling `formula_column` again on a formula column replaces its formula and works every row out again. Any other existing column is refused. Renaming a column a formula reads rewrites the formula.
 - `write_formula` writes a formula from plain words with one small call to your default model (or `model`). The model sees the column names and what the first rows hold, and the formula is checked on those rows before it comes back with a preview. Nothing is saved: pass the formula to `formula_column`. It needs the `run` scope, because the call costs money.
 - Formulas run in a sandbox inside Cubex, with no access to files, the network or the server, a memory limit and a time limit per row. A formula that keeps running out of time stops its column's fill (or pauses its auto-run) and says so.
+
+## Lookups
+
+`lookup_column` fills a new column of `sheet_id` for free from another sheet, `other_sheet_id` (any table; `list_tables` gives the ids). For each row, the value of `source_column` is matched against `match_column` of the other sheet, and the column gets, by `returns`:
+
+| `returns` | What each row gets |
+|---|---|
+| `value` | `return_column` of the first matching row, top of the other sheet first |
+| `exists` | `Yes` or `No` |
+| `count` | How many rows match (`0` when none) |
+| `list` | The first `limit` matches (1 to 100, default 10) as a JSON list of objects with `return_columns` (left out: every column) |
+
+- `match` is `equals` (the default: the whole value) or `contains` (the value anywhere inside the other cell; it needs 3 or more characters and looks at the first 1,000 characters of each cell). Both ignore capital letters (accented ones too) and spaces around the value.
+- An empty value gives an empty cell. Status cells (`⏳ ...`, `❌ ...`, `⏭️ ...`) read as empty on both sides. A row the lookup can't answer honestly shows `❌ <why>` and counts in `error_rows`: a contains value under 3 characters, or more than 10,000 rows containing it.
+- The other sheet is read as it is when each row is worked out. Later changes there don't update the column: call `lookup_column` again with the same arguments to look every row up again.
+- `preview: true` shows the first rows with their results and writes nothing. When that column of the other sheet has no index yet (no lookup reads it), or its index is being built or brought up to date, the preview checks the other sheet's first 50,000 rows and says so (`checked_rows`).
+- Auto-run is on by default: new rows, and rows whose `source_column` changes, are looked up on their own. Turn it off with `auto_run: false` or `set_auto_run`.
+- Calling `lookup_column` again on a lookup column changes it and looks every row up again. Any other existing column is refused, and so is a lookup into its own sheet.
+- Renaming a column of the other sheet updates the lookup. Deleting the other sheet, or a column the lookup reads, stops it: `get_sheet` shows why in `broken`, and `lookup_column` with new settings sets it up again.
+- The answer waits for the fill up to 10 seconds and returns `filled_rows` and `error_rows`; a bigger sheet returns status `filling` (`get_sheet` lists it in `filling_columns` until done). Contains on very large sheets can take a few minutes. A lookup column isn't a setup step: a setup reading one lists it as an input.
 
 ## Remove duplicates
 
@@ -341,9 +363,10 @@ All paths below are relative to `/api/v1`.
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` |
 | `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
-| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
+| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean, formula and lookup columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
 | `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
+| `POST /sheets/:id/lookup-columns` | `{"column": "Industry", "source_column": "Domain", "other_sheet_id": "…", "match_column": "Website", "returns": "value", "return_column": "Industry"}`, plus optional `match`, `return_columns`, `limit`, `auto_run` and `preview`. Same as `lookup_column` (see [Lookups](#lookups)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
 | `POST /sheets/:id/remove-duplicates` | `{"columns": ["Email"], "keep": "first", "dry_run": false}`. Same as `remove_duplicates` (see [Remove duplicates](#remove-duplicates)): a dry run unless `dry_run` is `false`. `read` scope for a dry run, `write` to remove. |
 | `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |

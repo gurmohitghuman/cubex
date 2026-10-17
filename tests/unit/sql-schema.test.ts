@@ -19,6 +19,8 @@ const SERVER_SRC = path.join(ROOT, 'server/src')
 const MIGRATIONS = path.join(SERVER_SRC, 'db/migrations')
 
 const db = new Database(':memory:')
+// As lib/db.ts opens it: schema objects (the lookup triggers) may only use built-in SQL.
+db.pragma('trusted_schema = OFF')
 for (const f of fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()) {
   db.exec(fs.readFileSync(path.join(MIGRATIONS, f), 'utf8'))
 }

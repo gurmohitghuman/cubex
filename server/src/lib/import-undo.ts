@@ -7,6 +7,7 @@ import { autorunAfterReplace, autorunDropPending, autorunRowsRemoved } from './a
 import { forgetUnlistedCleanColumns } from './clean-columns';
 import { forgetUnlistedFormulaColumns } from './formula-columns';
 import { pruneViewsToColumns } from '../services/view-columns';
+import { forgetUnlistedLookupColumns } from './lookup-columns';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
 // rows go in at first_row up to end_row, and appends from elsewhere land at
@@ -84,6 +85,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
       forgetUnlistedCleanColumns(job.sheet_id, job.user_id);
       forgetUnlistedFormulaColumns(job.sheet_id, job.user_id);
       pruneViewsToColumns(job.sheet_id, job.user_id);
+      forgetUnlistedLookupColumns(job.sheet_id, job.user_id);
     }
     else autorunRowsRemoved(job.sheet_id, job.user_id);
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')

@@ -29,6 +29,7 @@ import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
+import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
 import viewsV1 from './api-v1-views';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
@@ -63,6 +64,8 @@ router.use(columnsV1);
 router.use(cleanV1);
 // Formula columns: a free JavaScript formula per row into a new column (services/formula-agent.ts).
 router.use(formulaV1);
+// Lookup columns: a free column filled from another sheet (services/lookup-agent.ts).
+router.use(lookupV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
 router.use(viewsV1);

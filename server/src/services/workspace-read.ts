@@ -5,6 +5,7 @@ import { getSheetColumns, countRows, parseRowData } from '../lib/sql-helpers';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { cleanColumnJson, sheetCleanView } from './clean-view';
 import { formulaColumnJson, sheetFormulaView } from './formula-view';
+import { lookupColumnJson, sheetLookupView } from './lookup-view';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { sheetRunColumns } from './row-filter';
 import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
@@ -39,7 +40,7 @@ export interface SheetMeta {
   columns: string[]; row_count: number; data_version: number;
   default_ai_model: string | null; // sheet override; account default applies when null
   row_generation: number;
-  // Columns still filling (from stored answers, or a clean or formula column's
+  // Columns still filling (from stored answers, or a clean, formula or lookup column's
   // fill): their cells read "⏳ Processing..." until done.
   filling_columns: string[];
   // The AI, HTTP API and enrichment runs working on it now, and the setups
@@ -53,6 +54,8 @@ export interface SheetMeta {
   // Saved views (services/view-store.ts): name, description, filters as a
   // `where`, hidden columns; the active one is what the app shows.
   views: ViewInfo[];
+  // Lookup columns: what each matches in which other sheet, what it returns, auto-run (services/lookup-view.ts).
+  lookup_columns: Array<Record<string, unknown>>;
 }
 
 export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
@@ -79,6 +82,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     clean_columns: Object.values(sheetCleanView(sheetId, userId, columns)).map(cleanColumnJson),
     formula_columns: Object.values(sheetFormulaView(sheetId, userId, columns)).map(formulaColumnJson),
     views: listViews(sheetId, userId, columns) ?? [],
+    lookup_columns: Object.values(sheetLookupView(sheetId, userId, columns)).map(lookupColumnJson),
   };
 }
 

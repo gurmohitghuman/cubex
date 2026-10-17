@@ -193,7 +193,7 @@ export function autorunAfterReplace(sheetId: string, userId: string, skipThrough
   db.prepare(`DELETE FROM autorun_pending WHERE autorun_id IN
     (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?)`).run(sheetId, userId);
   db.prepare(`UPDATE autorun_columns
-    SET watermark_row_index = CASE WHEN kind IN ('clean', 'formula') THEN -1 ELSE ? END,
+    SET watermark_row_index = CASE WHEN kind IN ('clean', 'formula', 'lookup') THEN -1 ELSE ? END,
       rescan = 1, row_generation_seen = (SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?)
     WHERE sheet_id = ? AND user_id = ?`).run(skipThrough ?? -1, sheetId, userId, sheetId, userId);
 }

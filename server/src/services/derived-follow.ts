@@ -1,5 +1,5 @@
-// Auto-run on a derived column (an autorun_columns entry of kind 'clean' or
-// 'formula', derived-kind.ts): the column follows its inputs. An enrichment or
+// Auto-run on a derived column (an autorun_columns entry of kind 'clean',
+// 'formula' or 'lookup', derived-kind.ts): the column follows its inputs. An enrichment or
 // HTTP API column's auto-run fills a row once; a derived column works a row
 // out again whenever one of its inputs is written (lib/autorun-mark.ts queues
 // every such row, whatever the column's cell holds), and works out the new
@@ -8,8 +8,12 @@
 // caps and no "Only run if". Each slice reads and writes in one short
 // transaction, so what it writes is the row's inputs as they are then, and
 // nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply).
+// A pass that has to wait (a lookup whose other sheet is sorting) ends the
+// tick, and the entry comes back after LOOKUP_FOLLOW_RETRY_MS.
 import { db } from '../lib/db';
-import { CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, HEAVY_SLICE_ROWS } from '../lib/constants';
+import {
+  CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
+} from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { yieldToRequests } from '../lib/slices';
@@ -136,7 +140,7 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
   try {
     const rec = kind.forColumn(e.sheet_id, e.user_id, e.status_column);
     if (!ready(kind, e, rec) || generationMoved(e) || !hasWork(e)) return;
-    const pass = await kind.open(rec);
+    const pass = await kind.open(rec, 'follow');
     if ('error' in pass) {
       pauseEntry(e.id, 'setup', pass.error);
       return;
@@ -146,13 +150,17 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
       for (let more = true; more;) {
         await pass.prepare();
-        // Queued rows first (a person's edit), then new ones.
-        more = queuedSlice(s) || newSlice(s);
+        if (!pass.waiting?.()) {
+          // Queued rows first (a person's edit), then new ones.
+          more = queuedSlice(s) || newSlice(s);
+        }
         const failure = pass.failure();
         if (failure) {
-          pauseEntry(e.id, 'too_slow', `${failure} Auto-run is paused; turn it on again once it's fixed.`);
+          pauseEntry(e.id, pass.failureReason ?? 'too_slow',
+            `${failure} Auto-run is paused; turn it on again once it's fixed.`);
           return;
         }
+        if (pass.waiting?.()) { kickDerivedFollow(e.id, LOOKUP_FOLLOW_RETRY_MS); return; }
         if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) { again.add(e.id); return; }
         if (more) await yieldToRequests();
       }
@@ -167,8 +175,8 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
 
 const kicked = new Set<string>();
 
-// Follows the inputs soon, not at the next auto-run sweep (API process only).
-export function kickDerivedFollow(entryId: string): void {
+// Follows the inputs soon (or after `ms`), not at the next auto-run sweep (API process only).
+export function kickDerivedFollow(entryId: string, ms = CLEAN_FOLLOW_KICK_MS): void {
   if (kicked.has(entryId)) return;
   kicked.add(entryId);
   setTimeout(() => {
@@ -177,7 +185,7 @@ export function kickDerivedFollow(entryId: string): void {
     if (e?.enabled && derivedKindOf(e.kind)) {
       derivedFollowTick(e).catch(err => console.error(`Auto-run on column "${e.status_column}" failed:`, err));
     }
-  }, CLEAN_FOLLOW_KICK_MS).unref?.();
+  }, ms).unref?.();
 }
 
 // At boot (API process): a write that queues rows for a derived column kicks it.

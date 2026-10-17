@@ -26,6 +26,8 @@ import { cleanColumnFor } from '../lib/clean-columns';
 import { formulaColumnFor } from '../lib/formula-columns';
 import { setCleanColumnAutorun } from './clean-column';
 import { setFormulaColumnAutorun } from './formula-column';
+import { lookupColumnFor } from '../lib/lookup-columns';
+import { setLookupColumnAutorun } from './lookup-column';
 
 export interface AutorunSettingsInput {
   column: string;
@@ -72,17 +74,18 @@ export async function saveAutorunSettings(
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   if (!columns.includes(input.column)) return bad(`There's no column named "${input.column}".`);
-  // A clean or formula column's auto-run follows its inputs; it has no rule or caps.
+  // A clean, formula or lookup column's auto-run follows its inputs; it has no rule or caps.
   const clean = cleanColumnFor(sheetId, userId, input.column);
   const formula = clean ? undefined : formulaColumnFor(sheetId, userId, input.column);
-  if (clean || formula) {
+  const lookup = clean || formula ? undefined : lookupColumnFor(sheetId, userId, input.column);
+  if (clean || formula || lookup) {
     const extra = (input.where?.length ?? 0) > 0 || !!input.runIf
       || (input.dailyCapUsd ?? null) !== null || (input.dailyRowCap ?? null) !== null;
-    const what = clean ? 'a clean' : 'a formula';
+    const what = clean ? 'a clean' : formula ? 'a formula' : 'a lookup';
     if (extra && input.enabled) return bad(`The auto-run of ${what} column has no rule or cap: it's free.`);
-    return clean
-      ? setCleanColumnAutorun(userId, sheetId, clean, input.enabled)
-      : setFormulaColumnAutorun(userId, sheetId, formula!, input.enabled);
+    if (clean) return setCleanColumnAutorun(userId, sheetId, clean, input.enabled);
+    if (formula) return setFormulaColumnAutorun(userId, sheetId, formula, input.enabled);
+    return setLookupColumnAutorun(userId, sheetId, lookup!, input.enabled);
   }
   const prior = entryFor(sheetId, userId, input.column);
   if (!input.enabled) {

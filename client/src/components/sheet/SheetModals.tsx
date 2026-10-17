@@ -14,6 +14,7 @@ import { plural } from '@/lib/utils'
 import { anyAutorunOn } from '@/hooks/sheet/useAutorun'
 import { toastCleanStarted } from '@/hooks/sheet/useCleanColumnActions'
 import { toastFormulaStarted } from '@/hooks/sheet/useFormulaColumnActions'
+import { toastLookupStarted } from '@/hooks/sheet/useLookupColumnActions'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 
 interface SheetModalsProps {
@@ -181,11 +182,15 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
         setup={activeSheet ? {
           sheetId: activeSheet.id, columns: sheetData?.data.columns ?? [],
           cleanColumns: sheetData?.data.cleanColumns ?? {}, formulaColumns: sheetData?.data.formulaColumns ?? {},
+          lookupColumns: sheetData?.data.lookupColumns ?? {},
           request: newColumnOpen,
           // Silent reload: the new column and its values (or ⏳ while it fills) appear in place.
           onStarted: (result) => { closeNewColumn(); void silentReload(activeSheet.id); toastCleanStarted(result) },
           onFormulaStarted: (result) => {
             closeNewColumn(); void silentReload(activeSheet.id); toastFormulaStarted(result)
+          },
+          onLookupStarted: (result) => {
+            closeNewColumn(); void silentReload(activeSheet.id); toastLookupStarted(result)
           },
         } : undefined}
       />

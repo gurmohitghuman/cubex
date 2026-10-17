@@ -21,7 +21,8 @@ export type ColumnType =
   | 'webhook-source' // the read-only "Webhook" marker column (row provenance)
   | 'webhook-mapped' // a column a webhook mapping writes into
   | 'clean'          // a clean data column (clean_columns: filled from its source by a cleaner)
-  | 'formula';       // a formula column (formula_columns: worked out from the row by a formula)
+  | 'formula'        // a formula column (formula_columns: worked out from the row by a formula)
+  | 'lookup';        // a lookup column (lookup_columns: filled from another sheet)
 
 export interface SheetColumnKinds {
   types: Record<string, ColumnType>;
@@ -133,6 +134,10 @@ export function sheetColumnKinds(sheetId: string, userId: string): SheetColumnKi
   const formula = db.prepare('SELECT column_name AS name FROM formula_columns WHERE sheet_id = ? AND user_id = ?')
     .all(sheetId, userId) as Array<{ name: string }>;
   for (const { name } of formula) { types[name] = 'formula'; runState.delete(name); }
+  // Lookup columns, the same way (lib/lookup-columns.ts).
+  const lookup = db.prepare('SELECT column_name AS name FROM lookup_columns WHERE sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as Array<{ name: string }>;
+  for (const { name } of lookup) { types[name] = 'lookup'; runState.delete(name); }
 
   return { types, runState };
 }

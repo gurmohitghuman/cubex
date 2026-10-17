@@ -3,6 +3,7 @@ import type { SourcesCell } from '@/components/ScrapedDataModal'
 import type { EnrichOpenRequest, EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
+import type { LookupOpenTarget } from '@/components/lookup/useLookupForm'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 
 export const useSheetModals = () => {
@@ -22,14 +23,18 @@ export const useSheetModals = () => {
   }, [])
   const [showNewColumnModal, setShowNewColumnModal] = useState(false)
   // What the column menu opens the Add Column dialog on: Clean data with the
-  // column as its source, a clean column's setup to edit, or a formula
-  // column's. Null: the dialog's own choice (Empty column first).
+  // column as its source, a clean column's setup to edit, or a formula or
+  // lookup column's. Null: the dialog's own choice (Empty column first).
   const [newColumnOpen, setNewColumnOpen] = useState<NewColumnOpenTarget | null>(null)
   const openClean = useCallback((target: CleanOpenTarget) => {
     setNewColumnOpen(target)
     setShowNewColumnModal(true)
   }, [])
   const openFormula = useCallback((target: FormulaOpenTarget) => {
+    setNewColumnOpen(target)
+    setShowNewColumnModal(true)
+  }, [])
+  const openLookup = useCallback((target: LookupOpenTarget) => {
     setNewColumnOpen(target)
     setShowNewColumnModal(true)
   }, [])
@@ -51,7 +56,7 @@ export const useSheetModals = () => {
     enrichOpen, clearEnrichOpen: () => setEnrichOpen(null), openEnrichment,
     enrichWatch, stopEnrichWatch: () => setEnrichWatch(null),
     showNewColumnModal, setShowNewColumnModal,
-    newColumnOpen, openClean, openFormula, clearNewColumnOpen: () => setNewColumnOpen(null),
+    newColumnOpen, openClean, openFormula, openLookup, clearNewColumnOpen: () => setNewColumnOpen(null),
     showWebhookDrawer, setShowWebhookDrawer,
     showDedupeModal, setShowDedupeModal,
     saveSetupFor, openSaveSetup, closeSaveSetup: () => setSaveSetupFor(null),

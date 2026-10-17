@@ -11,6 +11,7 @@ import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
 import { resumeAgePrunes } from '../services/answer-prune-age';
+import { startLookupLoop } from '../services/lookup-host';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -41,13 +42,15 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   // "Prune details older than 90 days" (services/answer-prune*.ts).
   startAnswerPruneLoop();
   resumeAgePrunes();
+  // Lookups: dropped keys deleted, looked-up sheets kept current (services/lookup-purge.ts).
+  startLookupLoop();
   startQueue()
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).
       startAutorunLoop();
       // Setups being used on sheets start their next steps (services/setup-runner.ts).
       startSetupLoop();
-      // A write to a clean or formula column's input works it out again at once (services/derived-follow.ts).
+      // A write to a clean, formula or lookup column's input works it out again at once (services/derived-follow.ts).
       startDerivedFollow();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:

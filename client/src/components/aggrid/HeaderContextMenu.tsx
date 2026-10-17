@@ -11,6 +11,7 @@ import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
 import { CleanColumnActions } from './CleanColumnActions'
 import { FormulaColumnActions } from './FormulaColumnActions'
+import { LookupColumnActions } from './LookupColumnActions'
 import type { RunByColumn, RunMenuActions } from './types'
 
 // Columns a setup can hold: filled ones (lib/setups on the server says which can't, and why).
@@ -86,6 +87,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
         )}
         <CleanColumnActions {...runProps} isClean={columnType === 'clean'} />
         {columnType === 'formula' && <FormulaColumnActions {...runProps} />}
+        {columnType === 'lookup' && <LookupColumnActions {...runProps} />}
 
         {columnType === 'http-master' && (
           <HTTPColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}

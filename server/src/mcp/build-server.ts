@@ -26,6 +26,7 @@ import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import { registerCleanTool } from './tools-clean';
 import { registerFormulaTool } from './tools-formula';
+import { registerLookupTool } from './tools-lookup';
 import { registerDedupeTool } from './tools-dedupe';
 import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
@@ -45,7 +46,9 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'never passes through your context. Clean names, companies, emails, domains, phones, case and ' +
         'spaces with clean_column: free, no AI, into a new column. Compute a column from each row (pick an ' +
         'item of an HTTP response by a condition, join, split, math) with formula_column: a free JavaScript ' +
-        'formula, no AI. Remove duplicate rows with remove_duplicates (free; a dry run unless dry_run is ' +
+        'formula, no AI. Bring values from another sheet (match a column, return a column, yes/no, a count ' +
+        'or the matching rows) with lookup_column: free, no AI. Remove duplicate rows with remove_duplicates ' +
+        '(free; a dry run unless dry_run is ' +
         'false). Save filled columns as a named setup with save_setup, then build the same chain of columns on ' +
         'another sheet with apply_setup (an estimate unless estimate_only is false); list_setups shows the ' +
         'saved ones. apply_setup again on a sheet that has its columns carries them on: only the rows not done ' +
@@ -85,6 +88,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerBalanceTools(server, ctx);
   registerCleanTool(server, ctx);
   registerFormulaTool(server, ctx);
+  registerLookupTool(server, ctx);
   registerDedupeTool(server, ctx);
   registerSetupTools(server, ctx);
   registerSetupRunTools(server, ctx);

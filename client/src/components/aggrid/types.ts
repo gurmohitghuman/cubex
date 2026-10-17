@@ -3,6 +3,7 @@ import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
 import type { FormulaColumnView } from '@/utils/api/formula'
+import type { LookupColumnView } from '@/utils/api/lookup'
 
 export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
@@ -19,6 +20,10 @@ export type CleanMenuAction = 'new' | 'edit' | 'again' | 'autorun_on' | 'autorun
 // A formula column's items: edit its formula, work every row out again, and
 // turn its auto-run on or off.
 export type FormulaMenuAction = 'edit' | 'again' | 'autorun_on' | 'autorun_off'
+
+// A lookup column's items: edit the lookup, look every row up again, and
+// turn its auto-run on or off.
+export type LookupMenuAction = 'edit' | 'again' | 'autorun_on' | 'autorun_off'
 
 export interface RunMenuActions {
   onRunHTTPForColumn?: (columnName: string) => void
@@ -41,6 +46,7 @@ export interface RunMenuActions {
   onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
   onCleanAction?: (action: CleanMenuAction, columnName: string) => void
   onFormulaAction?: (action: FormulaMenuAction, columnName: string) => void
+  onLookupAction?: (action: LookupMenuAction, columnName: string) => void
   // Save as setup: the dialog opened on a filled column (it and what it reads start ticked).
   onSaveSetup?: (columnName: string) => void
   // Hide the column in the view showing (rows and column order don't change).
@@ -59,6 +65,8 @@ export interface AGGridSpreadsheetProps {
   cleanColumns?: Record<string, CleanColumnView>
   // Formula columns' setups: the header's formula icon and its hover note.
   formulaColumns?: Record<string, FormulaColumnView>
+  // Lookup columns' setups: the header's lookup icon and its hover note.
+  lookupColumns?: Record<string, LookupColumnView>
   data: Array<{ rowIndex: number; data: Record<string, string> }>
   totalRows: number
   onCellEdit: (rowIndex: number, column: string, value: string) => void

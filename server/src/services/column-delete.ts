@@ -16,6 +16,7 @@ import { activeHttpRunReadsColumn, activeRunInputError } from '../lib/ai-prompt-
 import { deleteAutorunColumnRefs, dropAutorunQueueOf } from '../lib/autorun-columns';
 import { deleteCleanColumnRefs } from '../lib/clean-columns';
 import { deleteFormulaColumnRefs } from '../lib/formula-columns';
+import { deleteLookupColumnRefs } from '../lib/lookup-columns';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
@@ -196,6 +197,8 @@ export async function deleteSheetColumn(
       deleteFormulaColumnRefs(sheetId, userId, columnName);
       // Saved views: their filters and hidden columns, and the sheet's row_filter.
       deleteViewColumnRefs(sheetId, userId, columnName);
+      // A lookup column's too; lookups in other sheets that read this column stop, with a message.
+      deleteLookupColumnRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

@@ -28,6 +28,10 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Clean a column into a new one (emails 6 s, domains 6.5 s, company names 7 s, names 10 s, phone numbers 11 s) | 6 to 11 s | 0.15 s | 750 MB |
 | Fill a formula column (two columns joined 6.8 s, the work email picked out of a JSON response 8.5 s, a Lodash formula 10.8 s) | 7 to 11 s | 0.06 s | 680 MB |
 | A formula that hangs on every row (it stops itself after 3 rows) | 1.2 s | 0.31 s | 710 MB |
+| Fill a lookup column from another sheet of 1,000,000 rows, by "is exactly" (that column's index built in 7 s, then the fill) | 17 s | 0.06 s | 770 MB |
+| Another lookup on the same column of that sheet (its index already built) | 6.4 s | 0.04 s | 660 MB |
+| A lookup that counts the matching rows, 5,000 matches for each value | 12 s | 0.05 s | 860 MB |
+| A lookup by "contains", company names in both sheets (the text index built in 51 s, then the fill) | 60 s | 0.11 s | 770 MB |
 | Check for duplicates, 300,000 rows repeating an email (by email 2.6 s, as plain text 2.1 to 2.5 s, by domain 3.3 to 3.5 s, by phone 5.6 to 7.7 s, three columns 5.2 to 6.9 s, keeping the most filled-in row 6.3 to 12.9 s) | 2 to 13 s | 0.04 to 0.14 s | 950 MB |
 | Remove those 300,000 duplicate rows (two runs) | 18 to 30 s | 0.4 to 0.5 s | 970 MB |
 
@@ -35,4 +39,6 @@ The database for this sheet is 600 MB on disk. The filter rows were measured on 
 
 A filter has to check every row to count the matches, so a filtered read takes about half a second at a million rows. It checks them a slice at a time, about 25 ms each, so other requests keep being answered meanwhile.
 
-While a big job (import, sort, column rename or delete, cleaning a column, filling a formula column, removing duplicates, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+Lookups were measured with two sheets of 1,000,000 rows, one looking up the other. The column a lookup reads in the other sheet gets an index, built in the background the first time: about 70 MB for a million short values, 175 MB with contains. Writing to that sheet costs a little more while it's looked up: changing another of its columns takes 15 to 30% longer in a big run, and a sheet nobody looks up pays nothing measurable. After a sort of a looked-up sheet, the index reads every row's new position again in the background (about 2 to 7 s at a million rows), and lookups into that sheet wait until it has. Contains on a million different values against a million rows depends on the words: about a minute for company names, more when every value shares the same few letters.
+
+While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
