@@ -1,4 +1,4 @@
-// Loops of derived columns (clean and formula columns, services/derived-kind.ts):
+// Loops of derived columns (clean, formula and lookup columns, services/derived-kind.ts):
 // a column worked out, directly or down a chain, from itself would follow its
 // own writes forever, so saving one and renaming a column both check. The
 // graph is column → the columns it reads, from both kinds' records. Records
@@ -25,6 +25,11 @@ function derivedGraph(sheetId: string, userId: string): Graph {
   const formula = db.prepare(`SELECT column_name AS c, inputs AS i FROM formula_columns
     WHERE sheet_id = ? AND user_id = ?`).all(sheetId, userId) as Array<{ c: string; i: string }>;
   for (const r of formula) graph.set(r.c, inputsOf(r.i));
+  // A lookup reads one column of its own row (what it reads in another sheet
+  // never works it out again, so no loop can run through there).
+  const lookup = db.prepare(`SELECT column_name AS c, source_column AS s FROM lookup_columns
+    WHERE sheet_id = ? AND user_id = ?`).all(sheetId, userId) as Array<{ c: string; s: string }>;
+  for (const r of lookup) graph.set(r.c, [r.s]);
   return graph;
 }
 

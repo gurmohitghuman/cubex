@@ -3,7 +3,7 @@
 // (no rule, no caps). Keep in step with server services/autorun-view.ts and
 // autorun-estimate.ts.
 
-export type AutorunKind = 'enrichment' | 'http' | 'clean' | 'formula'
+export type AutorunKind = 'enrichment' | 'http' | 'clean' | 'formula' | 'lookup'
 
 export interface AutorunCondition { column: string; op: string; value: string }
 

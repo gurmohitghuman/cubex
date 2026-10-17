@@ -9,6 +9,7 @@ import { sheetColumnKinds } from '../lib/column-types';
 import { FILL_PLACEHOLDER, fillingColumns } from '../services/answer-field-fill';
 import { sheetCleanView } from '../services/clean-view';
 import { sheetFormulaView } from '../services/formula-view';
+import { sheetLookupView } from '../services/lookup-view';
 import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
 import { liveRunColumns, savedFilterSql } from '../services/row-filter';
@@ -98,9 +99,13 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const cleanColumns = sheetCleanView(id, req.userId!, columns);
     // Formula columns' setups: the header tip, the column menu and the Edit formula dialog.
     const formulaColumns = sheetFormulaView(id, req.userId!, columns);
+    // Lookup columns' setups: the header tip, the column menu and the Edit lookup dialog.
+    const lookupColumns = sheetLookupView(id, req.userId!, columns);
     res.json({
       sheet: sheetForClient,
-      data: { rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, views },
+      data: {
+        rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns, views,
+      },
     });
   } catch (error) {
     console.error('Get sheet error:', error);

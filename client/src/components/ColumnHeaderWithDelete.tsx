@@ -1,14 +1,16 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare, Link2 } from 'lucide-react'
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn, ColumnSpend } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
 import type { FormulaColumnView } from '@/utils/api/formula'
+import type { LookupColumnView } from '@/utils/api/lookup'
 import { HeaderTip } from './autorun/HeaderTip'
 import { headerTip, pauseShort } from './autorun/autorun-copy'
 import { cleanHeaderTip } from './clean/clean-copy'
 import { formulaHeaderTip } from './formula/formula-copy'
+import { lookupHeaderTip } from './lookup/lookup-copy'
 
 interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   onDeleteColumn: (columnId: string) => void
@@ -24,17 +26,20 @@ interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   clean?: CleanColumnView
   // A formula column's setup: the formula icon's note ("Formula: {{Response}}?.emails…").
   formula?: FormulaColumnView
+  // A lookup column's setup: the lookup icon's note ("Looks up Domain in Companies › Website").
+  lookup?: LookupColumnView
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
   const {
-    displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend, clean, formula,
+    displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend, clean, formula, lookup,
   } = params
   const tip = headerTip(spend, autorun)
-  // A clean or formula column's note comes first, then its auto-run's.
+  // A clean, formula or lookup column's note comes first, then its auto-run's.
   const cleanTip = columnType === 'clean' ? cleanHeaderTip(clean) : null
   const formulaTip = columnType === 'formula' ? formulaHeaderTip(formula) : null
-  const tipText = [cleanTip?.text, formulaTip?.text, tip?.text].filter(Boolean).join(' · ')
+  const lookupTip = columnType === 'lookup' ? lookupHeaderTip(lookup) : null
+  const tipText = [cleanTip?.text, formulaTip?.text, lookupTip?.text, tip?.text].filter(Boolean).join(' · ')
 
   const colDef = column.getColDef()
   const columnName = (colDef.field as string) || column.getColId()
@@ -72,8 +77,9 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
         className="truncate flex-1 cursor-pointer select-none flex items-center gap-1"
         onClick={handleHeaderClick}
       >
-        {(columnType === 'enrich-status' || cleanTip || formulaTip || autorun?.enabled) && (
-          <HeaderTip text={tipText} amber={tip?.paused ?? cleanTip?.problem ?? formulaTip?.problem}>
+        {(columnType === 'enrich-status' || cleanTip || formulaTip || lookupTip || autorun?.enabled) && (
+          <HeaderTip text={tipText}
+            amber={tip?.paused ?? cleanTip?.problem ?? formulaTip?.problem ?? lookupTip?.problem}>
             {columnType === 'enrich-status' && (
               <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
                 data-testid="enrich-status-icon" />
@@ -85,6 +91,10 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
             {formulaTip && (
               <FunctionSquare size={12} className="opacity-70 flex-shrink-0" aria-label={formulaTip.label}
                 data-testid="formula-icon" />
+            )}
+            {lookupTip && (
+              <Link2 size={12} aria-label={lookupTip.label} data-testid="lookup-icon"
+                className={`flex-shrink-0 ${lookupTip.problem ? 'text-amber-600' : 'opacity-70'}`} />
             )}
             {autorun?.enabled && (
               <Zap size={12} data-testid="autorun-icon" data-paused={autorun.pausedReason ? 'true' : 'false'}

@@ -3,6 +3,7 @@ import type { ColumnSpend, SheetAutorun } from './types-autorun'
 import type { CleanColumnView } from './clean'
 import type { FormulaColumnView } from './formula'
 import type { SheetView } from './views'
+import type { LookupColumnView } from './lookup'
 export interface Table {
   id: string
   name: string
@@ -47,7 +48,7 @@ export interface Sheet {
 // in sync with server lib/column-types.ts.
 export type ColumnType =
   | 'ai-output' | 'ai-data' | 'http-master' | 'http-extracted' | 'enrich-status'
-  | 'webhook-source' | 'webhook-mapped' | 'clean' | 'formula'
+  | 'webhook-source' | 'webhook-mapped' | 'clean' | 'formula' | 'lookup'
 
 export interface SheetData {
   sheet: Sheet
@@ -65,6 +66,8 @@ export interface SheetData {
     formulaColumns?: Record<string, FormulaColumnView>
     // Saved views, Default first (the view menu; the active one's hidden columns).
     views?: SheetView[]
+    // Lookup columns' setups, by column (the header icon, the column menu, Edit lookup).
+    lookupColumns?: Record<string, LookupColumnView>
   }
 }
 

@@ -66,6 +66,9 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Adds a column, or works its own formula column out again with a new formula (replacing what is in it, hand
   // edits included); no other column is written.
   formula_column: write('Fill a column with a formula (free)', true, true),
+  // Adds a column, or looks its own lookup column up again with new settings (replacing what is in it, hand
+  // edits included); only reads the other sheet.
+  lookup_column: write('Look up values from another sheet (free)', true, true),
   // Changes nothing, but spends one small AI call on OpenRouter.
   write_formula: write('Write a formula with AI', false, false, true),
   search_enrichments: read('Search enrichment tools', true),

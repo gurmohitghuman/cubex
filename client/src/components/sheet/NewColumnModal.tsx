@@ -1,27 +1,33 @@
 import React, { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Brush, FunctionSquare, Plus } from 'lucide-react'
+import { Brush, FunctionSquare, Link2, Plus } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { CleanColumnForm } from '@/components/clean/CleanColumnForm'
 import { FormulaColumnForm } from '@/components/formula/FormulaColumnForm'
+import { LookupColumnForm } from '@/components/lookup/LookupColumnForm'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
-import type { CleanColumnView, CleanStartResult, FormulaColumnView, FormulaStartResult } from '@/utils/api'
+import type { LookupOpenTarget } from '@/components/lookup/useLookupForm'
+import type {
+  CleanColumnView, CleanStartResult, FormulaColumnView, FormulaStartResult, LookupColumnView, LookupStartResult,
+} from '@/utils/api'
 
 // What the column menu (or a header's auto-run icon) opened the dialog on.
-export type NewColumnOpenTarget = CleanOpenTarget | FormulaOpenTarget
+export type NewColumnOpenTarget = CleanOpenTarget | FormulaOpenTarget | LookupOpenTarget
 
-// Clean data and formulas in the dialog: the sheet, its columns, its clean and
-// formula columns, what the dialog was opened on (null: the dialog's own
-// choice), and what happens once one starts filling.
+// Clean data, formulas and lookups in the dialog: the sheet, its columns, its
+// clean, formula and lookup columns, what the dialog was opened on (null: the
+// dialog's own choice), and what happens once one starts filling.
 export interface NewColumnSetupProps {
   sheetId: string
   columns: string[]
   cleanColumns: Record<string, CleanColumnView>
   formulaColumns: Record<string, FormulaColumnView>
+  lookupColumns: Record<string, LookupColumnView>
   request: NewColumnOpenTarget | null
   onStarted: (result: CleanStartResult) => void
   onFormulaStarted: (result: FormulaStartResult) => void
+  onLookupStarted: (result: LookupStartResult) => void
 }
 
 interface NewColumnModalProps {
@@ -33,7 +39,7 @@ interface NewColumnModalProps {
   setup?: NewColumnSetupProps
 }
 
-type Choice = 'empty' | 'clean' | 'formula'
+type Choice = 'empty' | 'clean' | 'formula' | 'lookup'
 const CHOICES = [
   { id: 'empty', label: 'Empty column', hint: 'Type or paste the values yourself.', Icon: Plus },
   {
@@ -44,14 +50,21 @@ const CHOICES = [
     id: 'formula', label: 'Formula', hint: 'Worked out from each row, like a field picked from an API reply. Free.',
     Icon: FunctionSquare,
   },
+  {
+    id: 'lookup', label: 'Lookup', hint: 'Values from another sheet, matched on a column of this row. Free.',
+    Icon: Link2,
+  },
 ] as const
 
 const isFormulaTarget = (t: NewColumnOpenTarget | null): t is FormulaOpenTarget =>
   !!t && (t.mode === 'formula-new' || t.mode === 'formula-edit')
+const isLookupTarget = (t: NewColumnOpenTarget | null): t is LookupOpenTarget =>
+  !!t && (t.mode === 'lookup-new' || t.mode === 'lookup-edit')
 
-// "+ Add Column": an empty column, Clean data or a Formula. The column menu
-// opens it on Clean data with a source picked, on a clean column's setup (Edit
-// cleaning) or on a formula column's (Edit formula). The body mounts afresh on
+// "+ Add Column": an empty column, Clean data, a Formula or a Lookup. The
+// column menu opens it on Clean data with a source picked, on a clean column's
+// setup (Edit cleaning), a formula column's (Edit formula) or a lookup
+// column's (Edit lookup). The body mounts afresh on
 // each open, so every open starts clean.
 export const NewColumnModal: React.FC<NewColumnModalProps> = ({ isOpen, onClose, onSubmit, setup }) => (
   <Modal isOpen={isOpen} onClose={onClose} panelClassName="max-w-xl">
@@ -63,28 +76,34 @@ const NewColumnBody: React.FC<Omit<NewColumnModalProps, 'isOpen'>> = ({ onClose,
   // Read once: what the dialog opened on (a reload while it's open doesn't change it).
   const [request] = useState(setup?.request ?? null)
   const formulaReq = isFormulaTarget(request) ? request : null
-  const cleanReq = request && !formulaReq ? request as CleanOpenTarget : null
+  const lookupReq = isLookupTarget(request) ? request : null
+  const cleanReq = request && !formulaReq && !lookupReq ? request as CleanOpenTarget : null
   const [editingClean] = useState(() => (
     cleanReq?.mode === 'edit' ? setup?.cleanColumns[cleanReq.column] ?? null : null))
   const [editingFormula] = useState(() => (
     formulaReq?.mode === 'formula-edit' ? setup?.formulaColumns[formulaReq.column] ?? null : null))
-  const [choice, setChoice] = useState<Choice>(formulaReq ? 'formula' : cleanReq ? 'clean' : 'empty')
-  const editing = editingClean ?? editingFormula
+  const [editingLookup] = useState(() => (
+    lookupReq?.mode === 'lookup-edit' ? setup?.lookupColumns[lookupReq.column] ?? null : null))
+  const [choice, setChoice] = useState<Choice>(
+    formulaReq ? 'formula' : lookupReq ? 'lookup' : cleanReq ? 'clean' : 'empty')
+  const editing = editingClean ?? editingFormula ?? editingLookup
   const subtitle = editingClean
     ? `"${editingClean.column}" is cleaned from "${editingClean.source}". Saving cleans every row again.`
     : editingFormula ? `"${editingFormula.column}" is worked out from each row. Saving works every row out again.`
-      : 'Create a new column in this sheet'
+      : editingLookup ? `"${editingLookup.column}" is looked up in another sheet. Saving looks every row up again.`
+        : 'Create a new column in this sheet'
   return (
     <>
       <div className="p-6 border-b border-gray-200">
         <h3 className="text-title text-gray-900">
-          {editingClean ? 'Edit cleaning' : editingFormula ? 'Edit formula' : 'Add Column'}
+          {editingClean ? 'Edit cleaning' : editingFormula ? 'Edit formula'
+            : editingLookup ? 'Edit lookup' : 'Add Column'}
         </h3>
         <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
       </div>
       <div className="p-6 space-y-4">
         {setup && !editing && (
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="New column">
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="New column">
             {CHOICES.map(c => (
               <button key={c.id} type="button" role="radio" aria-checked={choice === c.id}
                 onClick={() => setChoice(c.id)} data-testid={`new-column-${c.id}`}
@@ -105,6 +124,9 @@ const NewColumnBody: React.FC<Omit<NewColumnModalProps, 'isOpen'>> = ({ onClose,
         ) : setup && choice === 'formula' ? (
           <FormulaColumnForm sheetId={setup.sheetId} columns={setup.columns} editing={editingFormula}
             onCancel={onClose} onStarted={setup.onFormulaStarted} />
+        ) : setup && choice === 'lookup' ? (
+          <LookupColumnForm sheetId={setup.sheetId} columns={setup.columns} editing={editingLookup}
+            onCancel={onClose} onStarted={setup.onLookupStarted} />
         ) : (
           <EmptyColumnForm onClose={onClose} onSubmit={onSubmit} />
         )}

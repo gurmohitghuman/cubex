@@ -6,6 +6,8 @@ export * from './constants-enrich';
 // Clean data and formula columns, same split.
 export * from './constants-clean';
 export * from './constants-formula';
+// Lookup columns, same split.
+export * from './constants-lookup';
 // "Paste a cURL command" constants, same split.
 export * from './constants-curl';
 import { envInt } from './env-int';

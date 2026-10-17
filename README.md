@@ -53,6 +53,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
 - **Formulas, free.** Work a column out from each row with a JavaScript formula: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
+- **Lookups, free.** Bring values from another sheet: a company's industry onto its people, whether a lead is already in another list, how many orders match. Match whole values or text inside them.
 - **Setups.** Save a chain of filled columns (the prompts, models, requests, formulas and rules) once, then build the same columns on a new client's sheet in one go. Each step runs once the columns it reads are filled.
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
@@ -178,6 +179,21 @@ Not sure how to write one? Describe what you want, like "the work email from Res
 A cell holding JSON, like a whole API response, reaches the formula as an object or a list. That's how you pick an item by a condition, which an HTTP API column's JSONPath fields don't do: extract `$` (the whole response) into a column, then add a formula column that reads it. A row the formula can't work out shows `❌` and the error.
 
 Auto-run is on by default, so new rows, and rows where a column the formula reads changes, are worked out again on their own. Formulas run in a sandbox with no access to your files, the network or the server, and with time and memory limits.
+
+### Lookups
+
+Click **+ Add Column** and choose **Lookup** to fill a new column from another sheet, in any table. Pick the sheet to look in, the column there to match, and the column of this row that holds the value: for each row, Cubex finds the rows there that match and writes
+
+- a column of the first match (top of that sheet first), like the industry of a company found by its domain,
+- **Yes** or **No**, like whether a lead is already in your customer list,
+- how many rows match, or
+- the matching rows themselves (up to 100), as a JSON list a formula column can read.
+
+A match is **is exactly** (the whole value) or **contains** (the value anywhere inside the other cell, 3 characters or more). Capital letters (accented ones too) and spaces around the value don't matter. It's free: no AI, and nothing is sent anywhere. You see the first matches before you save it.
+
+Changes in the other sheet don't update the column; click **Look up every row again** in its menu when they should. Auto-run is on by default, so new rows and rows whose value changes are looked up on their own. Renaming columns of the other sheet keeps the lookup working; if that sheet, or a column the lookup reads, is deleted, the column stops and its header says why.
+
+Lookups stay fast on big sheets: Cubex keeps an index of each column other sheets look up, built in the background the first time, so your sheet stays usable meanwhile. Contains on very large sheets can take a few minutes.
 
 ### Remove duplicates
 

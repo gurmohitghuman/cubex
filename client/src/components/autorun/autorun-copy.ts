@@ -44,6 +44,7 @@ export function autorunUsage(a: AutorunColumn): string {
   // A clean data column's auto-run has no caps: it costs nothing and sends nothing.
   if (a.kind === 'clean') return 'cleans new and changed rows for free'
   if (a.kind === 'formula') return 'works out new and changed rows for free'
+  if (a.kind === 'lookup') return 'looks new and changed rows up for free'
   if (a.kind === 'http') {
     return `${a.rowsToday.toLocaleString()} of ${plural(a.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS, 'row')} today`
   }
@@ -97,6 +98,7 @@ export function webhookWarning(kind: AutorunKind, dailyLimitUsd: number | null, 
   if (kind === 'formula') {
     return "Anyone with this sheet's webhook URL can add rows. Each new row is worked out by the formula, for free."
   }
+  if (kind === 'lookup') return "Anyone with this sheet's webhook URL can add rows. Each new row is looked up, for free."
   if (kind === 'http') {
     return "Anyone with this sheet's webhook URL can add rows, and each new row sends this request. "
       + 'Your rows-a-day cap limits how many run.'

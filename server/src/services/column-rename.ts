@@ -19,6 +19,7 @@ import { renameAutorunColumnRefs } from '../lib/autorun-columns';
 import { renameCleanColumnRefs } from '../lib/clean-columns';
 import { derivedRenameLoop } from '../lib/derived-loops';
 import { renameFormulaColumnRefs } from '../lib/formula-columns';
+import { renameLookupColumnRefs } from '../lib/lookup-columns';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
@@ -223,4 +224,7 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameFormulaColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Saved views: their filters and hidden columns, and the sheet's row_filter.
   renameViewColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Lookup columns: the column itself and the one it reads; lookups in other
+  // sheets looking in this one (the column they match, the columns they return).
+  renameLookupColumnRefs(sheetId, userId, columnName, trimmedNew);
 }

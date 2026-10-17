@@ -28,6 +28,7 @@ import { getLockedRunColumns } from '../routes/sheets-shared';
 import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../lib/autorun-mark';
 import { forgetUnlistedCleanColumns } from '../lib/clean-columns';
 import { forgetUnlistedFormulaColumns } from '../lib/formula-columns';
+import { forgetUnlistedLookupColumns } from '../lib/lookup-columns';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
 
@@ -170,6 +171,7 @@ export async function importCsv(
           forgetUnlistedCleanColumns(sheetId, userId);
           forgetUnlistedFormulaColumns(sheetId, userId);
           pruneViewsToColumns(sheetId, userId);
+          forgetUnlistedLookupColumns(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {

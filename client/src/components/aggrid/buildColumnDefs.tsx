@@ -8,6 +8,7 @@ import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
 import type { FormulaColumnView } from '@/utils/api/formula'
+import type { LookupColumnView } from '@/utils/api/lookup'
 
 interface BuildColumnDefsArgs {
   columns: string[]
@@ -34,6 +35,8 @@ interface BuildColumnDefsArgs {
   // The active view's hidden columns: set as AG Grid's `hide`, so they stay in
   // the grid's column state (a column move keeps their place in column_order).
   hiddenColumns?: ReadonlySet<string>
+  // Lookup columns' setups: the header's lookup icon and its hover note.
+  lookupColumns?: Record<string, LookupColumnView>
 }
 
 // Build the colDef array AG Grid renders from. Extracted from AGGridSpreadsheet so the
@@ -46,6 +49,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
     emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns, hiddenColumns,
+    lookupColumns,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -127,6 +131,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           spend: columnSpend?.[column],
           clean: cleanColumns?.[column],
           formula: formulaColumns?.[column],
+          lookup: lookupColumns?.[column],
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);

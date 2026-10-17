@@ -91,6 +91,12 @@ export const CLEAN_PREVIEW_DELAY_MS = 400;
 // Formula dialog: the same free preview, asked for this long after the last
 // keystroke in the formula (a formula is typed more than picked).
 export const FORMULA_PREVIEW_DELAY_MS = 500;
+// Lookup columns (server lib/constants-lookup.ts): the preview's wait after a change, "all matches"
+// (at most LOOKUP_LIST_MAX, LOOKUP_LIST_DEFAULT when not set), contains' shortest value.
+export const LOOKUP_PREVIEW_DELAY_MS = 400;
+export const LOOKUP_LIST_MAX = 100;
+export const LOOKUP_LIST_DEFAULT = 10;
+export const LOOKUP_CONTAINS_MIN_CHARS = 3;
 
 // Longest pasted cURL command the HTTP column dialog sends (mirrors server CURL_MAX_CHARS).
 export const CURL_MAX_CHARS = 100_000;
