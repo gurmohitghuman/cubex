@@ -1,4 +1,5 @@
 import { redirectToLoginOn401 } from './client'
+import type { OutputColumnDraft } from '../../lib/output-columns'
 import type { AIPreview } from './types'
 import type { SearchPlanSummary } from './types-search'
 
@@ -20,6 +21,8 @@ export interface PreviewStreamParams {
   searchMode?: string
   maxSearchesPerRow?: number
   runIf?: string
+  // Several typed columns from one answer per row (absent: one column).
+  outputColumns?: OutputColumnDraft[]
 }
 
 // Streaming preview. The server responds with NDJSON (one JSON object per line):

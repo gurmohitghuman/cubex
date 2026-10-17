@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { CheckCircle, Edit3, Loader2, Play, Save, Search } from 'lucide-react'
 import { AIPreview } from './types'
+import { PreviewFields } from './PreviewFields'
 import { estimateRunCost, formatTokens, formatCost, rowSearchLine } from './format'
 import { plural } from '@/lib/utils'
 import type { SearchPlanSummary } from '@/utils/api'
@@ -30,6 +31,8 @@ interface Props {
   // With web search: the engine the searches ran on, priced (what the run will use).
   webSearchPlan?: SearchPlanSummary | null
   nameError: string
+  // Output columns: each row shows its typed fields, and only a run fills them (no edit, no Add Column).
+  structured: boolean
   onBack: () => void
   onCommit: () => Promise<unknown>
   onStartRun: () => Promise<unknown>
@@ -37,7 +40,7 @@ interface Props {
 
 export const PreviewStep: React.FC<Props> = ({
   previewResults, setPreviewResults, isCommittingPreview, isGeneratingPreview, expectedRows,
-  runTargetRows, modelPricing, usesWebTools, webSearchPlan, nameError,
+  runTargetRows, modelPricing, usesWebTools, webSearchPlan, nameError, structured,
   onBack, onCommit, onStartRun,
 }) => {
   const [editing, setEditing] = useState<{ rowIndex: number; value: string } | null>(null)
@@ -62,7 +65,9 @@ export const PreviewStep: React.FC<Props> = ({
             <p className="text-xs text-cube-black mt-1">
               {isGeneratingPreview
                 ? `Generating ${previewResults.length} / ${expectedRows} rows…`
-                : 'Review the preview results below. You can edit values before proceeding.'}
+                : structured
+                  ? 'Review the preview results below. Run all rows to fill the output columns.'
+                  : 'Review the preview results below. You can edit values before proceeding.'}
             </p>
           </div>
         </div>
@@ -100,7 +105,9 @@ export const PreviewStep: React.FC<Props> = ({
               </div>
             ) : (
               <div className="group">
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{result.error || result.value}</p>
+                {result.fields && !result.error ? <PreviewFields fields={result.fields} /> : (
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{result.error || result.value}</p>
+                )}
                 {/* What the row searched for and cost, as its "(Data)" cell will say. */}
                 {rowSearchLine(result) && (
                   <p className="mt-1 text-xs text-gray-500 flex items-start gap-1" data-testid="preview-row-search">
@@ -110,7 +117,7 @@ export const PreviewStep: React.FC<Props> = ({
                 {/* Editing is locked until the stream finishes — acting on a row
                     while others are still arriving is confusing and the commit
                     would use a partial set. */}
-                {!isGeneratingPreview && (
+                {!isGeneratingPreview && !structured && (
                   <button onClick={() => setEditing({ rowIndex: result.rowIndex, value: result.value })}
                     className="mt-2 opacity-0 group-hover:opacity-100 text-xs text-gray-500 hover:text-gray-700 flex items-center space-x-1 transition-opacity">
                     <Edit3 className="h-3 w-3" /><span>Edit</span>
@@ -162,12 +169,14 @@ export const PreviewStep: React.FC<Props> = ({
         {/* All actions are disabled while preview rows are still streaming. */}
         <button onClick={onBack} disabled={isGeneratingPreview} className="btn-secondary">Back to Configure</button>
         <div className="flex items-center space-x-2">
-          <button onClick={onCommit} disabled={isGeneratingPreview || isCommittingPreview || !!nameError}
-            className="btn-success flex items-center space-x-2"
-            title="Add a new column with these preview results">
-            {isCommittingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-            <span>Add Column</span>
-          </button>
+          {!structured && (
+            <button onClick={onCommit} disabled={isGeneratingPreview || isCommittingPreview || !!nameError}
+              className="btn-success flex items-center space-x-2"
+              title="Add a new column with these preview results">
+              {isCommittingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              <span>Add Column</span>
+            </button>
+          )}
           <button onClick={onStartRun} disabled={isGeneratingPreview}
             className="btn-primary flex items-center space-x-2"
             title={estimate && !estimate.isFree

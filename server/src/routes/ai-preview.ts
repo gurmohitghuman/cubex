@@ -1,3 +1,4 @@
+// Over 200 lines: the one streaming preview route, request to saved draft; its parsing and row runs live apart.
 import express from 'express';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
@@ -8,12 +9,12 @@ import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { samplePreviewRows } from '../lib/ai-preview-sample';
 import { checkRunRule } from '../services/run-rule';
 import {
-  upsertDraftConfig, saveDraftPreview, computeInputHash, draftConfigFrom, type DraftPreviewRow,
+  upsertDraftConfig, saveDraftPreview, computeInputHash, draftConfigFrom, deleteDraft, type DraftPreviewRow,
 } from '../lib/ai-drafts';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { getOpenRouterClient } from '../services/openrouter';
 import { planIfSearching } from '../services/web-search-catalog';
-import { processOneRow } from './ai-preview-runner';
+import { processOneRow, structuredPreview } from './ai-preview-runner';
 import {
   acquirePreviewSlot, releasePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER,
 } from '../lib/ai-preview-concurrency';
@@ -76,7 +77,14 @@ router.post('/preview', async (req: AuthRequest, res) => {
     try { openai = await getOpenRouterClient(req.userId!); }
     catch (e: any) { return res.status(400).json({ error: `AI setup error: ${e?.message || 'AI client initialization failed'}` }); }
 
-    const args = { prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, search: planned.ok, useWebFetch };
+    // Output columns: the run's JSON instruction and typed fields. Such a run
+    // reuses no preview (services/ai-run-start-multi.ts), so it keeps no draft.
+    const structured = parsed.outputColumns
+      ? structuredPreview(parsed.outputColumns, useOpenRouterWebSearch || useWebFetch) : null;
+    const args = {
+      prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, search: planned.ok,
+      useWebFetch, ...structured?.args,
+    };
 
     // Persist the draft CONFIG before streaming (survives close/reopen even if
     // the stream is aborted mid-way). Results attach at stream END, all-or-
@@ -85,7 +93,11 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // stream's end-of-stream save — a superseding preview re-upserts with a new
     // id, neutralizing this stream's late save.
     const draftConfig = draftConfigFrom({ ...parsed, runIf: rule.ok?.rule ?? null }, model);
-    const draftAttemptId = upsertDraftConfig(req.userId!, sheetId, draftConfig, sheet.row_generation);
+    // A structured preview supersedes the sheet's one draft as any preview does,
+    // but saves none: an older draft would otherwise come back on the next open.
+    if (structured) deleteDraft(req.userId!, sheetId);
+    const draftAttemptId = structured
+      ? null : upsertDraftConfig(req.userId!, sheetId, draftConfig, sheet.row_generation);
 
     // Stream rows as newline-delimited JSON (NDJSON) so the client renders each row
     // the instant OpenRouter returns it, instead of waiting for the slowest of all 5.
@@ -137,7 +149,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
         // processOneRow never throws (returns per-row errors), so Promise.all
         // won't reject. No external abort signal: the loop runs to completion
         // even after a disconnect (see the clientGone comment above).
-        processOneRow(row, openai!, args).then(result => {
+        processOneRow(row, openai!, args).then(answer => {
+          const result = structured ? structured.shape(answer) : answer;
           collected[i + j] = {
             rowIndex: result.rowIndex, value: result.value,
             ...(result.error ? { error: result.error } : { inputHash: computeInputHash(prompt, row.data) }),
@@ -164,7 +177,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // config, so the attempt-id guard makes a late save a no-op.
     const allSucceeded = collected.length === rows.length
       && collected.every(r => r && !r.error && r.value !== '' && !!r.inputHash);
-    if (allSucceeded) {
+    if (allSucceeded && draftAttemptId) {
       saveDraftPreview(req.userId!, sheetId, draftAttemptId, collected, runTargetRows);
     }
 

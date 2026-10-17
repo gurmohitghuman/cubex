@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { aiAPI, sheetsAPI, webSearchBody, type AIDraft, type SearchPlanSummary, type WebSearchSettings } from '@/utils/api'
 import { AIPreview, Step } from './types'
+import { outputColumnsBody, type OutputColumnDraft } from '@/lib/output-columns'
 
 // The slice of the AI modal's config the preview path needs. Kept narrow so this
 // hook isn't coupled to run-lifecycle args (concurrency, onRunStarted, …).
@@ -24,6 +25,9 @@ interface PreviewArgs {
   // user's slider on reopen — the preview itself doesn't use it.
   concurrency: number
   runIf: string
+  // Several typed columns from one answer per row ([]: one column), and what's wrong with them ('' = fine).
+  outputColumns: OutputColumnDraft[]
+  outputsError: string
   nameError: string
   previewSize: number
   temperature: number
@@ -68,6 +72,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, previewSize: a.previewSize, concurrency: a.concurrency,
     ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
+    ...(a.outputColumns.length ? { outputColumns: outputColumnsBody(a.outputColumns) } : {}),
   })
 
   // Restore a persisted preview (draft hydration on modal open) — same state
@@ -96,6 +101,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     if (!a.columnName.trim() || !a.prompt.trim() || a.nameError) {
       return toast.error('Column name and prompt are required')
     }
+    if (a.outputsError) return toast.error(a.outputsError)
     // Mirrors the server's no-model 400 — a preview must never run on a model
     // the user didn't choose (directly or via a default).
     if (!a.model) {
@@ -154,6 +160,8 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     // disabled in the UI — this is the programmatic backstop).
     if (isGeneratingPreview) return toast.error('Preview is still generating')
     if (previewResults.length === 0) return toast.error('No preview results to add')
+    // Output columns are filled by a run only (the button isn't offered then).
+    if (a.outputColumns.length) return toast.error('Run it to fill the output columns.')
 
     setIsCommittingPreview(true)
     try {

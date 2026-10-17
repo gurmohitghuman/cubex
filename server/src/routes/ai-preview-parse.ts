@@ -2,7 +2,8 @@ import { MAX_AI_CONCURRENCY } from '../lib/constants';
 import { sanitizeAndValidateColumnName } from '../lib/column-names';
 import { validateModelParam } from '../lib/ai-model-resolve';
 import type { SearchOptions } from '../lib/web-search-options';
-import { parseWebOptions } from './ai-run-parse';
+import { parseOutputColumns, parseWebOptions } from './ai-run-parse';
+import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import { parseRuleField } from '../lib/run-condition';
 
 // Parse + validate + numeric-bound the /ai/preview request body. Split out of
@@ -31,6 +32,8 @@ export interface PreviewParams {
   search: SearchOptions | null;
   // "Only run if" rule text: the preview samples rows that pass it.
   runIf: string | null;
+  // Several typed columns from one answer per row, as the run would fill them.
+  outputColumns?: OutputColumnSpec[];
 }
 
 // User-facing message for a pre-stream preview failure (validation, client
@@ -64,6 +67,8 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
   if ('error' in web) return { ok: false, status: 400, error: web.error };
   const runIf = parseRuleField(body?.runIf);
   if ('error' in runIf) return { ok: false, status: 400, error: runIf.error };
+  const outputs = body?.outputColumns === undefined ? null : parseOutputColumns(body.outputColumns);
+  if (outputs && 'error' in outputs) return { ok: false, status: 400, error: outputs.error };
 
   const nameCheck = sanitizeAndValidateColumnName(columnName);
   if ('error' in nameCheck) return { ok: false, status: 400, error: nameCheck.error };
@@ -86,5 +91,6 @@ export function parsePreviewRequest(body: any): PreviewParams | PreviewParseErro
     model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
     ...web.ok,
     safePreviewSize, safeTemperature, safeConcurrency, safeMaxChars, runIf: runIf.ok,
+    ...(outputs ? { outputColumns: outputs.specs } : {}),
   };
 }

@@ -12,8 +12,8 @@ const OUTPUT_COLUMN_TYPES: OutputColumnType[] = ['string', 'number', 'boolean'];
 // arrays, bad shapes, unknown types, invalid names, and dupes AMONG the specs on
 // BOTH the case-insensitive and normalized-token axes (collisions vs EXISTING
 // columns + the status column are checked in ai-run-start, where the sheet's
-// real columns are known).
-function parseOutputColumns(raw: unknown): { specs: OutputColumnSpec[] } | { error: string } {
+// real columns are known). The app's preview (ai-preview-parse.ts) takes it too.
+export function parseOutputColumns(raw: unknown): { specs: OutputColumnSpec[] } | { error: string } {
   if (!Array.isArray(raw) || raw.length === 0) {
     return { error: 'output_columns must be a non-empty array.' };
   }

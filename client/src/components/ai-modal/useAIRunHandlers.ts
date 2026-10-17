@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { aiAPI, webSearchBody, type RunSpend, type WebSearchSettings } from '@/utils/api'
 import { AIResult, AIRun, Step } from './types'
 import { usePreviewHandlers } from './usePreviewHandlers'
+import { outputColumnsBody, type OutputColumnDraft } from '@/lib/output-columns'
 
 interface Args {
   // Whether the run drawer is open. The progress poll runs ONLY while open —
@@ -27,6 +28,9 @@ interface Args {
   concurrency: number
   // "Only run if" rule ('' = every row).
   runIf: string
+  // Output columns ([]: one column) and what's wrong with them ('' = fine).
+  outputColumns: OutputColumnDraft[]
+  outputsError: string
   nameError: string
   previewSize: number
   temperature: number
@@ -91,6 +95,7 @@ export const useAIRunHandlers = (a: Args) => {
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
     maxChars: a.maxChars, concurrency: a.concurrency,
     ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
+    ...(a.outputColumns.length ? { outputColumns: outputColumnsBody(a.outputColumns) } : {}),
   })
 
   const handleStartRun = async () => {
@@ -100,6 +105,7 @@ export const useAIRunHandlers = (a: Args) => {
     if (!a.model) {
       return toast.error('Choose a model under Configure — or set a default model in Settings.')
     }
+    if (a.outputsError) return toast.error(a.outputsError)
     try {
       const result = await aiAPI.startRun(runBody())
       // No success toast — cells visibly start filling with '⏳ Processing...'

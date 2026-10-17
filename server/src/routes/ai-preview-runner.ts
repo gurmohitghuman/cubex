@@ -6,6 +6,7 @@ import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig }
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { SearchQueryLog } from '../lib/responses-adapter';
 import { sendModelCall, type ModelCall } from '../services/ai-model-call';
+import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } from '../lib/ai-multi-output';
 
 interface PreviewArgs {
   prompt: string
@@ -44,6 +45,22 @@ export interface PreviewRowResult {
   // With web search: every search call and how many ran.
   searchQueries?: SearchQueryLog[]
   webSearches?: number
+  // A structured preview: the answer's typed fields, one per output column.
+  fields?: Record<string, string>
+}
+
+// A structured (output columns) preview: the JSON instruction the run appends
+// (ai-row-multi.ts), and each answer parsed into its typed fields; a reply that
+// isn't the JSON asked for is that row's error, as in the run.
+export function structuredPreview(specs: OutputColumnSpec[], withSources: boolean) {
+  return {
+    args: { promptSuffix: buildMultiOutputInstruction(specs, { withSources }), rawText: true },
+    shape: (r: PreviewRowResult): PreviewRowResult => {
+      if (r.error) return r;
+      const parsed = parseMultiOutput(r.value, specs);
+      return 'error' in parsed ? { ...r, error: parsed.error } : { ...r, fields: parsed.ok };
+    },
+  };
 }
 
 // Run a single row through OpenRouter for preview. Returns a result row including any
