@@ -16,6 +16,8 @@ export interface AIPreview {
   costUsd?: number
   searchQueries?: Array<{ query: string; ran: boolean }>
   webSearches?: number
+  // With output columns: the answer's typed fields, one per column.
+  fields?: Record<string, string>
 }
 
 // The modal's built-in concurrency default when a sheet has no saved preference.

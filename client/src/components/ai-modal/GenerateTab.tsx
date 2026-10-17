@@ -36,6 +36,11 @@ interface Props {
   setShowSuggestions: (b: boolean) => void
   setActiveSuggestIndex: React.Dispatch<React.SetStateAction<number>>
   insertColumnReference: (reference: string) => void
+  // The prompt starters (shown above the prompt) and the output columns (below it).
+  starters?: React.ReactNode
+  outputs?: React.ReactNode
+  // Output columns hold the answer; the name above makes the run's "(Status)" column.
+  structured?: boolean
 }
 
 export const GenerateTab: React.FC<Props> = ({
@@ -45,7 +50,7 @@ export const GenerateTab: React.FC<Props> = ({
   useWebFetch, setUseWebFetch,
   columnSuggestions, showSuggestions, suggestFilter, activeSuggestIndex,
   setSuggestFilter, setShowSuggestions, setActiveSuggestIndex,
-  insertColumnReference,
+  insertColumnReference, starters, outputs, structured,
 }) => (
   <div className="space-y-4">
     <div>
@@ -54,7 +59,12 @@ export const GenerateTab: React.FC<Props> = ({
         placeholder="e.g., Industry Analysis, Sentiment Score"
         value={columnName} onChange={(e) => setColumnName(e.target.value)} />
       {nameError && <p className="text-sm text-red-600 mt-1">{nameError}</p>}
-      <p className="text-xs text-gray-500 mt-1">This will be the name of your new AI-generated column</p>
+      <p className="text-xs text-gray-500 mt-1">
+        {structured
+          ? `The output columns below hold the answer; "${columnName.trim() || 'Name'} (Status)" shows `
+            + 'how each row went'
+          : 'This will be the name of your new AI-generated column'}
+      </p>
     </div>
 
     <div className="space-y-3">
@@ -100,6 +110,7 @@ export const GenerateTab: React.FC<Props> = ({
             its longer text wrapped and collided with this label. */}
         <OpenRouterCreditNotice neutralOnly className="flex-shrink-0" />
       </div>
+      {starters}
       <div className="relative">
         <textarea id="prompt" className="input w-full h-24 resize-none"
           placeholder="Summarize /description into 1 sentence…"
@@ -152,6 +163,7 @@ export const GenerateTab: React.FC<Props> = ({
       </div>
       <PromptReferenceChips prompt={prompt} setPrompt={setPrompt} columnSuggestions={columnSuggestions} />
       <p className="text-xs text-gray-500 mt-1">Type / to reference another column</p>
+      {outputs}
     </div>
   </div>
 )

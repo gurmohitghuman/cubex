@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { OutputColumnDraft } from '../../lib/output-columns'
 import type { AIDraft, AIPreview, AIResult, AIRun, HTTPPreview, HTTPResult, HTTPRun } from './types'
 import type { RowSearchQuery, RunSpend, SearchPlanResponse } from './types-search'
 import { previewStream } from './ai-preview-stream'
@@ -29,6 +30,8 @@ type AIRunParams = {
   maxSearchesPerRow?: number
   // "Only run if" rule (empty/absent: every row).
   runIf?: string
+  // Several typed columns from one answer per row (absent: one column).
+  outputColumns?: OutputColumnDraft[]
 }
 
 export const aiAPI = {

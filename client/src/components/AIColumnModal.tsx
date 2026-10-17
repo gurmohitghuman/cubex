@@ -17,6 +17,7 @@ import { useModels } from './ai-modal/useModels'
 import { useAIRunHandlers } from './ai-modal/useAIRunHandlers'
 import { useColumnNameValidation } from './ai-modal/useColumnNameValidation'
 import { usePromptSuggestions } from './ai-modal/usePromptSuggestions'
+import { outputColumnsError, type OutputColumnDraft } from '@/lib/output-columns'
 
 interface AIColumnModalProps {
   isOpen: boolean
@@ -51,6 +52,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
   // "Only run if" rule ('' = every row).
   const [runIf, setRunIf] = useState('')
+  // Output columns: several typed columns from one answer per row ([] = one column).
+  const [outputColumns, setOutputColumns] = useState<OutputColumnDraft[]>([])
 
   const temperature = 0.2
   const maxChars: number | undefined = undefined
@@ -59,13 +62,14 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   const [columnSuggestions, setColumnSuggestions] = useState<Array<{ name: string; reference: string }>>([])
   const [editingName, setEditingName] = useState<string | null>(null) // the column an edit opened on
   const nameError = useColumnNameValidation(columnName, columnSuggestions, editingName)
+  const outputsError = outputColumnsError(outputColumns, columnSuggestions.map(c => c.name), columnName)
   const sugg = usePromptSuggestions(prompt, setPrompt)
 
   const models = useModels(isOpen, sel.model)
 
   const h = useAIRunHandlers({
     isOpen, sheetId, rowGeneration, columnName, prompt, systemPrompt, model: sel.model,
-    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, runIf, nameError,
+    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, runIf, outputColumns, outputsError, nameError,
     previewSize, temperature, maxChars,
     setStep, onSuccess, onClose, onRunStarted, resetState: () => resetState(),
   })
@@ -79,7 +83,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
     sel.setModel(defaultAiModel || sel.accountDefaultModel || '')
     sel.resetPicked()
     setUseOpenRouterWebSearch(false); setWebSearch(DEFAULT_WEB_SEARCH); setUseWebFetch(false); setConcurrency(DEFAULT_CONCURRENCY)
-    setRunIf('')
+    setRunIf(''); setOutputColumns([])
     h.setPreviewResults([]); h.setCurrentRun(null); h.setIsPolling(false)
     try { localStorage.removeItem('ai_modal_initial') } catch {}
   }
@@ -160,6 +164,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             useWebFetch={useWebFetch} setUseWebFetch={setUseWebFetch}
             columnSuggestions={columnSuggestions}
             runIf={runIf} setRunIf={setRunIf} active={isOpen}
+            outputColumns={outputColumns} setOutputColumns={setOutputColumns} outputsError={outputsError}
+            editing={!!editingName}
             sugg={sugg} models={models}
             model={sel.model} setModel={sel.setModel}
             systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}
@@ -181,7 +187,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             isGeneratingPreview={h.isGeneratingPreview} expectedRows={h.expectedRows}
             runTargetRows={h.runTargetRows} modelPricing={models.selectedModel?.pricing}
             usesWebTools={useOpenRouterWebSearch || useWebFetch} webSearchPlan={h.previewWebSearch}
-            nameError={nameError}
+            nameError={nameError} structured={outputColumns.length > 0}
             // Back is the explicit "discard this attempt": it deletes the
             // persisted draft (owner decision), so the NEXT open starts fresh —
             // draftDiscarded makes the next close reset the retained state too.

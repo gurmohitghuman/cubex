@@ -29,6 +29,8 @@ router.post('/run', async (req: AuthRequest, res) => {
       safeMaxChars: parsed.safeMaxChars,
       search: parsed.search,
       runIf: parsed.runIf,
+      // The dialog's output columns: one answer per row fills them all (ai-run-start-multi.ts).
+      outputColumns: parsed.outputColumns,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

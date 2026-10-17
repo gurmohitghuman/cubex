@@ -117,10 +117,11 @@ Create a table, then import a CSV or start typing.
 
 Click **AI Column**, name it, and write what you want. Type `/` to use another column's value. Try it on 5 rows, check the results, then run it on the rest.
 
+- **Starters.** Not sure what to write? Start from a ready prompt: qualify (YES or NO), classify, write an opener, a lead score from 1 to 10, or a company profile. Each is written with your sheet's own columns; fill in the parts in square brackets.
 - **Web search.** Turn on web search, or "fetch URLs from referenced columns", when the model needs current information. Pick the search engine and limit the searches per row, since search fees are usually most of the cost. Each row's "(Data)" cell shows what it searched for and what it cost.
 - **Control.** Cells fill in live while a run works. Pause, resume or stop it, and re-run only the rows that failed or came back empty. **Stop all** in the header stops every run and setup on the sheet at once. Changed the prompt? **Run First Rows…** in the column's menu runs it again on the sheet's top rows (10 by default), so you can check them before running the rest. HTTP API columns have it too.
 - **Only run if.** Run only the rows that pass a rule, such as `{{Industry}} is "SaaS" AND {{Employees}} > 50`. Say in plain words which rows should run and your default AI model writes the rule (one small call), or write it yourself. Cubex checks the rule without AI, so the rows it leaves out cost nothing and show "⏭️ Condition not met". HTTP API and enrichment columns have it too, so one column can decide which rows the next one runs on.
-- **Several columns at once.** Through the API or MCP, one run can fill several typed columns, such as a score and the reason for it.
+- **Several columns at once.** One run can fill several typed columns, such as a score and the reason for it: **Fill several columns from one answer** in the dialog (the company profile starter sets six up), or `output_columns` through the API or MCP.
 
 ![Adding an AI column whose prompt references /company and /website, previewing 5 rows, then running it on every row](docs/media/cubex-ai.gif)
 

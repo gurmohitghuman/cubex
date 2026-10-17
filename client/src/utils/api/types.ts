@@ -157,6 +157,8 @@ export interface AIPreview {
   costUsd?: number
   searchQueries?: Array<{ query: string; ran: boolean }>
   webSearches?: number
+  // A preview with output columns: the answer's typed fields, one per column.
+  fields?: Record<string, string>
 }
 
 export interface HTTPRun {

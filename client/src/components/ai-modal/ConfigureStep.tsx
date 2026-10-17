@@ -9,6 +9,9 @@ import { PromptSuggestionsHandle } from './usePromptSuggestions'
 import { plural } from '@/lib/utils'
 import type { WebSearchSettings } from '@/utils/api'
 import { RunIfField } from '../run-if/RunIfField'
+import { PromptStarters } from './PromptStarters'
+import { OutputColumnsField } from './OutputColumnsField'
+import type { OutputColumnDraft } from '@/lib/output-columns'
 
 interface Props {
   sheetId: string
@@ -24,6 +27,11 @@ interface Props {
   // "Only run if" section ('' = every row); active: the drawer is open.
   runIf: string; setRunIf: (v: string) => void
   active: boolean
+  // Output columns ([] = one column) and what's wrong with them ('' = fine).
+  outputColumns: OutputColumnDraft[]; setOutputColumns: (v: OutputColumnDraft[]) => void
+  outputsError: string
+  // Editing an existing column: no starters and no output columns (they'd make a different column).
+  editing: boolean
   // Configure section
   model: string; setModel: (m: string) => void
   systemPrompt: string; setSystemPrompt: (s: string) => void
@@ -54,8 +62,8 @@ export const ConfigureStep: React.FC<Props> = (p) => {
   const [searchBlocked, setSearchBlocked] = useState<string | null>(null)
   const blockedBySearch = p.useOpenRouterWebSearch && !!searchBlocked
   // Names the FIRST unmet requirement for a preview, in the SAME order as the
-  // CTA's disabled guard below (name error → column name → prompt → model →
-  // search settings). Deliberately does NOT mention the OpenRouter key: the
+  // CTA's disabled guard below (name error → column name → prompt → output
+  // columns → model → search settings). Deliberately does NOT mention the OpenRouter key: the
   // key never disables the button (the no-key banner above + server-side
   // enforcement own that).
   const disabledReason = p.nameError
@@ -64,6 +72,8 @@ export const ConfigureStep: React.FC<Props> = (p) => {
       ? 'Add a column name to continue.'
       : !p.prompt.trim()
         ? 'Add a prompt to continue.'
+        : p.outputsError
+          ? p.outputsError
         : !p.model
           ? 'Choose a model under Configure — or set a default model in Settings.'
           : blockedBySearch
@@ -86,7 +96,12 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         showSuggestions={p.sugg.show} setShowSuggestions={p.sugg.setShow}
         suggestFilter={p.sugg.filter} setSuggestFilter={p.sugg.setFilter}
         activeSuggestIndex={p.sugg.activeIndex} setActiveSuggestIndex={p.sugg.setActiveIndex}
-        insertColumnReference={p.sugg.insert} />
+        insertColumnReference={p.sugg.insert} structured={p.outputColumns.length > 0}
+        starters={!p.editing && <PromptStarters columns={p.columnSuggestions} prompt={p.prompt}
+          setPrompt={p.setPrompt} columnName={p.columnName} setColumnName={p.setColumnName}
+          outputColumns={p.outputColumns} setOutputColumns={p.setOutputColumns} />}
+        outputs={!p.editing && <OutputColumnsField value={p.outputColumns} onChange={p.setOutputColumns}
+          columnName={p.columnName} error={p.outputsError} />} />
     </AccordionSection>
 
     <AccordionSection title="Only run if" summary={p.runIf.trim() ? p.runIf : 'Every row'}
@@ -113,7 +128,8 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         <div className="flex space-x-3">
           <button onClick={p.onCancel} className="btn-secondary">Cancel</button>
           <button onClick={p.onPreview}
-            disabled={p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim() || !!p.nameError || !p.model || blockedBySearch}
+            disabled={p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim() || !!p.nameError
+              || !!p.outputsError || !p.model || blockedBySearch}
             className="btn-primary flex items-center space-x-2">
             {p.isGeneratingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
             <span>{p.isGeneratingPreview ? `Processing ${plural(p.previewSize, 'row')}…` : `Try on ${plural(p.previewSize, 'row')}`}</span>
