@@ -11,6 +11,7 @@ import { abortRunsForTable } from './run-control';
 import { dropBucketsForSheets } from '../lib/webhook-bucket';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { normalizeNameSpacing } from '../lib/name-safety';
+import { createDefaultView } from './view-store';
 
 export type TableCrudFail = {
   fail: 'conflict' | 'not_found' | 'bad_request';
@@ -41,6 +42,7 @@ export function createTable(userId: string, rawName: unknown): CreateTableOutcom
     db.prepare('INSERT INTO tables (id, user_id, name) VALUES (?, ?, ?)').run(tableId, userId, name);
     db.prepare('INSERT INTO sheets (id, table_id, user_id, name, position) VALUES (?, ?, ?, ?, 0)')
       .run(sheetId, tableId, userId, 'Sheet1');
+    createDefaultView(sheetId, userId);
   }).immediate();
   if (fail) return fail;
   return { ok: { id: tableId, name, sheetId } };

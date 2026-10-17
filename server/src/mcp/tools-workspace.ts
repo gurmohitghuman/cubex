@@ -11,7 +11,7 @@ import { buildSheetCsv } from '../lib/csv-export';
 import { listRuns, RUN_LIST_MAX, RUN_LIST_DEFAULT } from '../services/run-list';
 import { MCP_EXPORT_MAX_CHARS } from '../lib/api-v1-constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { WHERE_LANGUAGE, whereSchema } from './where-schema';
+import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
@@ -37,12 +37,14 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Only these columns, in this order. Omit for every column (expensive on wide sheets).'),
         where: whereSchema.optional()
           .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
+        view: z.string().min(1).optional().describe(VIEW_HELP),
       },
     },
-    async ({ sheet_id, columns, where }) => {
+    async ({ sheet_id, columns, where, view }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
-      const result = await buildSheetCsv(sheet_id, ctx.userId, { columns, where, maxChars: MCP_EXPORT_MAX_CHARS });
+      const result = await buildSheetCsv(sheet_id, ctx.userId,
+        { columns, where, view, maxChars: MCP_EXPORT_MAX_CHARS });
       if ('fail' in result) {
         // 'empty' is data ("nothing there yet"), not a failure — an agent
         // scripting over sheets shouldn't have to special-case a new sheet.

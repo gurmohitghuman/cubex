@@ -18,6 +18,7 @@ import { deleteCleanColumnRefs } from '../lib/clean-columns';
 import { deleteFormulaColumnRefs } from '../lib/formula-columns';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
+import { deleteViewColumnRefs } from './view-columns';
 
 export type ColumnDeleteOutcome =
   | { ok: true }
@@ -193,6 +194,8 @@ export async function deleteSheetColumn(
       deleteCleanColumnRefs(sheetId, userId, columnName);
       // So does a formula column's (a formula reading it keeps its values, and its auto-run pauses).
       deleteFormulaColumnRefs(sheetId, userId, columnName);
+      // Saved views: their filters and hidden columns, and the sheet's row_filter.
+      deleteViewColumnRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

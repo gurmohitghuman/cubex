@@ -37,3 +37,8 @@ export const INCLUDE_STATUS_HELP = 'true: each AI, HTTP API and enrichment colum
   + '{status, value, error} instead of its text. status is done (value holds the result), no_result (the run '
   + 'finished without a value; reason says why when Cubex wrote one, e.g. "Not found"), error (error holds what '
   + 'failed), condition_not_met, running or not_run. Other columns are unchanged. Default false.';
+
+export const VIEW_HELP = 'A saved view of the sheet, by name or id (get_sheet lists views): its filters are '
+  + 'added to `where`, and when it hides columns its visible columns are the columns unless you pass columns. '
+  + '"active" reads the view the app shows. Reads through a view answer view_version: with a cursor, echo it '
+  + 'as expected_view_version (and, when the view filters, expected_data_version and expected_row_generation).';

@@ -49,6 +49,9 @@ export const useColumnRename = ({
         data: {
           ...prev.data,
           columns: prev.data.columns.map(c => (c === from ? to : c)),
+          // Saved views hide columns by name (the server renames them too).
+          views: prev.data.views?.map(v => (v.hidden_columns.includes(from)
+            ? { ...v, hidden_columns: v.hidden_columns.map(c => (c === from ? to : c)) } : v)),
           rows: prev.data.rows.map(r => {
             if (!(from in r.data)) return r
             const { [from]: val, ...rest } = r.data

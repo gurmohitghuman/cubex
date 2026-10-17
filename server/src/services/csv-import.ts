@@ -29,6 +29,7 @@ import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../l
 import { forgetUnlistedCleanColumns } from '../lib/clean-columns';
 import { forgetUnlistedFormulaColumns } from '../lib/formula-columns';
 import { listRunInto } from './enrich-list-guard';
+import { pruneViewsToColumns } from './view-columns';
 
 export type CsvImportOutcome =
   | { ok: {
@@ -161,13 +162,14 @@ export async function importCsv(
           // row_generation are fenced (409) until they reload. Done here, after
           // the rows are in, so a tab can't reload into a half-imported sheet.
           db.prepare(
-            `UPDATE sheets SET column_order = ?, empty_filter = NULL, column_filters = NULL,
+            `UPDATE sheets SET column_order = ?, empty_filter = NULL, column_filters = NULL, row_filter = NULL,
                row_generation = row_generation + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
           ).run(replaceColumnOrder(job), sheetId, userId);
           // Every row is new to auto-run, unless it was paused for this import.
           autorunAfterReplace(sheetId, userId, opts.skipAutorun ? next - 1 : null);
           forgetUnlistedCleanColumns(sheetId, userId);
           forgetUnlistedFormulaColumns(sheetId, userId);
+          pruneViewsToColumns(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {

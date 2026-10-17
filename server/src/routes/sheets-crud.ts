@@ -5,6 +5,12 @@ import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_AI_CONCURRENCY } from '../lib/constants';
 import { setSheetDefaultModel } from '../services/ai-model-config';
 import { saveColumnFilters } from '../services/row-filter';
+import { viewMoved } from '../services/view-store';
+
+// A filter change sent with the view it was made in (viewId) after another
+// view became active (another tab switched): refused, so it can't land on the
+// wrong view; the app reloads.
+const VIEW_MOVED = { error: 'Another view is showing now. Reloading.', viewChanged: true };
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -47,6 +53,7 @@ router.put('/:id/empty-filter', (req: AuthRequest, res) => {
 
     const sheet = verifySheetOwnership(id, req.userId!);
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
+    if (viewMoved(id, req.userId!, req.body?.viewId)) return res.status(409).json(VIEW_MOVED);
 
     // Reject filters that reference columns the sheet doesn't have. A
     // not_empty filter on a typo'd or already-deleted column matches zero
@@ -79,9 +86,10 @@ router.put('/:id/empty-filter', (req: AuthRequest, res) => {
 
 // Per-column filters (services/row-filter.ts): the text, number, list and
 // run-state conditions, one per column, beside the empty filter above.
-// Body: { columnFilters: { col: { type, value?, values? } } | null }.
+// Body: { columnFilters: { col: { type, value?, values? } } | null, viewId? }.
 router.put('/:id/column-filters', (req: AuthRequest, res) => {
   try {
+    if (viewMoved(req.params.id, req.userId!, req.body?.viewId)) return res.status(409).json(VIEW_MOVED);
     const result = saveColumnFilters(req.params.id, req.userId!, req.body?.columnFilters);
     if ('fail' in result) return res.status(result.fail === 'not_found' ? 404 : 400).json({ error: result.error });
     res.json({ message: 'Column filters updated successfully' });

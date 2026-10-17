@@ -59,7 +59,8 @@ export async function fetchWindow(
   return first && { ...first, data: { ...first.data, rows } }
 }
 
-const filtersOf = (d: SheetData) => `${d.sheet.empty_filter ?? ''}\u0000${d.sheet.column_filters ?? ''}`
+const filtersOf = (d: SheetData) =>
+  `${d.sheet.empty_filter ?? ''}\u0000${d.sheet.column_filters ?? ''}\u0000${d.sheet.row_filter ?? ''}`
 
 const sameView = (prev: SheetData | null, fresh: SheetData): prev is SheetData =>
   !!prev && prev.sheet.id === fresh.sheet.id && filtersOf(prev) === filtersOf(fresh)

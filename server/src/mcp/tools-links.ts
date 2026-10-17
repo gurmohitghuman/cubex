@@ -14,7 +14,9 @@ import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { importWindow } from './tools-import';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { WHERE_LANGUAGE, whereSchema } from './where-schema';
+import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
+import { applyView } from '../services/view-read';
+import type { WhereItem } from '../lib/row-filter/where';
 
 const MAX_MB = Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024));
 
@@ -85,16 +87,22 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Only these columns, in this order. Omit for every column.'),
         where: whereSchema.optional()
           .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
+        view: z.string().min(1).optional().describe(VIEW_HELP),
       },
     },
-    async ({ sheet_id, columns, where }) => {
+    async ({ sheet_id, columns, where, view }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
+      // A view is read now: the link saves what it shows at this moment.
+      const selection = applyView(sheet_id, ctx.userId, view, { columns, where: where as WhereItem[] | undefined });
+      if (!selection) return err('Sheet not found');
+      if ('error' in selection) return err(selection.error);
       // A typo'd column must fail now, not when the link is used.
-      const plan = planSheetExport(sheet_id, ctx.userId, { columns, where });
+      const plan = planSheetExport(sheet_id, ctx.userId, selection);
       if ('fail' in plan) return err(plan.fail === 'not_found' ? 'Sheet not found' : plan.error);
       const link = createFileLink({
-        userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download', options: { columns, where },
+        userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download',
+        options: { columns: selection.columns, where: selection.where },
       });
       const url = fileLinkUrl(base, 'download', link.token);
       return ok({

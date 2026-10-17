@@ -14,6 +14,7 @@ import { csvLine, eachPage, responseWriter, writeSheetCsv, type SheetExportPlan 
 // (lib -> services is the unusual direction; row-filter itself only depends on
 // lib, so there's no cycle, and lib/server-lifecycle.ts sets the same precedent.)
 import { prepareWhere } from '../services/row-filter';
+import { applyView } from '../services/view-read';
 import type { WhereItem } from './row-filter/where';
 
 export type CsvExport =
@@ -35,21 +36,29 @@ export interface CsvExportOptions {
   columns?: string[];
   // Row filter, the same `where` read_rows accepts (lib/row-filter/where.ts).
   where?: WhereItem[];
+  // A saved view (id, name, or "active"): its filters ANDed with `where`, its
+  // visible columns unless `columns` is given (services/view-read.ts).
+  view?: string;
   // Stop (never at half a row) once the CSV would pass this many characters.
   // Default: no limit.
   maxChars?: number;
 }
+
+export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view'>;
 
 // What an export writes: the columns (the same verified list the grid shows,
 // column_order, or the caller's subset in the caller's order) and the filter.
 // Checked BEFORE any row is read: a typo'd column name must be a clean error,
 // not a CSV silently full of blanks (the failure mode a caller can't see).
 export function planSheetExport(
-  sheetId: string, userId: string, opts: Pick<CsvExportOptions, 'columns' | 'where'> = {},
+  sheetId: string, userId: string, options: ExportSelection = {},
 ): SheetExportPlan | { fail: 'not_found' } | { fail: 'invalid'; error: string } {
   const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?')
     .get(sheetId, userId) as { name: string } | undefined;
   if (!sheet) return { fail: 'not_found' };
+  const opts = applyView(sheetId, userId, options.view, options);
+  if (!opts) return { fail: 'not_found' };
+  if ('error' in opts) return { fail: 'invalid', error: opts.error };
   // selfHeal=false: an export never writes.
   const allColumns = getSheetColumns(sheetId, userId, false);
   let columns = allColumns;
@@ -117,7 +126,7 @@ export async function buildSheetCsv(
   return 'busy' in outcome && typeof outcome.busy === 'string' ? { fail: 'busy', error: outcome.busy } : outcome as CsvExport;
 }
 
-// The whole sheet as a CSV download, written to `res` a page of rows at a time
+// The sheet (or a view, or a selection of it) as a CSV download, written to `res` a page of rows at a time
 // between requests: a million-row export holds one page in memory and never
 // freezes the server. Same columns, escaping, row order and line breaks as
 // buildSheetCsv. Heavy operations (a sort, an import, a column rewrite) wait
@@ -125,17 +134,15 @@ export async function buildSheetCsv(
 // writes wait for the client to drain, and a client that leaves stops it.
 // Sends headers and body itself and returns 'ok'; otherwise sends nothing.
 export async function streamSheetCsv(
-  sheetId: string, userId: string, res: Response,
-): Promise<'ok' | 'not_found' | 'empty' | { busy: string }> {
-  const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as { name: string } | undefined;
-  if (!sheet) return 'not_found';
+  sheetId: string, userId: string, res: Response, selection: ExportSelection = {},
+): Promise<'ok' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
+  const plan = planSheetExport(sheetId, userId, selection);
+  if ('fail' in plan) return plan.fail === 'not_found' ? 'not_found' : { invalid: plan.error };
   if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId)) return 'empty';
   return withSheetRead(sheetId, async () => {
-    const columns = getSheetColumns(sheetId, userId, false);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', contentDispositionFilename(sheet.name, 'csv'));
-    await writeSheetCsv(sheetId, userId, { sheetName: sheet.name, columns }, responseWriter(res));
+    res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, 'csv'));
+    await writeSheetCsv(sheetId, userId, plan, responseWriter(res));
     res.end();
     return 'ok' as const;
   });

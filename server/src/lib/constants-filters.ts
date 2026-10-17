@@ -18,3 +18,7 @@ export const FILTER_SLICE_ROWS = 4_000;
 export const FILTER_SLICE_MIN_ROWS = 2_000;
 export const FILTER_SLICE_MAX_ROWS = 200_000;
 export const FILTER_SLICE_MS = 25;
+// Saved views (services/views.ts): a guard, not a quota.
+export const MAX_VIEWS_PER_SHEET = 50;
+export const MAX_VIEW_NAME_CHARS = 100;
+export const MAX_VIEW_DESCRIPTION_CHARS = 1000;

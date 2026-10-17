@@ -65,7 +65,9 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
       <DropdownMenuTrigger asChild>
         <div style={{ position: 'absolute', top: menu.y, left: menu.x, zIndex: 50 }} className="w-0 h-0" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="start" side="bottom" alignOffset={0} sideOffset={4}>
+      {/* Scrolls inside the room below the header: a run column's menu is taller than a short window. */}
+      <DropdownMenuContent align="start" side="bottom" alignOffset={0} sideOffset={4}
+        className="w-56 !overflow-y-auto max-h-[var(--radix-dropdown-menu-content-available-height)]">
         <DropdownMenuItem onClick={() => {
           setRenaming({ x: menu.x, y: menu.y, oldName: menu.columnId, value: menu.columnId })
           setMenu(null)
@@ -77,6 +79,11 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
         <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'desc'); setMenu(null) }}>
           Sort descending
         </DropdownMenuItem>
+        {runActions.onHideColumn && (
+          <DropdownMenuItem onClick={() => { runActions.onHideColumn!(menu.columnId); setMenu(null) }}>
+            Hide column
+          </DropdownMenuItem>
+        )}
         <CleanColumnActions {...runProps} isClean={columnType === 'clean'} />
         {columnType === 'formula' && <FormulaColumnActions {...runProps} />}
 

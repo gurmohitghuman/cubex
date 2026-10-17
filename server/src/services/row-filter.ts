@@ -12,6 +12,7 @@ import { fillingColumns } from '../lib/field-fill-columns';
 import { isStateOp } from '../lib/row-filter/ops';
 import { checkWhere, whereConditions, type WhereItem } from '../lib/row-filter/where';
 import { compileWhere, type CompiledFilter } from '../lib/row-filter/sql';
+import { viewWhere } from '../lib/views/filters';
 import {
   columnFilterCondition, gridWhere, parseColumnFilters, parseEmptyFilter, toColumnFilter, type ColumnFilters,
 } from '../lib/row-filter/grid';
@@ -59,15 +60,16 @@ export function prepareWhere(
   return { ok: { filter: compileWhere(where, runColumns), runColumns } };
 }
 
-interface SavedFilters { empty_filter: string | null; column_filters: string | null }
+export interface SavedFilters { empty_filter: string | null; column_filters: string | null; row_filter: string | null }
 
-// The grid's saved filters (sheets.empty_filter, sheets.column_filters) as one
-// SQL condition, or null when the sheet has none. `runColumns`: when the
+// The grid's saved filters (sheets.empty_filter, column_filters and row_filter:
+// the active view's, lib/views/filters.ts) as one SQL condition, or null when
+// the sheet has none. `runColumns`: when the
 // caller already has them (the grid's read does).
 export function savedFilterSql(
   sheetId: string, userId: string, saved: SavedFilters | undefined, runColumns?: () => Map<string, string>,
 ): CompiledFilter | null {
-  const where = gridWhere(parseEmptyFilter(saved?.empty_filter), parseColumnFilters(saved?.column_filters));
+  const where = viewWhere(saved);
   if (where.length === 0) return null;
   if (!readsRunState(where)) return compileWhere(where, new Map());
   const runs = runColumns?.() ?? sheetRunColumns(sheetId, userId, getSheetColumns(sheetId, userId, false));

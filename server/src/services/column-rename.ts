@@ -21,6 +21,7 @@ import { derivedRenameLoop } from '../lib/derived-loops';
 import { renameFormulaColumnRefs } from '../lib/formula-columns';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
+import { renameViewColumnRefs } from './view-columns';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
@@ -220,4 +221,6 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameCleanColumnRefs(sheetId, userId, columnName, trimmedNew);
   // Formula columns: the column itself, and the {{reference}} of every formula reading it.
   renameFormulaColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Saved views: their filters and hidden columns, and the sheet's row_filter.
+  renameViewColumnRefs(sheetId, userId, columnName, trimmedNew);
 }

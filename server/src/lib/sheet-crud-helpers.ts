@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 import { seedEmptySheet } from './seed-sheet';
+import { createDefaultView } from '../services/view-store';
 
 // Shared helpers for the sheet (tab) CRUD routes in routes/tables-sheets.ts.
 
@@ -42,6 +43,7 @@ export function createSheetTxn(
     ];
     db.prepare('INSERT INTO sheets (id, table_id, user_id, name, position) VALUES (?, ?, ?, ?, ?)')
       .run(sheetId, tableId, userId, finalName, insertAt);
+    createDefaultView(sheetId, userId);
     const setPos = db.prepare('UPDATE sheets SET position = ? WHERE id = ? AND user_id = ?');
     ordered.forEach((id, i) => setPos.run(i, id, userId));
 
@@ -76,7 +78,7 @@ export const ADDING_ROWS_SQL = `(EXISTS (SELECT 1 FROM http_runs r WHERE r.dest_
     AND li.status = 'pending' AND li.wait_reason IS NULL AND li.user_id = sheets.user_id))`;
 const SHEET_CLIENT_COLUMNS =
   `id, table_id, name, position, created_at, updated_at,
-   sort_state, empty_filter, column_filters,
+   sort_state, empty_filter, column_filters, row_filter, active_view_id,
    default_ai_model, default_ai_concurrency, row_generation, data_version,
    ${ADDING_ROWS_SQL} AS adding_rows`;
 const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at`;

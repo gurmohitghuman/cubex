@@ -6,7 +6,7 @@
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET, ENRICH_VERIFY_TOOL_ID } from '../lib/constants';
 import { countRows, getSheetColumns } from '../lib/sql-helpers';
-import { savedFilterSql } from './row-filter';
+import { savedFilterSql, type SavedFilters } from './row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
 import {
   defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun,
@@ -29,9 +29,9 @@ export interface SheetSetupInfo {
 // All rows (index count), the rows the sheet's saved filters show (the same
 // clause the grid's read counts with, so the numbers match), and room for columns.
 export async function sheetSetupInfo(userId: string, sheetId: string): Promise<SheetSetupInfo | null> {
-  const sheet = db.prepare('SELECT table_id, empty_filter, column_filters FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as
-    { table_id: string; empty_filter: string | null; column_filters: string | null } | undefined;
+  const sheet = db.prepare(
+    'SELECT table_id, empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?',
+  ).get(sheetId, userId) as { table_id: string } & SavedFilters | undefined;
   if (!sheet) return null;
   // The filter's count reads every row: a slice at a time (lib/filtered-scan.ts).
   const saved = savedFilterSql(sheetId, userId, sheet);

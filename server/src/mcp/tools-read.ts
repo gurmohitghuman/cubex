@@ -8,7 +8,7 @@ import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { listTablesWithSheets, getSheetMeta, readRowsPage } from '../services/workspace-read';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { INCLUDE_STATUS_HELP, whereSchema } from './where-schema';
+import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
@@ -36,7 +36,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'until done. clean_columns and formula_columns give each such column\'s setup and auto-run. '
         + 'active_runs lists the AI, HTTP and enrichment runs working on the sheet now (run_type, run_id, '
         + 'status, the column it fills, auto_run when an auto-run started it), and active_setup_runs the setups '
-        + 'being used on it; control_run with action cancel_all stops them all.',
+        + 'being used on it; control_run with action cancel_all stops them all. views lists the saved views (name, '
+        + 'description, filters as a where, hidden_columns; active is the one the app shows): pass view to '
+        + 'read_rows or export_csv to read through one.',
       inputSchema: { sheet_id: z.string() },
     },
     async ({ sheet_id }) => {
@@ -94,16 +96,19 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         expected_row_generation: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). '
             + 'Echo row_generation from the previous page.'),
+        view: z.string().min(1).optional().describe(VIEW_HELP),
+        expected_view_version: z.string().optional()
+          .describe('REQUIRED when paging through a view (view + cursor). Echo view_version from the previous page.'),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
-      expected_row_generation,
+      expected_row_generation, view, expected_view_version,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
-      if (!columns && !where && !return_mode && expected_data_version === undefined
+      if (!columns && !where && !view && !return_mode && expected_data_version === undefined
         && expected_row_generation === undefined) {
         const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
         return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize, include_status === true));
@@ -117,6 +122,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         includeStatus: include_status === true,
         expectedDataVersion: expected_data_version,
         expectedRowGeneration: expected_row_generation,
+        view,
+        expectedViewVersion: expected_view_version,
       });
       return 'fail' in result ? err(result.error) : ok(result.ok);
     },

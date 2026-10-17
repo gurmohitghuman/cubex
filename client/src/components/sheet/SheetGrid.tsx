@@ -77,6 +77,11 @@ export interface SheetGridProps {
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
   // Save as setup, from a filled column's menu.
   onSaveSetup?: (column: string) => void
+  // The view showing: its hidden columns, and "Hide column" in the column menu.
+  hiddenColumns?: ReadonlySet<string>
+  onHideColumn?: (column: string) => void
+  // The view has a filter no column header shows (the bar above lists it).
+  rowFilterActive?: boolean
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -89,7 +94,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
-    onSaveSetup,
+    onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -138,6 +143,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onCleanAction: clean.onCleanAction,
     onFormulaAction: formula.onFormulaAction,
     onSaveSetup,
+    onHideColumn,
   }
 
   return (
@@ -161,6 +167,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       columnFilters={columnFilters}
       onEmptyFilterChange={onEmptyFilterChange}
       onColumnFilterChange={onColumnFilterChange}
+      hiddenColumns={hiddenColumns} rowFilterActive={rowFilterActive}
       onSelectedRowsChange={onSelectedRowsChange}
       onRenameColumn={onRenameColumn}
       onDeleteColumn={(col) => actions.handleDeleteColumnWithWidthCleanup(col, onDeleteColumn)}

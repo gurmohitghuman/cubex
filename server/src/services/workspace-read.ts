@@ -8,6 +8,7 @@ import { formulaColumnJson, sheetFormulaView } from './formula-view';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { sheetRunColumns } from './row-filter';
 import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
+import { listViews, type ViewInfo } from './view-store';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -49,6 +50,9 @@ export interface SheetMeta {
   clean_columns: Array<Record<string, unknown>>;
   // Formula columns: each one's formula, what it reads and auto-run (services/formula-view.ts).
   formula_columns: Array<Record<string, unknown>>;
+  // Saved views (services/view-store.ts): name, description, filters as a
+  // `where`, hidden columns; the active one is what the app shows.
+  views: ViewInfo[];
 }
 
 export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
@@ -74,6 +78,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     active_setup_runs: activeSetupRuns(sheetId, userId),
     clean_columns: Object.values(sheetCleanView(sheetId, userId, columns)).map(cleanColumnJson),
     formula_columns: Object.values(sheetFormulaView(sheetId, userId, columns)).map(formulaColumnJson),
+    views: listViews(sheetId, userId, columns) ?? [],
   };
 }
 

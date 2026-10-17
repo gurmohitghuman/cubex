@@ -31,6 +31,9 @@ interface BuildColumnDefsArgs {
   cleanColumns?: Record<string, CleanColumnView>
   // Formula columns' setups: the header's formula icon and its hover note.
   formulaColumns?: Record<string, FormulaColumnView>
+  // The active view's hidden columns: set as AG Grid's `hide`, so they stay in
+  // the grid's column state (a column move keeps their place in column_order).
+  hiddenColumns?: ReadonlySet<string>
 }
 
 // Build the colDef array AG Grid renders from. Extracted from AGGridSpreadsheet so the
@@ -42,7 +45,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
   const {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
-    emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns,
+    emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns, hiddenColumns,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -110,6 +113,8 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
       lockPinned: true,
       filter: true,
       width: columnWidths[column] || 150,
+      // Always a boolean: AG Grid applies a defined `hide` on every columnDefs update.
+      hide: !!hiddenColumns?.has(column),
       suppressHeaderMenuButton: false,
       ...(onDeleteColumn && {
         headerComponent: ColumnHeaderWithDelete,
