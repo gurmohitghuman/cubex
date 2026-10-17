@@ -61,6 +61,11 @@ export const MAX_PASSWORD_LENGTH = 256;
 // until the change finishes (server lib/sheet-busy.ts).
 export const SHEET_BUSY_RETRY_MS = 2000;
 
+// "Run First Rows" on an AI or HTTP API column: the rows it offers, and the
+// most it takes (server MAX_FIRST_ROWS).
+export const FIRST_ROWS_DEFAULT = 10;
+export const FIRST_ROWS_MAX = 1000;
+
 // Enrichments. Mirrors server/src/lib/constants-enrich.ts: the rows "Run on 5
 // rows" takes, and the highest per-row limit an estimate or run accepts.
 export const ENRICH_TEST_ROWS = 5;

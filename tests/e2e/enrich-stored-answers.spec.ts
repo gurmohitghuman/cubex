@@ -78,7 +78,8 @@ test('Settings: the stored answers size, and pruning old details', async ({ page
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/settings/http-enrichment`)
   const line = page.getByTestId('stored-answers-size')
-  await expect(line).toContainText(/in [\d,]+ answers?, counted (just now|1 minute ago)/, { timeout: 20_000 })
+  // A count an earlier spec made minutes ago stays (it's redone after an hour).
+  await expect(line).toContainText(/in [\d,]+ answers?, counted (just now|\d+ minutes? ago)/, { timeout: 20_000 })
   // The count reads every enrichment answer's size (a recent count from an earlier spec stays as it was).
   const counted = await (await api.get('/api/enrich/stored-answers')).json()
   expect(counted.answers).toBeGreaterThan(0)

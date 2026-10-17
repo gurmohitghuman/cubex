@@ -50,6 +50,12 @@ export const AIColumnActions: React.FC<AIActionsProps> = ({
           🔁 Run Missing or Errors
         </DropdownMenuItem>
       )}
+      {actions.onRunFirstRows && (
+        <DropdownMenuItem onClick={() => { actions.onRunFirstRows?.('ai', base, columnId); setMenu(null) }}
+          className={ITEM}>
+          🧪 Run First Rows…
+        </DropdownMenuItem>
+      )}
       {onEditAIColumn && (actions.canEditAIColumn?.(columnId) ?? true) && (
         <DropdownMenuItem onClick={() => { onEditAIColumn(base); setMenu(null) }}>
           ✏️ Edit / Update Instructions
@@ -88,6 +94,12 @@ export const HTTPColumnActions: React.FC<HTTPActionsProps> = ({
       <DropdownMenuItem onClick={() => { onRunHTTPForMissingOrError?.(columnId); setMenu(null) }} className={ITEM}>
         🔁 Run Missing or Errors
       </DropdownMenuItem>
+      {actions.onRunFirstRows && (
+        <DropdownMenuItem onClick={() => { actions.onRunFirstRows?.('http', columnId); setMenu(null) }}
+          className={ITEM}>
+          🧪 Run First Rows…
+        </DropdownMenuItem>
+      )}
       {selectedRowIndices && selectedRowIndices.length > 0 && (
         <DropdownMenuItem
           onClick={() => {

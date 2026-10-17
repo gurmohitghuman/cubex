@@ -28,7 +28,7 @@ function resolveTargets(
 
 export async function rerunAiRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: AiRerunMode; concurrency?: number } = {},
+  opts: { rowIds?: string[]; mode?: AiRerunMode; concurrency?: number; firstRows?: number } = {},
 ): Promise<RerunOutcome> {
   const run = db.prepare(
     'SELECT id, sheet_id, column_name, output_columns FROM ai_runs WHERE id = ? AND user_id = ?',
@@ -52,19 +52,20 @@ export async function rerunAiRunById(
   if (run.output_columns) {
     return rerunAiMultiColumn(userId, {
       sheetId: run.sheet_id, baseColumnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
-      concurrency: opts.concurrency,
+      concurrency: opts.concurrency, firstRows: opts.firstRows,
     }, run.column_name);
   }
   // The rerun service keys on the BASE column name and re-appends " (Output)".
   const baseColumnName = run.column_name.replace(/ \(Output\)$/, '');
   return rerunAiColumn(userId, {
     sheetId: run.sheet_id, baseColumnName, rowIndices: t.indexes, mode: opts.mode, concurrency: opts.concurrency,
+    firstRows: opts.firstRows,
   });
 }
 
 export async function rerunHttpRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: 'missing' | 'all'; hasSecretsScope: boolean },
+  opts: { rowIds?: string[]; mode?: 'missing' | 'all'; hasSecretsScope: boolean; firstRows?: number },
 ): Promise<RerunOutcome> {
   const run = db.prepare(
     'SELECT id, sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?',
@@ -104,7 +105,7 @@ export async function rerunHttpRunById(
 
   return rerunHttpColumn(userId, {
     sheetId: run.sheet_id, masterColumnName: run.master_column_name,
-    mode: opts.mode, rowIndices: t.indexes,
+    mode: opts.mode, rowIndices: t.indexes, firstRows: opts.firstRows,
     // A no-'secrets' caller's rerun produces a FROZEN clone: even a key created
     // after the gate check above can never resolve. A secrets caller keeps the
     // parent's policy (copy). See http-run-rerun.ts forceAllowSecrets.

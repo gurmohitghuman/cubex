@@ -58,8 +58,9 @@ router.post('/:id/setups', (req: AuthRequest, res) => {
 });
 
 // { inputs, names, models, firstRows, estimateOnly }: a price for using the
-// setup here, or its start (201). A missing input or a name taken answers with
-// `missing` or `taken`, so the dialog can point at it.
+// setup here (with the steps that carry a column of the sheet on), or its
+// start (201). A missing input or a name taken answers with `missing` or
+// `taken`, so the dialog can point at it.
 router.post('/:id/setups/:setupId/apply', async (req: AuthRequest, res) => {
   try {
     const input = applyInputOf(body(req), 'app');
@@ -75,9 +76,11 @@ router.post('/:id/setups/:setupId/apply', async (req: AuthRequest, res) => {
   }
 });
 
+// ?setupId=: that setup's runs here only (the Use a setup dialog's last choices).
 router.get('/:id/setup-runs', (req: AuthRequest, res) => {
   try {
-    res.json({ setup_runs: sheetSetupRuns(req.userId!, req.params.id) });
+    const setupId = typeof req.query.setupId === 'string' && req.query.setupId ? req.query.setupId : undefined;
+    res.json({ setup_runs: sheetSetupRuns(req.userId!, req.params.id, 5, setupId) });
   } catch (error) {
     console.error('Setup runs error:', error);
     if (!res.headersSent) res.status(500).json({ error: 'Failed to read the setups working on this sheet' });

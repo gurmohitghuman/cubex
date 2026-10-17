@@ -4,17 +4,19 @@
 // by its main column, an AI step by its base name so its Output, Status and
 // Data columns follow; an output column of an HTTP API, enrichment or
 // structured AI step on its own), every reference rewritten in one pass
-// (remap.ts), then checked: no column it makes may already be in the sheet,
-// and the result must hold together (check.ts). layers says when each step
-// starts.
+// (remap.ts), then checked: a column it makes that the sheet has already must
+// be one a step can carry on (again.ts; `existing` is the sheet's filled
+// columns), and the result must hold together (check.ts). layers says when
+// each step starts, modes whether it makes its columns or carries them on.
 import { resolveColumnRef } from '../column-ref-resolve';
-import { findColumnNameCollision, sanitizeAndValidateColumnName } from '../column-names';
+import { sanitizeAndValidateColumnName } from '../column-names';
 import { TEMPLATE_TOKEN_RE } from '../http-request-template';
 import { templateTokenIs } from '../template-token-match';
 import { columnLookup, requestTexts } from './refs';
 import { specLayers, specProblem } from './check';
 import { remapSpec, stepRenames } from './remap';
 import { mainColumn, stepColumns, type SetupSpec } from './spec';
+import { fitToSheet, type SheetColumnStep, type StepMode } from './again';
 
 export interface ApplyChoices {
   inputs?: Record<string, string>;  // the setup's input → a column of the sheet
@@ -22,7 +24,7 @@ export interface ApplyChoices {
 }
 
 export type ApplyPlan =
-  | { ok: { spec: SetupSpec; inputs: Record<string, string>; layers: number[]; makes: string[] } }
+  | { ok: { spec: SetupSpec; inputs: Record<string, string>; layers: number[]; makes: string[]; modes: StepMode[] } }
   | { problem: string; missing?: string[]; taken?: string[] };
 
 const AI_SUFFIX = / \((Output|Status)\)$/;
@@ -53,7 +55,10 @@ function strayPathProblem(spec: SetupSpec, columns: string[]): string | null {
   return null;
 }
 
-export function planApply(spec: SetupSpec, columns: string[], choices: ApplyChoices = {}): ApplyPlan {
+export function planApply(
+  spec: SetupSpec, columns: string[], choices: ApplyChoices = {},
+  existing: SheetColumnStep[] = [], keys: ReadonlySet<string> = new Set(),
+): ApplyPlan {
   const inputs: Record<string, string> = {};
   const missing: string[] = [];
   for (const name of spec.inputs) {
@@ -87,17 +92,12 @@ export function planApply(spec: SetupSpec, columns: string[], choices: ApplyChoi
   const sheetInputs = [...new Set(Object.values(inputs))];
   const out: SetupSpec = { ...fitted, inputs: sheetInputs };
 
-  // A name a reference couldn't tell from a sheet column's (any case, or the same /token) is taken.
+  // A name a reference couldn't tell from a sheet column's (any case, or the
+  // same /token) is taken, unless its step can carry that column on.
   const makes = out.steps.flatMap(stepColumns);
-  const taken = makes.filter(c => findColumnNameCollision(c, columns) !== null);
-  if (taken.length) {
-    return {
-      problem: `This sheet already has ${taken.length === 1 ? 'a column named' : 'columns named'} ${list(taken)}. `
-        + 'Give those steps other names.',
-      taken,
-    };
-  }
+  const fit = fitToSheet(out, columns, existing, new Set([...keys, ...out.keys]));
+  if ('problem' in fit) return fit;
   const problem = specProblem(out) ?? strayPathProblem(out, columns);
   if (problem) return { problem };
-  return { ok: { spec: out, inputs, layers: specLayers(out), makes } };
+  return { ok: { spec: out, inputs, layers: specLayers(out), makes, modes: fit.modes } };
 }

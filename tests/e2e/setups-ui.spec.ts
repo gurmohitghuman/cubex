@@ -6,6 +6,8 @@ import { authedApi, seedSheet, BASE } from './helpers'
 // Settings → Setups lists it to rename, export as a file, delete, and import
 // the file back. "Use a setup…" on another sheet: pick it, match its input to
 // a column, see the price, start; the chip follows it and its columns fill.
+// Used again there once a row is added, it starts from the same choices and
+// its steps carry their columns on.
 
 async function seedChain(api: APIRequestContext) {
   const { tableId, sheetId } = await seedSheet(api, 2)
@@ -119,5 +121,22 @@ test('Use a setup on another sheet from the Setups menu', async ({ page, context
     .data.rows.map((r: any) => r.data.Label), { timeout: 15_000 }).toEqual(['stripe!', 'figma!', 'notion!'])
   await expect(page.locator('.ag-center-cols-container .ag-row[row-index="0"]')).toContainText('stripe!',
     { timeout: 15_000 })
+
+  // A new row, and the setup used again: its last choices are filled in, its steps carry on.
+  await api.post(`/api/sheets/${other}/rows`, { data: { count: 1 } })
+  await api.put(`/api/sheets/${other}/data`, { data: { updates: [{ rowIndex: 3, columnName: 'Site',
+    value: 'linear.app' }] } })
+  await page.getByTestId('setups-menu').click()
+  await page.getByRole('menuitem', { name: 'Use a setup…' }).click()
+  await page.getByTestId('use-setup-option').filter({ hasText: 'Domain label' }).click()
+  await expect(page.getByTestId('setup-used-before')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Column for Website' })).toHaveValue('Site')
+  await expect(page.getByTestId('setup-carries-on')).toHaveCount(2)
+  await expect(page.getByTestId('setup-estimate')).toContainText('Follows its columns')
+  await page.getByTestId('use-setup-start').click()
+  await expect(page.getByText('"Domain label" is done.')).toBeVisible({ timeout: 30_000 })
+  await expect.poll(async () => (await (await api.get(`/api/sheets/${other}?limit=10&offset=0`)).json())
+    .data.rows.map((r: any) => r.data.Label), { timeout: 15_000 })
+    .toEqual(['stripe!', 'figma!', 'notion!', 'linear!'])
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
 })

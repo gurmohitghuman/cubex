@@ -27,6 +27,9 @@ export interface RunMenuActions {
   onRunHTTPForMissingOrError?: (columnName: string) => void
   onRunAIForColumn?: (baseName: string, columnName: string) => void
   onRunAIMissingOrError?: (baseName: string, columnName: string) => void
+  // "Run First Rows": a dialog asks how many of the sheet's top rows to run again.
+  // AI: column is the base name, columnName the header clicked.
+  onRunFirstRows?: (kind: 'ai' | 'http', column: string, columnName?: string) => void
   onEditAIColumn?: (baseName: string) => void
   // False for a column of a structured (multi-column) run: the edit dialog only
   // knows single-column runs, so "Edit / Update Instructions" is hidden there.

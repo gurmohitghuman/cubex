@@ -4,7 +4,7 @@
 // since a rerun spends external calls like a fresh start).
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
@@ -80,7 +80,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'typed columns (and its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). An AI '
         + 'rerun takes concurrency to change how many rows run at once (default: the run it repeats); rows that '
         + 'failed with error_class "concurrency" (OpenRouter\'s in-flight credit budget) need a lower one. Returns '
-        + 'the NEW run_id. '
+        + 'the NEW run_id. first_rows (AI and HTTP) reruns only among the sheet\'s top rows, a test before a big '
+        + 'run: every one of them, or those mode picks. '
         + 'ENRICHMENT runs (run_type enrichment): a rerun buys rows from treg again (paid answers it still holds come '
         + 'back cheaper or free), with the column\'s own setup; it needs row_ids or mode: "errored" (❌ rows), '
         + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
@@ -103,9 +104,11 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             + `enrichment 1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
         spend_limit_usd: z.number().positive().optional()
           .describe('Enrichment runs only: the run limit for a rerun, or a raised limit on resume.'),
+        first_rows: z.number().int().min(1).max(MAX_FIRST_ROWS).optional()
+          .describe(`AI or HTTP rerun only: only among the sheet's first rows (1-${MAX_FIRST_ROWS}).`),
       },
     },
-    async ({ run_type: asked, run_id, action, row_ids, mode, concurrency, spend_limit_usd }) => {
+    async ({ run_type: asked, run_id, action, row_ids, mode, concurrency, spend_limit_usd, first_rows }) => {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const run_type = kindOf(asked, run_id, ctx.userId);
@@ -118,6 +121,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         && !((action === 'rerun' && (run_type === 'ai' || enrichment)) || (action === 'resume' && enrichment))) {
         return err('concurrency applies only to rerunning an AI or enrichment run, or resuming an enrichment run.');
       }
+      if (first_rows !== undefined && (action !== 'rerun' || enrichment)) {
+        return err('first_rows applies only to rerunning an AI or HTTP API run.');
+      }
+      if (first_rows !== undefined && row_ids) return err('Pass first_rows or row_ids, not both.');
       if (enrichment && action === 'rerun') {
         if (!row_ids && !mode) {
           return err("An enrichment rerun needs row_ids or mode: 'errored', 'empty' (not enriched yet), "
@@ -151,7 +158,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         // a 10-row retry once became a 9,675-row run. So an AI rerun must say
         // explicitly what it targets; there is no implicit default here.
         // (The UI route and /api/v1 keep 'missing' for back-compat.)
-        if (run_type === 'ai' && !row_ids && !mode) {
+        if (run_type === 'ai' && !row_ids && !mode && !first_rows) {
           return err(
             "An AI rerun needs an explicit target: pass mode ('errored' to retry failed rows, "
             + "'empty' for blank cells, 'missing' for both plus unfinished, 'all' to re-run and "
@@ -164,9 +171,12 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         const slot = runStartWindow(ctx.tokenId);
         if (!slot.allowed) return err(tooManyMessage('run starts', slot));
         const result = run_type === 'ai'
-          ? await rerunAiRunById(ctx.userId, run_id, { rowIds: row_ids, mode, concurrency })
+          ? await rerunAiRunById(ctx.userId, run_id, {
+            rowIds: row_ids, mode: mode ?? (first_rows ? 'all' : undefined), concurrency, firstRows: first_rows,
+          })
           : await rerunHttpRunById(ctx.userId, run_id, {
             rowIds: row_ids, mode: mode as 'missing' | 'all' | undefined, hasSecretsScope: hasSecrets,
+            firstRows: first_rows,
           });
         if ('fail' in result) return err(result.message);
         return ok({ run_id: result.ok.runId, target_rows: result.ok.targetCount });

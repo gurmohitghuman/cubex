@@ -4,6 +4,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { mainColumn, type SetupSpec, type StepKind } from '../lib/setups/spec';
+import type { StepMode } from '../lib/setups/again';
+import type { ApplyChoices } from '../lib/setups/apply-plan';
 
 export type StepState = 'waiting' | 'starting' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface StepRecord {
@@ -11,6 +13,11 @@ export interface StepRecord {
   kind?: 'ai' | 'http' | 'clean' | 'formula'; // what it started: a run's table, or a clean/formula record
   runId?: string;
   recordId?: string;
+  // A clean or formula column carried on that follows its columns: the step
+  // waits for its auto-run instead of a fill (setup-step-again.ts). refill: it
+  // stopped following meanwhile, so its start fills it again.
+  follow?: true;
+  refill?: true;
   note?: string; // why it failed, or what didn't happen after (auto-run not turned on)
 }
 export type SetupRunStatus = 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
@@ -20,15 +27,23 @@ export interface SetupRunRow {
   plan: string; steps: string; target_row_ids: string | null; allow_secrets: number; auto_run: number;
   layer: number; status: SetupRunStatus; error_message: string | null; created_at: string; updated_at: string;
 }
-export interface SetupRunPlan { spec: SetupSpec; layers: number[] }
+// modes: whether each step makes its columns or carries the sheet's on (none
+// recorded: every one new). choices: what it was used with, so using it again
+// on the sheet (to carry on) can start from them.
+export interface SetupRunChoices extends ApplyChoices { models?: Record<string, string> }
+export interface SetupRunPlan {
+  spec: SetupSpec; layers: number[]; modes?: StepMode[]; choices?: SetupRunChoices;
+}
 
 export interface SetupRunView {
   id: string; setup_id: string | null; setup_name: string; sheet_id: string; status: SetupRunStatus;
   // The layer working now (1-based) of how many; steps in a layer run side by side.
   layer: number; layers: number;
   test_rows: number | null; error_message: string | null; created_at: string; updated_at: string;
+  choices: SetupRunChoices | null;
   steps: Array<{
-    column: string; kind: StepKind; layer: number; state: StepState; run_id: string | null; note: string | null;
+    column: string; kind: StepKind; layer: number; mode: StepMode; state: StepState; run_id: string | null;
+    note: string | null;
   }>;
 }
 
@@ -36,6 +51,8 @@ export const loadSetupRun = (id: string): SetupRunRow | undefined =>
   db.prepare('SELECT * FROM setup_runs WHERE id = ?').get(id) as SetupRunRow | undefined;
 
 export const planOf = (r: SetupRunRow): SetupRunPlan => JSON.parse(r.plan);
+export const modesOf = (p: SetupRunPlan): StepMode[] =>
+  p.spec.steps.map((_, i) => p.modes?.[i] ?? 'new');
 export const stepsOf = (r: SetupRunRow): StepRecord[] => JSON.parse(r.steps);
 
 export function saveSteps(id: string, steps: StepRecord[]): void {
@@ -68,15 +85,16 @@ export function insertSetupRun(p: {
 }
 
 export function setupRunView(r: SetupRunRow): SetupRunView {
-  const plan = planOf(r), steps = stepsOf(r);
+  const plan = planOf(r), steps = stepsOf(r), modes = modesOf(plan);
   const layers = plan.layers.length ? Math.max(...plan.layers) + 1 : 0;
   return {
     id: r.id, setup_id: r.setup_id, setup_name: r.setup_name, sheet_id: r.sheet_id, status: r.status,
     layer: Math.min(r.layer + 1, layers), layers,
     test_rows: r.target_row_ids ? (JSON.parse(r.target_row_ids) as string[]).length : null,
     error_message: r.error_message, created_at: r.created_at, updated_at: r.updated_at,
+    choices: plan.choices ?? null,
     steps: plan.spec.steps.map((s, i) => ({
-      column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, state: steps[i].state,
+      column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: modes[i], state: steps[i].state,
       run_id: steps[i].runId ?? null, note: steps[i].note ?? null,
     })),
   };
@@ -87,9 +105,13 @@ export function getSetupRun(userId: string, id: string): SetupRunView | null {
   return r && r.user_id === userId ? setupRunView(r) : null;
 }
 
-// A sheet's setup runs, newest first: the live ones and the last few that ended.
-export function sheetSetupRuns(userId: string, sheetId: string, limit = 5): SetupRunView[] {
-  const rows = db.prepare(`SELECT * FROM setup_runs WHERE sheet_id = ? AND user_id = ?
-    ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(sheetId, userId, limit) as SetupRunRow[];
+// A sheet's setup runs, newest first: the live ones and the last few that
+// ended; with setupId, that setup's (using it again starts from its last choices).
+export function sheetSetupRuns(userId: string, sheetId: string, limit = 5, setupId?: string): SetupRunView[] {
+  const rows = (setupId
+    ? db.prepare(`SELECT * FROM setup_runs WHERE sheet_id = ? AND user_id = ? AND setup_id = ?
+        ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(sheetId, userId, setupId, limit)
+    : db.prepare(`SELECT * FROM setup_runs WHERE sheet_id = ? AND user_id = ?
+        ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(sheetId, userId, limit)) as SetupRunRow[];
   return rows.map(setupRunView);
 }

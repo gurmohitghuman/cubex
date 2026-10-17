@@ -9,7 +9,7 @@
 import { db } from '../lib/db';
 import { continueInBackground } from '../lib/sheet-busy';
 import { PLACEHOLDER } from '../lib/placeholder-cells';
-import { CONDITION_NOT_MET, takesConditionMark } from '../lib/run-markers';
+import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from '../lib/run-markers';
 import { eachRowIdSlice, sheetRowIds } from '../lib/row-order';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
@@ -85,7 +85,9 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
       else if (v === 'missing') missing++;
       else if (v === 'condition') {
         notMet++;
-        if (takesConditionMark(data[job.columns[0]])) keptOut.push(r.id);
+        // A row kept out already keeps its mark: no write.
+        const was = data[job.columns[0]];
+        if (takesConditionMark(was) && !isConditionNotMet(was)) keptOut.push(r.id);
       }
     }
     if (take.length) set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);

@@ -6,10 +6,13 @@ import type { UseSetupForm } from './useUseSetupForm'
 const LABEL = 'block text-xs font-medium text-gray-700 mb-1'
 const MODELS_LIST = 'setup-models'
 const RADIO = 'border-gray-300 text-cube-black focus:ring-black'
+const BADGE = 'ml-1.5 border border-gray-400 px-1 text-[10px] uppercase tracking-wide text-gray-700'
 
 // The setup fitted to this sheet: a column for each input, a name for each
-// column it makes (a name the sheet has already is marked), the AI models, and
-// every row or a test on the first ones.
+// column it makes (a name the sheet has already is marked, unless the step
+// carries that column on: then it fills only the rows not done yet, with the
+// column's own settings and model), the AI models, and every row or a test on
+// the first ones.
 export const SetupFitForm: React.FC<{ form: UseSetupForm; columns: string[] }> = ({ form: f, columns }) => {
   const [modelIds, setModelIds] = useState<string[]>([])
   const hasAi = !!f.setup?.spec.steps.some(s => s.kind === 'ai')
@@ -43,9 +46,21 @@ export const SetupFitForm: React.FC<{ form: UseSetupForm; columns: string[] }> =
 
       <div>
         <span className={LABEL}>Columns it makes</span>
+        {f.usedAt && (
+          <p className="text-xs text-gray-600 mb-1" data-testid="setup-used-before">
+            You used it on this sheet before, so those choices are filled in.
+          </p>
+        )}
+        {f.modes.includes('again') && (
+          <p className="text-xs text-gray-600 mb-2">
+            A step marked Carries on is in this sheet already: it fills only the rows it hasn&apos;t done, with its
+            column&apos;s own settings. Rename it to make a new column instead.
+          </p>
+        )}
         <div className="space-y-2">
           {setup.steps.map((s, i) => {
             const step = setup.spec.steps[i]
+            const again = f.modes[i] === 'again'
             // Its output columns can be renamed too; an AI step's (Data) column follows its name.
             const outputs = s.columns.slice(1).filter(c => !(s.kind === 'ai' && c.endsWith(' (Data)')))
             const shown = (c: string) => f.names[c] ?? c
@@ -58,9 +73,12 @@ export const SetupFitForm: React.FC<{ form: UseSetupForm; columns: string[] }> =
             return (
               <div key={s.column} className="text-sm">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="w-40 shrink-0 text-xs text-gray-500">{SETUP_KIND_LABEL[s.kind]}</span>
+                  <span className="w-40 shrink-0 text-xs text-gray-500">
+                    {SETUP_KIND_LABEL[s.kind]}
+                    {again && <span className={BADGE} data-testid="setup-carries-on">Carries on</span>}
+                  </span>
                   {nameInput(s.column, 'flex-1 min-w-[10rem]')}
-                  {step?.kind === 'ai' && (
+                  {step?.kind === 'ai' && !again && (
                     <input className="input w-56" list={MODELS_LIST} aria-label={`Model for ${s.column}`}
                       placeholder={step.model ?? 'Your default model'} value={f.models[s.column] ?? ''}
                       onChange={e => f.setModels({ ...f.models, [s.column]: e.target.value })} />
@@ -79,7 +97,7 @@ export const SetupFitForm: React.FC<{ form: UseSetupForm; columns: string[] }> =
           })}
         </div>
         <datalist id={MODELS_LIST}>{modelIds.map(id => <option key={id} value={id} />)}</datalist>
-        {hasAi && (
+        {setup.spec.steps.some((st, i) => st.kind === 'ai' && f.modes[i] !== 'again') && (
           <p className="text-xs text-gray-500 mt-1">An AI step keeps its saved model unless you pick another.</p>
         )}
       </div>
