@@ -4,7 +4,7 @@ import {
   setupsAPI, type ApplyBody, type SetupDetail, type SetupEstimate, type SetupSummary,
 } from '@/utils/api/setups'
 import { matchInput } from '@/lib/setups'
-import { setupStarted } from '@/lib/setup-runs-signal'
+import { setupRunsChanged } from '@/lib/setup-runs-signal'
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
 const AI_SUFFIX = / \((Output|Status)\)$/
@@ -110,7 +110,7 @@ export function useUseSetupForm(p: { sheetId: string; columns: string[]; open: b
     try {
       await setupsAPI.apply(sheetId, setup.id, body(false))
       toast.success(`Started "${setup.name}". Its columns fill in step by step.`)
-      setupStarted(sheetId)
+      setupRunsChanged(sheetId)
       onStarted()
     } catch (e) {
       toast.error(errorOf(e, "Couldn't start the setup."))

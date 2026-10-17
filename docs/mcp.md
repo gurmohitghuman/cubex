@@ -97,7 +97,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. |
 | `get_run_results` | Per-row results and errors, to see why cells are blank or wrong. |
-| `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, all, or only the sheet's first rows with `first_rows`). |
+| `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, all, or only the sheet's first rows with `first_rows`). `cancel_all` with a `sheet_id` stops every run and setup on that sheet at once. |
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
@@ -335,7 +335,7 @@ All paths below are relative to `/api/v1`.
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` |
 | `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
-| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation` and its clean columns. |
+| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean columns, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
 | `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
@@ -457,6 +457,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `GET /ai-runs/:id` · `GET /http-runs/:id` | Status and progress. `completed` means every row was processed, not that every row worked: check `failed_rows`. A structured AI run also lists its `output_columns`, and a run with web search or fetch names its `data_column` (the sources). An AI run reports what its rows cost so far (`cost_usd`) and, with web search, the searches that ran (`searches`) and its `web_search` settings. |
 | `GET /ai-runs/:id/results` (same for `http-runs`) | Per-row results and errors. `?status=failed` (`failed`, `completed` or `all`, default `all`), paged with `limit` and `cursor` like rows. AI rows also carry `cost_usd`, and with web search `searches` and `search_queries`. |
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
+| `POST /sheets/:id/runs/stop` | Stops every AI, HTTP and enrichment run on the sheet and every setup being used on it, at once (MCP `control_run` with `cancel_all`). Returns `stopped_runs`, `stopped_setup_runs`, `auto_run_paused` (columns whose auto-run batch it stopped: paused until you resume them), `auto_run_on` (auto-runs still on, where new rows start runs), `still_filling` (free fills, which finish) and a `message`. Calls already sent finish and are billed. `run` scope. |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}`, `{"row_ids": [...]}` or `{"first_rows": 10}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Add `"concurrency"` (1 to 100) to change how many rows run at once; rows that failed on OpenRouter's in-flight credit budget need a lower one. `first_rows` reruns only among the sheet's first rows (up to 1,000, not with `row_ids`): all of them, or those `mode` picks. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
 | `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. `"first_rows": 10` takes only the sheet's first rows (not with `row_ids`, and not on an enrichment run). An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 100; default: the run's own). |
 | `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it, and `concurrency` (rows at once, 1 to 100) to change its speed. |

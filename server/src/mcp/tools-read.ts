@@ -33,7 +33,10 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'remaining row/column budget (limits). Check limits before a large append or import — '
         + 'otherwise you discover the cap by having a write rejected. filling_columns lists columns still '
         + 'filling (add_enrichment_field, clean_column, formula_column): their cells read "⏳ Processing..." '
-        + 'until done. clean_columns and formula_columns give each such column\'s setup and auto-run.',
+        + 'until done. clean_columns and formula_columns give each such column\'s setup and auto-run. '
+        + 'active_runs lists the AI, HTTP and enrichment runs working on the sheet now (run_type, run_id, '
+        + 'status, the column it fills, auto_run when an auto-run started it), and active_setup_runs the setups '
+        + 'being used on it; control_run with action cancel_all stops them all.',
       inputSchema: { sheet_id: z.string() },
     },
     async ({ sheet_id }) => {
