@@ -5,6 +5,7 @@
 // "⏭️ Condition not met" instead of a run, and costs nothing.
 import { resolveColumnRef, suggestColumn } from './column-ref-resolve';
 import { holdsRunMarker } from './run-markers';
+import { asNumber, foldText, numberPasses, textPasses } from './row-filter/ops';
 import { parseRule, RuleError, MAX_RULE_CHARS, type Compare, type RuleNode } from './run-condition-parse';
 import type { EnrichCondition } from './enrich-run-config';
 
@@ -68,33 +69,24 @@ export function ruleColumns(rule: string): string[] {
   }
 }
 
-const asNumber = (raw: string): number | null => {
-  const t = raw.trim().replace(/,/g, '');
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-};
+// A rule's operators as the row-condition operators (lib/row-filter/ops.ts),
+// so a rule and a filter read a cell alike.
+const TEXT_OP = { is: 'eq', is_not: 'neq', contains: 'contains', not_contains: 'not_contains',
+  empty: 'empty', not_empty: 'not_empty' } as const;
 
 function comparePasses(c: Compare, data: Record<string, string>): boolean {
   const raw = data[c.column] ?? '';
-  const cell = holdsRunMarker(raw) ? '' : raw.toString().trim();
-  const text = cell.toLowerCase(), want = c.value.trim().toLowerCase();
-  switch (c.op) {
-    case 'empty': return cell === '';
-    case 'not_empty': return cell !== '';
-    case 'contains': return text.includes(want);
-    case 'not_contains': return !text.includes(want);
-    case 'is': case 'is_not': {
-      const a = c.numeric ? asNumber(cell) : null, b = c.numeric ? asNumber(c.value) : null;
-      const same = a !== null && b !== null ? a === b : text === want;
-      return c.op === 'is' ? same : !same;
-    }
-    default: {
-      const a = asNumber(cell), b = asNumber(c.value);
-      if (a === null || b === null) return false;
-      return c.op === 'gt' ? a > b : c.op === 'lt' ? a < b : c.op === 'gte' ? a >= b : a <= b;
-    }
+  // A run's own words (⏳, ❌, ⏭️, ➕) read as empty in a rule.
+  const cell = holdsRunMarker(String(raw)) ? '' : raw;
+  if (c.op === 'gt' || c.op === 'lt' || c.op === 'gte' || c.op === 'lte') {
+    return numberPasses(c.op, asNumber(cell), asNumber(c.value));
   }
+  // `is 50` (a bare number) also matches "50.0" and "1,000" = 1000.
+  if (c.numeric && (c.op === 'is' || c.op === 'is_not')) {
+    const a = asNumber(cell), b = asNumber(c.value);
+    if (a !== null && b !== null) return (a === b) === (c.op === 'is');
+  }
+  return textPasses(TEXT_OP[c.op], foldText(cell), foldText(c.value));
 }
 
 // True = the row runs. Text compares ignore case and outer spaces; a cell

@@ -23,15 +23,26 @@ export type ColumnType =
   | 'clean'          // a clean data column (clean_columns: filled from its source by a cleaner)
   | 'formula';       // a formula column (formula_columns: worked out from the row by a formula)
 
+export interface SheetColumnKinds {
+  types: Record<string, ColumnType>;
+  // Every column an AI, HTTP API or enrichment run fills → the column holding
+  // that run's per-row state (lib/row-filter/cell-status.ts): itself for a
+  // run's main column (an AI run's output or status column, an HTTP or
+  // enrichment run's status column), else that main column.
+  runState: Map<string, string>;
+}
+
+export function getColumnTypes(sheetId: string, userId: string): Record<string, ColumnType> {
+  return sheetColumnKinds(sheetId, userId).types;
+}
+
 // Resolve every AI/HTTP-owned column on a sheet to its type. A column can match
 // more than one source (e.g. a name reused across an old HTTP assoc and a new AI
 // run); AI ownership wins last-write so the menu shows AI actions on AI columns —
 // the order below encodes that precedence (HTTP first, AI overwrites).
-export function getColumnTypes(
-  sheetId: string,
-  userId: string,
-): Record<string, ColumnType> {
+export function sheetColumnKinds(sheetId: string, userId: string): SheetColumnKinds {
   const types: Record<string, ColumnType> = {};
+  const runState = new Map<string, string>();
 
   // HTTP master columns: from live/past runs AND from associations (an
   // association can outlive its run record after a rerun swaps run_id).
@@ -42,7 +53,7 @@ export function getColumnTypes(
      SELECT DISTINCT master_column_name AS name FROM http_column_associations
        WHERE sheet_id = ? AND user_id = ? AND master_column_name IS NOT NULL`,
   ).all(sheetId, userId, sheetId, userId) as Array<{ name: string }>;
-  for (const { name } of httpMasters) types[name] = 'http-master';
+  for (const { name } of httpMasters) { types[name] = 'http-master'; runState.set(name, name); }
 
   // Enrichment status columns: the newest run of the column is an enrichment
   // (lib/enrich-run-config.ts). Its outputs stay 'http-extracted' (📎).
@@ -56,12 +67,14 @@ export function getColumnTypes(
 
   // HTTP extracted columns (response-mapping outputs).
   const httpExtracted = db.prepare(
-    `SELECT DISTINCT extracted_column_name AS name FROM http_column_associations
+    `SELECT DISTINCT extracted_column_name AS name, master_column_name AS master FROM http_column_associations
        WHERE sheet_id = ? AND user_id = ? AND extracted_column_name IS NOT NULL`,
-  ).all(sheetId, userId) as Array<{ name: string }>;
-  for (const { name } of httpExtracted) {
+  ).all(sheetId, userId) as Array<{ name: string; master: string | null }>;
+  for (const { name, master } of httpExtracted) {
     // Don't downgrade a master that also appears as an extracted name.
-    if (types[name] !== 'http-master' && types[name] !== 'enrich-status') types[name] = 'http-extracted';
+    if (types[name] === 'http-master' || types[name] === 'enrich-status') continue;
+    types[name] = 'http-extracted';
+    runState.set(name, master ?? name);
   }
 
   // AI columns: ai_runs.column_name is the "(Output)" column (single-column) or
@@ -69,21 +82,26 @@ export function getColumnTypes(
   // N typed columns. The "(Data)" sources column (lib/ai-data-column.ts): a
   // single-column web-search run's, or a structured run's with a web tool. AI
   // wins over any HTTP match.
+  // DISTINCT: auto-run makes a run per batch, all naming the same columns.
   const aiRuns = db.prepare(
-    `SELECT column_name, use_openrouter_web_search, output_columns, data_column FROM ai_runs
+    `SELECT DISTINCT column_name, use_openrouter_web_search, output_columns, data_column FROM ai_runs
        WHERE sheet_id = ? AND user_id = ?`,
   ).all(sheetId, userId) as Array<AiRunDataColumnFields & { output_columns: string | null }>;
   for (const run of aiRuns) {
-    types[run.column_name] = 'ai-output';
+    const main = run.column_name;
+    types[main] = 'ai-output';
+    runState.set(main, main);
     if (run.output_columns) {
       try {
         for (const s of JSON.parse(run.output_columns) as Array<{ columnName?: unknown }>) {
-          if (s && typeof s.columnName === 'string') types[s.columnName] = 'ai-output';
+          if (!s || typeof s.columnName !== 'string') continue;
+          types[s.columnName] = 'ai-output';
+          runState.set(s.columnName, main);
         }
       } catch { /* malformed spec — status column still classified */ }
     }
     const dataCol = aiRunDataColumn(run);
-    if (dataCol) types[dataCol] = 'ai-data';
+    if (dataCol) { types[dataCol] = 'ai-data'; runState.set(dataCol, main); }
   }
 
   // Webhook columns: the raw marker column (webhook_sources.raw_column_name) is
@@ -93,7 +111,7 @@ export function getColumnTypes(
   const whSources = db.prepare(
     `SELECT raw_column_name AS name FROM webhook_sources WHERE sheet_id = ? AND user_id = ?`,
   ).all(sheetId, userId) as Array<{ name: string }>;
-  for (const { name } of whSources) types[name] = 'webhook-source';
+  for (const { name } of whSources) { types[name] = 'webhook-source'; runState.delete(name); }
 
   const whMapped = db.prepare(
     `SELECT m.column_name AS name FROM webhook_mappings m
@@ -102,7 +120,7 @@ export function getColumnTypes(
   ).all(sheetId, userId) as Array<{ name: string }>;
   for (const { name } of whMapped) {
     // Don't downgrade the raw marker if a mapping somehow reused its name.
-    if (types[name] !== 'webhook-source') types[name] = 'webhook-mapped';
+    if (types[name] !== 'webhook-source') { types[name] = 'webhook-mapped'; runState.delete(name); }
   }
 
   // Clean data columns: their record says what made them. A record lives only
@@ -110,11 +128,11 @@ export function getColumnTypes(
   // lib/clean-columns.ts), and no other column can take a listed name.
   const clean = db.prepare('SELECT column_name AS name FROM clean_columns WHERE sheet_id = ? AND user_id = ?')
     .all(sheetId, userId) as Array<{ name: string }>;
-  for (const { name } of clean) types[name] = 'clean';
+  for (const { name } of clean) { types[name] = 'clean'; runState.delete(name); }
   // Formula columns, the same way (lib/formula-columns.ts).
   const formula = db.prepare('SELECT column_name AS name FROM formula_columns WHERE sheet_id = ? AND user_id = ?')
     .all(sheetId, userId) as Array<{ name: string }>;
-  for (const { name } of formula) types[name] = 'formula';
+  for (const { name } of formula) { types[name] = 'formula'; runState.delete(name); }
 
-  return types;
+  return { types, runState };
 }

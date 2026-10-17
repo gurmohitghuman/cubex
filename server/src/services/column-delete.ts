@@ -144,7 +144,7 @@ export async function deleteSheetColumn(
     } catch { /* malformed JSON — leave it alone */ }
   }
 
-  // column_filters ("text contains") — same orphan hazard as empty_filter.
+  // column_filters (lib/row-filter/grid.ts) — same orphan hazard as empty_filter.
   let nextColumnFilters: string | null | undefined;
   if (meta?.column_filters) {
     try {

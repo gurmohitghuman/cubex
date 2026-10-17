@@ -1,41 +1,32 @@
-// Over 200 lines: one row-query contract (parse, validate, filter, page) for read_rows and /api/v1 rows/query.
+// One row-query contract (parse, validate, filter, page) for read_rows and
+// /api/v1 rows/query. The `where` grammar is lib/row-filter (where.ts),
+// checked and compiled to SQL by services/row-filter.ts: SQLite checks every
+// row, a slice at a time between other requests, and only the page's rows are
+// read.
 import { db } from '../lib/db';
 import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
-import { passesCondition, type TextConditionOp } from '../lib/row-conditions';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
+import { parseWhere, type WhereItem } from '../lib/row-filter/where';
+import { rowWithStatus } from '../lib/row-filter/status-rows';
+import { scanFiltered } from '../lib/filtered-scan';
+import type { CompiledFilter } from '../lib/row-filter/sql';
+import { prepareWhere, sheetRunColumns } from './row-filter';
 
-// Row filters take the flow condition grammar plus numeric comparisons.
-// Numeric ops are row-query-only: flow step conditions keep their own grammar.
-export const NUMERIC_ROW_OPS = ['gt', 'gte', 'lt', 'lte'] as const;
-export type RowConditionOp = TextConditionOp | (typeof NUMERIC_ROW_OPS)[number];
-export const ROW_CONDITION_OPS: readonly RowConditionOp[] =
-  ['eq', 'neq', 'contains', 'empty', 'not_empty', ...NUMERIC_ROW_OPS];
-
-export interface RowCondition {
-  column: string;
-  operator: RowConditionOp;
-  value?: string;
-}
-
-// Strict numeric parse: trimmed, non-empty, finite. '' and 'N/A' are NOT
-// numbers (Number('') === 0 would silently match gt/lt filters).
-const asNumber = (raw: string | undefined): number | null => {
-  const trimmed = (raw ?? '').trim();
-  if (trimmed === '') return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
-};
+export type { WhereItem } from '../lib/row-filter/where';
 
 export interface RowQuery {
   after: number;
   limit?: number;
   columns?: string[];
-  where?: RowCondition[];
+  where?: WhereItem[];
   returnMode: 'rows' | 'ids' | 'count';
+  // Run columns' cells as {status, value, error} (lib/row-filter/status-rows.ts).
+  includeStatus?: boolean;
   expectedDataVersion?: number;
   expectedRowGeneration?: number;
 }
 
+type PageRow = { id: string; row_index: number; data: string };
 type QueryFail = { fail: 'invalid' | 'version_conflict'; error: string };
 export type RowQueryResult = { ok: Record<string, unknown> } | QueryFail;
 
@@ -57,62 +48,28 @@ export function parseRowQueryBody(
   }
   if (b.columns !== undefined && (!Array.isArray(b.columns) || b.columns.length === 0
       || b.columns.some(c => typeof c !== 'string'))) return { error: 'columns must be a non-empty string array.' };
-  const operators = new Set(ROW_CONDITION_OPS as readonly string[]);
+  let where: WhereItem[] | undefined;
   if (b.where !== undefined) {
-    if (!Array.isArray(b.where) || b.where.length === 0) {
-      return { error: 'where must be a non-empty array of conditions.' };
-    }
-    for (const c of b.where) {
-      if (!c || typeof c !== 'object' || Array.isArray(c) || typeof c.column !== 'string') {
-        return {
-          error: 'Each where condition is an object with a column name, e.g. '
-            + '{"column":"Status","operator":"eq","value":"Done"}.',
-        };
-      }
-      if (!operators.has(String(c.operator))) {
-        return {
-          error: `Unknown where operator "${String(c.operator)}". Use one of: ${ROW_CONDITION_OPS.join(', ')}.`,
-        };
-      }
-      if (c.value !== undefined && typeof c.value !== 'string') {
-        return { error: 'where values are strings, numbers included (send "1000", not 1000).' };
-      }
-    }
+    const parsed = parseWhere(b.where);
+    if ('error' in parsed) return { error: parsed.error };
+    where = parsed.where;
   }
   if (b.return_mode !== undefined && !['rows', 'ids', 'count'].includes(String(b.return_mode))) {
     return { error: 'return_mode must be rows, ids, or count.' };
+  }
+  if (b.include_status !== undefined && typeof b.include_status !== 'boolean') {
+    return { error: 'include_status must be true or false.' };
   }
   return { query: {
     after: (b.cursor as number | undefined) ?? -1,
     limit: b.limit as number | undefined,
     columns: b.columns as string[] | undefined,
-    where: b.where as RowCondition[] | undefined,
+    where,
     returnMode: (b.return_mode as RowQuery['returnMode']) ?? 'rows',
+    includeStatus: b.include_status === true,
     expectedDataVersion: b.expected_data_version as number | undefined,
     expectedRowGeneration: b.expected_row_generation as number | undefined,
   } };
-}
-
-export function validateRowConditions(columns: string[], where: RowCondition[] = []): string | null {
-  const known = new Set(columns);
-  const unknown = where.map(w => w.column).filter(c => !known.has(c));
-  if (unknown.length) return `Unknown column(s): ${[...new Set(unknown)].join(', ')}`;
-  const numeric = new Set(NUMERIC_ROW_OPS as readonly string[]);
-  for (const condition of where) {
-    if (condition.operator === 'contains' && (condition.value ?? '') === '') {
-      return 'contains requires a non-empty value';
-    }
-    if ((condition.operator === 'empty' || condition.operator === 'not_empty') && condition.value !== undefined) {
-      return `${condition.operator} does not accept a value`;
-    }
-    if (!['empty', 'not_empty'].includes(condition.operator) && condition.value === undefined) {
-      return `${condition.operator} requires a value`;
-    }
-    if (numeric.has(condition.operator) && asNumber(condition.value) === null) {
-      return `${condition.operator} requires a numeric value`;
-    }
-  }
-  return null;
 }
 
 function validateQuery(columns: string[], q: RowQuery): string | null {
@@ -124,7 +81,8 @@ function validateQuery(columns: string[], q: RowQuery): string | null {
   if (q.returnMode === 'count' && (q.after >= 0 || q.limit !== undefined || q.columns !== undefined)) {
     return 'count mode does not accept cursor, limit, or columns';
   }
-  return validateRowConditions(columns, q.where);
+  if (q.includeStatus && q.returnMode !== 'rows') return 'include_status works with return_mode rows only';
+  return null;
 }
 
 // Own-property cell read: row data is plain JSON.parse output, so a sparse
@@ -133,83 +91,89 @@ function validateQuery(columns: string[], q: RowQuery): string | null {
 export const cellOf = (data: Record<string, string>, column: string): string =>
   Object.prototype.hasOwnProperty.call(data, column) ? data[column] ?? '' : '';
 
-export function rowPasses(data: Record<string, string>, where: RowCondition[] = []): boolean {
-  return where.every(c => {
-    const cell = cellOf(data, c.column);
-    switch (c.operator) {
-      // A cell that doesn't parse as a number never matches a numeric op
-      // (documented: no lexicographic fallback — '10' < '9' surprises).
-      case 'gt': { const n = asNumber(cell); return n !== null && n > Number(c.value); }
-      case 'gte': { const n = asNumber(cell); return n !== null && n >= Number(c.value); }
-      case 'lt': { const n = asNumber(cell); return n !== null && n < Number(c.value); }
-      case 'lte': { const n = asNumber(cell); return n !== null && n <= Number(c.value); }
-      default: return passesCondition(cell, c.operator, c.value ?? null);
-    }
-  });
+type Versions = { data_version: number; row_generation: number };
+const versionsOf = (sheetId: string, userId: string) => db.prepare(
+  'SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?',
+).get(sheetId, userId) as Versions | undefined;
+
+// The fences, the query's columns and its `where`, checked before any row is read.
+function prepareQuery(
+  sheetId: string, userId: string, q: RowQuery,
+): { fail: QueryFail } | { columns: string[]; filter: CompiledFilter | null; runColumns: Map<string, string> | null } {
+  const sheet = versionsOf(sheetId, userId);
+  if (!sheet) return { fail: { fail: 'invalid', error: 'Sheet not found' } };
+  const filtered = (q.where?.length ?? 0) > 0;
+  if (q.expectedRowGeneration !== undefined && q.expectedRowGeneration !== sheet.row_generation) {
+    return { fail: { fail: 'version_conflict', error: 'Sheet row order changed; restart paging.' } };
+  }
+  if (filtered && q.after >= 0 && q.expectedDataVersion === undefined) {
+    return { fail: { fail: 'invalid', error: 'Filtered paging after the first page requires expected_data_version.' } };
+  }
+  if (filtered && q.after >= 0 && q.expectedRowGeneration === undefined) {
+    return { fail: { fail: 'invalid',
+      error: 'Filtered paging after the first page requires expected_row_generation.' } };
+  }
+  if (q.expectedDataVersion !== undefined && q.expectedDataVersion !== sheet.data_version) {
+    return { fail: { fail: 'version_conflict', error: 'Sheet data changed; restart filtered paging.' } };
+  }
+  const columns = getSheetColumns(sheetId, userId, false);
+  const invalid = validateQuery(columns, q);
+  if (invalid) return { fail: { fail: 'invalid', error: invalid } };
+  if (!filtered) return { columns, filter: null, runColumns: null };
+  const prepared = prepareWhere(sheetId, userId, q.where!, columns);
+  if ('error' in prepared) return { fail: { fail: 'invalid', error: prepared.error } };
+  const runs = prepared.ok.runColumns;
+  return { columns, filter: prepared.ok.filter, runColumns: runs.size > 0 ? runs : null };
 }
 
-export function queryRows(sheetId: string, userId: string, q: RowQuery): RowQueryResult {
-  return db.transaction((): RowQueryResult => {
-    const sheet = db.prepare(
-      'SELECT data_version AS dv, row_generation AS rg FROM sheets WHERE id = ? AND user_id = ?',
-    ).get(sheetId, userId) as { dv: number; rg: number } | undefined;
-    if (!sheet) return { fail: 'invalid', error: 'Sheet not found' };
-    const filtered = (q.where?.length ?? 0) > 0;
-    if (q.expectedRowGeneration !== undefined && q.expectedRowGeneration !== sheet.rg) {
-      return { fail: 'version_conflict', error: 'Sheet row order changed; restart paging.' };
-    }
-    if (filtered && q.after >= 0 && q.expectedDataVersion === undefined) {
-      return { fail: 'invalid', error: 'Filtered paging after the first page requires expected_data_version.' };
-    }
-    if (filtered && q.after >= 0 && q.expectedRowGeneration === undefined) {
-      return { fail: 'invalid', error: 'Filtered paging after the first page requires expected_row_generation.' };
-    }
-    if (q.expectedDataVersion !== undefined && q.expectedDataVersion !== sheet.dv) {
-      return { fail: 'version_conflict', error: 'Sheet data changed; restart filtered paging.' };
-    }
-    const columns = getSheetColumns(sheetId, userId, false);
-    const invalid = validateQuery(columns, q);
-    if (invalid) return { fail: 'invalid', error: invalid };
-    // A column still filling from stored answers is half filled: a filter on it
-    // would match some rows only by timing.
-    const filling = fillingColumns(sheetId, userId);
-    const filtering = filling.find(c => q.where?.some(w => w.column === c));
-    if (filtering) {
-      return { fail: 'invalid', error: `"${filtering}" is still filling from stored answers. Filter on it once `
-        + 'get_sheet no longer lists it in filling_columns.' };
-    }
-
-    const raw = db.prepare(`
-      SELECT id, row_index, data FROM rows
-      WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index ASC
-    `).iterate(sheetId, userId, q.after) as Iterable<{ id: string; row_index: number; data: string }>;
-    let count = 0;
-    const matches: Array<{ id: string; index: number; data: Record<string, string> }> = [];
-    const wanted = q.returnMode === 'count' ? Infinity : (q.limit ?? 100) + 1;
-    for (const row of raw) {
-      const data = parseRowData(row.data);
-      if (!rowPasses(data, q.where)) continue;
-      count++;
-      if (q.returnMode !== 'count' && matches.length < wanted) {
-        const projected = q.columns
-          ? Object.fromEntries(q.columns.map(c => [c, cellOf(data, c)]))
-          : data;
-        matches.push({ id: row.id, index: row.row_index, data: projected });
+// A filtered read scans the sheet in slices between other requests
+// (lib/filtered-scan.ts). The versions it answers with are the ones from
+// before the scan, so a write meanwhile fails the next page's fence. When a
+// sort or replace moved the rows meanwhile (row_generation), a page of a
+// fenced walk answers "restart paging"; a first page is read again, once.
+export async function queryRows(sheetId: string, userId: string, q: RowQuery): Promise<RowQueryResult> {
+  const prep = prepareQuery(sheetId, userId, q);
+  if ('fail' in prep) return prep.fail;
+  const { columns, filter } = prep;
+  const limit = q.limit ?? 100;
+  let versions: Versions | undefined, count: number | null = null, page: PageRow[] = [];
+  for (let attempt = 0; ; attempt++) {
+    versions = versionsOf(sheetId, userId);
+    if (!versions) return { fail: 'invalid', error: 'Sheet not found' };
+    if (!filter) {
+      if (q.returnMode === 'count') {
+        count = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
+          .get(sheetId, userId) as number;
+      } else {
+        page = db.prepare(`SELECT id, row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
+          ORDER BY row_index ASC LIMIT ?`).all(sheetId, userId, q.after, limit + 1) as PageRow[];
       }
-      if (matches.length >= wanted) break;
+      break;
     }
-    const versions = { data_version: sheet.dv, row_generation: sheet.rg };
-    if (q.returnMode === 'count') return { ok: { count, ...versions } };
-    const hasMore = matches.length > (q.limit ?? 100);
-    const page = hasMore ? matches.slice(0, q.limit ?? 100) : matches;
-    if (q.returnMode !== 'ids') overlayFilling(page, filling, q.columns);
-    const rows = q.returnMode === 'ids' ? page.map(({ id, index }) => ({ id, index })) : page;
-    return {
-      ok: {
-        rows,
-        next_cursor: hasMore ? page[page.length - 1].index : null,
-        ...versions,
-      },
-    };
-  })();
+    const counting = q.returnMode === 'count';
+    const scan = await scanFiltered<PageRow>(sheetId, userId, filter,
+      { after: q.after, limit: counting ? 0 : limit + 1, count: counting });
+    count = scan.count;
+    page = scan.rows;
+    if (versionsOf(sheetId, userId)?.row_generation === versions.row_generation) break;
+    const fenced = q.after >= 0 || q.expectedRowGeneration !== undefined || q.expectedDataVersion !== undefined;
+    if (fenced || attempt === 1) return { fail: 'version_conflict', error: 'Sheet row order changed; restart paging.' };
+  }
+
+  if (q.returnMode === 'count') return { ok: { count, ...versions } };
+  const hasMore = page.length > limit;
+  if (hasMore) page = page.slice(0, limit);
+  const next_cursor = hasMore ? page[page.length - 1].row_index : null;
+  if (q.returnMode === 'ids') {
+    return { ok: { rows: page.map(r => ({ id: r.id, index: r.row_index })), next_cursor, ...versions } };
+  }
+  const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
+  overlayFilling(rows, fillingColumns(sheetId, userId));
+  if (q.includeStatus) {
+    const runs = prep.runColumns ?? sheetRunColumns(sheetId, userId, columns);
+    for (const r of rows) (r as { data: unknown }).data = rowWithStatus(r.data, runs, q.columns);
+  } else if (q.columns) {
+    for (const r of rows) r.data = Object.fromEntries(q.columns.map(c => [c, cellOf(r.data, c)]));
+  }
+  return { ok: { rows, next_cursor, ...versions } };
 }

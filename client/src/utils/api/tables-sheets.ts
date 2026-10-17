@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { ColumnFilters } from '@/lib/filters'
 import type { Sheet, SheetData, Table } from './types'
 
 // Opt these requests out of the interceptor's generic "Server error occurred" toast.
@@ -117,7 +118,7 @@ export const sheetsAPI = {
   // Per-column "text contains" filter. null clears all; value keyed by column name.
   updateColumnFilters: (
     sheetId: string,
-    columnFilters: Record<string, { type: 'contains'; value: string }> | null,
+    columnFilters: ColumnFilters | null,
   ): Promise<void> => api.put(`/sheets/${sheetId}/column-filters`, { columnFilters }, noServerToast).then(() => {}),
 
   updateDefaultModel: (sheetId: string, model: string | null): Promise<void> =>

@@ -5,8 +5,9 @@ import { transferRows, TransferRequest } from '../services/rows-transfer';
 import { TransferSelection } from '../services/transfer-selection';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import {
-  McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, rowConditionSchema as condition,
+  McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean,
 } from './tool-helpers';
+import { whereSchema } from './where-schema';
 
 
 export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
@@ -26,7 +27,7 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       selection: z.object({
         all: lenientBoolean().optional(),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional(),
-        where: z.array(condition).min(1).optional(),
+        where: whereSchema.optional(),
       }),
       columns: z.array(z.string()).min(1).optional(),
       column_mode: z.enum(['require_existing', 'create_missing']).optional(),

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import type { ColumnFilters } from '@/lib/filters'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
 import { useColumnRename } from './useColumnRename'
@@ -11,7 +12,7 @@ interface UseColumnOpsArgs {
   setEmptyFilter: React.Dispatch<React.SetStateAction<Record<string, 'empty' | 'not_empty'>>>
   // Text-filter state migrated on rename / pruned on delete (same reason the
   // server reconciles column_filters; a stale key 400s later filter PUTs).
-  setColumnFilters: React.Dispatch<React.SetStateAction<Record<string, { type: 'contains'; value: string }>>>
+  setColumnFilters: React.Dispatch<React.SetStateAction<ColumnFilters>>
   // Autosave reconciliation — delete/rename must flush or purge pending cell
   // edits keyed on the affected column, or a stale flush re-creates it (the
   // PUT upsert re-registers any column it writes). Mirrors the sort barrier.

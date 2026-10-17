@@ -9,13 +9,12 @@ import { getSheetColumns, parseRowData } from './sql-helpers';
 import { contentDispositionFilename, escapeCsvCell } from './csv-safety';
 import { withSheetRead } from './sheet-busy';
 import { csvLine, eachPage, responseWriter, writeSheetCsv, type SheetExportPlan } from './csv-write';
-// Reuses read_rows' filter predicate rather than a second implementation, so
-// `where` means exactly the same thing on both tools. (lib -> services is the
-// unusual direction; row-selection itself only depends on lib, so there's no
-// cycle, and lib/server-lifecycle.ts sets the same precedent.)
-import { rowPasses, validateRowConditions, type RowCondition } from '../services/row-selection';
-
-export type { RowCondition };
+// Reuses read_rows' filter (services/row-filter.ts) rather than a second
+// implementation, so `where` means exactly the same thing on both tools.
+// (lib -> services is the unusual direction; row-filter itself only depends on
+// lib, so there's no cycle, and lib/server-lifecycle.ts sets the same precedent.)
+import { prepareWhere } from '../services/row-filter';
+import type { WhereItem } from './row-filter/where';
 
 export type CsvExport =
   | {
@@ -34,8 +33,8 @@ export type CsvExport =
 export interface CsvExportOptions {
   // Subset + ORDER of columns to emit. Omitted = every column in sheet order.
   columns?: string[];
-  // Row filter, same shape read_rows accepts (services/row-selection.ts).
-  where?: RowCondition[];
+  // Row filter, the same `where` read_rows accepts (lib/row-filter/where.ts).
+  where?: WhereItem[];
   // Stop (never at half a row) once the CSV would pass this many characters.
   // Default: no limit.
   maxChars?: number;
@@ -63,11 +62,10 @@ export function planSheetExport(
     // Caller's order wins — they may want a different layout than the sheet's.
     columns = opts.columns;
   }
-  if (opts.where?.length) {
-    const condErr = validateRowConditions(allColumns, opts.where);
-    if (condErr) return { fail: 'invalid', error: condErr };
-  }
-  return { sheetName: sheet.name, columns, where: opts.where?.length ? opts.where : undefined };
+  if (!opts.where?.length) return { sheetName: sheet.name, columns };
+  const prepared = prepareWhere(sheetId, userId, opts.where, allColumns);
+  if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
+  return { sheetName: sheet.name, columns, filter: prepared.ok.filter };
 }
 
 // Build a sheet's CSV, optionally projected to a column subset and filtered to
@@ -84,10 +82,10 @@ export async function buildSheetCsv(
 ): Promise<CsvExport> {
   const plan = planSheetExport(sheetId, userId, opts);
   if ('fail' in plan) return plan;
-  const { columns, where } = plan;
+  const { columns, filter } = plan;
 
-  // Rows a page at a time between requests (each row's JSON parsed once, for
-  // the filter and the line alike), holding off heavy operations meanwhile.
+  // Rows a page at a time between requests (SQLite checks the filter; each
+  // passing row's JSON is parsed once), holding off heavy operations meanwhile.
   const maxChars = opts.maxChars ?? Number.POSITIVE_INFINITY;
   const outcome = await withSheetRead(sheetId, async (): Promise<CsvExport> => {
     const lines = [columns.map(escapeCsvCell).join(',')];
@@ -95,18 +93,17 @@ export async function buildSheetCsv(
     await eachPage(sheetId, userId, rows => {
       for (const json of rows) {
         sheetRows++;
-        const data = parseRowData(json);
-        if (where && !rowPasses(data, where)) continue;
-        const line = csvLine(columns, data);
+        if (json === null) continue;
+        const line = csvLine(columns, parseRowData(json));
         if (chars + 2 + line.length > maxChars) { truncated = true; return false; }
         lines.push(line);
         chars += 2 + line.length;
       }
       return true;
-    });
+    }, filter);
     const rowCount = lines.length - 1;
     const matchingRows = !truncated ? rowCount
-      : where ? null
+      : filter ? null
       : (db.prepare('SELECT COUNT(*) AS n FROM rows WHERE sheet_id = ? AND user_id = ?').get(sheetId, userId) as { n: number }).n;
     // An empty SHEET is 'empty' (the historical contract the UI route 400s on).
     // A filter that matched nothing is NOT empty — it's a valid result, and the

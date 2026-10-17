@@ -6,8 +6,9 @@ import { db } from '../lib/db';
 import { MCP_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { listTablesWithSheets, getSheetMeta, readRowsPage } from '../services/workspace-read';
-import { queryRows } from '../services/row-selection';
-import { McpAuthCtx, ok, err, missingScope, registerTool, rowConditionSchema as condition } from './tool-helpers';
+import { queryRows, type WhereItem } from '../services/row-selection';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { INCLUDE_STATUS_HELP, whereSchema } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
@@ -71,15 +72,20 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'The fence exists because filtered paging keysets on row index: if the sheet changes mid-page-walk, rows '
         + 'would be silently skipped or repeated, '
         + 'so you get a clean "restart paging" error instead of quietly wrong data. '
-        + 'Row ids are STABLE across sorts — use them with update_cells and delete_rows.',
+        + 'Row ids are STABLE across sorts — use them with update_cells and delete_rows. '
+        + 'FILTERS: `where` (described on the field) finds rows by text, number, a list of values, OR groups, and run '
+        + 'state: [{"operator":"has_error"}] returns the rows where any AI, HTTP API or enrichment run failed, and '
+        + 'return_mode count says how many without reading them. include_status returns each run column\'s cell as '
+        + '{status, value, error}, so you never parse ❌ / ⏭️ / ⏳ yourself.',
       inputSchema: {
         sheet_id: z.string(),
         cursor: z.number().int().min(0).optional().describe('index of the last row already received'),
         limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional(),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns. Omit for all (expensive on wide sheets).'),
-        where: z.array(condition).min(1).optional(),
+        where: whereSchema.optional(),
         return_mode: z.enum(['rows', 'ids', 'count']).optional(),
+        include_status: lenientBoolean().optional().describe(INCLUDE_STATUS_HELP),
         expected_data_version: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). Echo data_version from the previous page.'),
         expected_row_generation: z.number().int().min(0).optional()
@@ -88,7 +94,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       },
     },
     async ({
-      sheet_id, cursor, limit, columns, where, return_mode, expected_data_version, expected_row_generation,
+      sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
+      expected_row_generation,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
@@ -96,14 +103,15 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       if (!columns && !where && !return_mode && expected_data_version === undefined
         && expected_row_generation === undefined) {
         const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
-        return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize));
+        return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize, include_status === true));
       }
-      const result = queryRows(sheet_id, ctx.userId, {
+      const result = await queryRows(sheet_id, ctx.userId, {
         after: cursor ?? -1,
         limit,
         columns,
-        where,
+        where: where as WhereItem[] | undefined,
         returnMode: return_mode ?? 'rows',
+        includeStatus: include_status === true,
         expectedDataVersion: expected_data_version,
         expectedRowGeneration: expected_row_generation,
       });

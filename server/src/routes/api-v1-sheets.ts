@@ -23,8 +23,9 @@ router.get('/sheets/:id', requireScope('read'), (req: TokenAuthRequest, res) => 
   }
 });
 
-// GET /v1/sheets/:id/rows?limit&cursor — keyset-paged rows as {id, index, data}
-// (services/workspace-read.ts, shared with the MCP read_rows tool).
+// GET /v1/sheets/:id/rows?limit&cursor&include_status — keyset-paged rows as
+// {id, index, data} (services/workspace-read.ts, shared with the MCP read_rows
+// tool). include_status=true: run columns' cells as {status, value, error}.
 router.get('/sheets/:id/rows', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
     if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(req.params.id, req.userId!)) {
@@ -37,21 +38,25 @@ router.get('/sheets/:id/rows', requireScope('read'), (req: TokenAuthRequest, res
     const rawCursor = parseInt(String(req.query.cursor ?? ''), 10);
     const after = Number.isInteger(rawCursor) && rawCursor >= 0 ? rawCursor : -1;
 
-    res.json(readRowsPage(req.params.id, req.userId!, after, limit));
+    const status = String(req.query.include_status ?? '');
+    if (status !== '' && status !== 'true' && status !== 'false') {
+      return res.status(400).json({ error: 'include_status must be true or false.' });
+    }
+    res.json(readRowsPage(req.params.id, req.userId!, after, limit, status === 'true'));
   } catch (error) {
     console.error('GET /v1/sheets/:id/rows error:', error);
     res.status(500).json({ error: 'Failed to fetch rows' });
   }
 });
 
-router.post('/sheets/:id/rows/query', requireScope('read'), (req: TokenAuthRequest, res) => {
+router.post('/sheets/:id/rows/query', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
     if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(req.params.id, req.userId!)) {
       return res.status(404).json({ error: 'Sheet not found' });
     }
     const parsed = parseRowQueryBody(req.body, API_V1_MAX_ROWS_PAGE);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-    const result = queryRows(req.params.id, req.userId!, parsed.query);
+    const result = await queryRows(req.params.id, req.userId!, parsed.query);
     if ('fail' in result) return res.status(result.fail === 'version_conflict' ? 409 : 400).json({ error: result.error });
     return res.json(result.ok);
   } catch (error) {

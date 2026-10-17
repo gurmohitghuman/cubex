@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { transformColumn, TransformParams } from '../services/column-transform';
 import { TransformOp } from '../lib/transform-ops';
-import { McpAuthCtx, ok, err, missingScope, registerTool, rowConditionSchema as condition } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 
 export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void {
@@ -21,7 +22,7 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       pattern: z.string().optional().describe('regex_extract: the regex (group 1 is extracted). split: the delimiter.'),
       index: z.number().int().min(0).optional().describe('split: which part to keep (0-based, default 0)'),
       template: z.string().optional().describe('template: e.g. "{{First}} {{Last}} <{{Email}}>"'),
-      where: z.array(condition).min(1).optional().describe('Only transform rows matching all conditions'),
+      where: whereSchema.optional().describe(`Only transform rows matching it. ${WHERE_LANGUAGE}`),
     },
   }, async input => {
     const denied = missingScope(ctx, 'write');

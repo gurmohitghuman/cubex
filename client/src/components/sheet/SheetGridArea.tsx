@@ -1,4 +1,5 @@
 import React, { type MutableRefObject } from 'react'
+import type { ColumnFilters } from '@/lib/filters'
 import { Sheet, SheetData } from '@/utils/api'
 import { SheetGrid } from './SheetGrid'
 import { SheetEmptyState } from './SheetEmptyState'
@@ -23,7 +24,7 @@ interface Props {
   sheetData: SheetData | null
   totalDisplayedRows: number
   emptyFilter: Record<string, 'empty' | 'not_empty'>
-  columnFilters: Record<string, { type: 'contains'; value: string }>
+  columnFilters: ColumnFilters
   onEmptyFilterChange: React.ComponentProps<typeof SheetGrid>['onEmptyFilterChange']
   onColumnFilterChange: React.ComponentProps<typeof SheetGrid>['onColumnFilterChange']
   loadMoreData: React.ComponentProps<typeof SheetGrid>['onLoadMore']

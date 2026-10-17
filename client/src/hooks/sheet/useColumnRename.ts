@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import type { ColumnFilters } from '@/lib/filters'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
 
@@ -14,7 +15,7 @@ interface UseColumnRenameArgs {
   // filter PUT carries the stale old-name key → the server 400s ("unknown
   // column") and wedges all filter edits until a reload. Value type mirrors
   // SheetPage's columnFilters state.
-  setColumnFilters: React.Dispatch<React.SetStateAction<Record<string, { type: 'contains'; value: string }>>>
+  setColumnFilters: React.Dispatch<React.SetStateAction<ColumnFilters>>
   setLastRenamedColumn: (v: { from: string; to: string; at: number }) => void
   waitForSaves: (timeoutMs?: number) => Promise<boolean>
   renamePendingColumn: (oldName: string, newName: string) => void

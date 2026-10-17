@@ -5,7 +5,7 @@
 // inputs gets no ⏳ and no status, so it reads as not run yet and a later run
 // (or auto-run) picks it up once filled. services/enrich-row-count.ts counts
 // the same statuses in SQL.
-import { passesCondition, type TextConditionOp } from './row-conditions';
+import { asNumber, foldText, numberPasses, textPasses } from './row-filter/ops';
 import { buildRequest } from './enrich-request';
 import { CONDITION_NOT_MET, FAILED_MARK, SKIPPED_MARK, trimBlank } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
@@ -17,23 +17,13 @@ import {
 // for, but "Only run if" keeps it out (a full run marks it ⏭️ Condition not met).
 export type SeedVerdict = 'run' | 'skip' | 'condition' | 'missing';
 
-const asNumber = (raw: string | undefined): number | null => {
-  const t = (raw ?? '').trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-};
-
-// The operators the drawer offers (row-selection.ts semantics: text compares
-// trim and ignore case; gt/lt need a number on both sides).
+// The operators the drawer offers, read as every row condition reads them
+// (lib/row-filter/ops.ts: text compares trim and ignore case; gt/lt need a
+// number on both sides).
 export function conditionPasses(data: Record<string, string>, c: EnrichCondition): boolean {
   const cell = data[c.column];
-  if (c.op === 'gt' || c.op === 'lt') {
-    const a = asNumber(cell), b = asNumber(c.value);
-    if (a === null || b === null) return false;
-    return c.op === 'gt' ? a > b : a < b;
-  }
-  return passesCondition(cell, c.op as TextConditionOp, c.value);
+  if (c.op === 'gt' || c.op === 'lt') return numberPasses(c.op, asNumber(cell), asNumber(c.value));
+  return textPasses(c.op, foldText(cell), foldText(c.value));
 }
 
 // The status cell markers and blank rules live in lib/run-markers.ts (shared

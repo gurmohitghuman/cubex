@@ -9,12 +9,11 @@ import { db } from './db';
 import { parseRowData } from './sql-helpers';
 import { escapeCsvCell } from './csv-safety';
 import { yieldToRequests } from './slices';
-// The same `where` read_rows and export_csv apply (see lib/csv-export.ts on
-// the lib -> services direction).
-import { rowPasses, type RowCondition } from '../services/row-selection';
+import type { CompiledFilter } from './row-filter/sql';
 
-// What an export writes (lib/csv-export.ts planSheetExport builds it).
-export interface SheetExportPlan { sheetName: string; columns: string[]; where?: RowCondition[] }
+// What an export writes (lib/csv-export.ts planSheetExport builds it): the
+// rows passing `filter`, the `where` read_rows takes compiled to SQL.
+export interface SheetExportPlan { sheetName: string; columns: string[]; filter?: CompiledFilter }
 
 const EXPORT_PAGE_ROWS = 5_000;
 
@@ -22,17 +21,22 @@ const EXPORT_PAGE_ROWS = 5_000;
 export const csvLine = (columns: string[], data: Record<string, string>): string =>
   columns.map(col => escapeCsvCell(data[col] ?? '')).join(',');
 
-// The sheet's row data in row order, EXPORT_PAGE_ROWS at a time, yielding to
-// other requests between pages, until `apply` returns false.
+// The sheet's row data in row order, EXPORT_PAGE_ROWS rows at a time,
+// yielding to other requests between pages, until `apply` returns false. With
+// a filter, a row it leaves out comes as null: SQLite checks it, and a page
+// still reads EXPORT_PAGE_ROWS rows however few pass, so no page holds the
+// server for long.
 export async function eachPage(
-  sheetId: string, userId: string, apply: (rows: string[]) => boolean | Promise<boolean>,
+  sheetId: string, userId: string, apply: (rows: Array<string | null>) => boolean | Promise<boolean>,
+  filter?: CompiledFilter,
 ): Promise<void> {
   const page = db.prepare(`
-    SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
-    ORDER BY row_index LIMIT ?
+    SELECT row_index, ${filter ? `CASE WHEN ${filter.sql} THEN data END` : 'data'} FROM rows
+    WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?
   `).raw();
+  const params = filter?.params ?? [];
   for (let after = Number.MIN_SAFE_INTEGER; ;) {
-    const rows = page.all(sheetId, userId, after, EXPORT_PAGE_ROWS) as Array<[number, string]>;
+    const rows = page.all(...params, sheetId, userId, after, EXPORT_PAGE_ROWS) as Array<[number, string | null]>;
     if (!(await apply(rows.map(r => r[1]))) || rows.length < EXPORT_PAGE_ROWS) return;
     after = rows[rows.length - 1][0];
     await yieldToRequests();
@@ -48,15 +52,14 @@ export async function writeSheetCsv(
   let rowCount = 0;
   await eachPage(sheetId, userId, async rows => {
     for (const json of rows) {
-      const data = parseRowData(json);
-      if (plan.where && !rowPasses(data, plan.where)) continue;
-      chunk += '\r\n' + csvLine(plan.columns, data);
+      if (json === null) continue;
+      chunk += '\r\n' + csvLine(plan.columns, parseRowData(json));
       rowCount++;
     }
     const more = await write(chunk);
     chunk = '';
     return more;
-  });
+  }, plan.filter);
   return rowCount;
 }
 

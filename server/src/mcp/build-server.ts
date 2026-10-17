@@ -55,7 +55,9 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'with control_run (first_rows reruns only the sheet\'s top rows, a test before a big run). Enrich with treg.to data (work emails, phones, person and company data, lists of ' +
         'people or companies as rows in another sheet): search_enrichments, get_enrichment, then ' +
         'run_enrichment, which costs money per row: estimate_only first, and tell the user the daily_limit. ' +
-        'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data. ' +
+        'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
+        'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
+        'with include_status. ' +
         'set_auto_run keeps a column filling new rows. Discover AI models with list_models and set account/' +
         'sheet defaults with set_default_model. When transfer_rows is available, ' +
         'prefer it over reading cell data into the model and re-appending it. ' +

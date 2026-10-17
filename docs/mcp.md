@@ -70,6 +70,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Call `https://api.example.com/people?email={{email}}` for each row and add the job title and LinkedIn URL as columns."
 - "The last run left some cells blank. Show me why, then re-run only those rows."
 - "Export the rows where Status is Qualified, with just Email and Company."
+- "Show me the rows where the work email enrichment failed, and why."
 - "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
 - "In Leads, split Name into first and last name, turn Website into a domain and fix the phone numbers. Use the free cleaners."
@@ -83,7 +84,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
 | `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean and formula columns too. |
-| `read_rows` | Rows, paged, with optional filters and column selection. |
+| `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. See [Finding rows](#finding-rows). |
 | `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. |
@@ -117,6 +118,38 @@ Deletes are permanent; there's no undo. Every tool tells your client whether it 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
+
+## Finding rows
+
+`read_rows`, `export_csv`, `create_download_link`, `transfer_rows` and `transform_column` take `where`: a list of conditions a row must all pass. An item can also be an OR group, `{"or": [...]}`, which passes when any of its conditions does.
+
+```json
+[
+  {"column": "Industry", "operator": "any_of", "values": ["SaaS", "Fintech"]},
+  {"or": [{"column": "Email", "operator": "empty"}, {"column": "Phone", "operator": "empty"}]}
+]
+```
+
+- **Text:** `eq`, `neq`, `contains`, `not_contains`, `empty` and `not_empty`. `any_of` and `not_any_of` take `values`, a list. They ignore case and spaces at either end.
+- **Numbers:** `gt`, `gte`, `lt` and `lte`. The cell has to hold a number (`1,000` counts, `1,5` doesn't); other cells never pass.
+- **Run state**, on AI, HTTP API and enrichment columns: `has_error`, `has_result`, `not_run`, `condition_not_met` and `running`. They read the words runs write into cells (`❌`, `⏭️ Condition not met`, `⏳`, `➕`), so you don't have to. Leave `column` out to match any run column: `[{"operator": "has_error"}]` finds every row where a run failed. An output column reads the state from its run's status column, so `has_error` on Email finds the rows where the enrichment that fills Email failed.
+
+Text conditions compare a cell as written, status words included. To page a filtered read, send back `expected_data_version` and `expected_row_generation` from the previous page; if the sheet changed in between, you're asked to start again. `return_mode: "count"` counts the matching rows without reading them.
+
+With `include_status: true`, `read_rows` (and the REST row reads) return each run column's cell as `{status, value, error}`:
+
+| `status` | Meaning |
+|---|---|
+| `done` | `value` holds the result. |
+| `no_result` | The run finished without a value here. `reason` gives Cubex's words when there are any (`Not found`, `Budget ran out`, `No data`). |
+| `error` | The run failed. `error` says why. |
+| `condition_not_met` | The row's "Only run if" rule kept it out. |
+| `running` | Waiting, running, or adding rows to another sheet. |
+| `not_run` | Never run. |
+
+Other columns come back as text, the same as without it.
+
+In the app, each column's menu has the same filters, one per column: text, number and list conditions on any column, and on a run column **Rows with errors** plus the other run states.
 
 ## Only run if
 
@@ -335,8 +368,8 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 
 | Endpoint | Body or query |
 |---|---|
-| `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. |
-| `POST /sheets/:id/rows/query` | `{"where": [{"column": "Status", "operator": "eq", "value": "Qualified"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows"}`. Operators: `eq`, `neq`, `contains`, `empty`, `not_empty`, `gt`, `gte`, `lt`, `lte`. Values are strings. `return_mode` is `rows`, `ids` or `count`. To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the first page; you get a 409 if the sheet changed in between. |
+| `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. Add `&include_status=true` for run columns as `{status, value, error}`. |
+| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. |
 | `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |

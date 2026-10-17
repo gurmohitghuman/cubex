@@ -1,9 +1,7 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet } from '@/utils/api'
-
-export type ContainsCond = { type: 'contains'; value: string }
-export type ColumnFilters = Record<string, ContainsCond>
+import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 
 interface UseColumnFiltersArgs {
   activeSheet: Sheet | null
@@ -13,14 +11,14 @@ interface UseColumnFiltersArgs {
 }
 
 /**
- * Per-column "text contains" filter changes — the text-search sibling of
- * useEmptyFilter. Applied SERVER-SIDE (matches beyond the loaded window are
+ * Per-column filter changes (value, list, number and run-state filters,
+ * lib/filters.ts) — the sibling of useEmptyFilter. Applied SERVER-SIDE (matches beyond the loaded window are
  * reachable), so each change PUTs the new filter then RELOADs from offset 0 for
  * a filter-aware first page + correct totalRows. Same last-intent-wins guards as
  * useEmptyFilter: chainRef serializes PUT+reload so the server settles on the
  * last value and two reloads are never in flight; seqRef makes only the newest
  * change reload + commit state (superseded changes skip the reload and stay
- * silent on failure). Passing value '' (or null) clears that column's filter.
+ * silent on failure). Passing null clears that column's filter.
  */
 export const useColumnFilters = ({
   activeSheet,
@@ -30,20 +28,25 @@ export const useColumnFilters = ({
 }: UseColumnFiltersArgs) => {
   const seqRef = useRef(0)
   const chainRef = useRef<Promise<unknown>>(Promise.resolve())
+  // The filters as of the last change, so changes made one after another in
+  // the same tick (Clear filter on every column) build on each other instead
+  // of each starting from the same render's state. A load replaces them.
+  const latestRef = useRef(columnFilters)
+  useEffect(() => { latestRef.current = columnFilters }, [columnFilters])
 
-  return useCallback((column: string, value: string | null) => {
+  return useCallback((column: string, filter: ColumnFilter | null) => {
     if (!activeSheet) return
     const sheetId = activeSheet.id
 
-    const previousFilter = columnFilters
+    const previousFilter = latestRef.current
     const nextFilter = { ...previousFilter }
-    const trimmed = (value ?? '').trim()
-    if (!trimmed) delete nextFilter[column]
-    else nextFilter[column] = { type: 'contains', value: trimmed }
+    if (!filter) delete nextFilter[column]
+    else nextFilter[column] = filter
 
     const seq = ++seqRef.current
     const isLatest = () => seq === seqRef.current
 
+    latestRef.current = nextFilter
     setColumnFilters(nextFilter)
 
     const payload = Object.keys(nextFilter).length === 0 ? null : nextFilter
@@ -60,8 +63,11 @@ export const useColumnFilters = ({
       .catch(error => {
         console.error('Failed to save column filter:', error)
         if (!isLatest()) return
+        latestRef.current = previousFilter
         setColumnFilters(previousFilter)
-        toast.error('Failed to apply filter. Please try again.')
+        // A 400 says what's wrong with the filter (a value that isn't a number, a gone column).
+        const message = error?.response?.status === 400 ? error.response.data?.error : null
+        toast.error(message || 'Failed to apply filter. Please try again.')
       })
-  }, [activeSheet, columnFilters, setColumnFilters, reloadActiveSheet])
+  }, [activeSheet, setColumnFilters, reloadActiveSheet])
 }

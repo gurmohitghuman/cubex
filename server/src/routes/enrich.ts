@@ -74,11 +74,11 @@ router.get('/tools/:toolId/access', async (req: AuthRequest, res) => {
 
 // Set up step: the sheet's row counts (all, and its saved filter's) and room
 // for new columns.
-router.get('/sheets/:id/setup', (req: AuthRequest, res) => {
+router.get('/sheets/:id/setup', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     if (!UUID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid sheet ID format' });
-    const info = sheetSetupInfo(req.userId!, id);
+    const info = await sheetSetupInfo(req.userId!, id);
     if (!info) return res.status(404).json({ error: 'Sheet not found' });
     res.json(info);
   } catch (error) {

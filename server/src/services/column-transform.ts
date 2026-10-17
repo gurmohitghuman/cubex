@@ -14,7 +14,9 @@ import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import { getLockedRunColumns } from '../routes/sheets-shared';
-import { validateRowConditions, rowPasses, cellOf, type RowCondition } from './row-selection';
+import { cellOf } from './row-selection';
+import { prepareWhere } from './row-filter';
+import type { WhereItem } from '../lib/row-filter/where';
 import {
   applyCellOp, applyTemplate, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
@@ -30,7 +32,7 @@ export interface TransformParams {
   pattern?: string;
   index?: number;
   template?: string;
-  where?: RowCondition[];
+  where?: WhereItem[];
 }
 
 export type TransformOutcome =
@@ -65,9 +67,11 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
       return { fail: 'invalid', error: `Source column "${p.sourceColumn}" not found.` };
     }
   }
-  if (p.where) {
-    const invalid = validateRowConditions(columns, p.where);
-    if (invalid) return { fail: 'invalid', error: invalid };
+  let filter = { sql: '1', params: [] as unknown[] };
+  if (p.where?.length) {
+    const prepared = prepareWhere(p.sheetId, userId, p.where, columns);
+    if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
+    filter = prepared.ok.filter;
   }
 
   const nameCheck = sanitizeAndValidateColumnName(p.targetColumn);
@@ -120,14 +124,14 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
       }
       // Materialize (not .iterate()): better-sqlite3 forbids writing while a
       // cursor is open on the same connection, and we json_set per row below.
-      const rows = db.prepare('SELECT id, data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index ASC')
-        .all(p.sheetId, userId) as Array<{ id: string; data: string }>;
+      // Only the rows passing `where` (SQLite checks it).
+      const rows = db.prepare(`SELECT id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND (${filter.sql})
+        ORDER BY row_index ASC`).all(p.sheetId, userId, ...filter.params) as Array<{ id: string; data: string }>;
       let seen = 0;
       const written: string[] = [];
       for (const row of rows) {
         if ((++seen & 255) === 0 && Date.now() - startedAt > TRANSFORM_MAX_WRITER_MS) throw new WriterBudgetError();
         const data = parseRowData(row.data);
-        if (p.where && p.where.length > 0 && !rowPasses(data, p.where)) continue;
         const value = p.operation === 'template'
           ? applyTemplate(p.template!, data)
           : applyCellOp(p.operation, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });

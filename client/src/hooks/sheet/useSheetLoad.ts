@@ -1,6 +1,7 @@
 // Over 200 lines: one load path whose ordering guards (load generation, commit
 // sequence, structural barriers) only make sense read together.
 import { useCallback, useRef } from 'react'
+import type { ColumnFilters } from '@/lib/filters'
 import { sheetsAPI, Sheet, SheetData, AIRun, HTTPRun } from '@/utils/api'
 import toast from 'react-hot-toast'
 import { INITIAL_ROW_LOAD } from '@/lib/constants'
@@ -16,7 +17,7 @@ interface UseSheetLoadArgs {
   setLoadedRowsCount: React.Dispatch<React.SetStateAction<number>>
   setColumnOrder: (cols: string[]) => void
   setEmptyFilter: (f: Record<string, 'empty' | 'not_empty'>) => void
-  setColumnFilters: (f: Record<string, { type: 'contains'; value: string }>) => void
+  setColumnFilters: (f: ColumnFilters) => void
   fetchActiveHTTPRuns: (sheetId: string) => Promise<HTTPRun[]> | void
   fetchActiveAIRuns: (sheetId: string) => Promise<AIRun[]> | void
   reconnectToActiveRuns: (sheetId: string) => Promise<void> | void
