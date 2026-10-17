@@ -1,6 +1,4 @@
-// Over 200 lines: the grid wired to every column menu action and its confirms, in one place.
-import React, { useState } from 'react'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import React from 'react'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
 import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
 import type { ColumnType } from '@/utils/api/types'
@@ -16,6 +14,7 @@ import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { CellClickInfo, RunByColumn, RunMenuActions } from '@/components/aggrid/types'
 import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import { EnrichRerunConfirm } from './EnrichRerunConfirm'
+import { useColumnRunDialogs } from './ColumnRunDialogs'
 import { AnswerPanel } from '@/components/answer-panel/AnswerPanel'
 import { useAnswerPanel } from '@/hooks/sheet/useAnswerPanel'
 import { opensAnswer } from '@/components/answer-panel/answer-click'
@@ -120,24 +119,16 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onCellClick(rowIndex, columnName, value)
   }
 
-  // "Run All Rows" clears the column's current results first and spends credits
-  // or requests on every row again, so it asks before starting.
-  // columnName: the AI header clicked (a structured run reruns from any column).
-  const [confirmRunAll, setConfirmRunAll] =
-    useState<{ kind: 'ai' | 'http'; column: string; columnName?: string } | null>(null)
-  const runAll = async () => {
-    const c = confirmRunAll
-    setConfirmRunAll(null)
-    if (c?.kind === 'ai') await actions.handleRunAIForColumn(c.column, c.columnName)
-    else if (c) await actions.handleRunHTTPForColumn(c.column)
-  }
+  // "Run All Rows" and "Run First Rows" ask first (ColumnRunDialogs).
+  const runDialogs = useColumnRunDialogs(actions, totalRows)
 
   const runActions: RunMenuActions = {
-    onRunHTTPForColumn: (column) => setConfirmRunAll({ kind: 'http', column }),
+    onRunHTTPForColumn: (column) => runDialogs.askRunAll({ kind: 'http', column }),
     onRunHTTPForMissingOrError: actions.handleRunHTTPMissingOrError,
     onRunHTTPForRows: actions.handleRunHTTPForRows,
-    onRunAIForColumn: (column, columnName) => setConfirmRunAll({ kind: 'ai', column, columnName }),
+    onRunAIForColumn: (column, columnName) => runDialogs.askRunAll({ kind: 'ai', column, columnName }),
     onRunAIMissingOrError: actions.handleRunAIMissingOrError,
+    onRunFirstRows: (kind, column, columnName) => runDialogs.askFirstRows({ kind, column, columnName }),
     onEditAIColumn: actions.handleEditAIColumn,
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
@@ -150,17 +141,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
 
   return (
     <div className="flex flex-col h-full">
-      <ConfirmDialog
-        isOpen={!!confirmRunAll}
-        title="Run all rows again?"
-        message={confirmRunAll?.kind === 'ai'
-          ? `"${confirmRunAll.column}" will be cleared and filled again on every row, using your OpenRouter credits. `
-            + 'To fill only empty or failed rows, use "Run Missing or Errors" instead.'
-          : `"${confirmRunAll?.column ?? ''}" will call the API again for every row and replace the current results.`}
-        confirmText="Run all rows"
-        onConfirm={runAll}
-        onCancel={() => setConfirmRunAll(null)}
-      />
+      {runDialogs.dialogs}
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
       <AnswerPanel {...answers.panel} />
       <div className="flex-1 min-h-0">

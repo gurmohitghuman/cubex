@@ -9,7 +9,8 @@ const LIVE_POLL_MS = 2500
 const isLive = (r: SetupRunView) => r.status === 'running' || r.status === 'paused'
 
 // The sheet header's chip while a setup is being used on the sheet: its name,
-// the step it's on, pause or resume, stop. When it ends, a toast says how.
+// the step it's on, pause or resume, stop. When it ends, a toast says how
+// (and that using it again carries on after a failure).
 // onProgress: a setup moved to its next step or ended, so the sheet reloads
 // into its new columns at once instead of at the next change poll.
 // dataVersion: the sheet's; when it moves, the chip looks again, so a setup an
@@ -39,7 +40,8 @@ export const SetupRunChip: React.FC<{ sheetId: string | null; dataVersion?: numb
         moved = true
         if (r.status === 'done') toast.success(`"${r.setup_name}" is done.`)
         else if (r.status === 'failed') {
-          toast.error(`"${r.setup_name}" stopped: ${r.error_message ?? 'a step failed'}`)
+          toast.error(`"${r.setup_name}" stopped: ${r.error_message ?? 'a step failed'} `
+            + 'Use the setup again here to carry on from where it stopped.')
         }
       }
     }

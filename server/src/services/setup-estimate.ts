@@ -4,18 +4,22 @@
 // a row and cost nothing here; clean and formula steps are free. A later step
 // can't see the values earlier steps will write: an AI prompt reading them is
 // priced as if each held a few words, and a rule reading them is left out, so
-// those figures are the most it would take, not what it will.
+// those figures are the most it would take, not what it will. A step carrying
+// a column of the sheet on is priced on the rows it hasn't done, with the
+// column's own settings (setup-estimate-again.ts).
 import { COLUMN_REF_PATTERN } from '../lib/prompt';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { ruleColumns } from '../lib/run-condition';
 import { columnLookup } from '../lib/setups/refs';
 import { mainColumn, stepColumns, type AiStep, type SetupSpec, type StepKind } from '../lib/setups/spec';
+import type { SheetColumnStep, StepMode } from '../lib/setups/again';
 import type { SearchOptions } from '../lib/web-search-options';
 import { estimateAiRun } from './run-estimate';
 import { estimateEnrichment } from './enrich-setup';
+import { estimateAgain } from './setup-estimate-again';
 
 export interface StepEstimate {
-  column: string; kind: StepKind; layer: number;
+  column: string; kind: StepKind; layer: number; mode: StepMode;
   rows: number;
   // A range in dollars; null when it costs nothing here (free, or an HTTP API's own bill) or has no price.
   low_usd: number | null; high_usd: number | null;
@@ -29,15 +33,16 @@ export interface SetupEstimate {
 }
 
 const EARLIER_VALUE = 'a value an earlier step writes';
-const round = (n: number) => Math.round(n * 1e4) / 1e4;
+export const round = (n: number) => Math.round(n * 1e4) / 1e4;
 
-async function aiEstimate(
+// A rule reading a column the setup writes (made new, or carried on) is left out: those values will change.
+export async function aiEstimate(
   userId: string, sheetId: string, s: AiStep, sheetColumns: string[], made: string[], rowIndexes: number[] | null,
 ) {
   const later = columnLookup(made);
   const prompt = s.prompt.replace(COLUMN_REF_PATTERN, (full, token: string) =>
     (later.prompt(token) !== undefined ? EARLIER_VALUE : full));
-  const ruleOk = !s.runIf || ruleColumns(s.runIf).every(c => sheetColumns.includes(c));
+  const ruleOk = !s.runIf || ruleColumns(s.runIf).every(c => sheetColumns.includes(c) && !made.includes(c));
   return estimateAiRun(userId, {
     sheetId, prompt, systemPrompt: s.systemPrompt ?? undefined, model: s.model ?? undefined,
     useOpenRouterWebSearch: s.webSearch, useWebFetch: s.webFetch, outputColumns: s.outputColumns ?? undefined,
@@ -47,14 +52,19 @@ async function aiEstimate(
 }
 
 export async function estimateSetup(
-  userId: string, sheetId: string, plan: { spec: SetupSpec; layers: number[] },
-  sheetColumns: string[], rows: number, rowIndexes: number[] | null,
+  userId: string, sheetId: string, plan: { spec: SetupSpec; layers: number[]; modes: StepMode[] },
+  sheetColumns: string[], rows: number, rowIndexes: number[] | null, existing: SheetColumnStep[],
 ): Promise<SetupEstimate> {
   const made = plan.spec.steps.flatMap(stepColumns);
   const steps: StepEstimate[] = [];
   for (const [i, s] of plan.spec.steps.entries()) {
-    const base = { column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, rows, note: null,
-      low_usd: null, high_usd: null, sends_requests: false, free: false };
+    const base = { column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: plan.modes[i], rows,
+      note: null, low_usd: null, high_usd: null, sends_requests: false, free: false };
+    const own = plan.modes[i] === 'again' ? existing.find(c => c.columns[0] === base.column)?.step : undefined;
+    if (own) {
+      steps.push(await estimateAgain(userId, sheetId, own, base, { sheetColumns, made, rowIndexes }));
+      continue;
+    }
     if (s.kind === 'clean' || s.kind === 'formula') { steps.push({ ...base, free: true }); continue; }
     if (s.kind === 'http') {
       steps.push({ ...base, sends_requests: true, note: 'Sends one request a row to its API.' });

@@ -10,6 +10,7 @@
 //   mode = 'missing'  → rows whose master cell is empty / ❌ Failed / still ⏳ /
 //                       ⏭️ Condition not met (the "Only run if" rule left it)
 //   otherwise         → every existing row
+// firstRows / withinRows: only among the sheet's first rows, or those rows.
 // Targets are chosen, the run inserted and its placeholders seeded inside the
 // sheet's busy window (services/run-seed.ts).
 import { v4 as uuidv4 } from 'uuid';
@@ -18,10 +19,8 @@ import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
-import { existingRowIndexes, rowsWhere } from '../lib/run-rows';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { ruleSeed, storedRule } from './run-rule';
-import { isConditionNotMet } from '../lib/run-markers';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { httpTemplateError } from '../lib/http-template-validate';
@@ -31,12 +30,16 @@ import { RunFail } from './run-shared';
 import { RerunOutcome } from './ai-run-rerun';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { autorunFillingColumn } from './autorun-block';
+import { chooseRerunTargets, httpCellMissing, NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 
-export interface HttpRerunParams {
+// rowIndices: an explicit subset, which wins over mode; firstRows / withinRows
+// narrow the rows mode picks from (rerun-targets.ts).
+export interface HttpRerunParams extends RerunScope {
   sheetId: string;
   masterColumnName: string;
   mode?: string;          // 'missing' narrows to empty/failed/processing rows
-  rowIndices?: number[];  // explicit subset; wins over mode
+  // A setup carrying the column on: a row its rule kept out is taken only if the rule passes now.
+  recheckKeptOut?: boolean;
   // Override the cloned run's allow_secrets policy instead of copying the
   // parent's. rerunHttpRunById passes false when a no-'secrets' caller reruns a
   // permissive run: the clone is then FROZEN (allow_secrets=0), so even a
@@ -116,18 +119,9 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
     // Resolve target rows — always intersect with real row_index values so we
     // never write to (or bill for) rows that don't exist. Read in pages.
-    let targets: number[];
-    if (Array.isArray(p.rowIndices) && p.rowIndices.length > 0) {
-      targets = existingRowIndexes(p.sheetId, userId, p.rowIndices);
-    } else if (p.mode === 'missing') {
-      targets = await rowsWhere(p.sheetId, userId, cleanMaster, value => {
-        const v = ((value as string | null) || '').toString();
-        return v.trim() === '' || v.includes('⏳') || v.startsWith('❌') || isConditionNotMet(v);
-      });
-    } else {
-      targets = await rowsWhere(p.sheetId, userId, cleanMaster, () => true);
-    }
-    if (targets.length === 0) return { fail: 'bad_request', message: 'No target rows found to re-run' };
+    const targets = await chooseRerunTargets(p.sheetId, userId, cleanMaster,
+      p.mode === 'missing' ? httpCellMissing : () => true, p, p.recheckKeptOut ? rule.ok : null);
+    if (targets.length === 0) return NO_TARGET_ROWS;
 
     // A rerun whose master/extracted columns were deleted since the original run
     // recreates them below (appendColumnsToOrder) — the start path enforces

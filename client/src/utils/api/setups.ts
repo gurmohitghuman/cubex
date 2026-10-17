@@ -57,9 +57,12 @@ export interface ApplyBody {
   estimateOnly: boolean
 }
 
+// A step makes its columns ('new'), or carries a column the sheet has on ('again': only the rows it hasn't done).
+export type SetupStepMode = 'new' | 'again'
+
 // What one step could cost: dollars (null when free, an HTTP API's own bill, or no price), and why not.
 export interface StepEstimate {
-  column: string; kind: SetupKind; layer: number; rows: number
+  column: string; kind: SetupKind; layer: number; mode: SetupStepMode; rows: number
   low_usd: number | null; high_usd: number | null; sends_requests: boolean; free: boolean; note: string | null
 }
 export interface SetupEstimate {
@@ -71,8 +74,13 @@ export interface SetupRunView {
   id: string; setup_id: string | null; setup_name: string; sheet_id: string; status: SetupRunStatus
   layer: number; layers: number; test_rows: number | null; error_message: string | null
   created_at: string; updated_at: string
+  // What it was used with: using the setup again on the sheet starts from them.
+  choices: {
+    inputs?: Record<string, string>; names?: Record<string, string>; models?: Record<string, string>
+  } | null
   steps: Array<{
-    column: string; kind: SetupKind; layer: number; state: string; run_id: string | null; note: string | null
+    column: string; kind: SetupKind; layer: number; mode: SetupStepMode; state: string; run_id: string | null
+    note: string | null
   }>
 }
 
@@ -89,11 +97,13 @@ export const setupsAPI = {
 
   get: (id: string): Promise<SetupDetail> => api.get(`/setups/${id}`, quiet).then(res => res.data),
   apply: (sheetId: string, setupId: string, body: ApplyBody, signal?: AbortSignal)
-    : Promise<{ estimate: SetupEstimate } | { setup_run: SetupRunView }> =>
+    : Promise<{ estimate: SetupEstimate; carries_on: string[] } | { setup_run: SetupRunView }> =>
     api.post(`/sheets/${sheetId}/setups/${setupId}/apply`, body, { ...quiet, signal, timeout: 120_000 })
       .then(res => res.data),
-  runs: (sheetId: string): Promise<SetupRunView[]> =>
-    api.get(`/sheets/${sheetId}/setup-runs`, quiet).then(res => res.data.setup_runs),
+  // setupId: only that setup's runs on the sheet.
+  runs: (sheetId: string, setupId?: string): Promise<SetupRunView[]> =>
+    api.get(`/sheets/${sheetId}/setup-runs`, { ...quiet, params: setupId ? { setupId } : undefined })
+      .then(res => res.data.setup_runs),
   control: (id: string, action: 'pause' | 'resume' | 'cancel'): Promise<SetupRunView> =>
     api.post(`/setup-runs/${id}/${action}`, null, quiet).then(res => res.data),
 

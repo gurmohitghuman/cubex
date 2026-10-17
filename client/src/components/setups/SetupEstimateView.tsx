@@ -6,6 +6,7 @@ const usd = (n: number) => (n < 0.01 && n > 0 ? '<$0.01' : `$${n.toFixed(2)}`)
 const range = (low: number, high: number) => (low === high ? usd(low) : `${usd(low)} to ${usd(high)}`)
 
 function costOf(s: StepEstimate): string {
+  if (s.mode === 'again' && s.rows === 0) return 'Nothing to run'
   if (s.free) return 'Free'
   if (s.sends_requests) return `${s.rows.toLocaleString()} requests`
   if (s.low_usd === null || s.high_usd === null) return 'No price'
@@ -32,6 +33,11 @@ export const SetupEstimateView: React.FC<{ state: EstimateState }> = ({ state })
               <td className="py-0.5 pr-2 w-6 text-gray-500 whitespace-nowrap">{s.layer}.</td>
               <td className="py-0.5 pr-3 text-gray-800">
                 {s.column} <span className="text-gray-500">· {SETUP_KIND_LABEL[s.kind]}</span>
+                {s.mode === 'again' && !s.free && s.rows > 0 && (
+                  <span className="block text-xs text-gray-500">
+                    Carries on: {s.rows.toLocaleString()} row{s.rows === 1 ? '' : 's'} not done yet
+                  </span>
+                )}
                 {s.note && <span className="block text-xs text-gray-500">{s.note}</span>}
               </td>
               <td className="py-0.5 text-right text-gray-800 whitespace-nowrap">{costOf(s)}</td>
@@ -45,6 +51,7 @@ export const SetupEstimateView: React.FC<{ state: EstimateState }> = ({ state })
       <p className="mt-1 text-xs text-gray-500">
         Steps with the same number run side by side. A step that reads what an earlier one writes is priced at
         the most it could take{unpriced}.
+        {e.steps.some(s => s.mode === 'again') && ' A step that carries on is priced on the rows it hasn\'t done.'}
       </p>
     </div>
   )

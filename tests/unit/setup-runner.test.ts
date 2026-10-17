@@ -3,7 +3,11 @@
 // holds the sheet (an export) instead of failing the setup, starts once it's
 // free, and the second step starts only after the first one's fill is done;
 // the record ends done with both columns filled. Stopping a setup starts
-// nothing more.
+// nothing more. Used again on the sheet once it has new rows, its steps carry
+// their columns on: filled again when their auto-run is off, and when it's on,
+// done once the auto-run has worked the new rows out (no fill). A column
+// carried on with a paused run on it stops the setup with a message (nothing
+// would resume it); an active one is waited for.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -13,6 +17,11 @@ import libMod from '../../server/src/services/setup-library'
 import storeMod from '../../server/src/services/setup-run-store'
 import runnerMod from '../../server/src/services/setup-runner'
 import controlMod from '../../server/src/services/setup-run-control'
+import stepsMod from '../../server/src/services/setup-steps'
+import derivedMod from '../../server/src/services/derived-autorun'
+import followMod from '../../server/src/services/derived-follow'
+import entryMod from '../../server/src/services/autorun-entry'
+import againMod from '../../server/src/services/setup-step-again'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -22,6 +31,11 @@ const { insertSetup } = libMod as typeof import('../../server/src/services/setup
 const { insertSetupRun, getSetupRun } = storeMod as typeof import('../../server/src/services/setup-run-store')
 const { advanceSetupRun } = runnerMod as typeof import('../../server/src/services/setup-runner')
 const { controlSetupRun } = controlMod as typeof import('../../server/src/services/setup-run-control')
+const { sheetCandidates } = stepsMod as typeof import('../../server/src/services/setup-steps')
+const { setCleanAutorun } = derivedMod as typeof import('../../server/src/services/derived-autorun')
+const { derivedFollowTick } = followMod as typeof import('../../server/src/services/derived-follow')
+const { entryFor } = entryMod as typeof import('../../server/src/services/autorun-entry')
+const { startAgainStep } = againMod as typeof import('../../server/src/services/setup-step-again')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -56,10 +70,23 @@ const setup = insertSetup(uid, 'Trim then lower', null, spec)
 if (!('ok' in setup)) throw new Error(JSON.stringify(setup))
 
 function start(sheetId: string): string {
-  const plan = planApply(spec, ['Name'])
+  const columns = JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(sheetId) as string)
+  const plan = planApply(spec, columns, {}, sheetCandidates(sheetId, uid))
   if (!('ok' in plan)) throw new Error(JSON.stringify(plan))
   return insertSetupRun({ userId: uid, sheetId, setupId: setup.ok.id, setupName: 'Trim then lower',
-    plan: { spec: plan.ok.spec, layers: plan.ok.layers }, targetRowIds: null, allowSecrets: true, autoRun: true })
+    plan: { spec: plan.ok.spec, layers: plan.ok.layers, modes: plan.ok.modes }, targetRowIds: null,
+    allowSecrets: true, autoRun: true })
+}
+const addRow = (sheetId: string, name: string) => db.prepare(`INSERT INTO rows (id, sheet_id, user_id, row_index,
+  data) VALUES (?, ?, ?, (SELECT MAX(row_index) + 1 FROM rows WHERE sheet_id = ?), ?)`)
+  .run(uuid(), sheetId, uid, sheetId, JSON.stringify({ Name: name }))
+async function settle(id: string, between: () => Promise<void> = async () => {}) {
+  for (let i = 0; i < 100 && getSetupRun(uid, id)!.status === 'running'; i++) {
+    await advanceSetupRun(id)
+    await between()
+    await sleep(50)
+  }
+  return getSetupRun(uid, id)!
 }
 
 async function main() {
@@ -90,6 +117,48 @@ async function main() {
     cells(sheetId, 'Trimmed'))
   check('the second read it', JSON.stringify(cells(sheetId, 'Lower')) === '["ada","grace","alan"]',
     cells(sheetId, 'Lower'))
+
+  // Used again with a new row: both steps carry their columns on (auto-run off: filled again).
+  addRow(sheetId, ' BOB ')
+  const again = start(sheetId)
+  check('its steps carry the columns on', getSetupRun(uid, again)!.steps.every(st => st.mode === 'again'),
+    getSetupRun(uid, again))
+  view = await settle(again)
+  check('and fill the new row', view.status === 'done'
+    && JSON.stringify(cells(sheetId, 'Lower')) === '["ada","grace","alan","bob"]', [view, cells(sheetId, 'Lower')])
+
+  // Auto-run on: the steps wait for it to work the new rows out, and fill nothing again.
+  db.transaction(() => {
+    setCleanAutorun(sheetId, uid, 'Trimmed', 'Name', true)
+    setCleanAutorun(sheetId, uid, 'Lower', 'Trimmed', true)
+  })()
+  const filledAt = db.prepare('SELECT updated_at FROM clean_columns WHERE sheet_id = ? AND column_name = ?').pluck()
+  const before = filledAt.get(sheetId, 'Trimmed')
+  addRow(sheetId, ' Cy ')
+  const followed = start(sheetId)
+  await advanceSetupRun(followed)
+  check('a followed column waits for its auto-run', getSetupRun(uid, followed)!.steps[0].state === 'running',
+    getSetupRun(uid, followed))
+  view = await settle(followed, async () => {
+    for (const col of ['Trimmed', 'Lower']) await derivedFollowTick(entryFor(sheetId, uid, col)!)
+  })
+  check('then is done, the auto-run having filled the row', view.status === 'done'
+    && cells(sheetId, 'Lower')[4] === 'cy', [view, cells(sheetId, 'Lower')])
+  check('without filling the column again', filledAt.get(sheetId, 'Trimmed') === before)
+
+  // A run on a carried-on column: paused stops the step with a message, active waits.
+  const runId = uuid()
+  db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, status, master_column_name, config)
+    VALUES (?, ?, ?, 'paused', 'Lookup', '{}')`).run(runId, sheetId, uid)
+  const httpStep = { kind: 'http', name: 'Lookup', request: { method: 'GET', url: 'https://x.example/{{Name}}',
+    headers: {}, body: null, timeout: null }, mappings: [], batchSize: null, runIf: null, autoRun: null } as const
+  const opts = { rowIndexes: null, allowSecrets: true, autoRun: true, refill: false }
+  const paused = await startAgainStep(uid, sheetId, httpStep as any, opts)
+  check('a paused run on the column stops the step, saying so', 'fail' in paused
+    && paused.message.includes('is paused'), paused)
+  db.prepare(`UPDATE http_runs SET status = 'running' WHERE id = ?`).run(runId)
+  check('an active one is waited for', 'wait' in await startAgainStep(uid, sheetId, httpStep as any, opts))
+  db.prepare('DELETE FROM http_runs WHERE id = ?').run(runId)
 
   // Stopped before it moves on: nothing more starts.
   const other = sheet(['X'])

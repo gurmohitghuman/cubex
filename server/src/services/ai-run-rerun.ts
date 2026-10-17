@@ -13,7 +13,6 @@ import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
-import { existingRowIndexes } from '../lib/run-rows';
 import { activeRunOnColumn } from './ai-run-start-checks';
 import { ruleSeed, storedRule } from './run-rule';
 import { asRunStart, seedThenEnqueue } from './run-seed';
@@ -24,23 +23,26 @@ import { enqueueAIRerun } from '../queue';
 import { RunFail } from './run-shared';
 import { AiRerunMode, DEFAULT_AI_RERUN_MODE, resolveRerunTargets } from './ai-rerun-modes';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 import { rerunAiMultiColumn, structuredRunByBase } from './ai-run-rerun-multi';
 import { structuredRunOwning } from '../lib/structured-run-owner';
 
 export type { AiRerunMode } from './ai-rerun-modes';
 
-export interface AiRerunParams {
+export interface AiRerunParams extends RerunScope {
   sheetId: string;
   baseColumnName: string;
   // The exact column the user picked (the sheet menu sends the clicked header).
   // When given, the run that owns it is rerun: no guessing from the base name.
   columnName?: string;
-  // Explicit target row_index values. Takes precedence over mode.
-  rowIndices?: number[];
+  // rowIndices (explicit target row_index values) takes precedence over mode;
+  // firstRows / withinRows narrow the rows mode picks from (rerun-targets.ts).
   // Which rows to target when rowIndices is absent. Defaults to 'missing' (the
   // historical behavior) so the UI route is unchanged; programmatic surfaces
   // require it explicitly. See ai-rerun-modes.ts for why the modes exist.
   mode?: AiRerunMode;
+  // A setup carrying the column on: a row its rule kept out is taken only if the rule passes now.
+  recheckKeptOut?: boolean;
   // Rows in parallel for the new run (1..MAX_AI_CONCURRENCY); absent keeps the
   // run it repeats. Lowering it is the fix for OpenRouter's in-flight budget 402.
   concurrency?: number;
@@ -136,20 +138,13 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   const wantCols = needsDataColumn ? [outputCol, dataCol] : [outputCol];
 
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
-    let targets: number[];
-    if (Array.isArray(p.rowIndices) && p.rowIndices.length > 0) {
-      // Intersect explicit indices with rows that actually EXIST (the HTTP rerun
-      // already does this). Without it, targeting only nonexistent indices left
-      // total_rows counting them while the worker had nothing to process — the
-      // run finalized 'completed' with processed_rows=0/total_rows=N, and mixed
-      // valid/invalid targets skewed the progress numerator.
-      targets = existingRowIndexes(p.sheetId, userId, p.rowIndices);
-    } else {
-      // Mode-driven selection over the (Output) cell. A NULL cell means the row
-      // never had this column populated — treated as empty. See ai-rerun-modes.ts.
-      targets = await resolveRerunTargets(p.sheetId, userId, outputCol, p.mode ?? DEFAULT_AI_RERUN_MODE);
-    }
-    if (targets.length === 0) return { fail: 'bad_request', message: 'No target rows found to re-run' };
+    // Explicit indices are intersected with rows that actually EXIST: targeting
+    // only nonexistent ones once left total_rows counting them while the worker
+    // had nothing to process. Otherwise mode-driven selection over the (Output)
+    // cell; a NULL cell means the row never had this column populated (empty).
+    const targets = await resolveRerunTargets(p.sheetId, userId, outputCol, p.mode ?? DEFAULT_AI_RERUN_MODE, p,
+      p.recheckKeptOut ? rule.ok : null);
+    if (targets.length === 0) return NO_TARGET_ROWS;
 
     // A rerun whose column was deleted since the original run RECREATES it (the
     // appendColumnsToOrder below). Without a cap check that recreation can push

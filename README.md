@@ -118,7 +118,7 @@ Create a table, then import a CSV or start typing.
 Click **AI Column**, name it, and write what you want. Type `/` to use another column's value. Try it on 5 rows, check the results, then run it on the rest.
 
 - **Web search.** Turn on web search, or "fetch URLs from referenced columns", when the model needs current information. Pick the search engine and limit the searches per row, since search fees are usually most of the cost. Each row's "(Data)" cell shows what it searched for and what it cost.
-- **Control.** Cells fill in live while a run works. Pause, resume or stop it, and re-run only the rows that failed or came back empty.
+- **Control.** Cells fill in live while a run works. Pause, resume or stop it, and re-run only the rows that failed or came back empty. Changed the prompt? **Run First Rows…** in the column's menu runs it again on the sheet's top rows (10 by default), so you can check them before running the rest. HTTP API columns have it too.
 - **Only run if.** Run only the rows that pass a rule, such as `{{Industry}} is "SaaS" AND {{Employees}} > 50`. Say in plain words which rows should run and your default AI model writes the rule (one small call), or write it yourself. Cubex checks the rule without AI, so the rows it leaves out cost nothing and show "⏭️ Condition not met". HTTP API and enrichment columns have it too, so one column can decide which rows the next one runs on.
 - **Several columns at once.** Through the API or MCP, one run can fill several typed columns, such as a score and the reason for it.
 
@@ -198,6 +198,8 @@ A row missing a value in any column you picked always stays, and so does one whe
 When a chain of columns works on one sheet (say a formula pulls the domain, an HTTP API column looks the company up, and an AI column scores the fit), save it: open a filled column's menu and choose **Save as setup…**, or use **Setups** in the toolbar. The columns it reads come along, and you see the order the steps run in and which columns a sheet needs for it. Only how each column is filled is saved, never your rows, and saved API keys are kept by name only.
 
 On another sheet, choose **Setups**, then **Use a setup…**. Match each column the setup reads to a column of this sheet, rename any column the sheet already has, and see what it would cost before you start: AI steps priced on your rows, enrichments at treg's prices, clean and formula steps free. Test it on the first few rows, or run it on every row. The steps run in order, each once the columns it reads are filled, and a chip in the toolbar shows where it is, with pause and stop. After a run on every row, the auto-runs saved with the setup are turned on.
+
+New rows on a sheet you used a setup on? Use it again there. The steps whose columns the sheet has already, set up the same way, show **Carries on**: each fills only the rows it hasn't done, with the column's own model and settings, and you see what that costs first. AI columns fill their empty rows, HTTP API columns their empty or failed rows, enrichments the rows not enriched yet, and clean and formula columns follow their columns as they always do. It's also how a setup that failed or was stopped picks up where it left off: the dialog starts from the choices you made last time on that sheet.
 
 Setups live in **Settings, Setups**, where you can rename, export one as a file for another Cubex, import one, or delete it. A setup is a copy: changing or deleting it never changes a sheet you used it on.
 

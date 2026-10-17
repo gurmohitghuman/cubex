@@ -12,8 +12,9 @@
 //   missing — empty OR ❌ OR still-⏳ (the historical default; the UI's
 //             "Run Missing or Errors" button)
 //   all     — every row in the sheet. Re-bills the lot.
-import { rowsWhere } from '../lib/run-rows';
 import { isConditionNotMet } from '../lib/run-markers';
+import type { CheckedRule } from '../lib/run-condition';
+import { chooseRerunTargets, type RerunScope } from './rerun-targets';
 
 export type AiRerunMode = 'errored' | 'empty' | 'missing' | 'all';
 
@@ -46,13 +47,17 @@ export function matchesRerunMode(value: string | null, mode: AiRerunMode): boole
   }
 }
 
-// Resolve the row_index values a rerun should target under `mode`. 'all' still
-// reads the rows (not a bare count) so the caller gets real indexes that exist
-// right now — the same guarantee the explicit-indices path gives. Paged
-// (lib/run-rows.ts): call it inside the start's busy window, so no sort moves
-// the rows between choosing them and seeding them.
+// Resolve the row_index values a rerun should target under `mode` (among the
+// first rows or the rows `scope` names, when it does; its explicit rows win).
+// 'all' still reads the rows (not a bare count) so the caller gets real
+// indexes that exist right now. Paged (rerun-targets.ts): call it inside the
+// start's busy window, so no sort moves the rows between choosing them and
+// seeding them.
+// keptOut: the column's rule, when a setup carries it on (rerun-targets.ts).
 export function resolveRerunTargets(
-  sheetId: string, userId: string, outputColumn: string, mode: AiRerunMode,
+  sheetId: string, userId: string, outputColumn: string, mode: AiRerunMode, scope: RerunScope = {},
+  keptOut: CheckedRule | null = null,
 ): Promise<number[]> {
-  return rowsWhere(sheetId, userId, outputColumn, v => matchesRerunMode(v as string | null, mode));
+  return chooseRerunTargets(sheetId, userId, outputColumn, v => matchesRerunMode(v as string | null, mode), scope,
+    keptOut);
 }

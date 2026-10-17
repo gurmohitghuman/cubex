@@ -87,10 +87,13 @@ export const aiAPI = {
   // 409 if a sort/CSV-replace re-meant the indices since the user selected them.
   // opts.columnName: the exact header clicked, so the server reruns the run that
   // owns it instead of guessing from the base name. opts.mode: which rows
-  // (the server's default is 'missing').
+  // (the server's default is 'missing'); firstRows: only among the sheet's top rows.
   rerun: (
     sheetId: string, baseColumnName: string,
-    opts: { rowIndices?: number[]; rowGeneration?: number; columnName?: string; mode?: 'errored' | 'empty' | 'missing' | 'all' } = {},
+    opts: {
+      rowIndices?: number[]; rowGeneration?: number; columnName?: string; firstRows?: number
+      mode?: 'errored' | 'empty' | 'missing' | 'all'
+    } = {},
   ): Promise<{ runId: string; message: string; targetRows: number }> =>
     api.post('/ai/rerun', { sheetId, baseColumnName, ...opts }, noServerToast).then(res => res.data),
 }
@@ -106,9 +109,12 @@ export const httpAPI = {
   // targets empty/❌/⏳ rows; rowIndices targets a selection; neither → all rows.
   rerun: (
     sheetId: string, masterColumnName: string,
-    opts?: { mode?: 'missing'; rowIndices?: number[]; rowGeneration?: number },
+    opts?: { mode?: 'missing'; rowIndices?: number[]; rowGeneration?: number; firstRows?: number },
   ): Promise<{ runId: string; message: string; targetRows: number }> =>
-    api.post('/http/rerun', { sheetId, masterColumnName, mode: opts?.mode, rowIndices: opts?.rowIndices, rowGeneration: opts?.rowGeneration }, noServerToast).then(res => res.data),
+    api.post('/http/rerun', {
+      sheetId, masterColumnName, mode: opts?.mode, rowIndices: opts?.rowIndices, rowGeneration: opts?.rowGeneration,
+      firstRows: opts?.firstRows,
+    }, noServerToast).then(res => res.data),
 
   controlRun: (jobId: string, action: 'pause' | 'resume' | 'cancel'): Promise<{ message: string }> =>
     api.post(`/http/jobs/${jobId}/control`, { action }, noServerToast).then(res => res.data),

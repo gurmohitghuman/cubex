@@ -3,8 +3,8 @@ import { httpAPI } from '@/utils/api'
 import { plural } from '@/lib/utils'
 import type { GridRunArgs } from './useSheetGridRunActions'
 
-// The column menu's HTTP API Actions: run all rows, run missing or errors, and
-// run the selected rows, each a rerun on the column. Split out of
+// The column menu's HTTP API Actions: run all rows, run missing or errors, run
+// the first rows, and run the selected rows, each a rerun on the column. Split out of
 // useSheetGridRunActions. Enrichment columns have their own (useEnrichColumnActions).
 const rerunning = (n: number) => `Re-running HTTP for ${plural(n, 'row')}`
 
@@ -14,7 +14,7 @@ export const useHTTPColumnRunActions = (a: GridRunArgs) => {
   // Pause/Stop pill appears immediately (don't wait on the ~5s SSE throttle).
   const startHTTPRerun = async (
     masterColumnName: string,
-    opts: { mode?: 'missing'; rowIndices?: number[] },
+    opts: { mode?: 'missing'; rowIndices?: number[]; firstRows?: number },
     successMsg: (targetRows: number) => string,
     errorMsg: string,
   ) => {
@@ -54,5 +54,9 @@ export const useHTTPColumnRunActions = (a: GridRunArgs) => {
     return startHTTPRerun(masterColumnName, { rowIndices }, rerunning, 'Failed to re-run HTTP')
   }
 
-  return { handleRunHTTPForColumn, handleRunHTTPMissingOrError, handleRunHTTPForRows }
+  // "Run First Rows": every one of the sheet's top rows again (a test before a big run).
+  const handleRunHTTPFirstRows = (masterColumnName: string, firstRows: number) =>
+    startHTTPRerun(masterColumnName, { firstRows }, rerunning, 'Failed to run HTTP')
+
+  return { handleRunHTTPForColumn, handleRunHTTPMissingOrError, handleRunHTTPForRows, handleRunHTTPFirstRows }
 }

@@ -123,10 +123,13 @@ export async function prepareEnrichmentStart(
   const rule = checkRunRule(sheetId, userId, input.runIf);
   if ('error' in rule) return bad(rule.error);
   const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null);
+  // Nothing left to run here (a setup carrying the column on counts it as done).
   if (inScope === 0 && (input.conditions.length || rule.ok)) {
-    return bad('No rows here pass "Only run if". Pick other rows to run.');
+    return { ...bad('No rows here pass "Only run if". Pick other rows to run.'), nothingToRun: true };
   }
-  if (inScope === 0) return bad(NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.');
+  if (inScope === 0) {
+    return { ...bad(NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.'), nothingToRun: true };
+  }
   const upperBound = Math.min(input.rows.test ?? inScope, inScope);
 
   const named = { ...input, outputs: input.outputs.map((o, i) => ({ ...o, columnName: outputNames[i] })) };

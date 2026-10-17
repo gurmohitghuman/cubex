@@ -47,11 +47,12 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'formula, no AI. Remove duplicate rows with remove_duplicates (free; a dry run unless dry_run is ' +
         'false). Save filled columns as a named setup with save_setup, then build the same chain of columns on ' +
         'another sheet with apply_setup (an estimate unless estimate_only is false); list_setups shows the ' +
-        'saved ones. ' +
+        'saved ones. apply_setup again on a sheet that has its columns carries them on: only the rows not done ' +
+        'yet (new rows, or a setup that failed or was stopped). ' +
         'Enrich with run_ai_column (per-row AI prompt) or ' +
         'run_http_enrichment (per-row HTTP JSON API + JSONPath extraction) — both ' +
         'return a run_id to poll via get_run_status; pause/resume/cancel/rerun ' +
-        'with control_run. Enrich with treg.to data (work emails, phones, person and company data, lists of ' +
+        'with control_run (first_rows reruns only the sheet\'s top rows, a test before a big run). Enrich with treg.to data (work emails, phones, person and company data, lists of ' +
         'people or companies as rows in another sheet): search_enrichments, get_enrichment, then ' +
         'run_enrichment, which costs money per row: estimate_only first, and tell the user the daily_limit. ' +
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data. ' +

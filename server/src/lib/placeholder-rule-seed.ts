@@ -12,7 +12,7 @@ import { db } from './db';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './placeholder-cells';
-import { CONDITION_NOT_MET, takesConditionMark } from './run-markers';
+import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
@@ -47,7 +47,8 @@ export async function seedPlaceholdersByRule(args: {
       if (rulePasses(rule.tree, values)) { pass.push(r[0] as number); continue; }
       notMet++;
       const main = r[2] == null ? '' : String(r[2]);
-      if (takesConditionMark(main)) mark.push(r[0] as number);
+      // A row kept out already keeps its mark: no write (a big sheet's rule may keep most rows out).
+      if (takesConditionMark(main) && !isConditionNotMet(main)) mark.push(r[0] as number);
     }
     if (pass.length) run.run(...paths, JSON.stringify(pass), sheetId, userId);
     if (mark.length) {

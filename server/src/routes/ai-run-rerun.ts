@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { rerunAiColumn } from '../services/ai-run-rerun';
 import { AI_RERUN_MODES, type AiRerunMode } from '../services/ai-rerun-modes';
 import { runFailHttpStatus } from '../services/run-shared';
@@ -29,6 +29,19 @@ export function parseRowIndices(raw: unknown): { rowIndices?: number[] } | { err
   return { rowIndices: raw as number[] };
 }
 
+// firstRows: "Run first rows" (only among the sheet's top N rows), 1..MAX_FIRST_ROWS;
+// never with explicit rows (withRows), which would win over it unsaid.
+export function parseFirstRows(
+  raw: unknown, field = 'firstRows', withRows = false,
+): { firstRows?: number } | { error: string } {
+  if (raw === undefined || raw === null) return {};
+  if (withRows) return { error: `Pass ${field} or the rows to run, not both.` };
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > MAX_FIRST_ROWS) {
+    return { error: `${field} must be a whole number from 1 to ${MAX_FIRST_ROWS}.` };
+  }
+  return { firstRows: raw };
+}
+
 router.post('/rerun', async (req: AuthRequest, res) => {
   try {
     const { sheetId, baseColumnName, columnName, mode, rowIndices: rawRowIndices } = req.body as {
@@ -47,6 +60,9 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     }
     const parsed = parseRowIndices(rawRowIndices);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    const first = parseFirstRows((req.body as { firstRows?: unknown }).firstRows, 'firstRows',
+      !!parsed.rowIndices?.length);
+    if ('error' in first) return res.status(400).json({ error: first.error });
 
     // Optional row_generation fence (migration 021): "Run Selected Rows" targets
     // by row_index, so a sort/CSV-replace elsewhere between the user's selection
@@ -60,7 +76,9 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     }
 
     const result = await rerunAiColumn(req.userId!, {
-      sheetId, baseColumnName, columnName, mode: mode as AiRerunMode | undefined, rowIndices: parsed.rowIndices,
+      sheetId, baseColumnName, columnName, rowIndices: parsed.rowIndices, firstRows: first.firstRows,
+      // The first rows without a mode: every one of them, as on /api/v1 and MCP.
+      mode: (mode ?? (first.firstRows ? 'all' : undefined)) as AiRerunMode | undefined,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

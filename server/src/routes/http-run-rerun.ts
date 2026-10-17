@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { rerunHttpColumn } from '../services/http-run-rerun';
 import { runFailHttpStatus } from '../services/run-shared';
-import { parseRowIndices } from './ai-run-rerun';
+import { parseFirstRows, parseRowIndices } from './ai-run-rerun';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
 
 // Thin wrapper over services/http-run-rerun.ts (shared with /api/v1 and MCP).
@@ -10,6 +10,7 @@ import { rerunRowGenerationConflict } from './rerun-row-generation';
 //   - "Run All Rows"          → no rowIndices, mode != 'missing' → every row
 //   - "Run Missing or Errors" → mode = 'missing'
 //   - "Run Selected Rows"     → explicit rowIndices[]
+//   - "Run First Rows"        → firstRows (the sheet's top N rows)
 const router = express.Router();
 router.use(authenticateToken);
 
@@ -23,6 +24,9 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     }
     const parsed = parseRowIndices(rawRowIndices);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    const first = parseFirstRows((req.body as { firstRows?: unknown }).firstRows, 'firstRows',
+      !!parsed.rowIndices?.length);
+    if ('error' in first) return res.status(400).json({ error: first.error });
 
     // Optional row_generation fence: "Run Selected Rows" targets by row_index, so
     // a sort/CSV-replace elsewhere would re-mean the indices. 409 on mismatch;
@@ -35,7 +39,7 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     const result = await rerunHttpColumn(req.userId!, {
       sheetId, masterColumnName,
       mode: typeof mode === 'string' ? mode : undefined,
-      rowIndices: parsed.rowIndices,
+      rowIndices: parsed.rowIndices, firstRows: first.firstRows,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

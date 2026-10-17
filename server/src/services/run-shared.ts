@@ -16,8 +16,9 @@ export type RunFailKind =
   | 'cap'           // 400 — column cap
   | 'upstream';     // 502 — a service Cubex reads can't answer now (treg's catalog)
 // field: the request field the failure is about (a new sheet's name: 'destName'),
-// so a form can show it in place.
-export interface RunFail { fail: RunFailKind; message: string; field?: string }
+// so a form can show it in place. nothingToRun: no row is left for it to do (a
+// rerun of a column every row of which is done), which a setup counts as done.
+export interface RunFail { fail: RunFailKind; message: string; field?: string; nothingToRun?: true }
 
 export const runFailHttpStatus = (f: RunFail): number =>
   f.fail === 'not_found' ? 404

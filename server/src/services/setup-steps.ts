@@ -106,8 +106,12 @@ export function sheetCandidates(sheetId: string, userId: string): Candidate[] {
   const listed = new Set(getSheetColumns(sheetId, userId, false));
   const types = getColumnTypes(sheetId, userId);
   const out: Candidate[] = [];
-  // One newest run per AI column (MAX(rowid) is the newest insert).
-  const aiRuns = db.prepare(`SELECT * FROM ai_runs WHERE rowid IN (
+  // One newest run per AI column (MAX(rowid) is the newest insert), its settings only (never its target rows,
+  // megabytes after a rerun of a big sheet: using a setup reads this on every price).
+  const aiRuns = db.prepare(`SELECT column_name, prompt, system_prompt, model, temperature, max_chars, concurrency,
+      use_openrouter_web_search, use_web_fetch, output_columns, data_column, web_search_engine, web_search_mode,
+      web_search_max_per_row, run_if
+    FROM ai_runs WHERE rowid IN (
     SELECT MAX(rowid) FROM ai_runs WHERE sheet_id = ? AND user_id = ? GROUP BY column_name)`)
     .all(sheetId, userId) as AiRunRow[];
   for (const run of aiRuns) if (listed.has(run.column_name)) out.push(aiCandidate(run, listed));

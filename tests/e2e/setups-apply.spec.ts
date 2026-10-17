@@ -1,45 +1,16 @@
-import { test, expect, type APIRequestContext } from '@playwright/test'
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { authedApi, seedSheet, getSheet, makeAccessToken } from './helpers'
+import { test, expect } from '@playwright/test'
+import { authedApi, getSheet, makeAccessToken } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { POSTS, sheetWith, waitSetup, column } from './helpers-setups'
 
 // Using a setup on another sheet over MCP: a chain (formula → HTTP API → formula,
 // plus a clean column) saved on one sheet, priced first (the default), its
 // inputs matched to differently named columns, then started: each step starts
 // once the columns it reads are filled, the values land, the saved auto-run is
-// turned on. Names already in the sheet are refused until renamed; a test on
-// the first rows fills only those; a setup reading a saved key needs 'secrets'.
-
-const POSTS = 'https://jsonplaceholder.typicode.com/posts/1?d={{Domain}}'
-
-async function sheetWith(api: APIRequestContext, tableId: string | null, data: Record<string, string>[]) {
-  let sheetId: string
-  if (!tableId) {
-    const seeded = await seedSheet(api, data.length)
-    sheetId = seeded.sheetId
-    tableId = seeded.tableId
-  } else {
-    // A new sheet starts with 3 blank rows.
-    const res = await api.post(`/api/tables/${tableId}/sheets`, { data: { name: `S${Date.now() % 100000}` } })
-    sheetId = (await res.json()).sheet.id
-    if (data.length > 3) await api.post(`/api/sheets/${sheetId}/rows`, { data: { count: data.length - 3 } })
-  }
-  for (const c of Object.keys(data[0])) await api.post(`/api/sheets/${sheetId}/columns`, { data: { columnName: c } })
-  const updates = data.flatMap((r, i) =>
-    Object.entries(r).map(([columnName, value]) => ({ rowIndex: i, columnName, value })))
-  expect((await api.put(`/api/sheets/${sheetId}/data`, { data: { updates } })).ok()).toBeTruthy()
-  return { tableId: tableId!, sheetId }
-}
-
-async function waitSetup(client: Client, id: string) {
-  let last: any
-  await expect.poll(async () => (last = await call(client, 'get_setup_run', { setup_run_id: id })).status,
-    { timeout: 60_000 }).toMatch(/done|failed|cancelled/)
-  return last
-}
-
-const column = async (api: APIRequestContext, sheetId: string, name: string) =>
-  (await getSheet(api, sheetId)).data.rows.map((r: any) => r.data[name] ?? '')
+// turned on. Used again where its columns are, its steps carry them on (only
+// the rows not done yet); other names already in the sheet are refused until
+// renamed; a test on the first rows fills only those, and using it again on
+// every row then fills the rest; a setup reading a saved key needs 'secrets'.
 
 test('a setup used on another sheet: priced, matched, run in order, auto-run on', async () => {
   test.setTimeout(180_000)
@@ -85,9 +56,14 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   const autorun = (await getSheet(api, b.sheetId)).data.autorun
   expect(JSON.stringify(autorun)).toContain('Lookup')
 
-  // Its columns are there now: the same names are refused until renamed.
-  expect(await callError(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, inputs }))
-    .toContain('already has')
+  // Its columns are there now: used again, every step carries its column on, with nothing left to do.
+  const again = await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, inputs })
+  expect([...again.carries_on].sort()).toEqual(['Clean name', 'Domain', 'Label', 'Lookup'])
+  expect(again.estimate.steps.find((s: any) => s.column === 'Lookup')).toMatchObject({ mode: 'again', rows: 0 })
+  // A column of another kind under a step's name is still taken.
+  await api.post(`/api/sheets/${b.sheetId}/columns`, { data: { columnName: 'Other' } })
+  expect(await callError(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, inputs,
+    names: { 'Clean name': 'Other' } })).toContain('already has')
   expect(await callError(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, inputs,
     names: { Nope: 'x' } })).toContain('makes no column named')
   const names = { Domain: 'Domain 2', Lookup: 'Lookup 2', Label: 'Label 2', 'Clean name': 'Clean name 2' }
@@ -108,6 +84,22 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   for (const col of ['Lookup', 'Domain', 'Label', 'Clean name']) expect(cAutorun).not.toContain(`"${col}"`)
   expect(await callError(client, 'control_setup_run', { setup_run_id: test1.setup_run.id, action: 'pause' }))
     .toContain('done')
+
+  // Used again on every row: the steps carry on, the HTTP API step only on the rows the test left.
+  const rest = await call(client, 'apply_setup', { sheet_id: c.sheetId, setup_id: setup.id })
+  expect(rest.estimate.steps.find((s: any) => s.column === 'Lookup')).toMatchObject({ mode: 'again', rows: 2 })
+  const restRun = await call(client, 'apply_setup', { sheet_id: c.sheetId, setup_id: setup.id,
+    estimate_only: false })
+  expect(restRun.setup_run.choices.inputs).toEqual({ Name: 'Name', Website: 'Website' })
+  const restDone = await waitSetup(client, restRun.setup_run.id)
+  expect(restDone.status, JSON.stringify(restDone)).toBe('done')
+  expect(restDone.steps.every((s: any) => s.mode === 'again')).toBe(true)
+  expect(await column(api, c.sheetId, 'Post id')).toEqual(['1', '1', '1'])
+  expect((await column(api, c.sheetId, 'Label')).slice(0, 2)).toEqual(['one-1', 'two-1'])
+  const lookupRun = restDone.steps.find((s: any) => s.column === 'Lookup').run_id
+  expect((await call(client, 'get_run_status', { run_type: 'http', run_id: lookupRun })).total_rows).toBe(2)
+  // A run on every row turns the saved auto-run on.
+  expect(JSON.stringify((await getSheet(api, c.sheetId)).data.autorun ?? {})).toContain('Lookup')
 
   // A setup whose request reads a saved key: a token without 'secrets' can't use it.
   const keys = await (await api.get('/api/settings/api-keys')).json()
@@ -131,82 +123,5 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
     .toMatch(/secrets/)
   const ok = await call(secretClient, 'apply_setup', { sheet_id: c.sheetId, setup_id: keyedSetup.id })
   expect(ok.estimate.rows).toBe(3)
-  for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
-})
-
-test('a setup run pauses between steps, resumes, stops; an AI step starts on its model', async () => {
-  test.setTimeout(180_000)
-  const api = await authedApi()
-  for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
-  const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'setups-control'))
-  const a = await sheetWith(api, null, [{ Website: 'acme.com' }])
-  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
-  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Domain}} + "!"' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
-  const b = await sheetWith(api, a.tableId, [{ Website: 'one.com' }, { Website: 'two.com' }, { Website: 'three.com' }])
-  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-  // Paused right after its start: the second step waits, whatever the first does.
-  const run = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false }))
-    .setup_run
-  expect((await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'pause' })).status).toBe('paused')
-  await sleep(2500)
-  const paused = await call(client, 'get_setup_run', { setup_run_id: run.id })
-  expect(paused.status).toBe('paused')
-  expect(paused.steps.find((s: any) => s.column === 'Label').state).toBe('waiting')
-  expect((await getSheet(api, b.sheetId)).data.columns).not.toContain('Label')
-  await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'resume' })
-  expect((await waitSetup(client, run.id)).status).toBe('done')
-  expect(await column(api, b.sheetId, 'Label')).toEqual(['one!', 'two!', 'three!'])
-
-  // Stopped right after its start: no later step starts.
-  const again = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false,
-    names: { Domain: 'Domain 2', Label: 'Label 2' } })).setup_run
-  expect((await call(client, 'control_setup_run', { setup_run_id: again.id, action: 'cancel' })).status)
-    .toBe('cancelled')
-  await sleep(2000)
-  expect((await getSheet(api, b.sheetId)).data.columns).not.toContain('Label 2')
-
-  // Resuming a setup whose later step reads a saved key needs 'secrets'.
-  const keys = await (await api.get('/api/settings/api-keys')).json()
-  for (const k of keys) if (k.name === 'setup_e2e_key2') await api.delete(`/api/settings/api-keys/${k.id}`)
-  await api.post('/api/settings/api-keys', { data: { name: 'setup_e2e_key2', key_type: 'api_key',
-    key_value: 'e2e-key-value-9876543210' } })
-  const secret = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run', 'secrets'], 'setups-sec2'))
-  const keyedRun = await call(secret, 'run_http_enrichment', { sheet_id: a.sheetId,
-    url: 'https://jsonplaceholder.typicode.com/posts/1?d={{Domain}}', headers: { 'X-Key': '{{setup_e2e_key2}}' },
-    master_column_name: 'Keyed', response_mapping: [{ json_path: '$.userId', column_name: 'User id' }] })
-  await expect.poll(async () => (await call(secret, 'get_run_status', { run_type: 'http', run_id: keyedRun.run_id }))
-    .status, { timeout: 30_000 }).toBe('completed')
-  const keyed = await call(secret, 'save_setup', { sheet_id: a.sheetId, name: 'Keyed chain', columns: ['User id'] })
-  const keyedRun2 = (await call(secret, 'apply_setup', { sheet_id: b.sheetId, setup_id: keyed.id,
-    names: { Domain: 'Domain 3' }, estimate_only: false })).setup_run
-  await call(secret, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'pause' })
-  expect(await callError(client, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'resume' }))
-    .toMatch(/secrets/)
-  await call(secret, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'resume' })
-  expect((await waitSetup(secret, keyedRun2.id)).status).toBe('done')
-  expect(await column(api, b.sheetId, 'User id')).toEqual(['1', '1', '1'])
-
-  // An AI step: started on the model it was saved with (a fake key fails each row for free).
-  expect((await api.put('/api/settings/openrouter-key', { data: { apiKey: 'sk-or-v1-invalid-e2e' } })).ok())
-    .toBeTruthy()
-  try {
-    const ai = await call(client, 'run_ai_column', { sheet_id: a.sheetId, column_name: 'Fit',
-      prompt: 'Is /domain a fit?', model: 'deepseek/deepseek-v4-flash' })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
-      .status, { timeout: 30_000 }).toMatch(/completed|failed/)
-    const aiSetup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Fit', columns: ['Fit (Output)'],
-      include_upstream: false })
-    const est = await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: aiSetup.id })
-    expect(est.estimate.steps[0].kind).toBe('ai')
-    const started = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: aiSetup.id,
-      estimate_only: false })).setup_run
-    const done = await waitSetup(client, started.id)
-    expect(done.steps[0].run_id).toBeTruthy()
-    expect((await getSheet(api, b.sheetId)).data.columns).toContain('Fit (Output)')
-  } finally {
-    await api.delete('/api/settings/openrouter-key')
-  }
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
 })

@@ -10,7 +10,6 @@ import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
-import { existingRowIndexes } from '../lib/run-rows';
 import { columnReuseCollision } from '../lib/column-names';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
@@ -23,6 +22,7 @@ import { type AIRunRow } from './ai-runner';
 import { enqueueAIRerun } from '../queue';
 import { DEFAULT_AI_RERUN_MODE, resolveRerunTargets } from './ai-rerun-modes';
 import { rerunConcurrency, type AiRerunParams, type RerunOutcome } from './ai-run-rerun';
+import { NO_TARGET_ROWS } from './rerun-targets';
 
 // For a caller holding only a base name (the sheet menu before it sent the
 // exact header): the run whose status or "(Data)" column that base names.
@@ -92,10 +92,9 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
   const runId = uuidv4();
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
     // Modes read the status cell: ❌ errored, blank never run, ⏳ unfinished.
-    const targets = Array.isArray(p.rowIndices) && p.rowIndices.length > 0
-      ? existingRowIndexes(p.sheetId, userId, p.rowIndices)
-      : await resolveRerunTargets(p.sheetId, userId, statusColumn, p.mode ?? DEFAULT_AI_RERUN_MODE);
-    if (targets.length === 0) return { fail: 'bad_request', message: 'No target rows found to re-run' };
+    const targets = await resolveRerunTargets(p.sheetId, userId, statusColumn, p.mode ?? DEFAULT_AI_RERUN_MODE, p,
+      p.recheckKeptOut ? rule.ok : null);
+    if (targets.length === 0) return NO_TARGET_ROWS;
 
     let capExceeded = false;
     db.transaction(() => {

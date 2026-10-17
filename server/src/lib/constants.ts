@@ -93,6 +93,9 @@ export const HTTP_DEFAULT_BATCH_SIZE = 5;
 // how high to go: HTTP columns default to HTTP_DEFAULT_BATCH_SIZE because many
 // third-party APIs rate-limit low. Env-overridable.
 export const HTTP_MAX_CONCURRENCY = envInt('HTTP_MAX_CONCURRENCY', 100);
+// "Run first rows" on an AI or HTTP API column (a test before a big run) takes
+// at most this many of the sheet's top rows.
+export const MAX_FIRST_ROWS = 1000;
 // GET /api/http/runs: active runs plus each column's newest, at most this many.
 export const HTTP_RUNS_LIST_MAX = 500;
 // Requests an HTTP column preview makes at once (it previews up to 20 rows, so

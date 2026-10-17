@@ -74,7 +74,8 @@ router.post('/sheets/:id/setups', requireScope('write'), guarded('POST /v1/sheet
   }), true);
 }));
 
-// { inputs, names, models, first_rows, estimate_only }: a price, or the start (201).
+// { inputs, names, models, first_rows, estimate_only }: a price, or the start
+// (201). Steps whose columns the sheet has already carry them on (carries_on).
 router.post('/sheets/:id/setups/:setupId/apply', requireScope('run'),
   guarded('POST /v1/sheets/:id/setups/:setupId/apply', async (req, res) => {
     const input = applyInputOf(body(req), 'v1');
@@ -87,8 +88,11 @@ router.post('/sheets/:id/setups/:setupId/apply', requireScope('run'),
     return res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
   }));
 
-router.get('/sheets/:id/setup-runs', requireScope('read'), guarded('GET /v1/sheets/:id/setup-runs', (req, res) =>
-  res.json({ setup_runs: sheetSetupRuns(req.userId!, req.params.id) })));
+// ?setup_id=: that setup's runs on the sheet only.
+router.get('/sheets/:id/setup-runs', requireScope('read'), guarded('GET /v1/sheets/:id/setup-runs', (req, res) => {
+  const setupId = typeof req.query.setup_id === 'string' && req.query.setup_id ? req.query.setup_id : undefined;
+  return res.json({ setup_runs: sheetSetupRuns(req.userId!, req.params.id, 5, setupId) });
+}));
 
 router.get('/setup-runs/:runId', requireScope('read'), guarded('GET /v1/setup-runs/:id', (req, res) => {
   const run = getSetupRun(req.userId!, req.params.runId);

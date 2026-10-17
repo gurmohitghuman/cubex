@@ -6,8 +6,8 @@ import { structuredRunOwns } from '@/lib/structuredRuns'
 import type { GridRunArgs } from './useSheetGridRunActions'
 
 // The column menu's AI Column Actions: run all rows (a structured run reruns
-// from any of its columns), run missing or errors, and edit the column's
-// instructions. Split out of useSheetGridRunActions.
+// from any of its columns), run missing or errors, run the first rows, and
+// edit the column's instructions. Split out of useSheetGridRunActions.
 export const useAIColumnRunActions = (a: GridRunArgs) => {
   // columnName is the header clicked (see handleRunAIMissingOrError).
   const handleRunAIForColumn = async (baseName: string, columnName?: string) => {
@@ -59,10 +59,12 @@ export const useAIColumnRunActions = (a: GridRunArgs) => {
 
   // columnName is the header clicked, so a column of a structured run (several
   // typed columns from one call) reruns exactly the run that owns it.
-  const handleRunAIMissingOrError = async (baseName: string, columnName?: string) => {
+  // firstRows: "Run First Rows", every one of the sheet's top rows again (a test).
+  const handleRunAIMissingOrError = async (baseName: string, columnName?: string, firstRows?: number) => {
     if (!a.activeSheet) return
     try {
-      const res = await aiAPI.rerun(a.activeSheet.id, baseName, { columnName })
+      const res = await aiAPI.rerun(a.activeSheet.id, baseName,
+        firstRows ? { columnName, firstRows, mode: 'all' } : { columnName })
       toast.success(`Re-running AI for ${plural(res.targetRows, 'row')}`)
       a.setupSSEConnection(res.runId, 'ai')
       // Refresh active runs so the header Pause/Stop controls appear immediately
@@ -98,5 +100,8 @@ export const useAIColumnRunActions = (a: GridRunArgs) => {
     }
   }
 
-  return { handleRunAIForColumn, handleRunAIMissingOrError, handleEditAIColumn }
+  const handleRunAIFirstRows = (baseName: string, columnName: string, rows: number) =>
+    handleRunAIMissingOrError(baseName, columnName, rows)
+
+  return { handleRunAIForColumn, handleRunAIMissingOrError, handleRunAIFirstRows, handleEditAIColumn }
 }
