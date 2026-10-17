@@ -33,6 +33,9 @@ import { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
+import { useSheetViews } from '@/hooks/sheet/useSheetViews'
+import { SheetViewBar } from '@/components/views/SheetViewBar'
+import { activeViewOf, rowFilterOf, viewNarrows } from '@/lib/views'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 import { useAutorun } from '@/hooks/sheet/useAutorun'
 import { useTableRouting } from '@/hooks/sheet/useTableRouting'
@@ -85,14 +88,18 @@ export const SheetPage: React.FC = () => {
     if (id) return loadSheetDataRef.current(id, undefined, undefined, opts) as Promise<void> | void
   }, [])
 
+  // Saved views (filters + hidden columns). Its save chain is the filter hooks' too.
+  const views = useSheetViews({ activeSheet, sheetData, setSheetData, reloadActiveSheet })
+  const filterSaves = { chainRef: views.saveChain, viewId: views.active?.id ?? null }
+
   // Serializes rapid empty-filter toggles so last-intent (not last-response) wins.
   const onEmptyFilterChange = useEmptyFilter({
-    activeSheet, emptyFilter, setEmptyFilter, reloadActiveSheet,
+    activeSheet, emptyFilter, setEmptyFilter, reloadActiveSheet, ...filterSaves,
   })
 
   // Per-column "text contains" filter (same server-side + last-intent pattern).
   const onColumnFilterChange = useColumnFilters({
-    activeSheet, columnFilters, setColumnFilters, reloadActiveSheet,
+    activeSheet, columnFilters, setColumnFilters, reloadActiveSheet, ...filterSaves,
   })
 
   // useCellOps owns the autosave queue + its reconciliation helpers
@@ -239,7 +246,8 @@ export const SheetPage: React.FC = () => {
 
   const totalDisplayedRows = sheetData?.data.totalRows || 0
   // Loader, import empty state, or the grid — rules + rationale in gridAreaMode.
-  const gridArea = gridAreaMode(isLoading, totalDisplayedRows, emptyFilter, columnFilters)
+  const gridArea = gridAreaMode(isLoading, totalDisplayedRows, emptyFilter, columnFilters,
+    rowFilterOf(sheetData).length > 0)
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -253,6 +261,7 @@ export const SheetPage: React.FC = () => {
         onPauseAll={runControls.pauseAll} onResumeAll={runControls.resumeAll} onStopAll={runControls.stopAll}
         onDeleteSelectedRows={() => modals.setConfirmTopbarDeleteOpen(true)}
         onImport={() => modals.setShowImportModal(true)} onExport={exporter.handleExportCSV}
+        viewNarrows={viewNarrows(sheetData, views.hiddenColumns)} viewName={activeViewOf(sheetData)?.name ?? ''}
         onAddAIColumn={() => modals.setShowAddColumnModal(true)}
         onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
@@ -264,11 +273,12 @@ export const SheetPage: React.FC = () => {
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
+      <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}
         onColumnFilterChange={onColumnFilterChange} loadMoreData={loadMoreData}
-        columnOps={columnOps} cellOps={cellOps} view={view} runs={runs} modals={modals} grid={grid}
+        columnOps={columnOps} cellOps={cellOps} view={view} views={views} runs={runs} modals={modals} grid={grid}
         autorun={autorun} sse={sse} rowGenerationRef={rowGenerationRef}
         silentReload={(id) => silentReloadRef.current(id)}
         webhookColumn={webhookColumn} onWebhookCell={setWebhookPayloadRow}

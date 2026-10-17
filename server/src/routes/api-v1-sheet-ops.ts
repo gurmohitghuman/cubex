@@ -87,15 +87,18 @@ router.post('/sheets/:id/runs/stop', requireScope('run'), async (req: TokenAuthR
 
 // GET /v1/sheets/:id/export — text/csv download (formula-injection-escaped).
 // An empty sheet exports as an empty 200 body rather than the UI's 400 — an
-// agent script treats "nothing there yet" as data, not an error.
+// agent script treats "nothing there yet" as data, not an error. ?view=<name or
+// id> exports that saved view: its rows and its visible columns.
 router.get('/sheets/:id/export', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
-    const result = await streamSheetCsv(req.params.id, req.userId!, res);
+    const view = typeof req.query.view === 'string' && req.query.view.trim() ? req.query.view : undefined;
+    const result = await streamSheetCsv(req.params.id, req.userId!, res, { view });
     if (result === 'not_found') return res.status(404).json({ error: 'Sheet not found' });
     if (result === 'empty') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       return res.send('');
     }
+    if (typeof result === 'object' && 'invalid' in result) return res.status(400).json({ error: result.invalid });
     if (typeof result === 'object') return res.status(409).json({ error: result.busy, busy: true });
   } catch (error) {
     console.error('GET /v1/sheets/:id/export error:', error);

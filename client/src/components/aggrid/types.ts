@@ -43,6 +43,8 @@ export interface RunMenuActions {
   onFormulaAction?: (action: FormulaMenuAction, columnName: string) => void
   // Save as setup: the dialog opened on a filled column (it and what it reads start ticked).
   onSaveSetup?: (columnName: string) => void
+  // Hide the column in the view showing (rows and column order don't change).
+  onHideColumn?: (columnName: string) => void
 }
 
 export interface AGGridSpreadsheetProps {
@@ -75,6 +77,10 @@ export interface AGGridSpreadsheetProps {
   onEmptyFilterChange?: (column: string, value: 'empty' | 'not_empty' | null) => void
   columnFilters?: ColumnFilters
   onColumnFilterChange?: (column: string, filter: ColumnFilter | null) => void
+  // The view showing hides these columns (useSheetViews).
+  hiddenColumns?: ReadonlySet<string>
+  // The view has a filter no column header shows: an empty grid says so.
+  rowFilterActive?: boolean
   onSelectedRowsChange?: (rows: number[]) => void
   onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   // What the column menu's run blocks call (AI, HTTP API and enrichment columns).

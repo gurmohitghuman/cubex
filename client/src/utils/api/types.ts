@@ -2,6 +2,7 @@
 import type { ColumnSpend, SheetAutorun } from './types-autorun'
 import type { CleanColumnView } from './clean'
 import type { FormulaColumnView } from './formula'
+import type { SheetView } from './views'
 export interface Table {
   id: string
   name: string
@@ -23,6 +24,10 @@ export interface Sheet {
   sort_state?: string | null
   empty_filter?: string | null
   column_filters?: string | null
+  // The active view's filters the two above can't hold (a `where` list, JSON),
+  // and which saved view is active (server services/view-store.ts).
+  row_filter?: string | null
+  active_view_id?: string | null
   default_ai_model?: string | null
   default_ai_concurrency?: number | null
   // Optimistic-concurrency token for row_index meaning (server migration 021).
@@ -58,6 +63,8 @@ export interface SheetData {
     cleanColumns?: Record<string, CleanColumnView>
     // Formula columns' setups, by column (the header icon, the column menu, Edit formula).
     formulaColumns?: Record<string, FormulaColumnView>
+    // Saved views, Default first (the view menu; the active one's hidden columns).
+    views?: SheetView[]
   }
 }
 

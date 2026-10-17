@@ -11,6 +11,7 @@ import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { scanFiltered } from '../lib/filtered-scan';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 import { prepareWhere, sheetRunColumns } from './row-filter';
+import { withView } from './view-read';
 
 export type { WhereItem } from '../lib/row-filter/where';
 
@@ -24,6 +25,11 @@ export interface RowQuery {
   includeStatus?: boolean;
   expectedDataVersion?: number;
   expectedRowGeneration?: number;
+  // A saved view (id or name): its filters are ANDed with `where`, its visible
+  // columns are the columns unless `columns` names them (services/view-read.ts).
+  view?: string;
+  // Paging through a view: the view_version the previous page answered.
+  expectedViewVersion?: string;
 }
 
 type PageRow = { id: string; row_index: number; data: string };
@@ -60,6 +66,12 @@ export function parseRowQueryBody(
   if (b.include_status !== undefined && typeof b.include_status !== 'boolean') {
     return { error: 'include_status must be true or false.' };
   }
+  if (b.view !== undefined && (typeof b.view !== 'string' || !b.view.trim())) {
+    return { error: 'view must be a view name or id (get_sheet lists them).' };
+  }
+  if (b.expected_view_version !== undefined && typeof b.expected_view_version !== 'string') {
+    return { error: 'Invalid expected_view_version.' };
+  }
   return { query: {
     after: (b.cursor as number | undefined) ?? -1,
     limit: b.limit as number | undefined,
@@ -69,6 +81,8 @@ export function parseRowQueryBody(
     includeStatus: b.include_status === true,
     expectedDataVersion: b.expected_data_version as number | undefined,
     expectedRowGeneration: b.expected_row_generation as number | undefined,
+    view: b.view as string | undefined,
+    expectedViewVersion: b.expected_view_version as string | undefined,
   } };
 }
 
@@ -131,7 +145,14 @@ function prepareQuery(
 // before the scan, so a write meanwhile fails the next page's fence. When a
 // sort or replace moved the rows meanwhile (row_generation), a page of a
 // fenced walk answers "restart paging"; a first page is read again, once.
-export async function queryRows(sheetId: string, userId: string, q: RowQuery): Promise<RowQueryResult> {
+export async function queryRows(sheetId: string, userId: string, query: RowQuery): Promise<RowQueryResult> {
+  const viewed = withView(sheetId, userId, query);
+  if ('fail' in viewed) return viewed;
+  const out = await runQuery(sheetId, userId, viewed.query);
+  return viewed.version && 'ok' in out ? { ok: { ...out.ok, view_version: viewed.version } } : out;
+}
+
+async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<RowQueryResult> {
   const prep = prepareQuery(sheetId, userId, q);
   if ('fail' in prep) return prep.fail;
   const { columns, filter } = prep;

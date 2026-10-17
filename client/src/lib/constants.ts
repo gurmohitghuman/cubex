@@ -109,3 +109,6 @@ export const MAX_FILTER_VALUE_CHARS = 1000;
 
 // Most typed columns one AI run can fill (mirrors server MAX_OUTPUT_COLUMNS_PER_RUN).
 export const MAX_OUTPUT_COLUMNS_PER_RUN = 20;
+
+// A saved hidden-columns change waits this long for a load to show it (useSheetViews).
+export const PENDING_HIDDEN_MS = 5000;

@@ -30,6 +30,7 @@ import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import setupsV1 from './api-v1-setups';
+import viewsV1 from './api-v1-views';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 const router = express.Router();
@@ -64,6 +65,7 @@ router.use(cleanV1);
 router.use(formulaV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
+router.use(viewsV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);

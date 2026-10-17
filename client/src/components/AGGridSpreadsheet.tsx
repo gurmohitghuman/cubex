@@ -33,7 +33,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columnTypes = NO_COLUMN_TYPES, autorun, columnSpend, cleanColumns, formulaColumns,
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
-    lastRenamedColumn = null, registerClearSelection, registerViewport,
+    lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
   } = props
 
   const gridRef = useRef<AgGridReact>(null)
@@ -99,7 +99,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
 
   const columnDefs = useColumnDefs({
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
+    formulaColumns, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
   })
 
   const {
@@ -125,6 +125,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
         <GridEmptyMessage
           emptyFilter={emptyFilter} columnFilters={columnFilters}
           onEmptyFilterChange={onEmptyFilterChange} onColumnFilterChange={onColumnFilterChange}
+          rowFilterActive={rowFilterActive}
         />
       </div>
     )

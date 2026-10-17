@@ -13,7 +13,8 @@ export const useExport = (
   const [isExporting, setIsExporting] = useState(false)
 
   // Debounced — prevents multiple rapid clicks from queueing CSV downloads.
-  const handleExportCSV = useCallback(async () => {
+  // scope 'view': the rows and visible columns of the view showing (viewName names the file).
+  const handleExportCSV = useCallback(async (scope: 'view' | 'sheet' = 'sheet', viewName = '') => {
     if (!activeSheet || isExporting) return
     setIsExporting(true)
 
@@ -27,12 +28,13 @@ export const useExport = (
       }
       // Yield a frame before the blob call so the button can repaint as disabled.
       await new Promise(resolve => requestAnimationFrame(resolve))
-      const blob = await sheetsAPI.exportCSV(activeSheet.id)
+      const blob = await sheetsAPI.exportCSV(activeSheet.id, scope === 'view' ? 'active' : undefined)
       requestAnimationFrame(() => {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `${activeSheet.name}.csv`
+        link.download = scope === 'view' && viewName
+          ? `${activeSheet.name} - ${viewName}.csv` : `${activeSheet.name}.csv`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -40,8 +42,12 @@ export const useExport = (
       })
       // No success toast — the browser already shows its own download
       // notification when the file lands.
-    } catch {
-      toast.error('Failed to export CSV')
+    } catch (error) {
+      // The body of a failed blob request is a Blob: read its { error } (a view that can't be read says why).
+      const body = (error as { response?: { data?: Blob } })?.response?.data
+      let message = ''
+      try { message = body instanceof Blob ? JSON.parse(await body.text()).error ?? '' : '' } catch { /* none */ }
+      toast.error(message || 'Failed to export CSV')
     } finally {
       setTimeout(() => setIsExporting(false), 1000)
     }

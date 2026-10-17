@@ -21,16 +21,16 @@ export function useColumnDefs(args: Args) {
   }), [])
   const {
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns,
+    formulaColumns, hiddenColumns,
   } = args
   // buildColumnDefs only asks whether these exist (the header's × and the Add Column column).
   const canDelete = !!args.onDeleteColumn
   const canAdd = !!args.onAddColumn
   return useMemo(() => buildColumnDefs({
     ...calls, columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns,
+    formulaColumns, hiddenColumns,
     onDeleteColumn: canDelete ? calls.onDeleteColumn : undefined,
     onAddColumn: canAdd ? calls.onAddColumn : undefined,
   }), [calls, columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, canDelete, canAdd])
+    formulaColumns, hiddenColumns, canDelete, canAdd])
 }

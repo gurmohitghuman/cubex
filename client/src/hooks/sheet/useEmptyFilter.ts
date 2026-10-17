@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet } from '@/utils/api'
+import { viewChanged } from './viewChanged'
 
 type EmptyFilter = Record<string, 'empty' | 'not_empty'>
 
@@ -11,6 +12,9 @@ interface UseEmptyFilterArgs {
   // Loud reload of the current sheet. Returns a promise when a reload actually
   // runs so we can AWAIT it to serialize reloads (see chain below).
   reloadActiveSheet: () => Promise<void> | void
+  // Shared with the views hook (useSheetViews), and the view the change is made in.
+  chainRef: React.MutableRefObject<Promise<unknown>>
+  viewId: string | null
 }
 
 /**
@@ -38,12 +42,13 @@ export const useEmptyFilter = ({
   emptyFilter,
   setEmptyFilter,
   reloadActiveSheet,
+  chainRef,
+  viewId,
 }: UseEmptyFilterArgs) => {
   const seqRef = useRef(0)
-  // Tail of the serialized PUT chain. New PUTs await it so they hit the server
-  // in call order. Always resolves (errors are swallowed here) so one failed
-  // PUT can't wedge the chain for later changes.
-  const chainRef = useRef<Promise<unknown>>(Promise.resolve())
+  // chainRef: tail of the serialized PUT chain. New PUTs await it so they hit
+  // the server in call order. Always resolves (errors are swallowed here) so
+  // one failed PUT can't wedge the chain for later changes.
   // The filter as of the last change, so changes made one after another in the
   // same tick (Clear filter on every column) build on each other instead of
   // each starting from the same render's state. A load replaces it.
@@ -79,7 +84,7 @@ export const useEmptyFilter = ({
     // window the seq guard alone can't (the trigger is latest at PUT-resolve
     // time, but its slow GET could still land after a newer change without it).
     chainRef.current = chainRef.current
-      .then(() => sheetsAPI.updateEmptyFilter(sheetId, payload))
+      .then(() => sheetsAPI.updateEmptyFilter(sheetId, payload, viewId))
       .then(() => {
         // The sheet may have changed (tab switch) since this PUT was queued.
         if (!isLatest() || activeSheet.id !== sheetId) return
@@ -90,9 +95,10 @@ export const useEmptyFilter = ({
         // Only the newest failed change reverts + toasts. A superseded failure
         // is governed by a later change, which owns the final state.
         if (!isLatest()) return
+        if (viewChanged(error)) return reloadActiveSheet()
         latestRef.current = previousFilter
         setEmptyFilter(previousFilter)
         toast.error('Failed to apply filter. Please try again.')
       })
-  }, [activeSheet, setEmptyFilter, reloadActiveSheet])
+  }, [activeSheet, setEmptyFilter, reloadActiveSheet, chainRef, viewId])
 }

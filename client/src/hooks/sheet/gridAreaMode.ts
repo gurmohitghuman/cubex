@@ -15,6 +15,8 @@ export function gridAreaMode(
   totalDisplayedRows: number,
   emptyFilter: Record<string, unknown>,
   columnFilters: Record<string, unknown>,
+  // The view's filter no column header holds (sheets.row_filter).
+  rowFilterActive = false,
 ): GridAreaMode {
   // Show the grid loader while a load is in flight. selectSheet sets isLoading=true
   // SYNCHRONOUSLY with setActiveSheet (see useSheetOps), so there's no one-frame window
@@ -35,6 +37,7 @@ export function gridAreaMode(
   // Any active filter (empty OR text-contains) must keep the grid mounted when it
   // hides every row, so the header menu (the only clear-filter UI) stays reachable.
   const hasActiveEmptyFilter = Object.keys(emptyFilter).length > 0 || Object.keys(columnFilters).length > 0
+    || rowFilterActive
   // Key off the TRUE total, NOT the loaded-window length: deleting the loaded
   // window of a large sheet leaves rows.length 0 while rows remain server-side, and
   // the old `!rows.length` wrongly flipped to the import state (hiding survivors the

@@ -18,6 +18,10 @@ export interface SheetRow {
   empty_filter: string | null;
   // "Text contains" filter, JSON {col: {type:'contains', value}} (migration 031).
   column_filters: string | null;
+  // The active view's filters the two above can't hold, and which view that
+  // is (migration 030, services/view-store.ts).
+  row_filter: string | null;
+  active_view_id: string | null;
   default_ai_model: string | null;
   // Optimistic-concurrency token for row_index meaning (migration 021). Bumped
   // by physical sort + CSV replace; echoed by row_index-targeting writes; a

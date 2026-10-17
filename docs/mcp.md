@@ -83,9 +83,9 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | Tool | What it does |
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
-| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean and formula columns too. |
+| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean and formula columns, and its saved views with their filters and hidden columns. |
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. See [Finding rows](#finding-rows). |
-| `export_csv` | A sheet (or a filtered part of it) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
+| `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. |
 | `sort_sheet` | Permanently reorders the rows by a column. |
@@ -150,6 +150,12 @@ With `include_status: true`, `read_rows` (and the REST row reads) return each ru
 Other columns come back as text, the same as without it.
 
 In the app, each column's menu has the same filters, one per column: text, number and list conditions on any column, and on a run column **Rows with errors** plus the other run states.
+
+### Saved views
+
+A view is a name, an optional description, filters and hidden columns. It never sorts rows (a sort is a one-time reorder of the sheet) and never changes the column order. Every sheet has a **Default** view, which can't be deleted. In the app, switch views from the bar above the grid; a new view starts as a copy of the one showing, and changing a filter or hiding a column changes the view showing. The view menu also offers two ready-made views, made only when you pick one: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result).
+
+`read_rows`, `export_csv` and `create_download_link` (and REST `rows/query` and `export`) take `view`, a view's name or id, or `active` for the one the app shows: its filters are added to `where`, and when it hides columns its visible columns are the columns unless you pass `columns`. A read through a view answers `view_version`; to page, send it back as `expected_view_version` (plus `expected_data_version` and `expected_row_generation` when the view filters), and you're asked to start again if someone switched or edited the view in between. `get_sheet` lists the views, each with its filters as a `where`. Agents read views; to create or change them, use the app or the REST endpoints below.
 
 ## Only run if
 
@@ -335,7 +341,7 @@ All paths below are relative to `/api/v1`.
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` |
 | `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
-| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean columns, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
+| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}` |
 | `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
@@ -345,6 +351,15 @@ All paths below are relative to `/api/v1`.
 | `DELETE /sheets/:id/columns/:name` | |
 | `PUT /sheets/:id/columns/order` | `{"order": ["Email", "Company", "Status"]}` (every column, once) |
 | `POST /sheets/:id/sort` | `{"column": "Score", "direction": "desc"}`. Permanently reorders the rows. |
+
+### Views
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /sheets/:id/views` | The sheet's saved views, Default first: `{id, name, description, is_default, active, hidden_columns, where}`. `read` scope. |
+| `POST /sheets/:id/views` | `{"name": "Qualified", "description": "...", "where": [...], "hidden_columns": ["Notes"]}`. A copy of the view showing (or of `from`, a view's name or id), then the `where` and `hidden_columns` you give. It doesn't switch the view the app shows. `201`, `write` scope. |
+| `PATCH /sheets/:id/views/:view` | Any of `name`, `description`, `where`, `hidden_columns` (`null` or `[]` clears). `:view` is an id or a name. `write` scope. |
+| `DELETE /sheets/:id/views/:view` | Deletes the view, never rows or columns. The Default view can't be deleted. `write` scope. |
 
 ### Setups
 
@@ -369,13 +384,13 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | Endpoint | Body or query |
 |---|---|
 | `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. Add `&include_status=true` for run columns as `{status, value, error}`. |
-| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. |
+| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. |
 | `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |
 | `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. Permanent. |
 | `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending. |
-| `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). |
+| `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. |
 | `POST /sheets/:sourceId/rows/transfer` | Copy or move rows to another sheet. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 
 ### Runs

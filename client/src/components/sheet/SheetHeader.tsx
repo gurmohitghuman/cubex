@@ -1,12 +1,13 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowLeft, CopyMinus, Download, Import, Loader2, Pause, Play, Square, Trash2,
+  ArrowLeft, CopyMinus, Import, Loader2, Pause, Play, Square, Trash2,
 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
 import { SheetSetupsMenu } from './SheetSetupsMenu'
+import { ExportButton, type ExportScope } from '@/components/views/ExportButton'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -30,7 +31,10 @@ interface SheetHeaderProps {
   onStopAll: () => void | Promise<void>
   onDeleteSelectedRows: () => void
   onImport: () => void
-  onExport: () => void
+  onExport: (scope: ExportScope, viewName: string) => void
+  // The view showing narrows the sheet: Export asks "this view or the whole sheet".
+  viewNarrows: boolean
+  viewName: string
   onRemoveDuplicates: () => void
   onSaveSetup: () => void
   onUseSetup: () => void
@@ -60,7 +64,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onStopAll,
   onDeleteSelectedRows,
   onImport,
-  onExport,
+  onExport, viewNarrows, viewName,
   onRemoveDuplicates,
   onSaveSetup,
   onUseSetup,
@@ -167,14 +171,8 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 <span>Import</span>
               </button>
 
-              <button
-                onClick={onExport}
-                disabled={isExporting || !hasRows}
-                className="btn-secondary flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isExporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                <span>Export</span>
-              </button>
+              <ExportButton isExporting={isExporting} disabled={!hasRows} viewNarrows={viewNarrows}
+                viewName={viewName} onExport={scope => onExport(scope, viewName)} />
 
               <button onClick={onRemoveDuplicates} disabled={!hasRows} title="Find and remove duplicate rows"
                 className="btn-secondary flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed">

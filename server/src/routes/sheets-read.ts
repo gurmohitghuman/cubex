@@ -13,6 +13,7 @@ import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
 import { liveRunColumns, savedFilterSql } from '../services/row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
+import { listViews } from '../services/view-store';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 
 const router = express.Router();
@@ -44,13 +45,18 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const kinds = sheetColumnKinds(id, req.userId!);
     const columnTypes = kinds.types;
 
-    // The saved column filters (sheets.empty_filter, sheets.column_filters) are
+    // The saved column filters (sheets.empty_filter, column_filters, row_filter:
+    // the active view's) are
     // applied SERVER-SIDE so the page, totalRows, and pagination all reflect the
     // filtered set: the grid is windowed, so filtering only the loaded rows left
     // matches beyond them invisible AND unreachable. A row passes only if it
     // matches EVERY column's filter (services/row-filter.ts, the same SQL the
     // API's `where` uses); the page and count queries below share the clause.
     const saved = savedFilterSql(id, req.userId!, sheet, () => liveRunColumns(kinds.runState, columns));
+    // Saved views (the view menu, the active one's hidden columns), read with
+    // the sheet row above, before the scan yields: a view switched meanwhile
+    // can't pair one view's filters with another's id.
+    const views = listViews(id, req.userId!, columns) ?? [];
 
     // Paginated read in row_index order: sort is a one-time physical reorder,
     // so row_index order IS the display order. Unfiltered, the page and the
@@ -94,7 +100,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const formulaColumns = sheetFormulaView(id, req.userId!, columns);
     res.json({
       sheet: sheetForClient,
-      data: { rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns },
+      data: { rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, views },
     });
   } catch (error) {
     console.error('Get sheet error:', error);

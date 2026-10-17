@@ -74,8 +74,10 @@ export const sheetsAPI = {
     }).then(res => res.data)
   },
 
-  exportCSV: (id: string): Promise<Blob> =>
-    api.get(`/sheets/${id}/export`, { responseType: 'blob', ...noServerToast }).then(res => res.data),
+  // view 'active': the rows and visible columns of the view the grid shows.
+  exportCSV: (id: string, view?: 'active'): Promise<Blob> =>
+    api.get(`/sheets/${id}/export`, { responseType: 'blob', params: view ? { view } : undefined, ...noServerToast })
+      .then(res => res.data),
 
   getColumns: (id: string): Promise<Array<{ name: string; reference: string }>> =>
     api.get(`/sheets/${id}/columns`, noServerToast).then(res => res.data),
@@ -113,13 +115,18 @@ export const sheetsAPI = {
   updateEmptyFilter: (
     sheetId: string,
     emptyFilter: Record<string, 'empty' | 'not_empty'> | null,
-  ): Promise<void> => api.put(`/sheets/${sheetId}/empty-filter`, { emptyFilter }, noServerToast).then(() => {}),
+    // The view the change was made in: the server refuses it (409 viewChanged) once another is active.
+    viewId?: string | null,
+  ): Promise<void> =>
+    api.put(`/sheets/${sheetId}/empty-filter`, { emptyFilter, viewId }, noServerToast).then(() => {}),
 
   // Per-column "text contains" filter. null clears all; value keyed by column name.
   updateColumnFilters: (
     sheetId: string,
     columnFilters: ColumnFilters | null,
-  ): Promise<void> => api.put(`/sheets/${sheetId}/column-filters`, { columnFilters }, noServerToast).then(() => {}),
+    viewId?: string | null,
+  ): Promise<void> =>
+    api.put(`/sheets/${sheetId}/column-filters`, { columnFilters, viewId }, noServerToast).then(() => {}),
 
   updateDefaultModel: (sheetId: string, model: string | null): Promise<void> =>
     api.put(`/sheets/${sheetId}/default-model`, { model }, noServerToast).then(() => {}),

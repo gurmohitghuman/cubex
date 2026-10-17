@@ -10,6 +10,8 @@ import type { useColumnOps } from '@/hooks/sheet/useColumnOps'
 import type { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import type { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import type { useSheetView } from '@/hooks/sheet/useSheetView'
+import type { SheetViews } from '@/hooks/sheet/useSheetViews'
+import { rowFilterOf } from '@/lib/views'
 import type { useGridHandles } from '@/hooks/sheet/useGridHandles'
 import type { useAutorun } from '@/hooks/sheet/useAutorun'
 import type { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
@@ -31,6 +33,8 @@ interface Props {
   columnOps: ReturnType<typeof useColumnOps>
   cellOps: ReturnType<typeof useCellOps>
   view: ReturnType<typeof useSheetView>
+  // Saved views: the hidden columns and "Hide column".
+  views: SheetViews
   runs: ReturnType<typeof useActiveRuns>
   modals: ReturnType<typeof useSheetModals>
   grid: ReturnType<typeof useGridHandles>
@@ -48,7 +52,7 @@ interface Props {
 export const SheetGridArea: React.FC<Props> = (p) => {
   const {
     gridArea, activeSheet, sheetData, totalDisplayedRows, emptyFilter, columnFilters, onEmptyFilterChange,
-    onColumnFilterChange, loadMoreData, columnOps, cellOps, view, runs, modals, grid, autorun, sse,
+    onColumnFilterChange, loadMoreData, columnOps, cellOps, view, views, runs, modals, grid, autorun, sse,
     rowGenerationRef, webhookColumn,
   } = p
   return (
@@ -81,6 +85,8 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           onLoadMore={loadMoreData} onSortChange={view.handleSortChange}
           onEmptyFilterChange={onEmptyFilterChange}
           onColumnFilterChange={onColumnFilterChange}
+          hiddenColumns={views.hiddenSet} onHideColumn={views.hideColumn}
+          rowFilterActive={rowFilterOf(sheetData).length > 0}
           onSelectedRowsChange={cellOps.setSelectedRowIndices}
           onRenameColumn={columnOps.handleRenameColumn}
           onDeleteColumn={columnOps.handleColumnDelete}

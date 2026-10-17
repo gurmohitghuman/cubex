@@ -57,7 +57,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
-- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), up to a million rows per sheet.
+- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), up to a million rows per sheet.
 
 **Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, and treg.to ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
 
@@ -193,6 +193,12 @@ Click **Remove duplicates** in the toolbar and pick the columns rows must match 
 Then choose which row of each group stays: the first, the last (usually the newest), or the most filled-in. Before anything is removed you see how many rows would go and a few of the groups, including the biggest. It's free, and it checks the whole sheet: filters don't apply.
 
 A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows can't be brought back, so export a copy first if you might want them. While a run is going on the sheet, removing waits until the run finishes or you stop it.
+
+### Views
+
+A view saves what you're looking at: its filters and which columns are hidden. Every sheet starts with a **Default** view. Use the bar above the grid to switch views, to add one (it starts as a copy of the one showing), or to rename, describe or delete one. Hide a column from its menu (**Hide column**) or from the **12/15 columns** picker; hiding never deletes anything, and every view shares the same rows and column order.
+
+Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows`, `export_csv` and the REST API take its name.
 
 ### Setups
 
