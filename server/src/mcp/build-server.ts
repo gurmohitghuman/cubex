@@ -10,6 +10,7 @@ import { registerRowTools } from './tools-rows';
 import { registerColumnTools } from './tools-columns';
 import { registerRunStartTools } from './tools-run-start';
 import { registerRunManageTools } from './tools-run-manage';
+import { registerRunStatusTool } from './tools-run-status';
 import { registerRunResultTools } from './tools-run-results';
 import { registerWorkspaceTools } from './tools-workspace';
 import { registerStructureTools } from './tools-structure';
@@ -70,6 +71,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerColumnTools(server, ctx);
   registerRunStartTools(server, ctx);
   registerRunConditionTools(server, ctx);
+  registerRunStatusTool(server, ctx);
   registerRunManageTools(server, ctx);
   registerRunResultTools(server, ctx);
   registerWorkspaceTools(server, ctx);

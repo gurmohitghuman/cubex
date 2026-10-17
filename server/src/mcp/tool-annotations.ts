@@ -56,7 +56,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   check_run_condition: read('Check an "Only run if" rule'),
   // Changes nothing, but spends one small AI call on OpenRouter.
   write_run_condition: write('Write an "Only run if" rule with AI', false, false, true),
-  control_run: write('Pause, resume, cancel or rerun a run', true, false, true),
+  // One run, or with cancel_all every run on a sheet; a rerun spends again (open world).
+  control_run: write('Pause, resume, cancel or rerun runs', true, false, true),
   transfer_rows: write('Copy or move rows between sheets', true, true),
   transform_column: write('Transform a column', true, false),
   // Adds a column, or cleans its own clean column again from the source (replacing what is in it, hand edits

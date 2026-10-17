@@ -46,9 +46,10 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
+// Stopping every run is allowed too: a run still writing its placeholders holds the sheet.
 router.use('/sheets/:id', refuseChangesWhileBusy([
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
-  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/,
+  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
 ]));
 router.use(tablesV1);
 router.use(tableSheetsV1);

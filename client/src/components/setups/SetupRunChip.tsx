@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Bookmark, Pause, Play, Square } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { setupsAPI, type SetupRunView } from '@/utils/api/setups'
-import { onSetupStarted } from '@/lib/setup-runs-signal'
+import { onSetupRunsChanged } from '@/lib/setup-runs-signal'
 
 // While a setup works, how often the chip looks again (its runs stream into the grid on their own).
 const LIVE_POLL_MS = 2500
@@ -15,10 +15,14 @@ const isLive = (r: SetupRunView) => r.status === 'running' || r.status === 'paus
 // into its new columns at once instead of at the next change poll.
 // dataVersion: the sheet's; when it moves, the chip looks again, so a setup an
 // agent started (its first columns bump it) shows up without a reload.
-export const SetupRunChip: React.FC<{ sheetId: string | null; dataVersion?: number; onProgress?: () => void }> = ({
-  sheetId, dataVersion, onProgress,
-}) => {
+// onLiveChange: whether a setup is working on the sheet (the header's Stop all shows for it).
+export const SetupRunChip: React.FC<{
+  sheetId: string | null; dataVersion?: number; onProgress?: () => void; onLiveChange?: (live: boolean) => void
+}> = ({ sheetId, dataVersion, onProgress, onLiveChange }) => {
   const [live, setLive] = useState<SetupRunView | null>(null)
+  const liveChange = useRef(onLiveChange)
+  liveChange.current = onLiveChange
+  useEffect(() => { liveChange.current?.(!!live) }, [!!live]) // eslint-disable-line react-hooks/exhaustive-deps
   const watching = useRef(new Map<string, string>())
   const progress = useRef(onProgress)
   progress.current = onProgress
@@ -52,7 +56,7 @@ export const SetupRunChip: React.FC<{ sheetId: string | null; dataVersion?: numb
   useEffect(() => {
     watching.current = new Map()
     void look()
-    return onSetupStarted(id => { if (id === sheetId) void look() })
+    return onSetupRunsChanged(id => { if (id === sheetId) void look() })
   }, [sheetId, look])
   useEffect(() => { if (dataVersion !== undefined) void look() }, [dataVersion, look])
   useEffect(() => {

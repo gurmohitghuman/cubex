@@ -210,7 +210,10 @@ export const SheetPage: React.FC = () => {
 
   const exporter = useExport(activeSheet, cellOps.waitForSaves)
 
+  // A setup being used on the sheet (its chip shows): Stop all shows for it too.
+  const [setupLive, setSetupLive] = useState(false)
   const runControls = useRunControls({
+    sheetId: activeSheet?.id ?? null, setupLive,
     aiRuns: runs.aiRuns,
     httpRuns: runs.httpRuns,
     refetch: async () => {
@@ -246,6 +249,7 @@ export const SheetPage: React.FC = () => {
         isExporting={exporter.isExporting} hasRows={!!sheetData?.data.rows.length}
         saveStatus={cellOps.saveStatus} retrySave={cellOps.retrySave}
         anyActiveRuns={runControls.anyActiveRuns} anyRunning={runControls.anyRunning}
+        canStopAll={runControls.canStopAll} stoppingAll={runControls.stoppingAll}
         onPauseAll={runControls.pauseAll} onResumeAll={runControls.resumeAll} onStopAll={runControls.stopAll}
         onDeleteSelectedRows={() => modals.setConfirmTopbarDeleteOpen(true)}
         onImport={() => modals.setShowImportModal(true)} onExport={exporter.handleExportCSV}
@@ -257,7 +261,7 @@ export const SheetPage: React.FC = () => {
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
         autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
-          dataVersion={sheetData?.sheet?.data_version}
+          dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
       <SheetGridArea

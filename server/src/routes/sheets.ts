@@ -17,6 +17,7 @@ import cleanRoutes from './sheets-clean';
 import formulaRoutes from './sheets-formula';
 import setupRoutes from './sheets-setups';
 import dedupeRoutes from './sheets-dedupe';
+import runsStopRoutes from './sheets-runs-stop';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
@@ -32,9 +33,11 @@ const router = express.Router();
 // A sheet that is busy sorting, importing or rewriting a column takes no other
 // change until it finishes; appending rows is safe, and a clean or formula
 // column's preview (and writing a formula with AI) only reads (lib/sheet-busy.ts),
-// as saving a setup does.
+// as saving a setup does. Stopping every run is allowed: a run still writing
+// its placeholders is what holds the sheet.
 router.use('/:id', refuseChangesWhileBusy([
   '/rows', '/clean-columns/preview', '/formula-columns/preview', '/formula-columns/write', '/setups/plan', '/setups',
+  '/runs/stop',
   // Using a setup: its estimate only reads, and its start checks the sheet itself (services/setup-apply.ts).
   /^\/setups\/[^/]+\/apply$/,
 ]));
@@ -56,5 +59,6 @@ router.use(cleanRoutes);
 router.use(formulaRoutes);
 router.use(setupRoutes);
 router.use(dedupeRoutes);
+router.use(runsStopRoutes);
 
 export default router;

@@ -112,13 +112,16 @@ export function registerTool(
 
 // The busy-sheet rule of the HTTP routes (lib/sheet-busy.ts), for tools: one
 // that names a sheet busy sorting, importing or rewriting a column gets the
-// reason back, except tools that only read or that append rows (appends land
-// above the busy operation's reserved range).
+// reason back, except tools that only read, that append rows (appends land
+// above the busy operation's reserved range) or that stop runs.
 const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
   'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
+  // Only cancel_all names a sheet, and stopping its runs is allowed while it is
+  // busy: a run still writing its placeholders is what holds it (as /runs/stop).
+  'control_run',
 ]);
 
 function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {

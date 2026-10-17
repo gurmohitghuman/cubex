@@ -7,6 +7,7 @@ import { cleanColumnJson, sheetCleanView } from './clean-view';
 import { formulaColumnJson, sheetFormulaView } from './formula-view';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { sheetRunColumns } from './row-filter';
+import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -40,6 +41,10 @@ export interface SheetMeta {
   // Columns still filling (from stored answers, or a clean or formula column's
   // fill): their cells read "⏳ Processing..." until done.
   filling_columns: string[];
+  // The AI, HTTP API and enrichment runs working on it now, and the setups
+  // being used on it (services/sheet-runs.ts stops them all at once).
+  active_runs: SheetRun[];
+  active_setup_runs: SheetSetupRun[];
   // Clean data columns: each one's source, cleaner and auto-run (services/clean-view.ts).
   clean_columns: Array<Record<string, unknown>>;
   // Formula columns: each one's formula, what it reads and auto-run (services/formula-view.ts).
@@ -65,6 +70,8 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     row_generation: sheet.row_generation,
     default_ai_model: sheet.default_ai_model,
     filling_columns: fillingColumns(sheetId, userId),
+    active_runs: activeSheetRuns(sheetId, userId),
+    active_setup_runs: activeSetupRuns(sheetId, userId),
     clean_columns: Object.values(sheetCleanView(sheetId, userId, columns)).map(cleanColumnJson),
     formula_columns: Object.values(sheetFormulaView(sheetId, userId, columns)).map(formulaColumnJson),
   };

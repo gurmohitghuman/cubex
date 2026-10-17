@@ -1,6 +1,7 @@
-// /v1 sheet operations: physical sort, removing duplicates and CSV export.
-// Each delegates to the implementation shared with the UI routes
-// (services/sheet-sort.ts, services/dedupe-*.ts, lib/csv-export.ts).
+// /v1 sheet operations: physical sort, removing duplicates, CSV export and
+// stopping every run. Each delegates to the implementation shared with the UI
+// routes (services/sheet-sort.ts, services/dedupe-*.ts, lib/csv-export.ts,
+// services/sheet-runs-stop.ts).
 import express from 'express';
 import type { NextFunction, Response } from 'express';
 import { db } from '../lib/db';
@@ -9,6 +10,7 @@ import { physicalSortSheet } from '../services/sheet-sort';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { runFailHttpStatus } from '../services/run-shared';
 import { streamSheetCsv } from '../lib/csv-export';
+import { stopSheetRuns } from '../services/sheet-runs-stop';
 
 const router = express.Router();
 
@@ -66,6 +68,20 @@ router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthR
   } catch (error) {
     console.error('POST /v1/sheets/:id/remove-duplicates error:', error);
     if (!res.headersSent) res.status(500).json({ error: 'Failed to remove duplicates' });
+  }
+});
+
+// POST /v1/sheets/:id/runs/stop: every AI, HTTP API and enrichment run on the
+// sheet and every setup being used on it, stopped at once. Same answer as MCP
+// control_run's cancel_all: what it stopped and the auto-runs still on.
+router.post('/sheets/:id/runs/stop', requireScope('run'), async (req: TokenAuthRequest, res) => {
+  try {
+    const out = await stopSheetRuns(req.userId!, req.params.id);
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error) {
+    console.error('POST /v1/sheets/:id/runs/stop error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to stop the runs' });
   }
 });
 

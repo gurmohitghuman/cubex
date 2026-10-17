@@ -23,6 +23,8 @@ interface SheetHeaderProps {
   retrySave: () => void
   anyActiveRuns: boolean
   anyRunning: boolean
+  canStopAll: boolean // anything on the sheet is running: a run, or a setup between its steps
+  stoppingAll: boolean
   onPauseAll: () => void | Promise<void>
   onResumeAll: () => void | Promise<void>
   onStopAll: () => void | Promise<void>
@@ -52,6 +54,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   retrySave,
   anyActiveRuns,
   anyRunning,
+  canStopAll, stoppingAll,
   onPauseAll,
   onResumeAll,
   onStopAll,
@@ -91,9 +94,9 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               </p>
             </div>
 
-            {anyActiveRuns && (
+            {canStopAll && (
               <div className="flex items-center space-x-1 ml-2">
-                {anyRunning ? (
+                {anyActiveRuns && (anyRunning ? (
                   <button
                     onClick={onPauseAll}
                     className="btn-secondary flex items-center space-x-1"
@@ -111,10 +114,13 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                     <Play className="h-3 w-3" />
                     <span>Resume</span>
                   </button>
-                )}
-                <button onClick={onStopAll} className="btn-danger flex items-center space-x-1" title="Stop all runs">
-                  <Square className="h-3 w-3" />
-                  <span>Stop</span>
+                ))}
+                <button onClick={onStopAll} disabled={stoppingAll}
+                  className={'btn-danger flex items-center space-x-1 whitespace-nowrap '
+                    + 'disabled:opacity-50 disabled:cursor-not-allowed'}
+                  title="Stop every run and setup on this sheet">
+                  {stoppingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
+                  <span>Stop all</span>
                 </button>
               </div>
             )}

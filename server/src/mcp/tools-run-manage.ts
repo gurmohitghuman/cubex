@@ -1,72 +1,37 @@
-// Run status + control tools — same services as GET /v1/{ai,http}-runs/:id and
-// POST .../{pause,resume,cancel,rerun}. get_run_status needs only 'read';
-// control_run needs 'run' (and its rerun action shares the start-rate window,
-// since a rerun spends external calls like a fresh start).
+// Run control: control_run, the same services as POST
+// /v1/{ai,http}-runs/:id/{pause,resume,cancel,rerun} and, for cancel_all, POST
+// /v1/sheets/:id/runs/stop. It needs 'run' (and its rerun action shares the
+// start-rate window, since a rerun spends external calls like a fresh start).
+// get_run_status lives in tools-run-status.ts.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
+import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
 import { runStartWindow } from '../services/run-shared';
 import { tooManyMessage } from '../lib/rate-window';
-import { waitForRunChange } from '../services/run-status-wait';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
-import { STATUS_WORDS } from '../services/enrich-agent-shared';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 // An enrichment is an HTTP run: run_type 'enrichment' reads and controls the
 // same run, and refuses a plain HTTP run so the caller isn't misled.
-function kindOf(runType: 'ai' | 'http' | 'enrichment', runId: string, userId: string): 'ai' | 'http' | null {
+export function kindOf(runType: 'ai' | 'http' | 'enrichment', runId: string, userId: string): 'ai' | 'http' | null {
   if (runType !== 'enrichment') return runType;
   return isEnrichmentRun(runId, userId) ? 'http' : null;
 }
 
-export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
-  registerTool(server, 
-    'get_run_status',
-    {
-      description:
-        'Status of an AI, HTTP or enrichment run: status (pending/running/paused/completed/failed/cancelled), '
-        + 'processed vs total rows, failed_rows and succeeded_rows, and error_message when the run itself failed (or '
-        + 'why it paused). "completed" means every row was processed, not that it worked: check failed_rows, then '
-        + 'get_run_results for the reasons. AI runs also report concurrency (rows at once) and cost_usd, what the '
-        + 'rows so far cost (OpenRouter\'s own '
-        + 'figure, web fees included; with rows on the user\'s own provider key (BYOK) only OpenRouter\'s fee, and '
-        + 'provider_cost_usd is what that provider billed the key), and with web search the searches that ran '
-        + '(searches) and the web_search '
-        + 'settings (engine sent, runs_on, mode billed, max_searches_per_row). '
-        + 'Enrichment runs (run_type enrichment or http) report cost_usd (what its treg calls cost so far), '
-        + 'daily_limit, and enrichment: the tool, max_cost_per_row_usd, spend_limit_usd, pause_reason (spend_limit, '
-        + 'daily_limit, balance, no_key, unreachable…: resume with control_run once fixed; a run limit can be raised '
-        + 'there), skipped_rows_missing_inputs, providers [{provider, tried, hits, misses, errors, '
-        + 'rate_limited (429s), skipped, cost_usd, cooling_down_until}] (what each provider did; a provider that '
-        + 'answers 429 three times in a row is left out of the run\'s waterfalls for 5 minutes, then asked again), '
-        + 'and for a job that adds '
-        + 'rows list {destination_sheet_id, rows_added, '
-        + 'adding, waiting_for_fields, waiting_for_room}. A run started with run_if reports run_if and '
-        + 'condition_skipped_rows (rows the rule kept out; not in total_rows), counted once the run has started. '
-        + `${STATUS_WORDS} Poll this after a run start; read the cells with read_rows once completed.`,
-      inputSchema: {
-        run_type: z.enum(['ai', 'http', 'enrichment']),
-        run_id: z.string(),
-        wait_seconds: z.number().int().min(0).max(25).optional(),
-      },
-    },
-    async ({ run_type, run_id, wait_seconds }) => {
-      const denied = missingScope(ctx, 'read');
-      if (denied) return denied;
-      const kind = kindOf(run_type, run_id, ctx.userId);
-      if (!kind) return err('Enrichment run not found');
-      const run = (wait_seconds ?? 0) > 0
-        ? await waitForRunChange(kind, run_id, ctx.userId, wait_seconds, ctx.abortSignal)
-        : kind === 'ai' ? getAiRunSummary(run_id, ctx.userId) : getHttpRunSummary(run_id, ctx.userId);
-      if (!run) return err('Run not found');
-      return ok(run);
-    },
-  );
+// cancel_all: every run and setup on a sheet, at once (services/sheet-runs-stop.ts).
+async function cancelAll(ctx: McpAuthCtx, sheetId: string | undefined, otherArgs: boolean) {
+  if (!sheetId) return err('cancel_all needs sheet_id: the sheet whose runs to stop.');
+  if (otherArgs) return err('cancel_all takes only sheet_id: it stops every run on the sheet, whatever its type.');
+  const out = await stopSheetRuns(ctx.userId, sheetId);
+  return 'fail' in out ? err(out.message) : ok(out.ok);
+}
 
+export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
     'control_run',
     {
@@ -87,11 +52,20 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
         + '"all" (every row again). spend_limit_usd sets the new run\'s limit, or on resume raises a paused run\'s '
         + 'limit (a run its limit paused). concurrency sets its rows at once on a rerun or a resume, and the '
-        + 'column keeps it for later reruns and auto-run; lower it when a provider answers 429.',
+        + 'column keeps it for later reruns and auto-run; lower it when a provider answers 429. '
+        + 'STOP A WHOLE SHEET: action cancel_all with sheet_id (no run_type or run_id) stops every active run on '
+        + 'it at once: AI, HTTP and enrichment runs and the setups being used on it (get_sheet lists them in '
+        + 'active_runs and active_setup_runs). It returns stopped_runs, stopped_setup_runs and a message. It '
+        + 'turns no auto-run off: a column whose auto-run batch it stopped pauses, as cancelling that one run '
+        + 'does (auto_run_paused; resume it to go on), and auto_run_on lists the columns where new rows still '
+        + 'start runs (set_auto_run with paused true and no column pauses them all). Calls already sent finish '
+        + 'and are billed; free clean and formula fills finish too (still_filling).',
       inputSchema: {
-        run_type: z.enum(['ai', 'http', 'enrichment']),
-        run_id: z.string(),
-        action: z.enum(['pause', 'resume', 'cancel', 'rerun']),
+        run_type: z.enum(['ai', 'http', 'enrichment']).optional()
+          .describe('Every action but cancel_all.'),
+        run_id: z.string().optional().describe('Every action but cancel_all.'),
+        action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'cancel_all']),
+        sheet_id: z.string().optional().describe('cancel_all only: the sheet whose runs to stop.'),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional()
           .describe('rerun only: stable row ids to re-process. Wins over mode.'),
         mode: z.enum(['errored', 'empty', 'missing', 'all']).optional()
@@ -108,9 +82,17 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           .describe(`AI or HTTP rerun only: only among the sheet's first rows (1-${MAX_FIRST_ROWS}).`),
       },
     },
-    async ({ run_type: asked, run_id, action, row_ids, mode, concurrency, spend_limit_usd, first_rows }) => {
+    async ({ run_type: asked, run_id, action, sheet_id, row_ids, mode, concurrency, spend_limit_usd, first_rows }) => {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
+      if (action === 'cancel_all') {
+        const others = [asked, run_id, row_ids, mode, concurrency, spend_limit_usd, first_rows];
+        return cancelAll(ctx, sheet_id, others.some(v => v !== undefined));
+      }
+      if (sheet_id !== undefined) return err('sheet_id goes with action cancel_all only.');
+      if (!asked || !run_id) {
+        return err('Pass run_type and run_id, or action cancel_all with sheet_id to stop every run on a sheet.');
+      }
       const run_type = kindOf(asked, run_id, ctx.userId);
       if (!run_type) return err('Enrichment run not found');
       const enrichment = run_type === 'http' && isEnrichmentRun(run_id, ctx.userId);
