@@ -1,4 +1,4 @@
--- Enrichments powered by treg.to: Clay-style lookups (work emails, phones,
+-- Enrichments powered by treg.to: lookups (work emails, phones,
 -- person and company data, lists) run per row with the user's own treg key
 -- (docs/enrichments.md). An enrichment is an http_runs row whose config carries
 -- an `enrichment` block, so runs, results, placeholders and SSE are shared with
