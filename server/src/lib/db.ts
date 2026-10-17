@@ -3,6 +3,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
 import { DB_CHECK_NOTICE_BYTES } from './constants';
+import { registerRowFilterFunctions } from './row-filter/sql-functions';
 
 if (!fs.existsSync(dataDir)) {
   // mode: 0o700 — rwx for owner only. Sibling files (cubex.db, jobs.db,
@@ -15,6 +16,8 @@ if (!fs.existsSync(dataDir)) {
 try { fs.chmodSync(dataDir, 0o700); } catch { /* dir might not be ours to chmod */ }
 
 export const db: DatabaseType = new Database(dbPath);
+// cubex_fold / cubex_num: the text and number reads of row filters (lib/row-filter).
+registerRowFilterFunctions(db);
 
 // SQLite creates cubex.db with the process umask (typically 0o022 → file is
 // 0o644 = world-readable). Force 0o600 so your data + encrypted API keys

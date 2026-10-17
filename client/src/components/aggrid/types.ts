@@ -1,4 +1,5 @@
 import type { ColumnType } from '@/utils/api/types'
+import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
 import type { FormulaColumnView } from '@/utils/api/formula'
@@ -72,8 +73,8 @@ export interface AGGridSpreadsheetProps {
   onAddColumn?: () => void | Promise<void>
   emptyFilter?: Record<string, 'empty' | 'not_empty'>
   onEmptyFilterChange?: (column: string, value: 'empty' | 'not_empty' | null) => void
-  columnFilters?: Record<string, { type: 'contains'; value: string }>
-  onColumnFilterChange?: (column: string, value: string | null) => void
+  columnFilters?: ColumnFilters
+  onColumnFilterChange?: (column: string, filter: ColumnFilter | null) => void
   onSelectedRowsChange?: (rows: number[]) => void
   onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   // What the column menu's run blocks call (AI, HTTP API and enrichment columns).

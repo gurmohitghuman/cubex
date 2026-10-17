@@ -5,21 +5,21 @@ import { UUID_PATTERN } from '../lib/constants';
 import {
   getSheetColumns, parseRowData, type RowDB,
 } from '../lib/sql-helpers';
-import { getColumnTypes } from '../lib/column-types';
+import { sheetColumnKinds } from '../lib/column-types';
 import { FILL_PLACEHOLDER, fillingColumns } from '../services/answer-field-fill';
 import { sheetCleanView } from '../services/clean-view';
 import { sheetFormulaView } from '../services/formula-view';
 import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
-import { parseEmptyFilter, buildEmptyFilterSql } from '../lib/empty-filter';
-import { parseColumnFilters, buildColumnFiltersSql } from '../lib/column-filters';
+import { liveRunColumns, savedFilterSql } from '../services/row-filter';
+import { scanFiltered } from '../lib/filtered-scan';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 
 const router = express.Router();
 router.use(authenticateToken);
 
 // GET /:id — paginated sheet data. `limit` and `offset` are in ROWS.
-router.get('/:id', (req: AuthRequest, res) => {
+router.get('/:id', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     if (!id || !UUID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid sheet ID format' });
@@ -41,34 +41,35 @@ router.get('/:id', (req: AuthRequest, res) => {
     // created the columns — NOT guessed from cell contents or names. The grid's
     // header menu keys off this to decide whether to show AI vs HTTP actions.
     // Columns absent from this map are plain. See lib/column-types.ts.
-    const columnTypes = getColumnTypes(id, req.userId!);
+    const kinds = sheetColumnKinds(id, req.userId!);
+    const columnTypes = kinds.types;
 
-    // Empty-filter is applied SERVER-SIDE so the page, totalRows, and pagination
-    // all reflect the filtered set. Previously the client filtered only the loaded
-    // window, so matches beyond it were invisible AND unreachable (the scroll
-    // trigger can't fire with few/zero visible rows). The filter is stored on the
-    // sheet (sheets.empty_filter); read it here rather than trust a query param.
-    const emptyFilter = parseEmptyFilter(sheet.empty_filter);
-    const emptySql = buildEmptyFilterSql(emptyFilter);
-    // "Text contains" filter (migration 031) — AND-joined with the empty filter
-    // in the SAME clause (Google-Sheets semantics: a row passes only if it
-    // matches EVERY active column filter). Both are server-side for the same
-    // windowed-grid reason. Concatenating the two ' AND ...' fragments + params
-    // keeps the page and count queries below in step.
-    const columnFilters = parseColumnFilters(sheet.column_filters);
-    const containsSql = buildColumnFiltersSql(columnFilters);
-    const filterClause = emptySql.clause + containsSql.clause;
-    const filterParams = [...emptySql.params, ...containsSql.params];
+    // The saved column filters (sheets.empty_filter, sheets.column_filters) are
+    // applied SERVER-SIDE so the page, totalRows, and pagination all reflect the
+    // filtered set: the grid is windowed, so filtering only the loaded rows left
+    // matches beyond them invisible AND unreachable. A row passes only if it
+    // matches EVERY column's filter (services/row-filter.ts, the same SQL the
+    // API's `where` uses); the page and count queries below share the clause.
+    const saved = savedFilterSql(id, req.userId!, sheet, () => liveRunColumns(kinds.runState, columns));
 
-    // Indexed paginated read in row_index order: sort is a one-time physical
-    // reorder, so row_index order IS the display order. Filter predicates (if
-    // any) go into BOTH the page query and the count so totalRows matches.
-    const dbRows = db.prepare(
-      `SELECT * FROM rows WHERE sheet_id = ? AND user_id = ?${filterClause} ORDER BY row_index ASC LIMIT ? OFFSET ?`,
-    ).all(id, req.userId!, ...filterParams, limit, offset) as RowDB[];
-    const totalRows = (db.prepare(
-      `SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?${filterClause}`,
-    ).get(id, req.userId!, ...filterParams) as { c: number }).c;
+    // Paginated read in row_index order: sort is a one-time physical reorder,
+    // so row_index order IS the display order. Unfiltered, the page and the
+    // count come from the index. Filtered, finding the page and counting the
+    // matches is a scan of every row, done a slice at a time between other
+    // requests (lib/filtered-scan.ts) so a big sheet never holds the server.
+    let dbRows: Array<Pick<RowDB, 'row_index' | 'data'>>, totalRows: number;
+    if (saved) {
+      const scan = await scanFiltered<Pick<RowDB, 'row_index' | 'data'>>(
+        id, req.userId!, saved, { skip: offset, limit, count: true }, 'row_index, data');
+      dbRows = scan.rows;
+      totalRows = scan.count!;
+    } else {
+      dbRows = db.prepare(
+        'SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index ASC LIMIT ? OFFSET ?',
+      ).all(id, req.userId!, limit, offset) as RowDB[];
+      totalRows = (db.prepare('SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?')
+        .get(id, req.userId!) as { c: number }).c;
+    }
     const rows = dbRows.map(r => ({ rowIndex: r.row_index, data: parseRowData(r.data) }));
     // A column added from stored answers, or a clean column, shows ⏳ until its
     // fill is done (services/answer-field-fill.ts, clean-fill.ts), then the tab

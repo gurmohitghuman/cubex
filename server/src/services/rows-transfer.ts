@@ -7,13 +7,14 @@ import {
 import { countRows, getSheetColumns, purgeResultsForRows } from '../lib/sql-helpers';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
 import { acquireTransferSlot, releaseTransferSlot } from './transfer-rate';
-import { scanTransferRows, TransferSelection } from './transfer-selection';
+import { scanTransferRows, type ScanSelection } from './transfer-selection';
 import { planTransferColumns, applyTransferColumnOrder } from './transfer-columns';
 import { isPristineSeedSheet } from './transfer-seed';
 import {
   readTransferLedger, transferHashes, TransferRequest, TransferResult, writeTransferLedger,
 } from './transfer-ledger';
-import { cellOf, validateRowConditions } from './row-selection';
+import { cellOf } from './row-selection';
+import { prepareWhere } from './row-filter';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
 import { nextRowIndex } from '../lib/sheet-busy';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
@@ -46,10 +47,14 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
     const busy = 'Cannot transfer rows while either sheet has an active run.';
     return { fail: 'active_run', error: sheetRunBlock(sheet, userId, busy)?.message || busy };
   }
-  const sourceColumns = getSheetColumns(request.sourceSheetId, userId, false);
+  let scan: ScanSelection;
   if ('where' in request.selection) {
-    const invalid = validateRowConditions(sourceColumns, request.selection.where);
-    if (invalid) return { fail: 'invalid', error: invalid };
+    const sourceColumns = getSheetColumns(request.sourceSheetId, userId, false);
+    const prepared = prepareWhere(request.sourceSheetId, userId, request.selection.where, sourceColumns);
+    if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
+    scan = { filter: prepared.ok.filter };
+  } else {
+    scan = request.selection;
   }
   const startedAt = Date.now();
   const checkTime = () => {
@@ -57,7 +62,9 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
       throw new TransferBudgetError('Transfer exceeded writer time budget.');
     }
   };
-  const preflight = scanTransferRows(request.sourceSheetId, userId, request.selection, checkTime);
+  const preflight = scanTransferRows(request.sourceSheetId, userId, scan, checkTime);
+  // The passes below read only the rows this one found (one transaction: they can't change).
+  const found: ScanSelection = { rowids: preflight.rowids };
   if (preflight.missingIds.length) return { fail: 'not_found', error: 'One or more selected rows were not found.' };
   if (preflight.matched > TRANSFER_MAX_ROWS || preflight.bytes > TRANSFER_MAX_STORED_BYTES) {
     return { fail: 'budget', error: 'Transfer exceeds the row or stored-data budget.' };
@@ -86,7 +93,7 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   if ('error' in plan) return { fail: 'invalid', error: plan.error };
   result.created_columns = plan.createdColumns;
   let storedBytes = 0;
-  scanTransferRows(request.sourceSheetId, userId, request.selection, rows => {
+  scanTransferRows(request.sourceSheetId, userId, found, rows => {
     checkTime();
     for (const row of rows) {
       const projected: Record<string, string> = Object.create(null);
@@ -103,7 +110,7 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
     'INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)',
   );
   const remove = db.prepare('DELETE FROM rows WHERE id = ? AND sheet_id = ? AND user_id = ?');
-  scanTransferRows(request.sourceSheetId, userId, request.selection, rows => {
+  scanTransferRows(request.sourceSheetId, userId, found, rows => {
     checkTime();
     for (const row of rows) {
       const data: Record<string, string> = Object.create(null);

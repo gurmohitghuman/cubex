@@ -8,7 +8,8 @@
 // straight to disk.
 import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
-import { planSheetExport, type RowCondition } from '../lib/csv-export';
+import { planSheetExport } from '../lib/csv-export';
+import type { WhereItem } from '../lib/row-filter/where';
 import { responseWriter, writeSheetCsv } from '../lib/csv-write';
 import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/file-links';
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
@@ -108,7 +109,7 @@ router.get('/download/:token', async (req, res) => {
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
     const plan = planSheetExport(
-      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: RowCondition[] }>(link),
+      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: WhereItem[] }>(link),
     );
     if ('fail' in plan) {
       return plan.fail === 'not_found' ? notFound(res)

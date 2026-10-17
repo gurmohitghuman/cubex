@@ -10,18 +10,6 @@ import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 
-// The row-filter condition every `where`-taking tool accepts (read_rows,
-// transfer_rows, transform_column, export_csv). ONE definition: it was copied
-// into three files, and a fourth copy for export_csv is how the surfaces start
-// disagreeing about what `where` means. Backed by services/row-selection.ts.
-// gt/gte/lt/lte compare NUMERICALLY: the value must parse as a number, and a
-// cell that doesn't parse as one never matches (no lexicographic fallback).
-export const rowConditionSchema = z.object({
-  column: z.string(),
-  operator: z.enum(['eq', 'neq', 'contains', 'empty', 'not_empty', 'gt', 'gte', 'lt', 'lte']),
-  value: z.string().optional(),
-});
-
 // Option types that also take their value as text. An MCP client whose tool
 // list was loaded before an option existed sends it as a string ("true", "2"),
 // which a strict schema rejects. Clients still see a plain boolean or integer.

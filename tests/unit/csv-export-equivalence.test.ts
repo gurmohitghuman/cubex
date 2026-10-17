@@ -10,9 +10,10 @@ import sqlMod from '../../server/src/lib/sql-helpers'
 import exportMod from '../../server/src/lib/csv-export'
 import safetyMod from '../../server/src/lib/csv-safety'
 import busyModule from '../../server/src/lib/sheet-busy'
-import selMod from '../../server/src/services/row-selection'
+import whereMod from '../../server/src/lib/row-filter/where'
+import { referencePasses } from './row-filter-reference'
 import { v4 as uuid } from 'uuid'
-import type { RowCondition } from '../../server/src/services/row-selection'
+import type { WhereItem } from '../../server/src/lib/row-filter/where'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { listColumnsInInsertionOrder, parseRowData } =
@@ -20,12 +21,12 @@ const { listColumnsInInsertionOrder, parseRowData } =
 const { buildSheetCsv, streamSheetCsv } = exportMod as typeof import('../../server/src/lib/csv-export')
 const { escapeCsvCell } = safetyMod as typeof import('../../server/src/lib/csv-safety')
 const busyMod = busyModule as typeof import('../../server/src/lib/sheet-busy')
-const { rowPasses, validateRowConditions } = selMod as typeof import('../../server/src/services/row-selection')
+const { checkWhere } = whereMod as typeof import('../../server/src/lib/row-filter/where')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 
-type Opts = { columns?: string[]; where?: RowCondition[] }
+type Opts = { columns?: string[]; where?: WhereItem[] }
 
 // A plain export builder: registry columns (stored names, deduped, or the rows'
 // first-seen keys when there is no usable list), then every row via SELECT *.
@@ -43,10 +44,11 @@ function referenceCsv(sheetId: string, userId: string, opts: Opts = {}) {
     if (opts.columns.some(c => !allColumns.includes(c))) return { fail: 'invalid' }
     columns = opts.columns
   }
-  if (opts.where?.length && validateRowConditions(allColumns, opts.where)) return { fail: 'invalid' }
+  const sheetCheck = { columns: allColumns, runColumns: new Map<string, string>() }
+  if (opts.where?.length && checkWhere(opts.where, sheetCheck)) return { fail: 'invalid' }
   const dbRows = db.prepare('SELECT * FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index ASC')
     .all(sheetId, userId) as Array<{ data: string }>
-  const matched = opts.where?.length ? dbRows.filter(r => rowPasses(parseRowData(r.data), opts.where!)) : dbRows
+  const matched = opts.where?.length ? dbRows.filter(r => referencePasses(opts.where!, parseRowData(r.data))) : dbRows
   if (dbRows.length === 0) return { fail: 'empty' }
   const lines = [columns.map(escapeCsvCell).join(','),
     ...matched.map(r => { const d = parseRowData(r.data); return columns.map(c => escapeCsvCell(d[c] ?? '')).join(',') })]
@@ -91,6 +93,12 @@ const cases: Array<[string, string, Opts]> = [
   ['where matches some', injection, { where: [{ column: 'b', operator: 'contains', value: 'p' }] }],
   ['where matches none', injection, { where: [{ column: 'b', operator: 'eq', value: 'nope' }] }],
   ['where on an unknown column', injection, { where: [{ column: 'zz', operator: 'eq', value: '1' }] }],
+  ['where with an OR group and a list', injection, { where: [
+    { or: [{ column: 'a', operator: 'any_of', values: ['+1', '=SUM(1)'] },
+      { column: 'b', operator: 'eq', value: '-2' }] },
+    { column: 'b', operator: 'not_contains', value: 'zzz' },
+  ] }],
+  ['where on a number', injection, { where: [{ column: 'b', operator: 'lt', value: '0' }] }],
 ]
 for (const [label, sid, opts] of cases) {
   await (async () => {

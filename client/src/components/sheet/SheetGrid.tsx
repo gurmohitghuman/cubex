@@ -1,4 +1,5 @@
 import React from 'react'
+import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
 import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
 import type { ColumnType } from '@/utils/api/types'
@@ -26,7 +27,7 @@ export interface SheetGridProps {
   rows: SheetData['data']['rows']
   totalRows: number
   emptyFilter: Record<string, 'empty' | 'not_empty'>
-  columnFilters: Record<string, { type: 'contains'; value: string }>
+  columnFilters: ColumnFilters
   lastRenamedColumn: { from: string; to: string; at: number } | null
   columnTypes: Record<string, ColumnType>
   // Auto-run and spend per column (header ⚡, tooltip, menu items) and the menu's ⚡ action.
@@ -50,7 +51,7 @@ export interface SheetGridProps {
   onLoadMore: (offset: number, limit?: number) => Promise<void> | void
   onSortChange: (columnId: string, direction?: 'asc' | 'desc' | null) => void
   onEmptyFilterChange: (column: string, value: 'empty' | 'not_empty' | null) => void
-  onColumnFilterChange: (column: string, value: string | null) => void
+  onColumnFilterChange: (column: string, filter: ColumnFilter | null) => void
   onSelectedRowsChange: (rows: number[]) => void
   onRenameColumn: (oldName: string, newName: string) => boolean | void | Promise<boolean | void>
   onDeleteColumn: (columnName: string) => void | Promise<void>

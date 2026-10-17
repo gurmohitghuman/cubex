@@ -5,6 +5,8 @@ import { getSheetColumns, countRows, parseRowData } from '../lib/sql-helpers';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { cleanColumnJson, sheetCleanView } from './clean-view';
 import { formulaColumnJson, sheetFormulaView } from './formula-view';
+import { rowWithStatus } from '../lib/row-filter/status-rows';
+import { sheetRunColumns } from './row-filter';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -69,7 +71,8 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
 }
 
 export interface RowsPage {
-  rows: Array<{ id: string; index: number; data: Record<string, string> }>;
+  // includeStatus: run columns' cells as {status, value, error}.
+  rows: Array<{ id: string; index: number; data: Record<string, unknown> }>;
   next_cursor: number | null;
   data_version: number;
   row_generation: number;
@@ -78,7 +81,9 @@ export interface RowsPage {
 // Keyset paging by row_index: stable under appends, cheap on the
 // (sheet_id, row_index) index. `after` = the index of the last row already
 // received (-1 for the first page). Caller has verified sheet ownership.
-export function readRowsPage(sheetId: string, userId: string, after: number, limit: number): RowsPage {
+export function readRowsPage(
+  sheetId: string, userId: string, after: number, limit: number, includeStatus = false,
+): RowsPage {
   const versions = db.prepare(
     'SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?',
   ).get(sheetId, userId) as { data_version: number; row_generation: number };
@@ -91,8 +96,9 @@ export function readRowsPage(sheetId: string, userId: string, after: number, lim
   const rows = hasMore ? fetched.slice(0, limit) : fetched;
   const page = rows.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
   overlayFilling(page, fillingColumns(sheetId, userId));
+  const runColumns = includeStatus ? sheetRunColumns(sheetId, userId, getSheetColumns(sheetId, userId, false)) : null;
   return {
-    rows: page,
+    rows: runColumns ? page.map(r => ({ ...r, data: rowWithStatus(r.data, runColumns) })) : page,
     // Full page → there may be more; a short page is definitive end-of-sheet.
     next_cursor: hasMore ? rows[rows.length - 1].row_index : null,
     ...versions,

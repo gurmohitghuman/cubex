@@ -6,8 +6,8 @@
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET, ENRICH_VERIFY_TOOL_ID } from '../lib/constants';
 import { countRows, getSheetColumns } from '../lib/sql-helpers';
-import { parseEmptyFilter, buildEmptyFilterSql } from '../lib/empty-filter';
-import { parseColumnFilters, buildColumnFiltersSql } from '../lib/column-filters';
+import { savedFilterSql } from './row-filter';
+import { scanFiltered } from '../lib/filtered-scan';
 import {
   defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun,
   type Estimate, type ProviderPick,
@@ -28,19 +28,16 @@ export interface SheetSetupInfo {
 
 // All rows (index count), the rows the sheet's saved filters show (the same
 // clause the grid's read counts with, so the numbers match), and room for columns.
-export function sheetSetupInfo(userId: string, sheetId: string): SheetSetupInfo | null {
+export async function sheetSetupInfo(userId: string, sheetId: string): Promise<SheetSetupInfo | null> {
   const sheet = db.prepare('SELECT table_id, empty_filter, column_filters FROM sheets WHERE id = ? AND user_id = ?')
     .get(sheetId, userId) as
     { table_id: string; empty_filter: string | null; column_filters: string | null } | undefined;
   if (!sheet) return null;
-  const empty = buildEmptyFilterSql(parseEmptyFilter(sheet.empty_filter));
-  const contains = buildColumnFiltersSql(parseColumnFilters(sheet.column_filters));
-  const count = (clause: string, params: unknown[]) => (db.prepare(
-    `SELECT COUNT(*) AS c FROM rows WHERE sheet_id = ? AND user_id = ?${clause}`,
-  ).get(sheetId, userId, ...params) as { c: number }).c;
-  const clause = empty.clause + contains.clause;
+  // The filter's count reads every row: a slice at a time (lib/filtered-scan.ts).
+  const saved = savedFilterSql(sheetId, userId, sheet);
+  const filter = saved ? (await scanFiltered(sheetId, userId, saved, { limit: 0, count: true })).count : null;
   return {
-    rows: { all: count('', []), filter: clause ? count(clause, [...empty.params, ...contains.params]) : null },
+    rows: { all: countRows(sheetId, userId), filter },
     columns: { count: getSheetColumns(sheetId, userId).length, max: MAX_COLUMNS_PER_SHEET },
     hasWebhook: !!db.prepare('SELECT 1 FROM webhook_sources WHERE sheet_id = ? AND user_id = ? LIMIT 1')
       .get(sheetId, userId),

@@ -13,7 +13,8 @@ import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { importWindow } from './tools-import';
-import { McpAuthCtx, ok, err, missingScope, registerTool, rowConditionSchema as condition } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 const MAX_MB = Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024));
 
@@ -82,8 +83,8 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         sheet_id: z.string(),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column.'),
-        where: z.array(condition).min(1).optional()
-          .describe('Only rows matching ALL conditions, the same filter shape as read_rows.'),
+        where: whereSchema.optional()
+          .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
       },
     },
     async ({ sheet_id, columns, where }) => {

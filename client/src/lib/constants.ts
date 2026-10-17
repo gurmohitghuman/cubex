@@ -101,3 +101,8 @@ export const CURL_MAX_CHARS = 100_000;
 // usual 30 s request timeout, so both wait up to DEDUPE_REQUEST_TIMEOUT_MS.
 export const DEDUPE_CHECK_DELAY_MS = 400;
 export const DEDUPE_REQUEST_TIMEOUT_MS = 10 * 60_000;
+
+// Column filters (mirror server/src/lib/constants-filters.ts): values in one
+// "is any of" list, and characters in one value.
+export const MAX_FILTER_LIST_VALUES = 200;
+export const MAX_FILTER_VALUE_CHARS = 1000;

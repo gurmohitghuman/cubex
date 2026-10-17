@@ -1,5 +1,6 @@
 // Over 200 lines: the page wires the sheet's hooks to each other (state, loads, saves, runs) as one piece.
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { ColumnFilters } from '@/lib/filters'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table } from '@/utils/api'
@@ -51,7 +52,7 @@ export const SheetPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [loadedRowsCount, setLoadedRowsCount] = useState(0)
   const [emptyFilter, setEmptyFilter] = useState<Record<string, 'empty' | 'not_empty'>>({})
-  const [columnFilters, setColumnFilters] = useState<Record<string, { type: 'contains'; value: string }>>({})
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({})
   const currentSheetIdRef = useRef<string | null>(null)
   // Forward reference so hooks above loadSheetData can still trigger reloads.
   const loadSheetDataRef = useRef<

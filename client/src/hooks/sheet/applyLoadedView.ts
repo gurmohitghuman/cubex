@@ -1,8 +1,9 @@
 import type { SheetData } from '@/utils/api'
+import type { ColumnFilters } from '@/lib/filters'
 
 interface ViewSetters {
   setEmptyFilter: (f: Record<string, 'empty' | 'not_empty'>) => void
-  setColumnFilters: (f: Record<string, { type: 'contains'; value: string }>) => void
+  setColumnFilters: (f: ColumnFilters) => void
   setLoadedRowsCount: React.Dispatch<React.SetStateAction<number>>
   setColumnOrder: (cols: string[]) => void
 }

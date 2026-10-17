@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet } from '@/utils/api'
 
@@ -44,14 +44,18 @@ export const useEmptyFilter = ({
   // in call order. Always resolves (errors are swallowed here) so one failed
   // PUT can't wedge the chain for later changes.
   const chainRef = useRef<Promise<unknown>>(Promise.resolve())
+  // The filter as of the last change, so changes made one after another in the
+  // same tick (Clear filter on every column) build on each other instead of
+  // each starting from the same render's state. A load replaces it.
+  const latestRef = useRef(emptyFilter)
+  useEffect(() => { latestRef.current = emptyFilter }, [emptyFilter])
 
   return useCallback((column: string, value: 'empty' | 'not_empty' | null) => {
     if (!activeSheet) return
     const sheetId = activeSheet.id
 
-    // Snapshot for optimistic update + failure revert, then compute the next
-    // filter. emptyFilter is closed over, so no updater side effect is needed.
-    const previousFilter = emptyFilter
+    // Snapshot for optimistic update + failure revert, then compute the next filter.
+    const previousFilter = latestRef.current
     const nextFilter = { ...previousFilter }
     if (!value) delete nextFilter[column]; else nextFilter[column] = value
 
@@ -59,6 +63,7 @@ export const useEmptyFilter = ({
     const isLatest = () => seq === seqRef.current
 
     // Optimistic React state first (the newest change always reflects intent).
+    latestRef.current = nextFilter
     setEmptyFilter(nextFilter)
 
     const payload = Object.keys(nextFilter).length === 0 ? null : nextFilter
@@ -85,8 +90,9 @@ export const useEmptyFilter = ({
         // Only the newest failed change reverts + toasts. A superseded failure
         // is governed by a later change, which owns the final state.
         if (!isLatest()) return
+        latestRef.current = previousFilter
         setEmptyFilter(previousFilter)
         toast.error('Failed to apply filter. Please try again.')
       })
-  }, [activeSheet, emptyFilter, setEmptyFilter, reloadActiveSheet])
+  }, [activeSheet, setEmptyFilter, reloadActiveSheet])
 }

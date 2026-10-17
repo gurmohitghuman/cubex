@@ -10,7 +10,8 @@ import { db } from '../lib/db';
 import { buildSheetCsv } from '../lib/csv-export';
 import { listRuns, RUN_LIST_MAX, RUN_LIST_DEFAULT } from '../services/run-list';
 import { MCP_EXPORT_MAX_CHARS } from '../lib/api-v1-constants';
-import { McpAuthCtx, ok, err, missingScope, registerTool, rowConditionSchema as condition } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
@@ -34,8 +35,8 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         sheet_id: z.string(),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column (expensive on wide sheets).'),
-        where: z.array(condition).min(1).optional()
-          .describe('Only rows matching ALL conditions — same filter shape as read_rows.'),
+        where: whereSchema.optional()
+          .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
       },
     },
     async ({ sheet_id, columns, where }) => {

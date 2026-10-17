@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_AI_CONCURRENCY } from '../lib/constants';
 import { setSheetDefaultModel } from '../services/ai-model-config';
+import { saveColumnFilters } from '../services/row-filter';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -76,57 +77,13 @@ router.put('/:id/empty-filter', (req: AuthRequest, res) => {
   }
 });
 
-// Per-column "text contains" filter (migration 031) — the text-search sibling of
-// the empty filter above; same validate → unknown-column check → store shape.
-// Body: { columnFilters: { col: { type: 'contains', value: string } } | null }.
+// Per-column filters (services/row-filter.ts): the text, number, list and
+// run-state conditions, one per column, beside the empty filter above.
+// Body: { columnFilters: { col: { type, value?, values? } } | null }.
 router.put('/:id/column-filters', (req: AuthRequest, res) => {
   try {
-    const { id } = req.params;
-    const raw = req.body?.columnFilters;
-
-    let stored: string | null = null;
-    if (raw !== null && raw !== undefined) {
-      if (typeof raw !== 'object' || Array.isArray(raw)) {
-        return res.status(400).json({ error: 'columnFilters must be an object mapping column names to a condition, or null.' });
-      }
-      const cleaned: Record<string, { type: 'contains'; value: string }> = {};
-      for (const [col, cond] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof col !== 'string' || col.trim() === '') {
-          return res.status(400).json({ error: 'columnFilters keys must be non-empty column names.' });
-        }
-        if (!cond || typeof cond !== 'object' || (cond as any).type !== 'contains' || typeof (cond as any).value !== 'string') {
-          return res.status(400).json({ error: `columnFilters["${col}"] must be { type: 'contains', value: string }.` });
-        }
-        // An empty/whitespace value is not a filter — drop it (client also treats
-        // clearing the input as "remove this column's filter").
-        if ((cond as any).value.trim() === '') continue;
-        cleaned[col] = { type: 'contains', value: (cond as any).value };
-      }
-      stored = Object.keys(cleaned).length === 0 ? null : JSON.stringify(cleaned);
-    }
-
-    const sheet = verifySheetOwnership(id, req.userId!);
-    if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
-
-    // Reject filters on columns the sheet doesn't have (a deleted/typo'd column
-    // would match zero rows with no header UI to clear it — same guard as the
-    // empty-filter + sort routes). Skipped when clearing (NULL).
-    if (stored !== null) {
-      const validCols = new Set(getSheetColumns(id, req.userId!));
-      const parsed = JSON.parse(stored) as Record<string, unknown>;
-      const missing = Object.keys(parsed).filter(col => !validCols.has(col));
-      if (missing.length > 0) {
-        return res.status(400).json({
-          error: `Filter references unknown column${missing.length > 1 ? 's' : ''}: ${missing.map(c => `"${c}"`).join(', ')}.`,
-        });
-      }
-    }
-
-    db.prepare(`
-      UPDATE sheets SET column_filters = ?, updated_at = datetime('now')
-      WHERE id = ? AND user_id = ?
-    `).run(stored, id, req.userId!);
-
+    const result = saveColumnFilters(req.params.id, req.userId!, req.body?.columnFilters);
+    if ('fail' in result) return res.status(result.fail === 'not_found' ? 404 : 400).json({ error: result.error });
     res.json({ message: 'Column filters updated successfully' });
   } catch (error) {
     console.error('Update column filters error:', error);

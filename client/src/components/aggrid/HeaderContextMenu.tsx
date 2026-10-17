@@ -5,7 +5,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn } from '@/utils/api/types-autorun'
-import { ContainsFilterInput } from './ContainsFilterInput'
+import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
+import { ColumnFilterMenu } from './ColumnFilterMenu'
 import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
 import { CleanColumnActions } from './CleanColumnActions'
@@ -30,14 +31,14 @@ export interface HeaderContextMenuProps {
   // Auto-run per status column: the run blocks' ⚡ items.
   autorunColumns?: Record<string, AutorunColumn>
   emptyFilter?: Record<string, 'empty' | 'not_empty'>
-  columnFilters?: Record<string, { type: 'contains'; value: string }>
+  columnFilters?: ColumnFilters
   setConfirmDeleteColumn: (col: string | null) => void
   setConfirmDeleteRows: (rows: number[] | null) => void
   activeHTTPRunsByColumn: RunByColumn
   activeAIRunsByColumn: RunByColumn
   onSortChange?: (column: string, direction?: 'asc' | 'desc' | null) => void
   onEmptyFilterChange?: (column: string, value: 'empty' | 'not_empty' | null) => void
-  onColumnFilterChange?: (column: string, value: string | null) => void
+  onColumnFilterChange?: (column: string, filter: ColumnFilter | null) => void
   onDeleteColumn?: (columnName: string) => void | Promise<void>
   onDeleteRows?: (rowIndexes: number[]) => void | Promise<void>
   runActions: RunMenuActions
@@ -57,12 +58,6 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   const columnType = columnTypes[menu.columnId]
   const runProps = {
     columnId: menu.columnId, setMenu, actions: runActions, autorun: autorunColumns?.[menu.columnId],
-  }
-  // An emptiness filter replaces the column's text filter.
-  const emptiness = (value: 'empty' | 'not_empty') => {
-    onColumnFilterChange?.(menu.columnId, null)
-    onEmptyFilterChange?.(menu.columnId, value)
-    setMenu(null)
   }
 
   return (
@@ -102,33 +97,9 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           </>
         )}
 
-        {onColumnFilterChange && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Filter by text</DropdownMenuLabel>
-            <ContainsFilterInput
-              columnId={menu.columnId}
-              current={columnFilters?.[menu.columnId]?.value ?? ''}
-              onApply={(v) => onColumnFilterChange(menu.columnId, v)}
-              hasEmptyFilter={!!emptyFilter?.[menu.columnId]}
-              onClearEmpty={() => onEmptyFilterChange?.(menu.columnId, null)}
-            />
-          </>
-        )}
-
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Filter by emptiness</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => emptiness('empty')}
-          className={emptyFilter?.[menu.columnId] === 'empty' ? 'font-semibold' : ''}
-        >Show empty only</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => emptiness('not_empty')}
-          className={emptyFilter?.[menu.columnId] === 'not_empty' ? 'font-semibold' : ''}
-        >Show non-empty only</DropdownMenuItem>
-        {emptyFilter?.[menu.columnId] && (
-          <DropdownMenuItem onClick={() => { onEmptyFilterChange?.(menu.columnId, null); setMenu(null) }}>
-            Clear filter
-          </DropdownMenuItem>
-        )}
+        <ColumnFilterMenu columnId={menu.columnId} columnType={columnType} setMenu={setMenu}
+          emptyFilter={emptyFilter?.[menu.columnId]} columnFilter={columnFilters?.[menu.columnId]}
+          onEmptyFilterChange={onEmptyFilterChange} onColumnFilterChange={onColumnFilterChange} />
 
         {onDeleteColumn && (
           <>
