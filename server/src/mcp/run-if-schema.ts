@@ -4,9 +4,12 @@ import { z } from 'zod';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 
 export const RULE_LANGUAGE = 'Rule language: {{Column}} is "x" | is not "x" | contains "x" | does not contain "x" '
-  + '| is empty | is not empty | > 50 | < 50 | >= 50 | <= 50, joined with AND, OR, NOT and brackets (AND binds '
-  + 'tighter than OR). Columns are named exactly, inside {{ }}. Text checks ignore case; >, < need a plain number in '
-  + 'the cell; cells holding ⏳ ❌ ⏭️ ➕ (Cubex\'s own words) count as empty.';
+  + '| is empty | is not empty | > 50 | < 50 | >= 50 | <= 50 | is before "2024-01-31" | is after "2024-01-31" '
+  + '| is on "2024-01-31" | is not on | is on or before | is on or after, joined with AND, OR, NOT and brackets '
+  + '(AND binds tighter than OR). Columns are named exactly, inside {{ }}. Text checks ignore case; >, < need a '
+  + 'plain number in the cell; is before / after / on compare calendar days and need a date in the cell '
+  + '(2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 2024); cells holding ⏳ ❌ ⏭️ ➕ (Cubex\'s own words) count as '
+  + 'empty.';
 
 export const runIfSchema = z.string().max(MAX_RULE_CHARS).optional().describe(
   '"Only run if": rows that fail this rule are not run, cost nothing, and show "⏭️ Condition not met" '

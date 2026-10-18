@@ -6,7 +6,7 @@
 // read_rows and export take.
 import { isStateOp } from '../row-filter/ops';
 import {
-  conditionValueError, isOrGroup, parseWhere, type FilterCondition, type WhereItem,
+  conditionValueError, isGroup, parseWhere, whereConditions, type FilterCondition, type WhereItem,
 } from '../row-filter/where';
 import {
   gridWhere, parseColumnFilters, parseEmptyFilter, toColumnFilter, type ColumnFilters, type EmptyFilter,
@@ -31,8 +31,7 @@ export function parseRowFilter(raw: string | null | undefined): WhereItem[] {
     const parsed = parseWhere([item]);
     if ('error' in parsed) continue;
     const one = parsed.where[0];
-    const conditions = isOrGroup(one) ? one.or : [one];
-    if (conditions.every(c => conditionValueError(c) === null)) out.push(one);
+    if (whereConditions([one]).every(c => conditionValueError(c) === null)) out.push(one);
   }
   return out;
 }
@@ -49,14 +48,15 @@ export function viewWhere(f: ViewFilters | undefined): WhereItem[] {
 const json = (v: object): string | null => (Object.keys(v).length === 0 ? null : JSON.stringify(v));
 
 // A checked `where` into the three stored parts: each column's first
-// condition goes where the grid shows it (its header), the rest to row_filter.
+// condition goes where the grid shows it (its header), the rest to row_filter
+// (an off condition too: a header filter is always on).
 export function splitWhere(where: readonly WhereItem[]): ViewFilters {
   if (where.length === 0) return { ...NO_FILTERS };
   const empty: EmptyFilter = {};
   const columns: ColumnFilters = {};
   const rest: WhereItem[] = [];
   for (const item of where) {
-    if (isOrGroup(item) || item.column === undefined) { rest.push(item); continue; }
+    if (isGroup(item) || item.column === undefined || item.enabled === false) { rest.push(item); continue; }
     const c: FilterCondition = item;
     const column = c.column!;
     if ((c.operator === 'empty' || c.operator === 'not_empty') && !(column in empty)) {
@@ -76,4 +76,4 @@ export function splitWhere(where: readonly WhereItem[]): ViewFilters {
 
 // Whether reading this filter needs the sheet's run columns.
 export const readsRunState = (where: readonly WhereItem[]): boolean =>
-  where.some(item => (isOrGroup(item) ? item.or : [item]).some(c => isStateOp(c.operator)));
+  whereConditions(where).some(c => isStateOp(c.operator));

@@ -61,6 +61,22 @@ Lookups were measured with two sheets of 1,000,000 rows, one looking up the othe
 
 While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows, undoing a run) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
 
+### Date filters and filter groups
+
+Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows and 10 columns whose date column is written five ways (2024-01-31, 1/31/2024, Jan 31, 2024, 31.1.2024, and with a time), with one row in six not a date:
+
+| Action | Time | Others waited |
+|---|---|---|
+| Count the rows on or after a date (277,623 rows); "contains" on a text column, for comparison, 0.55 s | 0.57 s | 0.01 s |
+| The grid's first page and row count with that date filter | 0.57 s | 0.01 s |
+| The first page of a date only 457 rows hold | 0.12 s | 0.01 s |
+| Groups three deep: (a date and a plan) or (a country and (an industry or a number)) | 0.87 s | 0.01 to 0.03 s |
+| Ten date conditions | 1.8 s | 0.01 s |
+| One date condition with 20 more turned off | 0.57 s | 0.02 s |
+| "Only run if" checking a date rule on every row (`is on or after`) | 0.72 s | 0.02 s |
+
+A date condition costs about what a text one does: reading the cell is most of the work. Each more condition adds about 0.13 s at a million rows, and conditions turned off add nothing.
+
 ### Auto-dedupe
 
 Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows keyed by email:

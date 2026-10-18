@@ -59,7 +59,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each. Or keep it that way: auto-dedupe keeps one row per key as rows arrive from a webhook, an import or an agent.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
-- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
+- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, dates or a run's state, like the rows that failed, in and/or groups you can switch on and off), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
 - **A trash and a history.** Deleted rows, sheets and tables wait 30 days in the trash, ready to restore. Each sheet's History shows what changed and who changed it: you in the app, or which agent.
 
 **Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, and treg.to ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
@@ -242,6 +242,12 @@ Keep one row per key as new rows come in, for free. In **Remove duplicates**, op
 A row is checked when it arrives (a webhook event, a CSV import, an agent adding rows) and when someone types a key into it, so adding a row in the grid and typing an email that's already there sends it to the trash, with **Restore** in the message. Blank cells and cells over 200 characters never match, and values that AI, HTTP or other filled columns write are never checked: the key is a column rows arrive with (to match a cleaned value, pick the raw column and the match, like a website column as a domain). Rows already in the sheet stay as they are; the dialog says how many share a key, and **Remove now** cleans them up once.
 
 What auto-dedupe removed is in the trash, one batch a day: the dialog's **See them in the trash** shows just those. A row a run is working on is never removed: its check waits for the run. Turning it on, changing it or turning it off waits for runs on the sheet to finish. On a big sheet it takes a moment to read the keys already there; rows that arrive meanwhile are checked once it's done.
+
+### Filters
+
+Click **Filter** in the bar above the grid to choose which rows show. Each rule picks a column, a condition and a value: text (is, contains, starts with, is any of), numbers (greater than, less than), dates (is, is before, is on or after), empty or not, and on a run's column its state (has an error, not run yet). Join rules with **and** or **or**, and put some in a group to mix the two: Signed is on or after 2024-01-01 and (Plan is Pro or Plan is Team). Every rule has a switch: turn it off to see the rows without it, then back on. Changes apply as you make them, and the view keeps them. A column's own filter shows in its menu too, where you can change it.
+
+A date can be written in a cell as 2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 2024 or 31 Jan 2024, with or without a time. With slashes the month comes first, unless the first number is over 12; with dots the day comes first. A cell that isn't a date never matches a date rule, so use **Is empty** to find the blank ones.
 
 ### Views
 

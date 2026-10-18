@@ -11,7 +11,7 @@ import type { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import type { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import type { useSheetView } from '@/hooks/sheet/useSheetView'
 import type { SheetViews } from '@/hooks/sheet/useSheetViews'
-import { rowFilterOf } from '@/lib/views'
+import { rowFilterOn } from '@/lib/views'
 import type { useGridHandles } from '@/hooks/sheet/useGridHandles'
 import type { useAutorun } from '@/hooks/sheet/useAutorun'
 import type { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
@@ -91,7 +91,8 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           onEmptyFilterChange={onEmptyFilterChange}
           onColumnFilterChange={onColumnFilterChange}
           hiddenColumns={views.hiddenSet} onHideColumn={views.hideColumn}
-          rowFilterActive={rowFilterOf(sheetData).length > 0}
+          rowFilterActive={rowFilterOn(sheetData)}
+          onClearAllFilters={() => void views.saveFilters(null)}
           onSelectedRowsChange={cellOps.setSelectedRowIndices}
           onRenameColumn={columnOps.handleRenameColumn}
           onDeleteColumn={columnOps.handleColumnDelete}
