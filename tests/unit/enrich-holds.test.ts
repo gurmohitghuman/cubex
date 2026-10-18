@@ -52,6 +52,7 @@ async function main() {
   const { utcDay } = await import('../../server/src/lib/clock')
   const { UNCAPPED_BILLED_NOTE } = await import('../../server/src/lib/enrich-estimate')
   const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
+  const { setReuseDays } = await import('../../server/src/services/enrich-reuse')
   type Run = import('../../server/src/services/http-runner-status').HTTPRunRow
   type Config = import('../../server/src/lib/enrich-run-config').EnrichRunConfig
   runMigrations()
@@ -61,6 +62,9 @@ async function main() {
   db.prepare('INSERT INTO tables (id, user_id, name) VALUES (?,?,?)').run(tableId, uid, 'T')
   saveTregToken(uid, 'treg_test_key')
   setDailyLimitMicro(uid, 50_000)
+  // Every run here enriches the same people: each must call treg (and bill),
+  // not reuse the answers an earlier run found (enrich-reuse.test.ts covers that).
+  setReuseDays(uid, 0)
 
   const TOOL = {
     id: 'treg.people.email.find', method: 'POST', identitySets: null, derive: null, queryArrayEncoding: null,

@@ -1,3 +1,4 @@
+// Over 200 lines: the rolling row loop with its holds and limits, which only hold together.
 // The row loop of an enrichment run, called by processHTTPRun once it has
 // claimed a run whose config carries an `enrichment` block. Like the HTTP
 // loop it follows the ⏳ rows a page at a time, keeping up to its concurrency
@@ -9,7 +10,8 @@
 // holds are in the way). A run with no per-row cap stops at a limit only
 // once what treg really billed reaches it. A row that hits a run-level stop
 // (treg refused the key or the balance, treg can't be reached) halts the rest
-// and pauses the run with the reason; rows stay ⏳.
+// and pauses the run with the reason; rows stay ⏳. A row that costs nothing
+// (a found answer to reuse, an input missing) still runs when a limit stops the rest.
 // An auto-run run cancels itself at those stops instead (services/autorun-stop.ts).
 import { db } from '../lib/db';
 import { runRows, countRunRows, type RunRow } from '../lib/run-rows';
@@ -20,6 +22,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { redactError, redactSecrets } from '../lib/redact';
 import { getDailyLimitMicro, getTregToken, spentTodayMicro } from './treg-key';
 import { runSpentMicro } from './enrich-ledger';
+import { getReuseDays } from './enrich-reuse';
 import { dropHold, heldMicro, releaseRow, setRunHold } from './enrich-holds';
 import { processEnrichmentRow } from './enrich-row';
 import { clearCooldowns } from './enrich-providers';
@@ -30,6 +33,8 @@ import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
 
 const STOP_POLL_MS = 1000;
+// Stops a row that costs nothing (a found answer to reuse, an input missing) still runs past.
+const FREE_THROUGH = new Set<PauseReason>(['daily_limit', 'spend_limit']);
 const NO_KEY = 'No treg key. Add one in Settings, then Resume.';
 const money = (usd: number) => `$${usd >= 0.01 || usd === 0 ? usd.toFixed(2) : usd.toFixed(4)}`;
 
@@ -106,6 +111,8 @@ export async function processEnrichmentRun(
     signal: wake.signal, stopped: () => shouldStopHttpRun(run.id, generation),
     halt: null, onHalt: () => wake.abort(), unreachableStreak: 0, sameLookup: new Map(), cooldown: new Map(),
     providerNames: config.enrichment.providerNames,
+    // "Always call again" (and "Rerun this row") call every row, never reusing an earlier answer.
+    reuseDays: config.enrichment.fresh || config.enrichment.noReuse ? 0 : getReuseDays(run.user_id),
   };
   const concurrency = enrichConcurrency(config);
   clearCooldowns(run.id, run.user_id);
@@ -125,12 +132,25 @@ export async function processEnrichmentRun(
   // their writes and a resume recovers or replays them for free. Only waits
   // between retries end early. Each row gives its hold back once it settles.
   const out = new Set<Promise<void>>();
+  // One waiter for "a row settled", resolved by the next row to settle. A race
+  // over every row still out adds a reaction to each of them per wait, and
+  // those pile up on a slow row while fast ones (reused answers) stream past.
+  let slotFreed: (() => void) | null = null;
+  const rowSettled = () => new Promise<void>(resolve => { slotFreed = resolve; });
+  // A row a limit stopped that costs nothing runs anyway, with no hold (it calls nothing).
+  const freeRow = async (row: RunRow): Promise<boolean> => {
+    const columns = getSheetColumns(run.sheet_id, run.user_id, false);
+    const written = await processEnrichmentRow(ctx, run, config, row, columns, generation, true)
+      .catch(error => { console.error(`Enrichment run ${run.id} row error:`, redactError(error)); return false; });
+    if (written && !ctx.halt && !ctx.stopped()) progress.run(++completed, run.id);
+    return written;
+  };
   let ended: { reason: PauseReason; message: string } | null = null;
   const poll = setInterval(() => { if (ctx.stopped()) wake.abort(); }, STOP_POLL_MS);
   try {
     rows: for (;;) {
       if (ctx.stopped() || ctx.halt) break;
-      if (out.size >= concurrency) { await Promise.race(out); continue; }
+      if (out.size >= concurrency) { await rowSettled(); continue; }
       // Limits are checked only when a row is waiting: a run whose last row
       // just spent the rest of its limit is done, not paused.
       const first = await source.next();
@@ -138,11 +158,15 @@ export async function processEnrichmentRun(
       let allowed = holdRows(run, config, generation, concurrency - out.size, out.size);
       while ('wait' in allowed) {
         // This run's own rows still out hold some of the room: one settling gives it back.
-        await (out.size > 0 ? Promise.race(out) : new Promise(resolve => setTimeout(resolve, STOP_POLL_MS)));
+        await (out.size > 0 ? rowSettled() : new Promise(resolve => setTimeout(resolve, STOP_POLL_MS)));
         if (ctx.stopped() || ctx.halt) break rows;
         allowed = holdRows(run, config, generation, concurrency - out.size, out.size);
       }
-      if ('reason' in allowed) { ended = allowed; break; }
+      if ('reason' in allowed) {
+        if (FREE_THROUGH.has(allowed.reason) && await freeRow(first.value)) continue;
+        ended = allowed;
+        break;
+      }
       const { n, rowMicro } = allowed;
       // The key is read before rows start: one removed in Settings pauses the run.
       const key = getTregToken(run.user_id);
@@ -164,10 +188,13 @@ export async function processEnrichmentRun(
         // A row that threw keeps its ⏳ and no result, so the finalize fails the
         // run with "Some rows could not be processed" (a rerun retries them).
         const done: Promise<void> = processEnrichmentRow(ctx, run, config, row, columns, generation)
-          .catch(error => { console.error(`Enrichment run ${run.id} row error:`, redactError(error)); })
+          .then(() => {}, error => { console.error(`Enrichment run ${run.id} row error:`, redactError(error)); })
           .finally(() => {
             releaseRow(run.id, generation, rowMicro);
             out.delete(done);
+            const wake = slotFreed;
+            slotFreed = null;
+            wake?.();
             // Never rejects: nothing may be waiting on this row yet (a worker
             // thread dies on an unhandled rejection); a missed count is fixed
             // by the next one, and a resume recounts.

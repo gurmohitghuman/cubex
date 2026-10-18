@@ -1,9 +1,10 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, Loader2 } from 'lucide-react'
-import type { EnrichEstimate, TregBalance } from '@/utils/api'
+import type { EnrichEstimate, EnrichReuseCount, TregBalance } from '@/utils/api'
 import { plural } from '@/lib/utils'
 import { TREG_TOPUP_URL, limitText, resetsAtText, spent, usd } from '@/lib/enrich-format'
+import { reuseEstimateLine } from './reuse-copy'
 
 interface Props {
   estimate: EnrichEstimate | null
@@ -27,6 +28,8 @@ interface Props {
   label?: string
   // A list job's destination sheet, for "May add up to N rows to People".
   listDest?: string | null
+  // Rows that reuse an earlier found answer at no cost: the figures cover the others.
+  reuse?: EnrichReuseCount | null
 }
 
 // Amber from this share of the row limit on.
@@ -55,7 +58,7 @@ const AMBER = 'bg-amber-50 border-amber-200 text-amber-900'
 // could spend more than the balance.
 export const EstimateBox: React.FC<Props> = ({
   estimate, loading, error, rows, balance, spendLimit, missNote, ownKeys, blocked, unpriced, ownKeySingle,
-  ownKeyProvider, label, listDest,
+  ownKeyProvider, label, listDest, reuse = null,
 }) => {
   if (unpriced || ownKeySingle) {
     return (
@@ -82,6 +85,8 @@ export const EstimateBox: React.FC<Props> = ({
   const overBalance = !!balance && high > balance.balanceUsd + 1e-9
   const limit = estimate.dailyLimit
   const overDaily = limit.remainingUsd !== null && high > limit.remainingUsd + 1e-9
+  const reused = reuseEstimateLine(reuse, rows)
+  const allReused = !!reuse && reuse.complete && reuse.rows >= rows
 
   return (
     <div className={`border p-3 text-xs space-y-1 ${overBalance ? AMBER : 'bg-gray-50 border-gray-200 text-gray-700'}`}
@@ -93,7 +98,8 @@ export const EstimateBox: React.FC<Props> = ({
           {spent(lowUsd)} to {spent(highUsd)}
         </span>
       </div>
-      <p>Most rows cost less than the high end. {missNote}</p>
+      {reused && <p data-testid="enrich-reuse-line">{reused}</p>}
+      {!allReused && <p>Most rows cost less than the high end. {missNote}</p>}
       {estimate.list && <ListRowsLine list={estimate.list} dest={listDest || 'the other sheet'} />}
       {spendLimit !== null && spendLimit < highUsd && (
         <p>The run pauses at {limitText(spendLimit)}, your limit for this run.</p>

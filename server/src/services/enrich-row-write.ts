@@ -11,6 +11,8 @@ import { withFill } from '../lib/answer-store';
 import { listCell } from '../lib/enrich-list';
 import type { ResponseMapping } from '../lib/http-request-template';
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
+import { answerTime, noteReusedRow } from './enrich-reuse';
+import { nowDate } from '../lib/clock';
 import type { HTTPRunRow } from './http-runner-status';
 
 export interface EnrichWrite {
@@ -22,6 +24,10 @@ export interface EnrichWrite {
   mapping: ResponseMapping[];
   costMicro: number;
   request: Record<string, unknown>;
+  // The lookup a found answer from this row's own calls answers, for later
+  // runs to reuse (lib/enrich-reuse-key.ts); null: nothing to reuse.
+  reuseKey?: string | null;
+  reused?: boolean;           // filled from an earlier run's answer (counted on the run)
   // A list job's results and the source row's copied cells: journaled here, in
   // the result's transaction, and added as rows by the API process
   // (services/enrich-list-drain.ts). Workers never append rows themselves.
@@ -63,17 +69,21 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
     const lost = !!w.list && !journal(w, cells);
     db.prepare(`
       INSERT INTO http_results (id, run_id, user_id, row_index, request_config, response_data, extracted_fields,
-        status, error_message, cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, error_message, cost_usd, reuse_key, answered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(run_id, row_index) DO UPDATE SET
         request_config = excluded.request_config, response_data = excluded.response_data,
         extracted_fields = excluded.extracted_fields, status = excluded.status,
-        error_message = excluded.error_message, cost_usd = excluded.cost_usd, updated_at = datetime('now')
+        error_message = excluded.error_message, cost_usd = excluded.cost_usd, reuse_key = excluded.reuse_key,
+        answered_at = excluded.answered_at, updated_at = datetime('now')
     `).run(
       uuidv4(), w.run.id, w.run.user_id, w.rowIndex, JSON.stringify(w.request),
       w.stored === undefined ? null : JSON.stringify(withFill(w.stored, w.cells.fill)), JSON.stringify(cells),
       lost ? 'failed' : w.cells.status, lost ? NO_DEST : w.cells.reason?.slice(0, 500) ?? null, w.costMicro / 1e6,
+      // A key only on a stored, completed answer (migration 032's rule).
+      ...(w.reuseKey && !lost && w.stored !== undefined ? [w.reuseKey, answerTime(nowDate())] : [null, null]),
     );
+    if (w.reused) noteReusedRow(w.run.id, w.run.user_id);
     writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells));
     touchSheet(w.run.sheet_id, w.run.user_id);
     written = true;

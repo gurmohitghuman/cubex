@@ -77,7 +77,9 @@ export const TestStep: React.FC<Props> = (p) => {
     ? 'No fields to pick yet: no test row returned results. Go back to setup to run on the next rows.' : null
   const blocked = waiting ?? m.problem ?? nothingFound ?? m.fullProblem
   // Like Set up's full run: a confirm with the estimate, and the limit it quotes is kept.
-  const quote = { draft: p.draft, rows: m.rows, estimate: est, unpriced: billed, listDest: m.listDestName }
+  const quote = {
+    draft: p.draft, rows: m.rows, estimate: est, unpriced: billed, listDest: m.listDestName, reuse: m.reuse,
+  }
   const chain = useChainedAutorun(p.sheetId, confirming, p.draft, m.rows, est, m.listDestName)
   const more = () => start(runRequest(p.draft, {
     mode: effectiveMode(p.draft.rowsMode, m.counts), selectedRows: p.selectedRows, test: false, order: m.order,
@@ -123,7 +125,8 @@ export const TestStep: React.FC<Props> = (p) => {
           balance={m.data.balance} spendLimit={p.draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys}
           blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider}
           listDest={m.listDestName}
-          label={m.rows === null ? undefined : `Estimated for the other ${plural(m.rows, 'row')}`} />
+          label={m.rows === null ? undefined : `Estimated for the other ${plural(m.rows, 'row')}`}
+          reuse={m.reuse} />
       )}
 
       <div className="flex flex-col items-end gap-1 pt-4 border-t border-gray-200">

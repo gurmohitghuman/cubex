@@ -34,6 +34,7 @@ export interface RunCtx {
   sameLookup: Map<string, { rowIndex: number; result: Promise<StepResult> }>;
   cooldown: Cooldown;                     // providers its waterfalls leave out for now (enrich-providers.ts)
   providerNames?: Record<string, string>; // treg's provider ids -> the names the run shows
+  reuseDays?: number;                     // found answers this young are reused (0: call every row)
 }
 
 export type StepResult =

@@ -1,7 +1,7 @@
-import { APIRequestContext, expect, request as pwRequest } from '@playwright/test'
+import { APIRequestContext, expect, request as pwRequest, test } from '@playwright/test'
 import path from 'path'
 import { createRequire } from 'module'
-import { importCsv } from './helpers'
+import { authedApi, importCsv } from './helpers'
 import { TREG, MOCK_TEAM_KEY, mockTreg, setTregKey } from './helpers-treg'
 
 // Enrichment run helpers: a lead sheet, run starts through the API (the same
@@ -23,6 +23,19 @@ export async function seedCsv(api: APIRequestContext, csv: string): Promise<{ ta
 
 export const seedLeadRows = (api: APIRequestContext, leads: Lead[]) =>
   seedCsv(api, ['Name,Website', ...leads.map(l => `${l.Name},${l.Website}`)].join('\n'))
+
+// For a spec file whose runs must call treg for every row (charges, budgets, a
+// slow mock keeping a run going): found answers aren't reused there
+// (enrich-reuse.spec.ts covers that), and are again after the file.
+export function callEveryRow() {
+  const days = async (n: number) => {
+    const api = await authedApi()
+    expect((await api.put('/api/settings/enrich-reuse', { data: { days: n } })).ok()).toBeTruthy()
+    await api.dispose()
+  }
+  test.beforeEach(() => days(0))
+  test.afterAll(() => days(30))
+}
 
 // A fresh mock and the team key, before each run spec.
 export async function freshTreg(api: APIRequestContext, state: Record<string, unknown> = {}) {

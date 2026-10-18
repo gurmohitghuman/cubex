@@ -71,8 +71,10 @@ export async function verifiedEmailRow(
   const done = (cells: RowCells): RowResult => ({ cells, stored: trimAnswer(cells.answer, true), costMicro: spent });
   const accept = (j: Judged): RowResult => done({
     status: 'completed', statusCell: acceptedCell(j.verdict), fill: 'all', reason: null,
+    // The verdict lets a later run reuse this row whole (lib/enrich-reuse-key.ts).
     answer: withCubex(lastAnswer ?? {}, {
-      email: j.email, email_status: statusLabel(j.verdict), found_by: j.foundBy, checked_by: j.checkedBy, steps,
+      email: j.email, email_status: statusLabel(j.verdict), verdict: j.verdict, found_by: j.foundBy,
+      checked_by: j.checkedBy, steps,
     }),
   });
   const keep = (j: Judged) => { if (!best || VERDICT_RANK[j.verdict] > VERDICT_RANK[best.verdict]) best = j; };

@@ -7,6 +7,7 @@ import { ENRICH_CELL, enrichCellValues, failedCell, type RowCells } from './enri
 import { providerOf, type TregMeta } from './treg-meta';
 import type { ResponseMapping } from './http-request-template';
 import { itemsOf, type EnrichListConfig } from './enrich-list';
+import type { ReusedFrom } from './enrich-reuse-key';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -23,6 +24,15 @@ export function waterfallOutcome(body: unknown, meta: TregMeta): 'hit' | 'miss' 
   return meta.routeCapped ? 'capped' : 'miss';
 }
 
+// A copied answer's notes: the row of this run it came from, or the earlier
+// run's answer it reuses (services/enrich-reuse.ts).
+function sharedNotes(sameAsRow: number | null, reusedFrom?: ReusedFrom | null): Json {
+  return {
+    ...(sameAsRow !== null ? { same_as_row_index: sameAsRow } : {}),
+    ...(reusedFrom ? { reused_from: reusedFrom } : {}),
+  };
+}
+
 // The answer outputs read: treg's body plus what Cubex adds under _cubex.
 export function withCubex(body: unknown, extra: Json): unknown {
   return isObj(body) ? { ...body, _cubex: { ...(isObj(body._cubex) ? body._cubex : {}), ...extra } } : body;
@@ -30,9 +40,9 @@ export function withCubex(body: unknown, extra: Json): unknown {
 
 export function answerCells(a: {
   routed: boolean; body: unknown; meta: TregMeta; providerNames: Record<string, string>;
-  mapping: ResponseMapping[]; sameAsRow: number | null;
+  mapping: ResponseMapping[]; sameAsRow: number | null; reusedFrom?: ReusedFrom | null;
 }): RowCells {
-  const shared = a.sameAsRow !== null ? { same_as_row_index: a.sameAsRow } : {};
+  const shared = sharedNotes(a.sameAsRow, a.reusedFrom);
   if (a.routed) {
     const outcome = waterfallOutcome(a.body, a.meta);
     const t = isObj(a.body) && isObj(a.body._treg) ? a.body._treg : {};
@@ -82,9 +92,9 @@ export function missingCells(missing: string): RowCells {
 // written with the journal row (services/enrich-row-write.ts).
 export function listAnswerCells(a: {
   routed: boolean; body: unknown; meta: TregMeta; providerNames: Record<string, string>;
-  list: EnrichListConfig; sameAsRow: number | null;
+  list: EnrichListConfig; sameAsRow: number | null; reusedFrom?: ReusedFrom | null;
 }): { cells: RowCells; items: unknown[] } {
-  const shared = a.sameAsRow !== null ? { same_as_row_index: a.sameAsRow } : {};
+  const shared = sharedNotes(a.sameAsRow, a.reusedFrom);
   const outcome = a.routed ? waterfallOutcome(a.body, a.meta) : 'hit';
   const items = outcome === 'hit' ? itemsOf(a.body, a.list.itemsPath, a.list.maxItems) : [];
   const t = isObj(a.body) && isObj(a.body._treg) ? a.body._treg : {};

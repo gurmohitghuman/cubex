@@ -54,6 +54,7 @@ async function main() {
   const { readTregMeta } = await import('../../server/src/lib/treg-meta')
   const { idempotencyKey } = await import('../../server/src/lib/enrich-request')
   const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
+  const { setReuseDays } = await import('../../server/src/services/enrich-reuse')
   type Run = import('../../server/src/services/http-runner-status').HTTPRunRow
   type Config = import('../../server/src/lib/enrich-run-config').EnrichRunConfig
   runMigrations()
@@ -69,6 +70,9 @@ async function main() {
   db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
   db.prepare('INSERT INTO tables (id, user_id, name) VALUES (?,?,?)').run(tableId, uid, 'T')
   saveTregToken(uid, 'treg_test_key')
+  // Runs here ask about the same addresses again: each must call treg, not
+  // reuse what an earlier run found (enrich-reuse.test.ts covers that).
+  setReuseDays(uid, 0)
   const TOOL = {
     id: 'treg.people.email.verify', method: 'POST', identitySets: null, derive: null, queryArrayEncoding: null,
     inputs: [{ name: 'email', in: 'body', type: 'string', required: true }],

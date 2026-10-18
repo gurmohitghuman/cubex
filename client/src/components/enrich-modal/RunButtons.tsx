@@ -5,12 +5,13 @@ import { plural } from '@/lib/utils'
 import { formatCost } from '@/components/ai-modal/format'
 import { spent } from '@/lib/enrich-format'
 import { ENRICH_TEST_ROWS } from '@/lib/constants'
-import type { EnrichEstimate } from '@/utils/api'
+import type { EnrichEstimate, EnrichReuseCount } from '@/utils/api'
 import { type OnStarted, effectiveMode, type EnrichDraft, type RowCounts } from './draft'
-import { canTest, continuing, rowsPhrase, runRequest, runStatusOf } from './run-request'
+import { canTest, continuing, quotedLimit, rowsPhrase, runRequest, runStatusOf } from './run-request'
 import { useRunStart } from './useRunStart'
 import { useChainedAutorun } from './useChainedAutorun'
 import { CHAIN_LOADING } from './chain-copy'
+import { reuseConfirmLine } from './reuse-copy'
 
 interface Props {
   sheetId: string
@@ -34,21 +35,21 @@ interface Props {
   onFieldError?: (field: string, message: string) => void
   // A list job's destination sheet, for the confirm's "May add up to N rows".
   listDest?: string | null
+  // Rows that reuse an earlier found answer at no cost.
+  reuse?: EnrichReuseCount | null
 }
 
-// The run limit a full run shows and keeps: the one typed, else the estimate's high end.
-export const quotedLimit = (p: Pick<Props, 'draft' | 'estimate' | 'unpriced'>): number | null =>
-  (p.unpriced ? null : p.draft.spendLimitUsd ?? p.estimate?.estimate.highUsd ?? null)
+export { quotedLimit }
 
 // The confirm before a full run repeats the estimate for the rows it takes,
 // then the auto-runs the run sets off (`chain`, chain-copy.ts).
 export function confirmMessage(
-  p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest'>, chain = '',
+  p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest' | 'reuse'>, chain = '',
 ): string {
   return `${runMessage(p)}${chain ? ` ${chain}` : ''}`
 }
 
-function runMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest'>): string {
+function runMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 'listDest' | 'reuse'>): string {
   const title = p.draft.card?.title ?? 'this enrichment'
   const more = continuing(p.draft)
   const status = runStatusOf(p.draft)
@@ -58,11 +59,12 @@ function runMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 
   const again = !more || status === 'not_enriched' ? ''
     : list ? ' The rows each one added before are replaced.'
       : p.rows === 1 ? ' Its current result is replaced.' : ' Their current results are replaced.'
-  if (p.unpriced) return `${what}${again} Your provider bills these calls directly.`
+  const reused = p.reuse ? reuseConfirmLine(p.reuse.rows, p.reuse.complete) : ''
+  if (p.unpriced) return `${what}${again}${reused} Your provider bills these calls directly.`
   const est = p.estimate?.estimate
   const limit = quotedLimit(p)
   const daily = p.estimate?.dailyLimit
-  return `${what}${again} Estimated ${spent(est?.lowUsd ?? 0)} to ${spent(est?.highUsd ?? 0)}.`
+  return `${what}${again}${reused} Estimated ${spent(est?.lowUsd ?? 0)} to ${spent(est?.highUsd ?? 0)}.`
     + (limit !== null ? ` The run stops at ${formatCost(limit)}.` : '')
     + (daily?.limitUsd != null
       ? ` Today's limit: ${formatCost(daily.limitUsd)}, ${formatCost(daily.remainingUsd ?? 0)} left.` : '')

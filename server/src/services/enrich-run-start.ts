@@ -19,7 +19,7 @@ import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
 import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
 import { applyListStart, listRowsBeingAdded } from './enrich-list-start';
-import { activeRunOn, prepareEnrichmentStart } from './enrich-run-prepare';
+import { activeRunOn, prepareEnrichmentStart, seedPlanFor } from './enrich-run-prepare';
 
 // destSheetId: where a list job's rows go (a new sheet is made by the start).
 // rowsInScope: the most rows the run can take (seeding skips rows missing an input).
@@ -42,7 +42,7 @@ export async function startEnrichmentRun(
   if (!getTregToken(userId)) return { fail: 'conflict', message: 'Add your treg key in Settings first.' };
   const prepared = await prepareEnrichmentStart(userId, sheetId, input);
   if ('fail' in prepared) return prepared;
-  const { statusColumn, outputNames, config, listPlan, columns, span, upperBound, rule } = prepared.ok;
+  const { statusColumn, outputNames, config, listPlan, columns, span, upperBound } = prepared.ok;
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
 
@@ -100,10 +100,7 @@ export async function startEnrichmentRun(
     }
     seedEnrichmentThenEnqueue({
       runId, sheetId, userId, columns: runColumns,
-      plan: {
-        statusColumn: input.continueColumn ? statusColumn : null, status: input.rows.status,
-        where: input.conditions, rule: rule?.tree ?? null, config, columns,
-      },
+      plan: seedPlanFor(input, prepared.ok),
       rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,
       lastRow: span.lastRow, test: input.rows.test,

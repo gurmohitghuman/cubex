@@ -9,6 +9,12 @@ export interface EnrichDailyLimit {
   remainingUsd: number | null
 }
 
+// How many days a found enrichment answer is reused before a row calls again (0: off).
+export interface EnrichReuseSetting {
+  days: number
+  maxDays: number
+}
+
 export interface TregKeyTestResult {
   valid: boolean
   message: string

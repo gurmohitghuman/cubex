@@ -44,6 +44,9 @@ export interface EnrichmentBlock {
   route: EnrichRoute;
   cleanDomains: boolean;
   fresh: boolean;
+  // This run alone calls every row, reusing no earlier found answer
+  // (services/enrich-reuse.ts); reruns and auto-run don't repeat it.
+  noReuse?: boolean;
   // The per-row cap sent as X-Treg-Route-Max-Cost (the email loop's budget for
   // all its calls); null for a tool with no known price, which the provider bills.
   maxCostPerRowUsd: number | null;

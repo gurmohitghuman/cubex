@@ -9,6 +9,7 @@ import { inputTemplates, isEnrichmentConfig, type EnrichRunConfig } from '../lib
 import { jsonPath } from '../lib/sql-rows';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { runSpentMicro } from './enrich-ledger';
+import { reusedRows } from './enrich-reuse';
 import { dailyLimitView, type DailyLimitView } from './treg-key';
 import { resumeRun, type ControlOutcome } from './run-lifecycle';
 import { destFullMessage, destRoom } from './enrich-list-room';
@@ -26,6 +27,8 @@ export interface EnrichRunStatus {
   statusColumn: string | null; outputColumns: string[]; toolName: string; preset: string | null;
   test: number | null;
   totalRows: number; processedRows: number; skippedRows: number;
+  // Rows filled from a found answer an earlier run stored, at no cost.
+  reusedRows: number;
   rows: { completed: number; failed: number };
   spentUsd: number; spendLimitUsd: number | null; maxCostPerRowUsd: number | null;
   dailyLimit: DailyLimitView;
@@ -139,7 +142,7 @@ export function enrichRunStatus(runId: string, userId: string): EnrichRunStatus 
     statusColumn: row.master_column_name, outputColumns: config.responseMapping.map(m => m.columnName),
     toolName: e.toolName, preset: e.preset, test: e.rows.test,
     totalRows: Number(row.total_rows ?? 0), processedRows: Number(row.processed_rows ?? 0),
-    skippedRows: Number(row.skipped_rows ?? 0),
+    skippedRows: Number(row.skipped_rows ?? 0), reusedRows: reusedRows(runId, userId),
     rows: { completed: n('completed'), failed: n('failed') },
     spentUsd: runSpentMicro(runId, userId) / 1e6, spendLimitUsd: e.spendLimitUsd, maxCostPerRowUsd: e.maxCostPerRowUsd,
     dailyLimit: dailyLimitView(userId),

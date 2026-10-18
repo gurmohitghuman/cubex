@@ -18,6 +18,9 @@ export interface EnrichAnswerInfo {
   foundBy: string | null; access: Access | null;
   costUsd: number | null;       // what the row's answer cost (a replay counts its first charge)
   sameLookup: boolean;          // reused another row's identical lookup in the run: no call of its own
+  // Filled from a found answer an earlier run stored (services/enrich-reuse.ts):
+  // when treg gave it, and the sheet it was bought for (null: deleted since).
+  reused: { answeredAt: string; sheetId: string | null; sheetName: string | null } | null;
   calls: CallStep[];
   tried: TriedProvider[];
 }
@@ -60,6 +63,13 @@ export function readAnswer(
   return db.transaction(() => readAnswerNow(userId, sheetId, column, rowIndex))();
 }
 
+const reusedInfo = (userId: string, from: unknown): EnrichAnswerInfo['reused'] => {
+  if (!isObj(from) || typeof from.answered_at !== 'string' || typeof from.sheet_id !== 'string') return null;
+  const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+    .get(from.sheet_id, userId) as string | undefined;
+  return { answeredAt: from.answered_at, sheetId: name === undefined ? null : from.sheet_id, sheetName: name ?? null };
+};
+
 function readAnswerNow(
   userId: string, sheetId: string, column: string, rowIndex: number,
 ): { ok: AnswerView } | RunFail {
@@ -99,10 +109,13 @@ function readAnswerNow(
       ORDER BY created_at, rowid LIMIT ?`).all(run.id, row.id, userId, LEDGER_MAX) as LedgerRow[];
     const body = stored.body;
     const cubex = isObj(body) && isObj(body._cubex) ? body._cubex : {};
+    const reused = reusedInfo(userId, cubex.reused_from);
     view.enrichment = {
       toolId: e.toolId, toolName: e.toolName, ...answerSource(body), costUsd: hit.cost_usd,
-      sameLookup: typeof cubex.same_as_row_index === 'number',
-      calls: callSteps(ledger, body, e.providerNames), tried: triedProviders(body, e.providerNames),
+      sameLookup: typeof cubex.same_as_row_index === 'number', reused,
+      calls: callSteps(ledger, body, e.providerNames),
+      // A reused answer's providers were asked (and paid) by the earlier run, not this row.
+      tried: reused ? [] : triedProviders(body, e.providerNames),
     };
   }
   return { ok: view };

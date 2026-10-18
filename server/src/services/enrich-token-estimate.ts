@@ -1,12 +1,14 @@
 // run_enrichment's estimate_only (MCP and /api/v1): the start's own checks
 // (services/enrich-run-prepare.ts) and the drawer's estimate figures for the
-// rows the run would take. A pure read: nothing is created, no treg tool is
-// called (the catalog and the balance are reads).
+// rows the run would take, rows that reuse an earlier found answer at $0 left
+// out of the price. A pure read: nothing is created, no treg tool is called
+// (the catalog and the balance are reads).
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { prepareEnrichmentStart } from './enrich-run-prepare';
 import { estimateEnrichment, readEnrichBalance } from './enrich-setup';
 import { getTregToken } from './treg-key';
 import { dailyLimitOf } from './enrich-agent-shared';
+import { countReusable, reuseJobFor } from './enrich-reuse-count';
 import type { RunFail } from './run-shared';
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -19,8 +21,10 @@ export async function agentEnrichEstimate(
   const { config, upperBound, statusColumn, outputNames, listPlan } = prepared.ok;
   const e = config.enrichment;
   const list = input.list;
+  const reuse = await countReusable(userId, reuseJobFor(userId, sheetId, input, prepared.ok));
   const est = await estimateEnrichment(userId, {
-    toolId: input.toolId, rows: upperBound, preset: input.preset, given: Object.keys(input.inputs).sort(),
+    toolId: input.toolId, rows: Math.max(0, upperBound - reuse.rows), preset: input.preset,
+    given: Object.keys(input.inputs).sort(),
     skip: input.skipProviders, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
     maxCostPerRowUsd: e.maxCostPerRowUsd, limit: null,
     list: list ? { provider: list.provider, maxItems: list.maxItems, destSheetId: listPlan?.sheetId ?? null } : null,
@@ -44,12 +48,20 @@ export async function agentEnrichEstimate(
       + 'provider bills it, so there are no figures and no run limit.');
   }
   notes.push('rows_to_process counts rows missing an input too; the run skips those and leaves their status empty.');
+  if (reuse.rows > 0) {
+    notes.push(`${reuse.complete ? '' : 'At least '}${reuse.rows} of these rows reuse a found answer from the last `
+      + `${reuse.days} days at $0 (no call); the cost covers the other rows. fresh: true calls every row again.`);
+  }
   return {
     ok: {
       estimate_only: true,
       tool: { id: e.toolId, name: e.toolName, kind: e.kind, preset: e.preset },
       status_column: statusColumn, output_columns: outputNames,
       rows_to_process: upperBound, test_rows: e.rows.test,
+      // Rows that reuse a found answer at $0 (complete false: a floor, counted for a while on a big run).
+      reuse: {
+        rows: reuse.rows, complete: reuse.complete, checked_rows: reuse.checked, days: reuse.days, fresh: e.fresh,
+      },
       price_known: priceKnown,
       estimated_cost_usd: priceKnown ? { low: estimate.lowUsd, high: estimate.highUsd } : null,
       per_row_usd: priceKnown ? { low: estimate.perRowLowUsd, high: estimate.perRowHighUsd } : null,

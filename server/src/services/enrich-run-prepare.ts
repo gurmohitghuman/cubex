@@ -19,6 +19,7 @@ import { manualListLoop } from './autorun-list';
 import type { DestPlan } from './enrich-list-dest';
 import { checkRunRule } from './run-rule';
 import type { CheckedRule, RuleNode } from '../lib/run-condition';
+import type { SeedPlan } from '../lib/enrich-seed';
 
 export interface PreparedStart {
   statusColumn: string;
@@ -34,6 +35,15 @@ export interface PreparedStart {
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
+
+// Which rows the run takes (seeding's check, lib/enrich-seed.ts), as the start
+// seeds them and the estimates count them.
+export function seedPlanFor(input: EnrichRunInput, p: PreparedStart): SeedPlan {
+  return {
+    statusColumn: input.continueColumn ? p.statusColumn : null, status: input.rows.status,
+    where: input.conditions, rule: p.rule?.tree ?? null, config: p.config, columns: p.columns,
+  };
+}
 
 // The enrichment that owns `name` as its status column, if any.
 function enrichmentColumnOwner(sheetId: string, userId: string, name: string): boolean {

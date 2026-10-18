@@ -60,6 +60,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'with control_run (first_rows reruns only the sheet\'s top rows, a test before a big run). Enrich with treg.to data (work emails, phones, person and company data, lists of ' +
         'people or companies as rows in another sheet): search_enrichments, get_enrichment, then ' +
         'run_enrichment, which costs money per row: estimate_only first, and tell the user the daily_limit. ' +
+        'A lookup an earlier run found is reused at $0 for the days set in Settings (estimate_only says how ' +
+        'many rows; fresh:true calls again). ' +
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
         'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
         'with include_status. Saved views (get_sheet lists them) are named filters plus hidden columns: pass ' +

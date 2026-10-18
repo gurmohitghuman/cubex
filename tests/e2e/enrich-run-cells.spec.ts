@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { authedApi } from './helpers'
 import { mockTreg } from './helpers-treg'
-import { expectBilledOnce, freshTreg, ledger, mockBilling, resultsOf, rowsOf, seedCsv, seedLeadRows, startRun, waitRun } from './helpers-enrich'
+import {
+  callEveryRow, expectBilledOnce, freshTreg, ledger, mockBilling, resultsOf, rowsOf, seedCsv, seedLeadRows, startRun,
+  waitRun,
+} from './helpers-enrich'
 
 // What enrichment cells say and cost (plan Verification 6, 15, 19, 20, 29):
 // budget ran out, an unreachable treg, the same lookup made once, rows without
@@ -15,6 +18,7 @@ const findRun = (over: Record<string, unknown> = {}) => ({
   rows: { mode: 'all', test: false }, conditions: [], maxCostPerRowUsd: null, spendLimitUsd: null, fresh: false, ...over,
 })
 const calls = async (tool: string) => (await mockTreg.requests()).filter(r => r.path === `/call/${tool}`)
+callEveryRow()
 
 test('over the per-row budget: "Budget ran out", nothing charged', async () => {
   const api = await authedApi()

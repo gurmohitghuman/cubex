@@ -1,5 +1,6 @@
-// One enrichment row: build treg's request from the row's cells, call it (one
-// step, or the Verified work email loop), then write the result. A row whose
+// One enrichment row: build treg's request from the row's cells, reuse a found
+// answer to the same lookup an earlier run stored (services/enrich-reuse.ts) or
+// call it (one step, or the Verified work email loop), then write the result. A row whose
 // run was stopped meanwhile (paused, cancelled, a limit, an unreachable treg)
 // writes nothing and keeps its ⏳, so the resume picks it up and re-sends the
 // same Idempotency-Key: treg replays a paid answer for free.
@@ -11,10 +12,15 @@ import { copyValues } from '../lib/enrich-list';
 import type { TregMeta } from '../lib/treg-meta';
 import { failedCell, type RowCells } from '../lib/enrich-cells';
 import { trimAnswer } from '../lib/answer-trim';
+import {
+  answerPathsOf, freshBody, reusableAnswer, reusedEmailCells, reuseKeyOf, rowParts, wholeFor, withNotes,
+  type ReusedFrom,
+} from '../lib/enrich-reuse-key';
 import { keyScope, runStep, type RunCtx, type StepResult } from './enrich-step';
 import { verifiedEmailRow } from './enrich-verified-email';
 import { recoverPaidAnswer } from './enrich-recover';
 import { recordCall } from './enrich-ledger';
+import { findReusable, reuseSince } from './enrich-reuse';
 import { writeEnrichmentResult } from './enrich-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -22,24 +28,49 @@ export interface EnrichRow { rowIndex: number; rowId: string | null; data: Recor
 
 // What a row produced: cells to write, or nothing (the run stopped). A list
 // job's results (items) are journaled with them, to become rows elsewhere.
-export interface RowResult { cells: RowCells; stored: unknown; costMicro: number; items?: unknown[] }
+// copied: the answer of another row of this run; reused: an earlier run's.
+export interface RowResult {
+  cells: RowCells; stored: unknown; costMicro: number; items?: unknown[]; copied?: boolean; reused?: boolean;
+}
+
+// A reused answer's headers: nothing was called, so nothing was charged.
+const REUSED_META: TregMeta = { ...readTregMeta({}), costMicro: 0 };
 
 // An answer as the row's cells: outputs, or a list job's results.
 function answered(
   config: EnrichRunConfig, routed: boolean, body: unknown, meta: TregMeta, sameAsRow: number | null,
-  costMicro: number,
+  costMicro: number, reusedFrom: ReusedFrom | null = null,
 ): RowResult {
   const e = config.enrichment;
+  const copied = sameAsRow !== null;
   if (e.list) {
     const { cells, items } = listAnswerCells({
-      routed, body, meta, providerNames: e.providerNames, list: e.list, sameAsRow,
+      routed, body, meta, providerNames: e.providerNames, list: e.list, sameAsRow, reusedFrom,
     });
-    return { cells, stored: trimAnswer(cells.answer, routed), costMicro, items };
+    return { cells, stored: trimAnswer(cells.answer, routed), costMicro, items, copied };
   }
   const cells = answerCells({
-    routed, body, meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow,
+    routed, body, meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow, reusedFrom,
   });
-  return { cells, stored: trimAnswer(cells.answer, routed), costMicro };
+  return { cells, stored: trimAnswer(cells.answer, routed), costMicro, copied };
+}
+
+// A found answer to the same lookup an earlier run stored, read into this
+// row's cells at $0 (null: none young enough, reuse is off for the run, or the
+// answer lost a part this run reads, a cut or pruned raw part: then it calls).
+function reusedRow(ctx: RunCtx, config: EnrichRunConfig, built: Built): RowResult | null {
+  const since = reuseSince(ctx.reuseDays ?? 0);
+  if (!since) return null;
+  const found = findReusable(ctx.userId, reuseKeyOf(config, built), since, ctx.runId);
+  if (!found || !wholeFor(answerPathsOf(config), found.notes)) return null;
+  if (config.enrichment.email) {
+    const cells = reusedEmailCells(found.body, found.from);
+    if (!cells) return null;
+    return { cells, stored: withNotes(trimAnswer(cells.answer, true), found.notes), costMicro: 0, reused: true };
+  }
+  const routed = config.enrichment.kind === 'waterfall';
+  const r = answered(config, routed, freshBody(found.body), REUSED_META, null, 0, found.from);
+  return { ...r, stored: withNotes(r.stored, found.notes), reused: true };
 }
 
 type Built = Extract<BuiltRequest, { ok: true }>;
@@ -64,10 +95,7 @@ async function singleStep(
   const e = config.enrichment;
   const routed = e.kind === 'waterfall';
   const route = routed ? e.route : { prefer: [], exclude: [], stopAtFirst: false };
-  const parts = {
-    method: built.method, path: built.path, query: built.query, body: built.body,
-    prefer: route.prefer, exclude: route.exclude,
-  };
+  const parts = rowParts(config, built);
   if (!routed) {
     const recovered = await recoverPaidAnswer(ctx, row.rowId, row.rowIndex, e.toolId, parts);
     if (recovered) {
@@ -101,15 +129,24 @@ async function singleStep(
   return null;
 }
 
+// freeOnly: only a row that costs nothing runs (a found answer to reuse, or
+// inputs missing); any other is left ⏳ (a limit stopped the run, enrich-runner.ts).
+// Returns whether the row's result was written.
 export async function processEnrichmentRow(
   ctx: RunCtx, run: HTTPRunRow, config: EnrichRunConfig, row: EnrichRow, columns: string[], generation: number,
-): Promise<void> {
+  freeOnly = false,
+): Promise<boolean> {
   const req = rowRequest(config, row, columns);
   let result: RowResult | null;
   if ('cells' in req) result = { cells: req.cells, stored: undefined, costMicro: 0 };
-  else if (config.enrichment.email) result = await verifiedEmailRow(ctx, config, row, req.built);
-  else result = await singleStep(ctx, config, row, req.built);
-  if (!result) return;
+  else result = reusedRow(ctx, config, req.built) ?? (freeOnly ? null : config.enrichment.email
+    ? await verifiedEmailRow(ctx, config, row, req.built) : await singleStep(ctx, config, row, req.built));
+  if (!result) return false;
+  // A found answer this row's own calls bought may be reused by later runs.
+  const e = config.enrichment;
+  const how = { list: !!e.list, routed: e.kind === 'waterfall' || !!e.email, mapped: config.responseMapping.length > 0 };
+  const reuseKey = 'built' in req && !result.reused && !result.copied && reusableAnswer(result, how)
+    ? reuseKeyOf(config, req.built) : null;
   const request = 'built' in req
     ? {
       toolId: config.enrichment.toolId, method: req.built.method, path: req.built.path, query: req.built.query,
@@ -117,9 +154,9 @@ export async function processEnrichmentRow(
     }
     : { toolId: config.enrichment.toolId };
   const list = config.enrichment.list;
-  writeEnrichmentResult({
+  return writeEnrichmentResult({
     run, generation, rowIndex: row.rowIndex, cells: result.cells, stored: result.stored,
-    mapping: config.responseMapping, costMicro: result.costMicro, request,
+    mapping: config.responseMapping, costMicro: result.costMicro, request, reuseKey, reused: !!result.reused,
     ...(list && result.items?.length
       ? { list: { items: result.items, copy: copyValues(list, row.data), rowId: row.rowId } } : {}),
   });

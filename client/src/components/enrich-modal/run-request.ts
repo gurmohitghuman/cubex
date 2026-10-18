@@ -1,6 +1,6 @@
 // The run-start request built from the drawer's draft (pure), in the shape
 // server/src/lib/enrich-run-input.ts parses.
-import type { EnrichRunRequest } from '@/utils/api'
+import type { EnrichEstimate, EnrichReuseCount, EnrichRunRequest } from '@/utils/api'
 import { plural } from '../../lib/utils'
 import type { EnrichDraft, RowsMode, RowsStatus } from './draft'
 import { listRequest } from './list-draft'
@@ -69,6 +69,22 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
     fresh: d.fresh,
     ...(c.mode === 'selected' && c.rowGeneration !== undefined ? { rowGeneration: c.rowGeneration } : {}),
   }
+}
+
+// The run limit a full run shows and keeps: the one typed, else the estimate's
+// high end. Rows that reuse found answers cost nothing, so with some reusing it
+// keeps one row more (an answer can go stale before the run); never $0, which
+// the start refuses: then it's sized at the start from the rows.
+export function quotedLimit(p: {
+  draft: Pick<EnrichDraft, 'spendLimitUsd'>; estimate: EnrichEstimate | null; unpriced: boolean
+  reuse?: EnrichReuseCount | null
+}): number | null {
+  if (p.unpriced) return null
+  if (p.draft.spendLimitUsd !== null) return p.draft.spendLimitUsd
+  const est = p.estimate?.estimate
+  if (!est) return null
+  const quote = est.highUsd + ((p.reuse?.rows ?? 0) > 0 ? est.perRowHighUsd : 0)
+  return quote > 0 ? quote : null
 }
 
 // Columns a continuing run may reuse: its status column and its outputs.

@@ -11,8 +11,11 @@ import toolMod from '../../server/src/lib/enrich-tool'
 import { emptyDraft } from '../../client/src/components/enrich-modal/draft'
 import { buildSetup } from '../../client/src/components/enrich-modal/setup-defaults'
 import { applyRecall } from '../../client/src/components/enrich-modal/recall'
-import { canTest, rowsPhrase, runRequest } from '../../client/src/components/enrich-modal/run-request'
+import { canTest, quotedLimit, rowsPhrase, runRequest } from '../../client/src/components/enrich-modal/run-request'
 import { RERUN_STATUS, rerunMessage } from '../../client/src/components/enrich-modal/rerun-copy'
+import {
+  callAgainNote, reuseConfirmLine, reuseEstimateLine, reusedRunLine,
+} from '../../client/src/components/enrich-modal/reuse-copy'
 const { normalizeTool } = toolMod as typeof import('../../server/src/lib/enrich-tool')
 
 let failures = 0
@@ -73,7 +76,8 @@ check('a new run limit (sized to the rows it takes)', recalled.spendLimitUsd ===
 
 // --- Column menu confirm ------------------------------------------------------
 const est = {
-  column: 'Work email', toolName: 'Verified work email', rows: 12, priceKnown: true, lowUsd: 0.06, highUsd: 0.48,
+  column: 'Work email', toolName: 'Verified work email', rows: 12, reusedRows: 0, reuseComplete: true,
+  priceKnown: true, lowUsd: 0.06, highUsd: 0.48,
   maxCostPerRowUsd: 0.04, spendLimitUsd: 0.48, dailyLimit: { limitUsd: 10, usedTodayUsd: 1, remainingUsd: 9 },
 }
 const msg = rerunMessage('failed', est)
@@ -86,8 +90,41 @@ check('nothing to run says so', rerunMessage('failed', { ...est, rows: 0 }) === 
 check('one row reads as one', rerunMessage('selected', { ...est, rows: 1 }).includes('Its current result is replaced'))
 check('the provider bills: no figures',
   rerunMessage('all', { ...est, priceKnown: false }).includes('bills these calls directly'))
+const reusing = rerunMessage('all', { ...est, reusedRows: 5 })
+check('rows that reuse earlier answers: said, not charged again, and how to call them again',
+  reusing.includes('5 rows reuse earlier answers at no cost.') && !reusing.includes('each row costs again')
+  && reusing.includes('turn on Always call again'))
+check('... a floor says at least', rerunMessage('not_enriched', { ...est, reusedRows: 5, reuseComplete: false })
+  .includes('At least 5 rows reuse'))
+
+// --- Reuse in the run dialog ----------------------------------------------------
+const count = (rows: number, complete = true) => ({ rows, checked: 12, complete, days: 30 })
+check('the estimate says how many reuse and that it covers the rest',
+  reuseEstimateLine(count(5), 12) === '5 rows reuse answers found in the last 30 days, at no cost. '
+    + 'The estimate covers the other 7 rows.')
+check('... every row reusing', reuseEstimateLine(count(12), 12)?.startsWith('All 12 rows reuse answers') === true)
+check('... one row reads as one', reuseEstimateLine(count(1), 12)?.startsWith('1 row reuses an answer') === true)
+check('... nothing when none reuse', reuseEstimateLine(count(0), 12) === null && reuseEstimateLine(null, 12) === null)
+check('the confirm line', reuseConfirmLine(1, true) === ' 1 row reuses an earlier answer at no cost.'
+  && reuseConfirmLine(0, true) === '')
+check('Always call again names the days, or treg\'s store when reuse is off',
+  callAgainNote(30).includes('in the last 30 days') && callAgainNote(0).includes("treg can answer a repeat lookup"))
+check('the progress line', reusedRunLine(3) === '3 rows reused earlier answers, at no cost.')
+const priced = (highUsd: number) => ({
+  estimate: { rows: 3, lowUsd: 0, highUsd, perRowLowUsd: 0.01, perRowHighUsd: 0.05 }, defaultMaxCostPerRowUsd: 0.05,
+} as never)
+const plain = { spendLimitUsd: null }
+check('the quoted limit is the high end', quotedLimit({ draft: plain, estimate: priced(0.15), unpriced: false }) === 0.15)
+check('... one row more when rows reuse (an answer can go stale before the run)',
+  Math.abs((quotedLimit({ draft: plain, estimate: priced(0.1), unpriced: false, reuse: count(1) }) ?? 0) - 0.15) < 1e-9)
+check('... never $0 when every row reuses: the start sizes it then',
+  quotedLimit({ draft: plain, estimate: { estimate: { rows: 0, lowUsd: 0, highUsd: 0, perRowLowUsd: 0,
+    perRowHighUsd: 0 } } as never, unpriced: false, reuse: count(3) }) === null)
+check('... the one typed wins', quotedLimit({ draft: { spendLimitUsd: 2 }, estimate: priced(0.1), unpriced: false }) === 2)
+
 check('menu actions map to statuses', RERUN_STATUS.selected === 'any' && RERUN_STATUS.not_enriched === 'not_enriched')
-const all = [msg, rerunMessage('all', est), rerunMessage('selected', est)].join(' ')
+const all = [msg, rerunMessage('all', est), rerunMessage('selected', est), reusing, reuseEstimateLine(count(5), 12),
+  callAgainNote(30), callAgainNote(0)].join(' ')
 check('no em dashes in the copy', !all.includes(String.fromCharCode(0x2014)))
 
 if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }

@@ -6,6 +6,7 @@ import accessTokensRoutes from './settings-access-tokens';
 import tregRoutes from './settings-treg';
 import { authenticateToken } from '../middleware/auth';
 import { runWebhookRoutes } from './run-webhooks-routes';
+import reuseRoutes from './settings-reuse';
 
 const router = express.Router();
 router.use(openrouterRoutes);
@@ -16,5 +17,6 @@ router.use(tregRoutes);
 // "Run finished" webhooks: the signed-in account may read and change them.
 router.use('/run-webhooks', authenticateToken);
 router.use(runWebhookRoutes('/run-webhooks', () => (_req, _res, next) => next()));
+router.use(reuseRoutes);
 
 export default router;

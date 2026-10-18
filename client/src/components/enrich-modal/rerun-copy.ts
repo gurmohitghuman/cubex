@@ -6,6 +6,7 @@ import type { EnrichRerunEstimate, EnrichRowsStatus } from '@/utils/api'
 import { formatCost } from '../ai-modal/format'
 import { plural } from '../../lib/utils'
 import { spent } from '../../lib/enrich-format'
+import { reuseConfirmLine } from './reuse-copy'
 
 export type RerunAction = 'not_enriched' | 'failed' | 'selected' | 'all'
 
@@ -36,13 +37,17 @@ export function rerunMessage(action: RerunAction, e: EnrichRerunEstimate): strin
   if (e.rows === 0) return NOTHING[action].replace('{col}', e.column)
   // The confirm opens from the column's own menu: no need to name it again.
   const list = e.addsRowsTo ?? null
+  // Rows that reuse a found answer from an earlier run cost nothing again.
+  const reused = e.reusedRows > 0
+  const costs = reused ? '' : `, and ${e.rows === 1 ? 'it costs' : 'each row costs'} again`
   const replaced = action === 'not_enriched' ? ''
-    : list ? ` The rows ${e.rows === 1 ? 'it' : 'they'} added to ${list.name} before are replaced, `
-      + `and ${e.rows === 1 ? 'it costs' : 'each row costs'} again.`
-      : e.rows === 1 ? ' Its current result is replaced, and it costs again.'
-        : ' Their current results are replaced, and each row costs again.'
+    : list ? ` The rows ${e.rows === 1 ? 'it' : 'they'} added to ${list.name} before are replaced${costs}.`
+      : e.rows === 1 ? ` Its current result is replaced${costs}.` : ` Their current results are replaced${costs}.`
+  const reuse = !reused ? ''
+    : reuseConfirmLine(e.reusedRows, e.reuseComplete)
+      + (action === 'not_enriched' ? '' : ' To call them again, turn on Always call again in Edit enrichment.')
   const adds = list ? ` May add up to ${plural(list.addUpTo, 'row')} to ${list.name}.` : ''
-  const head = `Run ${e.toolName} on ${rowsText(action, e.rows)}?${replaced}${adds}`
+  const head = `Run ${e.toolName} on ${rowsText(action, e.rows)}?${replaced}${reuse}${adds}`
   if (!e.priceKnown) return `${head} Your provider bills these calls directly.`
   const daily = e.dailyLimit.limitUsd !== null
     ? ` Today's limit: ${formatCost(e.dailyLimit.limitUsd)}, ${formatCost(e.dailyLimit.remainingUsd ?? 0)} left.` : ''
