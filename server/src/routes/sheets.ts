@@ -20,6 +20,7 @@ import setupRoutes from './sheets-setups';
 import dedupeRoutes from './sheets-dedupe';
 import runsStopRoutes from './sheets-runs-stop';
 import viewsRoutes from './sheets-views';
+import usageRoutes from './sheets-usage';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
@@ -65,5 +66,6 @@ router.use(setupRoutes);
 router.use(dedupeRoutes);
 router.use(runsStopRoutes);
 router.use(viewsRoutes);
+router.use(usageRoutes);
 
 export default router;

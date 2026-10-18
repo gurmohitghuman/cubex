@@ -101,6 +101,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, all, or only the sheet's first rows with `first_rows`). `cancel_all` with a `sheet_id` stops every run and setup on that sheet at once. |
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
+| `get_usage` | What AI, HTTP API and enrichment runs ran and cost, by column (deleted ones too), day or run, for one sheet or the whole account, over this week, this month, last week, last month or two days you pick. Each row has runs, cells run, cells reused from earlier answers, the cost (OpenRouter, your own AI provider key, treg) and the cost per cell. Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
@@ -529,6 +530,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`;
 | Endpoint | Body or query |
 |---|---|
 | `GET /balances` | Same as `get_balances`. |
+| `GET /usage` | Same as `get_usage`: `?sheet_id=` (leave out for the whole account), `group_by` (`column`, `day` or `run`), `range` (`this_week`, `this_month`, `last_week`, `last_month`) or `from` and `to` (`2026-10-01`), `limit` (up to 1,000; totals always cover the whole range). `format=csv` downloads every row. Days are UTC, and a run counts on the day it started. `read` scope. |
 | `GET /enrichments` | `?q=work email`. Without `q`, the popular jobs. |
 | `GET /enrichments/:toolId` | A tool's inputs, outputs, price and providers. |
 | `POST /sheets/:id/enrichment-runs` | `run_enrichment`'s arguments (above). `202` with the `run_id`, plus `chained_auto_run` when auto-runs in the sheet read what the run writes (they fill those rows after it; HTTP ones send real requests); an estimate or a replay answers `200`. |

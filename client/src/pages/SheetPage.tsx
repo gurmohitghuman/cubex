@@ -270,6 +270,7 @@ export const SheetPage: React.FC = () => {
         onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
+        sheetId={activeSheet?.id ?? null} sheetName={activeSheet?.name ?? ''}
         autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}

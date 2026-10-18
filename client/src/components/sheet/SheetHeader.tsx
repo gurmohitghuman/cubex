@@ -1,3 +1,4 @@
+// Over 200 lines: the sheet's whole toolbar (runs, rows, data and enrich groups) in one bar.
 import React from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -7,6 +8,7 @@ import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
 import { SheetSetupsMenu } from './SheetSetupsMenu'
+import { SheetUsageButton } from './SheetUsageButton'
 import { ExportButton, type ExportScope } from '@/components/views/ExportButton'
 
 interface SheetHeaderProps {
@@ -44,6 +46,9 @@ interface SheetHeaderProps {
   onOpenWebhook: () => void
   // Auto-run's chip, shown while any column has auto-run on (components/autorun/AutorunChip).
   autorunChip?: React.ReactNode
+  // The sheet the Usage button reads (null: none open yet).
+  sheetId?: string | null
+  sheetName?: string
 }
 
 export const SheetHeader: React.FC<SheetHeaderProps> = ({
@@ -73,6 +78,8 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onAddHTTPColumn,
   onOpenWebhook,
   autorunChip,
+  sheetId,
+  sheetName,
 }) => {
   return (
     <header className="bg-white border-b border-gray-200 flex-shrink-0">
@@ -180,6 +187,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 <span>Remove duplicates</span>
               </button>
               <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} />
+              <SheetUsageButton sheetId={sheetId ?? null} sheetName={sheetName ?? ''} />
             </div>
 
             {/* Divider between data-management (Import/Export) and the enrich

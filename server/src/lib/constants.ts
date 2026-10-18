@@ -13,6 +13,8 @@ export * from './constants-curl';
 // HTTP column retries and the response code column; "run finished" webhooks.
 export * from './constants-http-retry';
 export * from './constants-run-hooks';
+// Usage history, same split.
+export * from './constants-usage';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

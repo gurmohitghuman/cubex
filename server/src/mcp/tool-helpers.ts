@@ -116,7 +116,7 @@ export function registerTool(
 // above the busy operation's reserved range) or that stop runs.
 const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
-  'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields',
+  'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields', 'get_usage',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
   // Only cancel_all names a sheet, and stopping its runs is allowed while it is

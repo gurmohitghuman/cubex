@@ -32,6 +32,7 @@ import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
 import viewsV1 from './api-v1-views';
+import usageV1 from './api-v1-usage';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { runWebhookRoutes } from './run-webhooks-routes';
 
@@ -80,6 +81,7 @@ router.use(runConditionsV1);
 router.use(enrichV1);
 // "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
+router.use(usageV1);
 
 // GET /api/v1/me — who am I, and what can this token do. Lets a script or MCP
 // client validate its configuration before touching data.

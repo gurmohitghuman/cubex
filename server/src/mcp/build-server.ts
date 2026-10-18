@@ -22,6 +22,7 @@ import { registerTransformTool } from './tools-transform';
 import { registerEnrichTools } from './tools-enrich';
 import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
+import { registerUsageTools } from './tools-usage';
 import { registerRunConditionTools } from './tools-run-conditions';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import { registerCleanTool } from './tools-clean';
@@ -61,7 +62,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'people or companies as rows in another sheet): search_enrichments, get_enrichment, then ' +
         'run_enrichment, which costs money per row: estimate_only first, and tell the user the daily_limit. ' +
         'A lookup an earlier run found is reused at $0 for the days set in Settings (estimate_only says how ' +
-        'many rows; fresh:true calls again). ' +
+        'many rows; fresh:true calls again). get_usage says what runs cost by column, day or run. ' +
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
         'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
         'with include_status. Saved views (get_sheet lists them) are named filters plus hidden columns: pass ' +
@@ -89,6 +90,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerEnrichTools(server, ctx);
   registerEnrichManageTools(server, ctx);
   registerBalanceTools(server, ctx);
+  registerUsageTools(server, ctx);
   registerCleanTool(server, ctx);
   registerFormulaTool(server, ctx);
   registerLookupTool(server, ctx);

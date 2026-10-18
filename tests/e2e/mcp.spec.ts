@@ -45,7 +45,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'delete_setup', 'export_csv',
     'formula_column',
     'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status', 'get_setup_run',
-    'get_sheet', 'import_csv',
+    'get_sheet', 'get_usage', 'import_csv',
     'list_models', 'list_run_webhooks', 'list_runs', 'list_setups', 'list_tables', 'lookup_column', 'manage_sheet',
     'manage_table',
     'read_rows',
