@@ -20,7 +20,8 @@ interface Args {
   onOpenWaterfall?: (target: WaterfallOpenTarget) => void
 }
 
-export type WaterfallRerunAction = 'not_enriched' | 'failed' | 'selected' | 'all'
+// stale: rows not run yet, and rows whose result was made from input cells that changed since.
+export type WaterfallRerunAction = 'stale' | 'failed' | 'selected' | 'all'
 export interface PendingWaterfallRun {
   action: WaterfallRerunAction; column: string; rowIndices?: number[]; rowGeneration?: number
   noReuse?: boolean                    // "Run this row again": every step asked afresh
@@ -28,7 +29,7 @@ export interface PendingWaterfallRun {
 }
 
 const STATUS: Record<WaterfallRerunAction, RowsStatus> = {
-  not_enriched: 'not_enriched', failed: 'failed', selected: 'any', all: 'any',
+  stale: 'empty_or_out_of_date', failed: 'failed', selected: 'any', all: 'any',
 }
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
 const OPEN_AFTER_MS = 300

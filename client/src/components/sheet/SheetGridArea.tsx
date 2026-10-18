@@ -72,7 +72,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           emptyFilter={emptyFilter}
           columnFilters={columnFilters}
           lastRenamedColumn={columnOps.lastRenamedColumn}
-          columnTypes={sheetData?.data.columnTypes ?? NO_COLUMN_TYPES}
+          columnTypes={sheetData?.data.columnTypes ?? NO_COLUMN_TYPES} runColumns={sheetData?.data.runColumns}
           autorun={autorun.view} columnSpend={autorun.spend} onAutorunAction={autorun.onAction}
           cleanColumns={sheetData?.data.cleanColumns} onOpenClean={modals.openClean}
           formulaColumns={sheetData?.data.formulaColumns} onOpenFormula={modals.openFormula}

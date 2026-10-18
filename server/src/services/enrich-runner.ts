@@ -31,6 +31,7 @@ import { stopAutorunRun } from './autorun-stop';
 import { destFullMessage, destRoom } from './enrich-list-room';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
+import { requestRunStamper } from '../lib/run-inputs/stampers';
 
 const STOP_POLL_MS = 1000;
 // Stops a row that costs nothing (a found answer to reuse, an input missing) still runs past.
@@ -120,7 +121,9 @@ export async function processEnrichmentRun(
   const remaining = countRunRows(run.sheet_id, run.user_id, masterCol, targets);
   let completed = masterCol ? Math.max(0, (run.total_rows || remaining) - remaining) : 0;
   const progress = db.prepare("UPDATE http_runs SET processed_rows = ?, updated_at = datetime('now') WHERE id = ?");
-  const source = runRows(run.sheet_id, run.user_id, masterCol, targets)[Symbol.asyncIterator]();
+  // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
+  const source = runRows(run.sheet_id, run.user_id, masterCol, targets, requestRunStamper(run, config))
+    [Symbol.asyncIterator]();
   const stop = (reason: PauseReason, message: string): Promise<void> | void => (run.autorun_id
     ? stopAutorunRun(run, generation, reason, message, targets)
     : pauseEnrichmentRun(run.id, generation, reason, message));

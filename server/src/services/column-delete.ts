@@ -19,6 +19,7 @@ import { deleteFormulaColumnRefs } from '../lib/formula-columns';
 import { deleteLookupColumnRefs } from '../lib/lookup-columns';
 import { deleteColumnDescriptionRefs } from '../lib/column-descriptions';
 import { deleteAutoDedupeColumnRefs } from '../lib/auto-dedupe/refs';
+import { deleteRunInputKey } from '../lib/run-inputs/keys';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
@@ -205,6 +206,7 @@ export async function deleteSheetColumn(
       deleteColumnDescriptionRefs(sheetId, userId, columnName);
       // Auto-dedupe on this column turns off.
       deleteAutoDedupeColumnRefs(sheetId, userId, columnName);
+      deleteRunInputKey(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

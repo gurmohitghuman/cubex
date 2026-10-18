@@ -34,6 +34,7 @@ const COMMON = ['id', 'label', 'on', 'requires', 'kind', 'check'];
 // Which of a continued column's rows run: run_enrichment's words, or control_run's.
 const STATUS: Record<string, string> = {
   any: 'any', not_enriched: 'not_enriched', no_result: 'no_result', failed: 'failed',
+  out_of_date: 'out_of_date', empty_or_out_of_date: 'empty_or_out_of_date',
   empty: 'not_enriched', errored: 'failed', missing: 'no_result', all: 'any',
 };
 
@@ -178,7 +179,10 @@ export function agentWaterfallBody(
   if ('error' in dry) return dry;
   if (a.auto_run !== undefined && !isObj(a.auto_run)) return { error: 'auto_run must be {enabled, daily_cap_usd?}.' };
   const status = a.rows === undefined ? (cont ? 'not_enriched' : 'any') : STATUS[String(a.rows)];
-  if (!status) return { error: 'rows is not_enriched, no_result, failed or any (which rows of the column run).' };
+  if (!status) {
+    return { error: 'rows is not_enriched, no_result, failed, out_of_date, empty_or_out_of_date or any (which rows '
+      + 'of the column run).' };
+  }
   if (a.test !== undefined && a.test !== true && a.test !== false
     && !(typeof a.test === 'number' && Number.isInteger(a.test) && a.test >= 1)) {
     return { error: 'test is true (the first 5 rows) or a number of rows.' };

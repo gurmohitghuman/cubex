@@ -11,6 +11,7 @@ import { headerTip, pauseShort } from './autorun/autorun-copy'
 import { cleanHeaderTip } from './clean/clean-copy'
 import { formulaHeaderTip } from './formula/formula-copy'
 import { lookupHeaderTip } from './lookup/lookup-copy'
+import { FailedBadge } from './aggrid/FailedBadge'
 
 interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   onDeleteColumn: (columnId: string) => void
@@ -30,12 +31,15 @@ interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   lookup?: LookupColumnView
   // The column's description: the name's hover note and the ⓘ icon's.
   description?: string
+  // A run column's failed rows ("N failed, retry"), and the one click that runs them again.
+  failed?: number
+  onRetryFailed?: (columnName: string) => void
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
   const {
     displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend, clean, formula, lookup,
-    description,
+    description, failed, onRetryFailed,
   } = params
   const tip = headerTip(spend, autorun)
   // A clean, formula or lookup column's note comes first, then its auto-run's.
@@ -77,7 +81,7 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
   return (
     <div className="ag-header-cell-text flex items-center justify-between w-full h-full group">
       <div
-        className="truncate flex-1 cursor-pointer select-none flex items-center gap-1"
+        className="truncate flex-1 min-w-[2.5rem] cursor-pointer select-none flex items-center gap-1"
         onClick={handleHeaderClick}
       >
         {(columnType === 'enrich-status' || columnType === 'waterfall' || cleanTip || formulaTip || lookupTip
@@ -136,6 +140,11 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
       </div>
 
       <div className="flex items-center space-x-1">
+        {/* "N failed, retry": runs the failed rows again at once (not the menu). */}
+        {!!failed && onRetryFailed && (
+          <FailedBadge column={column} failed={failed} displayName={displayName}
+            onRetry={() => onRetryFailed(columnName)} />
+        )}
         {/* Delete button. Click-to-delete is intentionally separate from the
             header-click-to-open-menu behavior; e.stopPropagation in handleDelete
             prevents the menu from opening alongside the delete confirmation. */}

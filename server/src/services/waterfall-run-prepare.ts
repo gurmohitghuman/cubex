@@ -21,6 +21,8 @@ import { autorunFillingColumn } from './autorun-block';
 import { buildWaterfall, type BuiltWaterfall } from './waterfall-build';
 import { newestWaterfallRun } from './waterfall-column';
 import type { RunFail } from './run-shared';
+import { statusStaleCheck } from './run-inputs';
+import type { CompiledFilter } from '../lib/row-filter/sql';
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const SAMPLE_ROWS = 20;
@@ -36,6 +38,7 @@ export interface PreparedWaterfall {
   span: { count: number; lastRow: number };
   upperBound: number;                  // the most rows the run can take
   rule: CheckedRule | null;
+  stale: CompiledFilter | null;        // an out_of_date status's check, read before the run starts
 }
 
 export const answeredByName = (result: string): string => `${result} (Answered by)`;
@@ -50,7 +53,7 @@ export function activeRunOn(sheetId: string, userId: string, name: string): bool
 export function seedPlanFor(input: WaterfallRunInput, p: PreparedWaterfall): SeedPlan<WaterfallRunConfig> {
   return {
     statusColumn: input.continueColumn ? p.resultColumn : null, status: input.rows.status, where: [],
-    rule: p.rule?.tree ?? null, config: p.config, columns: p.columns,
+    rule: p.rule?.tree ?? null, config: p.config, columns: p.columns, stale: p.stale,
   };
 }
 
@@ -85,12 +88,13 @@ function namesFor(
 
 async function rowsInScope(
   sheetId: string, userId: string, input: WaterfallRunInput, all: number, rule: CheckedRule | null,
+  stale: CompiledFilter | null,
 ): Promise<number> {
   const { mode, status, rowIndexes } = input.rows;
   const byStatus = input.continueColumn && status !== 'any';
   if (!byStatus && mode !== 'filter' && !rule) return mode === 'selected' ? rowIndexes?.length ?? 0 : all;
   const counts = await enrichRowCounts(sheetId, userId, byStatus ? input.columnName : null,
-    { mode, rowIndexes, where: [], rule: rule?.tree ?? null });
+    { mode, rowIndexes, where: [], rule: rule?.tree ?? null, stale });
   return byStatus ? countFor(counts, status) : counts.total;
 }
 
@@ -98,6 +102,8 @@ const NOTHING_TO_RUN: Record<string, string> = {
   not_enriched: 'Every row here has been run already. Pick other rows to run.',
   no_result: 'Every row here has a result already.',
   failed: 'No rows here failed.',
+  out_of_date: 'No row here is out of date.',
+  empty_or_out_of_date: 'Every row here has been run already and none is out of date.',
 };
 
 export async function prepareWaterfallStart(
@@ -123,7 +129,10 @@ export async function prepareWaterfallStart(
   const rule = checkRunRule(sheetId, userId, input.runIf);
   if ('error' in rule) return bad(rule.error);
   // A dry run picks its few rows itself: counting the whole sheet's would be wasted.
-  const inScope = input.dry ? span.count : await rowsInScope(sheetId, userId, input, span.count, rule.ok);
+  // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
+  const stale = input.continueColumn && !input.dry
+    ? statusStaleCheck(sheetId, userId, input.columnName, input.rows.status) : null;
+  const inScope = input.dry ? span.count : await rowsInScope(sheetId, userId, input, span.count, rule.ok, stale);
   if (inScope === 0 && !input.dry) {
     const why = rule.ok ? 'No rows here pass "Only run if". Pick other rows to run.'
       : NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.';
@@ -160,7 +169,7 @@ export async function prepareWaterfallStart(
   };
   return {
     ok: {
-      resultColumn, outputs, newColumns, config, built: built.ok, columns, span, upperBound, rule: rule.ok,
+      resultColumn, outputs, newColumns, config, built: built.ok, columns, span, upperBound, rule: rule.ok, stale,
       hideColumns: input.hideStepColumns ? stepNames.map(n => sanitized.get(n) ?? n) : [],
     },
   };

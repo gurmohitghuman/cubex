@@ -45,8 +45,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         'Pause, resume, or cancel an active run, or rerun a finished one. rerun starts a NEW run reusing the column\'s '
         + 'latest config and COSTS MONEY AGAIN — one AI call per targeted row. For an AI rerun you MUST pass either '
         + 'row_ids or mode (there is no default): mode "errored" re-runs only ❌ rows (the usual retry), "empty" only '
-        + 'blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet. For HTTP, mode is "missing" '
-        + 'or "all" (default all). Check get_run_status or get_run_results first so you know how many rows you are '
+        + 'blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet, "out_of_date" only rows '
+        + 'whose result was made from input cells that changed since (read_rows include_status shows them as '
+        + 'out_of_date), "empty_or_out_of_date" those plus blank rows. HTTP takes the same modes (default all). '
+        + 'Check get_run_status or get_run_results first so you know how many rows you are '
         + 'about to re-bill. A structured (output_columns) run reruns whole: one call per targeted row refills all its '
         + 'typed columns (and its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). An AI '
         + 'rerun takes concurrency to change how many rows run at once (default: the run it repeats); rows that '
@@ -56,6 +58,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'ENRICHMENT runs (run_type enrichment): a rerun buys rows from treg again (paid answers it still holds come '
         + 'back cheaper or free), with the column\'s own setup; it needs row_ids or mode: "errored" (❌ rows), '
         + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
+        + '"out_of_date", "empty_or_out_of_date" (as above), '
         + '"all" (every row again). spend_limit_usd sets the new run\'s limit, or on resume raises a paused run\'s '
         + 'limit (a run its limit paused). concurrency sets its rows at once on a rerun or a resume, and the '
         + 'column keeps it for later reruns and auto-run; lower it when a provider answers 429. '
@@ -74,10 +77,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         sheet_id: z.string().optional().describe('cancel_all only: the sheet whose runs to stop.'),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional()
           .describe('rerun only: stable row ids to re-process. Wins over mode.'),
-        mode: z.enum(['errored', 'empty', 'missing', 'all']).optional()
+        mode: z.enum(['errored', 'empty', 'missing', 'all', 'out_of_date', 'empty_or_out_of_date']).optional()
           .describe(
-            'rerun only. AI and enrichment: errored|empty|missing|all (REQUIRED unless row_ids given). '
-            + 'HTTP: missing|all.',
+            'rerun only, every run type: errored|empty|missing|all|out_of_date|empty_or_out_of_date (REQUIRED for '
+            + 'AI, enrichment and waterfall reruns unless row_ids given; HTTP defaults to all).',
           ),
         concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
           .describe(`AI rerun, or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
@@ -183,12 +186,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         if (run_type === 'ai' && !row_ids && !mode && !first_rows) {
           return err(
             "An AI rerun needs an explicit target: pass mode ('errored' to retry failed rows, "
-            + "'empty' for blank cells, 'missing' for both plus unfinished, 'all' to re-run and "
+            + "'empty' for blank cells, 'missing' for both plus unfinished, 'out_of_date' for results whose "
+            + "inputs changed, 'empty_or_out_of_date' for both, 'all' to re-run and "
             + 're-bill EVERY row) or row_ids for a specific subset.',
           );
-        }
-        if (run_type === 'http' && mode && mode !== 'missing' && mode !== 'all') {
-          return err(`An HTTP rerun supports mode 'missing' or 'all' (got '${mode}').`);
         }
         const slot = runStartWindow(ctx.tokenId);
         if (!slot.allowed) return err(tooManyMessage('run starts', slot));
@@ -197,7 +198,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             rowIds: row_ids, mode: mode ?? (first_rows ? 'all' : undefined), concurrency, firstRows: first_rows,
           })
           : await rerunHttpRunById(ctx.userId, run_id, {
-            rowIds: row_ids, mode: mode as 'missing' | 'all' | undefined, hasSecretsScope: hasSecrets,
+            rowIds: row_ids, mode, hasSecretsScope: hasSecrets,
             firstRows: first_rows,
           });
         if ('fail' in result) return err(result.message);

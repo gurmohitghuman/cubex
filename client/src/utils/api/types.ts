@@ -79,6 +79,8 @@ export interface SheetData {
     columnDescriptions?: Record<string, string>
     // Auto-dedupe's setting (null: off): the toolbar shows it, the dialog edits it.
     autoDedupe?: AutoDedupeView | null
+    // Each column a run fills (AI, HTTP API, enrichment, waterfall) → its run's main column.
+    runColumns?: Record<string, string>
   }
 }
 

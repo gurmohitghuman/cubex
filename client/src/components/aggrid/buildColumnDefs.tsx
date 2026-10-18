@@ -42,6 +42,9 @@ interface BuildColumnDefsArgs {
   columnDescriptions?: Record<string, string>
   // Digits of the largest row number held: the "#" column's width (a deep window's are long).
   rowNumberDigits?: number
+  // Failed rows per run column (the header's "N failed, retry") and its one-click retry.
+  failedRuns?: Record<string, number>
+  onRetryFailed?: (columnName: string) => void
 }
 
 // Room for a row number of `digits` digits (40 px holds up to three).
@@ -57,7 +60,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
     emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns, hiddenColumns,
-    lookupColumns, columnDescriptions, rowNumberDigits = 1,
+    lookupColumns, columnDescriptions, rowNumberDigits = 1, failedRuns, onRetryFailed,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -142,6 +145,8 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           formula: formulaColumns?.[column],
           lookup: lookupColumns?.[column],
           description: columnDescriptions?.[column],
+          failed: failedRuns?.[column],
+          onRetryFailed,
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);

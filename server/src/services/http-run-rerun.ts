@@ -7,8 +7,10 @@
 //
 // Target modes (keyed on the master/status column):
 //   rowIndices[]      → exactly those rows
-//   mode = 'missing'  → rows whose master cell is empty / ❌ Failed / still ⏳ /
-//                       ⏭️ Condition not met (the "Only run if" rule left it)
+//   mode              → the AI column's modes over the master cell
+//                       (services/ai-rerun-modes.ts): 'missing' is empty / ❌
+//                       Failed / still ⏳ / ⏭️ Condition not met, 'errored',
+//                       'empty', 'out_of_date', 'empty_or_out_of_date'
 //   otherwise         → every existing row
 // firstRows / withinRows: only among the sheet's first rows, or those rows.
 // Targets are chosen, the run inserted and its placeholders seeded inside the
@@ -31,7 +33,8 @@ import { RunFail } from './run-shared';
 import { RerunOutcome } from './ai-run-rerun';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { autorunFillingColumn } from './autorun-block';
-import { chooseRerunTargets, httpCellMissing, NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
+import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
+import { resolveRerunTargets, type RerunMode } from './ai-rerun-modes';
 import { logRunStarted } from '../lib/change-log';
 
 // rowIndices: an explicit subset, which wins over mode; firstRows / withinRows
@@ -39,7 +42,7 @@ import { logRunStarted } from '../lib/change-log';
 export interface HttpRerunParams extends RerunScope {
   sheetId: string;
   masterColumnName: string;
-  mode?: string;          // 'missing' narrows to empty/failed/processing rows
+  mode?: RerunMode;       // which rows by their status cell (services/ai-rerun-modes.ts); absent: all
   // A setup carrying the column on: a row its rule kept out is taken only if the rule passes now.
   recheckKeptOut?: boolean;
   // Override the cloned run's allow_secrets policy instead of copying the
@@ -125,8 +128,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
     // Resolve target rows — always intersect with real row_index values so we
     // never write to (or bill for) rows that don't exist. Read in pages.
-    const targets = await chooseRerunTargets(p.sheetId, userId, cleanMaster,
-      p.mode === 'missing' ? httpCellMissing : () => true, p, p.recheckKeptOut ? rule.ok : null);
+    const targets = await resolveRerunTargets(p.sheetId, userId, cleanMaster, p.mode ?? 'all', p,
+      p.recheckKeptOut ? rule.ok : null);
     if (targets.length === 0) return NO_TARGET_ROWS;
 
     // A rerun whose master/extracted columns were deleted since the original run

@@ -7,7 +7,7 @@ const noServerToast = { skipServerErrorToast: true } as const
 
 export type ResultType = 'email' | 'phone' | 'domain' | 'linkedin_url' | 'url' | 'text'
 export type StepKind = 'enrichment' | 'ai' | 'http' | 'formula' | 'lookup'
-export type RowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed'
+export type RowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed' | 'out_of_date' | 'empty_or_out_of_date'
 export type InputSource = { column: string } | { value: string }
 
 export interface EnrichmentChoices {

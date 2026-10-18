@@ -11,7 +11,8 @@ export type EnrichRunBinding = { column: string } | { value: string }
 // Which rows: a scope, narrowed on a column a run already made by its status
 // cell (empty, empty or skipped or failed, failed) or 'any' for all of them.
 export type EnrichRowsScope = 'all' | 'filter' | 'selected'
-export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed'
+// out_of_date: a result made from input cells that changed since; empty_or_out_of_date: both (the column menu).
+export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed' | 'out_of_date' | 'empty_or_out_of_date'
 
 export interface EnrichRunRequest {
   toolId: string

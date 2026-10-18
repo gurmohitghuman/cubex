@@ -8,7 +8,7 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { pauseRun, resumeRun, cancelRun, ControlOutcome, RunKind } from '../services/run-lifecycle';
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
-import { AI_RERUN_MODES, AiRerunMode } from '../services/ai-rerun-modes';
+import { AI_RERUN_MODES, AiRerunMode, isRerunMode, RERUN_MODES, type RerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runStartWindow, runFailHttpStatus } from '../services/run-shared';
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
@@ -145,7 +145,7 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if (p.rowIds === undefined && body.mode === undefined && first.firstRows === undefined) {
       return res.status(400).json({
         error: `Pass row_ids, first_rows, or mode (${AI_RERUN_MODES.join(', ')}): "errored" re-runs only the `
-          + `failed rows; "all" re-bills every row.`,
+          + 'failed rows; "out_of_date" the rows whose inputs changed since; "all" re-bills every row.',
       });
     }
     if (body.mode !== undefined && !AI_RERUN_MODES.includes(body.mode as AiRerunMode)) {
@@ -234,9 +234,11 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
   });
 }
 
-// POST /v1/http-runs/:id/rerun — body { row_ids?, mode? ('missing' | 'all'), first_rows? }.
-// row_ids wins; mode 'missing' = rows whose status cell is empty/failed/
-// processing; default = every row; first_rows: only among the sheet's top rows. No secrets re-check: a rerun reuses the
+// POST /v1/http-runs/:id/rerun — body { row_ids?, mode?, first_rows? }. row_ids
+// wins; mode is the AI rerun's (services/ai-rerun-modes.ts) over the status
+// cell: 'missing' = empty/failed/processing, 'errored', 'empty', 'out_of_date',
+// 'empty_or_out_of_date', 'all'; default = every row; first_rows: only among
+// the sheet's top rows. No secrets re-check: a rerun reuses the
 // stored config unmodified (it cannot repoint a key), and the run-level
 // allow_secrets policy is copied from the run it clones.
 router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequest, res) => {
@@ -246,15 +248,15 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     if (isWaterfallRun(req.params.id, req.userId!)) return await rerunWaterfall(req, res, b);
     const p = parseRowIds(b.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
-    if (b.mode !== undefined && b.mode !== 'missing' && b.mode !== 'all') {
-      return res.status(400).json({ error: "mode must be 'missing' or 'all'" });
+    if (b.mode !== undefined && !isRerunMode(b.mode)) {
+      return res.status(400).json({ error: `mode must be one of: ${RERUN_MODES.join(', ')}` });
     }
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
     if (refuseBadWebhook(req, res, b)) return;
     if (refuseRunStart(req, res)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
-      rowIds: p.rowIds, mode: b.mode as 'missing' | 'all' | undefined, firstRows: first.firstRows,
+      rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
       hasSecretsScope: req.tokenScopes?.has('secrets') === true,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });

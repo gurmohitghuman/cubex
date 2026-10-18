@@ -8,7 +8,10 @@ import {
 } from './constants';
 import { GUESS_PATTERNS } from './enrich-email-guess';
 import type { EmailStrategy } from './enrich-email-status';
-import type { EnrichCondition, EnrichRowsMode, EnrichRowsStatus } from './enrich-run-config';
+import {
+  ENRICH_ROWS_STATUSES, ENRICH_ROWS_STATUS_WORDS, statusReadsStale,
+  type EnrichCondition, type EnrichRowsMode, type EnrichRowsStatus,
+} from './enrich-run-config';
 import { parseListInput, type ListInput } from './enrich-list-input';
 import { parseRuleField } from './run-condition';
 
@@ -55,7 +58,8 @@ export const MAX_SELECTED_ROWS = 50_000;
 const MAX_SELECTED = MAX_SELECTED_ROWS;
 const OPS = new Set(['not_empty', 'empty', 'eq', 'neq', 'contains', 'gt', 'lt']);
 const MODES = new Set(['all', 'filter', 'selected']);
-const STATUSES = new Set(['any', 'not_enriched', 'no_result', 'failed']);
+const STATUSES = new Set<string>(ENRICH_ROWS_STATUSES);
+const STATUS_HELP = `rows.status must be ${ENRICH_ROWS_STATUS_WORDS}.`;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const str = (v: unknown, max = MAX_NAME): string | null => (typeof v === 'string' && v.length <= max ? v : null);
 const names = (v: unknown): string[] | null => (v === undefined ? []
@@ -122,12 +126,10 @@ function parseRowsScope(
     : typeof rows.mode === 'string' && MODES.has(rows.mode) ? rows.mode as EnrichRowsMode : null;
   if (!mode) return 'rows.mode must be all, filter or selected.';
   const raw = rows.status ?? (legacy || continueColumn ? 'not_enriched' : 'any');
-  if (typeof raw !== 'string' || !STATUSES.has(raw)) {
-    return 'rows.status must be any, not_enriched, no_result or failed.';
-  }
+  if (typeof raw !== 'string' || !STATUSES.has(raw)) return STATUS_HELP;
   const status = raw as EnrichRowsStatus;
-  if (!continueColumn && (status === 'no_result' || status === 'failed')) {
-    return 'Rows without a result or that failed need an enrichment column a run already made.';
+  if (!continueColumn && (status === 'no_result' || status === 'failed' || statusReadsStale(status))) {
+    return 'Rows without a result, that failed or out of date need an enrichment column a run already made.';
   }
   return { mode, status };
 }
@@ -218,7 +220,7 @@ export function parseRerunInput(body: unknown): { ok: RerunInput } | { error: st
   const column = str(b.column);
   if (!column || !column.trim()) return { error: 'Pick an enrichment column.' };
   // Which rows by status is never assumed: an omitted status could re-buy every row.
-  if (b.status === undefined) return { error: 'rows.status must be any, not_enriched, no_result or failed.' };
+  if (b.status === undefined) return { error: STATUS_HELP };
   const rows = parseRows({ mode: b.mode, status: b.status, rowIndexes: b.rowIndexes }, true);
   if (typeof rows === 'string') return { error: rows };
   const limit = usd(b.spendLimitUsd, ENRICH_DAILY_LIMIT_MAX_USD);

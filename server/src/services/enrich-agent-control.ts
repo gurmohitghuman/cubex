@@ -19,6 +19,7 @@ export const isEnrichmentRun = (runId: string, userId: string): boolean => enric
 // The agent modes, in the words AI reruns use, as the rows a rerun takes.
 export const ENRICH_RERUN_MODES: Record<string, EnrichRowsStatus> = {
   errored: 'failed', empty: 'not_enriched', missing: 'no_result', all: 'any',
+  out_of_date: 'out_of_date', empty_or_out_of_date: 'empty_or_out_of_date',
 };
 
 export async function rerunEnrichmentRunById(

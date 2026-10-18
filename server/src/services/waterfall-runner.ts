@@ -33,6 +33,7 @@ import { RunFormulas } from './waterfall-formulas';
 import { RunLookups } from './waterfall-step-lookup';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
+import { requestRunStamper } from '../lib/run-inputs/stampers';
 
 const STOP_POLL_MS = 1000;
 const NO_TREG_KEY = 'No treg key. Add one in Settings, then Resume.';
@@ -170,7 +171,9 @@ export async function processWaterfallRun(
   const remaining = w.dry ? targets?.length ?? 0 : countRunRows(run.sheet_id, run.user_id, masterCol, targets);
   let completed = masterCol || w.dry ? Math.max(0, (run.total_rows || remaining) - remaining) : 0;
   const progress = db.prepare("UPDATE http_runs SET processed_rows = ?, updated_at = datetime('now') WHERE id = ?");
-  const source = runRows(run.sheet_id, run.user_id, masterCol, targets)[Symbol.asyncIterator]();
+  // Each row carries a stamp of the inputs it is sent with (lib/run-inputs); a dry run writes no cells.
+  const stamper = w.dry ? null : requestRunStamper(run, config);
+  const source = runRows(run.sheet_id, run.user_id, masterCol, targets, stamper)[Symbol.asyncIterator]();
   const out = new Set<Promise<void>>();
   let slotFreed: (() => void) | null = null;
   const rowSettled = () => new Promise<void>(resolve => { slotFreed = resolve; });

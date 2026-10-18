@@ -1,3 +1,4 @@
+// Over 200 lines: one rename/delete rewrite of HTTP run records (pages, newest runs, configs) read together.
 import { db } from './db';
 import { renameRuleColumn } from './run-condition';
 import { markTemplateColumnGone, renameTemplateColumnRefs } from './column-ref-rename';
@@ -63,12 +64,23 @@ const columnNewest = (sheetId: string, userId: string, column: string, limit: nu
    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
 ).all(sheetId, userId, column, limit) as PageRun[];
 
+// Every column's newest run too: what each column reads now (out-of-date
+// results, lib/run-inputs) follows the rename or delete at once, not when the
+// pages reach it.
+const mastersNewest = (sheetId: string, userId: string) => db.prepare(
+  `SELECT rowid AS rid, id, master_column_name AS master, config FROM http_runs
+   WHERE rowid IN (SELECT MAX(rowid) FROM http_runs WHERE sheet_id = ? AND master_column_name IS NOT NULL
+     GROUP BY master_column_name) AND user_id = ?`,
+).all(sheetId, userId) as PageRun[];
+
 export function renameColumnNewest(sheetId: string, userId: string, oldName: string, newName: string): void {
   renameRuns(columnNewest(sheetId, userId, oldName, RUNS_PAGE), oldName, newName);
+  renameRuns(mastersNewest(sheetId, userId), oldName, newName);
 }
 
 export function deleteColumnNewest(sheetId: string, userId: string, columnName: string): void {
   deleteRuns(columnNewest(sheetId, userId, columnName, RUNS_PAGE), columnName);
+  deleteRuns(mastersNewest(sheetId, userId), columnName);
 }
 
 type PageRun = { rid: number; id: string; master: string | null; config: string | null };

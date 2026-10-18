@@ -2,6 +2,7 @@ import { db } from './db';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
+import { runInputPath } from './run-inputs/stale-sql';
 
 // Copying or removing a key across every row of a big sheet is a heavy job, so
 // it runs in slices between requests (lib/slices.ts). A removal is recorded in
@@ -48,16 +49,32 @@ export function pendingPurges(sheetId: string): Set<string> {
 }
 
 // Removes the key from every row, then forgets the record. Call recordPurge
-// first, in the same transaction that stops the sheet listing the column.
+// first, in the same transaction that stops the sheet listing the column. The
+// same pass drops deleted run columns' keys from run_inputs (run_input_purges,
+// lib/run-inputs/keys.ts), in the same row write.
 export async function purgeColumnKey(sheetId: string, userId: string, name: string): Promise<void> {
-  const strip = db.prepare(`
+  const dead = db.prepare('SELECT key FROM run_input_purges WHERE sheet_id = ?').pluck().all(sheetId) as number[];
+  const strip = dead.length === 0 ? db.prepare(`
     UPDATE rows SET data = json_remove(data, ?)
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
       AND json_type(data, ?) IS NOT NULL
+  `) : db.prepare(`
+    UPDATE rows SET data = json_remove(data, ?),
+      run_inputs = json_remove(run_inputs, ${dead.map(() => '?').join(', ')})
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
+      AND (json_type(data, ?) IS NOT NULL OR (${dead.map(() => 'json_type(run_inputs, ?) IS NOT NULL').join(' OR ')}))
   `);
+  // Only rows holding the cell or a dead key are written.
   const path = jsonPath(name);
-  await eachRowIdSlice(await sheetRowIds(sheetId, userId), ids => { strip.run(path, ids, sheetId, userId, path); });
+  const keys = dead.map(runInputPath);
+  await eachRowIdSlice(await sheetRowIds(sheetId, userId), ids => {
+    strip.run(path, ...keys, ids, sheetId, userId, path, ...(dead.length ? keys : []));
+  });
   forgetPurge(sheetId, name);
+  if (dead.length > 0) {
+    db.prepare('DELETE FROM run_input_purges WHERE sheet_id = ? AND key IN (SELECT value FROM json_each(?))')
+      .run(sheetId, JSON.stringify(dead));
+  }
 }
 
 // At boot: finish whatever a restart interrupted. Call right after the server

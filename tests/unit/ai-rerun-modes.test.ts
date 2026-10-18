@@ -89,7 +89,24 @@ check('numeric 9 is not empty', matchesRerunMode(NINE, 'empty') === false)
 check('numeric 9 is not a missing-mode target', matchesRerunMode(NINE, 'missing') === false)
 
 // --- exported constants ------------------------------------------------------
-check('four modes exported', AI_RERUN_MODES.length === 4)
+check('six modes exported', AI_RERUN_MODES.length === 6)
+
+// --- out_of_date: a result whose inputs changed (the stale flag, read in SQL) --
+const NOT_FOUND = '⏭️ Not found'
+const NOT_MET = '⏭️ Condition not met'
+check('out_of_date picks a stale result', matchesRerunMode(GOOD, 'out_of_date', true) === true)
+check('out_of_date picks a stale "Not found"', matchesRerunMode(NOT_FOUND, 'out_of_date', true) === true)
+check('out_of_date skips a fresh result', matchesRerunMode(GOOD, 'out_of_date', false) === false)
+check('out_of_date skips a stale failure', matchesRerunMode(ERRORED, 'out_of_date', true) === false)
+check('out_of_date skips a stale placeholder', matchesRerunMode(PROCESSING, 'out_of_date', true) === false)
+check('out_of_date skips a kept-out row', matchesRerunMode(NOT_MET, 'out_of_date', true) === false)
+check('empty_or_out_of_date picks blank', matchesRerunMode(BLANK, 'empty_or_out_of_date') === true)
+check('empty_or_out_of_date picks a kept-out row', matchesRerunMode(NOT_MET, 'empty_or_out_of_date') === true)
+check('empty_or_out_of_date picks a stale result', matchesRerunMode(GOOD, 'empty_or_out_of_date', true) === true)
+check('empty_or_out_of_date skips a fresh result', matchesRerunMode(GOOD, 'empty_or_out_of_date') === false)
+check('empty_or_out_of_date skips a failure', matchesRerunMode(ERRORED, 'empty_or_out_of_date', true) === false)
+check('older modes ignore the stale flag', matchesRerunMode(GOOD, 'empty', true) === false
+  && matchesRerunMode(GOOD, 'errored', true) === false)
 check('default mode is missing (back-compat)', DEFAULT_AI_RERUN_MODE === 'missing')
 check('every exported mode is handled',
   AI_RERUN_MODES.every(m => typeof matchesRerunMode(GOOD, m) === 'boolean'))

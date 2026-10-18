@@ -10,7 +10,7 @@ export const TEXT_OPS = [
 ] as const;
 export const LIST_OPS = ['any_of', 'not_any_of'] as const;
 export const NUMBER_OPS = ['gt', 'gte', 'lt', 'lte'] as const;
-export const STATE_OPS = ['has_error', 'has_result', 'not_run', 'condition_not_met', 'running'] as const;
+export const STATE_OPS = ['has_error', 'has_result', 'not_run', 'condition_not_met', 'running', 'out_of_date'] as const;
 
 export type TextOp = (typeof TEXT_OPS)[number];
 export type ListOp = (typeof LIST_OPS)[number];

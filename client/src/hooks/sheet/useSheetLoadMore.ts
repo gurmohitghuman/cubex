@@ -81,6 +81,7 @@ export function useSheetLoadMore(args: {
             totalRows: newData.data.totalRows,
             // Take the page's fresh column-type map (same sheet, newer snapshot).
             columnTypes: newData.data.columnTypes ?? prev.data.columnTypes,
+            runColumns: newData.data.runColumns ?? prev.data.runColumns,
           },
         }
       })

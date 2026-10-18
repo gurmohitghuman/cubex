@@ -15,6 +15,7 @@ import { prepareWhere, sheetRunColumns } from './row-filter';
 import { withView } from './view-read';
 import { validateQuery, type RowQuery } from './row-query-input';
 import { aggregateRows } from './row-aggregate';
+import { staleByRow } from './run-status-rows';
 
 export type { WhereItem } from '../lib/row-filter/where';
 export { parseRowQueryBody, type RowQuery } from './row-query-input';
@@ -118,7 +119,8 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
   const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
   overlayFilling(rows, fillingColumns(sheetId, userId));
   const runs = q.includeStatus ? prep.runColumns ?? sheetRunColumns(sheetId, userId, columns) : null;
-  for (const r of rows) (r as { data: unknown }).data = projectRow(r.data, q, runs);
+  const stale = runs ? staleByRow(sheetId, userId, rows.map(r => r.id), runs) : null;
+  for (const r of rows) (r as { data: unknown }).data = projectRow(r.data, q, runs, stale?.get(r.id));
   return { ok: { rows, next_cursor, ...versions } };
 }
 
@@ -126,9 +128,9 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
 // (a value out of a JSON cell, a column under another name); run columns as
 // {status, value, error} with include_status.
 function projectRow(
-  data: Record<string, string>, q: RowQuery, runs: Map<string, string> | null,
+  data: Record<string, string>, q: RowQuery, runs: Map<string, string> | null, stale?: ReadonlySet<string>,
 ): Record<string, unknown> {
-  const plain = runs ? rowWithStatus(data, runs, q.columns) : null;
+  const plain = runs ? rowWithStatus(data, runs, q.columns, stale) : null;
   if (!q.picks) {
     if (plain) return plain;
     return q.columns ? Object.fromEntries(q.columns.map(c => [c, cellOf(data, c)])) : data;

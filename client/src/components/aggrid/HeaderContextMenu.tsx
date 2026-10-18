@@ -60,7 +60,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   // exclusive (the old heuristics could match both at once and stack both menus).
   const columnType = columnTypes[menu.columnId]
   const runProps = {
-    columnId: menu.columnId, setMenu, actions: runActions, autorun: autorunColumns?.[menu.columnId],
+    columnId: menu.columnId, setMenu, actions: runActions, autorun: autorunColumns?.[menu.columnId], sheetId,
   }
 
   return (

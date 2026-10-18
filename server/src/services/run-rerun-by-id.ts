@@ -8,7 +8,7 @@ import { db } from '../lib/db';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { rerunAiColumn, RerunOutcome } from './ai-run-rerun';
 import { rerunAiMultiColumn } from './ai-run-rerun-multi';
-import { AiRerunMode } from './ai-rerun-modes';
+import { AiRerunMode, type RerunMode } from './ai-rerun-modes';
 import { rerunHttpColumn } from './http-run-rerun';
 import { resolveRowIdsToIndexes } from './run-shared';
 import { isWaterfallRun } from './waterfall-agent-control';
@@ -66,7 +66,7 @@ export async function rerunAiRunById(
 
 export async function rerunHttpRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: 'missing' | 'all'; hasSecretsScope: boolean; firstRows?: number },
+  opts: { rowIds?: string[]; mode?: RerunMode; hasSecretsScope: boolean; firstRows?: number },
 ): Promise<RerunOutcome> {
   const run = db.prepare(
     'SELECT id, sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?',

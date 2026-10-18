@@ -8,9 +8,11 @@ const has = (data: Record<string, string>, column: string) => Object.prototype.h
 const cellOf = (data: Record<string, string>, column: string) => (has(data, column) ? data[column] ?? '' : '');
 
 // columns: the read's columns, in their order (all of the row's otherwise).
-// runColumns: run column → the column holding its run's state.
+// runColumns: run column → the column holding its run's state. stale: the
+// state columns whose result in this row is out of date (services/run-status-rows.ts).
 export function rowWithStatus(
   data: Record<string, string>, runColumns: ReadonlyMap<string, string>, columns?: readonly string[],
+  stale?: ReadonlySet<string>,
 ): Record<string, unknown> {
   const keys = columns ?? [...new Set([...Object.keys(data), ...runColumns.keys()])];
   const out: Record<string, unknown> = {};
@@ -20,7 +22,8 @@ export function rowWithStatus(
       if (columns || has(data, column)) out[column] = cellOf(data, column);
       continue;
     }
-    out[column] = cellStatusView(cellOf(data, column), state === column ? '' : cellOf(data, state));
+    out[column] = cellStatusView(cellOf(data, column), state === column ? '' : cellOf(data, state),
+      stale?.has(state) ?? false);
   }
   return out;
 }

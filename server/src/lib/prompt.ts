@@ -20,6 +20,27 @@ export function extractColumnReferences(prompt: string): string[] {
   return [...refs];
 }
 
+// The column a /token names: the one whose name matches it ignoring case, else
+// the first whose normalized name does ("Company Name" for /company_name).
+// One rule for the run's substitution (processPromptTemplate) and every reader
+// of what a prompt reads, so a sheet holding both "Company Name" and
+// "company_name" resolves /company_name to the same column everywhere.
+export function matchPromptColumn(ref: string, columns: readonly string[]): string | undefined {
+  const lower = ref.toLowerCase();
+  return columns.find(c => c.toLowerCase() === lower) ?? columns.find(c => normalizeColumnName(c) === ref);
+}
+
+// The columns a prompt's /tokens read, as the run resolves them
+// (processPromptTemplate), in the order the prompt first names them.
+export function promptReads(prompt: string, columns: readonly string[]): string[] {
+  const out = new Set<string>();
+  for (const ref of extractColumnReferences(prompt)) {
+    const col = matchPromptColumn(ref, columns);
+    if (col) out.add(col);
+  }
+  return [...out];
+}
+
 // Resolve every /token in a prompt against the sheet's REAL columns using the
 // same matching rule as processPromptTemplate (normalized or case-insensitive
 // exact), returning the tokens that would substitute as "[MISSING: ...]" on
@@ -65,9 +86,7 @@ export function unknownRefsMessage(unknown: Array<{ ref: string; suggestion?: st
 // replacement patterns by String.replace.
 export function processPromptTemplate(prompt: string, rowData: Record<string, string>): string {
   return prompt.replace(COLUMN_REF_PATTERN, (token, columnRef: string) => {
-    const matchingColumn = Object.keys(rowData).find(col =>
-      normalizeColumnName(col) === columnRef || col.toLowerCase() === columnRef.toLowerCase()
-    );
+    const matchingColumn = matchPromptColumn(columnRef, Object.keys(rowData));
     if (matchingColumn) return rowData[matchingColumn] || '';
     return `[MISSING: ${token}]`;
   });

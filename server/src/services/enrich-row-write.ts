@@ -14,6 +14,7 @@ import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import { answerTime, noteReusedRow } from './enrich-reuse';
 import { nowDate } from '../lib/clock';
 import type { HTTPRunRow } from './http-runner-status';
+import type { RowStamp } from '../lib/run-inputs/stamp';
 
 export interface EnrichWrite {
   run: HTTPRunRow;
@@ -32,6 +33,7 @@ export interface EnrichWrite {
   // the result's transaction, and added as rows by the API process
   // (services/enrich-list-drain.ts). Workers never append rows themselves.
   list?: { items: unknown[]; copy: Record<string, string>; rowId: string | null };
+  stamp?: RowStamp;           // what the row's result is made from (lib/run-inputs)
 }
 
 const NO_DEST = 'Rows not added: the sheet for them was deleted.';
@@ -84,7 +86,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
       ...(w.reuseKey && !lost && w.stored !== undefined ? [w.reuseKey, answerTime(nowDate())] : [null, null]),
     );
     if (w.reused) noteReusedRow(w.run.id, w.run.user_id);
-    writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells));
+    writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells), w.stamp);
     touchSheet(w.run.sheet_id, w.run.user_id);
     written = true;
   }).immediate();

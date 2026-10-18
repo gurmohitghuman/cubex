@@ -1,10 +1,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { jsonPath } from './sql-helpers';
 import { getDraft, computeConfigHash, computeInputHash, type DraftConfig } from './ai-drafts';
 import { clampCellChars } from './csv-safety';
 import { CELL_MAX_ENRICHMENT } from './constants';
 import { markAutorunInputs } from './autorun-mark';
+import { getSheetColumns } from './sheet-columns';
+import { aiRunInputColumns } from './run-inputs/columns';
+import { runInputStamper } from './run-inputs/stamp';
+import { writeRunCells } from './run-cells-write';
 
 // Credit reuse: when
 // "Run All Rows" starts and a persisted preview is still valid, its results are
@@ -78,16 +81,15 @@ export function promotePreviewReuse(args: {
   `).all(sheetId, userId, ...candidates.map(c => c.rowIndex)) as Array<{ row_index: number; data: string }>;
   const currentData = new Map(current.map(r => [r.row_index, r.data]));
 
-  const writeValue = db.prepare(`
-    UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
-    WHERE sheet_id = ? AND user_id = ? AND row_index = ?
-  `);
+  // With the stamp of the inputs the preview read (the row's own, checked equal below).
+  const stamper = runInputStamper(sheetId, userId, outputColumn, aiRunInputColumns({
+    column_name: outputColumn, prompt: runConfig.prompt, output_columns: null, use_openrouter_web_search: 0,
+  }, getSheetColumns(sheetId, userId, false)));
   const insertResult = db.prepare(`
     INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status)
     VALUES (?, ?, ?, ?, ?, ?, 'completed')
   `);
 
-  const outputPath = jsonPath(outputColumn);
   const promoted: number[] = [];
   for (const c of candidates) {
     const dataJson = currentData.get(c.rowIndex);
@@ -101,7 +103,7 @@ export function promotePreviewReuse(args: {
     // ai-row.ts). Preview values are already length-bounded by the preview
     // runner; this is the storage backstop, consistent with the worker path.
     const value = clampCellChars(c.value, CELL_MAX_ENRICHMENT);
-    writeValue.run(outputPath, value, sheetId, userId, c.rowIndex);
+    writeRunCells(sheetId, userId, c.rowIndex, [[outputColumn, value]], stamper.stamp(dataJson));
     // The ai_results row makes the promoted row indistinguishable from a
     // worker-processed one: getRun counts it, SSE replays it (same value the
     // cell already holds), and finalize's hasUnfinishedRow stays satisfied.

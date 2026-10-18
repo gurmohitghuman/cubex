@@ -14,7 +14,8 @@ export const WHERE_LANGUAGE = 'Rows must pass every item. An item is a condition
   + 'other cells never pass. '
   + 'Run-state operators read the words AI, HTTP API and enrichment runs write into cells, so you never parse them: '
   + 'has_error (the run failed, ❌), has_result (a real value), not_run (never run), condition_not_met (kept out by '
-  + 'its "Only run if" rule), running (⏳ waiting or running, ➕ adding rows). They take no value, and column is '
+  + 'its "Only run if" rule), running (⏳ waiting or running, ➕ adding rows), out_of_date (a result made from '
+  + 'input cells that changed since; control_run mode out_of_date reruns them). They take no value, and column is '
   + 'optional: left out, a row passes when ANY run column matches ([{"operator":"has_error"}] = rows where any '
   + 'run failed). An output column of a run reads the run\'s state from its status column, so has_error on '
   + '"Email" finds the rows whose enrichment failed. Text operators compare the cell as written, status words '
@@ -37,7 +38,9 @@ export const whereSchema = z.array(z.union([condition, orGroup])).min(1).max(MAX
 export const INCLUDE_STATUS_HELP = 'true: each AI, HTTP API and enrichment column\'s cell comes back as '
   + '{status, value, error} instead of its text. status is done (value holds the result), no_result (the run '
   + 'finished without a value; reason says why when Cubex wrote one, e.g. "Not found"), error (error holds what '
-  + 'failed), condition_not_met, running or not_run. Other columns are unchanged. Default false.';
+  + 'failed), out_of_date (a result, value or reason as above, made from input cells that changed since: a rerun '
+  + 'with mode out_of_date refreshes it), condition_not_met, running or not_run. Other columns are unchanged. '
+  + 'Default false.';
 
 export const VIEW_HELP = 'A saved view of the sheet, by name or id (get_sheet lists views): its filters are '
   + 'added to `where`, and when it hides columns its visible columns are the columns unless you pass columns. '

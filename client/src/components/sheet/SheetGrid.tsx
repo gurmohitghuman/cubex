@@ -28,6 +28,8 @@ import { opensAnswer, opensTrace } from '@/components/answer-panel/answer-click'
 import { useWaterfallColumn } from '@/hooks/sheet/useWaterfallColumn'
 import { WaterfallRerunConfirm } from '@/components/waterfall/WaterfallRerunConfirm'
 import { TracePanel } from '@/components/waterfall/TracePanel'
+import { useGridRunControls } from '@/hooks/sheet/useGridRunControls'
+import { RunControlConfirm } from './RunControlConfirm'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 export interface SheetGridProps {
@@ -40,6 +42,8 @@ export interface SheetGridProps {
   columnFilters: ColumnFilters
   lastRenamedColumn: { from: string; to: string; at: number } | null
   columnTypes: Record<string, ColumnType>
+  // Each column a run fills → its run's main column: the run controls (cells' play button, header badge).
+  runColumns?: Record<string, string>
   // Auto-run and spend per column (header ⚡, tooltip, menu items) and the menu's ⚡ action.
   autorun?: SheetAutorun
   columnSpend?: Record<string, ColumnSpend>
@@ -120,7 +124,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, lookupColumns, onOpenLookup,
     columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
-    onOpenWaterfall,
+    onOpenWaterfall, runColumns,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -163,15 +167,16 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onCellClick(rowIndex, columnName, value)
   }
 
-  // "Run All Rows" and "Run First Rows" ask first (ColumnRunDialogs).
+  // "Run First Rows" asks how many (ColumnRunDialogs); the run controls ask with their estimate.
   const runDialogs = useColumnRunDialogs(actions, totalRows)
+  const run = useGridRunControls({
+    activeSheet, runColumns, activeAIRunsByColumn, activeHTTPRunsByColumn, totalRows, setupSSEConnection,
+    fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef,
+  })
 
   const runActions: RunMenuActions = {
-    onRunHTTPForColumn: (column) => runDialogs.askRunAll({ kind: 'http', column }),
-    onRunHTTPForMissingOrError: actions.handleRunHTTPMissingOrError,
+    onRunControl: run.controls.ask,
     onRunHTTPForRows: actions.handleRunHTTPForRows,
-    onRunAIForColumn: (column, columnName) => runDialogs.askRunAll({ kind: 'ai', column, columnName }),
-    onRunAIMissingOrError: actions.handleRunAIMissingOrError,
     onRunFirstRows: (kind, column, columnName) => runDialogs.askFirstRows({ kind, column, columnName }),
     onEditAIColumn: actions.handleEditAIColumn,
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
@@ -190,6 +195,8 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   return (
     <div className="flex flex-col h-full">
       {runDialogs.dialogs}
+      <RunControlConfirm pending={run.controls.pending} onConfirm={run.controls.confirm}
+        onCancel={run.controls.cancel} />
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
       <AnswerPanel {...answers.panel} />
       <WaterfallRerunConfirm pending={waterfall.pending} onConfirm={waterfall.confirm} onCancel={waterfall.cancel} />
@@ -220,6 +227,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       formulaColumns={formulaColumns} lookupColumns={lookupColumns} columnDescriptions={columnDescriptions}
       activeHTTPRunsByColumn={activeHTTPRunsByColumn}
       activeAIRunsByColumn={activeAIRunsByColumn}
+      failedRuns={run.failedRuns} onRetryFailed={run.controls.retryFailed} runCells={run.runCells}
       onColumnReorder={onColumnReorder}
       onAddColumn={onAddColumn}
       registerClearSelection={registerClearSelection}

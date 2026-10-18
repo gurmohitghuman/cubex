@@ -88,7 +88,7 @@ test('control_run reruns a structured run into the same columns', async () => {
   const picked = parseResult(await rerun(empty.run_id, { row_ids: [first.id] }))
   expect((await settle(picked.run_id)).target_row_count).toBe(1)
 
-  // The sheet menu's "Run Missing or Errors" names the header clicked: a typed
+  // The app's AI rerun route names the header clicked: a typed
   // column reruns the run that owns it. A page sending only the base name still
   // reaches it through the status column's base.
   for (const data of [{ baseColumnName: 'Why', columnName: 'Why' }, { baseColumnName: 'Score' }]) {
@@ -99,7 +99,7 @@ test('control_run reruns a structured run into the same columns', async () => {
     expect(s.target_row_count).toBe(3)
   }
 
-  // The menu's "Run All Rows" sends mode 'all': every row, a ✅ one included
+  // Mode 'all' takes every row, a ✅ one included
   // (the default, missing, would skip it). An unknown mode is refused.
   const [done] = await rows()
   await call('update_cells', { sheet_id: sheetId, row_id: done.id, data: { 'Score (Status)': '✅' } })

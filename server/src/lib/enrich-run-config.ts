@@ -14,10 +14,19 @@ import { ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY } from './constants';
 
 // Which rows a run takes: a scope (every row, the saved filter's rows, the
 // selected rows) narrowed, on a column a run already made, by the status cell:
-// empty (not enriched yet), empty or skipped or failed (without a result), or
-// failed. 'any' takes every row in scope again.
+// empty (not enriched yet), empty or skipped or failed (without a result),
+// failed, holding a result made from input cells that changed since
+// (out_of_date, lib/run-inputs), or not enriched yet or out of date (the column
+// menu's "Run N empty or out-of-date rows"). 'any' takes every row in scope again.
 export type EnrichRowsMode = 'all' | 'filter' | 'selected';
-export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed';
+export type EnrichRowsStatus =
+  | 'any' | 'not_enriched' | 'no_result' | 'failed' | 'out_of_date' | 'empty_or_out_of_date';
+export const ENRICH_ROWS_STATUSES: readonly EnrichRowsStatus[] = [
+  'any', 'not_enriched', 'no_result', 'failed', 'out_of_date', 'empty_or_out_of_date',
+];
+export const ENRICH_ROWS_STATUS_WORDS = 'any, not_enriched, no_result, failed, out_of_date or empty_or_out_of_date';
+// The statuses that ask whether a row's result is out of date (read in SQL by the caller).
+export const statusReadsStale = (s: EnrichRowsStatus): boolean => s === 'out_of_date' || s === 'empty_or_out_of_date';
 export interface EnrichCondition {
   column: string; op: 'not_empty' | 'empty' | 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string;
 }

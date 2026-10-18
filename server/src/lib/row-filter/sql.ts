@@ -12,6 +12,13 @@ import { isOrGroup, type FilterCondition, type WhereItem } from './where';
 // sql is a condition on the `rows` table's `data` column; params bind in order.
 export interface CompiledFilter { sql: string; params: unknown[] }
 
+// The sheet's run columns → the column holding their run's state, and, for
+// out_of_date, the check that a state column's result is out of date
+// (services/run-inputs.ts; null: no run has fingerprinted its rows).
+export type RunColumnMap = ReadonlyMap<string, string> & {
+  readonly staleFor?: (state: string) => CompiledFilter | null;
+};
+
 const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const BLANK_SQL = `char(${[...BLANK_CHARS].map(c => c.codePointAt(0)).join(', ')})`;
 const TRIMMED = `TRIM(COALESCE(json_extract(data, ?), ''), ${BLANK_SQL})`;
@@ -33,6 +40,8 @@ class Sql {
     return TRIMMED;
   }
   bind(value: unknown): string { this.params.push(value); return '?'; }
+  // SQL compiled elsewhere, its parameters bound where it appears.
+  embed(f: CompiledFilter): string { this.params.push(...f.params); return f.sql; }
   // The cell starts with one of `marks` (code points, as JS startsWith does
   // for these one-unit characters).
   startsWith(column: string, marks: string[]): string {
@@ -45,9 +54,19 @@ class Sql {
 }
 
 const ANY_MARK = [RUNNING_MARK, FAILED_MARK, SKIPPED_MARK, LIST_MARK];
+const UNSETTLED = [RUNNING_MARK, LIST_MARK, FAILED_MARK];
+
+// The cell holds a run's result: a value, or Cubex's words for none ("⏭️ Not
+// found"), never a run still going, failed or kept out (cellStatus done or no_result).
+function settled(q: Sql, column: string): string {
+  return `(${q.cell(column)} <> '' AND NOT ${q.startsWith(column, UNSETTLED)} `
+    + `AND ${q.cell(column)} <> ${literal(CONDITION_NOT_MET)})`;
+}
 
 // One run column's state. `state` is its status column (null: it is one).
-function statePredicate(q: Sql, op: StateOp, column: string, state: string | null): string {
+function statePredicate(
+  q: Sql, op: StateOp, column: string, state: string | null, runColumns: RunColumnMap,
+): string {
   // A blank own cell defers to the status cell (cellStatus).
   const viaState = (own: string, onState: () => string) =>
     state === null ? own : `(${own} OR (${q.cell(column)} = '' AND ${onState()}))`;
@@ -64,6 +83,13 @@ function statePredicate(q: Sql, op: StateOp, column: string, state: string | nul
         () => `${q.cell(state!)} = ${literal(CONDITION_NOT_MET)}`);
     case 'not_run':
       return state === null ? `${q.cell(column)} = ''` : `(${q.cell(column)} = '' AND ${q.cell(state)} = '')`;
+    case 'out_of_date': {
+      // The run's fingerprints are kept under its state column (lib/run-inputs).
+      const stale = runColumns.staleFor?.(state ?? column);
+      if (!stale) return '0';
+      const held = viaState(settled(q, column), () => settled(q, state!));
+      return `(${held} AND ${q.embed(stale)})`;
+    }
   }
 }
 
@@ -78,20 +104,21 @@ function affix(q: Sql, side: 1 | -1, value: string): string {
     : `substr(${FOLDED}, -${n}) = ${q.bind(value)}`;
 }
 
-function conditionSql(q: Sql, c: FilterCondition, runColumns: ReadonlyMap<string, string>): string {
+function conditionSql(q: Sql, c: FilterCondition, runColumns: RunColumnMap): string {
   const op = c.operator;
   if (isStateOp(op)) {
     if (c.column !== undefined) {
       // A column no run fills any more (a saved grid filter) reads its own cell.
       const state = runColumns.get(c.column);
-      return statePredicate(q, op, c.column, state !== undefined && state !== c.column ? state : null);
+      return statePredicate(q, op, c.column, state !== undefined && state !== c.column ? state : null, runColumns);
     }
     // Any run column. A blank output reads its status column, which is a run
     // column itself (mapped to itself), so every run column's own cell finds
-    // the same rows; "not run" needs only the columns holding their own state.
-    const columns = [...runColumns].filter(([col, state]) => op !== 'not_run' || state === col).map(([col]) => col);
+    // the same rows; "not run" and "out of date" need only the columns holding their own state.
+    const own = op === 'not_run' || op === 'out_of_date';
+    const columns = [...runColumns].filter(([col, state]) => !own || state === col).map(([col]) => col);
     if (columns.length === 0) return '0';
-    const parts = columns.map(col => statePredicate(q, op, col, null));
+    const parts = columns.map(col => statePredicate(q, op, col, null, runColumns));
     return parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`;
   }
   const column = c.column!;
@@ -124,7 +151,7 @@ function conditionSql(q: Sql, c: FilterCondition, runColumns: ReadonlyMap<string
 // mapped to itself). An empty `where` passes every row. cells: run-state
 // conditions read these columns from the given SQL instead (see TRIMMED_CELL_SQL).
 export function compileWhere(
-  where: readonly WhereItem[], runColumns: ReadonlyMap<string, string>, cells?: ReadonlyMap<string, string>,
+  where: readonly WhereItem[], runColumns: RunColumnMap, cells?: ReadonlyMap<string, string>,
 ): CompiledFilter {
   if (where.length === 0) return { sql: '1', params: [] };
   const q = new Sql(cells);

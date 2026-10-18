@@ -21,6 +21,7 @@ export function rowFilterOf(data: SheetData | null): WhereItem[] {
 const RUN_WORDS: Record<string, string> = {
   has_error: 'has an error', has_result: 'has a result', not_run: 'is not run yet',
   condition_not_met: 'is kept out by "Only run if"', running: 'is still running',
+  out_of_date: 'is out of date (its inputs changed)',
 }
 
 function conditionWords(c: WhereCondition): string {

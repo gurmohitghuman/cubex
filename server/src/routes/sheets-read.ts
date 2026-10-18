@@ -12,13 +12,15 @@ import { sheetFormulaView } from '../services/formula-view';
 import { sheetLookupView } from '../services/lookup-view';
 import { enrichColumnSpend, sheetAutorunView } from '../services/autorun-view';
 import { scheduleColumnRepair } from '../lib/column-repair';
-import { liveRunColumns, savedFilterSql } from '../services/row-filter';
+import { liveRunColumns, savedFilterSql, withStale } from '../services/row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
 import { listViews } from '../services/view-store';
 import { sheetColumnDescriptions } from '../lib/column-descriptions';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 import { waterfallColumnSpend } from '../services/waterfall-status';
 import { autoDedupeView } from '../services/auto-dedupe-setting';
+
+const RUN_MAIN_TYPES = new Set<string | undefined>(['ai-output', 'http-master', 'enrich-status', 'waterfall']);
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -56,7 +58,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
     // matches beyond them invisible AND unreachable. A row passes only if it
     // matches EVERY column's filter (services/row-filter.ts, the same SQL the
     // API's `where` uses); the page and count queries below share the clause.
-    const saved = savedFilterSql(id, req.userId!, sheet, () => liveRunColumns(kinds.runState, columns));
+    const saved = savedFilterSql(id, req.userId!, sheet,
+      () => withStale(liveRunColumns(kinds.runState, columns), id, req.userId!, columns));
     // Saved views (the view menu, the active one's hidden columns), read with
     // the sheet row above, before the scan yields: a view switched meanwhile
     // can't pair one view's filters with another's id.
@@ -109,11 +112,15 @@ router.get('/:id', async (req: AuthRequest, res) => {
     // Column descriptions: the header tip and the column menu's Edit description.
     const columnDescriptions = Object.fromEntries(
       [...sheetColumnDescriptions(id, req.userId!)].filter(([c]) => columns.includes(c)));
+    // Each column an AI, HTTP API, enrichment or waterfall run fills → its main
+    // column: a cell's play button runs that run's row, hidden while it runs.
+    const runColumns = Object.fromEntries([...liveRunColumns(kinds.runState, columns)]
+      .filter(([, main]) => RUN_MAIN_TYPES.has(columnTypes[main])));
     res.json({
       sheet: sheetForClient,
       data: {
         rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns, views,
-        columnDescriptions,
+        columnDescriptions, runColumns,
         // Auto-dedupe's setting (services/auto-dedupe-setting.ts): the toolbar shows it's on.
         autoDedupe: autoDedupeView(id, req.userId!),
       },

@@ -4,6 +4,8 @@ import type { MenuState } from './HeaderContextMenu'
 import type { EnrichMenuAction, RunByColumn, RunMenuActions } from './types'
 import type { AutorunColumn } from '@/utils/api/types-autorun'
 import { AutorunMenuItems } from './AutorunMenuItems'
+import { rowsFor, useRunColumnCounts } from './useRunColumnCounts'
+import { runItemLabel } from '@/lib/run-controls-copy'
 
 interface Props {
   columnId: string
@@ -14,6 +16,7 @@ interface Props {
   autorun?: AutorunColumn
   // A waterfall's result column gets the same items (its runs go through the waterfall).
   waterfall?: boolean
+  sheetId?: string
 }
 
 const ITEM = 'text-gray-700 focus:text-gray-900'
@@ -22,10 +25,13 @@ const ITEM = 'text-gray-700 focus:text-gray-900'
 // through the enrichment start (with a confirm that quotes the estimate), not
 // the plain HTTP rerun, which refuses enrichment columns. While a run on the
 // column is active, only watching and stopping it are offered: a second run
-// on the same column is refused until it ends.
+// on the same column is refused until it ends. The items carry the column's
+// numbers once counted: empty or out of date, failed, all.
 export const EnrichColumnActions: React.FC<Props> = ({
-  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun, waterfall,
+  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun, waterfall, sheetId,
 }) => {
+  const active = !!activeHTTPRunsByColumn[columnId]
+  const counts = useRunColumnCounts(active ? undefined : sheetId, columnId)
   const onEnrichAction = waterfall ? actions.onWaterfallAction : actions.onEnrichAction
   if (!onEnrichAction) return null
   const noun = waterfall ? 'Waterfall' : 'Enrichment'
@@ -33,7 +39,6 @@ export const EnrichColumnActions: React.FC<Props> = ({
     onEnrichAction(action, columnId, rows)
     setMenu(null)
   }
-  const active = !!activeHTTPRunsByColumn[columnId]
   const selected = selectedRowIndices ?? []
   return (
     <>
@@ -41,16 +46,23 @@ export const EnrichColumnActions: React.FC<Props> = ({
       <DropdownMenuLabel>{noun} Actions</DropdownMenuLabel>
       {!active && (
         <>
-          <DropdownMenuItem onClick={act('not_enriched')} className={ITEM}>
-            🔄 {waterfall ? 'Run Rows Not Run Yet' : 'Run Rows Not Enriched'}
+          <DropdownMenuItem onClick={act('stale')} className={ITEM} data-testid="run-stale"
+            disabled={rowsFor(counts, 'empty_or_out_of_date') === 0}>
+            ▶️ {runItemLabel('empty_or_out_of_date', counts)}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={act('failed')} className={ITEM}>🔁 Retry Failed Rows</DropdownMenuItem>
+          <DropdownMenuItem onClick={act('failed')} className={ITEM} data-testid="run-failed"
+            disabled={rowsFor(counts, 'failed') === 0}>
+            🔁 {runItemLabel('failed', counts)}
+          </DropdownMenuItem>
           {selected.length > 0 && (
             <DropdownMenuItem onClick={act('selected', selected)} className={ITEM}>
               🔄 Run Selected Rows ({selected.length.toLocaleString()})
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={act('all')} className={ITEM}>🔄 Run All Rows Again</DropdownMenuItem>
+          <DropdownMenuItem onClick={act('all')} className={ITEM} data-testid="run-all"
+            disabled={rowsFor(counts, 'all') === 0}>
+            ⏩ {runItemLabel('all', counts)}
+          </DropdownMenuItem>
         </>
       )}
       <DropdownMenuItem onClick={act('edit')} className={ITEM}>✏️ Edit {noun}</DropdownMenuItem>

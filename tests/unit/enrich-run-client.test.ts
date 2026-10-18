@@ -85,7 +85,9 @@ check('failed rows: the count, replaced, the range, the stop, today',
   msg.startsWith('Run Verified work email on 12 rows that failed?')
   && msg.includes('replaced') && msg.includes('$0.060 to $0.480') && msg.includes('stops at $0.480')
   && msg.includes("Today's limit: $10.00, $9.00 left"))
-check('not enriched yet: nothing is replaced', !rerunMessage('not_enriched', est).includes('replaced'))
+check('empty or out of date: only out-of-date results are replaced',
+  rerunMessage('stale', est).includes('Any out-of-date results are replaced.')
+  && !rerunMessage('stale', est).includes('Their current results'))
 check('nothing to run says so', rerunMessage('failed', { ...est, rows: 0 }) === 'No rows in Work email failed.')
 check('one row reads as one', rerunMessage('selected', { ...est, rows: 1 }).includes('Its current result is replaced'))
 check('the provider bills: no figures',
@@ -94,7 +96,7 @@ const reusing = rerunMessage('all', { ...est, reusedRows: 5 })
 check('rows that reuse earlier answers: said, not charged again, and how to call them again',
   reusing.includes('5 rows reuse earlier answers at no cost.') && !reusing.includes('each row costs again')
   && reusing.includes('turn on Always call again'))
-check('... a floor says at least', rerunMessage('not_enriched', { ...est, reusedRows: 5, reuseComplete: false })
+check('... a floor says at least', rerunMessage('stale', { ...est, reusedRows: 5, reuseComplete: false })
   .includes('At least 5 rows reuse'))
 
 // --- Reuse in the run dialog ----------------------------------------------------
@@ -122,7 +124,7 @@ check('... never $0 when every row reuses: the start sizes it then',
     perRowHighUsd: 0 } } as never, unpriced: false, reuse: count(3) }) === null)
 check('... the one typed wins', quotedLimit({ draft: { spendLimitUsd: 2 }, estimate: priced(0.1), unpriced: false }) === 2)
 
-check('menu actions map to statuses', RERUN_STATUS.selected === 'any' && RERUN_STATUS.not_enriched === 'not_enriched')
+check('menu actions map to statuses', RERUN_STATUS.selected === 'any' && RERUN_STATUS.stale === 'empty_or_out_of_date')
 const all = [msg, rerunMessage('all', est), rerunMessage('selected', est), reusing, reuseEstimateLine(count(5), 12),
   callAgainNote(30), callAgainNote(0)].join(' ')
 check('no em dashes in the copy', !all.includes(String.fromCharCode(0x2014)))
