@@ -34,6 +34,11 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | A lookup by "contains", company names in both sheets (the text index built in 51 s, then the fill) | 60 s | 0.11 s | 770 MB |
 | Check for duplicates, 300,000 rows repeating an email (by email 2.6 s, as plain text 2.1 to 2.5 s, by domain 3.3 to 3.5 s, by phone 5.6 to 7.7 s, three columns 5.2 to 6.9 s, keeping the most filled-in row 6.3 to 12.9 s) | 2 to 13 s | 0.04 to 0.14 s | 950 MB |
 | Remove those 300,000 duplicate rows (two runs) | 18 to 30 s | 0.4 to 0.5 s | 970 MB |
+| Search: the first match of a common name, or the next one 900,000 rows in | 0.03 s | none | 470 MB |
+| Search: a text found only near the end (the grid then shows that part of the sheet in 0.05 s) | 0.4 s | 0.01 s | 470 MB |
+| Search: a text in no cell (0.3 s; 1.1 s for letters a quick text check can't fold, such as Cyrillic or "ß"), or one that is also a column name (1.8 s) | 0.3 to 1.8 s | 0.01 to 0.04 s | 470 MB |
+| Search count: "3 of 1,240" (stops at 10,000 matches, 0.05 s; a rare text reads the whole sheet) | 0.05 to 0.35 s | 0.01 s | 470 MB |
+| Search in a filtered view (Country is Germany, 33,000 rows), going on from row 990,000 | 0.65 s | 0.01 s | 560 MB |
 | An agent counting rows per value (`group_by` Industry, 30 values; while a big job holds the sheet it answers busy at once) | 1.0 s | 0.01 s | 470 MB |
 | `group_by` two columns (900 groups) with sum, average, min, max and a count | 2.5 s | 0.02 s | 480 MB |
 | The sum of a column over every row | 0.8 s | 0.01 s | 480 MB |
@@ -42,7 +47,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 
 The database for this sheet is 600 MB on disk. The filter rows were measured on a sheet like it with an AI column and an enrichment (a status column and two outputs), each with 20,000 runs.
 
-Counts per value and the "Is any of" list were measured on a sheet of 1,000,000 rows and 11 columns (a 670 MB database) with an AI column and an enrichment status column.
+Search, counts per value and the "Is any of" list were measured on a sheet of 1,000,000 rows and 11 columns (a 670 MB database) with an AI column and an enrichment status column. Search first drops the rows that can't match with one quick check of each row's text, then reads only the rest; a text that is also a column name passes that check everywhere, which is why it takes longer.
 
 A filter has to check every row to count the matches, so a filtered read takes about half a second at a million rows. It checks them a slice at a time, about 25 ms each, so other requests keep being answered meanwhile.
 

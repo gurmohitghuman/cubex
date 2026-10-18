@@ -1,3 +1,4 @@
+// Over 200 lines: the grid's props and its run, column and setup actions, wired as one piece.
 import React from 'react'
 import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
@@ -15,7 +16,9 @@ import type { LookupColumnView } from '@/utils/api/lookup'
 import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
 import type { LookupOpenTarget } from '@/components/lookup/useLookupForm'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
-import type { CellClickInfo, RunByColumn, RunMenuActions } from '@/components/aggrid/types'
+import type {
+  AGGridSpreadsheetProps, CellClickInfo, RunByColumn, RunMenuActions,
+} from '@/components/aggrid/types'
 import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import { EnrichRerunConfirm } from './EnrichRerunConfirm'
 import { useColumnRunDialogs } from './ColumnRunDialogs'
@@ -88,6 +91,12 @@ export interface SheetGridProps {
   onHideColumn?: (column: string) => void
   // The view has a filter no column header shows (the bar above lists it).
   rowFilterActive?: boolean
+  // Search: the held rows' place in the view, the rows above a deep window,
+  // the grid's "/", and its highlight handle (AGGridSpreadsheetProps).
+  windowStart?: number
+  onLoadEarlier?: (windowStart: number, firstRowIndex: number) => void
+  onOpenSearch?: () => void
+  registerSearch?: AGGridSpreadsheetProps['registerSearch']
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -101,6 +110,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, lookupColumns, onOpenLookup,
+    windowStart, onLoadEarlier, onOpenSearch, registerSearch,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -189,6 +199,8 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onAddColumn={onAddColumn}
       registerClearSelection={registerClearSelection}
       registerViewport={registerViewport}
+      windowStart={windowStart} onLoadEarlier={onLoadEarlier} onOpenSearch={onOpenSearch}
+      registerSearch={registerSearch}
       className="w-full h-full"
     />
       </div>

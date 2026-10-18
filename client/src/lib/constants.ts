@@ -22,6 +22,14 @@ export const SILENT_RELOAD_PAGE_ROWS = 1000;
 export const SILENT_RELOAD_MAX_ROWS = 4000;
 export const SILENT_RELOAD_BELOW_ROWS = 1000;
 export const SILENT_RELOAD_LEAD_ROWS = 250;
+// Search (hooks/sheet/useSheetSearch.ts): a match outside the held rows loads
+// a window of SEARCH_JUMP_ROWS starting SEARCH_JUMP_LEAD_ROWS above it; the
+// typed text waits SEARCH_DEBOUNCE_MS of quiet before it searches; the
+// server caps the text (MAX_SEARCH_CHARS in server lib/constants-query.ts).
+export const SEARCH_JUMP_ROWS = 1000;
+export const SEARCH_JUMP_LEAD_ROWS = 100;
+export const SEARCH_DEBOUNCE_MS = 250;
+export const MAX_SEARCH_CHARS = 200;
 
 // The "type it in" effect when a cell gets its value (aggrid/typingTicker.ts):
 // per character, capped per cell however long the value is, and how many cells

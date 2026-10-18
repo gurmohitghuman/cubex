@@ -350,3 +350,9 @@
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
+
+/* The cell search found (useGridSearch): over a cell's own colors. */
+.ag-theme-alpine .ag-cell.cubex-search-hit {
+  background-color: #fef3c7 !important;
+  box-shadow: inset 0 0 0 2px #f59e0b;
+}

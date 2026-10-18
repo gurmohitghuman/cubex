@@ -20,13 +20,16 @@ interface UseGridHandlersArgs {
   onSelectedRowsChange?: (rows: number[]) => void
   onColumnReorder?: (newColumnOrder: string[]) => void | Promise<void>
   onLoadMore?: (offset: number, limit: number) => void
+  // The held rows' place in the view, and paging in the rows above a deep window.
+  windowStart?: number
+  onLoadEarlier?: () => void
 }
 
 export const useGridHandlers = (args: UseGridHandlersArgs) => {
   const {
     columns, data, totalRows, rowData, nameToColIdRef, colIdFor,
     setColumnWidths, setSelectedRows,
-    onCellEdit, onCellClick, onSelectedRowsChange, onColumnReorder, onLoadMore,
+    onCellEdit, onCellClick, onSelectedRowsChange, onColumnReorder, onLoadMore, windowStart = 0, onLoadEarlier,
   } = args
 
   const [gridApi, setGridApi] = useState<GridApi | null>(null)
@@ -64,11 +67,13 @@ export const useGridHandlers = (args: UseGridHandlersArgs) => {
 
   const onCellClicked = useCallback((event: CellClickedEvent) => {
     if (onCellClick && event.colDef.field && event.data.__rowIndex !== undefined) {
-      const displayRow = typeof event.rowIndex === 'number' ? event.rowIndex + 1 : event.data.__rowIndex + 1
+      // The "#" the grid shows: a window search moved deep counts from its start.
+      const displayRow = typeof event.rowIndex === 'number'
+        ? windowStart + event.rowIndex + 1 : event.data.__rowIndex + 1
       const clicks = (event.event as MouseEvent | null)?.detail ?? 1
       onCellClick(event.data.__rowIndex, event.colDef.field, event.value, { displayRow, clicks })
     }
-  }, [onCellClick])
+  }, [onCellClick, windowStart])
 
   const onSelectionChanged = useCallback((_event: SelectionChangedEvent) => {
     const selectedNodes = gridApi?.getSelectedNodes() || []
@@ -163,11 +168,14 @@ export const useGridHandlers = (args: UseGridHandlersArgs) => {
   const onBodyScrollEnd = useCallback(() => {
     // Same destroyed-grid guard as the column-state handlers — a retained gridApi
     // can outlive its <AgGridReact> (zero-row empty-filter branch).
-    if (onLoadMore && gridApi && !gridApi.isDestroyed?.() && data.length < totalRows) {
+    if (!gridApi || gridApi.isDestroyed?.()) return
+    if (onLoadMore && windowStart + data.length < totalRows) {
       const lastRowIndex = gridApi.getLastDisplayedRowIndex()
-      if (lastRowIndex >= data.length - 10) onLoadMore(data.length, 1000)
+      if (lastRowIndex >= data.length - 10) onLoadMore(windowStart + data.length, 1000)
     }
-  }, [gridApi, data.length, totalRows, onLoadMore])
+    // A window that starts deep (search jumped there): the rows above it.
+    if (onLoadEarlier && windowStart > 0 && gridApi.getFirstDisplayedRowIndex() <= 10) onLoadEarlier()
+  }, [gridApi, data.length, totalRows, onLoadMore, windowStart, onLoadEarlier])
 
   // (Removed) The empty-filter is applied SERVER-SIDE in GET /data now — the
   // server returns only matching rows. The old effect here re-applied an AG Grid
