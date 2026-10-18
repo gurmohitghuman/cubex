@@ -95,12 +95,15 @@ function build(s: Obj): SetupStep {
         request: {
           method: r.method as 'GET', url: str(r.url, 'request.url'), headers,
           body: strOrNull(r.body, 'request.body'), timeout: int(r.timeout, 'request.timeout'),
+          ...(r.skipEmpty === undefined ? {} : { skipEmpty: bool(r.skipEmpty, 'request.skipEmpty') }),
         },
         mappings: list(s.mappings, 'mappings', m => {
           const x = obj(m, 'A mapping');
           return { jsonPath: str(x.jsonPath, 'jsonPath'), columnName: name(x.columnName, 'columnName') };
         }),
         batchSize: int(s.batchSize, 'batchSize'), runIf: strOrNull(s.runIf, 'runIf'), autoRun: autoRun(s.autoRun),
+        ...(s.retries === undefined ? {} : { retries: int(s.retries, 'retries') }),
+        ...(s.retryPost === undefined ? {} : { retryPost: bool(s.retryPost, 'retryPost') }),
       };
     }
     case 'enrichment': {

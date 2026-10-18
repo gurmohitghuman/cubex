@@ -1,5 +1,5 @@
 import { lookupApiKey } from './http-api-key-lookup';
-import { goneColumnFor, goneColumnMessage, goneColumnsOf, templateTokenIs } from './template-token-match';
+import { goneColumnFor, goneColumnMessage, templateTokenIs } from './template-token-match';
 
 export interface HTTPRequestConfig {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -9,6 +9,9 @@ export interface HTTPRequestConfig {
   timeout?: number;
   // Deleted columns this request read: never filled with a saved key (lib/template-token-match.ts).
   goneColumns?: string[];
+  // A query parameter or body field whose {{column}} comes out empty is left
+  // out instead of sent as "" (lib/http-request-build.ts). Off when absent.
+  skipEmpty?: boolean;
 }
 
 export interface ResponseMapping {
@@ -23,6 +26,11 @@ export interface HTTPAPIConfig {
   batchSize?: number;
   // "Only run if" rule (lib/run-condition.ts) as stored; absent = every row.
   runIf?: string;
+  // Automatic retries of a failed request (lib/http-retry.ts): 0-5 more tries,
+  // HTTP_RETRY_DEFAULT when absent. retryPost also retries a POST on a 5xx or a
+  // network error (429 and 503 retry every method: the request wasn't processed).
+  retries?: number;
+  retryPost?: boolean;
 }
 
 // The two accepted template token forms:
@@ -89,6 +97,7 @@ export function replaceTemplateVariables(
   // matchAll call below never crashes the worker. Returning '' is safe — the
   // caller (header value, body, etc.) just becomes empty.
   if (typeof template !== 'string') return '';
+  const ctx: TokenContext = { rowData, userId, mode, allowSavedKeys, runId, gone };
 
   // SINGLE-PASS callback replacement, matching processPromptTemplate in
   // lib/prompt.ts. Each token is resolved AT ITS OWN POSITION, so:
@@ -106,53 +115,77 @@ export function replaceTemplateVariables(
   // function's result as a replacement pattern), so $&/$'/$$/$` in a cell value
   // or API key can't be re-expanded — the reason the previous code already used
   // the callback form.
-  return template.replace(TEMPLATE_TOKEN_RE, (full, braceInner, slashName) => {
-    const isBrace = braceInner !== undefined;
-    const name = isBrace ? String(braceInner).trim() : slashName;
-    // Empty-trimmed name (e.g. "{{  }}"): leave the token untouched, exactly as
-    // the old `if (!name) continue` did — do NOT emit a [MISSING] marker.
-    if (!name) return full;
+  return template.replace(TEMPLATE_TOKEN_RE, (full, braceInner, slashName) =>
+    resolveTemplateToken(full, braceInner, slashName, ctx).text);
+}
 
-    // Match column names using the same normalization the AI prompt path uses
-    // (lib/prompt.ts normalizeColumnName). Without this, columns with dots/brackets
-    // — common in CSV headers like "company.domain" — would never match
-    // /company_domain even though the UI suggests that form.
-    const matchingColumn = Object.keys(rowData).find(col => templateTokenIs(name, col));
+// What one token stands for, given the row and the run's key policy (the
+// arguments of replaceTemplateVariables). kind: a row's 'column' value (data,
+// which the request builder escapes or encodes for where it goes), a saved
+// 'key' (sent exactly as saved), 'literal' text left as written (an unknown
+// /path, an empty {{ }}), or a 'marker' Cubex wrote in the record of a request
+// (a redacted key, a [MISSING] note). Only column values are ever changed.
+export interface TokenContext {
+  rowData: Record<string, string>; userId: string; mode: 'live' | 'redact-secrets';
+  allowSavedKeys: boolean; runId?: string; gone: readonly string[];
+}
+export interface ResolvedToken { text: string; kind: 'column' | 'key' | 'literal' | 'marker' }
 
-    if (matchingColumn) {
-      return rowData[matchingColumn] || '';
-    }
-    // A deleted column it read: never its saved-key namesake.
-    const goneColumn = goneColumnFor(name, gone);
-    if (goneColumn !== undefined) {
-      if (mode === 'live') throw new Error(goneColumnMessage(goneColumn));
-      return `[MISSING: ${full}]`;
-    }
+// One token, resolved at its own position (see replaceTemplateVariables). The
+// request builder (http-request-build.ts) calls it per token so it can put each
+// value where it goes; the rules here are the whole substitution contract.
+export function resolveTemplateToken(
+  full: string, braceInner: string | undefined, slashName: string | undefined, ctx: TokenContext,
+): ResolvedToken {
+  const { rowData, userId, mode, allowSavedKeys, runId, gone } = ctx;
+  const isBrace = braceInner !== undefined;
+  const name = isBrace ? String(braceInner).trim() : slashName;
+  // Empty-trimmed name (e.g. "{{  }}"): leave the token untouched, exactly as
+  // the old `if (!name) continue` did — do NOT emit a [MISSING] marker.
+  if (!name) return { text: full, kind: 'literal' };
 
-    // allowSavedKeys is the fast pre-filter (start-time frozen policy); runId
-    // makes the lookup itself re-check allow_secrets atomically for the runtime
-    // freeze race. Both must permit for a key to resolve.
-    const apiKeyValue = allowSavedKeys ? lookupApiKey(userId, name, runId) : null;
-    if (apiKeyValue) {
-      // In redact mode, replace with a non-secret marker that records WHICH key
-      // was used without revealing its value. Live mode injects the actual secret.
-      return mode === 'redact-secrets' ? `[REDACTED:${name}]` : apiKeyValue;
+  // Match column names using the same normalization the AI prompt path uses
+  // (lib/prompt.ts normalizeColumnName). Without this, columns with dots/brackets
+  // — common in CSV headers like "company.domain" — would never match
+  // /company_domain even though the UI suggests that form.
+  const matchingColumn = Object.keys(rowData).find(col => templateTokenIs(name, col));
+
+  if (matchingColumn) {
+    return { text: rowData[matchingColumn] || '', kind: 'column' };
+  }
+  // A deleted column it read: never its saved-key namesake.
+  const goneColumn = goneColumnFor(name, gone);
+  if (goneColumn !== undefined) {
+    if (mode === 'live') throw new Error(goneColumnMessage(goneColumn));
+    return { text: `[MISSING: ${full}]`, kind: 'marker' };
+  }
+
+  // allowSavedKeys is the fast pre-filter (start-time frozen policy); runId
+  // makes the lookup itself re-check allow_secrets atomically for the runtime
+  // freeze race. Both must permit for a key to resolve.
+  const apiKeyValue = allowSavedKeys ? lookupApiKey(userId, name, runId) : null;
+  if (apiKeyValue) {
+    // In redact mode, replace with a non-secret marker that records WHICH key
+    // was used without revealing its value. Live mode injects the actual secret.
+    return mode === 'redact-secrets'
+      ? { text: `[REDACTED:${name}]`, kind: 'marker' } : { text: apiKeyValue, kind: 'key' };
+  }
+  if (isBrace) {
+    // An unresolved {{column}} is an explicit ref the user clearly intended.
+    // A live request must not go out with it (it was sent as "[MISSING: ...]"
+    // and the row marked a success): fail the row instead. The redacted
+    // record keeps the marker so it shows what was wrong.
+    if (mode === 'live') {
+      throw new Error(`${full} doesn't match a column or a saved key, so the request wasn't sent.`);
     }
-    if (isBrace) {
-      // An unresolved {{column}} is an explicit ref the user clearly intended.
-      // A live request must not go out with it (it was sent as "[MISSING: ...]"
-      // and the row marked a success): fail the row instead. The redacted
-      // record keeps the marker so it shows what was wrong.
-      if (mode === 'live') throw new Error(`${full} doesn't match a column or a saved key, so the request wasn't sent.`);
-      return `[MISSING: ${full}]`;
-    }
-    // An unresolved /name is left UNTOUCHED (Bug 8): a slash token is ambiguous
-    // between a column/key ref and a literal URL path segment ("/v1/users") or
-    // JSON-body path. Emitting "[MISSING: /v1]" corrupted legitimate requests.
-    // If the user genuinely meant a reference, the explicit {{name}} form still
-    // flags it.
-    return full;
-  });
+    return { text: `[MISSING: ${full}]`, kind: 'marker' };
+  }
+  // An unresolved /name is left UNTOUCHED (Bug 8): a slash token is ambiguous
+  // between a column/key ref and a literal URL path segment ("/v1/users") or
+  // JSON-body path. Emitting "[MISSING: /v1]" corrupted legitimate requests.
+  // If the user genuinely meant a reference, the explicit {{name}} form still
+  // flags it.
+  return { text: full, kind: 'literal' };
 }
 
 // column_order is the column registry and a row holds only the keys it has
@@ -163,32 +196,4 @@ export function withSheetColumns(rowData: Record<string, string>, columns: strin
   const out: Record<string, string> = {};
   for (const c of columns) out[c] = '';
   return Object.assign(out, rowData);
-}
-
-// Produces a copy of an HTTP request config with API-key references swapped for
-// "[REDACTED:<keyName>]" tokens. Used by the runner to persist a record of what was
-// sent without writing the user's plaintext Bearer token into http_results.request_config
-// (where it would survive forever and leak via the /api/http/jobs/:id endpoint).
-//
-// Column-value substitutions (the user's own cell data) ARE applied as normal — only
-// secret references are redacted.
-export function redactedRequestConfig(
-  config: HTTPRequestConfig,
-  rowData: Record<string, string>,
-  userId: string,
-  allowSavedKeys = true,
-  runId?: string,
-): HTTPRequestConfig {
-  const gone = goneColumnsOf(config);
-  const sub = (t: string) =>
-    replaceTemplateVariables(t, rowData, userId, 'redact-secrets', allowSavedKeys, runId, gone);
-  const url = sub(config.url);
-  const headers: Record<string, string> = {};
-  if (config.headers) {
-    for (const [key, value] of Object.entries(config.headers)) {
-      headers[sub(key)] = sub(value);
-    }
-  }
-  const body = config.body ? sub(config.body) : undefined;
-  return { method: config.method, url, headers, body, timeout: config.timeout };
 }

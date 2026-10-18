@@ -75,7 +75,8 @@ export const ConfigureStep: React.FC<Props> = (p) => {
       </AccordionSection>
 
       <AccordionSection title="Response Values" summary={p.config.responseMapping.length ? `${p.config.responseMapping.length} mapped` : undefined}>
-        <ResponsePane config={p.config} errors={p.errors} updateConfig={p.updateConfig}
+        <ResponsePane config={p.config} masterColumnName={p.masterColumnName} errors={p.errors}
+          updateConfig={p.updateConfig}
           addResponseMapping={p.addResponseMapping} removeResponseMapping={p.removeResponseMapping}
           updateResponseMapping={p.updateResponseMapping} />
       </AccordionSection>

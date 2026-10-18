@@ -136,6 +136,9 @@ Click **HTTP API** and describe the request: method, URL, headers and body. `{{c
 - Responses must be JSON. HTML pages are rejected, so this isn't a scraper.
 - Requests can't reach private or internal addresses (localhost, your LAN, cloud metadata), so a value that came in through a webhook or an AI answer can't point Cubex at your own network.
 - A run makes 5 requests at a time by default, up to 100 (configurable).
+- A request that fails because the API is busy (429), down (5xx) or doesn't answer is tried again, up to 3 times by default (0 to 5), each time a little later, following the wait the API asks for, up to a minute. POST requests are retried only on 429 and 503 unless you turn on **Also retry POST requests**. A request the API rejects, like a 404, isn't retried.
+- **Leave out empty values** skips a query parameter or body field whose `{{column}}` is empty for that row, instead of sending it empty. Cell values always go in the way their place needs: escaped inside a JSON body, and in a URL the characters that would change the query (`&`, `#`, `+`) are encoded. Saved keys go in exactly as saved.
+- **Add a column with the response code** keeps each row's HTTP status, like 200 or 404, failed rows included.
 - Turn on auto-run from the column's menu and it calls the API for new rows by itself, such as rows a webhook adds, once every column the request uses is filled. It runs at most 500 rows a day unless you change that, since each row sends a real request.
 
 ![Adding an HTTP API column that calls the GitHub API for each company and saves location, public repos and followers as columns](docs/media/cubex-http.gif)

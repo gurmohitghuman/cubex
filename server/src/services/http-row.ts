@@ -3,12 +3,14 @@ import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { withSheetColumns } from '../lib/http-request-template';
 import {
-  makeHTTPRequest,
+  sendHTTPRequest,
   redactedRequestConfig,
   redactSecrets,
   type HTTPAPIConfig,
 } from '../lib/http-request';
-import { extractOutcome } from '../lib/jsonpath-extract';
+import { extractMappedFields, failedRowFields, statusColumnsOf } from '../lib/http-extract-fields';
+import { responseStatusOf, withResponseStatus } from '../lib/http-errors';
+import { nextRetryWait, retryPolicyOf, tryFailureOf, waitUnlessStopped } from '../lib/http-retry';
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import { httpResultCellValues } from '../lib/http-cell-values';
@@ -73,21 +75,18 @@ export async function processHTTPRow(
     redactedRequestConfig(config.requestConfig, rowData, run.user_id, allowSavedKeys, runId),
   );
 
+  const mappingColumns = config.responseMapping.map(m => m.columnName);
+  const statusColumns = statusColumnsOf(config.responseMapping);
   try {
-    const responseData = await makeHTTPRequest(config.requestConfig, rowData, run.user_id, signal, allowSavedKeys, runId);
-    const extractedFields: Record<string, any> = {};
-    for (const mapping of config.responseMapping) {
-      // extractOutcome distinguishes "path didn't match" (→ null, normal blank
-      // cell) from "path was malformed / threw" (Bug 7: previously swallowed to
-      // null → a misleading '⏭️ No data'). A genuinely broken path now FAILS the
-      // row (throw → the catch writes '❌ Error' + records the reason) so the user
-      // sees a fixable error instead of silent empty data.
-      const outcome = extractOutcome(responseData, mapping.jsonPath);
-      if (outcome.error) {
-        throw new Error(`JSONPath "${mapping.jsonPath}" (column "${mapping.columnName}"): ${outcome.error}`);
-      }
-      extractedFields[mapping.columnName] = outcome.matched ? outcome.value : null;
-    }
+    const answer = await sendWithRetries(runId, myGeneration, config, rowData, run.user_id, signal, allowSavedKeys);
+    if (answer === STOPPED) return;
+    const responseData = answer.data;
+    // A path that didn't match is a blank cell; a malformed one (Bug 7: once
+    // swallowed to a misleading '⏭️ No data') FAILS the row with a fixable
+    // message, and the response code column still shows what the API answered.
+    let extractedFields: Record<string, any>;
+    try { extractedFields = extractMappedFields(responseData, answer.status, config.responseMapping); }
+    catch (error) { throw withResponseStatus(error, answer.status); }
 
     if (shouldStop(runId, myGeneration)) return;
 
@@ -104,8 +103,7 @@ export async function processHTTPRow(
       );
       // Shared with the SSE stream (http-jobs.ts) so live cells == persisted cells.
       const writes = Object.entries(httpResultCellValues({
-        status: 'completed', extractedFields,
-        mappingColumns: config.responseMapping.map(m => m.columnName),
+        status: 'completed', extractedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
       writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes);
@@ -120,6 +118,8 @@ export async function processHTTPRow(
 
     const resultId = uuidv4();
     const errorMessage = redactSecrets(error?.message || 'Unknown error');
+    // The status code when the API answered: kept for the response code column.
+    const failedFields = failedRowFields(responseStatusOf(error), config.responseMapping);
     // Atomic ownership re-check (see ai-row failure path): .immediate() takes the
     // write lock so the in-txn shouldStop is atomic vs the main-process status
     // UPDATE; skip the writes (return, no throw) if a stop/resume raced us so we
@@ -128,16 +128,44 @@ export async function processHTTPRow(
       if (shouldStop(runId, myGeneration)) return;
       insertResult.run(
         resultId, runId, run.user_id, row.rowIndex,
-        redactedConfigJson, null, JSON.stringify({}),
+        redactedConfigJson, null, JSON.stringify(failedFields),
         'failed', errorMessage,
       );
       const writes = Object.entries(httpResultCellValues({
-        status: 'failed', extractedFields: {},
-        mappingColumns: config.responseMapping.map(m => m.columnName),
+        status: 'failed', extractedFields: failedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
       writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
+  }
+}
+
+const STOPPED = Symbol('stopped-while-waiting');
+
+// The row's request, tried again on a failure a retry can fix (lib/http-retry.ts)
+// while the column's retries last. Each try starts from the top: cache check →
+// SSRF guard → request. The row keeps its slot while it waits, so the run's
+// concurrency holds; a pause or stop during a wait leaves the row ⏳ for its
+// run (STOPPED). A failure that isn't retried, or the last one, is thrown with
+// how many tries it took.
+async function sendWithRetries(
+  runId: string, myGeneration: number, config: HTTPAPIConfig, rowData: Record<string, string>, userId: string,
+  signal: AbortSignal | undefined, allowSavedKeys: boolean,
+): Promise<{ data: any; status: number } | typeof STOPPED> {
+  const policy = retryPolicyOf(config);
+  const method = config.requestConfig.method || 'GET';
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await sendHTTPRequest(config.requestConfig, rowData, userId, signal, allowSavedKeys, runId);
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || signal?.aborted) throw error;
+      const wait = nextRetryWait(tryFailureOf(error), method, attempt, policy, Date.now());
+      if (wait === null) {
+        if (attempt > 1 && error instanceof Error) error.message = `${error.message} (tried ${attempt} times)`;
+        throw error;
+      }
+      if (!await waitUnlessStopped(wait, () => shouldStop(runId, myGeneration), signal)) return STOPPED;
+    }
   }
 }

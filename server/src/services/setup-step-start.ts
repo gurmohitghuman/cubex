@@ -44,10 +44,13 @@ export async function startSetupStep(
             method: step.request.method, url: step.request.url, headers: { ...step.request.headers },
             ...(step.request.body === null ? {} : { body: step.request.body }),
             ...(step.request.timeout === null ? {} : { timeout: step.request.timeout }),
+            ...(step.request.skipEmpty ? { skipEmpty: true } : {}),
           },
           responseMapping: step.mappings.map(m => ({ ...m })), previewSize: 3,
           ...(step.batchSize === null ? {} : { batchSize: step.batchSize }),
           ...(step.runIf ? { runIf: step.runIf } : {}),
+          ...(typeof step.retries === 'number' ? { retries: step.retries } : {}),
+          ...(step.retryPost ? { retryPost: true } : {}),
         },
       });
       return 'fail' in out ? out : { ok: { kind: 'http', runId: out.ok.runId } };

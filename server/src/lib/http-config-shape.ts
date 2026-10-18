@@ -4,6 +4,7 @@
 // response (models add markdown fences, drop fields, mistype types).
 //
 // Lives in lib/ so each route file stays under the 200-line cap.
+import { HTTP_RETRY_DEFAULT } from './constants-http-retry';
 
 export function hostFromUrl(raw: string): string | null {
   try {
@@ -42,8 +43,9 @@ export function toModalConfig(parsed: unknown): any | null {
       .map(x => ({ jsonPath: x.jsonPath, columnName: x.columnName })),
     previewSize: 5,
     concurrency: 5,
-    retries: 3,
-    skipMissingFields: false,
+    retries: HTTP_RETRY_DEFAULT,
+    retryPost: false,
+    skipEmpty: false,
     connectionName: typeof p.connectionName === 'string' ? p.connectionName : undefined,
   };
 }

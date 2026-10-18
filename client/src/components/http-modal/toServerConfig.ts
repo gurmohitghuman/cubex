@@ -40,14 +40,14 @@ export function toServerConfig(c: HTTPAPIConfig) {
       url,
       headers: arrayToRecord(c.headers ?? []),
       body: c.body && c.body.trim() ? c.body : undefined,
+      ...(c.skipEmpty ? { skipEmpty: true } : {}),
     },
     responseMapping: c.responseMapping ?? [],
     previewSize: c.previewSize,
     concurrency: c.concurrency,
     batchSize: c.concurrency, // server reads batchSize on http_runs.config
-    rateLimit: c.rateLimit,
     retries: c.retries,
-    skipMissingFields: c.skipMissingFields,
+    ...(c.retryPost ? { retryPost: true } : {}),
     ...(c.runIf?.trim() ? { runIf: c.runIf } : {}),
   }
 }

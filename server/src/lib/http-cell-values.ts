@@ -22,6 +22,8 @@ export function httpResultCellValues(opts: {
   status: string;                                   // http_results.status
   extractedFields: Record<string, unknown>;         // parsed http_results.extracted_fields
   mappingColumns: string[];                         // config.responseMapping[].columnName
+  // The response code columns among them (@status, lib/http-extract-fields.ts).
+  statusColumns?: string[];
   masterColumn: string | null;                      // run.master_column_name
   // An enrichment row stores its exact cells (lib/enrich-cells.ts) as
   // extracted_fields: replay them, every run column included ('' as written).
@@ -37,18 +39,26 @@ export function httpResultCellValues(opts: {
     return out;
   }
 
+  // A response code column holds the code whenever the API answered, a failed
+  // row included (a 404 is worth seeing); no answer at all says so.
+  const codes = new Set(opts.statusColumns ?? []);
+  const code = (col: string) => {
+    const v = extractedFields[col];
+    return typeof v === 'number' ? String(v) : '❌ No response';
+  };
   if (status === 'failed') {
-    for (const col of mappingColumns) out[col] = '❌ Error';
+    for (const col of mappingColumns) out[col] = codes.has(col) ? code(col) : '❌ Error';
     if (masterColumn) out[masterColumn] = '❌ Failed';
     return out;
   }
 
-  const values = Object.values(extractedFields);
-  const allEmpty = values.length === 0
-    || values.every(v => v === null || v === undefined || v === '');
+  const isEmpty = (v: unknown) => v === null || v === undefined || v === '';
+  const bodyColumns = mappingColumns.filter(col => !codes.has(col));
+  const allEmpty = codes.size > 0 && bodyColumns.length === 0 ? false
+    : bodyColumns.length === 0 || bodyColumns.every(col => isEmpty(extractedFields[col]));
 
   if (allEmpty) {
-    for (const col of mappingColumns) out[col] = '⏭️ No data';
+    for (const col of mappingColumns) out[col] = codes.has(col) ? code(col) : '⏭️ No data';
     if (masterColumn) out[masterColumn] = '⏭️ Skipped';
     return out;
   }
@@ -60,6 +70,7 @@ export function httpResultCellValues(opts: {
   // otherwise those cells stay stuck on '⏳ Processing...' forever even though the
   // run completed. Empty fields in a partial-success row → '⏭️ No data'.
   for (const col of mappingColumns) {
+    if (codes.has(col)) { out[col] = code(col); continue; }
     const v = extractedFields[col];
     // Extracted value: strip control chars (P2-9 — this worker path let raw
     // JSON controls through) and clamp to the enrichment cell cap (P2-8).

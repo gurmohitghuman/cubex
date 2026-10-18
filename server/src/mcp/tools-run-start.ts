@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   MAX_ROWS_PER_SHEET, HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_REQUEST_TIMEOUT_MS,
-  CURL_MAX_CHARS,
+  CURL_MAX_CHARS, HTTP_RETRY_DEFAULT, HTTP_RETRY_MAX, HTTP_STATUS_PATH,
 } from '../lib/constants';
 import { PREVIEW_MAX_ROWS, MAX_AI_CONCURRENCY, FREE_MODEL_CONCURRENCY_WARN, MAX_SEARCHES_PER_ROW } from '../lib/constants-ai';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
@@ -80,7 +80,16 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         + 'Instead of url/method/headers/body you can pass curl: a whole cURL command, e.g. copied from the '
         + "API's docs. A key Cubex finds in it is never stored in the column: pass save_keys: true to save each one "
         + 'as a saved key (needs "secrets"; a key already saved with that value is used instead), or write '
-        + "{{key_name}} of a saved key in its place. A $VARIABLE in a key's spot uses the saved key with that name.",
+        + "{{key_name}} of a saved key in its place. A $VARIABLE in a key's spot uses the saved key with that name. "
+        + 'RETRIES: a request answered 429 or 503 is sent again (any method); another 5xx or no answer (refused, '
+        + 'timed out) is sent again for GET, PUT and DELETE, and for POST with retry_post. Up to `retries` more '
+        + `tries (default ${HTTP_RETRY_DEFAULT}, 0 turns it off), each waiting longer, following the API's `
+        + 'Retry-After up to 60 s; a 4xx is never retried. Cell values are escaped for where they go: inside a JSON '
+        + 'body string as JSON, in a query value "&", "#", "+" and a stray "%" are encoded (existing %XX escapes '
+        + 'stay); saved keys go in exactly as saved. skip_empty_values leaves out a query parameter or body '
+        + 'field whose {{column}} is empty instead of sending "". status_code_column adds a column with the HTTP '
+        + `status code (the same as a response_mapping entry with json_path "${HTTP_STATUS_PATH}"); a failed row `
+        + 'shows its code there too.',
       inputSchema: {
         sheet_id: z.string(),
         url: z.string().optional().describe(
@@ -95,7 +104,8 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('With curl: true saves each key in the command as a saved key under a suggested name, or '
             + '{ "<where>": "<name>" } for every key (e.g. { "Authorization header": "openai" }) picks the names.'),
         response_mapping: z.array(z.object({
-          json_path: z.string().describe('JSONPath into the response, e.g. $.title'),
+          json_path: z.string()
+            .describe(`JSONPath into the response, e.g. $.title, or "${HTTP_STATUS_PATH}" for the HTTP status code`),
           column_name: z.string().describe('New column to hold the extracted value'),
         })).min(1),
         master_column_name: z.string().optional().describe('Name for the per-row status column; auto-named if omitted'),
@@ -103,6 +113,14 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           .describe(`Requests sent at once (default ${HTTP_DEFAULT_BATCH_SIZE}). Raise only if the API allows it.`),
         timeout_ms: z.number().int().min(HTTP_MIN_TIMEOUT_MS).max(HTTP_MAX_TIMEOUT_MS).optional()
           .describe(`Per-request timeout (default ${HTTP_REQUEST_TIMEOUT_MS} ms).`),
+        retries: lenientInt(0, HTTP_RETRY_MAX).optional()
+          .describe(`More tries for a request that failed in a way a retry can fix (0-${HTTP_RETRY_MAX}, `
+            + `default ${HTTP_RETRY_DEFAULT}).`),
+        retry_post: lenientBoolean().optional()
+          .describe('Also retry POST on a 5xx or no answer. Only if the API is safe to call twice. Default false.'),
+        skip_empty_values: lenientBoolean().optional()
+          .describe('Leave out a query parameter or body field whose {{column}} is empty. Default false.'),
+        status_code_column: z.string().optional().describe('New column to hold the HTTP status code of each row'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids to run; omit for all rows'),
         run_if: runIfSchema,
         estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, ... } and start nothing. HTTP enrichment has no AI cost (runs against your own API).'),

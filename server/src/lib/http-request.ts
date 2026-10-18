@@ -3,9 +3,10 @@ import { HTTP_REQUEST_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS } fro
 import { getCachedResponse, setCachedResponse } from './http-request-cache';
 import { checkOutboundUrl, pinnedLookup } from './outbound-guard';
 import {
-  replaceTemplateVariables, redactedRequestConfig,
+  replaceTemplateVariables,
   type HTTPRequestConfig, type ResponseMapping, type HTTPAPIConfig,
 } from './http-request-template';
+import { buildRequest, redactedRequestConfig } from './http-request-build';
 
 export type { HTTPRequestConfig, ResponseMapping, HTTPAPIConfig };
 export { replaceTemplateVariables, redactedRequestConfig };
@@ -18,28 +19,23 @@ const HTTP_MAX_RESPONSE_BYTES = parseInt(
   process.env.HTTP_MAX_RESPONSE_BYTES || String(5 * 1024 * 1024), 10,
 );
 
-// Typed outbound errors live in the dependency-free lib/http-errors.ts. Imported
-// for use below and re-exported so existing importers see them here too.
-import { OutboundBlockedError } from './http-errors';
+// Typed outbound errors live in the dependency-free lib/http-errors.ts.
+import {
+  NetworkError, OutboundBlockedError, UpstreamStatusError, isTransportFailure, withResponseStatus,
+} from './http-errors';
 import { goneColumnsOf } from './template-token-match';
 export { OutboundBlockedError };
 
-// JSON-only response validation (and the NonJsonResponseError it throws) lives in
-// the neutral lib/http-response-json.ts. Re-exported so existing importers see it
-// here too.
+// JSON-only response validation lives in the neutral lib/http-response-json.ts.
 import { parseJsonResponse, NonJsonResponseError } from './http-response-json';
 export { parseJsonResponse, NonJsonResponseError };
 
-// Secret redaction moved to lib/redact.ts (one home, no dependency on the
-// request-making code). Imported for internal use here (the error-snippet
-// redaction below) and re-exported so existing importers are unaffected.
+// Secret redaction lives in lib/redact.ts; re-exported for existing importers.
 import { redactSecrets, redactError } from './redact';
 export { redactSecrets, redactError };
 
-// JSONPath extraction now lives in the neutral lib/jsonpath-extract.ts so the
-// webhook receiver can reuse it without importing this module's outbound-HTTP
-// machinery. Re-exported here so existing importers (http-runs, services/http-row)
-// are unaffected.
+// JSONPath extraction lives in the neutral lib/jsonpath-extract.ts (the webhook
+// receiver reuses it without this module's outbound machinery).
 import { extractDataWithJSONPath } from './jsonpath-extract';
 export { extractDataWithJSONPath };
 
@@ -47,42 +43,25 @@ export { extractDataWithJSONPath };
 // responsibility per file).
 import { readBoundedBody, readErrorSnippet } from './http-body-read';
 
-// Make an HTTP request based on config + row context. Caches identical requests for 5 min.
-// allowSavedKeys carries the run-level secret policy (http_runs.allow_secrets,
-// migration 034) into template substitution — see replaceTemplateVariables.
-// It may be a boolean OR a resolver evaluated at the substitution point. The
-// resolver form (the run worker) re-reads the policy here, then substitutes
-// using the captured value with no further DB read — so a mid-run no-'secrets'
-// resume-freeze (allow_secrets→0) is honored at per-row granularity even though
-// the freeze commits from another thread's connection. See the inline note.
-export async function makeHTTPRequest(
+// One try of a row's request: its parsed JSON body and status code. Caches
+// identical GET/HEAD answers for 5 min. allowSavedKeys carries the run-level
+// secret policy (http_runs.allow_secrets) into template substitution; runId
+// makes each key lookup re-check it atomically (closing the resume-freeze
+// TOCTOU — see replaceTemplateVariables / lookupApiKey). Throws typed errors
+// (lib/http-errors.ts) so the runner can tell what a retry could change.
+// Every try goes cache check → SSRF guard → request; retries (lib/http-retry.ts)
+// call this again from the top.
+export async function sendHTTPRequest(
   config: HTTPRequestConfig,
   rowData: Record<string, string>,
   userId: string,
   signal?: AbortSignal,
   allowSavedKeys = true,
   runId?: string,
-): Promise<any> {
-  // allowSavedKeys is the start-time-frozen fast pre-filter; runId makes each
-  // key lookup re-check allow_secrets atomically (closing the resume-freeze
-  // TOCTOU — see replaceTemplateVariables / lookupApiKey).
-  const gone = goneColumnsOf(config);
-  const sub = (t: string) => replaceTemplateVariables(t, rowData, userId, 'live', allowSavedKeys, runId, gone);
-  const processedUrl = sub(config.url);
-
-  const processedHeaders: Record<string, string> = {};
-  if (config.headers) {
-    for (const [key, value] of Object.entries(config.headers)) {
-      const name = sub(key);
-      // A templated name can come out empty or invalid for a row; say which header
-      // (its template, never the substituted text, which may hold a saved key).
-      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
-        throw new Error(`Header name "${key}" is empty or not a valid header name for this row.`);
-      }
-      processedHeaders[name] = sub(value);
-    }
-  }
-  const processedBody = config.body ? sub(config.body) : undefined;
+): Promise<{ data: any; status: number }> {
+  const { url: processedUrl, headers: processedHeaders, body: processedBody } = buildRequest(config, {
+    rowData, userId, mode: 'live', allowSavedKeys, runId, gone: goneColumnsOf(config),
+  });
 
   // Nudge upstreams toward JSON when the user didn't set an Accept header — a
   // content-negotiating server returns JSON instead of an HTML page, which both
@@ -144,14 +123,25 @@ export async function makeHTTPRequest(
   // DELETE carries a body too: the dialog offers one and some APIs (bulk deletes) read it.
   if (processedBody && ['POST', 'PUT', 'DELETE'].includes(config.method)) requestOptions.body = processedBody;
 
-  const response = await request(processedUrl, requestOptions);
+  // No answer at all (refused, reset, timed out) is a NetworkError, which a
+  // retry may fix; a stop (the signal) stays an abort, and an error raised
+  // before anything was sent (a header with a line break) stays as it is.
+  // undici never follows a redirect here: a 3xx is an answer like any other.
+  const noAnswer = (error: any): never => {
+    if (signal?.aborted || error?.name === 'AbortError' || !isTransportFailure(error)) throw error;
+    throw new NetworkError(error?.message || 'The request failed.');
+  };
+  const response = await request(processedUrl, requestOptions).catch(noAnswer);
+  const status = response.statusCode;
 
   // Non-2xx → throw, so the runner records the row as failed (with status context).
   // Without this, a 401/429/500 from the user's target API silently went into the row
   // as if it were successful.
-  if (response.statusCode < 200 || response.statusCode >= 300) {
+  if (status < 200 || status >= 300) {
     const snippet = await readErrorSnippet(response.body);
-    throw new Error(`HTTP ${response.statusCode} from upstream${snippet ? `: ${snippet}` : ''}`);
+    const after = response.headers['retry-after'];
+    throw new UpstreamStatusError(status, (Array.isArray(after) ? after[0] : after) ?? null,
+      `HTTP ${status} from upstream${snippet ? `: ${snippet}` : ''}`);
   }
 
   // Reject early if the server advertises a response larger than our cap.
@@ -160,14 +150,18 @@ export async function makeHTTPRequest(
     const declaredLength = parseInt(Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader, 10);
     if (Number.isFinite(declaredLength) && declaredLength > HTTP_MAX_RESPONSE_BYTES) {
       response.body.destroy(new Error('Response too large'));
-      throw new Error(
+      throw withResponseStatus(new Error(
         `Response exceeds the ${(HTTP_MAX_RESPONSE_BYTES / 1024 / 1024).toFixed(0)}MB cap ` +
         `(server advertised ${declaredLength} bytes). Increase HTTP_MAX_RESPONSE_BYTES if needed.`,
-      );
+      ), status);
     }
   }
 
-  const bodyText = await readBoundedBody(response.body, HTTP_MAX_RESPONSE_BYTES);
+  // The cap is ours (not retried); anything else mid-body is the connection.
+  const bodyText = await readBoundedBody(response.body, HTTP_MAX_RESPONSE_BYTES).catch((error: any) => {
+    if (/^Response exceeds the/.test(error?.message ?? '')) throw withResponseStatus(error, status);
+    return noAnswer(error);
+  });
 
   // JSON-only: parse-required, reject HTML/XML pages. This both fits the
   // JSONPath-extraction feature and stops the HTTP API being used to scrape web
@@ -178,12 +172,15 @@ export async function makeHTTPRequest(
   // duplicate must still be caught by the explicit page-type reject, not dropped.
   const ctHeader = response.headers['content-type'];
   const contentType = Array.isArray(ctHeader) ? ctHeader.join(', ') : ctHeader;
-  const responseData = parseJsonResponse(bodyText, contentType);
+  let responseData: any;
+  try { responseData = parseJsonResponse(bodyText, contentType); }
+  catch (error) { throw withResponseStatus(error, status); }
 
   // Only store idempotent (GET/HEAD) responses — never cache a POST/PUT/etc result
   // (a later identical request must re-run its side effect, not read a cache hit).
-  if (cacheable) setCachedResponse(cacheKey, responseData, bodyText.length);
-  return responseData;
+  const answer = { data: responseData, status };
+  if (cacheable) setCachedResponse(cacheKey, answer, bodyText.length);
+  return answer;
 
   } finally {
     // The Agent is per-request (its DNS pinning is per-URL), so close it on
@@ -191,4 +188,12 @@ export async function makeHTTPRequest(
     // Body is fully consumed (or destroyed) by now; fire-and-forget is fine.
     dispatcher.close().catch(() => {});
   }
+}
+
+// One try, body only (the preview and older callers).
+export async function makeHTTPRequest(
+  config: HTTPRequestConfig, rowData: Record<string, string>, userId: string,
+  signal?: AbortSignal, allowSavedKeys = true, runId?: string,
+): Promise<any> {
+  return (await sendHTTPRequest(config, rowData, userId, signal, allowSavedKeys, runId)).data;
 }

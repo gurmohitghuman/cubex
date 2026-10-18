@@ -4,8 +4,8 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { buildRowsMapFromRows, verifySheetOwnership, getSheetColumns, type RowDB } from '../lib/sql-helpers';
 import { withSheetColumns } from '../lib/http-request-template';
 import { httpTemplateError } from '../lib/http-template-validate';
-import { makeHTTPRequest, redactSecrets, type HTTPAPIConfig } from '../lib/http-request';
-import { extractOutcome } from '../lib/jsonpath-extract';
+import { sendHTTPRequest, redactSecrets, type HTTPAPIConfig } from '../lib/http-request';
+import { extractMappedFields } from '../lib/http-extract-fields';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { trimForPreview } from '../lib/preview-trim';
 import { checkRunRule } from '../services/run-rule';
@@ -89,19 +89,14 @@ router.post('/preview', authenticateToken, async (req: AuthRequest, res) => {
     // One row's request + extraction; a failure becomes an error result.
     const previewRow = async (row: (typeof rows)[number]): Promise<Record<string, unknown>> => {
       try {
-        const responseData = await makeHTTPRequest(config.requestConfig, withSheetColumns(row.data, sheetColumns), req.userId!, previewController.signal);
-        const extractedFields: Record<string, any> = {};
-        for (const mapping of responseMapping) {
-          // extractOutcome (not the silent-null wrapper) so a malformed path that
-          // slipped past validation surfaces as a preview error — matching the
-          // runner, which fails the row on a path error (Bug 7). A no-match is a
-          // normal blank.
-          const outcome = extractOutcome(responseData, mapping.jsonPath);
-          if (outcome.error) {
-            throw new Error(`JSONPath "${mapping.jsonPath}" (column "${mapping.columnName}"): ${outcome.error}`);
-          }
-          extractedFields[mapping.columnName] = outcome.matched ? outcome.value : null;
-        }
+        // One try, no retries: a preview answers at once (the run retries).
+        const answer = await sendHTTPRequest(config.requestConfig, withSheetColumns(row.data, sheetColumns),
+          req.userId!, previewController.signal);
+        const responseData = answer.data;
+        // A malformed path that slipped past validation is a preview error, as
+        // the run fails the row on one (Bug 7); a no-match is a normal blank.
+        // @status mappings show the response code.
+        const extractedFields = extractMappedFields(responseData, answer.status, responseMapping);
         return {
           rowIndex: row.rowIndex, status: 'success', reason: 'Request successful',
           extractedFields,

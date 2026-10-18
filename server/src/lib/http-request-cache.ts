@@ -7,10 +7,13 @@ import { HTTP_REQUEST_CACHE_TTL_MS } from './constants';
 const MAX_CACHE_ENTRIES = 500;
 const MAX_CACHED_RESPONSE_BYTES = 256 * 1024;
 
-const requestCache = new Map<string, { response: any; timestamp: number; bytes: number }>();
+// What makeHTTPRequest caches: a 2xx answer's parsed body and its status code.
+export interface CachedAnswer { data: any; status: number }
+
+const requestCache = new Map<string, { response: CachedAnswer; timestamp: number; bytes: number }>();
 
 // Return the cached response for `key` if present and within TTL, else null.
-export function getCachedResponse(key: string): any | null {
+export function getCachedResponse(key: string): CachedAnswer | null {
   const cached = requestCache.get(key);
   if (cached && (Date.now() - cached.timestamp) < HTTP_REQUEST_CACHE_TTL_MS) return cached.response;
   return null;
@@ -18,7 +21,7 @@ export function getCachedResponse(key: string): any | null {
 
 // Bounded cache write. Responses over MAX_CACHED_RESPONSE_BYTES are skipped. Map preserves
 // insertion order, so the first key is the oldest — evict it when at capacity.
-export function setCachedResponse(key: string, response: any, bodyLength: number): void {
+export function setCachedResponse(key: string, response: CachedAnswer, bodyLength: number): void {
   if (bodyLength > MAX_CACHED_RESPONSE_BYTES) return;
   if (requestCache.size >= MAX_CACHE_ENTRIES) {
     const oldestKey = requestCache.keys().next().value;
