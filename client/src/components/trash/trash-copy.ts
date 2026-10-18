@@ -6,6 +6,7 @@ const HOW: Record<TrashHow, string> = {
   grid: 'Deleted in the sheet',
   api: 'Deleted with delete_rows',
   duplicates: 'Removed as duplicates',
+  auto_dedupe: 'Removed by auto-dedupe',
   import: 'Replaced by a CSV import',
   transfer: 'Moved to another sheet',
   sheet: 'Sheet deleted',

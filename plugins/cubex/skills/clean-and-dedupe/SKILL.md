@@ -36,10 +36,14 @@ Everything here is free: no AI call, nothing sent anywhere. Never use an AI colu
 1. Choose the key with the user. `columns` takes names or `{"column": ..., "match": ...}` with `match` one of `text` (default), `email`, `domain` (one row per company), `phone`, `company` or `person_name`, or several columns that must all match.
 2. `remove_duplicates` is a dry run unless `dry_run` is `false`. Show the user the result: how many rows would go, the sample groups and the largest group, so they see what "duplicate" means here.
 3. `keep`: `first` (default, the highest row), `last`, or `most_complete` (the row with the most filled cells).
-4. Only after the user says yes, call it again with `dry_run: false`. Removed rows are deleted for good, with their run results. It is refused while a run is active on the sheet.
+4. Only after the user says yes, call it again with `dry_run: false`. Removed rows go to the trash (the answer says how to restore them); their run results go. It is refused while a run is active on the sheet.
 
 A row with any key value empty, or holding a run status such as "⏭️ Not found", is never removed.
 
-## 4. Report
+## 4. Keep it deduplicated
+
+When new rows keep arriving (a webhook, regular imports, an agent appending rows), offer `set_auto_dedupe`: one key column with its `match`, and `keep` `oldest` (a new row with a key already there is not kept) or `newest` (it replaces the older rows). It checks rows as they arrive and rows given a new key, never the rows already there, so run `remove_duplicates` once first. The key must be a column rows arrive with, not a filled one: to match on a cleaned value, pick the raw column and the match (a website column as `domain`). `append_rows` and `import_csv` answers say which rows weren't kept; `list_trash` with `how: "auto_dedupe"` lists them.
+
+## 5. Report
 
 Say what changed: the new columns and how many cells each cleaned or left blank (in the answer, or `get_sheet`'s `clean_columns`), and how many duplicate rows were removed. Offer `set_description` on the new columns.

@@ -18,6 +18,7 @@ import { listViews } from '../services/view-store';
 import { sheetColumnDescriptions } from '../lib/column-descriptions';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 import { waterfallColumnSpend } from '../services/waterfall-status';
+import { autoDedupeView } from '../services/auto-dedupe-setting';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -113,6 +114,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
       data: {
         rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns, views,
         columnDescriptions,
+        // Auto-dedupe's setting (services/auto-dedupe-setting.ts): the toolbar shows it's on.
+        autoDedupe: autoDedupeView(id, req.userId!),
       },
     });
   } catch (error) {

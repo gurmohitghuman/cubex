@@ -56,7 +56,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Formulas, free.** Work a column out from each row with a JavaScript formula: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
 - **Lookups, free.** Bring values from another sheet: a company's industry onto its people, whether a lead is already in another list, how many orders match. Match whole values or text inside them.
 - **Setups.** Save a chain of filled columns (the prompts, models, requests, formulas and rules) once, then build the same columns on a new client's sheet in one go. Each step runs once the columns it reads are filled.
-- **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
+- **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each. Or keep it that way: auto-dedupe keeps one row per key as rows arrive from a webhook, an import or an agent.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
@@ -229,6 +229,17 @@ Click **Remove duplicates** in the toolbar and pick the columns rows must match 
 Then choose which row of each group stays: the first, the last (usually the newest), or the most filled-in. Before anything is removed you see how many rows would go and a few of the groups, including the biggest. It's free, and it checks the whole sheet: filters don't apply.
 
 A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows go to the [trash](#trash-and-history), so you can bring them back. While a run is going on the sheet, removing waits until the run finishes or you stop it.
+
+### Auto-dedupe
+
+Keep one row per key as new rows come in, for free. In **Remove duplicates**, open **As rows arrive**, pick the key column and how it matches (the same ways as above: an email, a domain, a phone number…), and which row stays:
+
+- **Oldest row.** The row already in the sheet stays; a new row with the same key goes to the trash. Good for a webhook that sends the same lead twice.
+- **Newest row.** A new row replaces the older rows with its key, and their cells go to the trash, enriched ones too.
+
+A row is checked when it arrives (a webhook event, a CSV import, an agent adding rows) and when someone types a key into it, so adding a row in the grid and typing an email that's already there sends it to the trash, with **Restore** in the message. Blank cells and cells over 200 characters never match, and values that AI, HTTP or other filled columns write are never checked: the key is a column rows arrive with (to match a cleaned value, pick the raw column and the match, like a website column as a domain). Rows already in the sheet stay as they are; the dialog says how many share a key, and **Remove now** cleans them up once.
+
+What auto-dedupe removed is in the trash, one batch a day: the dialog's **See them in the trash** shows just those. A row a run is working on is never removed: its check waits for the run. Turning it on, changing it or turning it off waits for runs on the sheet to finish. On a big sheet it takes a moment to read the keys already there; rows that arrive meanwhile are checked once it's done.
 
 ### Views
 

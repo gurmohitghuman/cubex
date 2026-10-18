@@ -75,6 +75,9 @@ router.put('/:id/data', (req: AuthRequest, res) => {
       // client purges these from its autosave queue + toasts, same as
       // skippedCells/lockedColumns — a 200 so the rest of the batch persists.
       oversizeCells: result.oversizeCells,
+      // Rows auto-dedupe sent to the trash (an edited key matched another row's):
+      // the client reloads and offers to restore them.
+      autoDedupe: result.autoDedupe,
     });
   } catch (error) {
     console.error('Update sheet error:', error);

@@ -1,5 +1,5 @@
-// /v1 sheet operations: physical sort, removing duplicates, CSV export and
-// stopping every run. Each delegates to the implementation shared with the UI
+// /v1 sheet operations: physical sort, removing duplicates, auto-dedupe, CSV
+// export and stopping every run. Each delegates to the implementation shared with the UI
 // routes (services/sheet-sort.ts, services/dedupe-*.ts, lib/csv-export.ts,
 // services/sheet-runs-stop.ts).
 import express from 'express';
@@ -11,6 +11,7 @@ import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { runFailHttpStatus } from '../services/run-shared';
 import { streamSheetCsv } from '../lib/csv-export';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
+import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
 
 const router = express.Router();
 
@@ -68,6 +69,39 @@ router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthR
   } catch (error) {
     console.error('POST /v1/sheets/:id/remove-duplicates error:', error);
     if (!res.headersSent) res.status(500).json({ error: 'Failed to remove duplicates' });
+  }
+});
+
+// PUT /v1/sheets/:id/auto-dedupe {column, match?, phone_country?, keep?}: keep
+// one row per key as rows arrive (fields left out keep what the setting has);
+// DELETE turns it off. The same as MCP set_auto_dedupe; GET /v1/sheets/:id shows it.
+router.put('/sheets/:id/auto-dedupe', requireScope('write'), (req: TokenAuthRequest, res) => {
+  try {
+    const b = req.body as Record<string, unknown> | null;
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return res.status(400).json({ error: 'Send a JSON object.' });
+    const stray = Object.keys(b).find(k => !['column', 'match', 'phone_country', 'keep'].includes(k));
+    if (stray) return res.status(400).json({ error: `Unknown field "${stray.slice(0, 60)}". Nothing was changed.` });
+    const out = setAutoDedupe(req.userId!, req.params.id, b);
+    if ('fail' in out) {
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+    }
+    res.json({ auto_dedupe: out.ok });
+  } catch (error) {
+    console.error('PUT /v1/sheets/:id/auto-dedupe error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to save auto-dedupe' });
+  }
+});
+
+router.delete('/sheets/:id/auto-dedupe', requireScope('write'), (req: TokenAuthRequest, res) => {
+  try {
+    const out = turnOffAutoDedupe(req.userId!, req.params.id);
+    if ('fail' in out) {
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+    }
+    res.json({ auto_dedupe: null });
+  } catch (error) {
+    console.error('DELETE /v1/sheets/:id/auto-dedupe error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to turn off auto-dedupe' });
   }
 });
 

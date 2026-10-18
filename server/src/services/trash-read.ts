@@ -60,17 +60,20 @@ export interface TrashList { items: TrashEntry[]; kept_days: number; next_before
 // q: words in a table or sheet name, or the access token that deleted it.
 export function listTrash(
   userId: string,
-  opts: { q?: string; kind?: TrashItem['kind']; sheetId?: string; before?: number; limit?: number } = {},
+  opts: {
+    q?: string; kind?: TrashItem['kind']; how?: TrashItem['how']; sheetId?: string; before?: number; limit?: number;
+  } = {},
 ): TrashList {
   const limit = Math.max(1, Math.min(TRASH_LIST_PAGE, opts.limit ?? TRASH_LIST_PAGE));
   const like = opts.q?.trim() ? `%${opts.q.trim().replace(/[\\%_]/g, c => `\\${c}`)}%` : null;
   const rows = db.prepare(`SELECT * FROM trash_items WHERE user_id = ? AND id < ?
-      AND (? IS NULL OR kind = ?) AND (? IS NULL OR sheet_id = ?)
+      AND (? IS NULL OR kind = ?) AND (? IS NULL OR how = ?) AND (? IS NULL OR sheet_id = ?)
       AND (? IS NULL OR table_name LIKE ? ESCAPE '\\' OR sheet_name LIKE ? ESCAPE '\\'
         OR token_name LIKE ? ESCAPE '\\')
     ORDER BY id DESC LIMIT ?`)
     .all(userId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.kind ?? null, opts.kind ?? null,
-      opts.sheetId ?? null, opts.sheetId ?? null, like, like, like, like, limit + 1) as TrashItem[];
+      opts.how ?? null, opts.how ?? null, opts.sheetId ?? null, opts.sheetId ?? null, like, like, like, like,
+      limit + 1) as TrashItem[];
   const more = rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
   const days = getTrashDays(userId);

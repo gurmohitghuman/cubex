@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { ColumnFilters } from '@/lib/filters'
 import type { Sheet, SheetData, Table } from './types'
+import type { GridAutoDedupe, ImportAutoDedupe } from './dedupe'
 
 // Opt these requests out of the interceptor's generic "Server error occurred" toast.
 // Every caller surfaces its own signal on failure: structural ops (add/delete/rename/
@@ -49,6 +50,8 @@ export const sheetsAPI = {
     skippedCells: Array<{ rowIndex: number; columnName: string }>
     lockedColumns: string[]
     oversizeCells: Array<{ rowIndex: number; columnName: string }>
+    // Rows auto-dedupe sent to the trash: an edited key matched another row's.
+    autoDedupe: GridAutoDedupe | null
   }> =>
     api.put(`/sheets/${id}/data`, { updates, rowGeneration, mode }, noServerToast)
       .then(r => ({
@@ -59,12 +62,15 @@ export const sheetsAPI = {
         // Cells dropped for exceeding the basic-cell size cap (P2-8).
         oversizeCells:
           (r.data as { oversizeCells?: Array<{ rowIndex: number; columnName: string }> })?.oversizeCells ?? [],
+        autoDedupe: (r.data as { autoDedupe?: GridAutoDedupe | null })?.autoDedupe ?? null,
       })),
 
   // pauseAutorun: auto-run leaves the imported rows alone (the import's "Pause auto-run for this import").
   importCSV: (
     id: string, file: File, replaceData: boolean = false, pauseAutorun: boolean = false,
-  ): Promise<{ rowsImported: number; startingRow: number; newColumns: string[] }> => {
+  ): Promise<{
+    rowsImported: number; startingRow: number; newColumns: string[]; autoDedupe?: ImportAutoDedupe | null
+  }> => {
     const formData = new FormData()
     formData.append('replaceData', replaceData.toString())
     formData.append('pauseAutorun', pauseAutorun.toString())

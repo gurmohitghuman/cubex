@@ -58,7 +58,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'formula, no AI. Bring values from another sheet (match a column, return a column, yes/no, a count ' +
         'or the matching rows) with lookup_column: free, no AI. Remove duplicate rows with remove_duplicates ' +
         '(free; a dry run unless dry_run is ' +
-        'false). Save filled columns as a named setup with save_setup, then build the same chain of columns on ' +
+        'false), and keep one row per key as rows arrive with set_auto_dedupe. Save filled columns as a named setup with save_setup, then build the same chain of columns on ' +
         'another sheet with apply_setup (an estimate unless estimate_only is false); list_setups shows the ' +
         'saved ones. apply_setup again on a sheet that has its columns carries them on: only the rows not done ' +
         'yet (new rows, or a setup that failed or was stopped). ' +

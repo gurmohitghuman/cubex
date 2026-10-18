@@ -7,6 +7,7 @@ import { pruneDeliveries } from './webhook-prune';
 import { stripControlChars, clampCellChars } from './csv-safety';
 import { MAX_ROWS_PER_SHEET, WEBHOOK_MAX_CELL_CHARS, WEBHOOK_MAX_ROW_DATA_BYTES } from './constants';
 import { nextRowIndex } from './sheet-busy';
+import { settleRows } from '../services/auto-dedupe-settle';
 import { appendColumnsToOrder, getSheetColumns } from './sheet-columns';
 
 // The append transaction for one inbound webhook delivery. This is the only
@@ -31,7 +32,8 @@ export interface WebhookMappingRow {
 }
 
 export type IngestResult =
-  | { ok: true; rowIndex: number; status: 'stored' | 'partial' }
+  // duplicate: auto-dedupe didn't keep its row (another row has its key; services/auto-dedupe-settle.ts).
+  | { ok: true; rowIndex: number; status: 'stored' | 'partial' | 'duplicate' }
   | { ok: false; code: 404 | 409; reason: string };
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
@@ -155,10 +157,10 @@ export function appendWebhookDelivery(
     const rowIndex = nextRowIndex(source.sheet_id, source.user_id);
     const rowId = uuidv4();
 
-    db.prepare(
+    const rid = Number(db.prepare(
       `INSERT INTO rows (id, sheet_id, user_id, row_index, data, updated_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-    ).run(rowId, source.sheet_id, source.user_id, rowIndex, dataJson);
+    ).run(rowId, source.sheet_id, source.user_id, rowIndex, dataJson).lastInsertRowid);
 
     // A column exists iff column_order lists it (lib/sheet-columns.ts). The
     // webhook's columns were listed when it was set up, but a CSV replace can
@@ -168,14 +170,25 @@ export function appendWebhookDelivery(
     const unlisted = Object.keys(data).filter(k => !listed.has(k));
     if (unlisted.length > 0) appendColumnsToOrder(source.sheet_id, source.user_id, unlisted);
 
+    const deliveryId = uuidv4();
     db.prepare(
       `INSERT INTO webhook_deliveries
          (id, source_id, user_id, sheet_id, row_id, payload, payload_sha256, payload_bytes, status, error_message)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      uuidv4(), source.id, source.user_id, source.sheet_id, rowId,
+      deliveryId, source.id, source.user_id, source.sheet_id, rowId,
       rawPayloadText, payloadSha, payloadBytes, partial ? 'partial' : 'stored', errorMessage,
     );
+
+    // Auto-dedupe: a row whose key another row already has isn't kept (or
+    // replaces it); the delivery says so.
+    const deduped = settleRows(source.sheet_id, source.user_id, [rid], 'arrived');
+    const duplicate = !!deduped?.removed.some(r => r.id === rowId);
+    if (duplicate) {
+      const note = `Not kept: another row has the same ${deduped!.column} (auto-dedupe).`;
+      db.prepare("UPDATE webhook_deliveries SET status = 'duplicate', error_message = ? WHERE id = ?")
+        .run(errorMessage ? `${note} ${errorMessage}`.slice(0, 500) : note, deliveryId);
+    }
 
     pruneDeliveries(source.id);
 
@@ -198,7 +211,7 @@ export function appendWebhookDelivery(
         WHERE id = ? AND user_id = ?`,
     ).run(source.sheet_id, source.user_id);
 
-    result = { ok: true, rowIndex, status: partial ? 'partial' : 'stored' };
+    result = { ok: true, rowIndex, status: duplicate ? 'duplicate' : partial ? 'partial' : 'stored' };
   }).immediate();
 
   return result;

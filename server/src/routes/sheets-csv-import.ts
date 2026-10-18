@@ -91,6 +91,8 @@ router.post('/:id/import', csvUploadMiddleware, async (req: AuthRequest, res) =>
       truncatedCells: result.ok.truncatedCells,
       // A replace: the rows it replaced, in the trash.
       trash: result.ok.trashId === null ? null : { id: result.ok.trashId, days: getTrashDays(req.userId!) },
+      // Rows auto-dedupe didn't keep (or older rows they replaced), and whether checks go on.
+      autoDedupe: result.ok.autoDedupe,
     });
   } catch (error) {
     console.error('Import CSV error:', error);
