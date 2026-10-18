@@ -60,3 +60,9 @@ coverage
 
 # README screenshots and demo GIFs: not needed to build or run Cubex
 docs/media
+
+# The agent plugin and the marketplaces that list it: for coding agents, not the server
+plugins
+.claude-plugin
+.agents
+.cursor-plugin

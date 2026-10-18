@@ -1,0 +1,21 @@
+{
+  "name": "cubex",
+  "version": "1.0.0",
+  "description": "Work in your Cubex spreadsheets from your agent: connect and look around, clean and dedupe lists, find and fix failed rows, enrich with cost control, trace where a value came from, and check limits.",
+  "author": { "name": "Cubex" },
+  "homepage": "https://github.com/gurmohitghuman/cubex/blob/main/docs/agent-plugin.md",
+  "repository": "https://github.com/gurmohitghuman/cubex",
+  "license": "AGPL-3.0-only",
+  "keywords": ["spreadsheet", "enrichment", "leads", "mcp", "self-hosted"],
+  "skills": "./skills/",
+  "mcpServers": "./codex-mcp.json",
+  "interface": {
+    "displayName": "Cubex",
+    "shortDescription": "Work in your Cubex spreadsheets",
+    "longDescription": "Skills for Cubex, the self-hosted spreadsheet where columns fill themselves. Add the Cubex MCP server with codex mcp add (see the setup page), then ask for a cleanup, a fix or an enrichment.",
+    "developerName": "Cubex",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/gurmohitghuman/cubex",
+    "defaultPrompt": ["Show me my Cubex tables and what fills each column of the Leads sheet"]
+  }
+}

@@ -269,6 +269,14 @@ Give each token only the scopes it needs, so an agent can be read-only:
 
 Setup for Cursor, Codex, VS Code and Claude Desktop, the REST API and the full list of tools are in the [agents and API guide](docs/mcp.md).
 
+**The Cubex plugin** for Claude Code, Codex and Cursor adds the connection (Claude Code and Codex read your address and token from environment variables, never from a config file) and skills for the common jobs: onboarding, cleaning and deduping a list, fixing failed rows, enriching with cost control, tracing where a value came from and checking limits. Paste this into your agent:
+
+```text
+Set up Cubex by following https://raw.githubusercontent.com/gurmohitghuman/cubex/main/docs/agent-plugin.md
+```
+
+See the [plugin guide](docs/agent-plugin.md).
+
 ## Guides
 
 | Guide | What's in it |
@@ -281,6 +289,7 @@ Setup for Cursor, Codex, VS Code and Claude Desktop, the REST API and the full l
 | [Webhooks](docs/webhooks.md) | Setting one up, reaching it from outside, what it accepts, keeping it safe |
 | [Run webhooks](docs/run-webhooks.md) | A signed notice when a run finishes: setting one up, checking the signature, delivery and retries |
 | [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API |
+| [Agent plugin](docs/agent-plugin.md) | The Cubex plugin for Claude Code, Codex and Cursor: setup from one prompt, and its skills |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, and the contributor agreement |
 
 ## License

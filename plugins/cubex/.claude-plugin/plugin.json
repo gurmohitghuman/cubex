@@ -1,0 +1,10 @@
+{
+  "name": "cubex",
+  "displayName": "Cubex",
+  "description": "Work in your Cubex spreadsheets from your agent: connect and look around, clean and dedupe lists, find and fix failed rows, enrich with cost control, trace where a value came from, and check limits.",
+  "author": { "name": "Cubex" },
+  "homepage": "https://github.com/gurmohitghuman/cubex/blob/main/docs/agent-plugin.md",
+  "repository": "https://github.com/gurmohitghuman/cubex",
+  "license": "AGPL-3.0-only",
+  "keywords": ["spreadsheet", "enrichment", "leads", "mcp", "self-hosted"]
+}

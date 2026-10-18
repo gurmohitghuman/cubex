@@ -1,0 +1,12 @@
+{
+  "name": "cubex",
+  "description": "Cubex, the self-hosted spreadsheet where columns fill themselves: its MCP server and skills for coding agents.",
+  "owner": { "name": "Cubex", "url": "https://github.com/gurmohitghuman/cubex" },
+  "plugins": [
+    {
+      "name": "cubex",
+      "source": "./plugins/cubex",
+      "description": "Connect your agent to Cubex: clean and dedupe lists, find and fix failed rows, enrich with cost control, trace where a value came from, and check limits."
+    }
+  ]
+}

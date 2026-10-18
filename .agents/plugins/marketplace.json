@@ -1,0 +1,12 @@
+{
+  "name": "cubex",
+  "interface": { "displayName": "Cubex" },
+  "plugins": [
+    {
+      "name": "cubex",
+      "source": { "source": "local", "path": "./plugins/cubex" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
