@@ -16,7 +16,7 @@ import { db } from './db';
 // and makes retry-after-failure return the same run_id. We write the ledger only
 // AFTER a successful start, keyed UNIQUE(user_id, idempotency_key).
 
-export type RunLedgerKind = 'ai_run' | 'http_run' | 'enrichment_run' | 'waterfall_run';
+export type RunLedgerKind = 'ai_run' | 'http_run' | 'enrichment_run' | 'waterfall_run' | 'waterfall_dry';
 
 export interface RunLedgerResult {
   run_id: string;

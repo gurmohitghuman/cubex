@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   ENRICH_DEFAULT_CONCURRENCY, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY, HTTP_RETRY_MAX, WATERFALL_LABEL_MAX_CHARS,
-  WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS,
+  WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS, WATERFALL_DRY_ROWS,
+  WATERFALL_DRY_MAX_ROWS, WATERFALL_DRY_WAIT_SECONDS, FORMULA_MAX_CHARS,
 } from '../lib/constants';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { RESULT_TYPES } from '../lib/waterfall/result-type';
@@ -23,6 +24,10 @@ const common = {
   on: lenientBoolean().optional().describe('false keeps the step but skips it'),
   requires: z.array(z.array(z.string()).min(1)).max(WATERFALL_MAX_ALTERNATIVES).optional()
     .describe('Alternatives of input keys, e.g. [["full_name","domain"],["linkedin_url"]]; a row with none skips it'),
+  check: z.union([
+    z.object({ kind: z.literal('verify'), accept: z.enum(['safest', 'balanced', 'wide']).optional() }).strict(),
+    z.object({ kind: z.literal('formula'), formula: z.string().max(FORMULA_MAX_CHARS) }).strict(),
+  ]).optional().describe('Checks a value the step finds; a value that fails is rejected and the next step runs'),
 };
 const step = z.discriminatedUnion('kind', [
   z.object({
@@ -48,12 +53,20 @@ const step = z.discriminatedUnion('kind', [
     value_path: z.string().max(500).describe('JSONPath of the value in the JSON response, e.g. $.email'),
     retries: z.number().int().min(0).max(HTTP_RETRY_MAX).optional(),
   }).strict(),
+  z.object({
+    ...common, kind: z.literal('formula'), formula: z.string().max(FORMULA_MAX_CHARS)
+      .describe('JavaScript over {{input_key}}, e.g. {{first_name}}.toLowerCase() + "@" + {{domain}}'),
+  }).strict(),
 ]);
 
 export const WATERFALL_DESCRIPTION =
   'Fill ONE value per row (a work email, phone, company domain, LinkedIn URL, URL or any text) by trying ordered '
   + 'steps and stopping at the first answer: a waterfall column. A step is an enrichment (a treg.to tool from '
-  + 'search_enrichments), an ai prompt, or an http call to your own JSON API. '
+  + 'search_enrichments), an ai prompt, an http call to your own JSON API, or a free formula (JavaScript over '
+  + '{{input_key}}, run in a sandbox). A step\'s check tests the value it finds before it counts: '
+  + '{"kind":"verify","accept":"safest"|"balanced"|"wide"} (treg\'s email verify, paid, email only) or '
+  + '{"kind":"formula","formula":"..."} over {{value}} and the inputs (truthy passes); a value that fails is '
+  + 'rejected and the next step runs. '
   + 'inputs maps each input key ONCE to a column ({"full_name": "Name", "domain": "Website"}) or {"value": fixed}; '
   + 'every step reads these keys, never columns (treg tools take them by name: first_name, last_name, full_name, '
   + 'domain, company, linkedin_url, email). result_type decides what counts as an answer: a value it can\'t read '
@@ -75,6 +88,11 @@ export const WATERFALL_DESCRIPTION =
   + 'Rows: all by default; add_to_column:true runs an existing waterfall column again (its own inputs and steps '
   + 'unless you pass new ones; a step keeps its column by id or label) on rows not_enriched (default), no_result, '
   + `failed or any; test:true runs the first ${ENRICH_TEST_ROWS} rows; use_sheet_filter, target_row_ids, run_if. `
+  + `DRY RUN: dry_run:true runs the first ${WATERFALL_DRY_ROWS} rows the run would take (or target_row_ids, up to `
+  + `${WATERFALL_DRY_MAX_ROWS}) for real and writes nothing to the sheet; it waits up to `
+  + `${WATERFALL_DRY_WAIT_SECONDS} s and returns each row's inputs and every step it reached (outcome, value, cost). `
+  + 'What it bought is replayed at $0 by a real run for 7 days. test_step (a step\'s label or id) with dry_run tests '
+  + 'that step alone. '
   + `concurrency: rows at once (default ${ENRICH_DEFAULT_CONCURRENCY}). auto_run {enabled, daily_cap_usd (a waterfall `
   + 'with a paid step) or daily_row_cap} keeps it filling new rows. action "describe" (read scope) returns a '
   + 'column\'s setup in this same shape, step ids included, to change and send back with add_to_column '
@@ -114,6 +132,9 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional(),
       fresh: lenientBoolean().optional(),
       estimate_only: lenientBoolean().optional().describe('Default TRUE: price it, create nothing'),
+      dry_run: lenientBoolean().optional()
+        .describe(`true: ${WATERFALL_DRY_ROWS} rows (or target_row_ids) for real, nothing written; returns each trace`),
+      test_step: z.string().max(200).optional().describe('With dry_run: run only this step (its label or id)'),
       idempotency_key: z.string().min(1).max(200).optional(),
       webhook_id: z.string().optional(),
       auto_run: z.object({

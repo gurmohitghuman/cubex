@@ -86,6 +86,10 @@ export const ENRICH_MAX_ROW_CAP_USD = 1000;
 // How often the drawer's Test and Run steps read a run's lean status while it
 // runs (GET /api/enrich/runs/:id); the grid itself follows the run over SSE.
 export const ENRICH_RUN_POLL_MS = 1500;
+// A waterfall dry run takes this many rows unless rows are picked (at most WATERFALL_DRY_MAX_ROWS).
+// Mirrors server/src/lib/constants-waterfall.ts.
+export const WATERFALL_DRY_ROWS = 3;
+export const WATERFALL_DRY_MAX_ROWS = 10;
 // The Settings spend card's windows, in days (server ENRICH_SPEND_WINDOWS).
 export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;
 

@@ -1,7 +1,7 @@
 // The words the Waterfall drawer shows about steps (pure). defaultPath
 // mirrors server/src/lib/waterfall/result-type.ts defaultValuePath.
 import type { EnrichToolCard, EnrichToolOutput } from '@/utils/api'
-import type { ResultType, StepChoices, StepKind, StepOutcome } from '@/utils/api/waterfall'
+import type { CheckOutcome, ResultType, StepChoices, StepKind, StepOutcome } from '@/utils/api/waterfall'
 import type { DraftInput, DraftStep } from './draft'
 
 const FIELDS: Record<ResultType, string[]> = {
@@ -36,22 +36,26 @@ export function toolLine(c: EnrichToolCard): string {
   return `${kind} · ${price}`
 }
 
-export const KIND_LABEL: Record<StepKind, string> = { enrichment: 'Enrichment', ai: 'AI', http: 'HTTP API' }
+export const KIND_LABEL: Record<StepKind, string> = {
+  enrichment: 'Enrichment', ai: 'AI', http: 'HTTP API', formula: 'Formula',
+}
 
 export function stepSummary(s: DraftStep): string {
   const c: StepChoices = s.choices
   if (c.kind === 'enrichment') return s.toolName ?? (c.toolId || 'Pick a tool')
   if (c.kind === 'ai') return c.prompt.trim() ? c.prompt.trim().slice(0, 80) : 'Write a prompt'
+  if (c.kind === 'formula') return c.formula.trim() ? c.formula.trim().slice(0, 80) : 'Write a formula'
   return c.url.trim() ? `${c.method} ${c.url.trim()}`.slice(0, 80) : 'Give it a URL'
 }
 
 // The inputs a step reads when it says nothing else: /key in a prompt,
-// {{key}} in a request, the same names for a tool.
+// {{key}} in a request or a formula, the same names for a tool.
 export function defaultNeeds(s: DraftStep, inputs: DraftInput[]): string {
   const c = s.choices
   const label = (k: string) => inputs.find(i => i.key === k)?.label ?? k
   if (c.kind === 'enrichment') return "what its tool needs (treg's rule)"
-  const text = c.kind === 'ai' ? c.prompt : [c.url, c.body ?? '', ...Object.values(c.headers)].join(' ')
+  const text = c.kind === 'ai' ? c.prompt : c.kind === 'formula' ? c.formula
+    : [c.url, c.body ?? '', ...Object.values(c.headers)].join(' ')
   const keys = inputs.map(i => i.key).filter(k => (c.kind === 'ai'
     ? new RegExp(`(^|[^/:\\w])/${k}\\b`).test(text) : text.includes(`{{${k}}}`)))
   return keys.length ? keys.map(label).join(' + ') : 'nothing'
@@ -65,7 +69,15 @@ export const OUTCOME_TEXT: Record<StepOutcome, string> = {
 export const FROM_TEXT = {
   journal: 'kept from before a pause', dry_run: 'from the dry run', reused: 'an earlier answer, reused at $0',
   same_lookup: 'the same lookup as another row',
-  last_run: 'found nothing in its last run, not asked again',
+  last_run: 'kept from its last run, not asked again',
 } as const
 
 export const pct = (n: number | null): string => (n === null ? 'unknown' : `${Math.round(n * 100)}%`)
+
+const CHECK_TEXT = { passed: 'check passed', failed: 'check failed', error: "check couldn't run" } as const
+
+// " · check passed (valid)" after a step's outcome, '' without a check.
+export function checkText(c: CheckOutcome | undefined): string {
+  if (!c) return ''
+  return ` · ${CHECK_TEXT[c.outcome]}${c.verdict ? ` (${c.verdict})` : ''}${c.from ? `, ${FROM_TEXT[c.from]}` : ''}`
+}

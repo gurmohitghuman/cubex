@@ -18,7 +18,9 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
       : 'column' in x.source ? x.source.column : { value: x.source.value }])),
     steps: i.steps.map(st => {
       const c = st.choices;
-      const base = { id: st.id, label: st.label, on: st.on, requires: st.requires };
+      const base = {
+        id: st.id, label: st.label, on: st.on, requires: st.requires, ...(st.check ? { check: st.check } : {}),
+      };
       if (c.kind === 'enrichment') {
         return {
           ...base, kind: c.kind, tool_id: c.toolId, inputs: c.inputs, value_path: c.valuePath,
@@ -31,6 +33,7 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
         const shown = o.secrets ? { url: c.url, headers: c.headers, body: c.body } : maskHttpStep(c);
         return { ...base, kind: c.kind, method: c.method, ...shown, value_path: c.valuePath, retries: c.retries };
       }
+      if (c.kind === 'formula') return { ...base, kind: c.kind, formula: c.formula };
       return { ...base, kind: c.kind };
     }),
     answered_by_column: s.columns.answeredBy, step_columns: s.columns.steps,

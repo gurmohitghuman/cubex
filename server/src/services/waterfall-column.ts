@@ -34,7 +34,7 @@ export function recallInput(config: WaterfallRunConfig, column: string): Waterfa
   const sources = inputSourcesOf(config);
   const cols = waterfallColumns(config);
   const steps: StepInput[] = w.steps.map(s => ({
-    id: s.id, label: s.label, on: s.on, requires: s.requires, choices: s.choices,
+    id: s.id, label: s.label, on: s.on, requires: s.requires, choices: s.choices, check: s.check?.choices ?? null,
   }));
   return {
     columnName: column, continueColumn: true, resultType: w.resultType, phone: w.phone ?? null,

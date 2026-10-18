@@ -8,7 +8,8 @@
 import { AUTORUN_HTTP_DEFAULT_DAILY_ROWS, AUTORUN_MAX_ROWS } from '../lib/constants';
 import { limitReached, rowsThatFit } from '../lib/enrich-estimate';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { dayCapOf, onSteps, tregPart, type WaterfallRunConfig } from '../lib/waterfall/config';
+import { onSteps, type WaterfallRunConfig } from '../lib/waterfall/config';
+import { dayCapOf, isPaidStep, tregPart } from '../lib/waterfall/caps';
 import { getDailyLimitMicro, spentTodayMicro } from './treg-key';
 import { heldMicro } from './enrich-holds';
 import { buildWaterfall } from './waterfall-build';
@@ -19,9 +20,8 @@ import type { AutorunEntry } from './autorun-entry';
 const money = (usd: number) => `$${usd >= 0.01 || usd === 0 ? usd.toFixed(2) : usd.toFixed(4)}`;
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-// A waterfall spends money when a step that's on calls treg or an AI model.
-export const waterfallIsPaid = (config: WaterfallRunConfig): boolean =>
-  onSteps(config.waterfall).some(s => s.built.kind === 'enrichment' || s.built.kind === 'ai');
+// A waterfall spends money when a step that's on calls treg or an AI model, or checks with treg's verify.
+export const waterfallIsPaid = (config: WaterfallRunConfig): boolean => onSteps(config.waterfall).some(isPaidStep);
 
 // Its steps cost money but none has a known price (own provider keys): no dollar cap to ask for.
 export const waterfallUnpriced = (config: WaterfallRunConfig): boolean =>

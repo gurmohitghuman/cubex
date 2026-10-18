@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GripVertical, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FlaskConical, GripVertical, Trash2 } from 'lucide-react'
 import type { ResultType } from '@/utils/api/waterfall'
 import { Switch } from '@/components/enrich-modal/ProviderItem'
 import type { DraftInput, DraftStep } from './draft'
@@ -8,6 +8,8 @@ import { RequiresField } from './RequiresField'
 import { EnrichStepEditor } from './EnrichStepEditor'
 import { AiStepEditor } from './AiStepEditor'
 import { HttpStepEditor } from './HttpStepEditor'
+import { FormulaField } from './FormulaField'
+import { CheckField } from './CheckField'
 
 interface Props {
   step: DraftStep
@@ -22,6 +24,7 @@ interface Props {
   onChange: (step: DraftStep) => void
   onRemove: () => void
   onMove: (delta: -1 | 1) => void
+  onTest?: () => void           // a dry run of this step alone (absent while the draft can't run)
   drag: { onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDrop: () => void; onDragEnd: () => void }
 }
 
@@ -81,8 +84,23 @@ export const StepCard: React.FC<Props> = (p) => {
           {c.kind === 'http' && (
             <HttpStepEditor choices={c} inputs={inputs} onChange={choices => p.onChange({ ...step, choices })} />
           )}
+          {c.kind === 'formula' && (
+            <FormulaField formula={c.formula} names={inputs.map(i => i.key)} label="Step formula"
+              placeholder='{{first_name}}.toLowerCase() + "@" + {{domain}}'
+              onChange={formula => p.onChange({ ...step, choices: { kind: 'formula', formula } })} />
+          )}
           <RequiresField requires={step.requires} inputs={inputs} defaultText={defaultNeeds(step, inputs)}
             onChange={requires => p.onChange({ ...step, requires })} />
+          <CheckField check={step.check} resultType={p.resultType} inputs={inputs}
+            onChange={check => p.onChange({ ...step, check })} />
+          {p.onTest && (
+            <div className="flex justify-end">
+              <button type="button" className="btn-secondary text-xs flex items-center gap-1" onClick={p.onTest}
+                title="This step alone on a few rows, for real; nothing is written to the sheet">
+                <FlaskConical className="h-3 w-3" /> Test this step
+              </button>
+            </div>
+          )}
         </div>
       )}
     </li>

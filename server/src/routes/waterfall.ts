@@ -1,7 +1,8 @@
 // Waterfall column routes (cookie session), under /api/waterfall. Thin: the
-// services hold the logic for every surface (the app, /api/v1 and MCP). Pause,
-// resume and cancel are the HTTP run controls (/api/http/jobs/:id/control);
-// tools are searched with the enrichment routes (/api/enrich/tools).
+// services hold the logic for every surface (the app, /api/v1 and MCP). Pause
+// and cancel are the HTTP run controls (/api/http/jobs/:id/control), a resume
+// with a higher limit is here; tools are searched with the enrichment routes
+// (/api/enrich/tools).
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
@@ -14,6 +15,8 @@ import { parseWaterfallRerun, rerunWaterfallColumn } from '../services/waterfall
 import { readWaterfallTrace } from '../services/waterfall-trace';
 import { waterfallRunStatus } from '../services/waterfall-status';
 import { resumeWaterfallRun } from '../services/waterfall-agent-control';
+import { startWaterfallDryRun } from '../services/waterfall-dry-run';
+import { readDryRun } from '../services/waterfall-dry-read';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
 
 const router = express.Router();
@@ -57,6 +60,16 @@ router.post('/sheets/:id/runs', handle('start the waterfall', async (req, res, i
   res.json(out.ok);
 }));
 
+// A dry run (the drawer's "Try on 3 rows" and a step's Test): writes nothing to the sheet.
+router.post('/sheets/:id/dry-runs', handle('start the dry run', async (req, res, id) => {
+  const parsed = parseWaterfallInput(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+  if (!parsed.ok.dry) return res.status(400).json({ error: 'dry is required.' });
+  const out = await startWaterfallDryRun(req.userId!, id, parsed.ok, { hasSecretsScope: true });
+  if ('fail' in out) return fail(res, out);
+  res.status(202).json(out.ok);
+}));
+
 router.get('/sheets/:id/column-setup', handle('read the waterfall', async (req, res, id) => {
   const column = typeof req.query.column === 'string' ? req.query.column : '';
   if (!column) return res.status(400).json({ error: 'column is required.' });
@@ -89,6 +102,20 @@ router.get('/sheets/:id/trace', handle('read the trace', async (req, res, id) =>
   if ('fail' in out) return fail(res, out);
   res.json(out.ok);
 }));
+
+// A dry run's progress and each of its rows' trace (the drawer polls it while open).
+router.get('/dry-runs/:runId', (req: AuthRequest, res) => {
+  try {
+    const { runId } = req.params;
+    if (!UUID_PATTERN.test(runId)) return res.status(400).json({ error: 'Invalid run ID format' });
+    const view = readDryRun(req.userId!, runId);
+    if (!view) return res.status(404).json({ error: 'Dry run not found' });
+    res.json(view);
+  } catch (error) {
+    console.error('Waterfall dry run read error:', error);
+    res.status(500).json({ error: 'Failed to read the dry run' });
+  }
+});
 
 // A run's progress, spend and per-step counts (the drawer polls it while open).
 router.get('/runs/:runId', async (req: AuthRequest, res) => {

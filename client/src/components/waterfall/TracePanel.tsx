@@ -3,7 +3,7 @@ import { Layers, Loader2, RotateCcw } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
 import type { WaterfallTrace } from '@/utils/api/waterfall'
 import { formatCost } from '@/components/ai-modal/format'
-import { FROM_TEXT, KIND_LABEL, OUTCOME_TEXT } from './step-copy'
+import { FROM_TEXT, KIND_LABEL, OUTCOME_TEXT, checkText } from './step-copy'
 
 export interface TraceTarget {
   sheetId: string; column: string; row: number; displayRow: number; rowGeneration?: number
@@ -59,6 +59,7 @@ export const TracePanel: React.FC<Props> = ({ target, trace: t, loading, error, 
                     {s.provider ? ` · by ${s.provider}` : ''}
                     {s.cost_usd ? ` · ${money(s.cost_usd)}` : ''}
                     {s.from ? ` · ${FROM_TEXT[s.from]}` : ''}
+                    {checkText(s.check)}
                   </p>
                   {s.value && <p className="text-xs font-mono text-gray-800 break-words">{s.value}</p>}
                   {s.detail && <p className="text-xs text-gray-500 break-words">{s.detail}</p>}

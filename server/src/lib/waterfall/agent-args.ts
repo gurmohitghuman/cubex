@@ -11,7 +11,7 @@ import { ENRICH_TEST_ROWS } from '../constants';
 import { RESULT_INFO, isResultType } from './result-type';
 import { INPUT_KEY_PATTERN } from './inputs';
 import type { WaterfallRunInput } from './input';
-import type { HttpChoices, WaterfallRunConfig } from './config';
+import { newStepId, type HttpChoices, type WaterfallRunConfig } from './config';
 import { restoreMaskedStep } from './agent-mask';
 
 type Json = Record<string, unknown>;
@@ -20,14 +20,15 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 export const AGENT_TOP = ['sheet_id', 'column_name', 'add_to_column', 'result_type', 'phone', 'inputs', 'steps',
   'answered_by_column', 'hide_step_columns', 'rows', 'test', 'use_sheet_filter', 'target_row_ids', 'run_if',
   'spend_limit_usd', 'concurrency', 'fresh', 'estimate_only', 'idempotency_key', 'webhook_id', 'auto_run',
-  'action'];
+  'action', 'dry_run', 'test_step'];
 const STEP_KEYS: Record<string, string[]> = {
   enrichment: ['tool_id', 'inputs', 'value_path', 'provider_order', 'skip_providers', 'stop_at_first',
     'max_cost_usd'],
   ai: ['prompt', 'model', 'web_search'],
   http: ['method', 'url', 'headers', 'body', 'value_path', 'retries'],
+  formula: ['formula'],
 };
-const COMMON = ['id', 'label', 'on', 'requires', 'kind'];
+const COMMON = ['id', 'label', 'on', 'requires', 'kind', 'check'];
 // Which of a continued column's rows run: run_enrichment's words, or control_run's.
 const STATUS: Record<string, string> = {
   any: 'any', not_enriched: 'not_enriched', no_result: 'no_result', failed: 'failed',
@@ -58,19 +59,40 @@ function stepOf(v: unknown, i: number): { ok: Json } | { error: string } {
   if (!isObj(v)) return { error: `${where} must be an object.` };
   const kind = typeof v.kind === 'string' ? v.kind : '';
   const own = STEP_KEYS[kind];
-  if (!own) return { error: `${where}.kind is enrichment, ai or http.` };
+  if (!own) return { error: `${where}.kind is enrichment, ai, http or formula.` };
   const stray = strayKey(v, [...COMMON, ...own], where);
   if (stray) return { error: stray };
   const choices: Json = kind === 'enrichment' ? {
     kind, toolId: v.tool_id, inputs: v.inputs, valuePath: v.value_path, providerOrder: v.provider_order,
     skipProviders: v.skip_providers, stopAtFirst: v.stop_at_first, maxCostUsd: v.max_cost_usd,
   } : kind === 'ai' ? { kind, prompt: v.prompt, model: v.model, webSearch: v.web_search }
-    : {
-      kind, method: v.method, url: v.url, headers: v.headers, body: v.body, valuePath: v.value_path,
-      retries: v.retries,
-    };
+    : kind === 'formula' ? { kind, formula: v.formula }
+      : {
+        kind, method: v.method, url: v.url, headers: v.headers, body: v.body, valuePath: v.value_path,
+        retries: v.retries,
+      };
   for (const [k, val] of Object.entries(choices)) if (val === undefined) delete choices[k];
-  return { ok: { id: v.id, label: v.label, on: v.on, requires: v.requires, choices } };
+  const check = v.check ? { check: v.check } : {};
+  return { ok: { id: v.id, label: v.label, on: v.on, requires: v.requires, choices, ...check } };
+}
+
+// dry_run: true runs a few rows for real and writes nothing; test_step (a
+// step's label or id) runs that step alone. A new step it names gets its id
+// here, so the dry run can name it.
+function dryOf(a: Json, steps: unknown): { ok: Json | null } | { error: string } {
+  if (a.dry_run !== undefined && typeof a.dry_run !== 'boolean') return { error: 'dry_run is true or false.' };
+  if (a.test_step !== undefined && a.dry_run !== true) return { error: 'test_step goes with dry_run: true.' };
+  if (a.dry_run !== true) return { ok: null };
+  if (a.test_step === undefined) return { ok: { rowIds: null, only: null } };
+  const list = Array.isArray(steps) ? steps as Json[] : [];
+  const want = String(a.test_step).toLowerCase();
+  const hit = list.find(s => s.id === a.test_step)
+    ?? list.find(s => typeof s.label === 'string' && s.label.toLowerCase() === want);
+  if (!hit) return { error: `test_step "${String(a.test_step)}" names no step: give its label or its id.` };
+  if (typeof hit.id !== 'string' || !hit.id) {
+    hit.id = newStepId(new Set(list.map(s => s.id).filter((id): id is string => typeof id === 'string')));
+  }
+  return { ok: { rowIds: null, only: hit.id } };
 }
 
 export function agentWaterfallBody(
@@ -114,6 +136,8 @@ export function agentWaterfallBody(
     }
     steps = out;
   }
+  const dry = dryOf(a, steps);
+  if ('error' in dry) return dry;
   if (a.auto_run !== undefined && !isObj(a.auto_run)) return { error: 'auto_run must be {enabled, daily_cap_usd?}.' };
   const status = a.rows === undefined ? (cont ? 'not_enriched' : 'any') : STATUS[String(a.rows)];
   if (!status) return { error: 'rows is not_enriched, no_result, failed or any (which rows of the column run).' };
@@ -133,7 +157,7 @@ export function agentWaterfallBody(
         ...(target.rowIndexes ? { rowIndexes: target.rowIndexes } : {}),
       },
       spendLimitUsd: a.spend_limit_usd, concurrency: a.concurrency, fresh: a.fresh,
-      rowGeneration: target.generation,
+      rowGeneration: target.generation, ...(dry.ok ? { dry: dry.ok } : {}),
     },
   };
 }

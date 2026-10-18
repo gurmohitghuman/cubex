@@ -3,9 +3,8 @@ import { Layers } from 'lucide-react'
 import { Drawer, DrawerHeader } from '@/components/Drawer'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { ENRICH_TEST_ROWS } from '@/lib/constants'
+import { ENRICH_TEST_ROWS, WATERFALL_DRY_MAX_ROWS, WATERFALL_DRY_ROWS } from '@/lib/constants'
 import { waterfallAPI, type ResultType } from '@/utils/api/waterfall'
-import { formatCost } from '@/components/ai-modal/format'
 import {
   RESULT_OPTIONS, draftProblem, fromSetup, newDraft, resultLabel, toInput, type WaterfallDraft,
 } from './draft'
@@ -14,6 +13,8 @@ import { StepsSection } from './StepsSection'
 import { OptionsSection } from './OptionsSection'
 import { WaterfallEstimateBox } from './WaterfallEstimateBox'
 import { RunProgress } from './RunProgress'
+import { DryRunPanel } from './DryRunPanel'
+import { startCopy, type StartChoice } from './start-copy'
 import { useWaterfallEstimate, useWaterfallRun } from './useWaterfall'
 
 export type WaterfallOpenTarget = { kind: 'new' } | { kind: 'edit'; column: string } | { kind: 'run'; runId: string }
@@ -34,7 +35,6 @@ interface Props {
 // and reopening the drawer picks up where you were.
 const drafts = new Map<string, WaterfallDraft>()
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
-const money = (v: number) => (v === 0 ? '$0' : formatCost(v))
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <section className="space-y-2"><h3 className="text-sm font-medium text-gray-900">{title}</h3>{children}</section>
@@ -50,7 +50,8 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
   const [runId, setRunId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<'test' | 'all' | null>(null)
+  const [confirm, setConfirm] = useState<StartChoice | null>(null)
+  const [dryRunId, setDryRunId] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const setDraft = (d: WaterfallDraft | null) => {
     setDraftState(d)
@@ -62,6 +63,7 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
     if (!isOpen || !p.target) return
     setError(null)
     const t = p.target
+    setDryRunId(null)
     if (t.kind === 'run') { setRunId(t.runId); return }
     setRunId(null)
     if (t.kind === 'new') { setDraftState(drafts.get(sheetId) ?? null); return }
@@ -80,14 +82,27 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
   const choice = { test: null, rowIndexes: p.selectedRows, rowGeneration: p.rowGeneration ?? null }
   const input = useMemo(() => (draft && !problem ? toInput(draft, choice) : null),
     [draft, problem, p.selectedRows, p.rowGeneration]) // eslint-disable-line react-hooks/exhaustive-deps
-  const est = useWaterfallEstimate(sheetId, input, isOpen && !watching)
+  const est = useWaterfallEstimate(sheetId, input, isOpen && !watching && !dryRunId)
 
-  const start = async (test: boolean) => {
+  // A dry run takes the selected rows when the run would (at most 10), else the first few.
+  const dryRows = draft?.rowsMode === 'selected' && p.selectedRows.length
+    ? Math.min(p.selectedRows.length, WATERFALL_DRY_MAX_ROWS) : WATERFALL_DRY_ROWS
+  const start = async (c: StartChoice) => {
     if (!draft) return
     setStarting(true)
     setError(null)
     try {
-      const out = await waterfallAPI.start(sheetId, toInput(draft, { ...choice, test: test ? ENRICH_TEST_ROWS : null }))
+      if (c.kind === 'dry') {
+        // A dry run takes at most 10 picked rows: the first of those selected.
+        const rowIndexes = p.selectedRows.slice(0, WATERFALL_DRY_MAX_ROWS)
+        const dry = await waterfallAPI.startDryRun(sheetId,
+          toInput(draft, { ...choice, rowIndexes, dry: { only: c.only } }))
+        setConfirm(null)
+        setDryRunId(dry.runId)
+        return
+      }
+      const test = c.kind === 'test' ? ENRICH_TEST_ROWS : null
+      const out = await waterfallAPI.start(sheetId, toInput(draft, { ...choice, test }))
       setConfirm(null)
       setRunId(out.runId)
       // The column exists now: the next run adds to it, on the rows it hasn't done.
@@ -106,15 +121,14 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
   const e = est.estimate
   // Run only on the estimate of the draft as it is now (the last one stays shown while the next loads).
   const runnable = !problem && !!e && !est.loading && !starting
-  const confirmText = !e ? '' : confirm === 'test'
-    ? `Run the first ${ENRICH_TEST_ROWS} rows: at most ${money(e.per_row.max_usd * ENRICH_TEST_ROWS)}.`
-    : `Run ${e.rows.toLocaleString()} rows: about ${money(e.total.average_usd)}, at most ${money(e.total.max_usd)}.`
+  const copy = e && confirm ? startCopy(confirm, e, dryRows) : null
   return (
     <Drawer isOpen={isOpen} onClose={p.onClose} panelClassName="max-w-lg">
       <DrawerHeader icon={<div className="bg-cube-black p-1.5"><Layers className="h-4 w-4 text-white" /></div>}
         title={title} description="One value per row: each step in turn until one answers" onClose={p.onClose} />
       <div className="flex-1 overflow-y-auto" data-testid="waterfall-drawer">
         {loading ? <LoadingSpinner size="sm" message="Loading the waterfall…" className="py-8" />
+          : dryRunId ? <DryRunPanel runId={dryRunId} onBack={() => setDryRunId(null)} />
           : watching ? (
             <RunProgress status={status} onChanged={p.onRunChanged}
               onDone={() => { setRunId(null); if (!draft) p.onClose() }} />
@@ -152,7 +166,8 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
               </Section>
               <Section title="Steps">
                 <StepsSection steps={draft.steps} inputs={draft.inputs} resultType={draft.resultType}
-                  resultLabel={resultLabel(draft.resultType)} onChange={steps => update({ steps })} />
+                  resultLabel={resultLabel(draft.resultType)} onChange={steps => update({ steps })}
+                  onTest={runnable ? only => setConfirm({ kind: 'dry', only }) : undefined} />
               </Section>
               <Section title="Options">
                 <OptionsSection sheetId={sheetId} draft={draft} update={update} selectedCount={p.selectedRows.length}
@@ -163,16 +178,18 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
               {error && <p className="text-xs text-red-600" data-testid="waterfall-error">{error}</p>}
               <div className="flex gap-2 justify-end">
                 <button type="button" className="btn-secondary" disabled={!runnable}
-                  onClick={() => setConfirm('test')}>Run on {ENRICH_TEST_ROWS} rows</button>
+                  title="Every step on a few rows, for real; nothing is written to the sheet"
+                  onClick={() => setConfirm({ kind: 'dry', only: null })}>Try on {dryRows} rows</button>
+                <button type="button" className="btn-secondary" disabled={!runnable}
+                  onClick={() => setConfirm({ kind: 'test' })}>Run on {ENRICH_TEST_ROWS} rows</button>
                 <button type="button" className="btn-primary" disabled={!runnable || e?.rows === 0}
-                  onClick={() => setConfirm('all')}>Run</button>
+                  onClick={() => setConfirm({ kind: 'all' })}>Run</button>
               </div>
             </div>
           )}
       </div>
-      <ConfirmDialog isOpen={!!confirm} title={confirm === 'test' ? 'Run on the first rows' : 'Run the waterfall'}
-        message={`${confirmText} Enrichment steps bill your treg balance, AI steps OpenRouter.`}
-        confirmText="Run" isLoading={starting} onConfirm={() => start(confirm === 'test')}
+      <ConfirmDialog isOpen={!!confirm} title={copy?.title ?? ''} message={copy?.text ?? ''}
+        confirmText="Run" isLoading={starting} onConfirm={() => confirm && start(confirm)}
         onCancel={() => setConfirm(null)} />
     </Drawer>
   )

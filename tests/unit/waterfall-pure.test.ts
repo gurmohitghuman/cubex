@@ -1,3 +1,4 @@
+// Over 200 lines: every pure waterfall rule (result types to checks) checked in one script, a section each.
 // Unit test for the pure waterfall pieces: what counts as an answer per result
 // type (lib/waterfall/result-type.ts), the input map (inputs.ts), a row's cells
 // from its trace (trace.ts), step keys (keys.ts) and the cost per row
@@ -9,18 +10,25 @@ import keyMod from '../../server/src/lib/waterfall/keys'
 import estMod from '../../server/src/lib/waterfall/estimate'
 import cellsMod from '../../server/src/lib/enrich-cells'
 import maskMod from '../../server/src/lib/waterfall/agent-mask'
-import cfgMod from '../../server/src/lib/waterfall/config'
+import cfgMod from '../../server/src/lib/waterfall/caps'
+import checkMod from '../../server/src/lib/waterfall/input-check'
+import stepsMod from '../../server/src/lib/waterfall/input-steps'
+import formulasMod from '../../server/src/services/waterfall-formulas'
 const { normalizeResult, defaultValuePath, cleanLinkedinUrl } =
   rtMod as typeof import('../../server/src/lib/waterfall/result-type')
 const { inputValues, requiresMet, fixedValueProblem, templateColumn } =
   inMod as typeof import('../../server/src/lib/waterfall/inputs')
 const { rowCells, traceCostUsd } = trMod as typeof import('../../server/src/lib/waterfall/trace')
-const { settingsKey, answerKey, stepReads } = keyMod as typeof import('../../server/src/lib/waterfall/keys')
-const { rowEstimate, withHistory } = estMod as typeof import('../../server/src/lib/waterfall/estimate')
+const { settingsKey, answerKey, stepReads, tallyKey, checkKey } =
+  keyMod as typeof import('../../server/src/lib/waterfall/keys')
+const { rowEstimate, withHistory, withCheck } = estMod as typeof import('../../server/src/lib/waterfall/estimate')
 const { ENRICH_CELL } = cellsMod as typeof import('../../server/src/lib/enrich-cells')
 const { MASKED, maskHttpStep, restoreMaskedStep } =
   maskMod as typeof import('../../server/src/lib/waterfall/agent-mask')
-const { tregPart } = cfgMod as typeof import('../../server/src/lib/waterfall/config')
+const { tregPart, rowCaps } = cfgMod as typeof import('../../server/src/lib/waterfall/caps')
+const { parseCheck } = checkMod as typeof import('../../server/src/lib/waterfall/input-check')
+const { parseStep } = stepsMod as typeof import('../../server/src/lib/waterfall/input-steps')
+const { formulaPasses } = formulasMod as typeof import('../../server/src/services/waterfall-formulas')
 type WaterfallStep = import('../../server/src/lib/waterfall/config').WaterfallStep
 type TraceStep = import('../../server/src/lib/waterfall/trace').TraceStep
 
@@ -178,6 +186,43 @@ eq('a priced treg step', tregPart(cfgOf([tregStep(0.02)])), { any: true, unprice
 eq('an unpriced treg step still counts', tregPart(cfgOf([tregStep(0.02), tregStep(null)])),
   { any: true, unpriced: true })
 eq('a step switched off is not counted', tregPart(cfgOf([tregStep(null, false)])), { any: false, unpriced: false })
+
+// --- formula steps and checks --------------------------------------------------------
+eq('a verify check accepts the safest verdicts by default', parseCheck({ kind: 'verify' }, 'Step 1'),
+  { ok: { kind: 'verify', accept: 'safest' } })
+check('a check of another kind is refused', 'error' in parseCheck({ kind: 'lookup' }, 'Step 1'))
+check('a check with a key it doesn\'t know is refused', 'error' in parseCheck({ kind: 'verify', acept: 'wide' }, 'S'))
+check('a formula check needs its formula', 'error' in parseCheck({ kind: 'formula', formula: '  ' }, 'Step 1'))
+const fStep = parseStep({ choices: { kind: 'formula', formula: ' {{domain}} ' },
+  check: { kind: 'formula', formula: '{{value}}' } }, 0)
+check('a formula step parses, trimmed, with its check', 'ok' in fStep && fStep.ok.choices.kind === 'formula'
+  && fStep.ok.choices.formula === '{{domain}}' && fStep.ok.check?.kind === 'formula')
+check('a formula step with a key it doesn\'t know is refused',
+  'error' in parseStep({ choices: { kind: 'formula', formula: '1', url: 'x' } }, 0))
+const checked = withCheck({ maxUsd: 0.01, expectedUsd: 0.005, answerRate: 0.5, rateFrom: 'treg' },
+  { usd: 0.002, preRate: 0.5, found: null })
+eq('a check adds its cost: the most in full, on average for the values found', [checked.maxUsd, checked.expectedUsd],
+  [0.012, 0.006])
+eq('with no history of its own, a checked step counts as never answering', [checked.answerRate, checked.rateFrom],
+  [null, null])
+const known = withCheck({ maxUsd: 0, expectedUsd: 0, answerRate: 0.3, rateFrom: 'history' },
+  { usd: 0.002, preRate: 0.3, found: 0.5 })
+eq('with history, its rate stays and the check is paid on the share found', [known.answerRate, known.expectedUsd],
+  [0.3, 0.001])
+eq('no check: the cost as it was', withCheck(checked, null), checked)
+const withVerify = { ...step('sv00001', 'Checked'),
+  check: { choices: { kind: 'verify', accept: 'safest' },
+    built: { kind: 'verify', capUsd: 0.003, tool: { id: 'treg.people.email.verify' } } } } as unknown as WaterfallStep
+eq('a verify check counts in the row\'s treg part', rowCaps([withVerify]), { most: 0.003, treg: 0.003 })
+const W = { resultType: 'email' as const }
+check('a check changes the tally key, not the answer key',
+  tallyKey(W, withVerify) !== settingsKey(W, withVerify) && settingsKey(W, withVerify) === settingsKey(W,
+    { ...withVerify, check: null }))
+check('a check\'s key changes with the value',
+  checkKey(withVerify, 'a@x.io', {}) !== checkKey(withVerify, 'b@x.io', {}))
+eq('no check, no key', checkKey({ ...withVerify, check: null }, 'a@x.io', {}), null)
+eq('a formula\'s yes and no', ['true', 'yes', 'x', 'false', '0', '', 'null', 'NaN'].map(formulaPasses),
+  [true, true, true, false, false, false, false, false])
 
 if (failures) { console.log(`\n${failures} failed`); process.exit(1) }
 console.log('\nall waterfall pure checks passed')

@@ -23,7 +23,7 @@ export interface TraceStep {
   cost_usd: number;
   ms: number;
   from?: StepFrom;
-  check?: { outcome: 'passed' | 'failed' | 'error'; verdict?: string; cost_usd: number };
+  check?: { outcome: 'passed' | 'failed' | 'error'; verdict?: string; cost_usd: number; from?: StepFrom };
 }
 
 export interface Trace { v: 1; answered_by: string | null; steps: TraceStep[] }

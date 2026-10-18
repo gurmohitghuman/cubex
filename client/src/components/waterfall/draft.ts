@@ -3,17 +3,18 @@
 // start request built from it. The result types and their starting inputs
 // mirror server/src/lib/waterfall/result-type.ts.
 import type {
-  InputSource, ResultType, RowsStatus, StepChoices, StepKind, WaterfallRunInput, WaterfallSetup,
+  CheckChoices, InputSource, ResultType, RowsStatus, StepChoices, StepKind, WaterfallRunInput, WaterfallSetup,
 } from '@/utils/api/waterfall'
 
 export interface DraftInput { key: string; label: string; source: InputSource | null }
 export interface DraftStep {
-  key: string                    // React key (the step id once it has one)
-  id: string | null
+  key: string                    // React key (the step's id)
+  id: string | null              // a new step's is made here (so Test can name it before any run)
   label: string                  // '' = named by the server (tool name, "AI", the API's host)
   on: boolean
   requires: string[][] | null    // null = what the step reads (or its tool's rule)
   choices: StepChoices
+  check: CheckChoices | null     // a check on the value it finds
   toolName?: string              // an enrichment step's tool, as its card shows it
 }
 export interface WaterfallDraft {
@@ -94,6 +95,13 @@ export function newDraft(type: ResultType, columns: string[]): WaterfallDraft {
 
 let nextKey = 1
 const keyOf = (id: string | null) => id ?? `new-${nextKey++}`
+const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
+
+// A step id as the server makes them ("s" + 6 characters).
+export function newStepId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6))
+  return `s${Array.from(bytes, b => ID_CHARS[b % ID_CHARS.length]).join('')}`
+}
 
 export function emptyChoices(kind: StepKind, toolId = ''): StepChoices {
   if (kind === 'enrichment') {
@@ -103,11 +111,13 @@ export function emptyChoices(kind: StepKind, toolId = ''): StepChoices {
     }
   }
   if (kind === 'ai') return { kind, prompt: '', model: null, webSearch: false }
+  if (kind === 'formula') return { kind, formula: '' }
   return { kind, method: 'GET', url: '', headers: {}, body: null, valuePath: '$.', retries: null }
 }
 
 export function newStep(choices: StepChoices, toolName?: string): DraftStep {
-  return { key: keyOf(null), id: null, label: '', on: true, requires: null, choices, ...(toolName ? { toolName } : {}) }
+  const id = newStepId()
+  return { key: id, id, label: '', on: true, requires: null, choices, check: null, ...(toolName ? { toolName } : {}) }
 }
 
 export function moveStep(steps: DraftStep[], from: number, to: number): DraftStep[] {
@@ -126,6 +136,7 @@ export function fromSetup(s: WaterfallSetup): WaterfallDraft {
     inputs: i.inputs.map(x => ({ ...x })),
     steps: i.steps.map(st => ({
       key: keyOf(st.id), id: st.id, label: st.label ?? '', on: st.on, requires: st.requires, choices: st.choices,
+      check: st.check ?? null,
       ...(st.id && s.toolNames?.[st.id] ? { toolName: s.toolNames[st.id] } : {}),
     })),
     answeredBy: i.answeredBy, hideStepColumns: i.hideStepColumns, rowsMode: 'all', rowsStatus: 'not_enriched',
@@ -139,7 +150,10 @@ function requiresOf(r: string[][] | null): string[][] | null {
   return alts.length ? alts : null
 }
 
-export interface RunChoice { test: number | null; rowIndexes: number[] | null; rowGeneration: number | null }
+export interface RunChoice {
+  test: number | null; rowIndexes: number[] | null; rowGeneration: number | null
+  dry?: { only: string | null }   // a dry run (of one step when only is set)
+}
 
 export function toInput(d: WaterfallDraft, run: RunChoice): WaterfallRunInput {
   const selected = d.rowsMode === 'selected' && !!run.rowIndexes?.length
@@ -149,6 +163,7 @@ export function toInput(d: WaterfallDraft, run: RunChoice): WaterfallRunInput {
     inputs: d.inputs.map(i => ({ key: i.key, label: i.label, source: i.source })),
     steps: d.steps.map(s => ({
       id: s.id, label: s.label.trim() || null, on: s.on, requires: requiresOf(s.requires), choices: s.choices,
+      check: s.check,
     })),
     answeredBy: d.answeredBy, hideStepColumns: d.hideStepColumns,
     rows: {
@@ -158,6 +173,7 @@ export function toInput(d: WaterfallDraft, run: RunChoice): WaterfallRunInput {
     },
     runIf: d.runIf.trim() || null, spendLimitUsd: d.spendLimitUsd, concurrency: null, fresh: d.fresh,
     rowGeneration: selected ? run.rowGeneration : null,
+    ...(run.dry ? { dry: { rowIds: null, only: run.dry.only } } : {}),
   }
 }
 
@@ -172,6 +188,11 @@ export function draftProblem(d: WaterfallDraft): string | null {
     if (c.kind === 'ai' && !c.prompt.trim()) return 'Write the prompt of each AI step.'
     if (c.kind === 'http' && (!c.url.trim() || !c.valuePath.trim() || c.valuePath.trim() === '$.')) {
       return 'Give each HTTP step a URL and the path of its value.'
+    }
+    if (c.kind === 'formula' && !c.formula.trim()) return 'Write the formula of each formula step.'
+    if (s.check?.kind === 'formula' && !s.check.formula.trim()) return 'Write the formula of each check.'
+    if (s.check?.kind === 'verify' && d.resultType !== 'email') {
+      return 'An email check needs the result type Work email.'
     }
   }
   return null

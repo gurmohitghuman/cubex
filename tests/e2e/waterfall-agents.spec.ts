@@ -1,3 +1,4 @@
+// Over 200 lines: the MCP and REST clients are set up once for every agent check here.
 import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi } from './helpers'
 import { bearer, makeToken } from './api-v1-run-helpers'
@@ -161,6 +162,56 @@ test('REST: estimate_only, the setup read, and an HTTP step reading a saved key 
   expect(hidden.steps[0].headers.Authorization).toBe('…')
   expect(hidden.masked).toBeTruthy()
   expect((await call(mcpSecrets, 'waterfall_column', read)).steps[0].headers.Authorization).toBe(`Bearer /${keyName}`)
+})
+
+test('MCP: dry_run answers with each row\'s trace and writes nothing; test_step runs one step', async () => {
+  await freshTreg(api)
+  const { sheetId } = await seedCsv(api, CSV)
+  const dry = await call(mcp, 'waterfall_column', args(sheetId, { dry_run: true }))
+  expect(dry).toMatchObject({ dry_run: true, status: 'completed' })
+  expect(dry.rows.map((r: { value: string }) => r.value))
+    .toEqual(['maya.chen@stripe.com', 'nobody.here@nobody.example'])
+  expect(dry.rows[1].steps.map((s: { label: string }) => s.label)).toEqual(['treg finder', 'Hunter', 'Own API'])
+  expect((await rowsOf(api, sheetId))[0]['Work email']).toBeUndefined()
+  // One step alone, named by its label; estimate_only can't go with it.
+  const one = await call(mcp, 'waterfall_column', args(sheetId, { dry_run: true, test_step: 'own api', fresh: true }))
+  expect(one.test_step).toBe('Own API')
+  expect(one.rows.every((r: { steps: unknown[] }) => r.steps.length === 1)).toBeTruthy()
+  expect(await callError(mcp, 'waterfall_column', args(sheetId, { dry_run: true, estimate_only: true })))
+    .toMatch(/estimate_only/)
+  expect(await callError(mcp, 'waterfall_column', args(sheetId, { test_step: 'Own API' }))).toMatch(/dry_run/)
+  // REST: the same Idempotency-Key gets the first dry run back, not a second one.
+  const rest = args(sheetId, { dry_run: true, fresh: true }) as Record<string, unknown>
+  delete rest.sheet_id
+  const post = () => v1.post(`/api/v1/sheets/${sheetId}/waterfall-columns`,
+    { headers: { 'Idempotency-Key': `dry-${sheetId}` }, data: rest })
+  const first = await (await post()).json()
+  const again = await (await post()).json()
+  expect(again.run_id).toBe(first.run_id)
+  expect(again.replayed).toBe(true)
+})
+
+test('MCP: a formula step with a verify check, and a formula check, round-trip through describe', async () => {
+  await freshTreg(api)
+  const { sheetId } = await seedCsv(api, CSV)
+  const steps = [
+    { kind: 'formula', label: 'Guess',
+      formula: "{{full_name}}.toLowerCase().replace(' ', '.') + '@' + {{domain}}.replace('https://', '')",
+      check: { kind: 'verify', accept: 'balanced' } },
+    { kind: 'http', label: 'Own API', url: rx.url('/find?d={{domain}}'), value_path: '$.email',
+      check: { kind: 'formula', formula: "{{value}}.includes('@')" } },
+  ]
+  const run = await call(mcp, 'waterfall_column', args(sheetId, { steps, estimate_only: false, fresh: true }))
+  await waitDone(run.run_id)
+  expect((await rowsOf(api, sheetId))[0]['Work email']).toBe('maya.chen@stripe.com')
+  const setup = await call(mcp, 'waterfall_column',
+    { action: 'describe', sheet_id: sheetId, column_name: 'Work email' })
+  expect(setup.steps[0]).toMatchObject({ kind: 'formula', check: { kind: 'verify', accept: 'balanced' } })
+  expect(setup.steps[1].check).toEqual({ kind: 'formula', formula: "{{value}}.includes('@')" })
+  // A verify check needs a work email result.
+  expect(await callError(mcp, 'waterfall_column', args(sheetId, {
+    column_name: 'Phone', result_type: 'phone', steps: [{ ...steps[0], check: { kind: 'verify' } }],
+  }))).toMatch(/email check/i)
 })
 
 test('a run webhook names the kind waterfall', async () => {

@@ -4,7 +4,6 @@
 // frozen: what each step runs, its cap, the row's cap and the run's limit.
 // A pure read (the catalog and model prices are cached), so an estimate
 // checks exactly what a start would.
-import { randomBytes } from 'node:crypto';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
 import { resolveAiModel, NO_MODEL_ERROR } from '../lib/ai-model-resolve';
 import { findUnknownColumnReferences, unknownRefsMessage } from '../lib/prompt';
@@ -12,26 +11,22 @@ import { httpTemplateError } from '../lib/http-template-validate';
 import { WATERFALL_LABEL_MAX_CHARS } from '../lib/constants';
 import type { ProviderPick } from '../lib/enrich-estimate';
 import type { EnrichTool } from '../lib/enrich-tool';
-import { stepRequestConfig, type WaterfallBlock, type WaterfallStep } from '../lib/waterfall/config';
+import {
+  newStepId, stepRequestConfig, type WaterfallBlock, type WaterfallStep,
+} from '../lib/waterfall/config';
+import { rowCaps } from '../lib/waterfall/caps';
 import { DEFAULT_PHONE } from '../lib/waterfall/result-type';
 import { inputValues, resolveColumn, templateOf } from '../lib/waterfall/inputs';
 import { stepReads } from '../lib/waterfall/keys';
 import type { StepInput } from '../lib/waterfall/input-steps';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { buildEnrichmentStep } from './waterfall-build-enrich';
+import { buildCheck, compileStepFormula } from './waterfall-build-check';
 import { priceAiStep, type AiStepPrice } from './waterfall-ai-price';
 import type { RunFail } from './run-shared';
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
-const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
-
-export function newStepId(taken: Set<string>): string {
-  for (;;) {
-    const id = `s${[...randomBytes(6)].map(b => ID_CHARS[b % ID_CHARS.length]).join('')}`;
-    if (!taken.has(id)) return id;
-  }
-}
 
 export interface BuildContext {
   userId: string; sheetId: string;
@@ -151,9 +146,19 @@ export async function buildWaterfall(
         id, label: uniqueLabel(s.label ?? defaultLabel(s, null), usedLabels), on: s.on, requires: [],
         choices: c, built: { kind: 'http', retries: c.retries },
       };
+    } else if (c.kind === 'formula') {
+      const compiled = compileStepFormula(where, c.formula, inputKeys);
+      if ('fail' in compiled) return compiled;
+      step = {
+        id, label: uniqueLabel(s.label ?? 'Formula', usedLabels), on: s.on, requires: [], choices: c,
+        built: { kind: 'formula', compiled: compiled.ok },
+      };
     } else {
       return bad(`${where}: ${c.kind} steps aren't available yet.`);
     }
+    const check = await buildCheck(where, s.check, input.resultType, inputKeys);
+    if ('fail' in check) return check;
+    if (check.ok) step.check = check.ok;
     // AI and HTTP steps need every input they read, unless the step lists its
     // own alternatives. An enrichment step follows its tool's rule (treg's
     // identity sets, derive included); a tool with none needs one of its inputs.
@@ -168,10 +173,7 @@ export async function buildWaterfall(
   }
   const on = steps.filter(s => s.on);
   if (on.length === 0) return bad('Switch at least one step on.');
-  const capOf = (s: WaterfallStep) => (s.built.kind === 'enrichment' ? s.built.capUsd ?? 0
-    : s.built.kind === 'ai' ? s.built.capUsd : 0);
-  const maxCost = round6(on.reduce((sum, s) => sum + capOf(s), 0));
-  const tregCap = round6(on.filter(s => s.built.kind === 'enrichment').reduce((sum, s) => sum + capOf(s), 0));
+  const { most: maxCost, treg: tregCap } = rowCaps(on);
   const byRows = maxCost > 0 ? round6(Math.max(ctx.rowsUpperBound, 1) * maxCost) : null;
   const spendLimit = input.spendLimitUsd ?? byRows;
   if (spendLimit !== null && maxCost > 0 && spendLimit + 1e-6 < maxCost) {

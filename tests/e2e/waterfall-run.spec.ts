@@ -61,7 +61,8 @@ test('each row stops at its first answer; cells, trace, counts and the ledger ag
   expect(e.steps.map((s: { label: string }) => s.label)).toEqual(['treg finder', 'Hunter', 'Own API'])
   expect(e.steps[0].reach).toBe(1)
 
-  const res = await api.post(`/api/waterfall/sheets/${sheetId}/runs`, { data: waterfallBody() })
+  // fresh: other specs' dry runs keep answers for these same steps and inputs; this run calls for real.
+  const res = await api.post(`/api/waterfall/sheets/${sheetId}/runs`, { data: waterfallBody({ fresh: true }) })
   const started = await res.json()
   expect(res.ok(), JSON.stringify(started)).toBeTruthy()
   const s = await waitWaterfall(started.runId, ['completed'])
@@ -130,7 +131,8 @@ test('retrying failed rows asks again only the step that failed, not the paid mi
   await freshTreg(api)
   rx.on('/retry-find', { status: 500, body: '{"error":"down"}' },
     { status: 200, body: JSON.stringify({ email: 'nobody.here@nobody.example' }) })
-  const { sheetId } = await seedCsv(api, 'Name,Website\nNobody Here,nobody.example')
+  // Inputs of its own: other specs' dry runs keep answers for any run of the same step and inputs.
+  const { sheetId } = await seedCsv(api, 'Name,Website\nNobody Retry,retry-nobody.example')
   const body = waterfallBody({
     steps: [
       { label: 'Hunter', choices: { kind: 'enrichment', toolId: 'hunter.people.email.find' } },
@@ -164,7 +166,7 @@ test('a run paused at its limit resumes with a higher one', async () => {
   const { sheetId } = await seedCsv(api, CSV)
   const est = await (await api.post(`/api/waterfall/sheets/${sheetId}/estimate`, { data: waterfallBody() })).json()
   // Room for one row at its most: the second pauses the run.
-  const body = waterfallBody({ spendLimitUsd: est.per_row.max_usd })
+  const body = waterfallBody({ spendLimitUsd: est.per_row.max_usd, fresh: true })
   const started = await (await api.post(`/api/waterfall/sheets/${sheetId}/runs`, { data: body })).json()
   const paused = await waitWaterfall(started.runId, ['paused', 'completed'])
   expect(paused).toMatchObject({ status: 'paused', pause_reason: 'spend_limit' })

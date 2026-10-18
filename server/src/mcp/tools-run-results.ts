@@ -58,7 +58,7 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + '\'secrets\' scope for it). '
         + 'WATERFALL runs (run_type waterfall): each row also has answered_by (the step that answered), cost_usd '
         + '(treg and AI for the row) and trace: each step it reached with its outcome (answered, not_found, '
-        + 'no_inputs, error, budget), value, detail and cost.',
+        + 'no_inputs, error, budget, or rejected by its check), value, detail, cost and the check.',
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']),
         run_id: z.string(),

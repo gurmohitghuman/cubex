@@ -29,3 +29,8 @@ export const WATERFALL_AI_TEMPERATURE = 0.2;
 // A dry run takes this many rows unless rows are picked (at most WATERFALL_DRY_MAX_ROWS).
 export const WATERFALL_DRY_ROWS = 3;
 export const WATERFALL_DRY_MAX_ROWS = 10;
+// waterfall_column dry_run waits this long for the dry run to finish before answering.
+export const WATERFALL_DRY_WAIT_SECONDS = 25;
+// A formula step or check whose worker restarted under it is asked this many times before the row counts
+// as running away (a row that hung is answered "took too long" on the next try).
+export const WATERFALL_FORMULA_ROW_TRIES = 3;
