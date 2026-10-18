@@ -13,6 +13,7 @@ import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
 import { runStartWindow } from '../services/run-shared';
 import { tooManyMessage } from '../lib/rate-window';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
+import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
@@ -80,13 +81,17 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Enrichment runs only: the run limit for a rerun, or a raised limit on resume.'),
         first_rows: z.number().int().min(1).max(MAX_FIRST_ROWS).optional()
           .describe(`AI or HTTP rerun only: only among the sheet's first rows (1-${MAX_FIRST_ROWS}).`),
+        webhook_id: z.string().optional()
+          .describe('rerun only: a run webhook (list_run_webhooks) to notify when the new run finishes.'),
       },
     },
-    async ({ run_type: asked, run_id, action, sheet_id, row_ids, mode, concurrency, spend_limit_usd, first_rows }) => {
+    async ({
+      run_type: asked, run_id, action, sheet_id, row_ids, mode, concurrency, spend_limit_usd, first_rows, webhook_id,
+    }) => {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       if (action === 'cancel_all') {
-        const others = [asked, run_id, row_ids, mode, concurrency, spend_limit_usd, first_rows];
+        const others = [asked, run_id, row_ids, mode, concurrency, spend_limit_usd, first_rows, webhook_id];
         return cancelAll(ctx, sheet_id, others.some(v => v !== undefined));
       }
       if (sheet_id !== undefined) return err('sheet_id goes with action cancel_all only.');
@@ -107,6 +112,13 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return err('first_rows applies only to rerunning an AI or HTTP API run.');
       }
       if (first_rows !== undefined && row_ids) return err('Pass first_rows or row_ids, not both.');
+      if (webhook_id !== undefined && action !== 'rerun') return err('webhook_id goes with action rerun only.');
+      const hookProblem = webhookIdProblem(ctx.userId, webhook_id);
+      if (hookProblem) return err(hookProblem);
+      const hooked = (table: 'ai_runs' | 'http_runs', id: string) => {
+        if (webhook_id) attachRunWebhook(table, id, ctx.userId, webhook_id);
+        return webhook_id ? { webhook_id } : {};
+      };
       if (enrichment && action === 'rerun') {
         if (!row_ids && !mode) {
           return err("An enrichment rerun needs row_ids or mode: 'errored', 'empty' (not enriched yet), "
@@ -121,6 +133,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return ok({
           run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
           ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
+          ...hooked('http_runs', out.ok.runId),
         });
       }
       if (enrichment && action === 'resume') {
@@ -161,7 +174,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             firstRows: first_rows,
           });
         if ('fail' in result) return err(result.message);
-        return ok({ run_id: result.ok.runId, target_rows: result.ok.targetCount });
+        return ok({
+          run_id: result.ok.runId, target_rows: result.ok.targetCount,
+          ...hooked(run_type === 'ai' ? 'ai_runs' : 'http_runs', result.ok.runId),
+        });
       }
 
       const result = action === 'pause' ? pauseRun(run_type, run_id, ctx.userId)

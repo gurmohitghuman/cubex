@@ -33,6 +33,7 @@ import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
 import viewsV1 from './api-v1-views';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
+import { runWebhookRoutes } from './run-webhooks-routes';
 
 const router = express.Router();
 router.use(authenticateAccessToken);
@@ -77,6 +78,8 @@ router.use(runControlV1);
 router.use(runConditionsV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
+// "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
+router.use(runWebhookRoutes('/run-webhooks', requireScope));
 
 // GET /api/v1/me — who am I, and what can this token do. Lets a script or MCP
 // client validate its configuration before touching data.

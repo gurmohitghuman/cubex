@@ -18,6 +18,7 @@ import { runIfReply } from './run-rule';
 import { curlForToken, curlStartProblem, type TokenCurl } from './curl-token';
 import { commitCurlKeys } from './curl-import';
 import { HTTP_RETRY_MAX, HTTP_STATUS_PATH } from '../lib/constants-http-retry';
+import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 
 export interface TokenHttpRunArgs {
   sheet_id: unknown; url?: unknown; method?: unknown; headers?: unknown; body?: unknown;
@@ -25,6 +26,7 @@ export interface TokenHttpRunArgs {
   estimate_only?: unknown; idempotency_key?: unknown; batch_size?: unknown; timeout_ms?: unknown;
   run_if?: unknown; curl?: unknown; save_keys?: unknown;
   retries?: unknown; retry_post?: unknown; skip_empty_values?: unknown; status_code_column?: unknown;
+  webhook_id?: unknown;
 }
 
 const wholeIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -68,6 +70,8 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   if ('error' in runIf) return bad(runIf.error);
   const extras = httpRunExtras(a);
   if (typeof extras === 'string') return bad(extras);
+  const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
+  if (hookProblem) return bad(hookProblem);
   const config: HTTPAPIConfig = {
     requestConfig: {
       method: method as 'GET', url: a.url, headers: (a.headers as Record<string, string>) ?? {}, body: a.body as string | undefined,
@@ -119,6 +123,7 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
     ...(extras.retryPost ? { retry_post: true } : {}),
     ...(extras.skipEmpty ? { skip_empty_values: true } : {}),
     ...(extras.statusColumn ? { status_code_column: extras.statusColumn } : {}),
+    ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -137,11 +142,13 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
     return { ...result, message: `${result.message} (Saved as ${saved.ok.length > 1 ? 'keys' : 'a key'}: ${keys}. `
       + `Next time, write {{${saved.ok[0]}}} in the command.)` };
   }
+  if (typeof a.webhook_id === 'string') attachRunWebhook('http_runs', result.ok.runId, c.userId, a.webhook_id);
   const payload = {
     run_id: result.ok.runId, master_column: result.ok.masterColumn,
     mapped_columns: result.ok.mappedColumns, target_rows: result.ok.targetCount,
     ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
     ...(curl ? { saved_keys: saved.ok, notes: curl.plan.notes } : {}),
+    ...(typeof a.webhook_id === 'string' ? { webhook_id: a.webhook_id } : {}),
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
   return { ok: payload, started: true };

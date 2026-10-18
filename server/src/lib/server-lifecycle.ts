@@ -12,6 +12,7 @@ import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
 import { resumeAgePrunes } from '../services/answer-prune-age';
 import { startLookupLoop } from '../services/lookup-host';
+import { startRunHookLoop } from '../services/run-hooks-dispatch';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -44,6 +45,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   resumeAgePrunes();
   // Lookups: dropped keys deleted, looked-up sheets kept current (services/lookup-purge.ts).
   startLookupLoop();
+  // "Run finished" webhooks: finished runs become signed notices (services/run-hooks-dispatch.ts).
+  startRunHookLoop();
   startQueue()
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).

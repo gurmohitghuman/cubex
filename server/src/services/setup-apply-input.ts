@@ -18,11 +18,14 @@ export function applyInputOf(b: Record<string, unknown>, from: 'app' | 'v1' | 'm
   if (first !== undefined && first !== null && typeof first !== 'number') return bad('first_rows must be a number.');
   const estimate = field('estimateOnly', 'estimate_only');
   if (estimate !== undefined && typeof estimate !== 'boolean') return bad('estimate_only must be true or false.');
+  const hook = field('webhookId', 'webhook_id');
+  if (hook !== undefined && hook !== null && typeof hook !== 'string') return bad('webhook_id must be a string.');
   return {
     inputs: (field('inputs', 'inputs') ?? undefined) as Record<string, string> | undefined,
     names: (field('names', 'names') ?? undefined) as Record<string, string> | undefined,
     models: (field('models', 'models') ?? undefined) as Record<string, string> | undefined,
     firstRows: (first ?? null) as number | null,
     estimateOnly: from === 'mcp' ? estimate !== false : estimate === true,
+    webhookId: typeof hook === 'string' ? hook : null,
   };
 }

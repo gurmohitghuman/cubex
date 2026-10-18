@@ -17,6 +17,9 @@ import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenien
 import { runIfSchema } from './run-if-schema';
 
 const idempotencyKeySchema = z.string().min(1).max(200).optional();
+const webhookIdSchema = z.string().optional().describe(
+  'A run webhook (list_run_webhooks) to notify when this run finishes, with a signed POST. Delivery isn\'t '
+  + 'guaranteed: keep polling get_run_status, the notice only saves polls.');
 
 const targetRowIdsSchema = z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional();
 
@@ -62,6 +65,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, model, estimated_cost_usd:{low,high}, web_fees_usd, web_search:{engine, runs_on, mode, price_per_search_usd, searches_per_row, switched, ...}, ... } and start nothing. No AI calls, no columns created. In web_search, engine is what the run sends, runs_on is what runs the searches, and mode is the one billed (the engine\'s default when you chose none). in_flight {concurrency, reserve_at_concurrency_usd, account_balance_usd, concurrency_ceiling, note, warning}: OpenRouter holds each running call\'s possible cost and lets the account hold only part of its balance at once, so a high concurrency can be refused (402) before the balance runs out; follow its warning. own_provider_key: true when your latest run on this model ran on your own provider key (BYOK).'),
         preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt on the first N rows (max ${PREVIEW_MAX_ROWS}) with the same web tools, and return the sample outputs (with their sources, search words and cost) + MEASURED cost + full-run projection. Nothing is created or saved: validate a prompt before the full run. On your own provider key (BYOK) cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add what the provider bills.`),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run (safe retries after a timeout/limit).'),
+        webhook_id: webhookIdSchema,
       },
     },
     async (args: TokenAiRunArgs) => {
@@ -125,6 +129,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         run_if: runIfSchema,
         estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, ... } and start nothing. HTTP enrichment has no AI cost (runs against your own API).'),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run.'),
+        webhook_id: webhookIdSchema,
       },
     },
     async (args: TokenHttpRunArgs) => {

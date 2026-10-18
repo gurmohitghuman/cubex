@@ -34,7 +34,7 @@ Everything Cubex keeps lives in one directory, `~/.cubex/data`:
 | `cubex.db` | Your tables, settings and encrypted keys. |
 | `jobs.db` | The run queue, so runs survive a restart. |
 | `.jwt-secret` | Signs sign-in sessions. |
-| `.encryption-key` | Encrypts your OpenRouter key, treg key, saved API keys and webhook URLs. |
+| `.encryption-key` | Encrypts your OpenRouter key, treg key, saved API keys, webhook URLs and run webhook secrets. |
 | `uploads/` | CSV files while they import. Emptied when Cubex starts; no need to back it up. |
 
 Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](self-hosting.md#6-back-up-every-night).
@@ -45,6 +45,7 @@ Your data stays in one SQLite file on your machine. The server only calls out to
 
 - **OpenRouter**, for AI columns, including its price list for web search engines, and to read what your key can still spend (Settings, `get_balances`, and an AI run's estimate and preview).
 - **The APIs you put in HTTP columns.**
+- **Your run webhook URLs**, when a run finishes (Settings, Run webhooks): the run's id, kind, sheet, status and time, nothing from your rows.
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.
 
 The web page also loads its fonts from Google Fonts.

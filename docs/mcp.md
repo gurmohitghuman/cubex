@@ -114,6 +114,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
+| `list_run_webhooks` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). |
 
 Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
@@ -464,6 +465,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 - Retries: a request answered `429` or `503` is sent again, whatever the method; another `5xx`, or no answer at all (refused, reset, timed out), is sent again for GET, HEAD, PUT and DELETE, and for POST only with `"retry_post": true`. `retries` (0 to 5, default 3) sets how many more tries a row gets; each waits longer than the last (with some randomness) or as long as the API's `Retry-After` asks, up to a minute. A `4xx` is never retried. A row that still fails says how many tries it took (`(tried 4 times)` in its error). Every try is checked like the first: private addresses are refused and redirects aren't followed. Pausing or cancelling stops a row that is waiting to try again.
 - `skip_empty_values: true` leaves out a query parameter, form field or JSON body field whose `{{column}}` is empty for a row, instead of sending it empty. Cell values always go in the way their place needs: escaped inside a JSON string in the body, and in a query value `&`, `#`, `+` and a stray `%` are encoded, so `a+b@x.co` or `AT&T` arrive as they are (a value already holding `%XX` escapes keeps them). A `{{column}}` standing for a whole JSON value (`"count": {{Count}}`) goes in as written, and saved keys always go in exactly as saved.
 - `status_code_column: "Code"` adds a column with each row's HTTP status code, failed rows included (`❌ No response` when the API never answered). The same column comes from a `response_mapping` entry with `"json_path": "@status"`.
+- `webhook_id`: a [run webhook](run-webhooks.md) to tell when this run finishes. The AI and enrichment starts, `apply_setup` and the reruns below take it too.
 - `curl`: a whole cURL command, copied from an API's docs or a browser, in place of `url`, `method`, `headers` and `body`. `{{column}}` works inside it. A key Cubex finds in the command (sign-in headers and `-u`, headers and fields named like keys, well-known key formats) is never stored in the column's setup: the call is refused and names where the key is, unless you pass `save_keys`. `"save_keys": true` saves each key as a saved key under a suggested name (a key already saved with the same value is used instead), and `"save_keys": {"Authorization header": "openai"}` names every key. Saving needs the `secrets` scope. Keys are saved just before the run starts, after its other checks pass (`estimate_only` lists them as `keys_to_save`). A `$VARIABLE` where a key goes uses the saved key with that name. The reply lists `saved_keys` and `notes` (what the command asked for that Cubex changed or left out).
 
 ```json
@@ -503,7 +505,23 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. `"first_rows": 10` takes only the sheet's first rows (not with `row_ids`, and not on an enrichment run). An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 100; default: the run's own). |
 | `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it, and `concurrency` (rows at once, 1 to 100) to change its speed. |
 
+Both reruns also take `webhook_id`, a [run webhook](run-webhooks.md) to tell when the new run finishes.
+
 An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by`, plus its stored `answer` with `?answers=true` (10 rows a page).
+
+### Run webhooks
+
+URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`; adding, changing, deleting, a new secret and a test need `run` (they decide where Cubex sends requests, as an HTTP API column does). See [Run webhooks](run-webhooks.md) for the notice and how to check its signature.
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /run-webhooks` | The webhooks: `id`, `url`, `every_run` and the last delivery. Never the secret. |
+| `POST /run-webhooks` | `{"url": "https://...", "every_run": true}`. Answers `201` with `webhook` and `secret`, the only time the secret is shown. The URL must be a public http(s) address. |
+| `GET /run-webhooks/:id` · `PATCH /run-webhooks/:id` | Read one; change its `url` or `every_run`. |
+| `DELETE /run-webhooks/:id` | Deletes it and its log. Runs that named it just aren't told. |
+| `POST /run-webhooks/:id/secret` | A new secret, shown once; the old one stops signing at once. |
+| `GET /run-webhooks/:id/deliveries` | The last 50 deliveries, newest first: `state` (`pending`, `sending`, `delivered`, `failed`), `tries`, `response_code`, `error`. |
+| `POST /run-webhooks/:id/test` | Sends a signed `test` notice now, once, and answers with how it went. |
 
 ### Enrichments
 

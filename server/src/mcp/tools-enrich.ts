@@ -146,6 +146,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       auto_run: z.object({ enabled: lenientBoolean(), daily_cap_usd: money().optional() }).strict().optional(),
       estimate_only: lenientBoolean().optional(),
       idempotency_key: z.string().min(1).max(200).optional(),
+      webhook_id: z.string().optional()
+        .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run_status anyway'),
     }).strict(),
   }, async (args: TokenEnrichArgs) => {
     const denied = missingScope(ctx, 'run');

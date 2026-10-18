@@ -20,6 +20,7 @@
 //   cubex_pat_*  Cubex personal access tokens (bare echoes outside a header)
 //   /api/files/upload|download/<hex>  one-time file link tokens in a URL path
 //   treg_* and signed eyJ… keys  treg.to API keys (enrichments)
+//   cubex_whsig_*  run webhook signing secrets
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-(?:or-v\d+|ant|[A-Za-z0-9])[A-Za-z0-9_\-]{8,}/g,
   /\b(?:Bearer|Basic)\s+[A-Za-z0-9._\-=]{8,}/gi,
@@ -49,6 +50,8 @@ const SECRET_PATTERNS: RegExp[] = [
   // also covers JWT-shaped tokens.
   /\btreg_[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)?/g,
+  // A run webhook's signing secret (lib/run-hook-sign.ts), shown once.
+  /\bcubex_whsig_[A-Za-z0-9_-]{20,}/g,
 ];
 
 // Replacement keeps any leading group (the header/param name / url prefix) so
@@ -66,6 +69,7 @@ export function redactSecrets(input: string): string {
   out = out.replace(SECRET_PATTERNS[8], '$1[REDACTED]');
   out = out.replace(SECRET_PATTERNS[9], '[REDACTED]');
   out = out.replace(SECRET_PATTERNS[10], '[REDACTED]');
+  out = out.replace(SECRET_PATTERNS[11], '[REDACTED]');
   return out;
 }
 

@@ -26,6 +26,7 @@ import { tooManyMessage, type RateDecision } from '../lib/rate-window';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { runIfReply } from './run-rule';
+import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
@@ -84,6 +85,7 @@ export interface TokenAiRunArgs {
   web_search?: unknown; web_fetch?: unknown; max_chars?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
   search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown; run_if?: unknown;
+  webhook_id?: unknown;
 }
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
@@ -109,6 +111,8 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     runIf: a.run_if,
   });
   if (!parsed.ok) return bad(parsed.error.replace(/^runIf/, 'run_if'));
+  const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
+  if (hookProblem) return bad(hookProblem);
   // A typo'd model used to start a run whose every row failed.
   if (typeof a.model === 'string' && a.model.trim()) {
     const catalog = await fetchModels(Date.now());
@@ -147,6 +151,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     web_search: parsed.useOpenRouterWebSearch, web_fetch: parsed.useWebFetch,
     ...(parsed.useOpenRouterWebSearch ? { search: parsed.search } : {}),
     ...(parsed.runIf ? { run_if: parsed.runIf } : {}),
+    ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -161,10 +166,13 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     outputColumns: parsed.outputColumns, search: parsed.search, runIf: parsed.runIf,
   });
   if ('fail' in result) return result;
+  const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
+  if (hook) attachRunWebhook('ai_runs', result.ok.runId, c.userId, hook);
   // With web search: the engine it runs on, priced, and why if Cubex switched it.
   const webSearch = {
     ...(result.ok.webSearch ? { web_search: webSearchSummary(result.ok.webSearch) } : {}),
     ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
+    ...(hook ? { webhook_id: hook } : {}),
   };
   const payload = result.ok.statusColumn ? {
     run_id: result.ok.runId, status_column: result.ok.statusColumn,

@@ -22,6 +22,7 @@ import { estimateSetup, type SetupEstimate } from './setup-estimate';
 import { insertSetupRun, getSetupRun, type SetupRunView } from './setup-run-store';
 import { advanceSetupRun } from './setup-runner';
 import { keyProblem, liveSetupClash, withModels, type ApplyFail } from './setup-apply-checks';
+import { webhookIdProblem } from './run-hooks-attach';
 
 export type { ApplyFail } from './setup-apply-checks';
 
@@ -29,6 +30,7 @@ export interface ApplyInput extends ApplyChoices {
   models?: Record<string, string>; // an AI step's main column → the model it runs on
   firstRows?: number | null;       // test on the top rows; null/undefined: every row
   estimateOnly: boolean;
+  webhookId?: string | null;       // a run webhook told when the setup finishes (REST/MCP)
 }
 // makes: every column its steps make or carry on; carries_on: the main columns
 // of the steps that carry a column of the sheet on.
@@ -46,6 +48,8 @@ export async function applySetup(
   if (!setup) return { fail: 'not_found', message: 'Setup not found' };
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   if (setup.spec.steps.length === 0) return bad('This setup is damaged: it has no steps. Save it again.');
+  const hookProblem = webhookIdProblem(userId, input.webhookId);
+  if (hookProblem) return bad(hookProblem);
   const first = input.firstRows ?? null;
   if (first !== null && !(Number.isSafeInteger(first) && first >= 1 && first <= MAX_SETUP_TEST_ROWS)) {
     return bad(`firstRows must be a whole number from 1 to ${MAX_SETUP_TEST_ROWS}.`);
@@ -83,7 +87,7 @@ export async function applySetup(
   const choices = { inputs: plan.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };
   const id = insertSetupRun({
     userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices }, targetRowIds: rowIds,
-    allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null,
+    allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null, webhookId: input.webhookId ?? null,
   });
   // The first layer starts now; the sweep carries on if this round can't (it's logged, not the caller's error).
   try {
