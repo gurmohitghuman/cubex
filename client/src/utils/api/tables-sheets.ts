@@ -2,6 +2,7 @@ import { api } from './client'
 import type { ColumnFilters } from '@/lib/filters'
 import type { Sheet, SheetData, Table } from './types'
 import type { GridAutoDedupe, ImportAutoDedupe } from './dedupe'
+import { SAMPLE_CREATE_TIMEOUT_MS } from '@/lib/constants'
 
 // Opt these requests out of the interceptor's generic "Server error occurred" toast.
 // Every caller surfaces its own signal on failure: structural ops (add/delete/rename/
@@ -18,6 +19,10 @@ export const tablesAPI = {
   getAll: (): Promise<Table[]> => api.get('/tables', noServerToast).then(res => res.data),
   getById: (id: string): Promise<Table> => api.get(`/tables/${id}`, noServerToast).then(res => res.data),
   create: (name: string): Promise<Table> => api.post('/tables', { name }, noServerToast).then(res => res.data),
+  // A table of made-up leads with columns that show what Cubex does (server services/sample-table.ts).
+  // problems: a free column that didn't finish; the table is there all the same.
+  createSample: (): Promise<Table & { sheetId: string; problems: string[] }> =>
+    api.post('/tables/sample', {}, { ...noServerToast, timeout: SAMPLE_CREATE_TIMEOUT_MS }).then(res => res.data),
   update: (id: string, name: string): Promise<Table> =>
     api.put(`/tables/${id}`, { name }, noServerToast).then(res => res.data),
   // The table goes to the trash (trash: null when Settings keeps nothing).

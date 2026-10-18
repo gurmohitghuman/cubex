@@ -200,3 +200,10 @@ export const ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
 // Boot reads the whole database file to check it (lib/db.ts); above this size
 // the log says so first, so a slow boot doesn't look like a hang.
 export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
+
+// The sample table (services/sample-table.ts) fills its free columns one after
+// another: each waits up to this long for the one before to finish filling
+// (25 rows take a few milliseconds), checking this often. Two waits stay under
+// the app's SAMPLE_CREATE_TIMEOUT_MS.
+export const SAMPLE_STEP_WAIT_MS = 20_000;
+export const SAMPLE_STEP_POLL_MS = 20;

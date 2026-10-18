@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table } from '@/utils/api'
 
 import { SheetGridArea } from '@/components/sheet/SheetGridArea'
+import { SheetSampleGuide } from '@/components/sample/SampleGuide'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -287,6 +288,8 @@ export const SheetPage: React.FC = () => {
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
       <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
+      <SheetSampleGuide sheetData={sheetData} onOpenAI={() => modals.setShowAddColumnModal(true)}
+        onOpenDedupe={() => modals.setShowDedupeModal(true)} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}

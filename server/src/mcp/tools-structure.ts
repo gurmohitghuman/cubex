@@ -8,6 +8,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createTable, renameTable, deleteTable } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
 import { trashAnswer } from '../services/trash-answer';
+import { createSampleTable } from '../services/sample-table';
+import { sampleAnswer } from '../services/sample-answer';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
@@ -18,9 +20,14 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         'Create, rename, or delete a table (a workspace that holds one or more sheet tabs). create returns the new '
         + 'table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. delete puts the table '
         + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
-        + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole.',
+        + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole. '
+        + 'create_sample (no name needed) makes a new table named "Sample leads" (or "Sample leads 2"...) to try '
+        + 'Cubex on: 25 made-up leads (invented people and companies, every website and email at .example, none '
+        + 'of them real), with a clean column and a formula '
+        + 'column filled for free, a dry-run duplicate check of the one duplicate it holds, and an AI column set up '
+        + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'delete']),
+        action: z.enum(['create', 'rename', 'delete', 'create_sample']),
         table_id: z.string().optional().describe('Required for rename/delete'),
         name: z.string().optional().describe('Required for create/rename'),
       },
@@ -35,6 +42,10 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
           id: result.ok.id, name: result.ok.name,
           sheets: [{ id: result.ok.sheetId, name: 'Sheet1', position: 0, row_count: 0 }],
         });
+      }
+      if (action === 'create_sample') {
+        const result = await createSampleTable(ctx.userId);
+        return 'fail' in result ? err(result.message) : ok(sampleAnswer(result.ok, 'mcp'));
       }
       if (!table_id) return err(`table_id is required for ${action}`);
       if (action === 'rename') {

@@ -91,6 +91,8 @@ curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.s
 2. For AI columns, create a key at [openrouter.ai/keys](https://openrouter.ai/keys) (OpenRouter bills you directly for what your runs use). Add it and pick a default model in **Settings → AI**. Cubex never picks a model for you.
 3. For enrichments, add a treg team API key in **Settings → Enrichment**. The [enrichments guide](docs/enrichments.md) walks through it.
 
+Want to look around first? Click **Try with sample data** on the empty dashboard (or in **New Table**). Cubex makes a table of 25 made-up leads, at `.example` addresses so none of them is a real person or company, with a few messy values on purpose. A clean column and a formula column are already filled, for free, and a card above the grid shows the duplicate hiding in the list. The AI column is set up but not run: pick your model and try it on 5 rows. Delete the table when you're done; it goes to the trash like any other.
+
 There's one account and no email, so there's no reset link. If you forget the password, run `cubex reset-password` on the computer Cubex runs on. Changing or resetting the password signs out every browser.
 
 Cubex keeps running in the background and starts again after a restart: on macOS when you log in, on Linux when the computer starts. If the installer can't set that up, it tells you the one command that does. The `cubex` command does the rest:

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
 import { Modal } from '@/components/Modal'
+import { TrySampleButton } from '@/components/sample/TrySampleButton'
 
 interface CreateTableModalProps {
   isOpen: boolean
@@ -64,6 +65,15 @@ export const CreateTableModal: React.FC<CreateTableModalProps> = ({ isOpen, onCl
           </button>
         </div>
       </form>
+      <div className="px-6 pb-6">
+        <div className="flex items-center gap-3 mb-3 text-xs text-gray-400">
+          <div className="h-px flex-1 bg-gray-200" /><span>or</span><div className="h-px flex-1 bg-gray-200" />
+        </div>
+        <TrySampleButton className="w-full" />
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          25 made-up leads, with columns that show what Cubex does.
+        </p>
+      </div>
     </Modal>
   )
 }

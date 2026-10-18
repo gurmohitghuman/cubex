@@ -12,6 +12,7 @@ import { TablesTable } from '@/components/dashboard/TablesTable'
 import { CreateTableModal } from '@/components/dashboard/CreateTableModal'
 import { RenameTableModal } from '@/components/dashboard/RenameTableModal'
 import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
+import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { plural } from '@/lib/utils'
 
 export const DashboardPage: React.FC = () => {
@@ -144,12 +145,16 @@ export const DashboardPage: React.FC = () => {
               <div className="w-12 h-0.5 bg-cube-black rounded-full mx-auto mb-4"></div>
               <h3 className="text-title text-gray-900 mb-2">No tables yet</h3>
               <p className="text-gray-500 mb-6 max-w-md mx-auto text-sm">
-                Create your first table to start managing data with AI-powered features.
+                Create your first table and import your data, or try Cubex first on 25 made-up leads.
               </p>
-              <button onClick={() => setShowCreateModal(true)} className="btn-primary flex items-center space-x-2 mx-auto text-sm px-4 py-2">
-                <Plus className="h-4 w-4" />
-                <span>Create Table</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button onClick={() => setShowCreateModal(true)}
+                  className="btn-primary flex items-center space-x-2 text-sm px-4 py-2">
+                  <Plus className="h-4 w-4" />
+                  <span>Create Table</span>
+                </button>
+                <TrySampleButton />
+              </div>
             </div>
           </div>
         ) : (

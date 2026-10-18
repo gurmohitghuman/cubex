@@ -115,8 +115,10 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
       setSystemPrompt(c.systemPrompt || DEFAULT_SYSTEM_PROMPT)
       // Claim model/concurrency as explicit BEFORE setting them — a sheet
       // default arriving after this hydration must not clobber the draft's
-      // values (it would break credit reuse via a config-hash mismatch).
-      init.noteExplicitModel(); sel.setModel(c.model)
+      // values (it would break credit reuse via a config-hash mismatch). A draft
+      // without a model (the sample sheet's, on an account with no default) leaves
+      // the model to the defaults.
+      if (c.model) { init.noteExplicitModel(); sel.setModel(c.model) }
       init.noteExplicitConcurrency(); setConcurrency(clampConcurrency(c.concurrency))
       setUseOpenRouterWebSearch(c.useOpenRouterWebSearch); setUseWebFetch(c.useWebFetch)
       setWebSearch(webSearchFrom(c.searchEngine, c.searchMode, c.maxSearchesPerRow))

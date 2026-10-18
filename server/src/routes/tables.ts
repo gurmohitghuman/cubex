@@ -8,6 +8,7 @@ import { getTrashDays } from '../lib/trash/store';
 import {
   createTable, renameTable, deleteTable, type TableCrudFail,
 } from '../services/table-crud';
+import { createSampleTable } from '../services/sample-table';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -92,6 +93,21 @@ router.post('/', (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Create table error:', error);
     res.status(500).json({ error: 'Failed to create table' });
+  }
+});
+
+// POST /sample — a new table of made-up leads with the columns that show what
+// Cubex does (services/sample-table.ts). Answers like POST /, plus the sheet to open.
+router.post('/sample', async (req: AuthRequest, res) => {
+  try {
+    const result = await createSampleTable(req.userId!);
+    if ('fail' in result) return res.status(400).json({ error: result.message });
+    const table = getTableForClient(result.ok.tableId, req.userId!);
+    const sheet = getSheetForClient(result.ok.sheetId, req.userId!);
+    res.json({ ...(table as object), sheets: [sheet], sheetId: result.ok.sheetId, problems: result.ok.problems });
+  } catch (error) {
+    console.error('Create sample table error:', error);
+    res.status(500).json({ error: 'Failed to create the sample table' });
   }
 });
 

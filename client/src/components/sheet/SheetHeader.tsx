@@ -101,9 +101,11 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <CubeLogo size="md" className="hidden sm:block" />
-            <div>
-              <h1 className="font-brand-semibold text-lg text-gray-900 tracking-tight">{tableName}</h1>
-              <p className="meta-label">
+            {/* Kept whole on one line: squeezed, a two-word name wrapped and was cut off at 1280px. */}
+            <div className="min-w-0 sm:shrink-0">
+              <h1 className="font-brand-semibold text-lg text-gray-900 tracking-tight whitespace-nowrap truncate
+                max-w-[50vw] sm:max-w-xs" title={tableName}>{tableName}</h1>
+              <p className="meta-label whitespace-nowrap">
                 {totalRows.toLocaleString()} row{totalRows === 1 ? '' : 's'}
                 {' • '}
                 {columnCount} column{columnCount === 1 ? '' : 's'}
