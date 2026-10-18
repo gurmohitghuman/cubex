@@ -94,7 +94,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `add_column`, `rename_column`, `delete_column` | Manage columns. `add_column` takes an optional `description`. |
 | `set_description` | Describe a column, or the sheet when `column` is left out. See [Descriptions](#descriptions). |
 | `sort_sheet` | Permanently reorders the rows by a column. |
-| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. A deleted table or sheet goes to the trash whole. |
+| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. A deleted table or sheet goes to the trash whole. `manage_table` with `action: "create_sample"` makes a table of 25 made-up leads to try Cubex on: its free columns filled, its duplicate found by a dry run, and an AI column set up but not run (the answer says how to run it once the user agrees). |
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
@@ -518,6 +518,7 @@ All paths below are relative to `/api/v1`.
 |---|---|
 | `GET /tables` | Tables with their sheets. |
 | `POST /tables` · `PATCH /tables/:id` | `{"name": "Leads"}` |
+| `POST /tables/sample` | No body. A table of 25 made-up leads (every website and email at `.example`), with a clean and a formula column filled, the duplicate it holds found by a dry run, and the AI column "Good fit (Output)" set up but not run: `ai_column` has its prompt and the first 5 `target_row_ids`. `write` scope. |
 | `DELETE /tables/:id` | Puts the table, its sheets and their rows in the trash. Stops its runs first. |
 | `POST /tables/:tableId/sheets` | `{"name": "Q3", "after_sheet_id": "..."}` (both optional) |
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` to rename, `{"description": "…"}` to describe (`""` removes it), or both. |

@@ -146,3 +146,10 @@ export const MAX_SHEET_DESCRIPTION_CHARS = 2000;
 
 // Rows a grid delete sends per call (server lib/constants-trash.ts GRID_DELETE_CALL_ROWS).
 export const GRID_DELETE_CALL_ROWS = 2_000;
+
+// Try with sample data (server services/sample-table.ts): making it fills its
+// free columns before it answers. The guide names the AI column it set up and
+// the duplicate check it shows (server lib/sample/setup.ts).
+export const SAMPLE_CREATE_TIMEOUT_MS = 90_000;
+export const SAMPLE_AI_COLUMN = 'Good fit (Output)';
+export const SAMPLE_DEDUPE_COLUMNS = [{ column: 'Email', match: 'email' as const }];
