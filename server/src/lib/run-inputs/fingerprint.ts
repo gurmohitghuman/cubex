@@ -20,7 +20,8 @@ function inputText(v: unknown): string {
 
 // 53 bits from two 32-bit multiply-xor lanes: a changed input reads the same
 // with odds of about 1 in 9e15, and a million rows hash in well under a second.
-function hash53(s: string): number {
+// Undoing a run prints cells with it too (lib/run-undo/print.ts).
+export function hash53(s: string): number {
   let a = 0x9e3779b9;
   let b = 0x85ebca6b;
   for (let i = 0; i < s.length; i++) {

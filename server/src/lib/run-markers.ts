@@ -6,8 +6,10 @@ export const FAILED_MARK = '❌';
 export const SKIPPED_MARK = '⏭️';
 // A list job's row whose results are on their way to another sheet (never ⏳).
 export const LIST_MARK = '➕';
-// A run's placeholder ('⏳ Processing...', lib/placeholder-cells.ts) starts with it.
+// A run's placeholder starts with it.
 export const RUNNING_MARK = '⏳';
+// The placeholder a run writes into its cells until a row's result is in (lib/placeholder-cells.ts).
+export const PLACEHOLDER = '⏳ Processing...';
 // A row an "Only run if" rule kept out of a run (lib/run-condition.ts). It
 // counts as not run yet: a later run or auto-run takes the row once it passes.
 export const CONDITION_NOT_MET = '⏭️ Condition not met';

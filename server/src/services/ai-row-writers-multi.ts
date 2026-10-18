@@ -32,7 +32,7 @@ const STATUS_OK = '✅';
 // The row's cells from ordered (column, value) pairs, and the stamp of the
 // inputs they were made from, in one UPDATE.
 const writeCells = (ctx: MultiWriteCtx, pairs: Array<[string, string]>) =>
-  writeRunCells(ctx.sheetId, ctx.userId, ctx.rowIndex, pairs, ctx.stamp);
+  writeRunCells({ kind: 'ai', id: ctx.runId }, ctx.sheetId, ctx.userId, ctx.rowIndex, pairs, ctx.stamp);
 
 // A run with a web tool also writes its sources: the "(Data)" cell summary and
 // the full list for the sources viewer (ai_results.scraped_data).
@@ -60,10 +60,11 @@ export function writeMultiSuccess(
     const pairs: Array<[string, string]> = Object.entries(values);
     if (sources) pairs.push([sources.column, sources.summary]);
     pairs.push([ctx.statusColumn, STATUS_OK]);
-    writeCells(ctx, pairs);
-    // A column another column's auto-run reads queues this row for it.
+    const wrote = writeCells(ctx, pairs);
+    // A column another column's auto-run reads queues this row for it (not
+    // once the run was undone: its cells stay as the undo left them).
     const written = [...Object.keys(values), ctx.statusColumn, ...(sources ? [sources.column] : [])];
-    markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
+    if (wrote) markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
     // updated_at only, like the single-column writers: open grids get these cells
     // over SSE (ai-stream.ts). A data_version bump here made every open tab
     // reload the sheet for the whole run (it snapped deep-scrolled viewports).

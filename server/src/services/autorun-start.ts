@@ -38,6 +38,7 @@ import { enqueueHTTPRerun } from '../queue';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { prepareWaterfallAutorun } from './waterfall-autorun';
 import { lookupStepsMoved } from './waterfall-build-lookup';
+import { journalSeed } from '../lib/run-undo/journal';
 
 // dest: a list job's destination sheet and the columns it still needs there.
 export interface PreparedRun {
@@ -166,6 +167,9 @@ export async function startAutorunRun(
           (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`);
       for (const name of prep.outputs) assoc.run(uuidv4(), e.sheet_id, e.user_id, e.status_column, name, runId);
       const paths = [e.status_column, ...prep.outputs].map(jsonPath);
+      // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
+      journalSeed({ kind: 'http', id: runId }, e.sheet_id, e.user_id, { ids: JSON.stringify(keep.map(r => r.id)) },
+        [e.status_column, ...prep.outputs].map((c): [string, string] => [c, PLACEHOLDER]));
       db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => ', ?, ?').join('')})
         WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`)
         .run(...paths.flatMap(p => [p, PLACEHOLDER]), JSON.stringify(keep.map(r => r.id)), e.sheet_id, e.user_id);

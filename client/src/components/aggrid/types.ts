@@ -42,6 +42,8 @@ export interface RunMenuActions {
   // knows single-column runs, so "Edit / Update Instructions" is hidden there.
   canEditAIColumn?: (columnName: string) => boolean
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
+  // "Undo last run": the column's newest run that can be undone, confirmed first (useRunUndo).
+  onUndoRun?: (columnName: string) => void
   onEnrichAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
   // A waterfall's result column: the same items, through the waterfall's own reruns and drawer.
   onWaterfallAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void

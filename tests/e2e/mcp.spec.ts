@@ -55,7 +55,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'set_auto_run',
     'set_default_model', 'set_description', 'sort_sheet',
     ...(flagged ? ['transfer_rows', 'transform_column'] : []),
-    'update_cells', 'waterfall_column', 'write_formula', 'write_run_condition',
+    'undo_run', 'update_cells', 'waterfall_column', 'write_formula', 'write_run_condition',
   ])
 
   // Discovery → read: resolve the seeded sheet, read its rows.

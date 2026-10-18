@@ -68,12 +68,13 @@ async function seedAndEnqueue(args: Parameters<typeof seedThenEnqueue>[0]): Prom
   };
 
   let notMet = 0;
+  const run = { kind: args.kind, id: args.runId };
   try {
     if (args.rule) {
-      const done = await seedPlaceholdersByRule({ ...args, rule: args.rule, live });
+      const done = await seedPlaceholdersByRule({ ...args, run, rule: args.rule, live });
       if (!done) return;
       notMet = done.notMet;
-    } else if (!await seedProcessingPlaceholders({ ...args, live })) {
+    } else if (!await seedProcessingPlaceholders({ ...args, run, live })) {
       return;
     }
   } catch (error) {
