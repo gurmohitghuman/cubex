@@ -190,8 +190,10 @@ async function main() {
     assert.equal(out.deduped!.waiting, 1)
     assert.equal(autoDedupeChecking(C), true)
     assert.equal(await maintainAutoDedupeSheet(C, uid, Date.now() + 10_000), 'ready')
+    // Turning the setting on also started its background driver, which may make this check first on a slow
+    // machine (Windows CI), so assert the outcome, not which caller removed the row.
     const r = await runChecks(C, uid, { ownBusy: false, deadline: Date.now() + 5_000 })
-    assert.equal(r.removed, 1)
+    assert.ok(r.removed <= 1)
     assert.equal(emails(C).length, 50)
     assert.equal(autoDedupeChecking(C), false)
   })
