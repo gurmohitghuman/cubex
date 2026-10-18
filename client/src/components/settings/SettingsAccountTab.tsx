@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { authAPI } from '@/utils/api'
 import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from '@/lib/constants'
+import { TrashCard } from './TrashCard'
 
 // Cubex has a single account and no email, so this tab is just the password and
 // signing out. A forgotten password is reset from the server shell.
@@ -46,6 +47,7 @@ export const SettingsAccountTab: React.FC = () => {
 
   return (
     <>
+      <TrashCard />
       <div className="card mb-6">
         <div className="p-6">
           <h3 className="text-title text-gray-900 mb-1">Change password</h3>

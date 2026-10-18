@@ -28,6 +28,7 @@ import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planIfSearching } from './web-search-catalog';
+import { logRunStarted } from '../lib/change-log';
 
 export type { AiRunStartParams, AiRunStartOutcome };
 
@@ -184,6 +185,9 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
       // Run All Rows deletes the preview — its values now live in the rows), and
       // only for FULL runs: a subset start must not destroy draft rows it didn't run.
       queued: () => { if (!isSubset) deleteDraftForColumn(userId, p.sheetId, p.cleanColumnName); },
+    });
+    logRunStarted(p.sheetId, userId, {
+      kind: 'ai', column: outputCol, runId, rows: targetCount, model: resolvedModel, runIf: rule.ok?.rule ?? null,
     });
 
     return {

@@ -56,8 +56,8 @@ export function planSearch(sheetId: string, userId: string, q: unknown, viewId: 
   if (q.length > MAX_SEARCH_CHARS) {
     return { fail: 'invalid', error: `Search for at most ${MAX_SEARCH_CHARS} characters.` };
   }
-  const versions = db.prepare('SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as SearchPlan['versions'] | undefined;
+  const versions = db.prepare(`SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?
+    AND trash_id IS NULL`).get(sheetId, userId) as SearchPlan['versions'] | undefined;
   if (!versions) return { fail: 'not_found', error: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   // The active view's filters and hidden columns, read together.

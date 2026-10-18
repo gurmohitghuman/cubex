@@ -34,8 +34,10 @@ import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
 import viewsV1 from './api-v1-views';
 import usageV1 from './api-v1-usage';
+import trashV1 from './api-v1-trash';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { runWebhookRoutes } from './run-webhooks-routes';
+import { actAs } from '../lib/actor';
 
 const router = express.Router();
 router.use(authenticateAccessToken);
@@ -48,6 +50,9 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
   return res.status(400).json({ error: 'Invalid JSON body' });
 });
+// What a call changes is done by its token (lib/actor.ts), set after the body
+// parser, whose stream events would otherwise drop it.
+router.use(actAs(req => ({ via: 'api', tokenName: (req as TokenAuthRequest).accessTokenName ?? null })));
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
@@ -85,6 +90,7 @@ router.use(waterfallV1);
 // "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
 router.use(usageV1);
+router.use(trashV1);
 
 // GET /api/v1/me — who am I, and what can this token do. Lets a script or MCP
 // client validate its configuration before touching data.

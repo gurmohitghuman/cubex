@@ -1,3 +1,4 @@
+// Over 200 lines: one rerun flow (checks, the cloned run, its placeholders); split, its transaction would scatter.
 // AI column rerun — the flow behind POST /api/ai/rerun, shared by the UI route,
 // /api/v1 and MCP; a structured run's goes on to ai-run-rerun-multi.ts. Clones
 // the column's LATEST run config into a fresh ai_runs row, seeds placeholders on
@@ -26,6 +27,7 @@ import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 import { rerunAiMultiColumn, structuredRunByBase } from './ai-run-rerun-multi';
 import { structuredRunOwning } from '../lib/structured-run-owner';
+import { logRunStarted } from '../lib/change-log';
 
 export type { AiRerunMode } from './ai-rerun-modes';
 
@@ -195,6 +197,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
       targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, outputCol),
       enqueue: () => enqueueAIRerun(newRunId, targets),
     });
+    logRunStarted(p.sheetId, userId, { kind: 'ai', column: outputCol, runId: newRunId, rows: targets.length,
+      again: true, model });
     return { ok: { runId: newRunId, targetCount: targets.length } };
   });
 }

@@ -20,13 +20,14 @@ export interface TableSummary {
 
 export function listTablesWithSheets(userId: string): TableSummary[] {
   const tables = db.prepare(
-    'SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? ORDER BY created_at DESC',
+    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
+     ORDER BY created_at DESC`,
   ).all(userId) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
 
   const sheets = db.prepare(`
     SELECT s.id, s.table_id, s.name, s.position,
            (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id AND r.user_id = s.user_id) AS row_count
-    FROM sheets s WHERE s.user_id = ? ORDER BY s.table_id, s.position ASC
+    FROM sheets s WHERE s.user_id = ? AND s.trash_id IS NULL ORDER BY s.table_id, s.position ASC
   `).all(userId) as Array<SheetSummary & { table_id: string }>;
 
   const byTable = new Map<string, SheetSummary[]>();

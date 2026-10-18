@@ -23,6 +23,7 @@ import { RunFail } from './run-shared';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { checkRunRule, ruleSeed } from './run-rule';
+import { logRunStarted } from '../lib/change-log';
 
 export interface HttpRunStartParams {
   sheetId: string;
@@ -151,6 +152,9 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
       kind: 'http', runId, sheetId: p.sheetId, userId, columns: allColumns,
       targets, lastRow: span.lastRow, rule: ruleSeed(rule.ok, finalMasterColumnName),
       enqueue: () => (targets ? enqueueHTTPRerun(runId, targets) : enqueueHTTPRun(runId)),
+    });
+    logRunStarted(p.sheetId, userId, {
+      kind: 'http', column: finalMasterColumnName, runId, rows: targetCount, runIf: rule.ok?.rule ?? null,
     });
 
     return {

@@ -10,7 +10,7 @@
 // autosave writes by position and would bring a deleted row back, so it
 // reloads instead. A restart finishes a journaled removal.
 import { db } from '../lib/db';
-import { countRows, getSheetColumns, purgeResultsForRows, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
+import { countRows, getSheetColumns, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
 import { runInSlices } from '../lib/slices';
 import { autorunAfterRemoval } from '../lib/autorun-mark';
@@ -23,12 +23,16 @@ import { dedupeReport, type DedupeReport } from './dedupe-report';
 import { scanDuplicates } from './dedupe-scan';
 import { afterDuplicateChecks } from './dedupe-check';
 import type { RunFail } from './run-shared';
+import { removeRows, sealBatch } from '../lib/trash/move';
+import { dropIfEmpty, openSlicedBatch } from './trash-batch';
+import { countOf, logSheetChange } from '../lib/change-log';
 
 const WHAT = 'removing duplicates';
 
 export interface DedupeFail extends RunFail { blockingRun?: BlockingRun; busy?: boolean }
 // rowsLeft: the sheet's rows afterwards, rows appended meanwhile included.
-export interface DedupeRemoval extends DedupeReport { removed: number; rowsLeft: number }
+// trashId: the trash batch holding the removed rows (null: none removed, or none kept).
+export interface DedupeRemoval extends DedupeReport { removed: number; rowsLeft: number; trashId: number | null }
 type Work = { blocked: RunBlock } | { done: DedupeRemoval };
 
 export async function removeDuplicates(
@@ -49,11 +53,18 @@ export async function removeDuplicates(
     reserve(floor);
     const found = (await scanDuplicates(sheetId, userId, req, { below: floor }))!;
     const report = dedupeReport(sheetId, userId, req, found);
+    let trashId: number | null = null;
     if (found.remove.length > 0) {
       await saveDedupePlan(sheetId, userId, floor, found.remove);
-      await carryOut({ sheet_id: sheetId, user_id: userId, floor, row_count: found.remove.length, stage: 'deleting' });
+      trashId = await carryOut({
+        sheet_id: sheetId, user_id: userId, floor, row_count: found.remove.length, stage: 'deleting',
+      });
+      const columns = req.keys.map(k => k.column);
+      logSheetChange(sheetId, userId, 'duplicates_removed',
+        `Removed ${countOf(found.remove.length, 'duplicate row')} (same ${columns.join(' + ')})`,
+        { detail: { rows: found.remove.length, columns, keep: req.keep, trash_id: trashId } });
     }
-    return { done: { ...report, removed: found.remove.length, rowsLeft: countRows(sheetId, userId) } };
+    return { done: { ...report, removed: found.remove.length, rowsLeft: countRows(sheetId, userId), trashId } };
   };
   // A check in progress is stopped, and the sheet taken before another can start.
   const outcome = await afterDuplicateChecks(sheetId, () => withSheetBusy(sheetId, WHAT, work));
@@ -64,17 +75,14 @@ export async function removeDuplicates(
   return { ok: outcome.done };
 }
 
-// One chunk: the rows still there under the floor, their AI/HTTP results
-// (stored by position, lib/sql-rows.ts) and the chunk's record, in one transaction.
-function deleteChunk(job: DedupeJob, chunk: number, rowIds: Float64Array): void {
-  const live = db.prepare(`SELECT rowid, row_index FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
-    AND +sheet_id = ? AND +user_id = ? AND row_index < ?`).raw()
-    .all(JSON.stringify(Array.from(rowIds)), job.sheet_id, job.user_id, job.floor) as Array<[number, number]>;
-  if (live.length > 0) {
-    purgeResultsForRows(job.sheet_id, job.user_id, live.map(r => r[1]));
-    db.prepare('DELETE FROM rows WHERE rowid IN (SELECT value FROM json_each(?))')
-      .run(JSON.stringify(live.map(r => r[0])));
-  }
+// One chunk: the rows still there under the floor go to the trash batch
+// (their AI/HTTP results, stored by position, go: lib/sql-rows.ts), and the
+// chunk's record, in one transaction.
+function deleteChunk(job: DedupeJob, chunk: number, rowIds: Float64Array, item: number | null): void {
+  const live = db.prepare(`SELECT rowid FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
+    AND +sheet_id = ? AND +user_id = ? AND row_index < ?`).pluck()
+    .all(JSON.stringify(Array.from(rowIds)), job.sheet_id, job.user_id, job.floor) as number[];
+  if (live.length > 0) removeRows(job.sheet_id, job.user_id, { rowids: live }, item);
   dropDedupeChunk(job.sheet_id, chunk);
 }
 
@@ -84,25 +92,31 @@ function deleteChunk(job: DedupeJob, chunk: number, rowIds: Float64Array): void 
 // copied 8 MB back and held the server up to a second (constants-dedupe.ts).
 // An error midway moves the fence too (rows are gone) and keeps the sheet busy
 // while the rest is retried in the background (lib/sheet-busy.ts).
-async function carryOut(job: DedupeJob): Promise<void> {
+async function carryOut(job: DedupeJob): Promise<number | null> {
   const fence = () => db.prepare(`UPDATE sheets SET row_generation = row_generation + 1,
     data_version = data_version + 1 WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
+  // The removed rows' trash batch, the one a restart left filling if any (trash-batch.ts).
+  const item = openSlicedBatch(job.sheet_id, job.user_id, 'duplicates');
   let checkpoint = false;
   try {
     await runInSlices(() => {
       if (checkpoint) { db.pragma('wal_checkpoint(PASSIVE)'); checkpoint = false; return true; }
       const next = nextDedupeChunk(job.sheet_id);
       if (!next) return false;
-      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds))();
+      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item))();
       checkpoint = true;
       return true;
     });
+    let kept: number | null = null;
     db.transaction(() => {
       dropDedupeJob(job.sheet_id);
       fence();
       autorunAfterRemoval(job.sheet_id, job.user_id);
       touchSheet(job.sheet_id, job.user_id);
+      // Sealed after the fence: a restore compares the row_generation it keeps.
+      if (item !== null && !dropIfEmpty(item)) { sealBatch(item, job.sheet_id, job.user_id); kept = item; }
     })();
+    return kept;
   } catch (error) {
     stayBusyToFinish(job.sheet_id, WHAT, async () => {
       const left = dedupeJobs().find(j => j.sheet_id === job.sheet_id);

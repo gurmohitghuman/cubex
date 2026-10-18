@@ -66,7 +66,7 @@ export function readAnswer(
 
 const reusedInfo = (userId: string, from: unknown): EnrichAnswerInfo['reused'] => {
   if (!isObj(from) || typeof from.answered_at !== 'string' || typeof from.sheet_id !== 'string') return null;
-  const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+  const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').pluck()
     .get(from.sheet_id, userId) as string | undefined;
   return { answeredAt: from.answered_at, sheetId: name === undefined ? null : from.sheet_id, sheetName: name ?? null };
 };
@@ -102,7 +102,7 @@ function readAnswerNow(
   };
   const list = run.enrichment?.enrichment.list;
   if (list) {
-    const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+    const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').pluck()
       .get(list.destSheetId, userId) as string | undefined;
     view.addsRowsTo = { sheetId: name === undefined ? null : list.destSheetId, name: name ?? null };
   }

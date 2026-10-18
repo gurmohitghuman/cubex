@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Table, tablesAPI, settingsAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
-import { LogOut, Plus, Settings } from 'lucide-react'
+import { LogOut, Plus, Settings, Trash2 } from 'lucide-react'
+import { toastDeleted } from '@/components/trash/trashToast'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FullPageLoader } from '@/components/LoadingSpinner'
 import { CubeLogo } from '@/components/CubeLogo'
@@ -53,9 +54,11 @@ export const DashboardPage: React.FC = () => {
     if (!deleteConfirm) return
     setIsDeleting(true)
     try {
-      await tablesAPI.delete(deleteConfirm.id)
+      const { trash } = await tablesAPI.delete(deleteConfirm.id)
       setTables(prev => prev.filter(t => t.id !== deleteConfirm.id))
-      toast.success(`Table "${deleteConfirm.name}" deleted`)
+      toastDeleted(`Table "${deleteConfirm.name}" moved to the trash`, trash?.id, {
+        onRestored: () => { tablesAPI.getAll().then(setTables).catch(() => {}) },
+      })
       setDeleteConfirm(null)
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete table')
@@ -91,6 +94,10 @@ export const DashboardPage: React.FC = () => {
                 <span className="font-medium">{tables.length}</span>
                 <span>table{tables.length !== 1 ? 's' : ''}</span>
               </div>
+              <Link to="/trash" title="Trash" data-testid="open-trash"
+                className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors block">
+                <Trash2 className="h-4 w-4" />
+              </Link>
               <Link to="/settings" className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors block" title="Settings">
                 <Settings className="h-4 w-4" />
               </Link>
@@ -162,7 +169,8 @@ export const DashboardPage: React.FC = () => {
       <ConfirmDialog
         isOpen={!!deleteConfirm}
         title="Delete Table"
-        message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone and will delete all associated data.`}
+        message={`Delete "${deleteConfirm?.name}" with all its sheets? It goes to the trash, where you can `
+          + "restore it as it was until it's deleted for good."}
         confirmText="Delete Table"
         onConfirm={handleDeleteTable}
         onCancel={() => setDeleteConfirm(null)}

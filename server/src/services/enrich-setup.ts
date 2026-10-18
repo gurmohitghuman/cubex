@@ -30,7 +30,8 @@ export interface SheetSetupInfo {
 // clause the grid's read counts with, so the numbers match), and room for columns.
 export async function sheetSetupInfo(userId: string, sheetId: string): Promise<SheetSetupInfo | null> {
   const sheet = db.prepare(
-    'SELECT table_id, empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?',
+    `SELECT table_id, empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?
+      AND trash_id IS NULL`,
   ).get(sheetId, userId) as { table_id: string } & SavedFilters | undefined;
   if (!sheet) return null;
   // The filter's count reads every row: a slice at a time (lib/filtered-scan.ts).
@@ -41,7 +42,8 @@ export async function sheetSetupInfo(userId: string, sheetId: string): Promise<S
     columns: { count: getSheetColumns(sheetId, userId).length, max: MAX_COLUMNS_PER_SHEET },
     hasWebhook: !!db.prepare('SELECT 1 FROM webhook_sources WHERE sheet_id = ? AND user_id = ? LIMIT 1')
       .get(sheetId, userId),
-    sheets: (db.prepare('SELECT id, name FROM sheets WHERE table_id = ? AND user_id = ? ORDER BY position, created_at')
+    sheets: (db.prepare(`SELECT id, name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+      ORDER BY position, created_at`)
       .all(sheet.table_id, userId) as Array<{ id: string; name: string }>)
       .map(s => ({ ...s, current: s.id === sheetId })),
   };

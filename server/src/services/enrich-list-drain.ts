@@ -83,8 +83,10 @@ export async function drainListItems(): Promise<void> {
   try {
     releasePicked();
     releaseDestRunWaits();
+    // A sheet in the trash takes no rows (its items went with it: trash-sheets.ts).
     const dests = db.prepare(`SELECT DISTINCT dest_sheet_id FROM enrichment_list_items
-      WHERE status = 'pending' AND (wait_reason IS NULL OR wait_reason = 'room')`).pluck().all() as string[];
+      WHERE status = 'pending' AND (wait_reason IS NULL OR wait_reason = 'room')
+        AND dest_sheet_id IN (SELECT id FROM sheets WHERE trash_id IS NULL)`).pluck().all() as string[];
     for (const dest of dests) {
       const items = db.prepare(`SELECT id, source_sheet_id FROM enrichment_list_items WHERE rowid IN (
           SELECT rowid FROM enrichment_list_items WHERE dest_sheet_id = ? AND status = 'pending'

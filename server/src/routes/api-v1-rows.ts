@@ -5,6 +5,7 @@ import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { parseCellMap, failResponse } from './api-v1-shared';
 import { appendRows, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { trashAnswer } from '../services/trash-answer';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
 } from '../lib/api-v1-constants';
@@ -14,7 +15,7 @@ import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 const router = express.Router();
 
 function ownsSheet(sheetId: string, userId: string): boolean {
-  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 }
 
 // POST /v1/sheets/:id/rows — append a batch. Body: { rows: [{data: {col: val}}] }.
@@ -100,7 +101,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
   }
 });
 
-// POST /v1/sheets/:id/rows/delete — bulk delete by stable row ids.
+// POST /v1/sheets/:id/rows/delete — bulk delete by stable row ids, into the trash.
 router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
@@ -115,7 +116,10 @@ router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthReq
 
     const result = deleteRowsByIds(sheetId, req.userId!, rawIds as string[]);
     if ('fail' in result) return failResponse(res, result);
-    res.json(result.ok);
+    res.json({
+      deleted: result.ok.deleted,
+      trash: result.ok.deleted ? trashAnswer(req.userId!, result.ok.trashId, 'rest') : null,
+    });
   } catch (error) {
     console.error('POST /v1/sheets/:id/rows/delete error:', error);
     res.status(500).json({ error: 'Failed to delete rows' });

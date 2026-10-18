@@ -23,6 +23,7 @@ import {
 import { mapResults, parkResults } from '../lib/sort-results';
 import { autorunAfterReorder, autorunKeepUnswept } from '../lib/autorun-mark';
 import { sheetRunBlock, type BlockingRun } from './autorun-block';
+import { countOf, logSheetChange } from '../lib/change-log';
 
 export type SortOutcome =
   | { ok: true; rowsReordered: number }
@@ -96,6 +97,9 @@ export async function physicalSortSheet(
 
     // 4. Move rows and results.
     await carryOut(sheetId, userId, plan, positionMap, 'moving', opts);
+    logSheetChange(sheetId, userId, 'rows_sorted',
+      `Sorted ${countOf(n, 'row')} by "${column}" (${direction === 'asc' ? 'A to Z' : 'Z to A'})`,
+      { column, detail: { rows: n, direction } });
     return { ok: true as const, rowsReordered: n };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;

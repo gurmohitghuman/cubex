@@ -3,7 +3,7 @@
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
 // AI (an honest low/high, "actual depends on usage"),
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
-import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -76,7 +76,7 @@ export type AiEstimateOutcome =
   | { ok: AiEstimate };
 
 export async function estimateAiRun(userId: string, input: AiEstimateInput): Promise<AiEstimateOutcome> {
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(input.sheetId, userId);
+  const owns = verifySheetOwnership(input.sheetId, userId);
   if (!owns) return { fail: 'not_found', message: 'Sheet not found' };
 
   // Same up-front ref rejection a real run does — never price a prompt that

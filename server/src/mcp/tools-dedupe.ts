@@ -22,8 +22,10 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
       + '"⏭️ Not found" is never removed. Works on the whole sheet (filters do not apply). dry_run DEFAULTS TO '
       + 'TRUE: it changes nothing and returns how many rows would go, with sample groups (row ids and the key '
       + 'cells) and the largest group, so you can check what "duplicate" meant. Then call again with dry_run: '
-      + 'false to remove. REMOVED ROWS ARE DELETED PERMANENTLY, with their AI and HTTP results; this cannot be '
-      + 'undone. Refused while a run is active on the sheet. Prefer it over read_rows plus delete_rows.',
+      + 'false to remove. Removed rows go to the trash as one batch, kept for the days set in Settings (30 by '
+      + 'default; 0 deletes at once): the answer gives its trash_id, and restore_from_trash puts them back. '
+      + 'Their AI and HTTP results go. Refused while a run is active on the sheet. Prefer it over read_rows plus '
+      + 'delete_rows.',
     inputSchema: z.object({
       sheet_id: z.string(),
       columns: z.array(z.union([
@@ -40,7 +42,7 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
   }, async ({ sheet_id, ...a }) => {
     const denied = missingScope(ctx, dedupeDryRun(a.dry_run) === false ? 'write' : 'read');
     if (denied) return denied;
-    const out = await agentRemoveDuplicates(ctx.userId, sheet_id, a);
+    const out = await agentRemoveDuplicates(ctx.userId, sheet_id, a, 'mcp');
     return 'ok' in out ? ok(out.ok) : err(out.message);
   });
 }

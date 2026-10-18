@@ -2,9 +2,9 @@
 // /mcp body cap bounds the payload at 2MB) through the SAME parse + commit
 // pipeline as the /v1 and UI import routes. A larger file goes through an
 // upload link instead (mcp/tools-links.ts), straight from the agent's disk.
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { db } from '../lib/db';
 import { scanCsvText, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { importSummary } from '../services/csv-upload';
@@ -24,8 +24,9 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Import CSV text into a sheet. The header row names the columns; new columns are created, and columns '
         + 'matching existing names (exactly) append into them. mode "append" adds rows after the existing ones; mode '
-        + '"replace" DELETES all existing rows first (permanent). Fails on columns an active run owns. Max ~2MB of CSV '
-        + 'per call. For a file, use create_upload_link instead: any size, and the contents never pass through your '
+        + '"replace" deletes all existing rows first (they go to the trash as one batch: restore_from_trash brings '
+        + 'them back). Fails on columns an active run owns. Max ~2MB of CSV per call. For a file, use '
+        + 'create_upload_link instead: any size, and the contents never pass through your '
         + 'context. When auto-run is on in the sheet, auto_run lists the columns that will fill the imported rows on '
         + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user.',
       inputSchema: {
@@ -39,7 +40,7 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
       if (denied) return denied;
       const slot = importWindow(ctx.tokenId);
       if (!slot.allowed) return err(tooManyMessage('CSV imports', slot));
-      if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheet_id, ctx.userId)) {
+      if (!verifySheetOwnership(sheet_id, ctx.userId)) {
         return err('Sheet not found');
       }
 
@@ -65,7 +66,7 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         return err(result.error);
       }
       return ok({
-        ...importSummary(result.ok, replace),
+        ...importSummary(result.ok, replace, ctx.userId),
         ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsImported),
       });
     },

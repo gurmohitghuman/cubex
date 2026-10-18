@@ -120,7 +120,8 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
               <span>Replace existing data</span>
             </label>
             <p className="text-xs text-gray-500 mt-1">
-              {replaceData ? 'All existing data will be deleted' : 'New data will be appended'}
+              {replaceData ? 'The rows there now go to the trash, where you can restore them'
+                : 'New data will be appended'}
             </p>
           </div>
 

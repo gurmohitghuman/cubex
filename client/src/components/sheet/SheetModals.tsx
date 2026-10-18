@@ -1,5 +1,5 @@
 // Over 200 lines: every dialog the sheet page opens, wired to the page's state in one place.
-import React from 'react'
+import React, { useRef } from 'react'
 import toast from 'react-hot-toast'
 import { INITIAL_ROW_LOAD } from '@/lib/constants'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -17,6 +17,7 @@ import { toastFormulaStarted } from '@/hooks/sheet/useFormulaColumnActions'
 import { toastLookupStarted } from '@/hooks/sheet/useLookupColumnActions'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
+import { toastDeleted } from '@/components/trash/trashToast'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -85,6 +86,9 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     waitForSaves, dropAllPending, waterfall,
   } = props
   const closeNewColumn = () => { setShowNewColumnModal(false); clearNewColumnOpen() }
+  // The sheet showing now: a Restore clicked after switching sheets leaves this one alone.
+  const activeIdRef = useRef<string | null>(null)
+  activeIdRef.current = activeSheet?.id ?? null
   // Rows that were selected may be gone after removing duplicates: start over from a fresh load.
   const reloadAfterRemoval = async (sheetId: string) => {
     setShowDedupeModal(false)
@@ -99,7 +103,8 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
       <ConfirmDialog
         isOpen={confirmTopbarDeleteOpen}
         title="Delete Rows"
-        message={`Are you sure you want to delete ${selectedRowIndices.length} selected row(s)?`}
+        message={`Delete ${selectedRowIndices.length} selected row(s)? `
+          + 'They go to the trash, where you can restore them.'}
         confirmText="Delete"
         isDestructive
         onConfirm={() => {
@@ -203,10 +208,14 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           isOpen={showDedupeModal} onClose={() => setShowDedupeModal(false)} sheetId={activeSheet.id}
           columns={sheetData?.data.columns ?? []} cleanColumns={sheetData?.data.cleanColumns ?? {}}
           onBeforeRemove={() => waitForSaves(5000)}
-          onRemoved={async ({ removed }) => {
-            await reloadAfterRemoval(activeSheet.id)
-            toast.success(removed === 0 ? 'No duplicates left to remove.'
-              : `Removed ${plural(removed, 'duplicate row')}`)
+          onRemoved={async ({ removed, trashId }) => {
+            const sheetId = activeSheet.id
+            await reloadAfterRemoval(sheetId)
+            if (removed === 0) toast.success('No duplicates left to remove.')
+            else {
+              toastDeleted(`Removed ${plural(removed, 'duplicate row')}`, trashId,
+                { onRestored: () => { if (activeIdRef.current === sheetId) void reloadAfterRemoval(sheetId) } })
+            }
           }}
           onStoppedPartWay={() => void reloadAfterRemoval(activeSheet.id)}
         />

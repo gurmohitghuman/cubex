@@ -28,8 +28,8 @@ export interface ViewInfo {
 export type ViewFail = { fail: 'bad_request' | 'not_found' | 'conflict'; message: string };
 
 export const sheetViewState = (sheetId: string, userId: string): SheetViewState | undefined =>
-  db.prepare('SELECT empty_filter, column_filters, row_filter, active_view_id FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as SheetViewState | undefined;
+  db.prepare(`SELECT empty_filter, column_filters, row_filter, active_view_id FROM sheets WHERE id = ? AND user_id = ?
+    AND trash_id IS NULL`).get(sheetId, userId) as SheetViewState | undefined;
 
 export const viewRows = (sheetId: string, userId: string): ViewRow[] =>
   db.prepare(`SELECT id, name, description, is_default, empty_filter, column_filters, row_filter, hidden_columns,

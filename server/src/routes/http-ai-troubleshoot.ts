@@ -35,7 +35,7 @@ router.post('/troubleshoot-config', authenticateToken, async (req: AuthRequest, 
       return res.status(400).json({ error: 'errorSamples is required' });
     }
 
-    const sheet = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?')
+    const sheet = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
       .get(sheetId, req.userId!);
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 

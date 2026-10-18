@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { authenticateUser } from '../lib/auth';
 import { SESSION_COOKIE_NAME } from '../lib/cookie';
+import { actAs, APP } from '../lib/actor';
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -15,6 +16,8 @@ function extractToken(req: Request): string | null {
   const cookies = (req as Request & { cookies?: Record<string, string | undefined> }).cookies;
   return cookies?.[SESSION_COOKIE_NAME] ?? null;
 }
+
+const appActor = actAs(() => APP);
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const token = extractToken(req);
@@ -31,5 +34,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 
   req.userId = userId;
-  next();
+  // What this request changes is done "in the app" (lib/actor.ts).
+  appActor(req, res, next);
 };
+

@@ -1,5 +1,5 @@
 // estimate_only for run_http_enrichment. PURE READ, like run-estimate.ts.
-import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
 import { checkRunRule } from './run-rule';
 
@@ -18,7 +18,7 @@ export interface HttpEstimate {
 export async function estimateHttpRun(
   userId: string, sheetId: string, targetRowIndexes: number[] | undefined, runIf?: string | null,
 ): Promise<{ fail: 'not_found' | 'no_rows' | 'bad_request'; message: string } | { ok: HttpEstimate }> {
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  const owns = verifySheetOwnership(sheetId, userId);
   if (!owns) return { fail: 'not_found', message: 'Sheet not found' };
   const rule = checkRunRule(sheetId, userId, runIf);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error };

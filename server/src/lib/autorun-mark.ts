@@ -222,3 +222,25 @@ export async function autorunSkipImport(
       .run(lastRow, e.id);
   }
 }
+
+// Rows coming back from the trash (services/trash-restore.ts; the sheet busy,
+// before any is back, at their old places or the end, all at or below
+// `through`): auto-run leaves them alone, as an import with auto-run paused.
+// The rows there now between an entry's fence and `through` are kept by id
+// (still new to it), then the fence passes `through`.
+export async function autorunSkipRestore(sheetId: string, userId: string, through: number): Promise<void> {
+  const page = db.prepare(`SELECT row_index, rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
+    AND row_index <= ? ORDER BY row_index LIMIT ?`).raw();
+  for (const e of entriesOf(sheetId, userId)) {
+    if (isFollowKind(e.kind) || e.w >= through) continue;
+    for (let after = e.w; ;) {
+      const rows = page.all(sheetId, userId, after, through, HEAVY_SLICE_ROWS) as Array<[number, number]>;
+      if (rows.length === 0) break;
+      keepByRowid(e, sheetId, userId, JSON.stringify(rows.map(r => r[1])));
+      after = rows[rows.length - 1][0];
+      await yieldToRequests();
+    }
+    db.prepare('UPDATE autorun_columns SET watermark_row_index = MAX(watermark_row_index, ?) WHERE id = ?')
+      .run(through, e.id);
+  }
+}

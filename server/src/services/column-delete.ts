@@ -21,6 +21,7 @@ import { deleteColumnDescriptionRefs } from '../lib/column-descriptions';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
+import { logSheetChange } from '../lib/change-log';
 
 export type ColumnDeleteOutcome =
   | { ok: true }
@@ -223,6 +224,7 @@ export async function deleteSheetColumn(
       }
     })();
     await finishColumnChange(sheetId, userId, columnName);
+    logSheetChange(sheetId, userId, 'column_deleted', `Deleted the column "${columnName}"`, { column: columnName });
     return { ok: true as const };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;

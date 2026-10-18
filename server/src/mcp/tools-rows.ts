@@ -9,6 +9,7 @@ import {
 } from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
 import { appendRows, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
@@ -16,7 +17,7 @@ import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers'
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -115,8 +116,9 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'delete_rows',
     {
       description:
-        `PERMANENTLY delete rows by their stable row ids (there is no undo). Fails while any AI/HTTP run is active on `
-        + `the sheet. Max ${API_V1_MAX_DELETE_ROWS} ids per call.`,
+        `Delete rows by their stable row ids. They go to the trash as one batch, kept for the days set in Settings `
+        + `(30 by default; 0 deletes at once): the answer gives its trash_id, and restore_from_trash puts them back. `
+        + `Fails while any AI/HTTP run is active on the sheet. Max ${API_V1_MAX_DELETE_ROWS} ids per call.`,
       inputSchema: {
         sheet_id: z.string(),
         row_ids: z.array(z.string()).min(1).max(API_V1_MAX_DELETE_ROWS),
@@ -128,7 +130,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
       const result = deleteRowsByIds(sheet_id, ctx.userId, row_ids);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
-      return ok(result.ok);
+      return ok({
+        deleted: result.ok.deleted,
+        trash: result.ok.deleted ? trashAnswer(ctx.userId, result.ok.trashId, 'mcp') : null,
+      });
     },
   );
 }

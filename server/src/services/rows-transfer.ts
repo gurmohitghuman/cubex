@@ -4,7 +4,7 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import {
   TRANSFER_MAX_ROWS, TRANSFER_MAX_STORED_BYTES, TRANSFER_MAX_WRITER_MS,
 } from '../lib/api-v1-constants';
-import { countRows, getSheetColumns, purgeResultsForRows } from '../lib/sql-helpers';
+import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
 import { acquireTransferSlot, releaseTransferSlot } from './transfer-rate';
 import { scanTransferRows, type ScanSelection } from './transfer-selection';
@@ -19,6 +19,8 @@ import { SEED_ROW_COUNT } from '../lib/seed-sheet';
 import { nextRowIndex } from '../lib/sheet-busy';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
+import { deleteRowsToTrash } from './trash-rows';
+import { countOf, logSheetChange } from '../lib/change-log';
 
 export type { TransferRequest } from './transfer-ledger';
 
@@ -34,7 +36,7 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   if (replay) return 'conflict' in replay
     ? { fail: 'conflict', error: 'Idempotency key was already used with different arguments.' }
     : { ok: replay.replay, replayed: true };
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?');
+  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL');
   if (!owns.get(request.sourceSheetId, userId) || !owns.get(request.destinationSheetId, userId)) {
     return { fail: 'not_found', error: 'Source or destination sheet not found.' };
   }
@@ -109,7 +111,9 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   const insert = db.prepare(
     'INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)',
   );
-  const remove = db.prepare('DELETE FROM rows WHERE id = ? AND sheet_id = ? AND user_id = ?');
+  // A move takes the source rows to the trash, whole (columns left out of the
+  // mapping included), one batch for the whole move.
+  let trashId: number | null = null;
   scanTransferRows(request.sourceSheetId, userId, found, rows => {
     checkTime();
     for (const row of rows) {
@@ -122,8 +126,9 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
       insert.run(uuidv4(), request.destinationSheetId, userId, nextIndex++, JSON.stringify(data));
     }
     if (request.operation === 'move') {
-      purgeResultsForRows(request.sourceSheetId, userId, rows.map(r => r.index));
-      for (const row of rows) remove.run(row.id, request.sourceSheetId, userId);
+      const moved = deleteRowsToTrash(request.sourceSheetId, userId, 'transfer', { ids: rows.map(r => r.id) },
+        trashId ?? undefined);
+      trashId = moved.trashId ?? trashId;
     }
   });
   if (pristine) db.prepare(
@@ -133,13 +138,33 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   // Moved rows leave the source: auto-run's fence there follows. The copies are
   // new rows in the destination, which auto-run fills when it is on there.
   // The MCP and /api/v1 answers list the auto-runs they set off (enrich-agent-autorun.ts).
-  if (request.operation === 'move') autorunRowsRemoved(request.sourceSheetId, userId);
+  if (request.operation === 'move') {
+    autorunRowsRemoved(request.sourceSheetId, userId);
+    result.trash_id = trashId;
+  }
+  logTransfer(userId, request, preflight.matched, trashId);
   bumpDataVersion(request.destinationSheetId, userId);
   if (request.operation === 'move') bumpDataVersion(request.sourceSheetId, userId);
   result.dest_row_count = countRows(request.destinationSheetId, userId);
   checkTime();
   writeTransferLedger(userId, request.idempotencyKey, hash, result);
   return { ok: result };
+}
+
+// The change logs: the destination's, and for a move the source's too (it
+// names the trash batch holding the rows as they were).
+function logTransfer(userId: string, request: TransferRequest, count: number, trashId: number | null): void {
+  const name = (id: string) => db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(id) as string;
+  const rows = countOf(count, 'row');
+  const move = request.operation === 'move';
+  if (move) {
+    logSheetChange(request.sourceSheetId, userId, 'rows_moved_out',
+      `Moved ${rows} to "${name(request.destinationSheetId)}"`,
+      { detail: { rows: count, to_sheet_id: request.destinationSheetId, trash_id: trashId } });
+  }
+  logSheetChange(request.destinationSheetId, userId, 'rows_moved_in',
+    `${move ? 'Moved' : 'Copied'} in ${rows} from "${name(request.sourceSheetId)}"`,
+    { detail: { rows: count, from_sheet_id: request.sourceSheetId } });
 }
 
 export function transferRows(userId: string, request: TransferRequest): TransferOutcome {

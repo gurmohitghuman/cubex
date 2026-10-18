@@ -22,6 +22,7 @@ import { adopt, holdPaused, progress, rowIndexes, runError } from './setup-step-
 import {
   loadSetupRun, modesOf, planOf, saveSteps, setStatus, stepsOf, type SetupRunRow, type StepRecord,
 } from './setup-run-store';
+import { withoutChangeLog } from '../lib/change-log';
 
 async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
   const plan = planOf(r), modes = modesOf(plan);
@@ -97,7 +98,9 @@ export async function advanceSetupRun(id: string): Promise<void> {
   if (running.has(id)) return;
   running.add(id);
   try {
-    await advance(id);
+    // Its steps (columns, runs, auto-run) log nothing of their own: the
+    // sheet's change log has "Used the setup" (setup-apply.ts).
+    await withoutChangeLog(() => advance(id));
   } finally {
     running.delete(id);
   }

@@ -11,7 +11,7 @@
 //   - the per-token run-start window, shared by both surfaces (startWindow);
 //   - an explicit model must exist in the catalog (when it's reachable).
 // Callers check the token holds 'run' first. HTTP runs: run-start-token-http.ts.
-import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { fetchModels } from '../lib/openrouter';
@@ -48,7 +48,7 @@ export function preamble(c: TokenCaller, a: { sheet_id: unknown; target_row_ids?
   if (a.idempotency_key !== undefined && (typeof a.idempotency_key !== 'string' || !a.idempotency_key || a.idempotency_key.length > 200)) {
     return bad('idempotency_key must be a string of 1-200 characters');
   }
-  if (typeof a.sheet_id !== 'string' || !db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ?').get(a.sheet_id, c.userId)) {
+  if (typeof a.sheet_id !== 'string' || !verifySheetOwnership(a.sheet_id, c.userId)) {
     return { fail: 'not_found', message: 'Sheet not found' };
   }
   const raw = a.target_row_ids;

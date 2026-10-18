@@ -6,6 +6,7 @@ import { db } from '../lib/db';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { UPLOAD_DIR } from '../lib/uploads';
 import { AuthRequest } from '../middleware/auth';
+import { actAgain } from '../lib/actor';
 
 export interface SheetRow {
   id: string;
@@ -57,7 +58,8 @@ const upload = multer({
 // temp file multer wrote before aborting.
 export const csvUploadMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
   upload.single('file')(req, res, (err: any) => {
-    if (!err) return next();
+    // multer's stream events drop who is importing (lib/actor.ts): set it again.
+    if (!err) return actAgain(req, res, next);
 
     if (req.file && fs.existsSync(req.file.path)) {
       try { fs.unlinkSync(req.file.path); }

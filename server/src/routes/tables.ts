@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
 import { listSheets, getSheetForClient, getTableForClient } from '../lib/sheet-crud-helpers';
 import { sheetListKey } from '../lib/sheet-list-key';
+import { getTrashDays } from '../lib/trash/store';
 import {
   createTable, renameTable, deleteTable, type TableCrudFail,
 } from '../services/table-crud';
@@ -17,11 +18,12 @@ router.get('/', (req: AuthRequest, res) => {
     // Explicit client columns (no user_id) — this row is spread into the response
     // below, so `SELECT *` would leak the internal user_id.
     const tables = db.prepare(
-      'SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? ORDER BY created_at DESC',
+      `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
+       ORDER BY created_at DESC`,
     ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
 
     const allSheets = db.prepare(
-      'SELECT id, table_id FROM sheets WHERE user_id = ?',
+      'SELECT id, table_id FROM sheets WHERE user_id = ? AND trash_id IS NULL',
     ).all(req.userId!) as Array<{ id: string; table_id: string }>;
 
     // Row counts: one query per user, grouped by sheet_id. With row-oriented storage this
@@ -105,13 +107,15 @@ router.put('/:id', (req: AuthRequest, res) => {
   }
 });
 
-// DELETE /:id — the service aborts active runs before the FK cascade wipes the
-// rows, and drops the sheets' webhook rate buckets after.
+// DELETE /:id — into the trash with its sheets (services/trash-sheets.ts).
 router.delete('/:id', (req: AuthRequest, res) => {
   try {
     const result = deleteTable(req.userId!, req.params.id);
     if ('fail' in result) return res.status(uiFailStatus(result)).json({ error: result.message });
-    res.json({ message: 'Table deleted successfully' });
+    res.json({
+      message: 'Table deleted successfully',
+      trash: result.ok.trashId === null ? null : { id: result.ok.trashId, days: getTrashDays(req.userId!) },
+    });
   } catch (error) {
     console.error('Delete table error:', error);
     res.status(500).json({ error: 'Failed to delete table' });

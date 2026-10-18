@@ -51,7 +51,8 @@ const activeRuns = (sheetId: string, userId: string): Array<{ id: string; kind: 
 
 function readVersion(sheetId: string, userId: string): Version | null {
   const row = db.prepare(
-    'SELECT data_version AS dv, row_generation AS rg, table_id AS tid FROM sheets WHERE id = ? AND user_id = ?',
+    `SELECT data_version AS dv, row_generation AS rg, table_id AS tid FROM sheets WHERE id = ? AND user_id = ?
+      AND trash_id IS NULL`,
   ).get(sheetId, userId) as { dv: number; rg: number; tid: string } | undefined;
   return row ? { dataVersion: row.dv, rowGeneration: row.rg, sheetsKey: sheetListKey(row.tid, userId) } : null;
 }

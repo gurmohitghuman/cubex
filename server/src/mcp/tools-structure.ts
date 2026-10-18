@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createTable, renameTable, deleteTable } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
+import { trashAnswer } from '../services/trash-answer';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
@@ -15,8 +16,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Create, rename, or delete a table (a workspace that holds one or more sheet tabs). create returns the new '
-        + 'table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. DELETE IS PERMANENT: '
-        + 'it removes every sheet and row in the table and cancels its active runs.',
+        + 'table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. delete puts the table '
+        + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
+        + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole.',
       inputSchema: {
         action: z.enum(['create', 'rename', 'delete']),
         table_id: z.string().optional().describe('Required for rename/delete'),
@@ -35,11 +37,13 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         });
       }
       if (!table_id) return err(`table_id is required for ${action}`);
-      const result = action === 'rename'
-        ? renameTable(ctx.userId, table_id, name)
-        : deleteTable(ctx.userId, table_id);
+      if (action === 'rename') {
+        const result = renameTable(ctx.userId, table_id, name);
+        return 'fail' in result ? err(result.message) : ok(result.ok);
+      }
+      const result = deleteTable(ctx.userId, table_id);
       if ('fail' in result) return err(result.message);
-      return ok(result.ok);
+      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.ok.trashId, 'mcp') });
     },
   );
 
@@ -48,10 +52,11 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Create, rename, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
-        + 'create auto-names the sheet when name is omitted and can insert after a given tab. DELETE IS PERMANENT: '
-        + "it removes the sheet's rows and cancels its active runs; enrichment results its columns bought that were "
-        + 'not yet added as rows in another sheet are dropped too (list_results_dropped says how many and for which '
-        + "sheets). Returns the table's updated tab list.",
+        + 'create auto-names the sheet when name is omitted and can insert after a given tab. delete puts the sheet '
+        + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
+        + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
+        + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
+        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
       inputSchema: {
         action: z.enum(['create', 'rename', 'delete', 'reorder']),
         table_id: z.string(),
@@ -82,7 +87,10 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) return err(result.message);
       if (action !== 'delete') return ok(result.ok);
       const dropped = result.ok.notAdded;
-      return ok({ deleted: true, sheets: result.ok.sheets, ...(dropped ? { list_results_dropped: dropped } : {}) });
+      return ok({
+        deleted: true, sheets: result.ok.sheets, trash: trashAnswer(ctx.userId, result.ok.trashId ?? null, 'mcp'),
+        ...(dropped ? { list_results_dropped: dropped } : {}),
+      });
     },
   );
 }

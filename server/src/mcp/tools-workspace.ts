@@ -14,7 +14,7 @@ import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers'
 import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server,

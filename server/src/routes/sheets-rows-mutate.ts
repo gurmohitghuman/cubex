@@ -3,10 +3,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { countColumnsAndRows, purgeResultsForRows, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
+import { countColumnsAndRows, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { nextRowIndex } from '../lib/sheet-busy';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from '../services/autorun-block';
+import { deleteRowsToTrash } from '../services/trash-rows';
+import { getTrashDays } from '../lib/trash/store';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -145,28 +147,27 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
       });
     }
 
+    // The rows go to the trash as one batch (services/trash-rows.ts); a
+    // selection sent in several calls names the first call's batch (trashId)
+    // and lands in it. Their AI/HTTP results go: they are stored by position,
+    // and a later sort would bind them to another row (purgeResultsForRows).
+    const continueId = (req.body as { trashId?: unknown }).trashId;
     let deletedCount = 0;
+    let trashId: number | null = null;
     db.transaction(() => {
-      // Build one DELETE … WHERE row_index IN (?, ?, …) statement. Faster
-      // than looping prepare().run() per index inside the transaction (each
-      // .run() round-trips through better-sqlite3's bridge).
-      const placeholders = unique.map(() => '?').join(',');
-      const stmt = db.prepare(
-        `DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index IN (${placeholders})`,
-      );
-      const result = stmt.run(id, req.userId!, ...unique);
-      deletedCount = result.changes;
-      // Purge per-row AI/HTTP results for the deleted indices IN THE SAME
-      // transaction. Otherwise they orphan: a later sort rebinds them to a
-      // different live row, and a preview-commit resurrects the deleted row
-      // (it upserts by row_index). See purgeResultsForRows.
-      purgeResultsForRows(id, req.userId!, unique);
+      const removed = deleteRowsToTrash(id, req.userId!, 'grid', { indexes: unique },
+        typeof continueId === 'number' ? continueId : undefined);
+      deletedCount = removed.count;
+      trashId = removed.trashId;
       // Appends reuse the positions of deleted last rows: auto-run's fence follows.
       autorunRowsRemoved(id, req.userId!);
       touchSheet(id, req.userId!);
     })();
 
-    res.json({ message: `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted`, deletedCount });
+    res.json({
+      message: `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted`, deletedCount,
+      trash: trashId === null ? null : { id: trashId, days: getTrashDays(req.userId!) },
+    });
   } catch (error) {
     console.error('Bulk delete rows error:', error);
     res.status(500).json({ error: 'Failed to delete rows' });

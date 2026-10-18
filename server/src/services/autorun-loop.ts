@@ -140,8 +140,10 @@ export async function autorunSweep(): Promise<void> {
   if (sweeping) return;
   sweeping = true;
   try {
+    // A sheet in the trash is passed by (services/trash-sheets.ts).
     const entries = db.prepare(`SELECT id, sheet_id, status_column FROM autorun_columns WHERE enabled = 1
-      ORDER BY updated_at`).all() as Array<Pick<AutorunEntry, 'id' | 'sheet_id' | 'status_column'>>;
+      AND sheet_id IN (SELECT id FROM sheets WHERE trash_id IS NULL) ORDER BY updated_at`)
+      .all() as Array<Pick<AutorunEntry, 'id' | 'sheet_id' | 'status_column'>>;
     for (const e of entries) {
       try { await autorunTick(e.id); }
       catch (err) { console.error(`Auto-run on "${e.status_column}" (sheet ${e.sheet_id}) failed this round:`, err); }

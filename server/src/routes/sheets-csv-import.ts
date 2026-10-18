@@ -7,6 +7,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { csvUploadMiddleware } from './sheets-shared';
+import { getTrashDays } from '../lib/trash/store';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -88,6 +89,8 @@ router.post('/:id/import', csvUploadMiddleware, async (req: AuthRequest, res) =>
       // >0 when some cells exceeded the basic cell cap and were truncated, so
       // the client can warn the user their import was clipped.
       truncatedCells: result.ok.truncatedCells,
+      // A replace: the rows it replaced, in the trash.
+      trash: result.ok.trashId === null ? null : { id: result.ok.trashId, days: getTrashDays(req.userId!) },
     });
   } catch (error) {
     console.error('Import CSV error:', error);

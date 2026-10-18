@@ -26,6 +26,7 @@ import busyMod from '../../server/src/lib/sheet-busy'
 import purgeMod from '../../server/src/services/lookup-purge'
 import formulaMod from '../../server/src/services/formula-column'
 import setupMod from '../../server/src/services/setup-save'
+import trashPurgeMod from '../../server/src/services/trash-purge'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
@@ -44,6 +45,7 @@ const { checkLookupSources, lookupBackgroundRound } =
   purgeMod as typeof import('../../server/src/services/lookup-purge')
 const { startFormulaColumn } = formulaMod as typeof import('../../server/src/services/formula-column')
 const { planSetup } = setupMod as typeof import('../../server/src/services/setup-save')
+const { purgeTrashItems } = trashPurgeMod as typeof import('../../server/src/services/trash-purge')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -248,10 +250,17 @@ async function main() {
     && db.prepare('SELECT count(*) FROM lookup_purges').pluck().get() === 0
     && db.prepare(`SELECT count(*) FROM lookup_text WHERE lookup_text MATCH '"acm"'`).pluck().get() === 0)
 
-  // The other sheet deleted: a trigger stops its lookups and drops its sources first.
+  // The other sheet deleted: in the trash its lookups stop with a message; once
+  // it is gone for good, the message says so and its sources go before its rows.
   const before = db.prepare('SELECT count(*) FROM lookup_dirty').pluck().get()
   const gone = deleteSheet(uid, t2, B)
   check('the other sheet is deleted', 'ok' in gone, gone)
+  check('its lookups stop while it is in the trash', /The sheet "Companies" it looks in is in the trash/
+    .test(lookupColumnFor(A, uid, 'Industry')?.broken ?? ''), lookupColumnFor(A, uid, 'Industry'))
+  if ('ok' in gone) purgeTrashItems(uid, [gone.ok.trashId!])
+  for (let i = 0; i < 300 && db.prepare('SELECT 1 FROM sheets WHERE id = ?').get(B); i++) {
+    await new Promise(r => setTimeout(r, 10))
+  }
   check('its lookups stop with a message', /The sheet "Companies" it looks in was deleted/
     .test(lookupColumnFor(A, uid, 'Industry')?.broken ?? ''), lookupColumnFor(A, uid, 'Industry'))
   check('its rows logged nothing (sources dropped first)',

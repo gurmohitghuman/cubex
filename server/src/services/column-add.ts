@@ -9,6 +9,7 @@ import { appendColumnsToOrder, getSheetColumns, touchSheet } from '../lib/sql-he
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
+import { logSheetChange } from '../lib/change-log';
 
 export type ColumnAddOutcome =
   | { ok: true; name: string }
@@ -59,6 +60,7 @@ export function addSheetColumn(
       touchSheet(sheetId, userId);
     }
   }).immediate();
+  logSheetChange(sheetId, userId, 'column_added', `Added the column "${columnName}"`, { column: columnName });
 
   return { ok: true, name: columnName };
 }

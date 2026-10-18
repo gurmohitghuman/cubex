@@ -1,7 +1,7 @@
 import express from 'express';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { upsertCellsBatch } from '../lib/sql-helpers';
+import { upsertCellsBatch, verifySheetOwnership } from '../lib/sql-helpers';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import { clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_ENRICHMENT } from '../lib/constants';
@@ -46,7 +46,10 @@ router.post('/runs/:id/commit', (req: AuthRequest, res) => {
     const { id } = req.params;
     const run = db.prepare('SELECT * FROM ai_runs WHERE id = ? AND user_id = ?')
       .get(id, req.userId!) as AIRunRow | undefined;
-    if (!run) return res.status(404).json({ error: 'AI run not found' });
+    // A run of a sheet in the trash is as gone as its sheet.
+    if (!run || !verifySheetOwnership(run.sheet_id, req.userId!)) {
+      return res.status(404).json({ error: 'AI run not found' });
+    }
 
     // Commit writes cells by row_index and column name, so it waits out a sort,
     // import or column rewrite (lib/sheet-busy.ts) like every other cell write.

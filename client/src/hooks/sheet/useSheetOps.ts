@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, Table } from '@/utils/api'
 import { useSheetRename } from './useSheetRename'
 import { useSheetReconcile } from './useSheetReconcile'
+import { toastDeleted } from '@/components/trash/trashToast'
 
 interface UseSheetOpsArgs {
   table: Table | null
@@ -181,6 +182,8 @@ export const useSheetOps = ({
         const survivor = res.sheets[deletedIdx] ?? res.sheets[deletedIdx - 1] ?? res.sheets[0]
         if (survivor) await selectSheet(survivor)
       }
+      // "Restore" puts the tab back; the tab bar's change poll shows it again.
+      toastDeleted(`Sheet "${preList[deletedIdx]?.name ?? ''}" moved to the trash`, res.trash?.id)
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to delete sheet')
     } finally { endOp() }

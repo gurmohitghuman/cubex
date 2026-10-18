@@ -31,7 +31,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
-    const sheet = db.prepare('SELECT * FROM sheets WHERE id = ? AND user_id = ?')
+    const sheet = db.prepare('SELECT * FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
       .get(id, req.userId!) as SheetRow | undefined;
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 
@@ -131,7 +131,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
 router.get('/:id/columns', (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const sheet = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?')
+    const sheet = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
       .get(id, req.userId!) as { id: string } | undefined;
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 

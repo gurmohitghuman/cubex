@@ -60,6 +60,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
+- **A trash and a history.** Deleted rows, sheets and tables wait 30 days in the trash, ready to restore. Each sheet's History shows what changed and who changed it: you in the app, or which agent.
 
 **Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, and treg.to ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
 
@@ -227,7 +228,7 @@ Click **Remove duplicates** in the toolbar and pick the columns rows must match 
 
 Then choose which row of each group stays: the first, the last (usually the newest), or the most filled-in. Before anything is removed you see how many rows would go and a few of the groups, including the biggest. It's free, and it checks the whole sheet: filters don't apply.
 
-A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows can't be brought back, so export a copy first if you might want them. While a run is going on the sheet, removing waits until the run finishes or you stop it.
+A row missing a value in any column you picked always stays, and so does one where that cell holds a run's status like "⏭️ Not found": 5,000 rows without an email aren't one person. Removed rows go to the [trash](#trash-and-history), so you can bring them back. While a run is going on the sheet, removing waits until the run finishes or you stop it.
 
 ### Views
 
@@ -250,6 +251,14 @@ On another sheet, choose **Setups**, then **Use a setup…**. Match each column 
 New rows on a sheet you used a setup on? Use it again there. The steps whose columns the sheet has already, set up the same way, show **Carries on**: each fills only the rows it hasn't done, with the column's own model and settings, and you see what that costs first. AI columns fill their empty rows, HTTP API columns their empty or failed rows, enrichments the rows not enriched yet, and clean and formula columns follow their columns as they always do. It's also how a setup that failed or was stopped picks up where it left off: the dialog starts from the choices you made last time on that sheet.
 
 Setups live in **Settings, Setups**, where you can rename, export one as a file for another Cubex, import one, or delete it. A setup is a copy: changing or deleting it never changes a sheet you used it on.
+
+### Trash and history
+
+Deleted rows, sheets and tables go to the trash (the trash can at the top of the dashboard), and so do rows a CSV import replaced, rows removed as duplicates and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted for good; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.
+
+In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
+
+**History** in a sheet's toolbar lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started and stopped, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet_history`, and use `list_trash` and `restore_from_trash`.
 
 ### Webhook
 

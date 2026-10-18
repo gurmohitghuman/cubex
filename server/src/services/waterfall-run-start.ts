@@ -26,6 +26,7 @@ import type { RunFail } from './run-shared';
 import { activeRunOn, prepareWaterfallStart, seedPlanFor, type PreparedWaterfall } from './waterfall-run-prepare';
 import { hideInViews } from './waterfall-views';
 import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
+import { logRunStarted } from '../lib/change-log';
 
 export interface WaterfallStarted {
   runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number;
@@ -118,6 +119,9 @@ export async function startWaterfallRun(
       rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,
       lastRow: p.span.lastRow, test: input.rows.test,
+    });
+    logRunStarted(sheetId, userId, {
+      kind: 'waterfall', column: p.resultColumn, runId, rows: p.upperBound, again: input.continueColumn,
     });
     return { ok: { runId, resultColumn: p.resultColumn, outputColumns: outputNames, rowsInScope: p.upperBound } };
   });

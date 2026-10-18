@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
+import { trashAnswer } from '../services/trash-answer';
 import { TransferSelection } from '../services/transfer-selection';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import {
@@ -58,6 +59,7 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
     if ('fail' in result) return err(result.error);
     const notice = result.replayed ? {}
       : await appendAutorunNotice(ctx.userId, input.destination_sheet_id, result.ok.copied + result.ok.moved);
-    return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice });
+    const trash = result.ok.moved ? { trash: trashAnswer(ctx.userId, result.ok.trash_id ?? null, 'mcp') } : {};
+    return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash });
   });
 }

@@ -96,7 +96,7 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     if (!j) return;
     const run = db.prepare('SELECT config, master_column_name FROM http_runs WHERE id = ? AND user_id = ?')
       .get(j.run_id, j.user_id) as { config: string; master_column_name: string | null } | undefined;
-    const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
+    const name = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').pluck()
       .get(j.dest_sheet_id, j.user_id) as string | undefined;
     if (!run || name === undefined) return;     // deleted with its run or sheet: the journal row goes too
     let config: EnrichRunConfig | null = null;

@@ -23,6 +23,7 @@ import {
 import { CLEANING, runCleanFill } from './clean-fill';
 import { setCleanAutorun } from './derived-autorun';
 import type { RunFail } from './run-shared';
+import { logSheetChange } from '../lib/change-log';
 
 export interface CleanColumnInput {
   source: unknown;
@@ -111,6 +112,9 @@ export async function startCleanColumn(userId: string, sheetId: string, input: C
       setCleanAutorun(sheetId, userId, s.column, s.source, input.autoRun ?? (created ? true : undefined));
       db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
         WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+      logSheetChange(sheetId, userId, 'clean_column',
+        `${created ? 'Added' : 'Changed'} the clean column "${s.column}" (${s.cleaner} of "${s.source}")`,
+        { column: s.column, detail: { source: s.source, cleaner: s.cleaner, options: s.options } });
       return { ok: { id, column: s.column, created } };
     }).immediate();
     if ('ok' in result) continueInBackground(sheetId, CLEANING, () => runCleanFill(result.ok.id));

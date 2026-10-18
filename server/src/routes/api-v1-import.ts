@@ -5,16 +5,17 @@
 // bodies, so multer is the only body reader here — still strictly post-auth.
 // Replace mode bumps row_generation (open tabs loud-reload via the change
 // poll); both modes bump data_version.
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { csvUploadMiddleware } from './sheets-shared';
+import { trashAnswer } from '../services/trash-answer';
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
   };
   try {
     const sheetId = req.params.id;
-    if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, req.userId!)) {
+    if (!verifySheetOwnership(sheetId, req.userId!)) {
       cleanupUpload();
       return res.status(404).json({ error: 'Sheet not found' });
     }
@@ -79,6 +80,7 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
       truncated_cells: result.ok.truncatedCells,
       replaced: replace,
       dropped_blank_starter_rows: result.ok.droppedSeedRows,
+      ...(replace && result.ok.trashId !== null ? { trash: trashAnswer(req.userId!, result.ok.trashId, 'rest') } : {}),
       ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rowsImported),
     });
   } catch (error) {

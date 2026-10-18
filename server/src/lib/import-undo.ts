@@ -9,6 +9,7 @@ import { forgetUnlistedFormulaColumns } from './formula-columns';
 import { pruneViewsToColumns } from '../services/view-columns';
 import { forgetUnlistedLookupColumns } from './lookup-columns';
 import { forgetUnlistedColumnDescriptions } from './column-descriptions';
+import { movingBatch, trashRowRange } from '../services/trash-batch';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
 // rows go in at first_row up to end_row, and appends from elsewhere land at
@@ -66,6 +67,12 @@ export function replaceColumnOrder(job: ImportJob): string {
 // gone, leaves the sheet empty with the file's columns and one row to type in.
 // Then forgets the journal. Call while holding the sheet busy.
 export async function undoImport(job: ImportJob): Promise<void> {
+  // A replace cut short while its old rows were going to the trash: every row
+  // in the range is still an old one, and they all go there (none is deleted
+  // unkept). Otherwise the rows in the range are the import's.
+  if (job.is_replace && movingBatch(job.sheet_id, job.user_id, 'import') !== null) {
+    await trashRowRange(job.sheet_id, job.user_id, job.first_row, job.end_row, 'import');
+  }
   await deleteRowRange(job.sheet_id, job.user_id, job.first_row, job.end_row);
   if (job.is_replace) await purgeSheetResults(job.sheet_id, job.user_id);
   if (job.is_replace) await autorunDropPending(job.sheet_id, job.user_id);

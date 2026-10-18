@@ -17,6 +17,8 @@ export * from './constants-run-hooks';
 export * from './constants-usage';
 // Waterfall columns, same split.
 export * from './constants-waterfall';
+// The trash and the sheet change log, same split.
+export * from './constants-trash';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

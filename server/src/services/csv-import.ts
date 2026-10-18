@@ -13,9 +13,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { appendColumnsToOrder, touchSheet } from '../lib/sql-helpers';
-import {
-  deleteRowRange, purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob,
-} from '../lib/import-undo';
+import { purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob } from '../lib/import-undo';
+import { trashRowRange } from './trash-batch';
+import { countOf, logSheetChange } from '../lib/change-log';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
 import { validateCsvImport } from '../lib/csv-import-validate';
@@ -40,6 +40,8 @@ export type CsvImportOutcome =
       // import began at row 0. Surfaced so a caller can say so rather than
       // silently seeing a different starting_row than it expected.
       droppedSeedRows: boolean;
+      // A replace: the trash batch holding the rows it replaced (null: none, or none kept).
+      trashId: number | null;
     } }
   | { fail: 'validation' | 'busy'; error: string }
   | { fail: 'locked'; columns: string[] };
@@ -112,11 +114,14 @@ export async function importCsv(
       })();
     }
     reserve(job.end_row);
+    let replaced: { trashId: number | null; moved: number } | null = null;
 
     try {
       if (replace) {
-        // The old rows, then their results, which would alias the new rows.
-        await deleteRowRange(sheetId, userId, 0, job.end_row);
+        // The old rows go to the trash as one batch (trash-batch.ts; a restart
+        // midway finishes moving them, lib/import-undo.ts), then their results,
+        // which would alias the new rows.
+        replaced = await trashRowRange(sheetId, userId, 0, job.end_row, 'import');
         await purgeSheetResults(sheetId, userId);
       }
 
@@ -183,8 +188,10 @@ export async function importCsv(
         db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(sheetId);
       })();
 
+      logImport(sheetId, userId, next - startingRow, replaced);
       return {
         ok: {
+          trashId: replaced?.trashId ?? null,
           rowsImported: next - startingRow, startingRow,
           newColumns: replace ? [] : newColumns, truncatedCells, droppedSeedRows,
         },
@@ -198,6 +205,17 @@ export async function importCsv(
     }
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
+}
+
+function logImport(
+  sheetId: string, userId: string, rows: number, replaced: { trashId: number | null; moved: number } | null,
+): void {
+  const summary = replaced
+    ? `Replaced ${countOf(replaced.moved, 'row')} with ${countOf(rows, 'row')} from a CSV file`
+    : `Imported ${countOf(rows, 'row')} from a CSV file`;
+  logSheetChange(sheetId, userId, 'rows_imported', summary, {
+    detail: { rows, ...(replaced ? { replaced: replaced.moved, trash_id: replaced.trashId } : {}) },
+  });
 }
 
 function journal(

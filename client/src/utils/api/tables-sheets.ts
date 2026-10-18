@@ -8,6 +8,9 @@ import type { Sheet, SheetData, Table } from './types'
 // bulkDeleteRows) shows a persistent "Save failed · Retry" pill (SaveStatus). Without
 // this, a 5xx stacks a redundant second toast on top — and on autosave's backoff it
 // fired once per retry. See client.ts for the flag.
+// Where a delete went: its trash item and how many days it is kept.
+export interface TrashRef { id: number; days: number }
+
 const noServerToast = { skipServerErrorToast: true } as const
 
 export const tablesAPI = {
@@ -16,7 +19,9 @@ export const tablesAPI = {
   create: (name: string): Promise<Table> => api.post('/tables', { name }, noServerToast).then(res => res.data),
   update: (id: string, name: string): Promise<Table> =>
     api.put(`/tables/${id}`, { name }, noServerToast).then(res => res.data),
-  delete: (id: string): Promise<void> => api.delete(`/tables/${id}`, noServerToast).then(() => {}),
+  // The table goes to the trash (trash: null when Settings keeps nothing).
+  delete: (id: string): Promise<{ trash: TrashRef | null }> =>
+    api.delete(`/tables/${id}`, noServerToast).then(res => res.data),
 }
 
 export const sheetsAPI = {
@@ -85,8 +90,12 @@ export const sheetsAPI = {
   // rowGeneration is REQUIRED: the server hard-400s a bulk-delete without it
   // (it's a destructive structural mutation — see sheets-rows-mutate.ts). Callers
   // pass the generation the sheet was loaded at; the server 409s on mismatch.
-  bulkDeleteRows: (sheetId: string, rowIndices: number[], rowGeneration: number): Promise<{ deletedCount: number }> =>
-    api.post(`/sheets/${sheetId}/rows/bulk-delete`, { rowIndices, rowGeneration }, noServerToast).then(res => res.data),
+  // trashId: a selection sent in several calls names the first call's batch, so it lands in one.
+  bulkDeleteRows: (
+    sheetId: string, rowIndices: number[], rowGeneration: number, trashId?: number,
+  ): Promise<{ deletedCount: number; trash: TrashRef | null }> =>
+    api.post(`/sheets/${sheetId}/rows/bulk-delete`, { rowIndices, rowGeneration, trashId }, noServerToast)
+      .then(res => res.data),
 
   deleteColumn: (sheetId: string, columnName: string): Promise<void> =>
     api.delete(`/sheets/${sheetId}/columns/${encodeURIComponent(columnName)}`, noServerToast).then(() => {}),
@@ -148,6 +157,6 @@ export const sheetsAPI = {
   reorderSheets: (tableId: string, orderedSheetIds: string[]): Promise<{ sheets: Sheet[] }> =>
     api.patch(`/tables/${tableId}/sheets/reorder`, { orderedSheetIds }, noServerToast).then(r => r.data),
 
-  deleteSheet: (tableId: string, sheetId: string): Promise<{ sheets: Sheet[] }> =>
+  deleteSheet: (tableId: string, sheetId: string): Promise<{ sheets: Sheet[]; trash: TrashRef | null }> =>
     api.delete(`/tables/${tableId}/sheets/${sheetId}`, noServerToast).then(r => r.data),
 }

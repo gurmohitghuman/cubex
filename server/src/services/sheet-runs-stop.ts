@@ -16,6 +16,7 @@ import { controlSetupRun } from './setup-run-control';
 import { CAPACITY_PAUSES, RETRY_PAUSES } from './autorun-entry';
 import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
 import type { RunFail } from './run-shared';
+import { logSheetChange, withoutChangeLog } from '../lib/change-log';
 
 export interface SheetStopResult {
   stopped_runs: Array<Omit<SheetRun, 'status'>>;
@@ -55,12 +56,15 @@ export async function stopSheetRuns(userId: string, sheetId: string): Promise<{ 
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const runs = activeSheetRuns(sheetId, userId);
   const setups: SheetStopResult['stopped_setup_runs'] = [];
-  for (const s of activeSetupRuns(sheetId, userId)) {
-    // One that ended meanwhile answers a conflict and isn't listed.
-    const out = await controlSetupRun(userId, s.setup_run_id, 'cancel', true);
-    if ('ok' in out) setups.push({ setup_run_id: s.setup_run_id, setup: s.setup });
-  }
-  for (const r of runs) await cancelRun(r.run_type === 'ai' ? 'ai' : 'http', r.run_id, userId);
+  // One line in the change log for the lot, below.
+  await withoutChangeLog(async () => {
+    for (const s of activeSetupRuns(sheetId, userId)) {
+      // One that ended meanwhile answers a conflict and isn't listed.
+      const out = await controlSetupRun(userId, s.setup_run_id, 'cancel', true);
+      if ('ok' in out) setups.push({ setup_run_id: s.setup_run_id, setup: s.setup });
+    }
+    for (const r of runs) await cancelRun(r.run_type === 'ai' ? 'ai' : 'http', r.run_id, userId);
+  });
   // Stopped: the ones cancelled now (by this stop, or its setups' stop). A run
   // that finished on its own meanwhile isn't listed.
   const cancelled = cancelledIds(runs.map(r => r.run_id));
@@ -68,6 +72,10 @@ export async function stopSheetRuns(userId: string, sheetId: string): Promise<{ 
   const paused = pausedByStop(sheetId, userId, stopped.filter(r => r.auto_run).map(r => r.column));
   const autoOn = autorunsOn(sheetId, userId);
   const filling = fillingColumns(sheetId, userId);
+  if (stopped.length > 0 || setups.length > 0) {
+    logSheetChange(sheetId, userId, 'runs_stopped', `Stopped every run (${stopped.map(r => r.column).concat(
+      setups.map(x => `setup ${x.setup}`)).join(', ')})`, { detail: { runs: stopped.length, setups: setups.length } });
+  }
   return {
     ok: {
       stopped_runs: stopped, stopped_setup_runs: setups, auto_run_paused: paused, auto_run_on: autoOn,

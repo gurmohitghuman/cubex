@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { validateModelParam } from '../lib/ai-model-resolve';
+import { logSheetChange } from '../lib/change-log';
 
 export type ModelConfigOutcome =
   | { ok: { model: string | null } }
@@ -48,8 +49,12 @@ export function setSheetDefaultModel(userId: string, sheetId: string, model: unk
   if ('error' in n) return { fail: 'bad_request', message: n.error };
 
   const result = db.prepare(
-    "UPDATE sheets SET default_ai_model = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+    `UPDATE sheets SET default_ai_model = ?, updated_at = datetime('now')
+     WHERE id = ? AND user_id = ? AND trash_id IS NULL`,
   ).run(n.value, sheetId, userId);
   if (result.changes === 0) return { fail: 'not_found', message: 'Sheet not found' };
+  logSheetChange(sheetId, userId, 'default_model',
+    n.value ? `Set the sheet's default AI model to ${n.value}` : "Cleared the sheet's default AI model",
+    { detail: { model: n.value } });
   return { ok: { model: n.value } };
 }

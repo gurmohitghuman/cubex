@@ -13,6 +13,7 @@ import { startAnswerPruneLoop } from '../services/answer-prune';
 import { resumeAgePrunes } from '../services/answer-prune-age';
 import { startLookupLoop } from '../services/lookup-host';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
+import { startTrashLoop } from '../services/trash-purge';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -47,6 +48,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   startLookupLoop();
   // "Run finished" webhooks: finished runs become signed notices (services/run-hooks-dispatch.ts).
   startRunHookLoop();
+  // The trash: what was kept long enough goes for good, in slices; the change log is pruned (services/trash-purge.ts).
+  startTrashLoop();
   startQueue()
     .then(() => {
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).

@@ -4,6 +4,7 @@
 // check. Spends real AI credits (bounded to PREVIEW_MAX_ROWS) but persists
 // NOTHING: no column, no draft, no run row (spec item 4). A later full run
 // re-bills these rows (reuse is a deferred optimization).
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { db } from '../lib/db';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { resolveAiModel, NO_MODEL_ERROR } from '../lib/ai-model-resolve';
@@ -67,7 +68,7 @@ function sampleRows(
 }
 
 export async function previewAiRun(userId: string, input: PreviewInput): Promise<PreviewOutcome> {
-  if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(input.sheetId, userId)) {
+  if (!verifySheetOwnership(input.sheetId, userId)) {
     return { fail: 'not_found', message: 'Sheet not found' };
   }
   const refsError = unknownPromptRefsError(input.sheetId, userId, input.prompt);

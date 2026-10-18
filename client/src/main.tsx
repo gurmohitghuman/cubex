@@ -9,6 +9,7 @@ import { PrivateRoute } from './components/PrivateRoute'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TrashPage } from './pages/TrashPage'
 import { RouteErrorPage } from './pages/RouteErrorPage'
 
 // SheetPage is the only page that pulls in AG Grid (~300KB gzip, >half the JS
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: 'settings/:tab?', element: <PrivateRoute><SettingsPage /></PrivateRoute> },
+      { path: 'trash', element: <PrivateRoute><TrashPage /></PrivateRoute> },
       { index: true, element: <PrivateRoute><DashboardPage /></PrivateRoute> },
       { path: '*', element: <RouteErrorPage notFound /> },
     ],

@@ -42,7 +42,7 @@ export type TransformOutcome =
 class WriterBudgetError extends Error {}
 
 export function transformColumn(userId: string, p: TransformParams): TransformOutcome {
-  if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(p.sheetId, userId)) {
+  if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(p.sheetId, userId)) {
     return { fail: 'not_found', error: 'Sheet not found' };
   }
   if (!CELL_OPS.includes(p.operation)) return { fail: 'invalid', error: `Unknown operation "${p.operation}".` };

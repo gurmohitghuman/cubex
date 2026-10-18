@@ -3,6 +3,7 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { createSheet, renameSheet, deleteSheet, reorderSheets, SheetCrudOutcome } from '../services/sheet-crud';
+import { trashAnswer } from '../services/trash-answer';
 import { tableFailHttpStatus } from '../services/table-crud';
 import { describeSheet, descriptionProblem } from '../services/descriptions';
 import { listSheets, verifySheetInTable } from '../lib/sheet-crud-helpers';
@@ -67,13 +68,16 @@ router.patch('/tables/:tableId/sheets/:sheetId', requireScope('write'), (req: To
   }
 });
 
-// DELETE /v1/tables/:tableId/sheets/:sheetId — last-sheet guard etc. in the service.
+// DELETE /v1/tables/:tableId/sheets/:sheetId — into the trash, whole; last-sheet guard etc. in the service.
 router.delete('/tables/:tableId/sheets/:sheetId', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const result = deleteSheet(req.userId!, req.params.tableId, req.params.sheetId);
     if ('fail' in result) return res.status(tableFailHttpStatus(result)).json({ error: result.message });
     const dropped = result.ok.notAdded;
-    res.json({ deleted: true, sheets: result.ok.sheets, ...(dropped ? { list_results_dropped: dropped } : {}) });
+    res.json({
+      deleted: true, sheets: result.ok.sheets, trash: trashAnswer(req.userId!, result.ok.trashId ?? null, 'rest'),
+      ...(dropped ? { list_results_dropped: dropped } : {}),
+    });
   } catch (error) {
     console.error('DELETE /v1/tables/:tableId/sheets/:sheetId error:', error);
     res.status(500).json({ error: 'Failed to delete sheet' });

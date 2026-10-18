@@ -23,6 +23,7 @@ import { runDerivedFill } from './derived-fill';
 import { setDerivedAutorun } from './derived-autorun';
 import { FORMULA_FILLING, formulaKind, openFormulaPass } from './formula-kind';
 import type { RunFail } from './run-shared';
+import { logSheetChange } from '../lib/change-log';
 
 export interface FormulaColumnInput {
   formula: unknown;
@@ -138,6 +139,9 @@ export async function startFormulaColumn(
         input.autoRun ?? (created ? true : undefined));
       db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
         WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+      const verb = created ? 'Added' : 'Changed';
+      logSheetChange(sheetId, userId, 'formula_column', `${verb} the formula column "${column}"`,
+        { column, detail: { formula: s.compiled.formula } });
       return { ok: { id, column, created } };
     }).immediate();
     if ('ok' in result) continueInBackground(sheetId, FORMULA_FILLING, () => runDerivedFill(formulaKind, result.ok.id));

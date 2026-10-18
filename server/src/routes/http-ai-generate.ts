@@ -40,7 +40,7 @@ router.post('/generate-config', authenticateToken, async (req: AuthRequest, res)
     // Verify sheet ownership AND derive the column list. We feed the column
     // names to the model so it can pick the right /token references.
     const sheet = db.prepare(
-      'SELECT id FROM sheets WHERE id = ? AND user_id = ?',
+      'SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL',
     ).get(sheetId, req.userId!) as { id: string } | undefined;
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 

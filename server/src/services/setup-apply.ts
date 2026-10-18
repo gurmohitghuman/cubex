@@ -23,6 +23,7 @@ import { insertSetupRun, getSetupRun, type SetupRunView } from './setup-run-stor
 import { advanceSetupRun } from './setup-runner';
 import { keyProblem, liveSetupClash, withModels, type ApplyFail } from './setup-apply-checks';
 import { webhookIdProblem } from './run-hooks-attach';
+import { countOf, logSheetChange } from '../lib/change-log';
 
 export type { ApplyFail } from './setup-apply-checks';
 
@@ -89,6 +90,9 @@ export async function applySetup(
     userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices }, targetRowIds: rowIds,
     allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null, webhookId: input.webhookId ?? null,
   });
+  logSheetChange(sheetId, userId, 'setup_used',
+    `Used the setup "${setup.name}"${rowIds ? ` on the first ${countOf(rowIds.length, 'row')}` : ''}`,
+    { detail: { setup_id: setup.id, setup_run_id: id, makes } });
   // The first layer starts now; the sweep carries on if this round can't (it's logged, not the caller's error).
   try {
     await advanceSetupRun(id);

@@ -62,6 +62,8 @@ export function transferHashes(r: TransferRequest): string[] {
 export interface TransferResult {
   matched: number; copied: number; moved: number;
   created_columns?: string[]; dest_row_count?: number;
+  // A move: the trash batch holding the source rows as they were (trash-rows.ts).
+  trash_id?: number | null;
 }
 
 export function transferRequestHash(request: Record<string, unknown>): string {

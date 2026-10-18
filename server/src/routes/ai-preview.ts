@@ -47,7 +47,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
       useOpenRouterWebSearch, useWebFetch, search: searchOptions, safePreviewSize, safeTemperature, safeMaxChars,
     } = parsed;
 
-    const sheet = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
+    const sheet = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
       .get(sheetId, req.userId!) as { row_generation: number } | undefined;
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 
