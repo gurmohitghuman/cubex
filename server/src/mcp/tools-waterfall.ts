@@ -57,13 +57,23 @@ const step = z.discriminatedUnion('kind', [
     ...common, kind: z.literal('formula'), formula: z.string().max(FORMULA_MAX_CHARS)
       .describe('JavaScript over {{input_key}}, e.g. {{first_name}}.toLowerCase() + "@" + {{domain}}'),
   }).strict(),
+  z.object({
+    ...common, kind: z.literal('lookup'), other_sheet_id: z.string().max(200).describe('Another sheet (list_tables)'),
+    match_column: z.string().max(200).describe('Its column matched against the input'),
+    match: z.enum(['equals', 'contains']).optional().describe('Default equals (case and spaces aside)'),
+    input: z.string().max(40).describe('The input key whose value it looks for, e.g. domain'),
+    return_column: z.string().max(200).describe('Its column whose value, in the first matching row, is the answer'),
+  }).strict(),
 ]);
 
 export const WATERFALL_DESCRIPTION =
   'Fill ONE value per row (a work email, phone, company domain, LinkedIn URL, URL or any text) by trying ordered '
   + 'steps and stopping at the first answer: a waterfall column. A step is an enrichment (a treg.to tool from '
-  + 'search_enrichments), an ai prompt, an http call to your own JSON API, or a free formula (JavaScript over '
-  + '{{input_key}}, run in a sandbox). A step\'s check tests the value it finds before it counts: '
+  + 'search_enrichments), an ai prompt, an http call to your own JSON API, a free formula (JavaScript over '
+  + '{{input_key}}, run in a sandbox), or a free lookup in another sheet of the account (return_column of the '
+  + 'first row, top first, whose match_column equals or contains the input; put it first to skip paid steps for '
+  + 'rows you already have; a rename there follows, a deleted sheet or column pauses the run). '
+  + 'A step\'s check tests the value it finds before it counts: '
   + '{"kind":"verify","accept":"safest"|"balanced"|"wide"} (treg\'s email verify, paid, email only) or '
   + '{"kind":"formula","formula":"..."} over {{value}} and the inputs (truthy passes); a value that fails is '
   + 'rejected and the next step runs. '

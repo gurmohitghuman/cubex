@@ -20,7 +20,7 @@ description: "Explain where a value in a Cubex sheet came from: the column, run,
 - `formula`: `fill.formula` worked out from the columns in `reads`.
 - `lookup`: this row's `reads[0]` matched against `fill.match_column` in the sheet `fill.other_sheet`, returning `fill.return_column` (or yes/no, a count, the matching rows). Read the matching row there.
 - `ai`, `http` or `enrichment`: a run filled it. An output column names its main column in `filled_by`; the main column's `fill` has the newest `run_id`, the prompt, model, URL or enrichment tool.
-- `waterfall`: steps tried in turn until one answered. The result column's `fill` lists the steps and has the newest `run_id`; the "answered by" column (`role: answered_by`) names the step that answered each row.
+- `waterfall`: steps tried in turn until one answered. The result column's `fill` lists the steps and has the newest `run_id`; the "answered by" column (`role: answered_by`) names the step that answered each row. A `lookup` step took its value from another sheet (`other_sheet`, `match_column`, `return_column`): trace it there, in the first row whose `match_column` matches.
 
 ## 3. Read that run's answer for the row
 
@@ -29,7 +29,7 @@ description: "Explain where a value in a Cubex sheet came from: the column, run,
 - AI: the value, `cost_usd`, and with web search its searches (`search_queries`). The row's "(Data)" column lists the sources the model used.
 - HTTP API: `extracted_fields`, the values picked out of the response.
 - Enrichment: `found_by` (the provider that found it), `cost_usd`, and `reused_answer_from` when it came free from an earlier found answer. `include_answers: true` shows the stored answer.
-- Waterfall (`run_type: "waterfall"`): `answered_by`, `cost_usd` (treg and AI) and `trace`: every step the row reached, with what it did (answered, not_found, no_inputs, error, budget) and what it cost.
+- Waterfall (`run_type: "waterfall"`): `answered_by`, `cost_usd` (treg and AI) and `trace`: every step the row reached, with what it did (answered, rejected by its check, not_found, no_inputs, error, budget) and what it cost.
 
 If the value is older than the newest run, `list_runs` with the `sheet_id` lists the sheet's runs, newest first.
 

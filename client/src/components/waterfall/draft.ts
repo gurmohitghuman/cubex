@@ -1,3 +1,4 @@
+// Over 200 lines: the draft, its result types and the start request built from it form one model.
 // The Waterfall drawer's draft (pure): the result type, the inputs mapped
 // once to the sheet's columns, the ordered steps and the options, and the
 // start request built from it. The result types and their starting inputs
@@ -16,6 +17,7 @@ export interface DraftStep {
   choices: StepChoices
   check: CheckChoices | null     // a check on the value it finds
   toolName?: string              // an enrichment step's tool, as its card shows it
+  sheetName?: string | null      // a lookup step's sheet (null: deleted)
 }
 export interface WaterfallDraft {
   columnName: string
@@ -112,6 +114,7 @@ export function emptyChoices(kind: StepKind, toolId = ''): StepChoices {
   }
   if (kind === 'ai') return { kind, prompt: '', model: null, webSearch: false }
   if (kind === 'formula') return { kind, formula: '' }
+  if (kind === 'lookup') return { kind, sheetId: '', matchColumn: '', mode: 'equals', inputKey: '', returnColumn: '' }
   return { kind, method: 'GET', url: '', headers: {}, body: null, valuePath: '$.', retries: null }
 }
 
@@ -138,6 +141,7 @@ export function fromSetup(s: WaterfallSetup): WaterfallDraft {
       key: keyOf(st.id), id: st.id, label: st.label ?? '', on: st.on, requires: st.requires, choices: st.choices,
       check: st.check ?? null,
       ...(st.id && s.toolNames?.[st.id] ? { toolName: s.toolNames[st.id] } : {}),
+      ...(st.id && s.sheetNames && st.id in s.sheetNames ? { sheetName: s.sheetNames[st.id] } : {}),
     })),
     answeredBy: i.answeredBy, hideStepColumns: i.hideStepColumns, rowsMode: 'all', rowsStatus: 'not_enriched',
     runIf: i.runIf ?? '', spendLimitUsd: null, fresh: i.fresh,
@@ -190,6 +194,9 @@ export function draftProblem(d: WaterfallDraft): string | null {
       return 'Give each HTTP step a URL and the path of its value.'
     }
     if (c.kind === 'formula' && !c.formula.trim()) return 'Write the formula of each formula step.'
+    if (c.kind === 'lookup' && (!c.sheetId || !c.matchColumn || !c.inputKey || !c.returnColumn)) {
+      return 'Pick the sheet, the columns and the input of each lookup step.'
+    }
     if (s.check?.kind === 'formula' && !s.check.formula.trim()) return 'Write the formula of each check.'
     if (s.check?.kind === 'verify' && d.resultType !== 'email') {
       return 'An email check needs the result type Work email.'

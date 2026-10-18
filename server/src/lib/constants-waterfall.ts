@@ -34,3 +34,8 @@ export const WATERFALL_DRY_WAIT_SECONDS = 25;
 // A formula step or check whose worker restarted under it is asked this many times before the row counts
 // as running away (a row that hung is answered "took too long" on the next try).
 export const WATERFALL_FORMULA_ROW_TRIES = 3;
+// An index of another sheet's column that only waterfall lookup steps read is let go once no waterfall
+// column's newest run reads it, and never in its first WATERFALL_LOOKUP_GRACE_MINUTES (a run starting
+// on it may not be in the list yet). That list is read again at most every WATERFALL_LOOKUP_NEEDS_MS.
+export const WATERFALL_LOOKUP_GRACE_MINUTES = 10;
+export const WATERFALL_LOOKUP_NEEDS_MS = 60_000;

@@ -27,6 +27,7 @@ const STEP_KEYS: Record<string, string[]> = {
   ai: ['prompt', 'model', 'web_search'],
   http: ['method', 'url', 'headers', 'body', 'value_path', 'retries'],
   formula: ['formula'],
+  lookup: ['other_sheet_id', 'match_column', 'match', 'input', 'return_column'],
 };
 const COMMON = ['id', 'label', 'on', 'requires', 'kind', 'check'];
 // Which of a continued column's rows run: run_enrichment's words, or control_run's.
@@ -59,7 +60,7 @@ function stepOf(v: unknown, i: number): { ok: Json } | { error: string } {
   if (!isObj(v)) return { error: `${where} must be an object.` };
   const kind = typeof v.kind === 'string' ? v.kind : '';
   const own = STEP_KEYS[kind];
-  if (!own) return { error: `${where}.kind is enrichment, ai, http or formula.` };
+  if (!own) return { error: `${where}.kind is enrichment, ai, http, formula or lookup.` };
   const stray = strayKey(v, [...COMMON, ...own], where);
   if (stray) return { error: stray };
   const choices: Json = kind === 'enrichment' ? {
@@ -67,7 +68,10 @@ function stepOf(v: unknown, i: number): { ok: Json } | { error: string } {
     skipProviders: v.skip_providers, stopAtFirst: v.stop_at_first, maxCostUsd: v.max_cost_usd,
   } : kind === 'ai' ? { kind, prompt: v.prompt, model: v.model, webSearch: v.web_search }
     : kind === 'formula' ? { kind, formula: v.formula }
-      : {
+      : kind === 'lookup' ? {
+        kind, sheetId: v.other_sheet_id, matchColumn: v.match_column, mode: v.match, inputKey: v.input,
+        returnColumn: v.return_column,
+      } : {
         kind, method: v.method, url: v.url, headers: v.headers, body: v.body, valuePath: v.value_path,
         retries: v.retries,
       };

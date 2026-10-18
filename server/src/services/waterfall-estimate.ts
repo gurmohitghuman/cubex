@@ -93,7 +93,8 @@ export async function estimateWaterfall(
       + 'a step with no record counts as never answering, so the real cost is usually lower.',
   ];
   if (on.some(s => s.built.kind === 'enrichment')) {
-    notes.push('Rows whose lookup an earlier run already found cost nothing (answers are reused), so they cost less.');
+    notes.push('Rows an earlier run already found with the same tool and inputs cost nothing (answers are reused), '
+      + 'so they cost less.');
   }
   if (on.some(s => s.built.kind === 'enrichment' && s.built.capUsd === null)) {
     notes.push('A step runs on your own provider key: the provider bills it, so it isn\'t counted here.');

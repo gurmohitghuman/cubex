@@ -3,15 +3,17 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, FlaskConical, GripVertic
 import type { ResultType } from '@/utils/api/waterfall'
 import { Switch } from '@/components/enrich-modal/ProviderItem'
 import type { DraftInput, DraftStep } from './draft'
-import { KIND_LABEL, defaultNeeds, stepSummary } from './step-copy'
+import { KIND_LABEL, defaultNeeds, labelHint, stepSummary } from './step-copy'
 import { RequiresField } from './RequiresField'
 import { EnrichStepEditor } from './EnrichStepEditor'
 import { AiStepEditor } from './AiStepEditor'
 import { HttpStepEditor } from './HttpStepEditor'
 import { FormulaField } from './FormulaField'
+import { LookupStepEditor } from './LookupStepEditor'
 import { CheckField } from './CheckField'
 
 interface Props {
+  sheetId: string
   step: DraftStep
   index: number
   count: number
@@ -70,7 +72,7 @@ export const StepCard: React.FC<Props> = (p) => {
         <div className="border-t border-gray-100 px-3 py-2 space-y-3">
           <label className="block space-y-1">
             <span className="meta-label">Label (what &quot;answered by&quot; shows)</span>
-            <input className="input w-full" value={step.label} placeholder={stepSummary(step)} aria-label="Step label"
+            <input className="input w-full" value={step.label} placeholder={labelHint(step)} aria-label="Step label"
               maxLength={60} onChange={e => p.onChange({ ...step, label: e.target.value })} />
           </label>
           {c.kind === 'enrichment' && (
@@ -88,6 +90,12 @@ export const StepCard: React.FC<Props> = (p) => {
             <FormulaField formula={c.formula} names={inputs.map(i => i.key)} label="Step formula"
               placeholder='{{first_name}}.toLowerCase() + "@" + {{domain}}'
               onChange={formula => p.onChange({ ...step, choices: { kind: 'formula', formula } })} />
+          )}
+          {c.kind === 'lookup' && (
+            <LookupStepEditor sheetId={p.sheetId} choices={c} inputs={inputs} resultLabel={p.resultLabel}
+              onChange={(choices, sheetName) => p.onChange({
+                ...step, choices, ...(sheetName !== undefined ? { sheetName } : {}),
+              })} />
           )}
           <RequiresField requires={step.requires} inputs={inputs} defaultText={defaultNeeds(step, inputs)}
             onChange={requires => p.onChange({ ...step, requires })} />

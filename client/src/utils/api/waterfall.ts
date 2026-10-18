@@ -6,7 +6,7 @@ import { api } from './client'
 const noServerToast = { skipServerErrorToast: true } as const
 
 export type ResultType = 'email' | 'phone' | 'domain' | 'linkedin_url' | 'url' | 'text'
-export type StepKind = 'enrichment' | 'ai' | 'http' | 'formula'
+export type StepKind = 'enrichment' | 'ai' | 'http' | 'formula' | 'lookup'
 export type RowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed'
 export type InputSource = { column: string } | { value: string }
 
@@ -21,7 +21,12 @@ export interface HttpChoices {
   retries: number | null
 }
 export interface FormulaChoices { kind: 'formula'; formula: string }
-export type StepChoices = EnrichmentChoices | AiChoices | HttpChoices | FormulaChoices
+// Another sheet's column matched against one input; the answer is returnColumn of the first matching row.
+export interface LookupChoices {
+  kind: 'lookup'; sheetId: string; matchColumn: string; mode: 'equals' | 'contains'; inputKey: string
+  returnColumn: string
+}
+export type StepChoices = EnrichmentChoices | AiChoices | HttpChoices | FormulaChoices | LookupChoices
 export type EmailAccept = 'safest' | 'balanced' | 'wide'
 // A check on the value a step finds: treg's email verify, or a formula over {{value}} (truthy passes).
 export type CheckChoices = { kind: 'verify'; accept: EmailAccept } | { kind: 'formula'; formula: string }
@@ -73,6 +78,7 @@ export interface WaterfallSetup {
   activeRunId: string | null
   autoRun: boolean
   toolNames: Record<string, string>
+  sheetNames?: Record<string, string | null>   // a lookup step's sheet as it's named now (null: deleted)
 }
 
 export interface WaterfallStarted { runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number }

@@ -23,6 +23,7 @@ import { STOP, type StepResult, type StepRun } from './waterfall-step-types';
 import { formulaStep } from './waterfall-step-check';
 import { checkValue, type RowVerdicts } from './waterfall-row-check';
 import type { RunFormulas } from './waterfall-formulas';
+import type { RunLookups } from './waterfall-step-lookup';
 import { keptBody, writeWaterfallRow, type AnswerOf } from './waterfall-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -38,6 +39,7 @@ export interface WaterfallRowCtx {
   allowSavedKeys: boolean;
   columns: () => string[];            // the sheet's column registry, read at most once a second
   formulas: RunFormulas;              // formula steps and checks, opened once for the run
+  lookups: RunLookups;                // lookup steps: the other sheet's index, names read again
 }
 
 async function callStep(c: WaterfallRowCtx, step: WaterfallStep, row: RunRow, inputs: Record<string, string>)
@@ -65,6 +67,7 @@ async function callStep(c: WaterfallRowCtx, step: WaterfallStep, row: RunRow, in
   if (ch.kind === 'formula' && step.built.kind === 'formula') {
     return formulaStep({ w, stepId: step.id, built: step.built, inputs, formulas: c.formulas });
   }
+  if (ch.kind === 'lookup') return c.lookups.run({ w, step, given: ch, inputs, halt: c.halt });
   return { outcome: 'error', value: '', detail: `${ch.kind} steps can't run here yet.`, costUsd: 0 };
 }
 

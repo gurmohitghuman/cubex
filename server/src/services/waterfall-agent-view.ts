@@ -34,7 +34,10 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
         return { ...base, kind: c.kind, method: c.method, ...shown, value_path: c.valuePath, retries: c.retries };
       }
       if (c.kind === 'formula') return { ...base, kind: c.kind, formula: c.formula };
-      return { ...base, kind: c.kind };
+      return {
+        ...base, kind: c.kind, other_sheet_id: c.sheetId, match_column: c.matchColumn, match: c.mode,
+        input: c.inputKey, return_column: c.returnColumn,
+      };
     }),
     answered_by_column: s.columns.answeredBy, step_columns: s.columns.steps,
     hide_step_columns: i.hideStepColumns, run_if: i.runIf, fresh: i.fresh,

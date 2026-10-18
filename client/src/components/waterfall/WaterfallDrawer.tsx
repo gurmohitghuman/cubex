@@ -165,7 +165,7 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
                 <InputsSection inputs={draft.inputs} columns={columns} onChange={inputs => update({ inputs })} />
               </Section>
               <Section title="Steps">
-                <StepsSection steps={draft.steps} inputs={draft.inputs} resultType={draft.resultType}
+                <StepsSection sheetId={sheetId} steps={draft.steps} inputs={draft.inputs} resultType={draft.resultType}
                   resultLabel={resultLabel(draft.resultType)} onChange={steps => update({ steps })}
                   onTest={runnable ? only => setConfirm({ kind: 'dry', only }) : undefined} />
               </Section>

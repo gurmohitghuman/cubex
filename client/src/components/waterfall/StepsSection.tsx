@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { Bot, DatabaseZap, FunctionSquare, Globe } from 'lucide-react'
+import { Bot, DatabaseZap, FunctionSquare, Globe, TableProperties } from 'lucide-react'
 import type { ResultType, StepKind } from '@/utils/api/waterfall'
 import { emptyChoices, moveStep, newStep, type DraftInput, type DraftStep } from './draft'
 import { StepCard } from './StepCard'
 
 interface Props {
+  sheetId: string
   steps: DraftStep[]
   inputs: DraftInput[]
   resultType: ResultType
@@ -16,7 +17,9 @@ interface Props {
 // The steps in order: each row tries them top to bottom and stops at the
 // first answer. Drag a step (or use its arrows) to reorder, switch one off to
 // skip it. A new step opens for its setup.
-export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resultLabel, onChange, onTest }) => {
+export const StepsSection: React.FC<Props> = (
+  { sheetId, steps, inputs, resultType, resultLabel, onChange, onTest },
+) => {
   const [open, setOpen] = useState<string | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
@@ -33,8 +36,8 @@ export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resul
       )}
       <ol className="space-y-1">
         {steps.map((s, i) => (
-          <StepCard key={s.key} step={s} index={i} count={steps.length} open={open === s.key} inputs={inputs}
-            resultType={resultType} resultLabel={resultLabel} dragOver={over === i && dragging !== i}
+          <StepCard key={s.key} sheetId={sheetId} step={s} index={i} count={steps.length} open={open === s.key}
+            inputs={inputs} resultType={resultType} resultLabel={resultLabel} dragOver={over === i && dragging !== i}
             onToggleOpen={() => setOpen(open === s.key ? null : s.key)} onChange={next => set(i, next)}
             onRemove={() => onChange(steps.filter((_, k) => k !== i))}
             onMove={d => onChange(moveStep(steps, i, i + d))}
@@ -63,6 +66,10 @@ export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resul
         <button type="button" className="btn-secondary flex items-center gap-1" onClick={() => add('formula')}
           title="Free: JavaScript over the inputs, such as a guess at an address">
           <FunctionSquare className="h-3 w-3" /> Formula
+        </button>
+        <button type="button" className="btn-secondary flex items-center gap-1" onClick={() => add('lookup')}
+          title="Free: the value from another sheet's matching row">
+          <TableProperties className="h-3 w-3" /> Lookup
         </button>
       </div>
     </div>

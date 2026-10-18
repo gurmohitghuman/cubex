@@ -112,6 +112,12 @@ function snapshotRowIds(sheetId: string, userId: string): Float64Array {
   return Float64Array.from(new Set(ids)).sort();
 }
 
+// A job thread that built keys for a waterfall run lets every snapshot go when
+// the run ends (a later build reads its rows again).
+export function forgetBuildRows(): void {
+  buildRows.clear();
+}
+
 // Snapshots of sources no longer building (dropped, or replaced) are let go.
 function pruneBuildRows(): void {
   if (buildRows.size === 0) return;

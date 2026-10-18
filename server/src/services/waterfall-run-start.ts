@@ -25,6 +25,7 @@ import { getOpenRouterApiKey } from './openrouter';
 import type { RunFail } from './run-shared';
 import { activeRunOn, prepareWaterfallStart, seedPlanFor, type PreparedWaterfall } from './waterfall-run-prepare';
 import { hideInViews } from './waterfall-views';
+import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
 
 export interface WaterfallStarted {
   runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number;
@@ -84,6 +85,7 @@ export async function startWaterfallRun(
         raced = 'Another run just started on these columns. Try again in a moment.';
         return;
       }
+      if (lookupStepsMoved(p.config, userId)) { raced = LOOKUP_MOVED; return; }
       const moved = input.rowGeneration !== null && generationOf(sheetId, userId) !== input.rowGeneration;
       if (input.rows.mode === 'selected' && moved) {
         raced = 'This sheet was reordered elsewhere. Reload before running selected rows.';
