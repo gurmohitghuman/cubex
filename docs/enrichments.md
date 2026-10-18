@@ -181,7 +181,7 @@ Other things that affect cost:
 - **Always call again** calls treg for every row: no answer from an earlier run is reused, and treg is asked not to answer from its own store of earlier lookups. Without it, treg can also answer a repeat lookup from that store, which can be cheaper.
 - Providers on your team's own keys at treg bill your team directly. Cubex can't estimate those calls, and no Cubex limit covers them. If treg does charge for one (for example, it starts pricing the tool), that charge counts toward your daily limit, and the run pauses once the day's charges reach it.
 
-To see what you spent: the run screen shows each row's cost, the status column's header shows what the column spent when you hover it, and **Settings → Enrichment → Spending on enrichments** shows the last 7, 30 or 90 days by column.
+To see what you spent: the run screen shows each row's cost, the status column's header shows what the column spent when you hover it, and **Settings → Enrichment → Spending on enrichments** shows the last 7, 30 or 90 days by column. A sheet's **Usage** button shows what its runs ran and cost (AI, HTTP API and enrichment columns, deleted ones too) by column, day or run, for this week, this month, last week, last month or days you pick, and downloads it as CSV.
 
 ## Auto-run
 
