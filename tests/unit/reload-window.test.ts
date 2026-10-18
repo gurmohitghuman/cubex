@@ -2,7 +2,9 @@
 // which rows a silent reload refetches, how pages combine, and how a deep slice
 // merges into the held rows. Pure: no DB, no network. Value imports are
 // relative (tsx has no "@/" alias).
-import { planWindowReload, fetchWindow, mergeReloadedWindow } from '../../client/src/hooks/sheet/reloadWindow'
+import {
+  planWindowReload, fetchWindow, mergeReloadedWindow, commitMergedWindow,
+} from '../../client/src/hooks/sheet/reloadWindow'
 import {
   INITIAL_ROW_LOAD, SILENT_RELOAD_MAX_ROWS, SILENT_RELOAD_LEAD_ROWS, SILENT_RELOAD_PAGE_ROWS,
 } from '../../client/src/lib/constants'
@@ -27,7 +29,7 @@ async function main() {
   // --- planWindowReload
   const p = planWindowReload
   check('a window that fits is refetched whole from the top (keeping a mid-reload page)',
-    JSON.stringify(p(600, 400)) === '{"offset":0,"limit":600,"keepTail":true}')
+    JSON.stringify(p(600, 400)) === '{"offset":0,"limit":600,"keepTail":true,"windowStart":0}')
   check('never below the first-page floor', p(10, 0).limit === INITIAL_ROW_LOAD)
   check('the user\'s case (2,300 held, viewport 1,500): all of it, from the top',
     p(2300, 1500).offset === 0 && p(2300, 1500).limit === 2300)
@@ -91,6 +93,48 @@ async function main() {
       .data.rows.length === 9000)
   check('an empty slice → empty window', mergeReloadedWindow(prev, sheet([]), deepAt(5750)).data.rows.length === 0)
   check('no previous data → empty window', mergeReloadedWindow(null, fresh, deepAt(5750)).data.rows.length === 0)
+
+  // --- a window that starts deep (search jumped there): places stay places in the view
+  const at = (d: SheetData, start: number) => ({ ...d, data: { ...d.data, windowStart: start } })
+  check('a deep window that fits is refetched whole from its own start',
+    JSON.stringify(p(5600, 400, 5000)) === '{"offset":5000,"limit":600,"keepTail":true,"windowStart":5000}')
+  check('a short deep window (the sheet\'s end) still asks for the first-page floor',
+    p(5010, 0, 5000).offset === 5000 && p(5010, 0, 5000).limit === INITIAL_ROW_LOAD)
+  check('a big deep window, viewport deep in it: a slice around the viewport',
+    p(17000, 6000, 5000).offset === 5000 + 6000 - SILENT_RELOAD_LEAD_ROWS)
+  check('…and the slice stays inside the held window',
+    p(17000, 11990, 5000).offset === 17000 - SILENT_RELOAD_MAX_ROWS)
+  const held = at(sheet(range(5000, 5600)), 5000)
+  const whole = mergeReloadedWindow(held, sheet(range(5000, 5600), {}, 'new'),
+    { offset: 5000, limit: 600, keepTail: true, windowStart: 5000 })
+  check('a whole deep window replaced keeps its start',
+    whole.data.windowStart === 5000 && whole.data.rows.length === 600 && val(whole, 5100) === 'new5100')
+  const bigHeld = at(sheet(range(5000, 17000)), 5000)
+  const slice = mergeReloadedWindow(bigHeld, sheet(range(10750, 14750), {}, 'new'),
+    { offset: 10750, limit: SILENT_RELOAD_MAX_ROWS, keepTail: false, windowStart: 5000 })
+  check('a deep slice of a deep window: rows above it kept, start kept',
+    slice.data.windowStart === 5000 && slice.data.rows[0].rowIndex === 5000 && val(slice, 6000) === 'old6000'
+      && val(slice, 11000) === 'new11000' && !idx(slice).includes(16000))
+  const moved = at(sheet(range(0, 300)), 0)
+  check('a reload planned for a window that moved meanwhile leaves the held rows alone',
+    mergeReloadedWindow(moved, sheet(range(5000, 5600), {}, 'new'),
+      { offset: 5000, limit: 600, keepTail: true, windowStart: 5000 }) === moved)
+
+  const gone = mergeReloadedWindow(at(sheet(range(5000, 5600)), 5000), sheet([]),
+    { offset: 5000, limit: 600, keepTail: true, windowStart: 5000 })
+  check('a deep window that comes back empty (rows deleted below its start) is an empty window at the top',
+    gone.data.rows.length === 0 && gone.data.windowStart === 0)
+  // commitMergedWindow: a window that moved meanwhile keeps its rows and asks for a new reload.
+  let state: SheetData | null = at(sheet(range(0, 300)), 0), loaded = 300, asked = 0
+  type Up<T> = T | ((p: T) => T)
+  const apply = <T,>(u: Up<T>, v: T): T => (typeof u === 'function' ? (u as (p: T) => T)(v) : u)
+  const setData = (u: Up<SheetData | null>) => { state = apply(u, state) }
+  const setLoaded = (u: Up<number>) => { loaded = apply(u, loaded) }
+  commitMergedWindow(setData as never, setLoaded as never, sheet(range(5000, 5600), {}, 'new'),
+    { offset: 5000, limit: 600, keepTail: true, windowStart: 5000 }, () => { asked++ })
+  await new Promise(resolve => setTimeout(resolve, 5))
+  check('a reload for a window that moved is dropped and planned again',
+    asked === 1 && idx(state!)[0] === 0 && loaded === 300)
 
   if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nok   reload window')

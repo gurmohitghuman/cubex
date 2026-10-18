@@ -30,6 +30,7 @@ interface Props {
   onEmptyFilterChange: React.ComponentProps<typeof SheetGrid>['onEmptyFilterChange']
   onColumnFilterChange: React.ComponentProps<typeof SheetGrid>['onColumnFilterChange']
   loadMoreData: React.ComponentProps<typeof SheetGrid>['onLoadMore']
+  loadEarlierData: React.ComponentProps<typeof SheetGrid>['onLoadEarlier']
   columnOps: ReturnType<typeof useColumnOps>
   cellOps: ReturnType<typeof useCellOps>
   view: ReturnType<typeof useSheetView>
@@ -95,6 +96,8 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           onColumnReorder={columnOps.handleColumnReorder}
           onAddColumn={() => modals.setShowNewColumnModal(true)}
           registerClearSelection={grid.registerClearSelection} registerViewport={grid.registerViewport}
+          windowStart={sheetData?.data.windowStart ?? 0} onLoadEarlier={p.loadEarlierData}
+          onOpenSearch={grid.openSearch} registerSearch={grid.registerSearch}
           onOpenEnrichment={modals.openEnrichment} onSaveSetup={modals.openSaveSetup}
           setShowAddColumnModal={modals.setShowAddColumnModal}
           setupSSEConnection={sse.setupSSEConnection}

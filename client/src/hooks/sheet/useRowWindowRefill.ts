@@ -41,7 +41,11 @@ export function useRowWindowRefill(
   useEffect(() => {
     if (!activeSheet || isLoading || !sheetData || inFlightRef.current) return
     const { rows, totalRows } = sheetData.data
-    if (rows.length >= totalRows || rows.length >= INITIAL_ROW_LOAD) {
+    // A window search moved deep into the sheet ends where the sheet does
+    // (and an empty one is only fine on an empty sheet).
+    const start = sheetData.data.windowStart ?? 0
+    const reachesEnd = start + rows.length >= totalRows && (rows.length > 0 || totalRows === 0)
+    if (reachesEnd || rows.length >= INITIAL_ROW_LOAD) {
       // Window is healthy (everything loaded, or tall enough to scroll) — clear
       // the guard so a FUTURE shrunken-window event (another delete) can refill.
       attemptedRef.current = null

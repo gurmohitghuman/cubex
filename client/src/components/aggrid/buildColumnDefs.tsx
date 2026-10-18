@@ -4,6 +4,7 @@ import { ColumnHeaderWithDelete } from '../ColumnHeaderWithDelete'
 import { LoadingCellRenderer } from '../LoadingCellRenderer'
 import { WebhookMarkerCell } from '../webhook/WebhookMarkerCell'
 import { AddColumnHeader } from '../AddColumnHeader'
+import { SEARCH_HIT_RULES, type GridContext } from './gridOptions'
 import type { ColumnType } from '@/utils/api/types'
 import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
@@ -37,7 +38,12 @@ interface BuildColumnDefsArgs {
   hiddenColumns?: ReadonlySet<string>
   // Lookup columns' setups: the header's lookup icon and its hover note.
   lookupColumns?: Record<string, LookupColumnView>
+  // Digits of the largest row number held: the "#" column's width (a deep window's are long).
+  rowNumberDigits?: number
 }
+
+// Room for a row number of `digits` digits (40 px holds up to three).
+export const rowNumberWidth = (digits: number): number => Math.max(40, 16 + digits * 8)
 
 // Build the colDef array AG Grid renders from. Extracted from AGGridSpreadsheet so the
 // parent component stays under the 200-line cap.
@@ -49,17 +55,18 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
     emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns, hiddenColumns,
-    lookupColumns,
+    lookupColumns, rowNumberDigits = 1,
   } = args
 
   const rowNumbersColumn: ColDef = {
     headerName: '#',
     field: '__rowNumber',
-    width: 40, minWidth: 35, maxWidth: 45,
+    width: rowNumberWidth(rowNumberDigits), minWidth: 35, maxWidth: 90,
     pinned: 'left',
     suppressMovable: true, lockPinned: true,
     resizable: false, sortable: false, filter: false, editable: false,
-    cellRenderer: (params: any) => params.node.rowIndex + 1,
+    // The row's place in the view: the held window can start deep (search jumped).
+    cellRenderer: (params: any) => params.node.rowIndex + 1 + ((params.context as GridContext)?.windowStart ?? 0),
     cellStyle: {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontWeight: '500', color: '#6b7280', fontSize: '12px',
@@ -137,6 +144,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
       // Webhook marker column uses its own read-only renderer (marker or muted —);
       // every other column uses the standard loading/typing renderer.
       cellRenderer: isWebhookSource ? WebhookMarkerCell : LoadingCellRenderer,
+      cellClassRules: SEARCH_HIT_RULES,
       cellStyle: (params: any) => {
         const value = params.value || ''
         const style: any = {}

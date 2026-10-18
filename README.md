@@ -58,7 +58,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **Remove duplicates, free.** Find rows that repeat an email, a domain, a phone number, a company or any columns you pick, see them before anything goes, and keep the first, last or most filled-in row of each.
 - **Webhooks.** Every JSON event sent to a sheet's secret URL becomes a new row.
 - **Agent access (MCP).** Your agent can do the work for you, with only the permissions you give it. There's also a REST API.
-- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), up to a million rows per sheet.
+- **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, or a run's state, like the rows that failed), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
 
 **Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, and treg.to ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
 
@@ -218,6 +218,12 @@ A row missing a value in any column you picked always stays, and so does one whe
 A view saves what you're looking at: its filters and which columns are hidden. Every sheet starts with a **Default** view. Use the bar above the grid to switch views, to add one (it starts as a copy of the one showing), or to rename, describe or delete one. Hide a column from its menu (**Hide column**) or from the **12/15 columns** picker; hiding never deletes anything, and every view shares the same rows and column order.
 
 Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows`, `export_csv` and the REST API take its name.
+
+### Search
+
+Press **/** (or Cmd/Ctrl+F) on the grid, or click **Search** in the bar above it, and type: the grid jumps to the first cell that contains your text (case doesn't matter) and highlights it. **Enter** goes to the next match and **Shift+Enter** to the previous one, round and round, and the box shows where you are ("3 of 1,240"; past 10,000 it says "10,000+"). Search goes through the whole sheet, not only the rows on screen, and follows the view: its filters pick the rows and its hidden columns are skipped. A run's own words (⏳, ❌, ⏭️) never match.
+
+The **Is any of** filter lists a column's most common values with how many rows hold each. Narrow the list by typing, tick the ones you want, or type a value that isn't listed and press Enter.
 
 ### Setups
 

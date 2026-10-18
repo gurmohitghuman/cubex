@@ -34,6 +34,7 @@ import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
 import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { useSheetViews } from '@/hooks/sheet/useSheetViews'
+import { useSheetSearch } from '@/hooks/sheet/useSheetSearch'
 import { SheetViewBar } from '@/components/views/SheetViewBar'
 import { activeViewOf, rowFilterOf, viewNarrows } from '@/lib/views'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
@@ -65,6 +66,8 @@ export const SheetPage: React.FC = () => {
   // flip (the FullPageLoader swap unmounts the grid — scroll/selection/edits lost).
   // Refreshes the held rows around the viewport without moving it (reloadWindow.ts).
   const silentReloadRef = useRef<(sheetId: string) => Promise<void> | void>(() => {})
+  // A background reload that landed after the held window moved: plan it again.
+  const onWindowMoved = useCallback((id: string) => { void silentReloadRef.current(id) }, [])
 
   // Webhook payload viewer (opened by clicking a read-only webhook marker cell).
   const [webhookPayloadRow, setWebhookPayloadRow] = useState<number | null>(null)
@@ -146,7 +149,7 @@ export const SheetPage: React.FC = () => {
   })
 
   const {
-    loadSheetData, loadMoreData, invalidateInFlightLoads,
+    loadSheetData, loadWindowAt, loadMoreData, loadEarlierData, invalidateInFlightLoads,
     beginStructuralBarrier, endStructuralBarrier, isStructuralBarrierActive,
   } = useSheetLoad({
     setSheetData, setIsLoading, setLoadedRowsCount,
@@ -158,17 +161,21 @@ export const SheetPage: React.FC = () => {
     pendingEditsRef: cellOps.pendingEditsRef,
     recentlySavedRef: cellOps.recentlySavedRef,
     currentSheetIdRef, rowGenerationRef,
-    activeSheet, loadedRowsCount,
+    activeSheet, loadedRowsCount, windowStart: sheetData?.data.windowStart ?? 0, onWindowMoved,
   })
 
   // Keep the forward-references fresh.
   useEffect(() => {
     loadSheetDataRef.current = (id, limit, offset, opts) => loadSheetData(id, limit, offset, opts)
     silentReloadRef.current = (id) => {
-      const { offset, limit, keepTail } = planWindowReload(loadedRowsCount, grid.firstRenderedRow())
-      return loadSheetData(id, limit, offset, { silent: true, keepWindow: true, keepTail })
+      const windowStart = sheetData?.sheet.id === id ? sheetData.data.windowStart ?? 0 : 0
+      const { offset, limit, keepTail } = planWindowReload(loadedRowsCount, grid.firstRenderedRow(), windowStart)
+      return loadSheetData(id, limit, offset, { silent: true, keepWindow: true, keepTail, windowStart })
     }
   })
+
+  // Search in the sheet: the box above the grid, "/" on the grid.
+  const search = useSheetSearch({ sheetData, viewId: views.active?.id ?? null, grid, loadWindowAt })
 
   const view = useSheetView({
     activeSheet, sheetData, emptyFilter,
@@ -253,7 +260,7 @@ export const SheetPage: React.FC = () => {
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <SheetHeader
-        tableName={table?.name} totalRows={totalDisplayedRows} loadedRowsCount={loadedRowsCount}
+        tableName={table?.name} totalRows={totalDisplayedRows} loadedRowsCount={sheetData?.data.rows.length ?? 0}
         columnCount={columnOps.columnHeaders.length} selectedRowCount={cellOps.selectedRowIndices.length}
         isExporting={exporter.isExporting} hasRows={!!sheetData?.data.rows.length}
         saveStatus={cellOps.saveStatus} retrySave={cellOps.retrySave}
@@ -275,11 +282,11 @@ export const SheetPage: React.FC = () => {
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
-      <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} />
+      <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}
-        onColumnFilterChange={onColumnFilterChange} loadMoreData={loadMoreData}
+        onColumnFilterChange={onColumnFilterChange} loadMoreData={loadMoreData} loadEarlierData={loadEarlierData}
         columnOps={columnOps} cellOps={cellOps} view={view} views={views} runs={runs} modals={modals} grid={grid}
         autorun={autorun} sse={sse} rowGenerationRef={rowGenerationRef}
         silentReload={(id) => silentReloadRef.current(id)}

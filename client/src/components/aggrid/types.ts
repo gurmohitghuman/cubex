@@ -109,6 +109,24 @@ export interface AGGridSpreadsheetProps {
   // Registers a getter for the first rendered row (useRegisterViewport), so a
   // background reload refreshes the rows in view. Null on unmount.
   registerViewport?: (get: (() => number | null) | null) => void
+  // The held rows' place in the view (SheetData.data.windowStart): the "#"
+  // column counts from it, and scrolling to its top pages in the rows above.
+  windowStart?: number
+  onLoadEarlier?: (windowStart: number, firstRowIndex: number) => void
+  // "/" or Cmd/Ctrl+F while the grid has focus (and no cell is being edited).
+  onOpenSearch?: () => void
+  // Registers the grid's search handle (useGridSearch). Null on unmount.
+  registerSearch?: (api: GridSearchApi | null) => void
+}
+
+// A cell search found: its row (row_index) and column (name).
+export interface GridSearchTarget { rowIndex: number; column: string }
+export interface GridSearchApi {
+  // Highlight the cell and scroll it into view (null: no highlight). false
+  // when its row isn't held yet: the grid shows it once the rows arrive.
+  show: (target: GridSearchTarget | null) => boolean
+  // The focused cell, with its row's place in the view.
+  focused: () => (GridSearchTarget & { position: number }) | null
 }
 
 // A grid click: the row number the grid shows, and the click count (2 on a double click).

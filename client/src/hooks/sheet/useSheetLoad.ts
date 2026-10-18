@@ -43,6 +43,10 @@ interface UseSheetLoadArgs {
   rowGenerationRef: React.MutableRefObject<Map<string, number>>
   activeSheet: Sheet | null
   loadedRowsCount: number
+  // The held window's start (SheetData.data.windowStart): load-more fits only onto it.
+  windowStart: number
+  // A background reload landed after the window moved: reload again for the window held now.
+  onWindowMoved: (sheetId: string) => void
 }
 
 export const useSheetLoad = ({
@@ -62,6 +66,8 @@ export const useSheetLoad = ({
   rowGenerationRef,
   activeSheet,
   loadedRowsCount,
+  windowStart,
+  onWindowMoved,
 }: UseSheetLoadArgs) => {
   // Monotonic load token. Every loadSheetData call bumps it and captures its own
   // value; before committing fetched data to state it checks the token is still
@@ -96,10 +102,14 @@ export const useSheetLoad = ({
   // (reloadWindow.ts): `limit` may exceed one server page (fetched in pages, all
   // from one data_version or discarded), and a slice at offset > 0 is MERGED into
   // the held rows instead of replacing them, so the viewport doesn't move.
-  const loadSheetData = useCallback(async (
+  //
+  // offset > 0 without keepWindow (silent): search jumping deep into the sheet;
+  // the held window then starts there (SheetData.data.windowStart).
+  // loadRows resolves true when its rows were committed.
+  const loadRows = useCallback(async (
     sheetId: string, limit = INITIAL_ROW_LOAD, offset = 0,
-    opts?: { silent?: boolean; keepWindow?: boolean; keepTail?: boolean },
-  ) => {
+    opts?: { silent?: boolean; keepWindow?: boolean; keepTail?: boolean; windowStart?: number },
+  ): Promise<boolean> => {
     const silent = opts?.silent === true
     const keepWindow = silent && opts?.keepWindow === true
     // Refuse a SILENT dispatch while a structural barrier runs for this sheet —
@@ -110,7 +120,7 @@ export const useSheetLoad = ({
     // stays as defense for requests already in flight when the barrier rises;
     // the barrier's ending loud reload (or deferred silent reload) converges
     // whatever this refused load would have fetched.
-    if (silent && (structuralBarrierRef.current.get(sheetId) ?? 0) > 0) return
+    if (silent && (structuralBarrierRef.current.get(sheetId) ?? 0) > 0) return false
     // Only a SPINNER-OWNING loud load (loud AND targeting the current sheet)
     // claims a new loadGenRef token. Silent refreshes and non-owning loud loads
     // just READ the current one. Rationale: the token invalidates the current
@@ -162,21 +172,24 @@ export const useSheetLoad = ({
     }, 30000) : null
 
     try {
-      const data = keepWindow
+      const fetched = keepWindow
         ? await fetchWindow(sheetsAPI.getData, sheetId, offset, limit)
         : await sheetsAPI.getData(sheetId, limit, offset)
-      if (!data) return // pages straddled a change: the change poll reloads again
+      if (!fetched) return false // pages straddled a change: the change poll reloads again
+      // A jump past the sheet's end (rows deleted since the match was found) shows nothing.
+      if (!keepWindow && offset > 0 && fetched.data.rows.length === 0) return false
+      const data = keepWindow || offset === 0 ? fetched : { ...fetched, data: { ...fetched.data, windowStart: offset } }
       // Discard a superseded or wrong-sheet response: if a later load bumped the
       // token, or the user switched sheets while this fetch was in flight, do NOT
       // commit it — it would clobber the current sheet's state with stale data.
-      if (myGen !== loadGenRef.current || currentSheetIdRef.current !== sheetId) return
+      if (myGen !== loadGenRef.current || currentSheetIdRef.current !== sheetId) return false
       // Discard ANY load (loud or silent) that a newer load has since superseded.
       // Critically this also catches a slow LOUD load returning after a newer
       // SILENT one: loadGenRef wouldn't flag it (silent didn't bump loadGenRef),
       // so without this the loud load re-paints stale data — and after the silent
       // load self-cleaned the recently-saved overlay, that stale paint silently
       // drops a just-acked edit.
-      if (myCommitSeq !== silentSeqRef.current) return
+      if (myCommitSeq !== silentSeqRef.current) return false
       // Refuse SILENT commits while a structural barrier runs for this sheet.
       // A silent load STARTED mid-barrier (run-completion refresh, Stop
       // refetch — not just the change-poll) captures the post-bump commit seq,
@@ -186,7 +199,7 @@ export const useSheetLoad = ({
       // is safe: the barrier ends in a loud reload (which refetches what this
       // load carried), or holds the target generation already. Loud commits
       // stay allowed — the barrier's own recovery reload is loud.
-      if (silent && (structuralBarrierRef.current.get(sheetId) ?? 0) > 0) return
+      if (silent && (structuralBarrierRef.current.get(sheetId) ?? 0) > 0) return false
       // Also refuse a SILENT commit whose payload carries a DIFFERENT
       // row_generation than the tab last committed — the PRE-DISCOVERY window:
       // an external sort can land between this load's dispatch and the change-
@@ -197,13 +210,15 @@ export const useSheetLoad = ({
       // by exactly this unsafe commit). The generation move
       // always reaches the poll, whose fenced loud path owns that transition.
       const heldGen = rowGenerationRef.current.get(sheetId)
-      if (silent && heldGen !== undefined && (data.sheet.row_generation ?? 0) !== heldGen) return
+      if (silent && heldGen !== undefined && (data.sheet.row_generation ?? 0) !== heldGen) return false
       // Silent (background) reloads must not clobber the user's edits — overlay
       // un-flushed + acked-but-not-reloaded values onto the fetched rows, with
       // self-cleaning of reconciled entries (rationale in silentReloadOverlay).
       if (silent) overlayLocalEdits(data, sheetId, pendingEditsRef.current, recentlySavedRef.current)
       if (keepWindow) {
-        commitMergedWindow(setSheetData, setLoadedRowsCount, data, { offset, limit, keepTail: !!opts?.keepTail })
+        commitMergedWindow(setSheetData, setLoadedRowsCount, data,
+          { offset, limit, keepTail: !!opts?.keepTail, windowStart: opts?.windowStart ?? 0 },
+          () => onWindowMoved(sheetId))
       } else setSheetData(data)
 
       applyLoadedView(data, offset,
@@ -217,9 +232,11 @@ export const useSheetLoad = ({
       for (const [label, fn] of sideLoads) {
         try { await fn() } catch (error) { console.error(`⚠️ Failed: ${label}`, error) }
       }
+      return true
     } catch (error: any) {
       console.error('❌ Critical error in loadSheetData:', error)
       toast.error('Failed to load sheet data')
+      return false
     } finally {
       if (loadingTimeout) clearTimeout(loadingTimeout)
       // Only the load that actually SET the spinner may clear it — gate on
@@ -236,11 +253,20 @@ export const useSheetLoad = ({
   }, [
     setSheetData, setIsLoading, setLoadedRowsCount, setColumnOrder,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reconnectToActiveRuns,
-    clearSelection, pendingEditsRef, recentlySavedRef, currentSheetIdRef,
+    clearSelection, pendingEditsRef, recentlySavedRef, currentSheetIdRef, onWindowMoved,
   ])
 
-  const { loadMoreData } = useSheetLoadMore({
-    activeSheet, loadedRowsCount, setSheetData, setLoadedRowsCount,
+  const loadSheetData = useCallback(async (
+    sheetId: string, limit?: number, offset?: number,
+    opts?: { silent?: boolean; keepWindow?: boolean; keepTail?: boolean; windowStart?: number },
+  ): Promise<void> => { await loadRows(sheetId, limit, offset, opts) }, [loadRows])
+  // Search's jump: a fresh window starting `offset` places into the view,
+  // loaded silently (the grid stays mounted). true once it is showing.
+  const loadWindowAt = useCallback((sheetId: string, offset: number, limit: number): Promise<boolean> =>
+    loadRows(sheetId, limit, offset, { silent: true }), [loadRows])
+
+  const { loadMoreData, loadEarlierData } = useSheetLoadMore({
+    activeSheet, loadedRowsCount, windowStart, setSheetData, setLoadedRowsCount,
     currentSheetIdRef, loadGenRef, silentSeqRef,
   })
 
@@ -252,7 +278,7 @@ export const useSheetLoad = ({
   const invalidateInFlightLoads = useCallback(() => { ++silentSeqRef.current }, [])
 
   return {
-    loadSheetData, loadMoreData, invalidateInFlightLoads,
+    loadSheetData, loadWindowAt, loadMoreData, loadEarlierData, invalidateInFlightLoads,
     beginStructuralBarrier, endStructuralBarrier, isStructuralBarrierActive,
   }
 }

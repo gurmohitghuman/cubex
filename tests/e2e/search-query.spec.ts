@@ -1,10 +1,13 @@
+// Over 200 lines: three journeys (grid search, the value picker, the query extras) on shared fixtures.
 import { test, expect, request as pwRequest, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, importCsv, makeAccessToken, BASE } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
 
-// The "is any of" value picker (top values with counts, narrowing, typed
-// values), and read_rows / REST rows/query extras (group_by + aggregates, a
-// value out of a JSON cell, starts_with / ends_with).
+// Search in the grid ("/", Enter, Shift+Enter, "N of M", a match outside the
+// loaded rows moving the grid there, the view's filter and hidden column), the
+// "is any of" value picker (top values with counts, narrowing, typed values),
+// and read_rows / REST rows/query extras (group_by + aggregates, a value out of
+// a JSON cell, starts_with / ends_with).
 
 const shots = process.env.E2E_SHOTS
 const snap = async (page: Page, name: string) => { if (shots) await page.screenshot({ path: `${shots}/${name}.png` }) }
@@ -19,6 +22,101 @@ async function freshSheet(api: APIRequestContext, csv: string) {
     { timeout: 30_000 }).toBeGreaterThan(0)
   return { tableId: table.id as string, sheetId }
 }
+
+const status = (page: Page) => page.getByTestId('search-status')
+const hit = (page: Page) => page.locator('.ag-center-cols-container .cubex-search-hit')
+// The "#" shown on the highlighted cell's row.
+async function hitRowNumber(page: Page): Promise<string> {
+  const rowId = await page.locator('.ag-center-cols-container .ag-row')
+    .filter({ has: page.locator('.cubex-search-hit') }).first().getAttribute('row-id')
+  return (await page.locator(`.ag-pinned-left-cols-container .ag-row[row-id="${rowId}"]`).first().innerText()).trim()
+}
+
+test('search: "/" opens it, Enter walks the matches, a far match moves the grid, the view applies',
+  async ({ page, context }) => {
+  test.setTimeout(180_000)
+  const api = await authedApi()
+  const lines = ['Name,Tag,Secret']
+  for (let i = 0; i < 3000; i++) {
+    const tag = i === 10 ? 'Needle one' : i === 20 ? 'a needle two' : i === 2500 ? 'NEEDLE deep'
+      : i === 15 ? '❌ needle failed' : `tag ${i}`
+    lines.push(`row ${i},${tag},${i === 5 ? 'needle hidden' : 'x'}`)
+  }
+  const { tableId, sheetId } = await freshSheet(api, lines.join('\n'))
+  const views = (await (await api.get(`/api/sheets/${sheetId}?limit=1`)).json()).data.views
+  expect((await api.patch(`/api/sheets/${sheetId}/views/${views[0].id}`, { data: { hiddenColumns: ['Secret'] } }))
+    .ok()).toBeTruthy()
+
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${tableId}/${sheetId}`)
+  await page.locator('.ag-center-cols-container .ag-row').first().waitFor()
+  await page.locator('.ag-center-cols-container .ag-cell[col-id^="col_"]').first().click()
+  await page.keyboard.press('/')
+  const box = page.getByLabel('Search the sheet')
+  await expect(box).toBeFocused()
+  await box.fill('needle')
+  // The hidden column and the run's own words never match.
+  await expect(status(page)).toHaveText('1 of 3')
+  await expect(hit(page)).toHaveText('Needle one')
+  expect(await hitRowNumber(page)).toBe('11')
+  await snap(page, 'search-first-match')
+  await box.press('Enter')
+  await expect(status(page)).toHaveText('2 of 3')
+  await expect(hit(page)).toHaveText('a needle two')
+  // Row 2,501 isn't loaded (the grid holds the first rows): the grid moves there.
+  await box.press('Enter')
+  await expect(status(page)).toHaveText('3 of 3')
+  await expect(hit(page)).toHaveText('NEEDLE deep', { timeout: 15_000 })
+  expect(await hitRowNumber(page)).toBe('2501')
+  await snap(page, 'search-far-match')
+  // Round to the first, and back.
+  await box.press('Enter')
+  await expect(status(page)).toHaveText('1 of 3')
+  await expect(hit(page)).toHaveText('Needle one', { timeout: 15_000 })
+  await box.press('Shift+Enter')
+  await expect(status(page)).toHaveText('3 of 3')
+  await expect(hit(page)).toHaveText('NEEDLE deep', { timeout: 15_000 })
+  // Scrolling to the top of a window that starts deep brings the rows above it.
+  await page.locator('.ag-body-viewport').evaluate(el => { el.scrollTop = 0 })
+  await expect.poll(async () => Number((await page.locator('.ag-pinned-left-cols-container .ag-row')
+    .first().innerText()).trim()), { timeout: 15_000 }).toBeLessThan(2400)
+  await box.press('Escape')
+  await expect(hit(page)).toHaveCount(0)
+  await expect(box).toHaveValue('')
+
+  // Through a filtered view: the matches' places are places in the view.
+  expect((await api.put(`/api/sheets/${sheetId}/column-filters`, {
+    data: { columnFilters: { Tag: { type: 'contains', value: 'needle' } } } })).ok()).toBeTruthy()
+  await page.reload()
+  await page.locator('.ag-center-cols-container .ag-row').first().waitFor()
+  await box.fill('deep')
+  await expect(status(page)).toHaveText('1 of 1')
+  expect(await hitRowNumber(page)).toBe('4')
+  expect((await api.put(`/api/sheets/${sheetId}/column-filters`, { data: { columnFilters: null } })).ok()).toBeTruthy()
+
+  // Rows deleted elsewhere under a window that starts deep: the grid goes back to the top, not to an empty sheet.
+  await page.reload()
+  await page.locator('.ag-center-cols-container .ag-row').first().waitFor()
+  await box.fill('deep')
+  await expect(hit(page)).toHaveText('NEEDLE deep', { timeout: 15_000 })
+  // An agent deletes rows 1,000 to 2,999 (the open tab hears of it through its change poll).
+  const token = await makeAccessToken(api, ['read', 'write'], 'search-delete')
+  const v1 = await pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { Authorization: `Bearer ${token}` } })
+  const ids: string[] = []
+  for (let cursor: number | null = 999; cursor !== null && ids.length < 2000;) {
+    const page1 = await (await v1.post(`/api/v1/sheets/${sheetId}/rows/query`,
+      { data: { cursor, limit: 500, return_mode: 'ids' } })).json()
+    ids.push(...page1.rows.map((r: { id: string }) => r.id))
+    cursor = page1.next_cursor
+  }
+  for (let i = 0; i < ids.length; i += 1000) {
+    expect((await v1.post(`/api/v1/sheets/${sheetId}/rows/delete`, { data: { row_ids: ids.slice(i, i + 1000) } }))
+      .ok()).toBeTruthy()
+  }
+  await expect.poll(async () => (await page.locator('.ag-pinned-left-cols-container .ag-row').first().innerText())
+    .trim(), { timeout: 30_000 }).toBe('1')
+  await expect(page.getByText('Import a CSV')).toHaveCount(0)
+})
 
 test('"is any of" offers the column\'s values with counts, narrows them, and takes typed values',
   async ({ page, context }) => {

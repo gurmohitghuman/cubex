@@ -16,23 +16,31 @@ import {
 // scroll-end page offset is an ordinal). Only a viewport deeper than
 // SILENT_RELOAD_MAX_ROWS allows refetches a slice around it and merges it in.
 
+// A window can also start deeper (windowStart > 0): search jumped there, and
+// rows above it page in as the user scrolls up. Offsets stay places in the
+// view; the held rows are windowStart..loaded-1, and rows[i] is place
+// windowStart + i.
+//
 // keepTail: the plan covers the WHOLE held window, so any rows held beyond it at
 // commit time were paged in by a scroll-end load that landed mid-reload (the
 // user is looking at them): keep those instead of cutting them off.
-export interface ReloadWindow { offset: number; limit: number; keepTail: boolean }
+// windowStart: the held window's start the plan was made for.
+export interface ReloadWindow { offset: number; limit: number; keepTail: boolean; windowStart?: number }
 
-// Which rows to refetch: the whole held window when it fits; else from the top
-// through the viewport (held rows further down are dropped and page back in on
-// scroll); else, for a very deep viewport, a slice around it.
-export function planWindowReload(loaded: number, firstRendered: number | null): ReloadWindow {
-  const want = Math.max(INITIAL_ROW_LOAD, loaded)
-  if (want <= SILENT_RELOAD_MAX_ROWS) return { offset: 0, limit: want, keepTail: true }
+// Which rows to refetch: the whole held window when it fits; else from its
+// top through the viewport (held rows further down are dropped and page back in
+// on scroll); else, for a very deep viewport, a slice around it.
+// firstRendered: the grid's first rendered row, counted within the held rows.
+export function planWindowReload(loaded: number, firstRendered: number | null, windowStart = 0): ReloadWindow {
+  const held = loaded - windowStart
+  const want = Math.max(INITIAL_ROW_LOAD, held)
+  if (want <= SILENT_RELOAD_MAX_ROWS) return { offset: windowStart, limit: want, keepTail: true, windowStart }
   const first = Math.max(0, firstRendered ?? 0)
   if (first + SILENT_RELOAD_BELOW_ROWS <= SILENT_RELOAD_MAX_ROWS) {
-    return { offset: 0, limit: SILENT_RELOAD_MAX_ROWS, keepTail: false }
+    return { offset: windowStart, limit: SILENT_RELOAD_MAX_ROWS, keepTail: false, windowStart }
   }
-  const offset = Math.min(Math.max(0, first - SILENT_RELOAD_LEAD_ROWS), loaded - SILENT_RELOAD_MAX_ROWS)
-  return { offset, limit: SILENT_RELOAD_MAX_ROWS, keepTail: false }
+  const offset = windowStart + Math.min(Math.max(0, first - SILENT_RELOAD_LEAD_ROWS), held - SILENT_RELOAD_MAX_ROWS)
+  return { offset, limit: SILENT_RELOAD_MAX_ROWS, keepTail: false, windowStart }
 }
 
 type GetData = (sheetId: string, limit: number, offset: number) => Promise<SheetData>
@@ -76,36 +84,54 @@ const sameView = (prev: SheetData | null, fresh: SheetData): prev is SheetData =
 //    that ordinal (a delete above shifts it). Otherwise hand back an empty
 //    window: useRowWindowRefill then loud-reloads from the top. Known limit:
 //    held rows above a deep slice keep their values until a reload from the top.
+//  - A window moved meanwhile (search jumped, rows above paged in): the reload
+//    is for rows no longer held, so `prev` stays as it is and the caller plans
+//    a new reload (commitMergedWindow's onMoved).
+//  - An empty result is an empty window at the top (windowStart 0), so
+//    useRowWindowRefill reloads from the top: a deep window can come back
+//    empty after rows were deleted below its start.
 export function mergeReloadedWindow(
   prev: SheetData | null, fresh: SheetData, plan: ReloadWindow,
 ): SheetData {
+  const start = plan.windowStart ?? 0
+  if (windowMoved(prev, fresh, plan)) return prev!
   const rows = fresh.data.rows
-  const withRows = (kept: SheetData['data']['rows']) => ({ ...fresh, data: { ...fresh.data, rows: kept } })
-  if (plan.offset === 0) {
-    if (!plan.keepTail || !sameView(prev, fresh) || rows.length !== plan.limit || rows.length === 0) return fresh
+  const withRows = (kept: SheetData['data']['rows']) =>
+    ({ ...fresh, data: { ...fresh.data, rows: kept, windowStart: kept.length ? start : 0 } })
+  if (plan.offset === start) {
+    if (!plan.keepTail || !sameView(prev, fresh) || rows.length !== plan.limit || rows.length === 0) {
+      return withRows(rows)
+    }
     const last = rows[rows.length - 1].rowIndex
     const tail = prev.data.rows.slice(plan.limit).filter(r => r.rowIndex > last)
-    return tail.length ? withRows([...rows, ...tail]) : fresh
+    return withRows(tail.length ? [...rows, ...tail] : rows)
   }
+  const at = plan.offset - start
   const freshCols = new Set(fresh.data.columns)
   const fits = sameView(prev, fresh) && prev.data.columns.every(c => freshCols.has(c))
-    && rows.length > 0 && prev.data.rows[plan.offset]?.rowIndex === rows[0].rowIndex
-  return withRows(fits ? [...prev.data.rows.slice(0, plan.offset), ...rows] : [])
+    && rows.length > 0 && prev.data.rows[at]?.rowIndex === rows[0].rowIndex
+  return withRows(fits ? [...prev.data.rows.slice(0, at), ...rows] : [])
 }
 
 // Commit a merged reload. loadedRowsCount (the scroll-end page offset) must equal
-// the merged window's length: computed inside the setSheetData updater and read
+// the merged window's end (its start plus its length): computed inside the setSheetData updater and read
 // from the setLoadedRowsCount updater — both queued here on the same component,
 // so React runs them in order (same pattern and rationale as useRowOps' delete).
+const windowMoved = (prev: SheetData | null, fresh: SheetData, plan: ReloadWindow): boolean =>
+  !!prev && prev.sheet.id === fresh.sheet.id && (prev.data.windowStart ?? 0) !== (plan.windowStart ?? 0)
+
+// onMoved: the held window moved while the reload was on its way; the caller
+// reloads again for the window held now (else that change would wait for the next one).
 export function commitMergedWindow(
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>,
   setLoadedRowsCount: React.Dispatch<React.SetStateAction<number>>,
-  fresh: SheetData, plan: ReloadWindow,
+  fresh: SheetData, plan: ReloadWindow, onMoved?: () => void,
 ): void {
   let mergedCount: number | null = null
   setSheetData(prev => {
+    if (onMoved && windowMoved(prev, fresh, plan)) setTimeout(onMoved, 0)
     const next = mergeReloadedWindow(prev, fresh, plan)
-    mergedCount = next.data.rows.length
+    mergedCount = (next.data.windowStart ?? 0) + next.data.rows.length
     return next
   })
   setLoadedRowsCount(prev => mergedCount ?? prev)

@@ -56,6 +56,10 @@ export interface SheetData {
     rows: Array<{ rowIndex: number; data: Record<string, string> }>
     columns: string[]
     totalRows: number
+    // Client-side, never sent by the server: the place in the view (0 = its
+    // first row) of rows[0]. The tab holds a window of rows; search can move it
+    // deep into a big sheet (hooks/sheet/reloadWindow.ts). Absent = 0.
+    windowStart?: number
     columnTypes?: Record<string, ColumnType>
     // Auto-run per column, and what each enrichment column spent (header ⚡ and tooltip).
     autorun?: SheetAutorun

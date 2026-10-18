@@ -1,3 +1,4 @@
+// Over 200 lines: one grid component; its props, handlers and render read together.
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -12,6 +13,7 @@ import { HeaderContextMenu, type MenuState } from './aggrid/HeaderContextMenu'
 import { RenameColumnPopover } from './aggrid/RenameColumnPopover'
 import { DeleteConfirms } from './aggrid/DeleteConfirms'
 import { DEFAULT_COL_DEF, ROW_SELECTION, getRowId } from './aggrid/gridOptions'
+import { useGridSearch } from './aggrid/useGridSearch'
 import { useRowData } from './aggrid/useRowData'
 import { useClearRowSelection } from './aggrid/useClearRowSelection'
 import { useScrollTopOnFilterChange } from './aggrid/useScrollTopOnFilterChange'
@@ -34,6 +36,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
+    windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch,
   } = props
 
   const gridRef = useRef<AgGridReact>(null)
@@ -50,6 +53,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   const [confirmDeleteRows, setConfirmDeleteRows] = useState<number[] | null>(null)
 
   const rowData = useRowData(data)
+  const search = useGridSearch({ gridRef, windowStart, data, colIdFor, registerSearch, onLoadEarlier, onOpenSearch })
 
   // Disable row animation while any AI/HTTP run is active (perf fix #1). Streaming
   // result cells arrive in batched bursts; animating each one makes AG Grid recalc
@@ -100,7 +104,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   const columnDefs = useColumnDefs({
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
     formulaColumns, lookupColumns, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete,
-    openColumnMenu,
+    openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
   })
 
   const {
@@ -110,6 +114,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columns, data, totalRows, rowData, nameToColIdRef, colIdFor,
     setColumnWidths, setSelectedRows,
     onCellEdit, onCellClick, onSelectedRowsChange, onColumnReorder, onLoadMore,
+    windowStart, onLoadEarlier: onLoadEarlier ? search.loadEarlier : undefined,
   })
 
   const clearRowSelection = useClearRowSelection(gridRef, setSelectedRows, onSelectedRowsChange, registerClearSelection)
@@ -133,12 +138,15 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   }
 
   return (
-    <div ref={wrapperRef} className={`ag-theme-alpine ${className}`} style={{ height: '100%', width: '100%' }}>
+    <div ref={wrapperRef} className={`ag-theme-alpine ${className}`} style={{ height: '100%', width: '100%' }}
+      onKeyDown={search.onKeyDown}>
       <AgGridReact
         ref={gridRef}
-        rowData={rowData} columnDefs={columnDefs}
+        rowData={rowData} columnDefs={columnDefs} context={search.context}
+        onRowDataUpdated={search.onRowDataUpdated}
         defaultColDef={DEFAULT_COL_DEF}
-        animateRows={!hasActiveRun} enableCellTextSelection={true} enableBrowserTooltips={true}
+        // No row animation in a window search moved deep: a new window fading over the old one ghosts.
+        animateRows={!hasActiveRun && windowStart === 0} enableCellTextSelection={true} enableBrowserTooltips={true}
         rowSelection={ROW_SELECTION}
         // Double-click opens the large-text popup editor (AG Grid default).
         // Single click selects the cell so users can copy values without
