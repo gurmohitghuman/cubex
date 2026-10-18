@@ -1,6 +1,8 @@
 import { db } from './db';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
+import { PLACEHOLDER } from './run-markers';
+import { journalSeed, type RunRef } from './run-undo/journal';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -8,7 +10,7 @@ import { eachRowIdSlice, sheetRowIds } from './row-order';
 // a million rows both are heavy, so they work HEAVY_SLICE_ROWS rows at a time,
 // one short transaction each (lib/slices.ts): the server keeps answering, and
 // SQLite's write lock is free between slices for autosave, webhooks and workers.
-export const PLACEHOLDER = '⏳ Processing...';
+export { PLACEHOLDER };
 
 // Clear the placeholder from `columnNames` wherever a row still holds exactly
 // it: that cell becomes '', every other cell keeps its value, and json_replace
@@ -43,12 +45,13 @@ export async function clearProcessingPlaceholders(
 // (lib/row-order.ts). `live` is checked before each slice, in the same tick as
 // its write: once it returns false (the run was cancelled while starting)
 // nothing more is written, so the cancel's clear, which starts after that,
-// sees every placeholder. Returns false when it stopped early.
+// sees every placeholder. Returns false when it stopped early. What the cells
+// held is kept in the run's undo journal first (lib/run-undo/journal.ts).
 export async function seedProcessingPlaceholders(args: {
-  sheetId: string; userId: string; columns: string[];
+  run: RunRef; sheetId: string; userId: string; columns: string[];
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
 }): Promise<boolean> {
-  const { sheetId, userId, columns, targets, lastRow, live } = args;
+  const { run, sheetId, userId, columns, targets, lastRow, live } = args;
   if (columns.length === 0) return true;
   const paths = columns.map(jsonPath);
   const set = db.prepare(
@@ -59,9 +62,15 @@ export async function seedProcessingPlaceholders(args: {
   const skip = JSON.stringify([...(args.skip ?? [])]);
   const rowIds = await sheetRowIds(sheetId, userId, targets ? { targets } : { upTo: lastRow });
   let stopped = false;
+  const cells = columns.map((c): [string, string] => [c, PLACEHOLDER]);
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
-    set.run(...paths, ids, sheetId, userId, skip);
+    // The write lock first: a read before a write in a deferred transaction
+    // fails at once (SQLITE_BUSY) when a run worker committed in between.
+    db.transaction(() => {
+      journalSeed(run, sheetId, userId, { rowids: ids }, cells, skip);
+      set.run(...paths, ids, sheetId, userId, skip);
+    }).immediate();
   });
   return !stopped;
 }

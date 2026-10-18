@@ -32,6 +32,7 @@ import { resumeSorts } from './services/sheet-sort';
 import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
 import { resumeTrashRestores } from './services/trash-restore';
+import { resumeRunUndos } from './services/run-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
 import { DERIVED_KINDS } from './services/derived-kinds';
@@ -51,6 +52,7 @@ import healthRoutes from './routes/health';
 import enrichRoutes from './routes/enrich';
 import waterfallRoutes from './routes/waterfall';
 import runControlsRoutes from './routes/run-controls';
+import runUndoRoutes from './routes/run-undo';
 import autorunRoutes from './routes/autorun';
 import setupsRoutes from './routes/setups';
 import setupRunsRoutes from './routes/setup-runs';
@@ -139,6 +141,7 @@ app.use('/api/http', httpRoutes);
 app.use('/api/enrich', enrichRoutes);
 app.use('/api/waterfall', waterfallRoutes);
 app.use('/api/run-controls', runControlsRoutes);
+app.use('/api/run-undo', runUndoRoutes);
 app.use('/api/autorun', autorunRoutes);
 app.use('/api/setups', setupsRoutes);
 app.use('/api/setup-runs', setupRunsRoutes);
@@ -201,12 +204,13 @@ createAccountFromEnv().then((result) => {
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
-  // duplicate removals, 036's restores from the trash). Each marks its sheet
-  // busy synchronously, before the first request.
+  // duplicate removals, 036's restores from the trash, 041's run undos). Each
+  // marks its sheet busy synchronously, before the first request.
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();
   resumeTrashRestores();
+  resumeRunUndos();
   resumeRunRewrites();
   resumeColumnPurges();
   resumeFieldJobs();

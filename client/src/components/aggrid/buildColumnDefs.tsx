@@ -155,7 +155,9 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
       cellClassRules: SEARCH_HIT_RULES,
       cellStyle: (params: any) => {
         const value = params.value || ''
-        const style: any = {}
+        // Every property, empty when unused: AG Grid never takes an inline style off
+        // a cell, so a ❌ cell emptied (an undone run, a cleared edit) stayed red.
+        const style: any = { backgroundColor: '', color: '', cursor: '' }
         // Webhook marker cell: muted + clickable (opens the raw payload panel).
         if (isWebhookSource) {
           if (value) style.cursor = 'pointer'
@@ -172,7 +174,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
         if (value.includes('✅')) { style.backgroundColor = '#f0fdf4'; style.color = '#16a34a' }
         // ⏭️ Not found / Budget ran out / No data: no answer, muted (not an error).
         if (value.startsWith('⏭️')) { style.backgroundColor = '#f8fafc'; style.color = '#64748b' }
-        return Object.keys(style).length > 0 ? style : undefined
+        return style
       },
     }
 

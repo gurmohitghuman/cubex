@@ -63,11 +63,15 @@ const watchersOf = (sheetId: string, userId: string): Watcher[] => db.prepare(`S
 
 // A clean or formula column follows its inputs: every written row is queued,
 // whatever its cell holds (services/derived-follow.ts), and told at once.
-function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef): void {
+// quiet: queued by an undo (markDerivedInputs); a row already queued by
+// anything else stays loud, and a loud write makes a quiet one loud.
+function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef, quiet = false): void {
   const sel = selector(rows);
   if (isFollowKind(w.kind)) {
-    db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
-      SELECT ?, user_id, id FROM rows WHERE ${sel.where}`).run(w.id, ...sel.params(sheetId, userId));
+    db.prepare(`INSERT INTO autorun_pending (autorun_id, user_id, row_id, quiet)
+      SELECT ?, user_id, id, ? FROM rows WHERE ${sel.where}
+      ON CONFLICT (autorun_id, row_id) DO UPDATE SET quiet = MIN(quiet, excluded.quiet)`)
+      .run(w.id, quiet ? 1 : 0, ...sel.params(sheetId, userId));
     followQueued(w.id);
     return;
   }
@@ -86,6 +90,21 @@ export function markAutorunInputs(sheetId: string, userId: string, columns: Iter
   if (written.size === 0 || rowCount(rows) === 0) return;
   for (const w of watchersOf(sheetId, userId)) {
     if (parseList(w.input_columns).some(c => written.has(c))) queue(w, sheetId, userId, rows);
+  }
+}
+
+// An undo's writes (services/run-undo.ts), and what a column worked out from
+// them writes in turn (services/derived-follow.ts): only clean, formula and
+// lookup columns reading a written column work those rows out again (free),
+// queued quiet so their own writes go on the same way. No run's auto-run is
+// told, so an undo never starts anything that costs.
+export function markDerivedInputs(sheetId: string, userId: string, columns: Iterable<string>, rows: RowRef): void {
+  const written = new Set(columns);
+  if (written.size === 0 || rowCount(rows) === 0) return;
+  for (const w of watchersOf(sheetId, userId)) {
+    if (isFollowKind(w.kind) && parseList(w.input_columns).some(c => written.has(c))) {
+      queue(w, sheetId, userId, rows, true);
+    }
   }
 }
 

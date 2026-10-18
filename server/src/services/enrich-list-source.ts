@@ -1,3 +1,4 @@
+// Over 200 lines: every writer of a list job's source cell, together so their ➕ checks stay alike.
 // A list job's journal rows as their source row and run see them: the source
 // row's status cell (only while it shows a list job's own ➕ words), a journal
 // row queued behind a full destination marked as waiting for room, the run a
@@ -14,12 +15,27 @@ import { destFullMessage } from './enrich-list-room';
 import { loadEntry, pauseEntry } from './autorun-entry';
 import { stopAutorunRun } from './autorun-stop';
 import type { HTTPRunRow } from './http-runner-status';
+import { journalFollowUp } from '../lib/run-undo/journal';
 
 type JournalRef = { id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string };
 
 const bump = (sheetId: string, userId: string) => db.prepare(
   "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
 ).run(sheetId, userId);
+
+// Words just written into source rows still showing a list job's ➕: the run
+// whose results were last on their way to each row wrote its ➕, so its undo
+// journal follows the new words (lib/run-undo/journal.ts).
+function followPending(userId: string, column: string, rowIds: string[], cell: string): void {
+  if (rowIds.length === 0) return;
+  const latest = db.prepare(`SELECT li.run_id, li.source_row_id, MAX(li.rowid) FROM enrichment_list_items li
+      JOIN http_runs r ON r.id = li.run_id AND r.master_column_name = ?
+    WHERE li.source_row_id IN (SELECT value FROM json_each(?)) AND li.status = 'pending' AND li.user_id = ?
+    GROUP BY li.source_row_id`).raw().all(column, JSON.stringify(rowIds), userId) as Array<[string, string, number]>;
+  const byRun = new Map<string, string[]>();
+  for (const [runId, rowId] of latest) byRun.set(runId, [...(byRun.get(runId) ?? []), rowId]);
+  for (const [runId, ids] of byRun) journalFollowUp({ kind: 'http', id: runId }, userId, column, ids, cell);
+}
 
 // A newer run's results for the same source row and column are on their way:
 // the row's cell is theirs to write (rowids only grow while rows coexist).
@@ -49,6 +65,7 @@ export function writeSourceCell(j: JournalRef, column: string | null, cell: stri
   }
   db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE id = ? AND user_id = ?`)
     .run(path, cell, j.source_row_id, j.user_id);
+  journalFollowUp({ kind: 'http', id: j.run_id }, j.user_id, column, [j.source_row_id], cell);
   stored.run(path, cell, j.run_id, src.row_index, j.user_id);
   // Another auto-run may read this column: a written input queues the row.
   markAutorunInputs(j.source_sheet_id, j.user_id, [column], { ids: [j.source_row_id] });
@@ -68,11 +85,12 @@ export function sourcesGone(sourceIds: string[], cell: string): void {
     Array<{ sheet: string; user_id: string; col: string }>;
   for (const g of groups) {
     const path = jsonPath(g.col);
-    db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
+    const written = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
       WHERE id IN (SELECT li.source_row_id FROM enrichment_list_items li JOIN http_runs r ON r.id = li.run_id
         WHERE li.source_sheet_id = ? AND li.user_id = ? AND li.status = 'pending' AND r.master_column_name = ?)
-        AND +sheet_id = ? AND +user_id = ? AND substr(ltrim(json_extract(data, ?)), 1, 1) = ?`)
-      .run(path, cell, g.sheet, g.user_id, g.col, g.sheet, g.user_id, path, LIST_MARK);
+        AND +sheet_id = ? AND +user_id = ? AND substr(ltrim(json_extract(data, ?)), 1, 1) = ? RETURNING id`)
+      .pluck().all(path, cell, g.sheet, g.user_id, g.col, g.sheet, g.user_id, path, LIST_MARK) as string[];
+    followPending(g.user_id, g.col, written, cell);
   }
 }
 
@@ -109,9 +127,10 @@ export function destsGone(destIds: string[], cell: string): void {
       .run(path, cell, g.user_id, ids, g.sheet, JSON.stringify(rowIds));
     const written = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
       WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
-        AND substr(ltrim(json_extract(data, ?)), 1, 1) = ?`)
-      .run(path, cell, JSON.stringify(rowIds), g.sheet, g.user_id, path, LIST_MARK).changes;
-    if (written === 0) continue;
+        AND substr(ltrim(json_extract(data, ?)), 1, 1) = ? RETURNING id`)
+      .pluck().all(path, cell, JSON.stringify(rowIds), g.sheet, g.user_id, path, LIST_MARK) as string[];
+    if (written.length === 0) continue;
+    followPending(g.user_id, g.col, written, cell);
     markAutorunInputs(g.sheet, g.user_id, [g.col], { ids: rowIds });
     bump(g.sheet, g.user_id);
   }
@@ -151,6 +170,7 @@ export function releasedCells(
       WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
         AND substr(ltrim(json_extract(data, ?)), 1, 1) = ? RETURNING id`)
       .pluck().all(path, cell, JSON.stringify(own), run.sheet_id, userId, path, LIST_MARK) as string[];
+    journalFollowUp({ kind: 'http', id: run.id }, userId, run.column, ids, cell);
     written.push(...ids);
   }
   if (written.length === 0) return;

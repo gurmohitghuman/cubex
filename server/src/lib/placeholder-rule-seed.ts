@@ -14,16 +14,17 @@ import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './placeholder-cells';
 import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
+import { journalSeed, type RunRef } from './run-undo/journal';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
 
 // Returns how many rows the rule kept out, or null when the run was cancelled
 // while starting (nothing more is written once `live` says so).
 export async function seedPlaceholdersByRule(args: {
-  sheetId: string; userId: string; columns: string[]; rule: RuleSeed;
+  run: RunRef; sheetId: string; userId: string; columns: string[]; rule: RuleSeed;
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
 }): Promise<{ notMet: number } | null> {
-  const { sheetId, userId, columns, rule, live } = args;
+  const { run: runRef, sheetId, userId, columns, rule, live } = args;
   const paths = columns.map(jsonPath);
   const run = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
@@ -35,6 +36,8 @@ export async function seedPlaceholdersByRule(args: {
     FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`).raw();
   const readPaths = [jsonPath(rule.markColumn), ...rule.columns.map(jsonPath)];
   const skip = args.skip ?? new Set<number>();
+  const running = columns.map((c): [string, string] => [c, PLACEHOLDER]);
+  const keptOutCells = columns.map((c): [string, string] => [c, c === rule.markColumn ? CONDITION_NOT_MET : '']);
   const rowIds = await sheetRowIds(sheetId, userId, args.targets ? { targets: args.targets } : { upTo: args.lastRow });
   let notMet = 0, stopped = false;
   await eachRowIdSlice(rowIds, ids => {
@@ -50,10 +53,17 @@ export async function seedPlaceholdersByRule(args: {
       // A row kept out already keeps its mark: no write (a big sheet's rule may keep most rows out).
       if (takesConditionMark(main) && !isConditionNotMet(main)) mark.push(r[0] as number);
     }
-    if (pass.length) run.run(...paths, JSON.stringify(pass), sheetId, userId);
-    if (mark.length) {
-      keepOut.run(jsonPath(rule.markColumn), CONDITION_NOT_MET, ...others, JSON.stringify(mark), sheetId, userId);
-    }
+    // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
+    db.transaction(() => {
+      if (pass.length) {
+        journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(pass) }, running);
+        run.run(...paths, JSON.stringify(pass), sheetId, userId);
+      }
+      if (mark.length) {
+        journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(mark) }, keptOutCells);
+        keepOut.run(jsonPath(rule.markColumn), CONDITION_NOT_MET, ...others, JSON.stringify(mark), sheetId, userId);
+      }
+    }).immediate();
   });
   return stopped ? null : { notMet };
 }

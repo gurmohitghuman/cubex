@@ -35,7 +35,7 @@ interface WriteCtx {
 
 // The row's cells, and the stamp of the inputs they were made from, in one UPDATE.
 const writeCells = (ctx: WriteCtx, cells: Array<[string, string]>) =>
-  writeRunCells(ctx.sheetId, ctx.userId, ctx.rowIndex, cells, ctx.stamp);
+  writeRunCells({ kind: 'ai', id: ctx.runId }, ctx.sheetId, ctx.userId, ctx.rowIndex, cells, ctx.stamp);
 
 // OpenRouter completion.usage, captured per row. NULL when the provider omits
 // the usage block. Persisted for measured-cost reporting + history-based
@@ -91,11 +91,12 @@ export function writeSuccess(
       ...usageColumns(usage),
     );
 
-    writeCells(ctx, ctx.needsDataColumn
+    const wrote = writeCells(ctx, ctx.needsDataColumn
       ? [[ctx.columnName, result], [dataColName, scrapedSummary]] : [[ctx.columnName, result]]);
-    // A column another column's auto-run reads queues this row for it.
+    // A column another column's auto-run reads queues this row for it (not
+    // once the run was undone: its cells stay as the undo left them).
     const written = ctx.needsDataColumn ? [ctx.columnName, dataColName] : [ctx.columnName];
-    markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
+    if (wrote) markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

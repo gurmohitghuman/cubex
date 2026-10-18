@@ -103,7 +103,8 @@ export function promotePreviewReuse(args: {
     // ai-row.ts). Preview values are already length-bounded by the preview
     // runner; this is the storage backstop, consistent with the worker path.
     const value = clampCellChars(c.value, CELL_MAX_ENRICHMENT);
-    writeRunCells(sheetId, userId, c.rowIndex, [[outputColumn, value]], stamper.stamp(dataJson));
+    writeRunCells({ kind: 'ai', id: runId }, sheetId, userId, c.rowIndex, [[outputColumn, value]],
+      stamper.stamp(dataJson));
     // The ai_results row makes the promoted row indistinguishable from a
     // worker-processed one: getRun counts it, SSE replays it (same value the
     // cell already holds), and finalize's hasUnfinishedRow stays satisfied.

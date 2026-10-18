@@ -35,6 +35,9 @@ export const dispatchRows = async (
   );
 
   let i = 0;
+  // A throw from the row stream still waits for the rows already out: the run
+  // is marked failed only once none of them can write (an undo checks for that).
+  try {
   for await (const row of rows) {
     while (semaphore.size >= concurrency) await Promise.race(semaphore.values());
 
@@ -59,7 +62,9 @@ export const dispatchRows = async (
       .finally(() => { semaphore.delete(key); });
     semaphore.set(key, promise);
   }
-  await Promise.all(semaphore.values());
+  } finally {
+    await Promise.allSettled(semaphore.values());
+  }
 };
 
 export const finalizeStatus = async (

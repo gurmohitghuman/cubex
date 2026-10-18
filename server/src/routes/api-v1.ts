@@ -23,6 +23,7 @@ import importV1 from './api-v1-import';
 import runsV1 from './api-v1-runs';
 import runReadsV1 from './api-v1-run-reads';
 import runControlV1 from './api-v1-run-control';
+import runUndoV1 from './api-v1-run-undo';
 import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import waterfallV1 from './api-v1-waterfall';
@@ -82,6 +83,7 @@ router.use(importV1);
 router.use(runsV1);
 router.use(runReadsV1);
 router.use(runControlV1);
+router.use(runUndoV1);
 router.use(runConditionsV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);

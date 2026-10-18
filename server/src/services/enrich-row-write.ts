@@ -86,7 +86,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
       ...(w.reuseKey && !lost && w.stored !== undefined ? [w.reuseKey, answerTime(nowDate())] : [null, null]),
     );
     if (w.reused) noteReusedRow(w.run.id, w.run.user_id);
-    writeRowColumns(w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells), w.stamp);
+    writeRowColumns(w.run.id, w.run.sheet_id, w.run.user_id, w.rowIndex, Object.entries(cells), w.stamp);
     touchSheet(w.run.sheet_id, w.run.user_id);
     written = true;
   }).immediate();

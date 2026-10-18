@@ -4,6 +4,7 @@ import type { MenuState } from './HeaderContextMenu'
 import type { EnrichMenuAction, RunByColumn, RunMenuActions } from './types'
 import type { AutorunColumn } from '@/utils/api/types-autorun'
 import { AutorunMenuItems } from './AutorunMenuItems'
+import { UndoRunItem } from './UndoRunItem'
 import { rowsFor, useRunColumnCounts } from './useRunColumnCounts'
 import { runItemLabel } from '@/lib/run-controls-copy'
 
@@ -63,6 +64,7 @@ export const EnrichColumnActions: React.FC<Props> = ({
             disabled={rowsFor(counts, 'all') === 0}>
             ⏩ {runItemLabel('all', counts)}
           </DropdownMenuItem>
+          <UndoRunItem columnId={columnId} setMenu={setMenu} actions={actions} />
         </>
       )}
       <DropdownMenuItem onClick={act('edit')} className={ITEM}>✏️ Edit {noun}</DropdownMenuItem>

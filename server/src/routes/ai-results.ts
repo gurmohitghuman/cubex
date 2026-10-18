@@ -7,6 +7,7 @@ import { clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { type AIRunRow } from '../services/ai-runner';
+import { journalRowWrite } from '../lib/run-undo/journal';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -104,14 +105,20 @@ router.post('/runs/:id/commit', (req: AuthRequest, res) => {
 
     const updates = results.map(r => ({ rowIndex: r.row_index, columnName: run.column_name, value: r.output_value }));
 
+    let written = updates;
     db.transaction(() => {
-      upsertCellsBatch(run.sheet_id, req.userId!, updates);
-      markAutorunInputs(run.sheet_id, req.userId!, [run.column_name], { indexes: updates.map(u => u.rowIndex) });
+      // The cells' values before go into the run's undo journal (lib/run-undo/journal.ts);
+      // an undone run writes nothing again.
+      const ref = { kind: 'ai' as const, id: run.id };
+      written = updates.filter(u =>
+        journalRowWrite(ref, run.sheet_id, req.userId!, u.rowIndex, [[u.columnName, u.value]], null));
+      upsertCellsBatch(run.sheet_id, req.userId!, written);
+      markAutorunInputs(run.sheet_id, req.userId!, [run.column_name], { indexes: written.map(u => u.rowIndex) });
       db.prepare("UPDATE sheets SET updated_at = datetime('now') WHERE id = ? AND user_id = ?")
         .run(run.sheet_id, req.userId!);
-    })();
+    }).immediate();
 
-    res.json({ message: 'AI results committed to sheet', rowsCommitted: results.length });
+    res.json({ message: 'AI results committed to sheet', rowsCommitted: written.length });
   } catch (error) {
     console.error('Commit AI results error:', error);
     res.status(500).json({ error: 'Failed to commit results' });
