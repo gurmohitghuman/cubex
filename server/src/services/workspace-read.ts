@@ -12,6 +12,7 @@ import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } f
 import { listViews, type ViewInfo } from './view-store';
 import { sheetColumnDetails } from './column-details';
 import type { ColumnDetail } from '../lib/column-details';
+import { autoDedupeView, type AutoDedupeView } from './auto-dedupe-setting';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -63,6 +64,9 @@ export interface SheetMeta {
   // Every column in order: its kind, what fills it, what it reads, auto-run,
   // its rule and its description (services/column-details.ts).
   column_details: ColumnDetail[];
+  // Auto-dedupe: the key column, how it matches, which row stays, and what it
+  // has removed so far (services/auto-dedupe-setting.ts); null when off.
+  auto_dedupe: AutoDedupeView | null;
 }
 
 // named: columns whose details show their prompt, formula or URL in full.
@@ -94,6 +98,7 @@ export function getSheetMeta(
     views: listViews(sheetId, userId, columns) ?? [],
     lookup_columns: Object.values(sheetLookupView(sheetId, userId, columns)).map(lookupColumnJson),
     column_details: sheetColumnDetails(sheetId, userId, columns, named),
+    auto_dedupe: autoDedupeView(sheetId, userId),
   };
 }
 

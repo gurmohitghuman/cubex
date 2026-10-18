@@ -8,6 +8,7 @@ import {
 } from '../lib/column-names';
 import type { ParsedUpdate } from './sheets-data-validate';
 import { markAutorunEdits } from '../lib/autorun-mark';
+import { settleGridEdits, type GridAutoDedupe } from '../services/auto-dedupe-settle';
 
 export interface DataWriteResult {
   // A 400-ready column-name error (reserved / symbol-only / case-token dup) for a
@@ -26,6 +27,8 @@ export interface DataWriteResult {
   // Returned (not a 400) so the client purges just these from the autosave queue
   // + toasts — a 400 would reject the whole batch and strand every other edit.
   oversizeCells: Array<{ rowIndex: number; columnName: string }>;
+  // Rows auto-dedupe sent to the trash: an edited key matched another row's.
+  autoDedupe: GridAutoDedupe | null;
 }
 
 // The PUT /:id/data write, as ONE immediate() transaction. Pulled out of the
@@ -68,6 +71,7 @@ export function applyDataWrite(args: {
   const lockedColumnsHit = new Set<string>();
   const oversizeCells: Array<{ rowIndex: number; columnName: string }> = [];
   const incomingRows = new Set(updates.map(u => u.rowIndex));
+  let autoDedupe: GridAutoDedupe | null = null;
 
   db.transaction((rows: ParsedUpdate[]) => {
     // The column registry says which columns exist (lib/sheet-columns.ts); a
@@ -161,6 +165,8 @@ export function applyDataWrite(args: {
       }
     }
     markAutorunEdits(id, userId, edits);
+    // A person's edit is checked; a run's preview commit (upsert) only keeps the keys current.
+    if (mode === 'update') autoDedupe = settleGridEdits(id, userId, edits);
     // Only upsert mode can introduce new columns; append only columns we actually
     // wrote (writtenColumns excludes locked + all-rows-deleted) so no ghost.
     const touchedColumns = mode === 'upsert' ? Array.from(writtenColumns) : [];
@@ -172,5 +178,6 @@ export function applyDataWrite(args: {
     nameError, capError, skipped, skippedCells,
     lockedColumns: Array.from(lockedColumnsHit),
     oversizeCells,
+    autoDedupe,
   };
 }

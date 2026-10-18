@@ -16,6 +16,7 @@ import { importCsv } from '../services/csv-import';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { csvUploadMiddleware } from './sheets-shared';
 import { trashAnswer } from '../services/trash-answer';
+import { importDedupeAnswer } from '../services/auto-dedupe-answer';
 
 const router = express.Router();
 
@@ -80,8 +81,9 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
       truncated_cells: result.ok.truncatedCells,
       replaced: replace,
       dropped_blank_starter_rows: result.ok.droppedSeedRows,
+      ...(result.ok.autoDedupe ? { auto_dedupe: importDedupeAnswer(req.userId!, result.ok.autoDedupe, 'rest') } : {}),
       ...(replace && result.ok.trashId !== null ? { trash: trashAnswer(req.userId!, result.ok.trashId, 'rest') } : {}),
-      ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rowsImported),
+      ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rowsKept),
     });
   } catch (error) {
     console.error('POST /v1/sheets/:id/import error:', error);

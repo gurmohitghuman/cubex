@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Loader2, Upload } from 'lucide-react'
-import { sheetsAPI } from '@/utils/api'
+import { sheetsAPI, type ImportAutoDedupe } from '@/utils/api'
 import { ImportFileCard } from './import-csv/ImportFileCard'
 import { ImportAutorunNotice } from './import-csv/ImportAutorunNotice'
 
@@ -9,7 +9,7 @@ interface ImportCSVModalProps {
   isOpen: boolean
   onClose: () => void
   sheetId: string | undefined
-  onImported: (result: { rowsImported: number; newColumns: string[] }) => void
+  onImported: (result: { rowsImported: number; newColumns: string[]; autoDedupe: ImportAutoDedupe | null }) => void
   // Run BEFORE the import POST (which replaces rows + bumps row_generation).
   // Returns false to abort — e.g. pending autosaves couldn't be drained, so
   // letting a CSV-replace proceed would flush a straggler edit onto the wrong
@@ -84,7 +84,9 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
       setUploadProgress(100)
 
       setTimeout(() => {
-        onImported({ rowsImported: result.rowsImported, newColumns: result.newColumns ?? [] })
+        onImported({
+          rowsImported: result.rowsImported, newColumns: result.newColumns ?? [], autoDedupe: result.autoDedupe ?? null,
+        })
         reset()
         onClose()
       }, 500)

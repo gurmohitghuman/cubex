@@ -76,10 +76,14 @@ export async function restoreRows(
     const old = await oldPlacesFree(item, sheetId, userId, picks);
     let plan: ColumnPlan | null = null;
     let through = 0;
+    let rows = count;
     db.transaction(() => {
-      if (db.prepare('SELECT state FROM trash_items WHERE id = ?').pluck().get(itemId) !== 'kept') return;
+      // Read again: auto-dedupe may have added a row to the batch meanwhile.
+      const now = getTrashItem(itemId, userId);
+      if (now?.state !== 'kept') return;
+      if (!picks) rows = now.row_count;
       const start = old ? null : nextRowIndex(sheetId, userId);
-      through = start === null ? topOf(item, picks) : start + count - 1;
+      through = start === null ? topOf(now, picks) : start + rows - 1;
       db.prepare("UPDATE trash_items SET state = 'restoring', restore_at = ?, restored = 0 WHERE id = ?")
         .run(start, itemId);
       plan = planColumns(sheetId, userId, item);
@@ -88,7 +92,7 @@ export async function restoreRows(
     const columns = plan as ColumnPlan;
     reserve(through + 1);
     const answer = (state: RowsRestored['state']): { ok: RowsRestored } => ({ ok: {
-      trash_id: itemId, sheet_id: sheetId, state, rows: count, place: old ? 'old' : 'end',
+      trash_id: itemId, sheet_id: sheetId, state, rows, place: old ? 'old' : 'end',
       columns_added: columns.added, columns_left_out: columns.dropped,
     } });
     try {
@@ -108,7 +112,7 @@ export async function restoreRows(
       throw error;
     }
     const rest = () => carryOn(itemId, sheetId, userId, columns);
-    if (count > TRASH_RESTORE_WAIT_ROWS) {
+    if (rows > TRASH_RESTORE_WAIT_ROWS) {
       continueInBackground(sheetId, WHAT, rest);
       return answer('restoring');
     }

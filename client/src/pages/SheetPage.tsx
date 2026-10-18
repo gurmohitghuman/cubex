@@ -278,7 +278,7 @@ export const SheetPage: React.FC = () => {
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onAddWaterfall={() => modals.openWaterfall({ kind: 'new' })}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
-        onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
+        onRemoveDuplicates={() => modals.openDedupe('now')} autoDedupeOn={!!sheetData?.data.autoDedupe}
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
         sheetId={activeSheet?.id ?? null} sheetName={activeSheet?.name ?? ''}
@@ -335,6 +335,7 @@ export const SheetPage: React.FC = () => {
         autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}
         onCloseDrawer={() => modals.setShowWebhookDrawer(false)}
+        autoDedupe={sheetData?.data.autoDedupe ?? null} onAutoDedupe={modals.openAutoDedupe}
         sheetId={activeSheet?.id ?? null}
         rowCount={totalDisplayedRows}
         onColumnsChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }}

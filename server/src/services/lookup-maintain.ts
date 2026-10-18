@@ -166,7 +166,7 @@ function buildSlice(src: LookupSource): boolean {
 }
 
 // The index of the first rowid above `cursor` (rowIds ascending).
-function firstAbove(rowIds: Float64Array, cursor: number): number {
+export function firstAbove(rowIds: Float64Array, cursor: number): number {
   let lo = 0, hi = rowIds.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;

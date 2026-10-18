@@ -53,7 +53,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'status, the column it fills, auto_run when an auto-run started it), and active_setup_runs the setups '
         + 'being used on it; control_run with action cancel_all stops them all. views lists the saved views (name, '
         + 'description, filters as a where, hidden_columns; active is the one the app shows): pass view to '
-        + 'read_rows or export_csv to read through one.',
+        + 'read_rows or export_csv to read through one. auto_dedupe is the sheet\'s set_auto_dedupe setting '
+        + '(column, match, keep, state, removed_rows so far, shared_rows already sharing a key when it was turned '
+        + 'on, waiting_rows still to check), or null.',
       inputSchema: {
         sheet_id: z.string(),
         columns: z.array(z.string()).optional()

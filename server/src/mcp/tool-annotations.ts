@@ -47,6 +47,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
   // A dry run (the default) changes nothing; a removal moves rows to the trash. Repeating it removes nothing more.
   remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
+  // Rows it later removes go to the trash; the same call again changes nothing.
+  set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
   manage_sheet: write('Create, rename, delete or reorder sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),

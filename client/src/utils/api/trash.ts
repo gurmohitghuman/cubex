@@ -4,7 +4,7 @@ import { api } from './client'
 // sheets and batches of rows, kept for the days Settings sets, restored or
 // deleted for good. Field names match /api/v1/trash and MCP list_trash.
 export type TrashKind = 'rows' | 'sheet' | 'table'
-export type TrashHow = 'grid' | 'api' | 'duplicates' | 'import' | 'transfer' | 'sheet' | 'table'
+export type TrashHow = 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'sheet' | 'table'
 
 export interface TrashEntry {
   id: number
@@ -44,7 +44,7 @@ export interface TrashRestoreResult {
   busy?: boolean
 }
 
-export interface TrashListAsk { q?: string; kind?: TrashKind; before?: number }
+export interface TrashListAsk { q?: string; kind?: TrashKind; how?: TrashHow; sheet_id?: string; before?: number }
 export interface TrashRowsAsk { after?: number; limit?: number; column?: string; contains?: string }
 
 const quiet = { skipServerErrorToast: true } as const

@@ -35,7 +35,7 @@ If Cubex is reachable from the internet, put it behind HTTPS. [Run Cubex on your
 
 | Situation | Response |
 |---|---|
-| Event stored | `202` |
+| Event stored (or not kept by [auto-dedupe](../README.md#auto-dedupe): the sender can't tell) | `202` |
 | `Content-Type` isn't `application/json` | `415` |
 | Body isn't valid JSON | `400` |
 | Body over 512 KB | `413` |
@@ -48,9 +48,11 @@ A text value longer than 8,000 characters is cut to 8,000 before it's written. I
 
 Cubex keeps the raw events for the newest 1,000 deliveries (up to 10 MB) per webhook, so you can pick new fields from a recent event later. The rows themselves are never deleted by this.
 
+Senders often send the same event twice. Turn on [auto-dedupe](../README.md#auto-dedupe) (the Webhook panel links to it) to keep one row per email, domain or other key: a delivery whose key is already in the sheet shows as **not kept** in the panel's deliveries, and its row waits in the trash.
+
 ## Keeping it safe
 
-- **The URL is the password.** Anyone who has it can add rows to that sheet, up to its row limit (by default 1,000,000 rows, which can take several GB at the per-event maximum). Cubex stores only a hash of the token, so the URL can't be recovered after the first event.
+- **The URL is the password.** Anyone who has it can add rows to that sheet, up to its row limit (by default 1,000,000 rows, which can take several GB at the per-event maximum). With auto-dedupe keeping the newest row, they can also replace rows that have the same key (the replaced rows wait in the trash, unless Settings keeps deleted items 0 days). Cubex stores only a hash of the token, so the URL can't be recovered after the first event.
 - **Auto-run makes new rows do work.** With [auto-run](enrichments.md#auto-run) on in the sheet, every row someone adds through the URL can spend your treg balance (up to each column's daily cap and your daily limit) or send a real HTTP request (up to the column's rows a day). A job billed on your own provider key at treg has no cap in Cubex. Set the caps to amounts you'd accept if the URL leaked.
 - **Rotate** in the Webhook panel if a URL leaks. The old URL stops working immediately.
 - **Disable** to pause intake without losing the setup. Events sent while disabled get `404`.

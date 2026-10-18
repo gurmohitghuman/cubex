@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import type { TransferSelection } from './transfer-selection';
+import type { AutoDedupeAnswer } from './auto-dedupe-answer';
 
 export interface TransferRequest {
   sourceSheetId: string;
@@ -64,6 +65,8 @@ export interface TransferResult {
   created_columns?: string[]; dest_row_count?: number;
   // A move: the trash batch holding the source rows as they were (trash-rows.ts).
   trash_id?: number | null;
+  // Rows the destination's auto-dedupe didn't keep, or older ones they replaced.
+  auto_dedupe?: AutoDedupeAnswer;
 }
 
 export function transferRequestHash(request: Record<string, unknown>): string {

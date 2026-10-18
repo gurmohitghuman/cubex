@@ -7,6 +7,7 @@ import { WebhookStatus } from './WebhookStatus'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { WebhookMapping } from './WebhookMapping'
 import { WebhookDeliveries } from './WebhookDeliveries'
+import type { AutoDedupeView } from '@/utils/api'
 
 // Sheet-scoped webhook drawer (slide-over from the right). A webhook is a
 // persistent always-on source the user returns to — so this is a drawer with
@@ -14,7 +15,7 @@ import { WebhookDeliveries } from './WebhookDeliveries'
 // `onColumnsChanged` tells the parent to reload the sheet when the webhook
 // creates/removes columns (marker + mapped columns).
 export function WebhookDrawer({
-  isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable, autorunOn,
+  isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable, autorunOn, autoDedupe, onAutoDedupe,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -29,6 +30,9 @@ export function WebhookDrawer({
   onCreateNewTable?: () => void
   // A column of this sheet has auto-run on: delivered rows run it.
   autorunOn?: boolean
+  // The sheet's auto-dedupe (null: off), and opening its settings.
+  autoDedupe?: AutoDedupeView | null
+  onAutoDedupe?: () => void
 }) {
   const wh = useWebhook(sheetId, isOpen)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -76,6 +80,19 @@ export function WebhookDrawer({
               deliveries={wh.deliveries} mappings={wh.mappings}
               onPick={handleAddMapping} onDeleteMapping={handleDeleteMapping}
             />
+            {onAutoDedupe && (
+              <p className="text-xs text-gray-600" data-testid="webhook-auto-dedupe">
+                {autoDedupe
+                  ? `Auto-dedupe is on: a delivery whose ${autoDedupe.column} is already in the sheet `
+                    + (autoDedupe.keep === 'oldest' ? "isn't kept. "
+                      : 'replaces the older row (its cells, enriched ones too, go to the trash). ')
+                  : 'Senders often send the same event twice. Auto-dedupe keeps one row per email, domain or other '
+                    + 'key. '}
+                <button type="button" className="underline" onClick={onAutoDedupe}>
+                  {autoDedupe ? 'Change it' : 'Set it up'}
+                </button>
+              </p>
+            )}
             <WebhookDeliveries deliveries={wh.deliveries} />
           </>
         )}

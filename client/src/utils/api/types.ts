@@ -4,6 +4,7 @@ import type { CleanColumnView } from './clean'
 import type { FormulaColumnView } from './formula'
 import type { SheetView } from './views'
 import type { LookupColumnView } from './lookup'
+import type { AutoDedupeView } from './dedupe'
 export interface Table {
   id: string
   name: string
@@ -76,6 +77,8 @@ export interface SheetData {
     lookupColumns?: Record<string, LookupColumnView>
     // Column descriptions, by column (the header's note, the column menu's Description).
     columnDescriptions?: Record<string, string>
+    // Auto-dedupe's setting (null: off): the toolbar shows it, the dialog edits it.
+    autoDedupe?: AutoDedupeView | null
   }
 }
 

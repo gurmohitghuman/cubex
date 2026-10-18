@@ -8,7 +8,7 @@ import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
 } from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
-import { appendRows, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
@@ -26,7 +26,9 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Append rows to the end of a sheet. Each row is a {columnName: value} object; every column must already exist '
         + `(use add_column first). Values: string/number/boolean; null clears. Max ${API_V1_MAX_APPEND_ROWS} rows per `
-        + 'call. Returns the created stable row ids. When auto-run is on in the sheet, '
+        + 'call. Returns the created stable row ids, in the order given; with auto-dedupe on in the sheet '
+        + '(set_auto_dedupe), a row whose key the sheet already had says kept: false (it went to the trash) and '
+        + 'auto_dedupe says what was not kept or replaced. When auto-run is on in the sheet, '
         + 'auto_run lists the columns that will fill the new rows on their own: an enrichment spends treg credit '
         + '(estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the user.',
       inputSchema: {
@@ -46,7 +48,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       const result = appendRows(sheet_id, ctx.userId, parsedRows);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
-      return ok({ ...result.ok, ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rows.length) });
+      return ok({
+        ...appendAnswer(ctx.userId, result.ok, 'mcp'),
+        ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.kept),
+      });
     },
   );
 
@@ -87,7 +92,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
           if ('error' in p) return err(p.error);
           parsed.push({ rowId: update.row_id, cells: p.cells });
         }
-        const result = batchUpdateRows(sheet_id, ctx.userId, parsed);
+        const result = batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
         if ('fail' in result) {
           if (result.fail === 'duplicate_rows') return err('updates must not contain duplicate row ids');
           return err(result.fail === 'not_found'
@@ -108,7 +113,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) {
         return err(result.fail === 'not_found' ? 'Row not found' : txnFailMessage(result, MAX_ROWS_PER_SHEET));
       }
-      return ok(result.ok);
+      return ok(patchAnswer(ctx.userId, result.ok, 'mcp'));
     },
   );
 
