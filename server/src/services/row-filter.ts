@@ -10,7 +10,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { sheetColumnKinds } from '../lib/column-types';
 import { fillingColumns } from '../lib/field-fill-columns';
 import { isStateOp } from '../lib/row-filter/ops';
-import { checkWhere, whereConditions, type WhereItem } from '../lib/row-filter/where';
+import { activeWhere, checkWhere, parseWhere, whereConditions, type WhereItem } from '../lib/row-filter/where';
 import { compileWhere, type CompiledFilter } from '../lib/row-filter/sql';
 import { staleLookup } from './run-inputs';
 import { viewWhere } from '../lib/views/filters';
@@ -51,16 +51,22 @@ export interface PreparedWhere { filter: CompiledFilter; runColumns: Map<string,
 
 // A `where` for one sheet, checked (a message the caller can act on) and
 // compiled. `columns`: the sheet's columns when the caller already has them.
-// A column still filling from stored answers is half filled, so a filter on it
-// would match some rows only by timing: refused until the fill is done.
+// Its shape is read again here (parseWhere): MCP's schema leaves groups'
+// items loosely typed, and a REST body was parsed already (reading it twice
+// changes nothing). A column still filling from stored answers is half
+// filled, so a filter on it would match some rows only by timing: refused
+// until the fill is done (an off condition reads nothing, so it never is).
 export function prepareWhere(
-  sheetId: string, userId: string, where: readonly WhereItem[], columns?: readonly string[],
+  sheetId: string, userId: string, raw: readonly WhereItem[], columns?: readonly string[],
 ): { ok: PreparedWhere } | { error: string } {
+  const parsed = raw.length === 0 ? { where: [] } : parseWhere(raw);
+  if ('error' in parsed) return { error: parsed.error };
+  const where = parsed.where;
   const sheetColumns = columns ?? getSheetColumns(sheetId, userId, false);
   const runColumns = readsRunState(where) ? sheetRunColumns(sheetId, userId, sheetColumns) : new Map<string, string>();
   const invalid = checkWhere(where, { columns: sheetColumns, runColumns });
   if (invalid) return { error: invalid };
-  const read = new Set(whereConditions(where).flatMap(c =>
+  const read = new Set(whereConditions(activeWhere(where)).flatMap(c =>
     c.column !== undefined ? [c.column] : isStateOp(c.operator) ? [...runColumns.keys()] : []));
   const filling = fillingColumns(sheetId, userId).find(c => read.has(c));
   if (filling) {

@@ -134,17 +134,22 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 
 ## Finding rows
 
-`read_rows`, `export_csv`, `create_download_link`, `transfer_rows` and `transform_column` take `where`: a list of conditions a row must all pass. An item can also be an OR group, `{"or": [...]}`, which passes when any of its conditions does.
+`read_rows`, `export_csv`, `create_download_link`, `transfer_rows` and `transform_column` take `where`: a list of conditions a row must all pass. An item can also be a group: `{"or": [...]}` passes when any of its items does, `{"and": [...]}` when all of them do, and a group's items can be groups too, up to 5 deep (50 conditions in all). A condition with `"enabled": false` is turned off: it's kept, but no read counts it, and a group with nothing left on counts for nothing.
 
 ```json
 [
   {"column": "Industry", "operator": "any_of", "values": ["SaaS", "Fintech"]},
-  {"or": [{"column": "Email", "operator": "empty"}, {"column": "Phone", "operator": "empty"}]}
+  {"column": "Signed up", "operator": "date_gte", "value": "2024-01-01"},
+  {"or": [
+    {"column": "Email", "operator": "empty"},
+    {"and": [{"column": "Phone", "operator": "empty"}, {"column": "Country", "operator": "eq", "value": "US"}]}
+  ]}
 ]
 ```
 
 - **Text:** `eq`, `neq`, `contains`, `not_contains`, `starts_with`, `ends_with`, `empty` and `not_empty`. `any_of` and `not_any_of` take `values`, a list. They ignore case and spaces at either end.
 - **Numbers:** `gt`, `gte`, `lt` and `lte`. The cell has to hold a number (`1,000` counts, `1,5` doesn't); other cells never pass.
+- **Dates:** `date_eq`, `date_neq`, `date_gt` (after), `date_gte`, `date_lt` (before) and `date_lte` compare calendar days. The cell and `value` have to hold a date: `2024-01-31`, `2024/01/31`, `1/31/2024`, `31.1.2024`, `Jan 31, 2024`, `31 Jan 2024` or `Wed, 31 Jan 2024`, with or without a time after it (`2024-01-31T10:30:00Z`, `1/31/2024 10:30 PM`). The day is the one written: the time and its zone are left out. With slashes or dashes and the year last, the month comes first unless the first number is over 12 (`13/1/2024` is 13 January); with dots the day comes first. Years have four digits, and a bare number (`20240131`, a Unix time) isn't a date. Other cells never pass a date condition, `date_neq` included: find blank ones with `empty`.
 - **Run state**, on AI, HTTP API, enrichment and waterfall columns: `has_error`, `has_result`, `not_run`, `condition_not_met`, `running` and `out_of_date` (a result made from input cells that changed since; see below). They read the words runs write into cells (`❌`, `⏭️ Condition not met`, `⏳`, `➕`), so you don't have to. Leave `column` out to match any run column: `[{"operator": "has_error"}]` finds every row where a run failed. An output column reads the state from its run's status column, so `has_error` on Email finds the rows where the enrichment that fills Email failed.
 
 Text conditions compare a cell as written, status words included. To page a filtered read, send back `expected_data_version` and `expected_row_generation` from the previous page; if the sheet changed in between, you're asked to start again. `return_mode: "count"` counts the matching rows without reading them.
@@ -165,7 +170,7 @@ With `include_status: true`, `read_rows` (and the REST row reads) return each ru
 
 Other columns come back as text, the same as without it.
 
-In the app, each column's menu has the same filters, one per column: text, number and list conditions on any column, and on a run column **Rows with errors** plus the other run states. **Is any of** lists the column's most common values with how many rows hold each (counted over the view's other filters), with a box to narrow the list; a value typed there and Enter adds it, even one the list doesn't show.
+In the app, **Filter** in the bar above the grid edits the view's whole filter: rules joined with and or or, groups inside groups, and a switch on each rule to turn it off and on. Each column's menu has the same filters, one per column: text, number, date and list conditions on any column, and on a run column **Rows with errors** plus the other run states. A column's first rule that is on shows in its menu, the rest in **Filter**. **Is any of** lists the column's most common values with how many rows hold each (counted over the view's other filters), with a box to narrow the list; a value typed there and Enter adds it, even one the list doesn't show.
 
 ### Counting and summing
 
@@ -233,7 +238,7 @@ A sheet and each column can have a description: a few words on what it holds, wh
 ({{Industry}} is "SaaS" OR {{Industry}} is "Fintech") AND {{Employees}} > 50
 ```
 
-Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not empty`, `>`, `<`, `>=` and `<=`, joined with `AND`, `OR`, `NOT` and brackets. Rows that fail it aren't sent anywhere, cost nothing, and show `⏭️ Condition not met` (a cell that already holds a result keeps it). Cells holding Cubex's own words (`⏳`, `❌`, `⏭️`, `➕`) count as empty, so a chain works: give each column a rule on the one before it, once that run has finished.
+Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not empty`, `>`, `<`, `>=` and `<=`, and on dates `is before`, `is after`, `is on`, `is not on`, `is on or before` and `is on or after` (`{{Signed up}} is on or after 2024-01-01`; the cell needs a date, in the formats `where` reads), joined with `AND`, `OR`, `NOT` and brackets. Rows that fail it aren't sent anywhere, cost nothing, and show `⏭️ Condition not met` (a cell that already holds a result keeps it). Cells holding Cubex's own words (`⏳`, `❌`, `⏭️`, `➕`) count as empty, so a chain works: give each column a rule on the one before it, once that run has finished.
 
 - `check_run_condition` (free) says how many rows pass and shows the first rows with the values the rule read. A misspelled column is refused with the closest name.
 - `write_run_condition` writes a rule from plain words with one small call to your default model (or `model`), and returns it with the same check. The answer names the model and what the call cost.

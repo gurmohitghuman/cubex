@@ -62,7 +62,7 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
   const refused = await query({ where: [{ column: 'Industry', operator: 'has_error' }] })
   expect(refused.status).toBe(400)
   expect(refused.body.error).toContain(`"Industry" isn't an AI, HTTP API or enrichment column`)
-  expect((await query({ where: [{ or: [{ or: [] }] }] })).body.error).toContain('not other groups')
+  expect((await query({ where: [{ or: [{ or: [] }] }] })).body.error).toContain('at least one')
 
   // MCP: the same where, include_status, a count, an export, and a refusal.
   const failed = await call(client, 'read_rows', { sheet_id: sheetId, where: [{ operator: 'has_error' }],

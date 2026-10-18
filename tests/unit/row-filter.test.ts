@@ -44,8 +44,20 @@ const MARKS = ['', ' ', '\t', '\u00a0', '❌ Error: rate limited', ' ❌ Failed 
 const TEXTS = ['', '  ', '\u2003', 'MÜNCHEN', 'münchen', ' München ', 'Acme, Inc.', '1,000', '1000', '-5', '1e3', 'N/A',
   '0x10', "O'Brien", '50%', 'a_b', 'İstanbul', 'ß', 12, 1.5, null, undefined, '❌ Error', '⏭️ Not found']
 
+// Dates as people, imports and APIs write them, and near misses (an impossible
+// day, a two-digit year, a bare number, a time that can't be).
+const DATES = ['2024-01-31', '2024-1-31', '2024/01/31', '2024.01.31', '2024-01-31T10:30:00Z',
+  '2024-01-31T23:59:59.123-05:00', '2024-01-31 10:30', ' 2024-01-31 ', '2024-02-29', '2023-02-29', '2024-13-01',
+  '2024-00-10', '1/31/2024', '31/1/2024', '01/02/2024', '1-31-2024', '31.01.2024', '2.1.2024', '1.13.2024',
+  '13/13/2024', '1/31/24', 'Jan 31, 2024', 'January 31st 2024', 'JAN 31 2024', 'jan. 31, 2024', '31 Jan 2024',
+  '31-Jan-2024', 'Wed, 31 Jan 2024 10:00:00 GMT', 'Wednesday, January 31, 2024', 'Feb 30, 2024', 'Sept 1, 2024',
+  'Smarch 1, 2024', '2024-01-30', '2024-02-01', '2023-12-31', '1999-12-31', '20240131', '1706659200', '2024',
+  'Jan 2024', 'yesterday', '2024-01-31 25:00', '1/31/2024 10:30 PM', '1/31/2024 13:30 PM', '0001-01-01',
+  '9999-12-31', 'mon 1 jan 2024', '2024-01-31T10:30:00+0530', '', '  ', '❌ Error', '⏭️ Not found', 12, null,
+  undefined]
+
 // Rows: every text in A and N; every pair of marks as (output O, its status S);
-// D a "(Data)" column on O's run; X an output whose status column P is plain.
+// D a "(Data)" column on O's run; every date text in T (with a text in A).
 const rows: Array<Record<string, unknown>> = []
 const put = (o: Record<string, unknown>) => {
   const data = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
@@ -54,6 +66,7 @@ const put = (o: Record<string, unknown>) => {
 }
 for (const a of TEXTS) for (const n of [TEXTS[7], TEXTS[9], a]) put({ A: a, N: n })
 for (const o of MARKS) for (const s of MARKS) put({ O: o, S: s, D: o === 'Real answer' ? '📊 3 sources' : '' })
+DATES.forEach((t, i) => put({ T: t, A: TEXTS[i % TEXTS.length] }))
 const runColumns = new Map([['O', 'S'], ['S', 'S'], ['D', 'S']])
 
 const sqlMatches = (where: WhereItem[], runs: ReadonlyMap<string, string>): number[] => {
@@ -85,6 +98,12 @@ for (const value of ['999', '1000', '1,000', '-5', '0', '16', '1e3']) {
 for (const operator of ['has_error', 'has_result', 'not_run', 'condition_not_met', 'running'] as const) {
   conditions.push({ column: 'O', operator }, { column: 'S', operator }, { column: 'D', operator }, { operator })
 }
+for (const value of ['2024-01-31', 'Jan 31, 2024', '31.1.2024', '2024-02-29', '1999-12-31', '0001-01-01']) {
+  for (const operator of ['date_eq', 'date_neq', 'date_gt', 'date_gte', 'date_lt', 'date_lte'] as const) {
+    conditions.push({ column: 'T', operator, value })
+  }
+}
+conditions.push({ column: 'T', operator: 'empty' }, { column: 'T', operator: 'not_empty' })
 
 check(`SQL == JS on ${conditions.length} conditions x ${rows.length} rows`, () => {
   for (const c of conditions) {
@@ -96,6 +115,39 @@ check('SQL == JS on AND lists and OR groups', () => {
     const where: WhereItem[] = [{ or: [conditions[i], conditions[i + 1]] }, conditions[i + 2]]
     assert.deepEqual(sqlMatches(where, runColumns), jsMatches(where, runColumns), JSON.stringify(where))
   }
+})
+// Seeded, so a failure reproduces: trees of AND and OR groups up to 4 deep,
+// about one condition in five turned off (groups left with nothing on too).
+let seed = 20261018
+const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]
+function tree(depth: number): WhereItem {
+  if (depth >= 4 || random() < 0.45) {
+    const c = pick(conditions)
+    return random() < 0.2 ? { ...c, enabled: false } : c
+  }
+  const items = Array.from({ length: 1 + Math.floor(random() * 3) }, () => tree(depth + 1))
+  return random() < 0.6 ? { or: items } : { and: items }
+}
+check('SQL == JS on 400 nested AND/OR trees with conditions turned off', () => {
+  let split = 0
+  for (let i = 0; i < 400; i++) {
+    const where = Array.from({ length: 1 + Math.floor(random() * 3) }, () => tree(0))
+    const got = sqlMatches(where, runColumns)
+    assert.deepEqual(got, jsMatches(where, runColumns), JSON.stringify(where))
+    if (got.length > 0 && got.length < rows.length) split++
+  }
+  // Many trees must split the rows (181 of 400 do), or the comparison proves little.
+  assert.ok(split > 150, `only ${split} of 400 trees split the rows`)
+})
+check('every condition off: every row; an OR group of off conditions narrows nothing', () => {
+  const all = rows.map((_, i) => i + 1)
+  const off = { column: 'A', operator: 'eq', value: 'münchen', enabled: false } as const
+  assert.deepEqual(sqlMatches([off], runColumns), all)
+  assert.deepEqual(sqlMatches([{ or: [off, { and: [off] }] }], runColumns), all)
+  assert.deepEqual(compileWhere([{ or: [off] }], runColumns), { sql: '1', params: [] })
+  const on = { column: 'A', operator: 'eq', value: 'münchen' } as const
+  assert.deepEqual(sqlMatches([{ or: [off, on] }], runColumns), sqlMatches([on], runColumns))
 })
 check('a run-state operator on a column no run fills reads its own cell; no run columns pass nothing', () => {
   for (const operator of ['has_error', 'not_run'] as const) {
@@ -177,9 +229,9 @@ check('include_status rows: run columns as views, every run column listed, plain
 
 // The grammar's checks: messages an agent can act on.
 const shapeError = (raw: unknown) => { const r = parseWhere(raw); return 'error' in r ? r.error : null }
-check('where shape: conditions and one level of OR groups', () => {
+check('where shape: conditions and groups', () => {
   assert.equal(shapeError([{ column: 'A', operator: 'eq', value: 'x' }, { or: [{ operator: 'has_error' }] }]), null)
-  assert.match(shapeError([{ or: [{ or: [] }] }])!, /not other groups/)
+  assert.match(shapeError([{ or: [{ or: [] }] }])!, /at least one/)
   assert.match(shapeError([{ or: [] }])!, /at least one/)
   assert.match(shapeError([{ or: [{ operator: 'running' }], column: 'A' }])!, /only "or"/)
   assert.match(shapeError([{ column: 'A', operator: 'like', value: 'x' }])!, /Unknown where operator "like"/)

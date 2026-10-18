@@ -6,11 +6,15 @@
 //   {{Column}} contains "text"  {{Column}} does not contain "text"
 //   {{Column}} is empty         {{Column}} is not empty
 //   {{Column}} > 50   (<, >=, <= too)
+//   {{Column}} is before "2024-01-31"   (is after, is on, is not on, is on or
+//                                        before, is on or after; a bare 2024-01-31 too)
 //   joined with AND, OR, NOT and brackets (&&, || and ! read the same).
 //
 // NOT binds tightest, then AND, then OR, as in most languages.
+export type DateCompareOp = 'on' | 'not_on' | 'before' | 'after' | 'on_or_before' | 'on_or_after';
 export type CompareOp =
-  'is' | 'is_not' | 'contains' | 'not_contains' | 'empty' | 'not_empty' | 'gt' | 'lt' | 'gte' | 'lte';
+  | 'is' | 'is_not' | 'contains' | 'not_contains' | 'empty' | 'not_empty' | 'gt' | 'lt' | 'gte' | 'lte'
+  | DateCompareOp;
 
 export interface Compare { kind: 'cmp'; column: string; op: CompareOp; value: string; numeric: boolean }
 export type RuleNode = Compare | { kind: 'and' | 'or'; items: RuleNode[] } | { kind: 'not'; item: RuleNode };
@@ -55,6 +59,9 @@ function tokenize(src: string): Token[] {
       i = j + 1;
       continue;
     }
+    // A bare ISO date is a value, not 2024 minus 1 minus 31.
+    const date = /^\d{4}-\d{1,2}-\d{1,2}(?![\d.])/.exec(src.slice(i));
+    if (date) { out.push({ t: 'str', v: date[0] }); i += date[0].length; continue; }
     const num = /^-?\d+(\.\d+)?/.exec(src.slice(i));
     if (num) { out.push({ t: 'num', v: num[0] }); i += num[0].length; continue; }
     const word = /^[A-Za-z]+/.exec(src.slice(i));
@@ -118,6 +125,31 @@ class Parser {
     return this.fail('a value in quotes or a number');
   }
 
+  // After "is" (and "not"): on, before, after, on or before, on or after.
+  private dateOp(negated: boolean): DateCompareOp | null {
+    if (this.isWord('on')) {
+      this.i++;
+      if (this.isWord('or') && (this.isWord('before', 1) || this.isWord('after', 1))) {
+        if (negated) {
+          throw new RuleError('Write "is after" for "is not on or before", and "is before" for "is not on or after".');
+        }
+        const after = this.isWord('after', 1);
+        this.i += 2;
+        return after ? 'on_or_after' : 'on_or_before';
+      }
+      return negated ? 'not_on' : 'on';
+    }
+    if (this.isWord('before') || this.isWord('after')) {
+      if (negated) {
+        throw new RuleError('Write "is on or after" for "is not before", and "is on or before" for "is not after".');
+      }
+      const after = this.isWord('after');
+      this.i++;
+      return after ? 'after' : 'before';
+    }
+    return null;
+  }
+
   private compare(): Compare {
     const col = this.peek();
     if (col?.t !== 'col') this.fail('a column like {{Industry}}');
@@ -129,6 +161,8 @@ class Parser {
       this.i++;
       const negated = this.isWord('not') ? (this.i++, true) : false;
       if (this.isWord('empty')) { this.i++; return cmp(negated ? 'not_empty' : 'empty'); }
+      const date = this.dateOp(negated);
+      if (date) return cmp(date, this.value());
       return cmp(negated ? 'is_not' : 'is', this.value());
     }
     if (this.isWord('contains')) { this.i++; return cmp('contains', this.value()); }
@@ -138,7 +172,7 @@ class Parser {
     }
     const sym = this.peek();
     if (sym?.t === 'sym' && SYMBOL_OPS[sym.v]) { this.i++; return cmp(SYMBOL_OPS[sym.v], this.value()); }
-    return this.fail('is, is not, contains, does not contain, is empty, >, <, >= or <=');
+    return this.fail('is, is not, contains, does not contain, is empty, is before, is after, >, <, >= or <=');
   }
 }
 

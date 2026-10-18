@@ -3,6 +3,8 @@
 
 // Conditions in one `where`, OR groups included (an "Only run if" rule's cap too).
 export const MAX_WHERE_CONDITIONS = 50;
+// Groups inside groups in one `where`: a top-level group is 1 deep.
+export const MAX_WHERE_DEPTH = 5;
 // Values in one any_of / not_any_of list.
 export const MAX_FILTER_LIST_VALUES = 200;
 // Characters in one value.

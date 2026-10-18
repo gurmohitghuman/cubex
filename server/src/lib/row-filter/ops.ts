@@ -1,24 +1,26 @@
 // The operators of Cubex's row conditions (pure), with one meaning wherever a
 // row is checked: read_rows and REST rows/query, CSV export, transfer_rows,
 // transform_column and the grid's column filters (compiled to SQL by sql.ts,
-// which calls foldText and asNumber as SQL functions), and "Only run if" rules
-// (lib/run-condition.ts). Text compares ignore case and outer spaces, and a
-// missing cell reads as ''. Run-state operators read the words a run writes
-// (cell-status.ts).
+// which calls foldText, asNumber and asDate as SQL functions), and "Only run
+// if" rules (lib/run-condition.ts). Text compares ignore case and outer spaces,
+// and a missing cell reads as ''. Date operators compare calendar days
+// (dates.ts). Run-state operators read the words a run writes (cell-status.ts).
 export const TEXT_OPS = [
   'eq', 'neq', 'contains', 'not_contains', 'starts_with', 'ends_with', 'empty', 'not_empty',
 ] as const;
 export const LIST_OPS = ['any_of', 'not_any_of'] as const;
 export const NUMBER_OPS = ['gt', 'gte', 'lt', 'lte'] as const;
+export const DATE_OPS = ['date_eq', 'date_neq', 'date_gt', 'date_gte', 'date_lt', 'date_lte'] as const;
 export const STATE_OPS = ['has_error', 'has_result', 'not_run', 'condition_not_met', 'running', 'out_of_date'] as const;
 
 export type TextOp = (typeof TEXT_OPS)[number];
 export type ListOp = (typeof LIST_OPS)[number];
 export type NumberOp = (typeof NUMBER_OPS)[number];
+export type DateOp = (typeof DATE_OPS)[number];
 export type StateOp = (typeof STATE_OPS)[number];
-export type FilterOp = TextOp | ListOp | NumberOp | StateOp;
+export type FilterOp = TextOp | ListOp | NumberOp | DateOp | StateOp;
 
-export const FILTER_OPS = [...TEXT_OPS, ...LIST_OPS, ...NUMBER_OPS, ...STATE_OPS] as const;
+export const FILTER_OPS = [...TEXT_OPS, ...LIST_OPS, ...NUMBER_OPS, ...DATE_OPS, ...STATE_OPS] as const;
 
 const among = <T extends string>(list: readonly T[]) =>
   (op: string): op is T => (list as readonly string[]).includes(op);
@@ -26,6 +28,7 @@ export const isFilterOp = among(FILTER_OPS);
 export const isTextOp = among(TEXT_OPS);
 export const isListOp = among(LIST_OPS);
 export const isNumberOp = among(NUMBER_OPS);
+export const isDateOp = among(DATE_OPS);
 export const isStateOp = among(STATE_OPS);
 
 const text = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
@@ -73,5 +76,19 @@ export function numberPasses(op: NumberOp, cell: number | null, value: number | 
     case 'gte': return cell >= value;
     case 'lt': return cell < value;
     case 'lte': return cell <= value;
+  }
+}
+
+// Day numbers (dates.ts asDate). A cell that isn't a date never passes a date
+// operator, "is not" included: blanks are found with empty.
+export function datePasses(op: DateOp, cell: number | null, value: number | null): boolean {
+  if (cell === null || value === null) return false;
+  switch (op) {
+    case 'date_eq': return cell === value;
+    case 'date_neq': return cell !== value;
+    case 'date_gt': return cell > value;
+    case 'date_gte': return cell >= value;
+    case 'date_lt': return cell < value;
+    case 'date_lte': return cell <= value;
   }
 }

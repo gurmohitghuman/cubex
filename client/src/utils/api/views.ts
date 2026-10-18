@@ -5,8 +5,14 @@ import type { ColumnFilter } from '@/lib/filters'
 // a name, a description, filters and hidden columns. Never a sort, never a
 // column order. The active one's filters are the sheet's (empty_filter,
 // column_filters, row_filter).
-export interface WhereCondition extends Omit<ColumnFilter, 'type'> { column?: string; operator: ColumnFilter['type'] }
-export type WhereItem = WhereCondition | { or: WhereCondition[] }
+// A `where` (server lib/row-filter/where.ts): conditions and groups that can
+// hold groups; enabled false = a condition kept but turned off.
+export interface WhereCondition extends Omit<ColumnFilter, 'type'> {
+  column?: string
+  operator: ColumnFilter['type']
+  enabled?: false
+}
+export type WhereItem = WhereCondition | { or: WhereItem[] } | { and: WhereItem[] }
 
 export interface SheetView {
   id: string
@@ -36,7 +42,9 @@ export const viewsAPI = {
     api.delete(`/sheets/${sheetId}/views/${viewId}`, quiet).then(() => {}),
   activate: (sheetId: string, viewId: string): Promise<SheetView> =>
     api.post(`/sheets/${sheetId}/views/${viewId}/activate`, null, quiet).then(view),
-  // viewId: the view it was cleared in (409 viewChanged once another one shows).
-  clearRowFilter: (sheetId: string, viewId: string | null): Promise<void> =>
-    api.put(`/sheets/${sheetId}/row-filter`, { rowFilter: null, viewId }, quiet).then(() => {}),
+  // The active view's whole filter (the filter panel), split by the server
+  // into what the headers show and the rest. null: no filter. viewId: the view
+  // it was changed in (409 viewChanged once another one shows).
+  saveFilters: (sheetId: string, viewId: string | null, where: WhereItem[] | null): Promise<void> =>
+    api.put(`/sheets/${sheetId}/filters`, { where, viewId }, quiet).then(() => {}),
 }

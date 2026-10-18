@@ -16,6 +16,7 @@ import {
 } from './transfer-ledger';
 import { cellOf } from './row-selection';
 import { prepareWhere } from './row-filter';
+import { allOffError } from '../lib/row-filter/where';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
 import { nextRowIndex } from '../lib/sheet-busy';
 import { settleRows } from './auto-dedupe-settle';
@@ -60,6 +61,8 @@ function executeTransfer(
     const sourceColumns = getSheetColumns(request.sourceSheetId, userId, false);
     const prepared = prepareWhere(request.sourceSheetId, userId, request.selection.where, sourceColumns);
     if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
+    const off = allOffError(request.selection.where, 'pick every row on purpose with all: true');
+    if (off) return { fail: 'invalid', error: off };
     scan = { filter: prepared.ok.filter };
   } else {
     scan = request.selection;

@@ -8,6 +8,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { fillingColumns } from '../lib/field-fill-columns';
 import { AGGREGATE_TOP_GROUPS } from '../lib/constants-query';
 import { compileWhere } from '../lib/row-filter/sql';
+import { isGroup } from '../lib/row-filter/where';
 import { gridWhere, parseColumnFilters, parseEmptyFilter } from '../lib/row-filter/grid';
 import { parseRowFilter, readsRunState } from '../lib/views/filters';
 import { sheetRunColumns } from './row-filter';
@@ -46,11 +47,14 @@ export async function columnValueCounts(
   if (fillingColumns(sheetId, userId).includes(column)) {
     return { fail: 'invalid', error: `"${column}" is still filling. Its values can be counted once it is done.` };
   }
-  // The view's filters without this column's own (its header filter and its empty filter).
+  // The view's filters without this column's own: its header filter, its
+  // empty filter, and its other top-level conditions (the filter panel's; one
+  // inside a group stays, since leaving it out could narrow the rows).
   const empty = parseEmptyFilter(sheet.empty_filter), byColumn = parseColumnFilters(sheet.column_filters);
   delete empty[column];
   delete byColumn[column];
-  const where = [...gridWhere(empty, byColumn), ...parseRowFilter(sheet.row_filter)];
+  const rest = parseRowFilter(sheet.row_filter).filter(item => isGroup(item) || item.column !== column);
+  const where = [...gridWhere(empty, byColumn), ...rest];
   const runs = readsRunState(where) ? sheetRunColumns(sheetId, userId, columns) : new Map<string, string>();
   const filter = where.length ? compileWhere(where, runs) : null;
   const spec = { groupBy: [column], aggregates: [] };

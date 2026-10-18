@@ -12,6 +12,9 @@ The rule language:
   {{Column}} contains "text"    {{Column}} does not contain "text"
   {{Column}} is empty           {{Column}} is not empty
   {{Column}} > 50   {{Column}} < 50   {{Column}} >= 50   {{Column}} <= 50
+  {{Column}} is before "2024-01-31"   {{Column}} is after "2024-01-31"
+  {{Column}} is on "2024-01-31"       {{Column}} is not on "2024-01-31"
+  {{Column}} is on or before "2024-01-31"   {{Column}} is on or after "2024-01-31"
 Join checks with AND, OR, NOT and brackets. AND binds tighter than OR, so use
 brackets when you mix them: ({{A}} is "x" OR {{A}} is "y") AND {{B}} > 10.
 
@@ -20,6 +23,9 @@ How rows are checked:
 - Text checks ignore case and outer spaces. Put text in double quotes.
 - >, <, >= and <= only work when the cell holds a plain number. A cell like
   "51-200" or "1k" is not a number: use is / contains on such columns instead.
+- is before, is after and is on compare calendar days and need a date in the cell
+  (2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 2024; a time after it is ignored).
+  Write the date as YYYY-MM-DD. Use them, not > or <, on date columns.
 - Cells starting with ⏳, ❌, ⏭️ or ➕ are the app's own status words and count as empty.
 - Use the values shown for each column: match their exact spelling.
 

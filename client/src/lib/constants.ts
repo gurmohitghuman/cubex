@@ -133,6 +133,11 @@ export const TRASH_RESTORE_PICK_MAX = 1_000;
 // "is any of" list, and characters in one value.
 export const MAX_FILTER_LIST_VALUES = 200;
 export const MAX_FILTER_VALUE_CHARS = 1000;
+// Rules in one filter (server MAX_WHERE_CONDITIONS), and how deep the filter
+// panel nests groups below its top level (the server takes MAX_WHERE_DEPTH 5;
+// a top level of "any" is a group itself).
+export const MAX_WHERE_CONDITIONS = 50;
+export const MAX_FILTER_PANEL_DEPTH = 3;
 
 // Most typed columns one AI run can fill (mirrors server MAX_OUTPUT_COLUMNS_PER_RUN).
 export const MAX_OUTPUT_COLUMNS_PER_RUN = 20;

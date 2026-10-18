@@ -1,11 +1,13 @@
 // Saved views in the app (services/views.ts): new view (a copy of the active
 // one, switched to), a ready-made one, rename, describe, hide or show
-// columns, delete, switch, and clearing the active view's extra row filter.
+// columns, delete, switch, the active view's whole filter (the filter panel),
+// and clearing its extra row filter.
 // The sheet read (sheets-read.ts) lists the views; REST v1: api-v1-views.ts.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { activateView, createView, deleteView, saveRowFilter, updateView } from '../services/views';
 import { isViewStarter, pickViewStarter } from '../services/view-starters';
+import { saveSheetFilters } from '../services/view-filter-save';
 import { viewMoved, type ViewFail } from '../services/view-store';
 
 const router = express.Router();
@@ -64,6 +66,14 @@ router.put('/:id/row-filter', guarded('update filter', (req, res) => {
     return res.status(409).json({ error: 'Another view is showing now. Reloading.', viewChanged: true });
   }
   answer(res, saveRowFilter(req.params.id, req.userId!, req.body?.rowFilter ?? null));
+}));
+
+// Body: { where: null | where, viewId? }: the active view's whole filter (services/view-filter-save.ts).
+router.put('/:id/filters', guarded('update filter', (req, res) => {
+  if (viewMoved(req.params.id, req.userId!, req.body?.viewId)) {
+    return res.status(409).json({ error: 'Another view is showing now. Reloading.', viewChanged: true });
+  }
+  answer(res, saveSheetFilters(req.params.id, req.userId!, req.body?.where ?? null));
 }));
 
 export default router;

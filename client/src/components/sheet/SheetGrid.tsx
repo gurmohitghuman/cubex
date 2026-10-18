@@ -106,6 +106,7 @@ export interface SheetGridProps {
   onEditDescription?: (column: string) => void
   // The view has a filter no column header shows (the bar above lists it).
   rowFilterActive?: boolean
+  onClearAllFilters?: () => void
   // Search: the held rows' place in the view, the rows above a deep window,
   // the grid's "/", and its highlight handle (AGGridSpreadsheetProps).
   windowStart?: number
@@ -124,7 +125,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onColumnReorder, onAddColumn, setShowAddColumnModal, setupSSEConnection,
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
-    onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, lookupColumns, onOpenLookup,
+    onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, onClearAllFilters, lookupColumns, onOpenLookup,
     columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
     onOpenWaterfall, runColumns,
   } = props
@@ -225,6 +226,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onEmptyFilterChange={onEmptyFilterChange}
       onColumnFilterChange={onColumnFilterChange}
       hiddenColumns={hiddenColumns} rowFilterActive={rowFilterActive}
+      onClearAllFilters={onClearAllFilters}
       onSelectedRowsChange={onSelectedRowsChange}
       onRenameColumn={onRenameColumn}
       onDeleteColumn={(col) => actions.handleDeleteColumnWithWidthCleanup(col, onDeleteColumn)}

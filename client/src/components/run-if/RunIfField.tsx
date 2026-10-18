@@ -108,7 +108,8 @@ export const RunIfField: React.FC<Props> = ({ sheetId, value, onChange, active, 
       {check.state === 'ok' && <RuleSample check={check.check} />}
       <p className="text-xs text-gray-500">
         {skippedNote ?? 'Rows that don\'t pass are skipped, cost nothing, and show "⏭️ Condition not met".'}
-        {' '}Use is, is not, contains, is empty, &gt;, &lt;, with AND, OR, NOT and brackets.
+        {' '}Use is, is not, contains, is empty, &gt;, &lt;, is before, is after, is on, with AND, OR, NOT and
+        brackets.
       </p>
     </div>
   )
