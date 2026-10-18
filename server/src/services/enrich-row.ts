@@ -23,8 +23,10 @@ import { recordCall } from './enrich-ledger';
 import { findReusable, reuseSince } from './enrich-reuse';
 import { writeEnrichmentResult } from './enrich-row-write';
 import type { HTTPRunRow } from './http-runner-status';
+import type { RowStamp } from '../lib/run-inputs/stamp';
 
-export interface EnrichRow { rowIndex: number; rowId: string | null; data: Record<string, string> }
+// stamp: what the row's result is made from (lib/run-inputs), written with it.
+export interface EnrichRow { rowIndex: number; rowId: string | null; data: Record<string, string>; stamp?: RowStamp }
 
 // What a row produced: cells to write, or nothing (the run stopped). A list
 // job's results (items) are journaled with them, to become rows elsewhere.
@@ -157,6 +159,7 @@ export async function processEnrichmentRow(
   return writeEnrichmentResult({
     run, generation, rowIndex: row.rowIndex, cells: result.cells, stored: result.stored,
     mapping: config.responseMapping, costMicro: result.costMicro, request, reuseKey, reused: !!result.reused,
+    stamp: row.stamp,
     ...(list && result.items?.length
       ? { list: { items: result.items, copy: copyValues(list, row.data), rowId: row.rowId } } : {}),
   });

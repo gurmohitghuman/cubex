@@ -1,6 +1,7 @@
 import { db } from './db';
 import { jsonPath, parseRowData } from './sql-rows';
 import { yieldToRequests } from './slices';
+import type { RowStamp, RunInputStamper } from './run-inputs/stamp';
 
 // The rows an AI or HTTP run still has to process, read a page at a time
 // instead of loading the whole sheet into the worker: a run over a million rows
@@ -10,7 +11,8 @@ import { yieldToRequests } from './slices';
 // legacy run without one). `targets` narrows a rerun to its rows. Rows come in
 // row order, and each page is read fresh, so it reflects edits made meanwhile.
 // rowId: the stable rows.id (enrichment ledger entries key on it; sorts move row_index).
-export interface RunRow { rowIndex: number; rowId: string; data: Record<string, string> }
+// stamp: what the row's result is made from (lib/run-inputs/stamp.ts), when the run passed a stamper.
+export interface RunRow { rowIndex: number; rowId: string; data: Record<string, string>; stamp?: RowStamp }
 
 const PLACEHOLDER = '⏳ Processing...';
 const PAGE_ROWS = 500;
@@ -20,8 +22,13 @@ const TARGET_LOOKUP_MAX = 50_000;
 
 export async function* runRows(
   sheetId: string, userId: string, placeholderColumn: string | null, targets: number[] | null,
+  stamper?: RunInputStamper | null,
 ): AsyncGenerator<RunRow> {
   const unfinished = (r: RunRow) => !placeholderColumn || r.data[placeholderColumn] === PLACEHOLDER;
+  const rowOf = (r: { row_index: number; id: string; data: string }): RunRow =>
+    ({ rowIndex: r.row_index, rowId: r.id, data: parseRowData(r.data) });
+  // Only rows the run takes are stamped, from the text this page read.
+  const stamped = (row: RunRow, raw: string): RunRow => (stamper ? { ...row, stamp: stamper.stamp(raw) } : row);
   if (targets && targets.length <= TARGET_LOOKUP_MAX) {
     const sorted = [...new Set(targets)].sort((a, b) => a - b);
     for (let i = 0; i < sorted.length; i += PAGE_ROWS) {
@@ -30,8 +37,8 @@ export async function* runRows(
         `SELECT row_index, id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index IN (${chunk.map(() => '?').join(',')}) ORDER BY row_index`,
       ).all(sheetId, userId, ...chunk) as Array<{ row_index: number; id: string; data: string }>;
       for (const r of rows) {
-        const row = { rowIndex: r.row_index, rowId: r.id, data: parseRowData(r.data) };
-        if (unfinished(row)) yield row;
+        const row = rowOf(r);
+        if (unfinished(row)) yield stamped(row, r.data);
       }
     }
     return;
@@ -47,7 +54,7 @@ export async function* runRows(
     if (rows.length === 0) return;
     after = rows[rows.length - 1].row_index;
     for (const r of rows) {
-      if (!inTargets || inTargets.has(r.row_index)) yield { rowIndex: r.row_index, rowId: r.id, data: parseRowData(r.data) };
+      if (!inTargets || inTargets.has(r.row_index)) yield stamped(rowOf(r), r.data);
     }
   }
 }

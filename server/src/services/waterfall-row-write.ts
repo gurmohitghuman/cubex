@@ -111,7 +111,7 @@ export function writeWaterfallRow(x: WaterfallWrite): boolean {
     if (x.answer?.from === 'reused') noteReusedRow(run.id, run.user_id);
     tally(run, config, x.trace);
     if (!dry) {
-      writeRowColumns(run.sheet_id, run.user_id, x.row.rowIndex, Object.entries(values));
+      writeRowColumns(run.sheet_id, run.user_id, x.row.rowIndex, Object.entries(values), x.row.stamp);
       touchSheet(run.sheet_id, run.user_id);
       dropRowAnswers(run.user_id, x.scope, x.rowRef);
       const paidSteps = rowSteps(config).filter(s => s.choices.kind === 'enrichment' || s.choices.kind === 'ai'

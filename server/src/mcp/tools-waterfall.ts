@@ -103,7 +103,8 @@ export const WATERFALL_DESCRIPTION =
   + 'its own. '
   + 'Rows: all by default; add_to_column:true runs an existing waterfall column again (its own inputs and steps '
   + 'unless you pass new ones; a step keeps its column by id or label) on rows not_enriched (default), no_result, '
-  + `failed or any; test:true runs the first ${ENRICH_TEST_ROWS} rows; use_sheet_filter, target_row_ids, run_if. `
+  + 'failed, out_of_date (results whose input cells changed since), empty_or_out_of_date or any; '
+  + `test:true runs the first ${ENRICH_TEST_ROWS} rows; use_sheet_filter, target_row_ids, run_if. `
   + `DRY RUN: dry_run:true runs the first ${WATERFALL_DRY_ROWS} rows the run would take (or target_row_ids, up to `
   + `${WATERFALL_DRY_MAX_ROWS}) for real and writes nothing to the sheet; it waits up to `
   + `${WATERFALL_DRY_WAIT_SECONDS} s and returns each row's inputs and every step it reached (outcome, value, cost). `
@@ -140,7 +141,7 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       steps: z.array(step).min(1).max(WATERFALL_MAX_STEPS).optional().describe('In order; the first answer wins'),
       answered_by_column: lenientBoolean().optional(),
       hide_step_columns: lenientBoolean().optional(),
-      rows: z.enum(['any', 'not_enriched', 'no_result', 'failed']).optional()
+      rows: z.enum(['any', 'not_enriched', 'no_result', 'failed', 'out_of_date', 'empty_or_out_of_date']).optional()
         .describe('With add_to_column: which of its rows (default not_enriched)'),
       test: z.union([lenientBoolean(), z.number().int().min(1).max(1_000)]).optional()
         .describe(`true: the first ${ENRICH_TEST_ROWS} rows; or a number of rows`),

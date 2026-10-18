@@ -37,7 +37,7 @@ export async function processRow(
   const ctx = {
     runId, userId: run.user_id, sheetId: run.sheet_id, rowIndex: row.rowIndex,
     columnName: run.column_name, inputValues: JSON.stringify(row.data),
-    needsDataColumn, myGeneration,
+    needsDataColumn, myGeneration, stamp: row.stamp,
   };
 
   // Set once the call comes back, so a failure after it (an unusable answer)

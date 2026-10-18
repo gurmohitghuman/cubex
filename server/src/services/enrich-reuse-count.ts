@@ -54,28 +54,34 @@ export async function countReusable(
   const f = job.rowFilter;
   // Selected rows are read by their numbers, the rest a page at a time from the top.
   const targets = job.targets ? [...new Set(job.targets)].sort((a, b) => a - b) : null;
-  const byIndex = db.prepare(`SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ?
+  // The out-of-date flag, when the rows the run takes depend on it.
+  const stale = job.plan.stale ?? null;
+  const orStale = stale ? ` OR ${stale.sql} IS 1` : '';
+  const sp = stale?.params ?? [];
+  const byIndex = db.prepare(`SELECT row_index, data, (0${orStale}) AS stale FROM rows
+    WHERE sheet_id = ? AND user_id = ?
     AND row_index IN (SELECT value FROM json_each(?))${f.clause} ORDER BY row_index`);
-  const scan = db.prepare(`SELECT row_index, data FROM rows
+  const scan = db.prepare(`SELECT row_index, data, (0${orStale}) AS stale FROM rows
     WHERE sheet_id = ? AND user_id = ? AND row_index > ?${f.clause}
     ORDER BY row_index LIMIT ${PAGE}`);
   const deadline = Date.now() + budgetMs;
   for (let at = 0, after = Number.MIN_SAFE_INTEGER; ;) {
-    let rows: Array<{ row_index: number; data: string }>;
+    let rows: Array<{ row_index: number; data: string; stale: number }>;
     let last: boolean;
     if (targets) {
-      rows = byIndex.all(job.sheetId, userId, JSON.stringify(targets.slice(at, at + PAGE)), ...f.params) as typeof rows;
+      rows = byIndex.all(...sp, job.sheetId, userId, JSON.stringify(targets.slice(at, at + PAGE)), ...f.params) as
+        typeof rows;
       at += PAGE;
       last = at >= targets.length;
     } else {
-      rows = scan.all(job.sheetId, userId, after, ...f.params) as typeof rows;
+      rows = scan.all(...sp, job.sheetId, userId, after, ...f.params) as typeof rows;
       last = rows.length < PAGE;
       if (rows.length) after = rows[rows.length - 1].row_index;
     }
     for (const r of rows) {
       if (out.checked >= job.limit) return out;
       const data = parseRowData(r.data);
-      if (seedVerdict(data, job.plan) !== 'run') continue;
+      if (seedVerdict(data, job.plan, r.stale === 1) !== 'run') continue;
       out.checked++;
       const req = rowRequest(job.plan.config, { rowIndex: r.row_index, rowId: null, data }, job.plan.columns);
       if ('built' in req && hasReusable(userId, reuseKeyOf(job.plan.config, req.built), since, whole)) out.rows++;

@@ -12,15 +12,25 @@ import { fillingColumns } from '../lib/field-fill-columns';
 import { isStateOp } from '../lib/row-filter/ops';
 import { checkWhere, whereConditions, type WhereItem } from '../lib/row-filter/where';
 import { compileWhere, type CompiledFilter } from '../lib/row-filter/sql';
+import { staleLookup } from './run-inputs';
 import { viewWhere } from '../lib/views/filters';
 import {
   columnFilterCondition, gridWhere, parseColumnFilters, parseEmptyFilter, toColumnFilter, type ColumnFilters,
 } from '../lib/row-filter/grid';
 
+export type SheetRunColumns = Map<string, string> & { staleFor: ReturnType<typeof staleLookup> };
+
 // The sheet's run columns (AI, HTTP API, enrichment) still in it → the column
-// holding their run's state (the column itself once that one is gone).
-export function sheetRunColumns(sheetId: string, userId: string, columns: readonly string[]): Map<string, string> {
-  return liveRunColumns(sheetColumnKinds(sheetId, userId).runState, columns);
+// holding their run's state (the column itself once that one is gone), with
+// the out_of_date check of each state column, read when a filter first asks.
+export function sheetRunColumns(sheetId: string, userId: string, columns: readonly string[]): SheetRunColumns {
+  return withStale(liveRunColumns(sheetColumnKinds(sheetId, userId).runState, columns), sheetId, userId, columns);
+}
+
+export function withStale(
+  runColumns: Map<string, string>, sheetId: string, userId: string, columns: readonly string[],
+): SheetRunColumns {
+  return Object.assign(runColumns, { staleFor: staleLookup(sheetId, userId, columns) });
 }
 
 // A state column is always a live run column holding its own state (sql.ts

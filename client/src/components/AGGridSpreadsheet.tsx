@@ -20,6 +20,7 @@ import { useScrollTopOnFilterChange } from './aggrid/useScrollTopOnFilterChange'
 import { useRegisterViewport } from './aggrid/useRegisterViewport'
 import { useHeaderContextMenu } from './aggrid/useHeaderContextMenu'
 import { GridEmptyMessage } from './aggrid/GridEmptyMessage'
+import { RunCellContext } from './aggrid/RunCellContext'
 import type { AGGridSpreadsheetProps, RunMenuActions } from './aggrid/types'
 import type { ColumnType } from '@/utils/api/types'
 
@@ -36,7 +37,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columnDescriptions, activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
-    windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch,
+    windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch, failedRuns, onRetryFailed, runCells = null,
   } = props
 
   const gridRef = useRef<AgGridReact>(null)
@@ -105,6 +106,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
     formulaColumns, lookupColumns, columnDescriptions, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor,
     handleHeaderColumnDelete, openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
+    failedRuns, onRetryFailed,
   })
 
   const {
@@ -140,6 +142,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   return (
     <div ref={wrapperRef} className={`ag-theme-alpine ${className}`} style={{ height: '100%', width: '100%' }}
       onKeyDown={search.onKeyDown}>
+      <RunCellContext.Provider value={runCells}>
       <AgGridReact
         ref={gridRef}
         rowData={rowData} columnDefs={columnDefs} context={search.context}
@@ -178,6 +181,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
         getRowId={getRowId}
         alwaysShowHorizontalScroll={true} suppressAutoSize={true} skipHeaderOnAutoSize={true}
       />
+      </RunCellContext.Provider>
 
       <HeaderContextMenu
         menu={menu} setMenu={setMenu} setRenaming={setRenaming}

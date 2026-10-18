@@ -52,7 +52,8 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'leaves some out, stop_at_first stops after the first answer even if empty. preset verified_email (the email '
   + 'finder only) checks each address and finds again with other providers until one passes email.accept: '
   + 'safest (valid only, default), balanced (+ catch-all) or wide (+ risky); email.guess tries a free '
-  + 'first.last@domain guess first. Which rows: all by default; rows not_enriched / no_result / failed on a '
+  + 'first.last@domain guess first. Which rows: all by default; rows not_enriched / no_result / failed / '
+  + 'out_of_date (a result whose input cells changed since) / empty_or_out_of_date on a '
   + 'column a run made (add_to_column:true adds to an existing enrichment column), use_sheet_filter, '
   + 'target_row_ids, and run_if (only rows passing a rule; the others show "⏭️ Condition not met" and cost '
   + 'nothing; the older where list still works). '
@@ -131,8 +132,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       spend_limit_usd: money().optional(),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once (1-${HTTP_MAX_CONCURRENCY}, default ${ENRICH_DEFAULT_CONCURRENCY})`),
-      rows: z.enum(['any', 'not_enriched', 'no_result', 'failed']).optional()
-        .describe('no_result and failed need add_to_column. Default: any (not_enriched with add_to_column).'),
+      rows: z.enum(['any', 'not_enriched', 'no_result', 'failed', 'out_of_date', 'empty_or_out_of_date']).optional()
+        .describe('All but any and not_enriched need add_to_column. Default: any (not_enriched with add_to_column).'),
       use_sheet_filter: lenientBoolean().optional().describe('Only the rows the sheet\'s saved filter shows'),
       target_row_ids: z.array(z.string()).min(1).max(MAX_SELECTED_ROWS).optional()
         .describe(`Stable row ids (from read_rows) to run, up to ${MAX_SELECTED_ROWS.toLocaleString('en-US')}`),

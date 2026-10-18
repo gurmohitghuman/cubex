@@ -18,6 +18,7 @@ export const isWaterfallRun = (runId: string, userId: string): boolean => waterf
 // The agent modes, in the words AI reruns use, as the rows a rerun takes.
 export const WATERFALL_RERUN_MODES: Record<string, EnrichRowsStatus> = {
   errored: 'failed', empty: 'not_enriched', missing: 'no_result', all: 'any',
+  out_of_date: 'out_of_date', empty_or_out_of_date: 'empty_or_out_of_date',
 };
 
 const limitProblem = (limit: number | null | undefined): string | null => {

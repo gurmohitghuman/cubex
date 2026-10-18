@@ -11,6 +11,7 @@ import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { processEnrichmentRun } from './enrich-runner';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { processWaterfallRun } from './waterfall-runner';
+import { requestRunStamper } from '../lib/run-inputs/stampers';
 
 export type { HTTPRunRow };
 
@@ -136,7 +137,9 @@ export async function processHTTPRun(
     // cells means "all rows attempted". It's written only while the run is still
     // ours: a pause/cancel/resume meanwhile means a newer worker (or none) owns
     // processed_rows, and rows our writes dropped (STOP_SENTINEL) don't count.
-    const source = runRows(run.sheet_id, run.user_id, masterCol, targets)[Symbol.asyncIterator]();
+    // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
+    const source = runRows(run.sheet_id, run.user_id, masterCol, targets, requestRunStamper(run, config))
+      [Symbol.asyncIterator]();
     const out = new Set<Promise<void>>();
     // A full pool waits for one row to settle. One fresh promise per wait, never
     // Promise.race(out): each race hangs a reaction on every row still out, and

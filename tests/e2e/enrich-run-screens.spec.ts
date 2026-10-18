@@ -106,9 +106,9 @@ test('the balance: a toast with Show, then top up and resume in the drawer', asy
   await mockTreg.set({ scenario: { kind: 'insufficient', count: 100 } })
   // Retry the rest from the column menu with the drawer closed.
   await openMenu(page, 'Find email')
-  await page.getByRole('menuitem', { name: /Run Rows Not Enriched/ }).click()
-  const dialog = page.getByRole('dialog').filter({ hasText: 'Run rows not enriched' })
-  await expect(dialog).toContainText('1 row not enriched yet')
+  await page.getByRole('menuitem', { name: /Run 1 empty or out-of-date row$/ }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: 'Run empty or out-of-date rows' })
+  await expect(dialog).toContainText('1 row that is empty or out of date')
   await dialog.getByRole('button', { name: 'Run', exact: true }).click()
   const toast = page.getByTestId('enrich-pause-toast')
   await expect(toast).toContainText('Paused: Your treg balance ran out', { timeout: 20_000 })

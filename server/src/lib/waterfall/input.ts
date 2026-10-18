@@ -11,7 +11,9 @@ import { concurrencyOf, CONCURRENCY_ERROR, MAX_SELECTED_ROWS } from '../enrich-r
 import { PHONE_FORMATS } from '../clean/cleaners';
 import { isPhoneCountry } from '../clean/phone';
 import { parseRuleField } from '../run-condition';
-import type { EnrichRowsMode, EnrichRowsStatus } from '../enrich-run-config';
+import {
+  ENRICH_ROWS_STATUSES, ENRICH_ROWS_STATUS_WORDS, type EnrichRowsMode, type EnrichRowsStatus,
+} from '../enrich-run-config';
 import { isResultType, type PhoneResult, type ResultType } from './result-type';
 import { fixedValueProblem, INPUT_KEY_PATTERN, type InputSource } from './inputs';
 import { parseSteps, type StepInput } from './input-steps';
@@ -47,7 +49,7 @@ export interface WaterfallRunInput {
 const TOP = ['columnName', 'continueColumn', 'resultType', 'phone', 'inputs', 'steps', 'answeredBy',
   'hideStepColumns', 'rows', 'runIf', 'spendLimitUsd', 'concurrency', 'fresh', 'noReuse', 'rowGeneration', 'dry'];
 const MODES = new Set(['all', 'filter', 'selected']);
-const STATUSES = new Set(['any', 'not_enriched', 'no_result', 'failed']);
+const STATUSES = new Set<string>(ENRICH_ROWS_STATUSES);
 
 function parseInputs(v: unknown): { ok: WaterfallInputSpec[] } | { error: string } {
   if (!Array.isArray(v) || v.length > WATERFALL_MAX_INPUTS) {
@@ -93,7 +95,7 @@ function parseRows(v: unknown): { ok: WaterfallRunInput['rows'] } | { error: str
   if (typeof mode !== 'string' || !MODES.has(mode)) return bad('rows.mode is all, filter or selected.');
   const status = v.status ?? 'any';
   if (typeof status !== 'string' || !STATUSES.has(status)) {
-    return bad('rows.status is any, not_enriched, no_result or failed.');
+    return bad(`rows.status is ${ENRICH_ROWS_STATUS_WORDS}.`);
   }
   const test = v.test ?? null;
   const testOk = typeof test === 'number' && Number.isInteger(test) && test >= 1 && test <= ENRICH_TEST_ROWS * 20;

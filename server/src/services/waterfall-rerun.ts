@@ -3,7 +3,7 @@
 // (services/waterfall-column.ts) and started on the rows asked for: the ones
 // not run yet, the ones without a result, the failed ones, chosen rows, or
 // all of them. With estimateOnly, the confirm's figures (a pure read).
-import type { EnrichRowsStatus } from '../lib/enrich-run-config';
+import { ENRICH_ROWS_STATUSES, ENRICH_ROWS_STATUS_WORDS, type EnrichRowsStatus } from '../lib/enrich-run-config';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { newestWaterfallRun, recallInput } from './waterfall-column';
 import { estimateWaterfall, type WaterfallEstimate } from './waterfall-estimate';
@@ -44,7 +44,7 @@ export async function rerunWaterfallColumn(
   return 'fail' in out ? out : { ok: { started: out.ok } };
 }
 
-const STATUSES = new Set(['any', 'not_enriched', 'no_result', 'failed']);
+const STATUSES = new Set<string>(ENRICH_ROWS_STATUSES);
 const RERUN_KEYS = ['column', 'status', 'rowIndexes', 'test', 'rowGeneration', 'fresh', 'noReuse', 'spendLimitUsd',
   'estimateOnly'];
 
@@ -59,7 +59,7 @@ export function parseWaterfallRerun(
   if (typeof b.column !== 'string' || !b.column) return { error: 'column is required.' };
   const status = b.status ?? 'not_enriched';
   if (typeof status !== 'string' || !STATUSES.has(status)) {
-    return { error: 'status is any, not_enriched, no_result or failed.' };
+    return { error: `status is ${ENRICH_ROWS_STATUS_WORDS}.` };
   }
   const idx = b.rowIndexes;
   if (idx !== undefined && idx !== null && (!Array.isArray(idx) || idx.length === 0

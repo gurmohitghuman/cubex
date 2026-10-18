@@ -13,14 +13,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 import Database from 'better-sqlite3'
+// server/src is type:commonjs: default-import + destructure under tsx.
+import sqlFnMod from '../../server/src/lib/row-filter/sql-functions'
+import fpMod from '../../server/src/lib/run-inputs/fingerprint'
+const { registerRowFilterFunctions } = sqlFnMod as typeof import('../../server/src/lib/row-filter/sql-functions')
+const { registerRunInputFunctions } = fpMod as typeof import('../../server/src/lib/run-inputs/fingerprint')
 
 const ROOT = process.cwd()
 const SERVER_SRC = path.join(ROOT, 'server/src')
 const MIGRATIONS = path.join(SERVER_SRC, 'db/migrations')
 
 const db = new Database(':memory:')
-// As lib/db.ts opens it: schema objects (the lookup triggers) may only use built-in SQL.
+// As lib/db.ts opens it: schema objects (the lookup triggers) may only use built-in SQL,
+// and statements may call the app's own SQL functions.
 db.pragma('trusted_schema = OFF')
+registerRowFilterFunctions(db)
+registerRunInputFunctions(db)
 for (const f of fs.readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()) {
   db.exec(fs.readFileSync(path.join(MIGRATIONS, f), 'utf8'))
 }

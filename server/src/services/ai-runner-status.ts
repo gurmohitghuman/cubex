@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import type { RowStamp } from '../lib/run-inputs/stamp';
 
 export interface AIRunRow {
   id: string;
@@ -42,6 +43,8 @@ export interface AIRunRow {
 export interface SheetRow {
   rowIndex: number;
   data: Record<string, string>;
+  // What the row's result is made from (lib/run-inputs/stamp.ts), written with it.
+  stamp?: RowStamp;
 }
 
 // Statuses a worker must NOT start processing for. 'cancelled'/'paused' are

@@ -18,19 +18,20 @@ export function useColumnDefs(args: Args) {
     colIdFor: (name: string) => latest.current.colIdFor(name),
     handleHeaderColumnDelete: (column: string) => latest.current.handleHeaderColumnDelete(column),
     openColumnMenu: (column: string, anchor: DOMRect) => latest.current.openColumnMenu(column, anchor),
+    onRetryFailed: (column: string) => latest.current.onRetryFailed?.(column),
   }), [])
   const {
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits,
+    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits, failedRuns,
   } = args
   // buildColumnDefs only asks whether these exist (the header's × and the Add Column column).
   const canDelete = !!args.onDeleteColumn
   const canAdd = !!args.onAddColumn
   return useMemo(() => buildColumnDefs({
     ...calls, columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits,
+    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits, failedRuns,
     onDeleteColumn: canDelete ? calls.onDeleteColumn : undefined,
     onAddColumn: canAdd ? calls.onAddColumn : undefined,
   }), [calls, columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits, canDelete, canAdd])
+    formulaColumns, hiddenColumns, lookupColumns, columnDescriptions, rowNumberDigits, failedRuns, canDelete, canAdd])
 }

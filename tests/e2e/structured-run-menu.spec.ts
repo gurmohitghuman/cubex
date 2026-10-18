@@ -4,7 +4,7 @@ import Database from 'better-sqlite3'
 import { authedApi, seedSheet, BASE } from './helpers'
 
 // The column menu on a structured AI run (several typed columns from one call
-// per row): "Run All Rows" on any of its columns reruns that run on every row
+// per row): "Force run all rows" on any of its columns reruns that run on every row
 // (it used to say "Configure AI column first"), and "Stop AI Run" shows on its
 // columns while it runs (it was keyed to "(Output)" names only). The runs are
 // seeded into the test DB (no OpenRouter key here), as in
@@ -23,7 +23,7 @@ const SPECS = JSON.stringify([
   { columnName: 'Why', type: 'string', description: 'One sentence' },
 ])
 
-test('column menu: Run All Rows and Stop AI Run on a structured run', async ({ page, context }) => {
+test('column menu: Force run all rows and Stop AI Run on a structured run', async ({ page, context }) => {
   test.setTimeout(60_000)
   const api = await authedApi()
   await context.addCookies((await api.storageState()).cookies)
@@ -48,13 +48,14 @@ test('column menu: Run All Rows and Stop AI Run on a structured run', async ({ p
     const why = page.locator('.ag-header-cell', { hasText: 'Why' }).first()
     await expect(why).toBeVisible({ timeout: 15_000 })
 
-    // Run All Rows on a typed column → confirm → a rerun of the structured run on all 3 rows.
+    // Force run all rows on a typed column → its estimate's confirm → a rerun of the structured run on all 3 rows.
     await why.click({ button: 'right' })
     await expect(page.getByText('Stop AI Run')).toHaveCount(0) // nothing running yet
-    await page.getByText('Run All Rows').click()
-    await page.getByRole('button', { name: 'Run all rows', exact: true }).click()
-    await expect(page.getByText('Re-running AI for 3 rows')).toBeVisible({ timeout: 10_000 })
-    await expect.poll(() => latestRun().total_rows).toBe(3)
+    await page.getByText(/Force run all 3 rows/).click()
+    const confirm = page.getByRole('dialog').filter({ hasText: 'Force run all rows' })
+    await expect(confirm).toContainText('Run all 3 rows?', { timeout: 15_000 })
+    await confirm.getByRole('button', { name: 'Run', exact: true }).click()
+    await expect.poll(() => latestRun().total_rows, { timeout: 10_000 }).toBe(3)
     expect(latestRun().output_columns).toBe(SPECS)
 
     // That rerun fails fast (no key). Once it's done, a running structured run
@@ -108,7 +109,7 @@ test('column menu: Edit / Update Instructions only on single-column AI runs', as
       const cell = page.locator('.ag-header-cell', { hasText: header }).first()
       await expect(cell).toBeVisible({ timeout: 15_000 })
       await cell.click({ button: 'right' })
-      await expect(page.getByText('Run All Rows')).toBeVisible()
+      await expect(page.getByText(/Force run all/)).toBeVisible()
       await expect(edit).toHaveCount(0)
       await page.keyboard.press('Escape')
     }

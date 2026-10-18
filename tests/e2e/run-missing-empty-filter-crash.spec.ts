@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { authedApi, seedSheet, BASE } from './helpers'
 
-// Regression: "Run Missing or Errors" on an AI column WHILE an empty-filter on
+// Regression: a menu rerun ("Run N empty or out-of-date rows") on an AI column WHILE an empty-filter on
 // that column hides all-but-the-error rows crashed the page with
 //   Unexpected Application Error! Cannot read properties of undefined (reading 'map')
 // from useGridHandlers.ts's column-state sync useLayoutEffect.
@@ -35,7 +35,7 @@ function seedUserId(db: Database.Database): string {
   return row.id
 }
 
-test('Run Missing or Errors with an active empty-filter does not crash the page', async ({ page, context }) => {
+test('Run empty or out-of-date rows with an active empty-filter does not crash the page', async ({ page, context }) => {
   const api = await authedApi()
   await context.addCookies((await api.storageState()).cookies)
   const { tableId, sheetId } = await seedSheet(api, 4) // rows 0..3, column 'val'
@@ -45,7 +45,7 @@ test('Run Missing or Errors with an active empty-filter does not crash the page'
     const OUT = 'Enrich (Output)'
 
     // A COMPLETED AI run on 'Enrich (Output)' — makes the column AI-typed so the
-    // header menu shows "Run Missing or Errors". Plus ai_results so the column
+    // header menu shows its run items. Plus ai_results so the column
     // type resolves to ai-output.
     const runId = randomUUID()
     db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, status, total_rows, processed_rows)
@@ -78,11 +78,13 @@ test('Run Missing or Errors with an active empty-filter does not crash the page'
     await expect(page.locator('.ag-header-cell[col-id^="col_"]').first()).toBeVisible({ timeout: 15_000 })
     await expect(sawCrash).toBeHidden()
 
-    // Open the Output column's header menu and click "Run Missing or Errors".
+    // Open the Output column's header menu, "Run N empty or out-of-date rows", then its confirm.
     // The Output column is the 2nd data column; target it by its header text.
     const outHeader = page.locator('.ag-header-cell', { hasText: 'Enrich (Output)' }).first()
     await outHeader.click({ button: 'right' })
-    await page.getByText('Run Missing or Errors', { exact: false }).click()
+    await page.getByText('empty or out-of-date', { exact: false }).click()
+    const confirm = page.getByRole('dialog').filter({ hasText: 'Run empty or out-of-date rows' })
+    await confirm.getByRole('button', { name: /^(Run|Close)$/ }).click({ timeout: 15_000 })
 
     // The bug: clicking it crashed the page. Assert the error boundary NEVER shows,
     // and the app stays interactive (header still present) over the reload that

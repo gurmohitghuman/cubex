@@ -4,7 +4,7 @@
 import { db } from '../lib/db';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import type { ColumnDetail } from '../lib/column-details';
-import { extractColumnReferences, normalizeColumnName } from '../lib/prompt';
+import { promptReads } from '../lib/prompt';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import { parseJson, type DetailContext } from './column-details-context';
 
@@ -12,16 +12,6 @@ interface AiRunRow {
   id: string; column_name: string; prompt: string; model: string | null; status: string;
   output_columns: string | null; data_column: string | null; use_openrouter_web_search: number;
   use_web_fetch: number; run_if: string | null;
-}
-
-// The columns a prompt's /tokens read, as the run resolves them (processPromptTemplate).
-function promptReads(prompt: string, columns: readonly string[]): string[] {
-  const out = new Set<string>();
-  for (const ref of extractColumnReferences(prompt)) {
-    const col = columns.find(c => normalizeColumnName(c) === ref || c.toLowerCase() === ref.toLowerCase());
-    if (col) out.add(col);
-  }
-  return [...out];
 }
 
 function outputsOf(run: Pick<AiRunRow, 'output_columns'>): OutputColumnSpec[] {

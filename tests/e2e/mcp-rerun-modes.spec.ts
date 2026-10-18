@@ -83,7 +83,7 @@ test('MCP AI rerun requires an explicit target', async () => {
   await client.close()
 })
 
-test('MCP HTTP rerun rejects AI-only modes', async () => {
+test('MCP HTTP rerun takes every rerun mode, and refuses an unknown one', async () => {
   test.setTimeout(60_000)
   const api = await authedApi()
   await seedSheet(api, 2)
@@ -92,19 +92,10 @@ test('MCP HTTP rerun rejects AI-only modes', async () => {
 
   const bogusRunId = '00000000-0000-4000-8000-000000000000'
 
-  // 'errored' and 'empty' are AI-only. HTTP runs key on a status column with
-  // different semantics; silently accepting them would target the wrong rows.
-  for (const mode of ['errored', 'empty']) {
-    const res = await client.callTool({
-      name: 'control_run',
-      arguments: { run_type: 'http', run_id: bogusRunId, action: 'rerun', mode },
-    })
-    expect(isError(res)).toBe(true)
-    expect(errorText(res)).toContain("'missing' or 'all'")
-  }
-
-  // HTTP's own modes still pass the guard and reach the lookup.
-  for (const mode of ['missing', 'all']) {
+  // An HTTP API column's status cell reads like an AI column's: ❌ failed, blank
+  // or "Condition not met" not run, a fingerprinted result out of date. Every
+  // mode passes the guard and reaches the lookup.
+  for (const mode of ['errored', 'empty', 'missing', 'all', 'out_of_date', 'empty_or_out_of_date']) {
     const res = await client.callTool({
       name: 'control_run',
       arguments: { run_type: 'http', run_id: bogusRunId, action: 'rerun', mode },
@@ -112,6 +103,11 @@ test('MCP HTTP rerun rejects AI-only modes', async () => {
     expect(isError(res)).toBe(true)
     expect(errorText(res).toLowerCase()).toContain('not found')
   }
+  const unknown = await client.callTool({
+    name: 'control_run',
+    arguments: { run_type: 'http', run_id: bogusRunId, action: 'rerun', mode: 'stale' },
+  }) as { isError?: boolean }
+  expect(unknown.isError).toBe(true)
 
   // HTTP keeps its historical default (no mode = every row) — unchanged, since
   // the money-risk asymmetry is AI-specific (HTTP hits the user's own API).

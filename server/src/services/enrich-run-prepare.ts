@@ -20,6 +20,8 @@ import type { DestPlan } from './enrich-list-dest';
 import { checkRunRule } from './run-rule';
 import type { CheckedRule, RuleNode } from '../lib/run-condition';
 import type { SeedPlan } from '../lib/enrich-seed';
+import { statusStaleCheck } from './run-inputs';
+import type { CompiledFilter } from '../lib/row-filter/sql';
 
 export interface PreparedStart {
   statusColumn: string;
@@ -32,6 +34,8 @@ export interface PreparedStart {
   upperBound: number;
   // The "Only run if" rule, checked against the sheet (null: none).
   rule: CheckedRule | null;
+  // An out_of_date status's check, read before the run starts (lib/enrich-seed.ts SeedPlan.stale).
+  stale: CompiledFilter | null;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -41,7 +45,7 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 export function seedPlanFor(input: EnrichRunInput, p: PreparedStart): SeedPlan {
   return {
     statusColumn: input.continueColumn ? p.statusColumn : null, status: input.rows.status,
-    where: input.conditions, rule: p.rule?.tree ?? null, config: p.config, columns: p.columns,
+    where: input.conditions, rule: p.rule?.tree ?? null, config: p.config, columns: p.columns, stale: p.stale,
   };
 }
 
@@ -91,6 +95,8 @@ const NOTHING_TO_RUN: Record<string, string> = {
   not_enriched: 'Every row here is enriched already. Pick other rows to run.',
   no_result: 'Every row here has a result already.',
   failed: 'No rows here failed.',
+  out_of_date: 'No row here is out of date.',
+  empty_or_out_of_date: 'Every row here is enriched already and none is out of date.',
 };
 
 // How many rows the run can take at most (it sizes the default run limit):
@@ -99,6 +105,7 @@ const NOTHING_TO_RUN: Record<string, string> = {
 // missing an input still count; seeding skips them.
 async function rowsInScope(
   sheetId: string, userId: string, input: EnrichRunInput, statusColumn: string, all: number, rule: RuleNode | null,
+  stale: CompiledFilter | null,
 ): Promise<number> {
   const { mode, status, rowIndexes } = input.rows;
   const byStatus = input.continueColumn && status !== 'any';
@@ -106,7 +113,7 @@ async function rowsInScope(
   if (!byStatus && mode !== 'filter' && where.length === 0 && !rule) {
     return mode === 'selected' ? rowIndexes?.length ?? 0 : all;
   }
-  const scope = { mode, rowIndexes, where, rule };
+  const scope = { mode, rowIndexes, where, rule, stale };
   const counts = await enrichRowCounts(sheetId, userId, byStatus ? statusColumn : null, scope);
   return byStatus ? countFor(counts, status) : counts.total;
 }
@@ -132,7 +139,9 @@ export async function prepareEnrichmentStart(
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
   const rule = checkRunRule(sheetId, userId, input.runIf);
   if ('error' in rule) return bad(rule.error);
-  const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null);
+  // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
+  const stale = input.continueColumn ? statusStaleCheck(sheetId, userId, statusColumn, input.rows.status) : null;
+  const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null, stale);
   // Nothing left to run here (a setup carrying the column on counts it as done).
   if (inScope === 0 && (input.conditions.length || rule.ok)) {
     return { ...bad('No rows here pass "Only run if". Pick other rows to run.'), nothingToRun: true };
@@ -156,6 +165,7 @@ export async function prepareEnrichmentStart(
   return {
     ok: {
       statusColumn, outputNames, config: built.ok, listPlan: listPlan.ok, columns, span, upperBound, rule: rule.ok,
+      stale,
     },
   };
 }

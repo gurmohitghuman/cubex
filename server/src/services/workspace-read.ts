@@ -8,6 +8,7 @@ import { formulaColumnJson, sheetFormulaView } from './formula-view';
 import { lookupColumnJson, sheetLookupView } from './lookup-view';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { sheetRunColumns } from './row-filter';
+import { staleByRow } from './run-status-rows';
 import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
 import { listViews, type ViewInfo } from './view-store';
 import { sheetColumnDetails } from './column-details';
@@ -129,8 +130,10 @@ export function readRowsPage(
   const page = rows.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
   overlayFilling(page, fillingColumns(sheetId, userId));
   const runColumns = includeStatus ? sheetRunColumns(sheetId, userId, getSheetColumns(sheetId, userId, false)) : null;
+  const stale = runColumns ? staleByRow(sheetId, userId, page.map(r => r.id), runColumns) : null;
   return {
-    rows: runColumns ? page.map(r => ({ ...r, data: rowWithStatus(r.data, runColumns) })) : page,
+    rows: runColumns
+      ? page.map(r => ({ ...r, data: rowWithStatus(r.data, runColumns, undefined, stale?.get(r.id)) })) : page,
     // Full page → there may be more; a short page is definitive end-of-sheet.
     next_cursor: hasMore ? rows[rows.length - 1].row_index : null,
     ...versions,

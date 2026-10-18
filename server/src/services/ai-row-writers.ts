@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { touchSheet, jsonPath } from '../lib/sql-helpers';
+import { touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { markAutorunInputs } from '../lib/autorun-mark';
+import type { RowStamp } from '../lib/run-inputs/stamp';
+import { writeRunCells } from '../lib/run-cells-write';
 
 // Thrown inside the success-path write transaction when a re-check finds the run
 // is no longer ours (cancel/resume raced us). Rolls the txn back; processRow's
@@ -28,7 +30,12 @@ interface WriteCtx {
   inputValues: string  // JSON.stringify(row.data)
   needsDataColumn: boolean
   myGeneration: number
+  stamp?: RowStamp     // what the row's result is made from (lib/run-inputs)
 }
+
+// The row's cells, and the stamp of the inputs they were made from, in one UPDATE.
+const writeCells = (ctx: WriteCtx, cells: Array<[string, string]>) =>
+  writeRunCells(ctx.sheetId, ctx.userId, ctx.rowIndex, cells, ctx.stamp);
 
 // OpenRouter completion.usage, captured per row. NULL when the provider omits
 // the usage block. Persisted for measured-cost reporting + history-based
@@ -84,26 +91,8 @@ export function writeSuccess(
       ...usageColumns(usage),
     );
 
-    if (ctx.needsDataColumn) {
-      db.prepare(`
-        UPDATE rows SET data = json_set(data, ?, ?, ?, ?),
-                        updated_at = datetime('now')
-        WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-      `).run(
-        jsonPath(ctx.columnName), result,
-        jsonPath(dataColName), scrapedSummary,
-        ctx.userId, ctx.sheetId, ctx.rowIndex,
-      );
-    } else {
-      db.prepare(`
-        UPDATE rows SET data = json_set(data, ?, ?),
-                        updated_at = datetime('now')
-        WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-      `).run(
-        jsonPath(ctx.columnName), result,
-        ctx.userId, ctx.sheetId, ctx.rowIndex,
-      );
-    }
+    writeCells(ctx, ctx.needsDataColumn
+      ? [[ctx.columnName, result], [dataColName, scrapedSummary]] : [[ctx.columnName, result]]);
     // A column another column's auto-run reads queues this row for it.
     const written = ctx.needsDataColumn ? [ctx.columnName, dataColName] : [ctx.columnName];
     markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
@@ -131,26 +120,9 @@ export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTok
         prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
       VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
-    if (ctx.needsDataColumn) {
-      db.prepare(`
-        UPDATE rows SET data = json_set(data, ?, ?, ?, ?),
-                        updated_at = datetime('now')
-        WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-      `).run(
-        jsonPath(ctx.columnName), `❌ Error: ${errorMessage}`,
-        jsonPath(dataColName), '❌ Error',
-        ctx.userId, ctx.sheetId, ctx.rowIndex,
-      );
-    } else {
-      db.prepare(`
-        UPDATE rows SET data = json_set(data, ?, ?),
-                        updated_at = datetime('now')
-        WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-      `).run(
-        jsonPath(ctx.columnName), `❌ Error: ${errorMessage}`,
-        ctx.userId, ctx.sheetId, ctx.rowIndex,
-      );
-    }
+    const failed = `❌ Error: ${errorMessage}`;
+    writeCells(ctx, ctx.needsDataColumn
+      ? [[ctx.columnName, failed], [dataColName, '❌ Error']] : [[ctx.columnName, failed]]);
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }
