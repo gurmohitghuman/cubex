@@ -13,6 +13,7 @@ import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { listProgress } from './enrich-run-status';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { runProviders } from './enrich-providers';
+import { reusedRows } from './enrich-reuse';
 
 export interface EnrichRunRow {
   id: string; config: string | null; spent_micro: number | null; pause_reason: string | null;
@@ -38,6 +39,8 @@ export function enrichSummaryPart(r: EnrichRunRow, userId: string, full: boolean
       max_cost_per_row_usd: e.maxCostPerRowUsd, spend_limit_usd: e.spendLimitUsd,
       concurrency: enrichConcurrency(config),
       pause_reason: r.pause_reason, skipped_rows_missing_inputs: r.skipped_rows ?? 0, test_rows: e.rows.test,
+      // Rows filled from an earlier run's found answer at $0; fresh: every row called again.
+      reused_rows: reusedRows(r.id, userId), fresh: e.fresh,
       ...(e.list ? {
         list: {
           destination_sheet_id: r.dest_sheet_id, results_per_row: e.list.maxItems,
@@ -56,8 +59,10 @@ export function enrichSummaryPart(r: EnrichRunRow, userId: string, full: boolean
 }
 
 // answer_cut: parts of the answer left out (largest first) to keep it under AGENT_ANSWER_MAX_CHARS.
+// reused_answer_from: when treg gave the earlier answer this row reused (null: its own call).
 export interface EnrichResultExtra {
-  cost_usd: number | null; found_by: string | null; answer?: unknown; answer_cut?: string[];
+  cost_usd: number | null; found_by: string | null; reused_answer_from: string | null;
+  answer?: unknown; answer_cut?: string[];
 }
 
 function boundedAnswer(raw: string | null): { answer: unknown; answer_cut?: string[] } {
@@ -83,15 +88,16 @@ export function enrichResultExtras(
 ): Map<number, EnrichResultExtra> {
   const out = new Map<number, EnrichResultExtra>();
   if (rowIndexes.length === 0) return out;
-  const rows = db.prepare(`SELECT row_index, cost_usd, json_extract(response_data, '$._cubex.found_by') AS found_by
-      ${answers ? ', response_data' : ''}
+  const rows = db.prepare(`SELECT row_index, cost_usd, json_extract(response_data, '$._cubex.found_by') AS found_by,
+      json_extract(response_data, '$._cubex.reused_from.answered_at') AS reused${answers ? ', response_data' : ''}
     FROM http_results WHERE run_id = ? AND user_id = ? AND row_index IN (SELECT value FROM json_each(?))`)
     .all(runId, userId, JSON.stringify(rowIndexes)) as Array<{
-    row_index: number; cost_usd: number | null; found_by: unknown; response_data?: string | null;
+    row_index: number; cost_usd: number | null; found_by: unknown; reused: unknown; response_data?: string | null;
   }>;
   for (const r of rows) {
     out.set(r.row_index, {
       cost_usd: r.cost_usd, found_by: typeof r.found_by === 'string' ? r.found_by : null,
+      reused_answer_from: typeof r.reused === 'string' ? r.reused : null,
       ...(answers ? boundedAnswer(r.response_data ?? null) : {}),
     });
   }

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Settings, settingsAPI } from '@/utils/api'
 import { TREG_APP_URL, TREG_TOPUP_URL } from '@/lib/enrich-format'
 import { DailyLimitControl } from './DailyLimitControl'
+import { ReuseDaysControl } from './ReuseDaysControl'
 import { TregLogo } from '@/components/TregLogo'
 
 interface TregCardProps {
@@ -145,6 +146,7 @@ export const TregCard: React.FC<TregCardProps> = ({ settings, reloadSettings }) 
         </div>
 
         <DailyLimitControl limit={settings.enrichDailyLimit} onChanged={reloadSettings} />
+        <ReuseDaysControl />
 
         <p className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
           <ExtLink href={TREG_TOPUP_URL}>Top up</ExtLink>

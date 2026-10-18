@@ -157,7 +157,8 @@ export async function buildEnrichmentConfig(
         dedupe: input.list.dedupePath ? { path: input.list.dedupePath } : null,
       },
     } : {}),
-    cleanDomains: input.cleanDomains, fresh: input.fresh, maxCostPerRowUsd: cap, spendLimitUsd: spendLimit,
+    cleanDomains: input.cleanDomains, fresh: input.fresh, ...(input.noReuse ? { noReuse: true } : {}),
+    maxCostPerRowUsd: cap, spendLimitUsd: spendLimit,
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test, where: input.conditions },
     email: verify && input.email ? {
       strategy: input.email.accept, guess: input.email.guess, pattern: input.email.pattern,

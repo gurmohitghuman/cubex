@@ -20,7 +20,7 @@ export function getTregToken(userId: string): string | null {
   return token;
 }
 
-function ensureSettingsRow(userId: string): void {
+export function ensureSettingsRow(userId: string): void {
   db.prepare('INSERT INTO settings (id, user_id) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING').run(uuidv4(), userId);
 }
 

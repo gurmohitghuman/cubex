@@ -1,7 +1,7 @@
 import { api } from './client'
 import type {
   AccessToken, AccessTokenScope, APIKey, APIKeySuggestion, CreatedAccessToken,
-  EnrichDailyLimit, OpenRouterKeyTestResult, OpenRouterModel, Settings, TregKeyTestResult,
+  EnrichDailyLimit, EnrichReuseSetting, OpenRouterKeyTestResult, OpenRouterModel, Settings, TregKeyTestResult,
 } from './types'
 
 export const settingsAPI = {
@@ -32,6 +32,13 @@ export const settingsAPI = {
   // Daily limit for all enrichments; null turns it off.
   setEnrichDailyLimit: (limitUsd: number | null): Promise<EnrichDailyLimit> =>
     api.put('/settings/enrich-daily-limit', { limitUsd }).then(res => res.data),
+
+  // Days a found enrichment answer is reused before a row calls treg again (0: off).
+  getEnrichReuse: (): Promise<EnrichReuseSetting> =>
+    api.get('/settings/enrich-reuse').then(res => res.data),
+
+  setEnrichReuse: (days: number): Promise<EnrichReuseSetting> =>
+    api.put('/settings/enrich-reuse', { days }).then(res => res.data),
 
   // Account-wide default AI model; null clears it.
   updateDefaultModel: (model: string | null): Promise<void> =>

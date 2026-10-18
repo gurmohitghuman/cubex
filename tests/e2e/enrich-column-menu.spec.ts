@@ -2,7 +2,7 @@ import { test, expect, Page, APIRequestContext } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { mockTreg } from './helpers-treg'
 import {
-  expectSettledBilledOnce, freshTreg, rowsOf, runIdsOf, runStatus, seedLeadRows, startRun, waitRun,
+  callEveryRow, expectSettledBilledOnce, freshTreg, rowsOf, runIdsOf, runStatus, seedLeadRows, startRun, waitRun,
 } from './helpers-enrich'
 
 // An enrichment's status column in the grid (plan U6): its own icon, ✅ ⏭️ ❌
@@ -12,6 +12,7 @@ import {
 // prefilled from the column's newest run. The confirm's estimate creates nothing.
 
 const COL = 'Find email'
+callEveryRow()
 const LEADS = [
   { Name: 'Ada One', Website: 'good1.example' }, { Name: 'Bo Two', Website: 'bad.example' },
   { Name: 'Cy Three', Website: 'good3.example' }, { Name: 'Di Four', Website: 'gone.example' },

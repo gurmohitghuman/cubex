@@ -10,6 +10,7 @@ import { enrichRunStatus, resumeEnrichmentRun } from '../services/enrich-run-sta
 import { enrichRowCounts } from '../services/enrich-row-count';
 import { columnSetup } from '../services/enrich-column';
 import { rerunEnrichmentColumn } from '../services/enrich-rerun';
+import { reuseCountFor } from '../services/enrich-reuse-count';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { runFailHttpStatus } from '../services/run-shared';
 import { parseRuleField } from '../lib/run-condition';
@@ -42,6 +43,26 @@ router.post('/sheets/:id/runs', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Enrichment run start error:', error);
     res.status(500).json({ error: 'Failed to start the enrichment' });
+  }
+});
+
+// How many rows of the run the drawer would start reuse an earlier found
+// answer at $0, for its estimate (the start's body; a pure read).
+router.post('/sheets/:id/reuse-count', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_PATTERN.test(id)) return badSheet(res);
+    const parsed = parseEnrichRunInput(req.body);
+    if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+    // The drawer drops a count it no longer needs: stop counting then.
+    let gone = false;
+    res.on('close', () => { gone = !res.writableEnded; });
+    const out = await reuseCountFor(req.userId!, id, parsed.ok, () => gone);
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error) {
+    console.error('Enrichment reuse count error:', error);
+    res.status(500).json({ error: "Couldn't count the rows that reuse earlier answers" });
   }
 });
 

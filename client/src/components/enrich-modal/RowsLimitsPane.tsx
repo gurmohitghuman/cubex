@@ -6,6 +6,7 @@ import { effectiveMode, type EnrichDraft, type RowCounts, type RowsMode, type Ro
 import { RunIfField } from '@/components/run-if/RunIfField'
 import { MoneyInput } from './MoneyInput'
 import { AutorunField } from './AutorunField'
+import { callAgainNote } from './reuse-copy'
 
 interface Props {
   sheetId: string
@@ -25,6 +26,8 @@ interface Props {
   // For the auto-run choice: a webhook adds rows from outside; the daily limit for all enrichments.
   hasWebhook: boolean
   dailyLimitUsd: number | null
+  // Days found answers are reused for (Settings; 0: off; null: not read yet).
+  reuseDays: number | null
 }
 
 const count = (n: number | null | undefined) => (n === null || n === undefined ? '…' : n.toLocaleString())
@@ -122,12 +125,10 @@ export const RowsLimitsPane: React.FC<Props> = (p) => {
 
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={draft.fresh} onChange={e => update({ fresh: e.target.checked })}
-          className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" />
+          className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" data-testid="enrich-call-again" />
         <span>
-          Always fetch fresh data
-          <span className="block text-xs text-gray-500">
-            Otherwise treg can answer a repeat lookup from its store, which can be cheaper.
-          </span>
+          Always call again
+          <span className="block text-xs text-gray-500">{callAgainNote(p.reuseDays)}</span>
         </span>
       </label>
 

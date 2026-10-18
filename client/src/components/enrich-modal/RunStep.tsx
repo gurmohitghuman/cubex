@@ -6,6 +6,7 @@ import { limitText, spent } from '@/lib/enrich-format'
 import { RunResultRows } from './RunResultRows'
 import { PausedNotice } from './PausedNotice'
 import { runActive, type EnrichRunControls } from './useEnrichRun'
+import { reusedRunLine } from './reuse-copy'
 
 interface Props {
   run: EnrichRunControls
@@ -90,6 +91,9 @@ export const RunStep: React.FC<Props> = ({ run, onViewResults, secondaryLabel, o
           {s.rows.failed > 0 && ` · ${plural(s.rows.failed, 'row')} failed`}
         </p>
         {s.list && <p className="text-xs text-gray-700" data-testid="enrich-run-list">{listLine(s)}</p>}
+        {s.reusedRows > 0 && (
+          <p className="text-xs text-gray-700" data-testid="enrich-run-reused">{reusedRunLine(s.reusedRows)}</p>
+        )}
         {s.skippedRows > 0 && (
           <p className="text-xs text-gray-600">
             {plural(s.skippedRows, 'row')} had an empty input and {s.skippedRows === 1 ? 'was' : 'were'} left out,

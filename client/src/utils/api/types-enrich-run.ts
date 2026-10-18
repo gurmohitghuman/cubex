@@ -71,6 +71,8 @@ export interface EnrichRunStatus {
   totalRows: number
   processedRows: number
   skippedRows: number
+  // Rows filled from a found answer an earlier run stored, at no cost.
+  reusedRows: number
   rows: { completed: number; failed: number }
   spentUsd: number
   spendLimitUsd: number | null
@@ -93,12 +95,17 @@ export interface EnrichRerunRequest {
   // The run limit the confirm quoted (else sized to the rows at start).
   spendLimitUsd?: number
   estimateOnly?: boolean
+  // Call treg again instead of reusing an earlier found answer (the answer panel's "Rerun this row").
+  callAgain?: boolean
 }
 
 export interface EnrichRerunEstimate {
   column: string
   toolName: string
   rows: number
+  // Rows that reuse a found answer at no cost (reuseComplete false: at least that many).
+  reusedRows: number
+  reuseComplete: boolean
   // false: the team's own provider key bills it, so there are no figures.
   priceKnown: boolean
   lowUsd: number
@@ -167,4 +174,14 @@ export interface StoredAnswers {
   counting: boolean
   pruneDays: number
   prune: { status: 'running' | 'done' | 'failed'; pruned: number; startedAt: string; endedAt: string | null } | null
+}
+
+// How many rows of a run would reuse a found answer an earlier run stored, at
+// no cost (complete false: at least that many, counted for a while on a big
+// run), and the days answers are reused for (Settings; 0: off).
+export interface EnrichReuseCount {
+  rows: number
+  checked: number
+  complete: boolean
+  days: number
 }

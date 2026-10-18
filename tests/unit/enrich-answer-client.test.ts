@@ -37,11 +37,18 @@ const view: any = {
   prunedAt: null, mapping: [],
   enrichment: {
     toolId: 'treg.people.email.find', toolName: 'Verified work email', foundBy: 'QuickEnrich', access: 'treg',
-    costUsd: 0.0063, sameLookup: false, calls: [step], tried: [],
+    costUsd: 0.0063, sameLookup: false, reused: null, calls: [step], tried: [],
   },
 }
 check('found by and on what key', foundLine(view) === "Found by QuickEnrich on treg's key")
 check('cost from the treg balance', costLine(view) === '$0.0063 from your treg balance for this row.')
+const reusedFrom = (sheetName: string | null) => ({
+  ...view, enrichment: { ...view.enrichment, costUsd: 0, calls: [],
+    reused: { answeredAt: '2026-10-03 09:00:00', sheetId: sheetName ? 's1' : null, sheetName } },
+})
+check('a reused answer says when and where it was found, and that it cost nothing',
+  costLine(reusedFrom('Leads')) === 'Reused an answer found on 2026-10-03 in Leads: no call, no cost.')
+check('... from a sheet deleted since', costLine(reusedFrom(null))?.includes('in a sheet deleted since') === true)
 check('nothing charged says so', costLine({ ...view, enrichment: { ...view.enrichment, costUsd: 0 } })
   === 'Nothing was taken from your treg balance for this row.')
 check('no cost known says only that', costLine({ ...view, enrichment: { ...view.enrichment, costUsd: null } })

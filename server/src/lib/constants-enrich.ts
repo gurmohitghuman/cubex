@@ -132,6 +132,12 @@ export const ANSWER_PRUNE_SLICE = 500;
 // answers' size may get before opening Settings counts it again.
 export const STORED_ANSWERS_PRUNE_DAYS = 90;
 export const STORED_ANSWERS_RECOUNT_MS = 60 * 60 * 1000;
+// Found answers reused across runs (services/enrich-reuse.ts): days by default
+// and at most (0 turns it off), and how long an estimate looks for rows that
+// would reuse one before it answers with what it counted so far.
+export const ENRICH_REUSE_DAYS_DEFAULT = 30;
+export const ENRICH_REUSE_DAYS_MAX = 365;
+export const ENRICH_REUSE_COUNT_MS = envInt('ENRICH_REUSE_COUNT_MS', 1_500);
 
 // The checker the "Verified work email" preset runs on each found address.
 export const ENRICH_VERIFY_TOOL_ID = 'treg.people.email.verify';

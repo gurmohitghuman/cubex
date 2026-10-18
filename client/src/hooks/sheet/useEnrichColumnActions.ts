@@ -22,6 +22,8 @@ export interface PendingRerun {
   rowIndices?: number[]
   // The sheet's row_generation when the rows were picked (a sort since: 409).
   rowGeneration?: number
+  // Call treg again, reusing no earlier found answer (the answer panel's rerun).
+  callAgain?: boolean
   estimate: EnrichRerunEstimate | null
   error: string | null
   starting: boolean
@@ -46,6 +48,7 @@ export function useEnrichColumnActions(a: Args) {
       column: p.column, mode: selected ? 'selected' as const : 'all' as const, status: RERUN_STATUS[p.action],
       ...(selected ? { rowIndexes: p.rowIndices, rowGeneration: p.rowGeneration } : {}),
       ...(p.estimate?.spendLimitUsd != null ? { spendLimitUsd: p.estimate.spendLimitUsd } : {}),
+      ...(p.callAgain ? { callAgain: true } : {}),
     }
   }
 
@@ -55,7 +58,10 @@ export function useEnrichColumnActions(a: Args) {
   }
 
   // rowGeneration: when the rows were picked earlier (the answer panel's row), their generation then.
-  const onEnrichAction = (action: EnrichMenuAction, column: string, rowIndices?: number[], rowGeneration?: number) => {
+  // callAgain: the answer panel's "Rerun this row" calls treg again, not an earlier answer.
+  const onEnrichAction = (
+    action: EnrichMenuAction, column: string, rowIndices?: number[], rowGeneration?: number, callAgain = false,
+  ) => {
     const sheet = a.activeSheet
     if (!sheet) return
     if (action === 'edit') { a.onOpenEnrichment?.({ kind: 'edit', column }); return }
@@ -71,7 +77,7 @@ export function useEnrichColumnActions(a: Args) {
     const id = ++seq.current
     const next: PendingRerun = {
       action, column, rowIndices, rowGeneration: rowGeneration ?? a.rowGenerationRef?.current.get(sheet.id),
-      estimate: null, error: null, starting: false,
+      callAgain, estimate: null, error: null, starting: false,
     }
     setPending(next)
     enrichAPI.rerunEstimate(sheet.id, body(next))

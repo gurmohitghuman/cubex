@@ -228,7 +228,10 @@ export function getHttpRunResults(
       return {
         row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
         extracted_fields: extracted, error_message: r.error_message,
-        ...(enrichment ? { cost_usd: x?.cost_usd ?? null, found_by: x?.found_by ?? null } : {}),
+        ...(enrichment ? {
+          cost_usd: x?.cost_usd ?? null, found_by: x?.found_by ?? null,
+          ...(x?.reused_answer_from ? { reused_answer_from: x.reused_answer_from } : {}),
+        } : {}),
         ...(answers ? { answer: x?.answer ?? null, ...(x?.answer_cut ? { answer_cut: x.answer_cut } : {}) } : {}),
       };
     }),

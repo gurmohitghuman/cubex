@@ -27,6 +27,10 @@ export function costLine(v: AnswerView): string | null {
   if (e.sameLookup) {
     return 'Same lookup as another row in this run, so it reused that answer: no call of its own, no cost.'
   }
+  if (e.reused) {
+    const where = e.reused.sheetName ? ` in ${e.reused.sheetName}` : ' in a sheet deleted since'
+    return `Reused an answer found on ${e.reused.answeredAt.slice(0, 10)}${where}: no call, no cost.`
+  }
   if (e.costUsd === null) return 'No cost was reported for this row.'
   if (e.costUsd === 0) return 'Nothing was taken from your treg balance for this row.'
   return `${formatCost(e.costUsd)} from your treg balance for this row.`

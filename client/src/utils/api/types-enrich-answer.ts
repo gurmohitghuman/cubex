@@ -42,6 +42,9 @@ export interface EnrichAnswerInfo {
   access: AnswerAccess | null
   costUsd: number | null
   sameLookup: boolean
+  // Filled from a found answer an earlier run stored: when treg gave it, and
+  // the sheet it was bought for (null: deleted since).
+  reused: { answeredAt: string; sheetId: string | null; sheetName: string | null } | null
   calls: AnswerCallStep[]
   tried: AnswerTriedProvider[]
 }

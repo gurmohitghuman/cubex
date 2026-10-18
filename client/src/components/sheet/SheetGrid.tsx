@@ -120,7 +120,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   const answers = useAnswerPanel({
     activeSheet, reloadSheetData,
     rowGeneration: () => (activeSheet ? rowGenerationRef?.current.get(activeSheet.id) : undefined),
-    onRerunRow: (column, row, generation) => enrich.onEnrichAction('selected', column, [row], generation),
+    onRerunRow: (column, row, generation) => enrich.onEnrichAction('selected', column, [row], generation, true),
   })
   const handleCellClick = (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => {
     if (opensAnswer(columnTypes[columnName], value)) {

@@ -34,6 +34,9 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'become new columns; column_name names the status column. '
   + `COSTS MONEY: each row is a paid treg call on the user's treg balance (providers on the team's own keys bill `
   + 'the team directly). Call estimate_only:true first and tell the user the range; it creates nothing. '
+  + 'A row whose exact lookup (same tool, inputs and provider choices) found something in any run of this account '
+  + 'within the days set in Settings (30 by default, 0 turns it off) reuses that answer at $0 without a call: '
+  + 'estimate_only counts those rows (reuse, with its days) and prices the rest; fresh:true calls every row again. '
   + `test:true runs the first ${ENRICH_TEST_ROWS} rows only. max_cost_per_row_usd caps each row (sent to treg; the `
   + 'default lets every provider picked answer) and spend_limit_usd caps the run (it pauses there; default: rows in '
   + `scope x max per row). ${DAILY_LIMIT_NOTE} `
@@ -122,7 +125,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       skip_providers: z.array(z.string()).max(100).optional(),
       stop_at_first: lenientBoolean().optional(),
       clean_domains: lenientBoolean().optional().describe('Default true: URLs in domain inputs become bare domains'),
-      fresh: lenientBoolean().optional().describe('Ask providers for fresh data, not treg\'s stored answers'),
+      fresh: lenientBoolean().optional()
+        .describe('Call every row again: no reuse of earlier found answers, and providers asked, not treg\'s store'),
       max_cost_per_row_usd: money().optional(),
       spend_limit_usd: money().optional(),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()

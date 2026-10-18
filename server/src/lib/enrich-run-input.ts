@@ -36,6 +36,9 @@ export interface EnrichRunInput {
   // Rows at once (1..HTTP_MAX_CONCURRENCY); null: ENRICH_DEFAULT_CONCURRENCY.
   concurrency: number | null;
   fresh: boolean;
+  // This run calls every row, reusing no earlier found answer (the answer
+  // panel's "Rerun this row"). Never repeated by later reruns or auto-run.
+  noReuse?: boolean;
   // Selected rows: the sheet's row_generation when they were picked (a sort
   // since re-means their numbers: the start refuses). null: not sent.
   rowGeneration: number | null;
@@ -204,9 +207,10 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
 // only estimate them (a pure read for the confirm).
 // spendLimitUsd: the limit the confirm quoted (null: sized to the rows at start).
 // concurrency: the new run's (agents' reruns); absent keeps the column's own.
+// callAgain: the rows call treg again instead of reusing an earlier found answer.
 export interface RerunInput {
   column: string; rows: EnrichRunInput['rows']; estimateOnly: boolean;
-  spendLimitUsd: number | null; rowGeneration: number | null; concurrency?: number | null;
+  spendLimitUsd: number | null; rowGeneration: number | null; concurrency?: number | null; callAgain?: boolean;
 }
 
 export function parseRerunInput(body: unknown): { ok: RerunInput } | { error: string } {
@@ -220,6 +224,9 @@ export function parseRerunInput(body: unknown): { ok: RerunInput } | { error: st
   const limit = usd(b.spendLimitUsd, ENRICH_DAILY_LIMIT_MAX_USD);
   if (limit === undefined) return { error: 'The run limit must be more than $0.' };
   return {
-    ok: { column, rows, estimateOnly: b.estimateOnly === true, spendLimitUsd: limit, rowGeneration: generationOf(b) },
+    ok: {
+      column, rows, estimateOnly: b.estimateOnly === true, spendLimitUsd: limit, rowGeneration: generationOf(b),
+      callAgain: b.callAgain === true,
+    },
   };
 }

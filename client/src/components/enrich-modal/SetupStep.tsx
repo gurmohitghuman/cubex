@@ -12,7 +12,7 @@ import { OutputsPane, outputsSummary } from './OutputsPane'
 import { RowsLimitsPane } from './RowsLimitsPane'
 import { ListSetupSection } from './ListSetupSection'
 import { EstimateBox } from './EstimateBox'
-import { RunButtons } from './RunButtons'
+import { RunButtons, quotedLimit } from './RunButtons'
 import { continuing } from './run-request'
 import { useSetupModel } from './useSetupModel'
 
@@ -133,21 +133,23 @@ export const SetupStep: React.FC<Props> = (p) => {
             <RowsLimitsPane sheetId={p.sheetId} active={p.active}
               draft={draft} update={update} counts={m.counts} continuing={more} byStatus={m.byStatus}
               columns={p.columns} defaultMaxCostPerRow={est?.defaultMaxCostPerRowUsd ?? null}
-              defaultSpendLimit={est?.estimate.highUsd ?? null} billedBy={billed ? m.ownKeyProvider : null}
-              hasWebhook={!!m.data.setup?.hasWebhook} dailyLimitUsd={est?.dailyLimit.limitUsd ?? null} />
+              defaultSpendLimit={quotedLimit({ draft: { ...draft, spendLimitUsd: null }, estimate: est, unpriced: billed,
+                reuse: m.reuse })} billedBy={billed ? m.ownKeyProvider : null}
+              hasWebhook={!!m.data.setup?.hasWebhook} dailyLimitUsd={est?.dailyLimit.limitUsd ?? null}
+              reuseDays={m.reuseDays} />
           </AccordionSection>
 
           <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows}
             balance={m.data.balance} spendLimit={draft.spendLimitUsd} missNote={m.missNote} ownKeys={m.ownKeys}
             blocked={m.blocked} unpriced={m.unpriced} ownKeySingle={m.ownKeySingle} ownKeyProvider={m.ownKeyProvider}
-            listDest={m.listDestName} />
+            listDest={m.listDestName} reuse={m.reuse} />
         </>
       )}
 
       <RunButtons sheetId={p.sheetId} draft={draft} rows={m.rows} counts={m.counts}
         selectedRows={p.selectedRows} rowGeneration={p.rowGeneration} order={m.order} estimate={est}
         problem={problem} fullProblem={m.fullProblem} unpriced={billed} onCancel={p.onCancel}
-        onStarted={p.onStarted} listDest={m.listDestName}
+        onStarted={p.onStarted} listDest={m.listDestName} reuse={m.reuse}
         onFieldError={(field, message) => { if (field === 'destName') setDestError(message) }} />
     </div>
   )

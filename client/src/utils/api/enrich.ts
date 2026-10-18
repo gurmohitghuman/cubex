@@ -3,6 +3,7 @@ import type {
   EnrichEstimate, EnrichEstimateRequest, EnrichSheetSetup, EnrichToolAccess, EnrichToolCard,
   EnrichToolDetail, TregBalance, EnrichRunRequest, EnrichRunStarted, EnrichRunStatus,
   EnrichRowCounts, EnrichRowsScope, EnrichRerunRequest, EnrichRerunEstimate, EnrichColumnSetup, EnrichSpend,
+  EnrichReuseCount,
   AnswerView, AnswerFieldAdded, EnrichListField, EnrichListFieldChoices, StoredAnswers,
 } from './types'
 
@@ -34,6 +35,10 @@ export const enrichAPI = {
   // Starts a run: creates the columns, then seeds and queues it on the server.
   startRun: (sheetId: string, body: EnrichRunRequest): Promise<EnrichRunStarted> =>
     api.post(`/enrich/sheets/${sheetId}/runs`, body, noServerToast).then(res => res.data),
+
+  // Rows of the run this body would start that reuse an earlier found answer (a pure read).
+  reuseCount: (sheetId: string, body: EnrichRunRequest, signal?: AbortSignal): Promise<EnrichReuseCount> =>
+    api.post(`/enrich/sheets/${sheetId}/reuse-count`, body, { ...noServerToast, signal }).then(res => res.data),
 
   runStatus: (runId: string): Promise<EnrichRunStatus> =>
     api.get(`/enrich/runs/${runId}`, noServerToast).then(res => res.data),

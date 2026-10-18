@@ -5,11 +5,12 @@ import { buildSetup } from './setup-defaults'
 import { applyRecall } from './recall'
 import { boundInputs, inputProblem } from './readiness'
 import { namesProblem } from './outputs'
-import { continuing, reusableNames } from './run-request'
+import { continuing, reusableNames, runRequest } from './run-request'
 import { conditionsProblem } from './ConditionsField'
 import { providerStates } from './ProvidersPane'
 import { useSetupData } from './useSetupData'
 import { useEstimate } from './useEstimate'
+import { useReuseCount, useReuseDays } from './useReuseCount'
 import { countFor, useRowCounts } from './useRowCounts'
 import { ENRICH_MAX_ROW_CAP_USD } from '@/lib/constants'
 import { destProblem, listProblem, listProviderRows, perRowProblem, type ListDraft } from './list-draft'
@@ -116,8 +117,14 @@ export function useSetupModel(a: Args) {
   const order = providers
     ? [...providers.rows.filter(pinned), ...providers.rows.filter(r => !pinned(r))].map(r => r.provider)
     : draft.providerOrder
-  const request: EnrichEstimateRequest | null = ready && rows !== null && tool && card ? {
-    toolId: tool.id, rows, preset: card.preset ?? null, given: [...sent].sort(), skip: draft.skipProviders,
+  // Rows that reuse an earlier found answer cost nothing: the estimate prices the others.
+  const reuseAsk = ready && card && !problem && rows
+    ? runRequest(draft, { mode, selectedRows: a.selectedRows, test: false, order }) : null
+  const reuseCount = useReuseCount(sheetId, reuseAsk)
+  const reuseDays = useReuseDays(active)
+  const priced = rows === null ? null : Math.max(0, rows - (reuseCount?.rows ?? 0))
+  const request: EnrichEstimateRequest | null = ready && priced !== null && tool && card ? {
+    toolId: tool.id, rows: priced, preset: card.preset ?? null, given: [...sent].sort(), skip: draft.skipProviders,
     order, stopAtFirst: draft.stopAtFirst, maxCostPerRowUsd: draft.maxCostPerRowUsd,
     ...(list ? { list: estimateList(list) } : {}),
   } : null
@@ -143,7 +150,8 @@ export function useSetupModel(a: Args) {
   const listBills = !!list && !!tool && listProviderRows(tool, sent)
     .some(r => r.provider.toLowerCase() === list.provider?.toLowerCase() && r.billsMisses)
   return {
-    card, tool, data, ready, sent, counts, byStatus, rows, providers, providersOn, problem, statusNameProblem,
+    card, tool, data, ready, sent, counts, byStatus, rows, reuse: reuseCount, reuseDays, providers, providersOn,
+    problem, statusNameProblem,
     outputNameProblem, order, estimate, blocked, limitsProblem, unpriced, ownKeySingle, sheets,
     // A list job's defaults need the table's sheets: their read failed.
     listSheetsError: addsRows && !sheets && data.setupError,
