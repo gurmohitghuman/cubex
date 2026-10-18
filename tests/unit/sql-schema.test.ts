@@ -13,8 +13,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 import Database from 'better-sqlite3'
-import { registerRowFilterFunctions } from '../../server/src/lib/row-filter/sql-functions'
-import { registerRunInputFunctions } from '../../server/src/lib/run-inputs/fingerprint'
+// server/src is type:commonjs: default-import + destructure under tsx.
+import sqlFnMod from '../../server/src/lib/row-filter/sql-functions'
+import fpMod from '../../server/src/lib/run-inputs/fingerprint'
+const { registerRowFilterFunctions } = sqlFnMod as typeof import('../../server/src/lib/row-filter/sql-functions')
+const { registerRunInputFunctions } = fpMod as typeof import('../../server/src/lib/run-inputs/fingerprint')
 
 const ROOT = process.cwd()
 const SERVER_SRC = path.join(ROOT, 'server/src')
