@@ -130,7 +130,9 @@ test('header controls pause, resume and cancel the run the drawer shows', async 
   test.setTimeout(90_000)
   const api = await authedApi()
   await freshTreg(api, { delayMs: 1200 })
-  const { tableId, sheetId } = await seedLeadRows(api, LEADS)
+  // Enough rows that the run is still going when a slow (busy machine) page gets to Pause; the cancel ends it.
+  const manyLeads = Array.from({ length: 40 }, (_, i) => ({ Name: `Lead Person${i}`, Website: `co${i}.example` }))
+  const { tableId, sheetId } = await seedLeadRows(api, manyLeads)
   const runId = await startRun(api, sheetId, findRun())
   await openSheet(page, context, api, tableId)
   await viewRun(page, 'Find email')
