@@ -14,6 +14,7 @@ const SHORT: Record<AutorunPause, string> = {
   unconfirmed: 'waiting on treg', retired: 'tool retired', missing_input: 'column missing',
   setup: 'needs a fix', failed: 'a run failed', queue: "couldn't queue", priced: 'needs a daily cap',
   dest_full: 'the sheet it adds to is full', loop: 'its rows would come back', too_slow: 'the formula is too slow',
+  over_cap: "this column's cap",
 }
 
 export const pauseShort = (r: AutorunPause | null): string => (r ? SHORT[r] ?? 'paused' : '')
@@ -34,7 +35,7 @@ export function pauseSentence(a: Pick<AutorunColumn, 'pausedReason' | 'pausedMes
 
 // What lifts a cap today instead of at midnight (the dialog says it).
 export function capFix(r: AutorunPause | null): string | null {
-  if (r === 'column_cap') return 'Raise the cap to go on today.'
+  if (r === 'column_cap' || r === 'over_cap') return 'Raise the cap to go on today.'
   if (r === 'row_cap') return 'Raise the rows a day to go on today.'
   if (r === 'daily_limit') return 'Raise the daily limit in Settings to go on today.'
   return null
@@ -45,7 +46,7 @@ export function autorunUsage(a: AutorunColumn): string {
   if (a.kind === 'clean') return 'cleans new and changed rows for free'
   if (a.kind === 'formula') return 'works out new and changed rows for free'
   if (a.kind === 'lookup') return 'looks new and changed rows up for free'
-  if (a.kind === 'http') {
+  if (a.kind === 'http' || (a.kind === 'waterfall' && a.dailyRowCap !== null)) {
     return `${a.rowsToday.toLocaleString()} of ${plural(a.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS, 'row')} today`
   }
   return a.dailyCapUsd === null

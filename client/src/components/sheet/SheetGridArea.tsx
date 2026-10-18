@@ -101,7 +101,8 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           registerClearSelection={grid.registerClearSelection} registerViewport={grid.registerViewport}
           windowStart={sheetData?.data.windowStart ?? 0} onLoadEarlier={p.loadEarlierData}
           onOpenSearch={grid.openSearch} registerSearch={grid.registerSearch}
-          onOpenEnrichment={modals.openEnrichment} onSaveSetup={modals.openSaveSetup}
+          onOpenEnrichment={modals.openEnrichment} onOpenWaterfall={modals.openWaterfall}
+          onSaveSetup={modals.openSaveSetup}
           setShowAddColumnModal={modals.setShowAddColumnModal}
           setupSSEConnection={sse.setupSSEConnection}
           fetchActiveHTTPRuns={runs.fetchHTTPRuns} fetchActiveAIRuns={runs.fetchAIRuns}

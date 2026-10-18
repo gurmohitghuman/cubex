@@ -15,6 +15,8 @@ export * from './constants-http-retry';
 export * from './constants-run-hooks';
 // Usage history, same split.
 export * from './constants-usage';
+// Waterfall columns, same split.
+export * from './constants-waterfall';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

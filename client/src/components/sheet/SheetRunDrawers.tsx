@@ -4,6 +4,7 @@ import { HTTPAPIColumnModal } from '@/components/HTTPAPIColumnModal'
 import { EnrichmentDrawer } from '@/components/EnrichmentDrawer'
 import { Sheet, SheetData } from '@/utils/api'
 import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
+import { WaterfallDrawer, type WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 interface SheetRunDrawersProps {
   activeSheet: Sheet | null
@@ -25,6 +26,7 @@ interface SheetRunDrawersProps {
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => void | Promise<void>
   fetchActiveAIRuns: (sheetId: string) => unknown
   fetchActiveHTTPRuns: (sheetId: string) => unknown
+  waterfall: { open: boolean; target: WaterfallOpenTarget | null; close: () => void }
 }
 
 // The drawers that add filled columns to the sheet: AI Column, Enrichment and
@@ -34,7 +36,7 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
   showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, clearEnrichOpen,
   enrichWatch, stopEnrichWatch,
   setShowAddColumnModal, setShowHTTPAPIColumnModal, setShowEnrichmentDrawer,
-  setSheetData, silentReload, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
+  setSheetData, silentReload, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns, waterfall,
 }) => {
   if (!activeSheet) return null
   return (
@@ -92,6 +94,19 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
         onOpenHandled={clearEnrichOpen}
         watchRunId={enrichWatch}
         onStopWatching={stopEnrichWatch}
+      />
+
+      <WaterfallDrawer
+        isOpen={waterfall.open} onClose={waterfall.close} sheetId={activeSheet.id}
+        columns={sheetData?.data.columns ?? []} selectedRows={selectedRowIndices}
+        rowGeneration={sheetData?.sheet?.row_generation} target={waterfall.target}
+        onRunStarted={(runId: string) => {
+          // Follow the run live; a silent reload shows its new columns as ⏳ goes in.
+          setupSSEConnection(runId, 'http')
+          fetchActiveHTTPRuns(activeSheet.id)
+          silentReload(activeSheet.id)
+        }}
+        onRunChanged={() => { fetchActiveHTTPRuns(activeSheet.id); silentReload(activeSheet.id) }}
       />
 
       <HTTPAPIColumnModal

@@ -19,6 +19,7 @@ import {
 import { classifyAiError, summarizeErrorClasses } from '../lib/ai-error-classify';
 import { classifyHttpError, summarizeHttpErrorClasses } from '../lib/http-error-classify';
 import { isEnrichmentRun } from '../services/enrich-agent-control';
+import { isWaterfallRun } from '../services/waterfall-agent-control';
 import { answersNeedSecrets } from '../services/run-status-enrich';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
@@ -54,9 +55,12 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + `outputs. include_answers:true adds each row's stored answer (at most ${ANSWERS_PAGE_MAX} rows a page, `
         + 'status_filter completed unless you pass one; answer_cut lists parts left out of a very big answer), for '
         + 'add_enrichment_field paths; it works for HTTP API runs too (a run that used saved API keys needs the '
-        + '\'secrets\' scope for it).',
+        + '\'secrets\' scope for it). '
+        + 'WATERFALL runs (run_type waterfall): each row also has answered_by (the step that answered), cost_usd '
+        + '(treg and AI for the row) and trace: each step it reached with its outcome (answered, not_found, '
+        + 'no_inputs, error, budget), value, detail and cost.',
       inputSchema: {
-        run_type: z.enum(['ai', 'http', 'enrichment']),
+        run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']),
         run_id: z.string(),
         status_filter: z.enum(['failed', 'completed', 'all']).optional()
           .describe("Default 'failed' ('completed' with include_answers). 'completed' = successful rows only; "
@@ -73,7 +77,8 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (asked === 'enrichment' && !isEnrichmentRun(run_id, ctx.userId)) return err('Enrichment run not found');
-      const run_type = asked === 'enrichment' ? 'http' : asked;
+      if (asked === 'waterfall' && !isWaterfallRun(run_id, ctx.userId)) return err('Waterfall run not found');
+      const run_type = asked === 'enrichment' || asked === 'waterfall' ? 'http' : asked;
       if (include_answers && run_type === 'ai') return err('include_answers is for HTTP and enrichment runs.');
       const secrets = include_answers ? answersNeedSecrets(run_id, ctx.userId, ctx.scopes.has('secrets')) : null;
       if (secrets) return err(secrets);

@@ -30,7 +30,8 @@ export function useAutorun(a: {
   const kindOf = (column: string): AutorunKind => {
     const type = a.sheetData?.data.columnTypes?.[column]
     if (type === 'clean' || type === 'formula' || type === 'lookup') return view?.columns[column]?.kind ?? type
-    return view?.columns[column]?.kind ?? (type === 'enrich-status' ? 'enrichment' : 'http')
+    return view?.columns[column]?.kind
+      ?? (type === 'enrich-status' ? 'enrichment' : type === 'waterfall' ? 'waterfall' : 'http')
   }
 
   const open = (column: string) => {

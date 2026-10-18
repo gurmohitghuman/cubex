@@ -13,7 +13,9 @@ import {
   groupRows, runPage, type UsageColumnRow, type UsageDayRow, type UsageFigures, type UsageRunRow, type UsageScope,
 } from './usage';
 
-const KIND: Record<string, string> = { ai: 'AI', enrichment: 'Enrichment', http: 'HTTP API', mixed: 'Mixed' };
+const KIND: Record<string, string> = {
+  ai: 'AI', enrichment: 'Enrichment', http: 'HTTP API', waterfall: 'Waterfall', mixed: 'Mixed',
+};
 const money = (v: number | null) => (v === null ? '' : String(v));
 const FIGURE_HEADS = ['Runs', 'Cells run', 'Reused cells', 'AI cost (USD)', 'Own provider key cost (USD)',
   'Enrichment cost (USD)', 'Total cost (USD)', 'Cost per cell (USD)'];

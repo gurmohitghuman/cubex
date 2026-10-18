@@ -3,7 +3,7 @@
 // (no rule, no caps). Keep in step with server services/autorun-view.ts and
 // autorun-estimate.ts.
 
-export type AutorunKind = 'enrichment' | 'http' | 'clean' | 'formula' | 'lookup'
+export type AutorunKind = 'enrichment' | 'http' | 'waterfall' | 'clean' | 'formula' | 'lookup'
 
 export interface AutorunCondition { column: string; op: string; value: string }
 
@@ -16,7 +16,7 @@ export interface AutorunCondition { column: string; op: string; value: string }
 export type AutorunPause =
   | 'user' | 'column_cap' | 'row_cap' | 'daily_limit' | 'no_key' | 'auth' | 'balance' | 'treg_cap' | 'team_rule'
   | 'provider_busy' | 'unreachable' | 'unconfirmed' | 'retired' | 'missing_input' | 'setup' | 'failed' | 'queue'
-  | 'dest_full' | 'priced' | 'loop' | 'too_slow'
+  | 'dest_full' | 'priced' | 'loop' | 'too_slow' | 'over_cap'
 
 export interface AutorunColumn {
   column: string
@@ -41,7 +41,8 @@ export interface SheetAutorun {
 // The dialog's column: the columns its runs fill ("Only run if" can't read
 // them), and whether the team's own provider key bills its tool (no dollar cap).
 // runIf: the newest run's "Only run if" (a first turn-on starts from it).
-export interface AutorunTargetInfo { outputs: string[]; ownKey: boolean; runIf: string | null }
+// rowCap: a rows-a-day cap (HTTP API columns, a waterfall with only free steps), not a dollar one.
+export interface AutorunTargetInfo { outputs: string[]; ownKey: boolean; runIf: string | null; rowCap?: boolean }
 
 // What an enrichment column spent over all its runs, and on how many rows.
 export interface ColumnSpend { spentUsd: number; rows: number }
@@ -58,7 +59,7 @@ export interface AutorunSave {
 
 export interface AutorunRowsEstimate {
   column: string
-  kind: 'enrichment' | 'http'
+  kind: 'enrichment' | 'http' | 'waterfall'
   rows: number
   lowUsd: number | null
   highUsd: number | null

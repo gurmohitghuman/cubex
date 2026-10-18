@@ -28,6 +28,9 @@ import { setCleanColumnAutorun } from './clean-column';
 import { setFormulaColumnAutorun } from './formula-column';
 import { lookupColumnFor } from '../lib/lookup-columns';
 import { setLookupColumnAutorun } from './lookup-column';
+import { httpRunMode } from '../lib/http-run-mode';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { waterfallIsPaid, waterfallUnpriced } from './waterfall-autorun';
 
 export interface AutorunSettingsInput {
   column: string;
@@ -102,7 +105,10 @@ export async function saveAutorunSettings(
   if (!newest || !config?.requestConfig) {
     return bad('Run this column once first: auto-run repeats its newest run.');
   }
-  const kind = isEnrichmentConfig(config) ? 'enrichment' as const : 'http' as const;
+  const kind = httpRunMode(config);
+  // A waterfall with a paid step has a dollar cap a day; one with only free steps a row cap, as HTTP.
+  const capKind = kind === 'waterfall'
+    ? (isWaterfallConfig(config) && waterfallIsPaid(config) ? 'enrichment' : 'http') : kind;
   // A column that adds rows elsewhere: its fields picked, its sheet there, no loop back here.
   const listProblem = autorunListProblem(sheetId, userId, config);
   if (listProblem) return bad(listProblem);
@@ -127,15 +133,16 @@ export async function saveAutorunSettings(
   }
   // Auto-run repeats the newest run with its own key policy; a caller that
   // can't use saved keys can't set it up to use them (as run-rerun-by-id).
-  if (kind === 'http' && !opts.hasSecretsScope) {
+  if (kind !== 'enrichment' && !opts.hasSecretsScope) {
     const refs = httpRunSecretRefsRequiringScope(userId, newest, false);
     if (refs.length) {
       return { fail: 'forbidden', message: `This column uses saved API key(s): ${refs.join(', ')}. `
         + "Turning on its auto-run requires the 'secrets' scope." };
     }
   }
-  const unpriced = isEnrichmentConfig(config) && config.enrichment.maxCostPerRowUsd === null;
-  const caps = capsFor(userId, kind, input, prior, unpriced);
+  const unpriced = (isEnrichmentConfig(config) && config.enrichment.maxCostPerRowUsd === null)
+    || (isWaterfallConfig(config) && waterfallUnpriced(config));
+  const caps = capsFor(userId, capKind, input, prior, unpriced);
   if ('fail' in caps) return caps;
 
   const watched = JSON.stringify(watchedColumns(reads, where, runIf));

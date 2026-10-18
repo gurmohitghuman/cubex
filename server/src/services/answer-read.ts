@@ -10,6 +10,7 @@ import { answerSource, callSteps, triedProviders, type Access, type CallStep, ty
   from '../lib/answer-steps';
 import { columnRuns, resultAtRow } from './answer-runs';
 import type { RunFail } from './run-shared';
+import { isWaterfallConfig } from '../lib/waterfall/config';
 
 const LEDGER_MAX = 100;
 
@@ -82,6 +83,10 @@ function readAnswerNow(
   if (!hit) return { fail: 'not_found', message: 'This row has no stored answer yet.' };
 
   const { run } = hit;
+  // A waterfall's row tells its story step by step (services/waterfall-trace.ts).
+  if (isWaterfallConfig(run.config)) {
+    return { fail: 'bad_request', message: `"${column}" is a waterfall column: read its trace instead.` };
+  }
   const mapping = (run.config?.responseMapping ?? []).map(m => ({ columnName: m.columnName, jsonPath: m.jsonPath }));
   const result = [owner.statusColumn, ...mapping.map(m => m.columnName)].map(c => {
     const v = row.data[c];

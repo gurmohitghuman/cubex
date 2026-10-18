@@ -12,6 +12,8 @@ interface Props {
   setMenu: (m: MenuState) => void
   actions: RunMenuActions
   autorun?: AutorunColumn
+  // A waterfall's result column gets the same items (its runs go through the waterfall).
+  waterfall?: boolean
 }
 
 const ITEM = 'text-gray-700 focus:text-gray-900'
@@ -22,10 +24,11 @@ const ITEM = 'text-gray-700 focus:text-gray-900'
 // column is active, only watching and stopping it are offered: a second run
 // on the same column is refused until it ends.
 export const EnrichColumnActions: React.FC<Props> = ({
-  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun,
+  columnId, selectedRowIndices, activeHTTPRunsByColumn, setMenu, actions, autorun, waterfall,
 }) => {
-  const { onEnrichAction } = actions
+  const onEnrichAction = waterfall ? actions.onWaterfallAction : actions.onEnrichAction
   if (!onEnrichAction) return null
+  const noun = waterfall ? 'Waterfall' : 'Enrichment'
   const act = (action: EnrichMenuAction, rows?: number[]) => () => {
     onEnrichAction(action, columnId, rows)
     setMenu(null)
@@ -35,10 +38,12 @@ export const EnrichColumnActions: React.FC<Props> = ({
   return (
     <>
       <DropdownMenuSeparator />
-      <DropdownMenuLabel>Enrichment Actions</DropdownMenuLabel>
+      <DropdownMenuLabel>{noun} Actions</DropdownMenuLabel>
       {!active && (
         <>
-          <DropdownMenuItem onClick={act('not_enriched')} className={ITEM}>🔄 Run Rows Not Enriched</DropdownMenuItem>
+          <DropdownMenuItem onClick={act('not_enriched')} className={ITEM}>
+            🔄 {waterfall ? 'Run Rows Not Run Yet' : 'Run Rows Not Enriched'}
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={act('failed')} className={ITEM}>🔁 Retry Failed Rows</DropdownMenuItem>
           {selected.length > 0 && (
             <DropdownMenuItem onClick={act('selected', selected)} className={ITEM}>
@@ -48,13 +53,13 @@ export const EnrichColumnActions: React.FC<Props> = ({
           <DropdownMenuItem onClick={act('all')} className={ITEM}>🔄 Run All Rows Again</DropdownMenuItem>
         </>
       )}
-      <DropdownMenuItem onClick={act('edit')} className={ITEM}>✏️ Edit Enrichment</DropdownMenuItem>
+      <DropdownMenuItem onClick={act('edit')} className={ITEM}>✏️ Edit {noun}</DropdownMenuItem>
       <AutorunMenuItems columnId={columnId} autorun={autorun} setMenu={setMenu} actions={actions} />
       {active && (
         <>
           <DropdownMenuItem onClick={act('view')} className={ITEM}>📈 View Run</DropdownMenuItem>
           <DropdownMenuItem onClick={act('stop')} className="text-red-600 focus:text-red-600">
-            🟥 Stop Enrichment Run
+            🟥 Stop {noun} Run
           </DropdownMenuItem>
         </>
       )}

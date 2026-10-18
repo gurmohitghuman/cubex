@@ -11,6 +11,7 @@ import { rerunAiMultiColumn } from './ai-run-rerun-multi';
 import { AiRerunMode } from './ai-rerun-modes';
 import { rerunHttpColumn } from './http-run-rerun';
 import { resolveRowIdsToIndexes } from './run-shared';
+import { isWaterfallRun } from './waterfall-agent-control';
 
 // Names the latest run, so a caller with no run list can go straight to it.
 const superseded = (latestId: string): string =>
@@ -73,6 +74,10 @@ export async function rerunHttpRunById(
   if (!run) return { fail: 'not_found', message: 'HTTP run not found' };
   if (!run.master_column_name) {
     return { fail: 'bad_request', message: 'This run has no status column, so it cannot be re-run.' };
+  }
+  // A waterfall runs again through its column's setup, never as a plain HTTP clone.
+  if (isWaterfallRun(runId, userId)) {
+    return { fail: 'bad_request', message: "This is a waterfall run: rerun it with run_type 'waterfall'." };
   }
 
   // The rerun clones the column's LATEST run (config + allow_secrets), so the

@@ -13,7 +13,7 @@ Choose the token's scopes:
 |---|---|
 | `read` | List tables, read rows, check runs. |
 | `write` | Also create and change tables, sheets, columns and rows. |
-| `run` | Also start, pause, resume, stop and re-run AI, HTTP and enrichment runs, and turn auto-run on or off. These spend your OpenRouter credits and your treg balance, and call your APIs. |
+| `run` | Also start, pause, resume, stop and re-run AI, HTTP, enrichment and waterfall runs, and turn auto-run on or off. These spend your OpenRouter credits and your treg balance, and call your APIs. |
 | `secrets` | Also start HTTP runs that use your saved API keys, and save the keys in a pasted cURL command as new saved keys. Needs `run`. |
 
 `write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password, and it can never read or change a saved key. With `secrets` it can add a new one, from a cURL command it passes to an HTTP run.
@@ -74,6 +74,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 - "Export the rows where Status is Qualified, with just Email and Company."
 - "Show me the rows where the work email enrichment failed, and why."
 - "Find a verified work email for everyone in Leads, using Name and Website. Show me the estimate first."
+- "Find a work email for everyone in Leads: try treg first, then our API at `https://api.example.com/find?domain={{domain}}`, and add a column saying which one found it. Show me the estimate first."
 - "Add the people at each company in Accounts to a new sheet called People, 10 per company. Try 5 companies first and show me which fields come back."
 - "In Leads, split Name into first and last name, turn Website into a domain and fix the phone numbers. Use the free cleaners."
 - "In Leads, the Response column holds each API reply. Add a Work email column with the email whose type is work, using a formula."
@@ -117,6 +118,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `run_enrichment` | Run an enrichment per row: work emails, phones, person or company data, or lists that become rows in another sheet. Can estimate first, test on 5 rows, and turn on auto-run. |
 | `get_list_fields`, `add_list_rows` | For a job that adds rows: read the fields its results really have, then pick the ones to keep and add the rows. |
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
+| `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts and your own APIs, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
 | `list_run_webhooks` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). |
 
@@ -197,9 +199,9 @@ A view is a name, an optional description, filters and hidden columns. It never 
  "run_if": "{{Title}} contains \"VP\"", "counts": {"filled": 412, "empty": 80, "errors": 8}}
 ```
 
-- `kind` is `plain`, `ai`, `http`, `enrichment`, `webhook`, `clean`, `formula` or `lookup`.
-- A run that fills several columns describes its run on its main column. The others say which part they are (`role`) and name the main column in `filled_by`: an AI run's `answer` column, or its `status` column with `output` columns and a `sources` ("(Data)") column; an HTTP API column's `response` column and its `field` columns (with their `json_path`); an enrichment's `status` column and its `output` columns; a webhook's `payload` column and its `field` columns.
-- `fill` is the column's newest run (`run_id` and `run_status`, for `get_run_status` and `control_run`) with its settings: an AI run's model and prompt, an HTTP API column's method, URL and header names (never their values; a key typed into the URL reads `…`), an enrichment's tool and its limits. A clean, formula or lookup column shows its setup.
+- `kind` is `plain`, `ai`, `http`, `enrichment`, `waterfall`, `webhook`, `clean`, `formula` or `lookup`.
+- A run that fills several columns describes its run on its main column. The others say which part they are (`role`) and name the main column in `filled_by`: an AI run's `answer` column, or its `status` column with `output` columns and a `sources` ("(Data)") column; an HTTP API column's `response` column and its `field` columns (with their `json_path`); an enrichment's `status` column and its `output` columns; a waterfall's result (`answer`) column, its `answered_by` column and a `step` column per step; a webhook's `payload` column and its `field` columns.
+- `fill` is the column's newest run (`run_id` and `run_status`, for `get_run_status` and `control_run`) with its settings: an AI run's model and prompt, an HTTP API column's method, URL and header names (never their values; a key typed into the URL reads `…`), an enrichment's tool and its limits, a waterfall's result type, its steps in order (each with its tool, model and prompt, or request) and its limits. A clean, formula or lookup column shows its setup.
 - `reads` lists the columns it reads. `auto_run` says whether it fills new rows on its own (`auto_run_paused` says why it stopped, `auto_run_caps` gives its daily caps). `run_if` is the "Only run if" rule its next run checks.
 - Prompts, formulas and URLs are cut to 300 characters. Name columns in `columns` to see them in full (up to 10,000 characters each and 40,000 in one answer; past that they are cut too). A very wide sheet lists its later columns by name and kind only, and `column_details_note` says so.
 - `include_counts: true` adds `counts` to each column: `filled` (a value), `errors` (a failed run, or a cell starting with `❌`) and `empty` (the rest: blank, not run yet, skipped, condition not met, running). They agree with the `has_result` and `has_error` filters: an output column of a failed run counts as an error. Counting reads every row, about 0.7 s per column on a million rows, so it counts up to 20 columns: the ones in `columns`, or else the first 20. `counts_note` says what wasn't counted and why (a column still filling, or the sheet busy with an import or a sort).
@@ -374,6 +376,60 @@ Enrichments look things up per row through [treg.to](https://treg.to) with the t
 
 **More from stored answers.** `get_run_results` with `include_answers: true` shows each row's stored answer (10 rows a page, rows that answered unless you pass `status_filter`; `answer_cut` lists parts left out of a very big answer; a run that used saved API keys needs the `secrets` scope). `add_enrichment_field` turns any value in it (a JSONPath such as `$.output.company.linkedin_url`) into a new column, filled from the answers already stored with no new calls. It fills in the background: `get_sheet` lists it in `filling_columns`, and reads show its cells as `⏳ Processing...` until it's done. Cubex removes the provider's raw data (`raw`) from a row's older answers when the row is enriched again, and from answers of runs that ended over 90 days ago when you prune them in Settings; the result fields stay. A value that was only in removed raw data can't become a column, and `add_enrichment_field` says so.
 
+## Waterfalls
+
+A waterfall column fills one value per row by trying steps in order and stopping at the first answer. For a work email: a treg tool first, then your own API, then an AI prompt. A row pays only for the steps it reaches. In the app it's **Waterfall** in the sheet's toolbar; agents use `waterfall_column`.
+
+```json
+{
+  "sheet_id": "…",
+  "column_name": "Work email",
+  "result_type": "email",
+  "inputs": { "full_name": "Name", "domain": "Website" },
+  "steps": [
+    { "kind": "enrichment", "tool_id": "treg.people.email.find" },
+    { "kind": "http", "label": "Our API", "url": "https://api.example.com/find?domain={{domain}}&name={{full_name}}",
+      "headers": { "Authorization": "Bearer /our_api_key" }, "value_path": "$.email" },
+    { "kind": "ai", "prompt": "What is the work email of /full_name at /domain? Reply with the address only.",
+      "web_search": true }
+  ],
+  "test": true
+}
+```
+
+**What it finds** (`result_type`): `email`, `phone`, `domain`, `linkedin_url`, `url` or `text`. A step's value counts as an answer only when it reads as that type: "not found", "N/A" or a broken address is no answer, and the next step runs. Phone numbers come out in one format: `phone.format` is `international` (default), `national` or `e164`, and `phone.country` (default `US`) reads numbers written without a country code.
+
+**Inputs, mapped once.** `inputs` maps each input key to a column (`{"full_name": "Name"}`), or to a fixed `{"value": "..."}`. Steps read the keys, never the columns: an AI prompt with `/full_name`, a request with `{{domain}}`, a treg tool by the same names (`first_name`, `last_name`, `full_name`, `domain`, `company`, `linkedin_url`, `email`) unless its own `inputs` map them differently.
+
+**Steps** (up to 12), in order:
+
+| `kind` | It takes | It costs |
+|---|---|---|
+| `enrichment` | `tool_id` from `search_enrichments`; optional `inputs` (the tool's input to an input key, or a fixed value), `value_path` (the answer field; by default the one `result_type` names), `provider_order`, `skip_providers` and `max_cost_usd` (its cap per row) | treg's price, on your treg balance |
+| `ai` | `prompt` with `/input_key` words; optional `model` (default: the sheet's, else the account's) and `web_search` | OpenRouter's price |
+| `http` | `url` with `{{input_key}}`, a saved API key as `/key_name` (needs the `secrets` scope), and `value_path`, the JSONPath of the value in the JSON reply; optional `method`, `headers`, `body` and `retries` | whatever your API charges |
+
+Every step also takes a `label` (what "answered by" shows: by default the provider, `treg (N providers)` for a treg tool that asks several, `AI` or the API's host; a repeated label gets a number), `on: false` to keep a step but skip it, and `requires`: alternatives of input keys, such as `[["full_name", "domain"], ["linkedin_url"]]`. A row with none of them skips the step at no cost. Left out, an AI or HTTP step needs every key it reads, and an enrichment step follows its tool's own rule. A step that fails (an HTTP 500, a timeout) doesn't stop the row: the next step runs. An AI step that meets a rate limit (or OpenRouter's limit on calls in flight for your balance) is tried twice more first.
+
+**Columns and cells**
+
+- `column_name` holds the answer. When no step found one it says `⏭️ Not found`, or `⏭️ Budget ran out` when the last step reached stopped at its cap; `❌ <step>: <why>` when no step answered and one failed. A row with no inputs for any step stays empty.
+- `<column> (Answered by)` names the step that answered each row. `answered_by_column: false` leaves it out.
+- `<column> (<label>)`, one per step: that step's own value, `⏭️ Not found`, `⏭️ No inputs` or `❌ …`, and empty where the row never reached it. They're hidden in the sheet's views (the columns picker shows them); `hide_step_columns: false` keeps them visible.
+- In the app, a click on a result cell shows its trace: each step the row reached, what it did, what it cost.
+
+**Money**
+
+- `estimate_only` defaults to `true` on `waterfall_column`: it checks everything a run would and creates nothing. It returns the `rows` in scope, `per_row {average_usd, max_usd}`, `total` for those rows, `run_limit_usd`, `daily_limit` when a treg step is on, and per step its `reach` (the share of rows that get that far), `max_usd`, `expected_usd` and `answer_rate` (`rate_from`: `history`, this column's earlier runs, or `treg`, treg's observed rate). A step with no known rate counts as never answering, so the average errs high. Tell the user, then call again with `estimate_only: false`.
+- The most a row can cost is every switched-on step's cap added up: an enrichment step's `max_cost_usd` (by default what its providers can cost), an AI step's most expensive call (its prompt, the longest answer and web fees). `spend_limit_usd` caps the run's treg and AI spend together and pauses it there (default: the rows in scope times that most). The enrichment daily limit counts the treg steps; a treg step with no listed price (your own provider key should bill it) stops there on what treg really charged.
+- A treg answer any run of the account found in the last 30 days (the Settings choice) is reused at $0, as for enrichments. `fresh: true` calls every step again.
+- When a run pauses part way, what its AI and HTTP steps already answered is kept, so resuming it doesn't pay for them twice; treg steps replay their paid answers for free.
+- Running the `failed` rows again asks again only the steps that failed: a treg or AI step that already paid to find nothing for that row isn't asked again (its trace says `from: "last_run"`). `fresh: true` asks every step.
+
+**Running it again.** `add_to_column: true` with the same `column_name` runs a waterfall column again, with its own inputs and steps or new ones you pass: a step keeps its column by its `id` or by the same `label`. `action: "describe"` (`read` scope) returns the column's setup in that same shape, step ids included, to change and send back. Without the `secrets` scope, an HTTP step's keys in its URL, its header values and its body read `…`; sent back with the same `id` and URL, they keep their stored values. `rows` picks which rows: `not_enriched` (not run yet, the default when adding to a column), `no_result`, `failed` or `any`. `test: true` runs the first 5 rows; `use_sheet_filter`, `target_row_ids` and `run_if` narrow the rows. `auto_run: {"enabled": true, "daily_cap_usd": 5}` keeps it filling new rows (`daily_row_cap` instead when no step is paid).
+
+**Following a run.** `get_run_status` with `run_type: "waterfall"` returns `cost_usd` (treg and AI so far) and `waterfall`: `result_type`, `spent {treg_usd, ai_usd, total_usd}`, `run_limit_usd`, `pause_reason`, and per step how many rows it `reached`, `answered`, `failed` and `skipped` (no inputs), and its `cost_usd`. `get_run_results` gives each row's `answered_by`, `cost_usd` and `trace`: every step the row reached, with its `outcome` (`answered`, `not_found`, `no_inputs`, `error` or `budget`), `value`, `detail` and `cost_usd` (`from` says where a free answer came from: `reused`, `journal` after a resume, `last_run` on a retry, `same_lookup`). `control_run` pauses, resumes (`spend_limit_usd` raises the limit that paused it), cancels and reruns (`mode` `errored`, `empty`, `missing` or `all`, or `row_ids`). `get_usage` lists waterfall runs as their own kind.
+
 ## Big CSV files
 
 Everything an assistant sends or receives passes through its context, so a CSV pasted into chat is expensive: a 4 MB lead list is about a million tokens, and a file of a few hundred MB can't go through chat at all. For files, the assistant asks Cubex for a one-time link and moves the file with `curl`. Only a short summary goes through the chat.
@@ -547,6 +603,8 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 }
 ```
 
+**Waterfall column:** `POST /sheets/:id/waterfall-columns` takes `waterfall_column`'s arguments as JSON (see [Waterfalls](#waterfalls)), but here `estimate_only` defaults to `false`: pass `"estimate_only": true` to price it first. `GET /sheets/:id/waterfall-columns/:column` (`read` scope) returns a column's setup in the same shape, step ids included, to change and send back with `"add_to_column": true`.
+
 **Retrying safely:** send an `Idempotency-Key` header (or `idempotency_key` in the body). Repeating a start with the same key and arguments returns the original `run_id` instead of starting (and paying for) a second run.
 
 | Endpoint | Body or query |
@@ -559,12 +617,14 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 | `POST /ai-runs/:id/pause`, `/resume`, `/cancel` (same for `http-runs`) | |
 | `POST /sheets/:id/runs/stop` | Stops every AI, HTTP and enrichment run on the sheet and every setup being used on it, at once (MCP `control_run` with `cancel_all`). Returns `stopped_runs`, `stopped_setup_runs`, `auto_run_paused` (columns whose auto-run batch it stopped: paused until you resume them), `auto_run_on` (auto-runs still on, where new rows start runs), `still_filling` (free fills, which finish) and a `message`. Calls already sent finish and are billed. `run` scope. |
 | `POST /ai-runs/:id/rerun` | `{"mode": "errored"}`, `{"row_ids": [...]}` or `{"first_rows": 10}`. One of them is required. Modes: `errored` (failed rows), `empty`, `missing` (empty, failed or unfinished), `all`. Starts a new run, which costs credits again. Add `"concurrency"` (1 to 100) to change how many rows run at once; rows that failed on OpenRouter's in-flight credit budget need a lower one. `first_rows` reruns only among the sheet's first rows (up to 1,000, not with `row_ids`): all of them, or those `mode` picks. A structured (`output_columns`) run refills all its columns on those rows; its modes read the `(Status)` column. |
-| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. `"first_rows": 10` takes only the sheet's first rows (not with `row_ids`, and not on an enrichment run). An enrichment run needs `row_ids` or `mode`: `errored`, `empty` (not enriched yet), `missing` (no result) or `all`, and takes `spend_limit_usd` and `concurrency` (rows at once, 1 to 100; default: the run's own). |
-| `POST /http-runs/:id/resume` | An enrichment run takes `{"spend_limit_usd": 40}` to raise the limit that paused it, and `concurrency` (rows at once, 1 to 100) to change its speed. |
+| `POST /http-runs/:id/rerun` | `{"mode": "missing"}` or `{"row_ids": [...]}`. Without either, every row runs again. `"first_rows": 10` takes only the sheet's first rows (not with `row_ids`, and not on an enrichment or waterfall run). An enrichment or waterfall run needs `row_ids` or `mode`: `errored`, `empty` (not run yet), `missing` (no result) or `all`, and takes `spend_limit_usd`; an enrichment run also takes `concurrency` (rows at once, 1 to 100; default: the run's own). Only a waterfall column's newest run can be rerun, with the column's setup. |
+| `POST /http-runs/:id/resume` | An enrichment or waterfall run takes `{"spend_limit_usd": 40}` to raise the limit that paused it. An enrichment run also takes `concurrency` (rows at once, 1 to 100) to change its speed. |
 
 Both reruns also take `webhook_id`, a [run webhook](run-webhooks.md) to tell when the new run finishes.
 
 An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by` (and `reused_answer_from` on a row filled from an earlier found answer), plus its stored `answer` with `?answers=true` (10 rows a page).
+
+A waterfall is an HTTP run too: `GET /http-runs/:id` adds `cost_usd` (treg and AI) and `waterfall` (`result_type`, `spent`, `run_limit_usd`, `pause_reason` and per step its counts and cost), and `GET /http-runs/:id/results` adds each row's `answered_by`, `cost_usd` and `trace`, as `get_run_status` and `get_run_results` do (see [Waterfalls](#waterfalls)).
 
 ### Run webhooks
 

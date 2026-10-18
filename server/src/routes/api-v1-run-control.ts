@@ -1,3 +1,4 @@
+// Over 200 lines: every run kind's REST controls (pause, resume, cancel, rerun) share one set of guards.
 // /v1 run control (design-doc Phase 2): pause/resume/cancel + rerun for AI and
 // HTTP runs, over the same services as the UI routes and MCP. Unlike the UI's
 // idempotent 200s, v1 is strict: acting on a missing run is 404 and on a run
@@ -14,6 +15,9 @@ import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
 import { MAX_AI_CONCURRENCY, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
+import {
+  WATERFALL_RERUN_MODES, isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun,
+} from '../services/waterfall-agent-control';
 import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 import { parseFirstRows } from './ai-run-rerun';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
@@ -57,15 +61,21 @@ function registerControls(prefix: string, kind: RunKind) {
       const body = req.body as { spend_limit_usd?: unknown; concurrency?: unknown } | undefined;
       const limit = body?.spend_limit_usd;
       const enrichment = kind === 'http' && isEnrichmentRun(req.params.id, req.userId!);
-      if (limit !== undefined && !enrichment) {
-        return res.status(400).json({ error: 'spend_limit_usd applies to enrichment runs only.' });
+      const waterfall = kind === 'http' && !enrichment && isWaterfallRun(req.params.id, req.userId!);
+      if (limit !== undefined && !enrichment && !waterfall) {
+        return res.status(400).json({ error: 'spend_limit_usd applies to enrichment and waterfall runs only.' });
       }
       if (body?.concurrency !== undefined && !enrichment) {
         return res.status(400).json({ error: 'concurrency applies to resuming an enrichment run only.' });
       }
+      const secrets = req.tokenScopes?.has('secrets') === true;
+      if (limit !== undefined && limit !== null && typeof limit !== 'number') {
+        return res.status(400).json({ error: 'spend_limit_usd must be a number.' });
+      }
       const result = enrichment
         ? await resumeEnrichmentRun(req.params.id, req.userId!, limit, body?.concurrency)
-        : await resumeRun(kind, req.params.id, req.userId!, req.tokenScopes?.has('secrets') === true);
+        : waterfall ? await resumeWaterfallRun(req.params.id, req.userId!, limit as number | null | undefined, secrets)
+        : await resumeRun(kind, req.params.id, req.userId!, secrets);
       if ('fail' in result && result.fail === 'bad_request') return res.status(400).json({ error: result.message });
       if ('fail' in result) return res.status(controlStatus(result)).json({ error: result.message });
       res.json(summary(req.params.id, req.userId!));
@@ -163,6 +173,36 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
   }
 });
 
+// A waterfall run's rerun: { row_ids?, mode? (as WATERFALL_RERUN_MODES), spend_limit_usd? },
+// one of row_ids or mode required; it goes through its column's setup
+// (services/waterfall-agent-control.ts).
+async function rerunWaterfall(req: TokenAuthRequest, res: express.Response, b: Record<string, unknown>) {
+  if (b.first_rows !== undefined || b.concurrency !== undefined) {
+    return res.status(400).json({ error: 'first_rows and concurrency don\'t apply to a waterfall rerun.' });
+  }
+  const p = parseRowIds(b.row_ids);
+  if ('error' in p) return res.status(400).json({ error: p.error });
+  const modes = Object.keys(WATERFALL_RERUN_MODES);
+  if (p.rowIds === undefined && (typeof b.mode !== 'string' || !modes.includes(b.mode))) {
+    return res.status(400).json({ error: `Pass row_ids, or mode (${modes.join(', ')}).` });
+  }
+  const limit = b.spend_limit_usd;
+  if (limit !== undefined && (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0)) {
+    return res.status(400).json({ error: 'spend_limit_usd must be more than $0.' });
+  }
+  if (refuseBadWebhook(req, res, b)) return;
+  if (refuseRunStart(req, res)) return;
+  const out = await rerunWaterfallRunById(req.userId!, req.params.id, {
+    rowIds: p.rowIds, mode: b.mode as string | undefined, spendLimitUsd: limit as number | undefined,
+    hasSecretsScope: req.tokenScopes?.has('secrets') === true,
+  });
+  if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+  res.status(202).json({
+    run_id: out.ok.runId, run_type: 'waterfall', rows_in_scope: out.ok.rowsInScope,
+    ...hooked(req, b, 'http_runs', out.ok.runId),
+  });
+}
+
 // An enrichment run's rerun: { row_ids? , mode? (errored|empty|missing|all),
 // spend_limit_usd? }, one of row_ids or mode required (every mode buys rows).
 async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: Record<string, unknown>) {
@@ -203,6 +243,7 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
   try {
     const b = (req.body ?? {}) as Record<string, unknown>;
     if (isEnrichmentRun(req.params.id, req.userId!)) return await rerunEnrichment(req, res, b);
+    if (isWaterfallRun(req.params.id, req.userId!)) return await rerunWaterfall(req, res, b);
     const p = parseRowIds(b.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
     if (b.mode !== undefined && b.mode !== 'missing' && b.mode !== 'all') {

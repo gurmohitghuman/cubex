@@ -276,6 +276,7 @@ export const SheetPage: React.FC = () => {
         onAddAIColumn={() => modals.setShowAddColumnModal(true)}
         onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
+        onAddWaterfall={() => modals.openWaterfall({ kind: 'new' })}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.setShowDedupeModal(true)}
         onSaveSetup={() => modals.openSaveSetup(null)}

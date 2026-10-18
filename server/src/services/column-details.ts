@@ -15,9 +15,10 @@ import type { ColumnDescriber, DetailContext } from './column-details-context';
 import { describeAiColumns } from './column-details-ai';
 import { describeHttpColumns } from './column-details-http';
 import { describeDerivedColumns, describeWebhookColumns } from './column-details-other';
+import { describeWaterfallColumns } from './column-details-waterfall';
 
 const DESCRIBERS: ColumnDescriber[] = [
-  describeHttpColumns, describeAiColumns, describeWebhookColumns, describeDerivedColumns,
+  describeHttpColumns, describeAiColumns, describeWaterfallColumns, describeWebhookColumns, describeDerivedColumns,
 ];
 
 // named: the columns the call asks about, shown with their prompts, formulas

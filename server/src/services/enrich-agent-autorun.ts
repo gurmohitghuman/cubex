@@ -17,7 +17,7 @@ import { AUTORUN_NOTICE_PRICE_MS } from '../lib/constants';
 
 export function autorunColumnJson(v: AutorunColumnView) {
   return {
-    column: v.column, kind: v.kind, enabled: v.enabled, sends_requests: v.kind === 'http',
+    column: v.column, kind: v.kind, enabled: v.enabled, sends_requests: v.kind === 'http' || v.kind === 'waterfall',
     paused_reason: v.pausedReason, paused_message: v.pausedMessage,
     where: v.where.map(c => ({ column: c.column, operator: c.op, value: c.value })), run_if: v.runIf,
     daily_cap_usd: v.dailyCapUsd, daily_row_cap: v.dailyRowCap,
@@ -100,7 +100,7 @@ export async function appendAutorunNotice(
   if (!runs?.length) return {};
   return {
     auto_run: runs.map(r => ({
-      column: r.column, kind: r.kind, rows: r.rows, sends_requests: r.kind === 'http',
+      column: r.column, kind: r.kind, rows: r.rows, sends_requests: r.kind === 'http' || r.kind === 'waterfall',
       estimated_usd: r.lowUsd === null || r.highUsd === null ? null : { low: r.lowUsd, high: r.highUsd },
       daily_cap_usd: r.dailyCapUsd, daily_row_cap: r.dailyRowCap,
       paused: r.pausedBy,

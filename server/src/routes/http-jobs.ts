@@ -6,7 +6,7 @@ import { acquireSSESlot, SSE_MAX_PER_USER } from '../lib/sse-limits';
 import { httpResultCellValues } from '../lib/http-cell-values';
 import { statusColumnsOf } from '../lib/http-extract-fields';
 import { type HTTPAPIConfig } from '../lib/http-request';
-import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { httpRunMode, writesWholeCells } from '../lib/http-run-mode';
 
 // HTTP run SSE stream only — pause/resume/cancel + run reads moved to
 // http-control.ts (thin wrappers over services/run-lifecycle.ts).
@@ -43,7 +43,8 @@ router.get('/jobs/:id/stream', (req, res) => {
     const cfg = run.config ? (JSON.parse(run.config) as HTTPAPIConfig) : null;
     mappingColumns = cfg?.responseMapping?.map(m => m.columnName) ?? [];
     statusColumns = statusColumnsOf(cfg?.responseMapping);
-    enrichment = isEnrichmentConfig(cfg);
+    // An enrichment's or a waterfall's cells are replayed exactly as stored.
+    enrichment = writesWholeCells(httpRunMode(cfg));
   } catch { mappingColumns = []; }
   const masterColumn = run.master_column_name;
 

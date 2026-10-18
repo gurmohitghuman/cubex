@@ -37,7 +37,7 @@ const LIFTS_ON_ITS_OWN = JSON.stringify([...RETRY_PAUSES, ...CAPACITY_PAUSES, 'm
 const autorunsOn = (sheetId: string, userId: string): string[] => db.prepare(`SELECT status_column
     FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND enabled = 1
       AND (paused_reason IS NULL OR paused_reason IN (SELECT value FROM json_each(?)))
-      AND kind IN ('http', 'enrichment') ORDER BY status_column`)
+      AND kind IN ('http', 'enrichment', 'waterfall') ORDER BY status_column`)
   .pluck().all(sheetId, userId, LIFTS_ON_ITS_OWN) as string[];
 
 // Of these columns, the ones whose auto-run a person's stop paused (autorunStoppedByUser).

@@ -25,6 +25,7 @@ import runReadsV1 from './api-v1-run-reads';
 import runControlV1 from './api-v1-run-control';
 import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
+import waterfallV1 from './api-v1-waterfall';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
@@ -79,6 +80,8 @@ router.use(runControlV1);
 router.use(runConditionsV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
+// Waterfall columns: one result per row from ordered steps (services/waterfall-*.ts).
+router.use(waterfallV1);
 // "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
 router.use(usageV1);

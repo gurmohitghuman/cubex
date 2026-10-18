@@ -23,6 +23,7 @@ import {
 import { columnRunActive } from './autorun-entry';
 import { runFieldJob } from './answer-field-fill';
 import type { RunFail } from './run-shared';
+import { isWaterfallConfig } from '../lib/waterfall/config';
 
 export interface AddFieldInput { column: string; jsonPath: string; name: string; row: number | null }
 export type AddFieldOutcome = { ok: { column: string; jobId: string } } | RunFail;
@@ -88,6 +89,10 @@ export async function addAnswerField(
   const runs = statusColumnRuns(sheetId, userId, owner.statusColumn);
   const newest = runs.length ? runDetail(runs[0].id, userId) : null;
   if (!newest) return bad(`"${input.column}" isn't an enrichment or HTTP API column.`);
+  // A waterfall's cells come from its steps, not a path in one answer.
+  if (isWaterfallConfig(newest.config)) {
+    return bad(`"${owner.statusColumn}" is a waterfall column: change what it finds with Edit waterfall.`);
+  }
   if (newest.enrichment?.enrichment.list) {
     return bad('This column adds its results as rows in another sheet. Pick the fields it keeps with Edit enrichment.');
   }

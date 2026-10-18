@@ -7,7 +7,7 @@
 import { db } from '../lib/db';
 import { yieldSheetToUser } from '../lib/sheet-yield';
 import { autorunBusyMessage } from '../lib/autorun-rules';
-import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { httpRunModeOf } from '../lib/http-run-mode';
 import { listRunInto } from './enrich-list-guard';
 
 export interface BlockingRun { id: string; kind: 'ai' | 'http'; column: string | null; paused: boolean }
@@ -18,9 +18,7 @@ interface HttpActive {
   total_rows: number; config: string | null;
 }
 
-const kindOf = (config: string | null): 'enrichment' | 'http' => {
-  try { return isEnrichmentConfig(JSON.parse(config ?? 'null')) ? 'enrichment' : 'http'; } catch { return 'http'; }
-};
+const kindOf = (config: string | null): 'enrichment' | 'http' | 'waterfall' => httpRunModeOf(config);
 
 // An auto-run run's 409 words, and the sheet yields; null for any other run.
 function autorunWords(sheetId: string, r: HttpActive): string | null {

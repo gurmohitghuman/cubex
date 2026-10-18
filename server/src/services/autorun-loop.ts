@@ -27,6 +27,8 @@ import { autorunLoopProblem, destHasRoom } from './autorun-list';
 import { generationMoved, hasWork } from './autorun-fence';
 import { derivedFollowTick } from './derived-follow';
 import { isFollowKind } from '../lib/autorun-kick';
+import { isWaterfallConfig, onSteps } from '../lib/waterfall/config';
+import { getOpenRouterApiKey } from './openrouter';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -57,8 +59,12 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
   if (watched !== e.input_columns) {
     db.prepare('UPDATE autorun_columns SET input_columns = ? WHERE id = ?').run(watched, e.id);
   }
-  if (isEnrichmentConfig(config) && !getTregToken(e.user_id)) {
+  const steps = isWaterfallConfig(config) ? onSteps(config.waterfall) : [];
+  if ((isEnrichmentConfig(config) || steps.some(s => s.built.kind === 'enrichment')) && !getTregToken(e.user_id)) {
     return { reason: 'no_key', message: 'No treg key. Add one in Settings and auto-run goes on.' };
+  }
+  if (steps.some(s => s.built.kind === 'ai') && !getOpenRouterApiKey(e.user_id)) {
+    return { reason: 'no_key', message: 'No OpenRouter key. Add one in Settings and auto-run goes on.' };
   }
   return { config, newest, columns };
 }

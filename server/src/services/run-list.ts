@@ -54,7 +54,8 @@ export function listRuns(
   const httpRows = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
            error_message, target_rows, created_at, updated_at,
-           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows,
+           ai_cost_usd, placeholder_work, autorun_id
     FROM http_runs WHERE user_id = ? ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];

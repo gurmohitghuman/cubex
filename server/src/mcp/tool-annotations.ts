@@ -78,6 +78,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_list_fields: read('Get the fields of list results'),
   // Spends the treg balance and calls providers through treg.
   run_enrichment: write('Run an enrichment (paid)', true, false, true),
+  // Adds columns and runs paid steps (treg, AI) and requests to your API; describe and an estimate change nothing.
+  waterfall_column: write('Run a waterfall column (paid)', true, false, true),
   add_enrichment_field: write('Add a column from stored answers', false, false),
   add_list_rows: write('Add list results as rows', false, false),
   // Turning it on makes later rows spend (or send requests) on their own.

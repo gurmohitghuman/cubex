@@ -10,6 +10,8 @@ import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { getDailyLimitMicro, spentTodayMicro } from './treg-key';
 import { heldMicro } from './enrich-holds';
 import { usageToday, type AutorunEntry } from './autorun-entry';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { waterfallCapacity } from './waterfall-autorun';
 
 export type Capacity =
   | { rows: number; runLimitUsd: number | null }   // runLimitUsd: what is left of the column's cap today
@@ -20,6 +22,7 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
 export function autorunCapacity(e: AutorunEntry, config: HTTPAPIConfig): Capacity {
   const used = usageToday(e.id);
+  if (isWaterfallConfig(config)) return waterfallCapacity(e, config, used);
   if (!isEnrichmentConfig(config)) {
     const cap = e.daily_row_cap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS;
     const left = cap - used.rows;

@@ -14,7 +14,8 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
     'get_run_status',
     {
       description:
-        'Status of an AI, HTTP or enrichment run: status (pending/running/paused/completed/failed/cancelled), '
+        'Status of an AI, HTTP, enrichment or waterfall run: '
+        + 'status (pending/running/paused/completed/failed/cancelled), '
         + 'processed vs total rows, failed_rows and succeeded_rows, and error_message when the run itself failed (or '
         + 'why it paused). "completed" means every row was processed, not that it worked: check failed_rows, then '
         + 'get_run_results for the reasons. AI runs also report concurrency (rows at once) and cost_usd, what the '
@@ -33,9 +34,12 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         + 'rows list {destination_sheet_id, rows_added, '
         + 'adding, waiting_for_fields, waiting_for_room}. A run started with run_if reports run_if and '
         + 'condition_skipped_rows (rows the rule kept out; not in total_rows), counted once the run has started. '
+        + 'Waterfall runs (run_type waterfall or http) report cost_usd (treg and AI so far) and waterfall: '
+        + 'result_type, spent {treg_usd, ai_usd, total_usd}, run_limit_usd, pause_reason, and steps [{label, kind, '
+        + 'on, reached, answered, failed, skipped (no inputs), cost_usd}]. '
         + `${STATUS_WORDS} Poll this after a run start; read the cells with read_rows once completed.`,
       inputSchema: {
-        run_type: z.enum(['ai', 'http', 'enrichment']),
+        run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']),
         run_id: z.string(),
         wait_seconds: z.number().int().min(0).max(25).optional(),
       },

@@ -16,12 +16,14 @@ import { yieldToRequests } from '../lib/slices';
 import { redactSecrets } from '../lib/redact';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
 import { seedVerdict, type SeedPlan } from '../lib/enrich-seed';
+import type { EnrichRunConfig } from '../lib/enrich-run-config';
+import type { WaterfallRunConfig } from '../lib/waterfall/config';
 import { enqueueHTTPRun } from '../queue';
 
 export interface SeedJob {
   runId: string; sheetId: string; userId: string;
   columns: string[];                 // the run's columns (status + outputs) to seed
-  plan: SeedPlan;
+  plan: SeedPlan<EnrichRunConfig | WaterfallRunConfig>;   // a waterfall run is seeded the same way
   rowFilter: { clause: string; params: unknown[] };   // the saved filter ("filter" mode), as SQL
   targets: number[] | null;          // selected rows
   lastRow: number;                   // rows appended after the start aren't part of the run

@@ -19,10 +19,13 @@ import { estimateEnrichment } from './enrich-setup';
 import {
   columnOutputs, inputColumnsOf, newestRunOf, sheetEntries, usageToday, type AutorunEntry,
 } from './autorun-entry';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { waterfallIsPaid } from './waterfall-autorun';
+import { storedRowEstimate } from './waterfall-estimate';
 
 export interface AutorunRowsEstimate {
   column: string;
-  kind: 'enrichment' | 'http';
+  kind: 'enrichment' | 'http' | 'waterfall';
   rows: number;                  // HTTP: what today's row cap leaves room for; enrichment: all N
   lowUsd: number | null;         // enrichments with known prices
   highUsd: number | null;
@@ -87,6 +90,18 @@ export async function estimateAutorunRows(
       pausedBy: e.paused_reason === null ? null : e.paused_reason === 'user' ? 'user' as const : 'system' as const,
       dailyCapUsd: e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6, dailyRowCap: e.daily_row_cap,
     };
+    if (isWaterfallConfig(config)) {
+      // A free waterfall (no treg or AI step) is held by its row cap, as an HTTP column.
+      if (!waterfallIsPaid(config)) {
+        const left = Math.max(0, (e.daily_row_cap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS) - used.rows);
+        return { ...base, kind: 'waterfall', rows: Math.min(rows, left), lowUsd: 0, highUsd: 0 };
+      }
+      const per = storedRowEstimate(sheetId, userId, e.status_column, config);
+      const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+      return {
+        ...base, kind: 'waterfall', rows, lowUsd: round6(per.avgUsd * rows), highUsd: round6(per.maxUsd * rows),
+      };
+    }
     if (!isEnrichmentConfig(config)) {
       const left = Math.max(0, (e.daily_row_cap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS) - used.rows);
       return { ...base, kind: 'http', rows: Math.min(rows, left), lowUsd: null, highUsd: null };

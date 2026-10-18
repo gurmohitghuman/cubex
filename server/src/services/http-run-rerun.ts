@@ -23,6 +23,7 @@ import { asRunStart, seedThenEnqueue } from './run-seed';
 import { ruleSeed, storedRule } from './run-rule';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
+import { isWaterfallConfig } from '../lib/waterfall/config';
 import { httpTemplateError } from '../lib/http-template-validate';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueHTTPRerun } from '../queue';
@@ -105,6 +106,10 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   // inputs, limits and which rows): a plain clone here would skip all that.
   if (isEnrichmentConfig(config)) {
     return { fail: 'bad_request', message: 'Run enrichments again from the Enrichment button.' };
+  }
+  // A waterfall runs again through its own setup (services/waterfall-rerun.ts).
+  if (isWaterfallConfig(config)) {
+    return { fail: 'bad_request', message: "Run waterfalls again from the column's Waterfall menu." };
   }
   // The stored request is checked again: a column it read may be gone since
   // (no saved key of its name stands in: lib/template-token-match.ts), or a key.

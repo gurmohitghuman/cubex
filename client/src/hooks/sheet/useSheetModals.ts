@@ -5,6 +5,7 @@ import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
 import type { LookupOpenTarget } from '@/components/lookup/useLookupForm'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
+import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
@@ -20,6 +21,14 @@ export const useSheetModals = () => {
     if (target.kind === 'run') { setEnrichWatch(target.runId); setEnrichOpen(null) }
     else { setEnrichWatch(null); setEnrichOpen({ ...target, nonce: Date.now() }) }
     setShowEnrichmentDrawer(true)
+  }, [])
+  // The Waterfall drawer: a new one, a column's setup to edit, or a run to watch.
+  const [waterfallTarget, setWaterfallTarget] = useState<WaterfallOpenTarget | null>(null)
+  const [showWaterfall, setShowWaterfall] = useState(false)
+  // A fresh object each time, so opening the same target again reloads it.
+  const openWaterfall = useCallback((target: WaterfallOpenTarget) => {
+    setWaterfallTarget({ ...target })
+    setShowWaterfall(true)
   }, [])
   const [showNewColumnModal, setShowNewColumnModal] = useState(false)
   // What the column menu opens the Add Column dialog on: Clean data with the
@@ -55,6 +64,8 @@ export const useSheetModals = () => {
     showEnrichmentDrawer, setShowEnrichmentDrawer,
     enrichOpen, clearEnrichOpen: () => setEnrichOpen(null), openEnrichment,
     enrichWatch, stopEnrichWatch: () => setEnrichWatch(null),
+    waterfall: { open: showWaterfall, target: waterfallTarget, close: () => setShowWaterfall(false) },
+    openWaterfall,
     showNewColumnModal, setShowNewColumnModal,
     newColumnOpen, openClean, openFormula, openLookup, clearNewColumnOpen: () => setNewColumnOpen(null),
     showWebhookDrawer, setShowWebhookDrawer,

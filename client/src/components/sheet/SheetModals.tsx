@@ -16,6 +16,7 @@ import { toastCleanStarted } from '@/hooks/sheet/useCleanColumnActions'
 import { toastFormulaStarted } from '@/hooks/sheet/useFormulaColumnActions'
 import { toastLookupStarted } from '@/hooks/sheet/useLookupColumnActions'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
+import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -29,6 +30,8 @@ interface SheetModalsProps {
   showEnrichmentDrawer: boolean
   enrichOpen: EnrichOpenRequest | null
   enrichWatch: string | null
+  // The Waterfall drawer: open, on what (a new one, a column to edit, a run), and how to close it.
+  waterfall: { open: boolean; target: WaterfallOpenTarget | null; close: () => void }
   showNewColumnModal: boolean
   // What the column menu opened the Add Column dialog on (Clean data, Edit cleaning, Edit formula).
   newColumnOpen: NewColumnOpenTarget | null
@@ -79,7 +82,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
     handleDeleteRows, handleAddColumn, loadSheetData, silentReload,
     setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns,
-    waitForSaves, dropAllPending,
+    waitForSaves, dropAllPending, waterfall,
   } = props
   const closeNewColumn = () => { setShowNewColumnModal(false); clearNewColumnOpen() }
   // Rows that were selected may be gone after removing duplicates: start over from a fresh load.
@@ -163,7 +166,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
         setShowEnrichmentDrawer={setShowEnrichmentDrawer}
         setSheetData={setSheetData} silentReload={silentReload}
         setupSSEConnection={setupSSEConnection} fetchActiveAIRuns={fetchActiveAIRuns}
-        fetchActiveHTTPRuns={fetchActiveHTTPRuns}
+        fetchActiveHTTPRuns={fetchActiveHTTPRuns} waterfall={waterfall}
       />
 
       <NewColumnModal

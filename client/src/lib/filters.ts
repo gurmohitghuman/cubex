@@ -39,7 +39,9 @@ export const RUN_STATE_FILTERS: ReadonlyArray<{ op: RunStateOp; label: string }>
 ]
 
 // Columns a run fills: the ones run-state filters work on.
-const RUN_COLUMN_TYPES = new Set<ColumnType>(['ai-output', 'ai-data', 'http-master', 'enrich-status', 'http-extracted'])
+const RUN_COLUMN_TYPES = new Set<ColumnType>([
+  'ai-output', 'ai-data', 'http-master', 'enrich-status', 'http-extracted', 'waterfall', 'waterfall-step',
+])
 export const isRunColumn = (type: ColumnType | undefined): boolean => !!type && RUN_COLUMN_TYPES.has(type)
 
 export const isListFilter = (op: FilterOp): boolean => op === 'any_of' || op === 'not_any_of'
