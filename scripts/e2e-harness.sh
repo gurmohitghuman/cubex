@@ -17,7 +17,9 @@
 # Env overrides: E2E_PORT (default 3099), E2E_TREG_PORT (the mock treg, default
 # 3098), E2E_RECEIVER_PORT (the local receiver specs start, default 3097),
 # E2E_SPEC (default the data-consistency specs; a Playwright path filter or a
-# concrete .spec.ts path).
+# concrete .spec.ts path), E2E_INSTANCE (a number: data in server/data/e2e-<n>
+# and logs tagged with it, so several harnesses can run at once; see
+# scripts/e2e-parallel.sh).
 #
 # NOTE: written for macOS's stock bash 3.2 (empty-array expansion is guarded).
 set -euo pipefail
@@ -29,7 +31,15 @@ PORT="${E2E_PORT:-3099}"
 TREG_PORT="${E2E_TREG_PORT:-3098}"
 RECEIVER_PORT="${E2E_RECEIVER_PORT:-3097}"
 SPEC="${E2E_SPEC:-data-consistency}"
-TEST_DIR="$ROOT/server/data/e2e"
+INSTANCE="${E2E_INSTANCE:-}"
+case "$INSTANCE" in
+  '') TEST_DIR="$ROOT/server/data/e2e"; LOG_TAG="" ;;
+  *[!0-9]*) echo "[x] E2E_INSTANCE must be a number"; exit 1 ;;
+  *) TEST_DIR="$ROOT/server/data/e2e-$INSTANCE"; LOG_TAG="-$INSTANCE" ;;
+esac
+BUILD_LOG="/tmp/cubex-e2e-build$LOG_TAG.log"
+TREG_LOG="/tmp/cubex-e2e-treg$LOG_TAG.log"
+SERVER_LOG="/tmp/cubex-e2e-server$LOG_TAG.log"
 TEST_DB="$TEST_DIR/cubex-e2e.db"
 TEST_PASSWORD="password123" # keep in sync with TEST_PASSWORD in tests/e2e/helpers.ts
 DO_BUILD=1
@@ -44,7 +54,7 @@ done
 
 # Safety: the test data must live in its own directory, never next to cubex.db.
 case "$TEST_DIR" in
-  */server/data/e2e) ;;
+  */server/data/e2e|*/server/data/e2e-[0-9]*) ;;
   *) echo "[x] refusing: unexpected TEST_DIR $TEST_DIR"; exit 1 ;;
 esac
 
@@ -85,8 +95,8 @@ trap cleanup EXIT
 
 if [ "$DO_BUILD" -eq 1 ]; then
   echo "[build] client + server ..."
-  npm run build >/tmp/cubex-e2e-build.log 2>&1 \
-    || { echo "[x] build failed:"; tail -20 /tmp/cubex-e2e-build.log; exit 1; }
+  npm run build >"$BUILD_LOG" 2>&1 \
+    || { echo "[x] build failed:"; tail -20 "$BUILD_LOG"; exit 1; }
 fi
 [ -f "$ROOT/server/dist/index.js" ]    || { echo "[x] server/dist missing - run without --no-build"; exit 1; }
 [ -f "$ROOT/client/dist/index.html" ]  || { echo "[x] client/dist missing - run without --no-build"; exit 1; }
@@ -140,40 +150,40 @@ export E2E_RECEIVER_PORT="$RECEIVER_PORT"
 
 if [ "$LIVE" -eq 0 ]; then
 echo "[boot] mock treg on :$TREG_PORT ..."
-node tests/mock-treg/server.mjs "$TREG_PORT" >/tmp/cubex-e2e-treg.log 2>&1 &
+node tests/mock-treg/server.mjs "$TREG_PORT" >"$TREG_LOG" 2>&1 &
 TREG_PID=$!
 for _ in $(seq 1 20); do
-  kill -0 "$TREG_PID" 2>/dev/null || { echo "[x] mock treg died:"; tail -20 /tmp/cubex-e2e-treg.log; exit 1; }
+  kill -0 "$TREG_PID" 2>/dev/null || { echo "[x] mock treg died:"; tail -20 "$TREG_LOG"; exit 1; }
   curl -fsS -o /dev/null "$TREG_BASE_URL/health" 2>/dev/null && break
   sleep 0.25
 done
 curl -fsS -o /dev/null "$TREG_BASE_URL/health" && kill -0 "$TREG_PID" 2>/dev/null \
-  || { echo "[x] mock treg never became ready"; tail -20 /tmp/cubex-e2e-treg.log; exit 1; }
+  || { echo "[x] mock treg never became ready"; tail -20 "$TREG_LOG"; exit 1; }
 else
   echo "[live] enrichments go to $TREG_BASE_URL (live smoke)"
 fi
 
-echo "[boot] prod server on :$PORT (data: server/data/e2e) ..."
+echo "[boot] prod server on :$PORT (data: ${TEST_DIR#"$ROOT/"}) ..."
 NODE_ENV=production PORT="$PORT" NODE_OPTIONS="--require $ROOT/tests/e2e/net-shim.cjs" \
-  node server/dist/index.js >/tmp/cubex-e2e-server.log 2>&1 &
+  node server/dist/index.js >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 echo -n "[wait] server"
 for _ in $(seq 1 40); do
   if curl -fsS -o /dev/null "http://localhost:$PORT/api/health" 2>/dev/null; then echo " - up"; break; fi
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo " - DIED:"; tail -20 /tmp/cubex-e2e-server.log; exit 1
+    echo " - DIED:"; tail -20 "$SERVER_LOG"; exit 1
   fi
   echo -n "."; sleep 0.5
 done
 curl -fsS -o /dev/null "http://localhost:$PORT/api/health" \
-  || { echo "[x] server never became ready"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
+  || { echo "[x] server never became ready"; tail -20 "$SERVER_LOG"; exit 1; }
 
 echo "[setup] first-time password ..."
 SETUP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H 'Content-Type: application/json' \
   -d "{\"password\":\"$TEST_PASSWORD\"}" "http://localhost:$PORT/api/auth/setup")
 [ "$SETUP_STATUS" = "200" ] \
-  || { echo "[x] setup failed: HTTP $SETUP_STATUS"; tail -20 /tmp/cubex-e2e-server.log; exit 1; }
+  || { echo "[x] setup failed: HTTP $SETUP_STATUS"; tail -20 "$SERVER_LOG"; exit 1; }
 
 echo "[test] $SPEC ..."
 set +e

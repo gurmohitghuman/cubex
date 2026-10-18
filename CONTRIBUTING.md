@@ -11,7 +11,8 @@ npm install
 npm run dev          # client on :3000, server on :3002, both hot-reload
 npm run typecheck    # server + client
 npm run test:unit    # fast tests, no server
-E2E_SPEC=tests/e2e scripts/e2e-harness.sh   # full browser + API suite on a throwaway database
+E2E_SPEC=lookup scripts/e2e-harness.sh      # the end-to-end specs for one area (a name or a spec path)
+scripts/e2e-parallel.sh                     # the full browser + API suite, in 3 parts at once
 ```
 
 The end-to-end suite needs Playwright: `npm install --no-save @playwright/test && npx playwright install chromium`.
