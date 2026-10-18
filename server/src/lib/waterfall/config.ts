@@ -1,3 +1,4 @@
+// Over 200 lines: the waterfall's stored shape (choices, frozen steps, checks, the block) and its readers.
 // The `waterfall` block a waterfall run keeps in http_runs.config (pure). A
 // waterfall column fills one result per row by trying ordered steps and
 // stopping at the first answer (services/waterfall-*.ts). Like an enrichment
@@ -11,11 +12,14 @@
 // - master_column_name is the result column, runIf the "Only run if" rule.
 // Everything the worker runs is frozen at start in each step's `built`, so a
 // run never reads the catalog mid-way and a resume calls what the start priced.
+import { randomBytes } from 'node:crypto';
 import type { HTTPAPIConfig, HTTPRequestConfig } from '../http-request-template';
 import type { EnrichRoute, EnrichRowsMode, EnrichRowsStatus } from '../enrich-run-config';
 import type { RequestTool } from '../enrich-request';
 import type { SearchToolConfig } from '../ai-web-tools';
 import type { PhoneResult, ResultType, WaterfallInputDef } from './result-type';
+import type { CompiledFormula } from '../formula/refs';
+import type { EmailStrategy } from '../enrich-email-status';
 
 export type StepKind = 'enrichment' | 'ai' | 'http' | 'formula' | 'lookup';
 export const STEP_KINDS: readonly StepKind[] = ['enrichment', 'ai', 'http', 'formula', 'lookup'];
@@ -65,8 +69,25 @@ export interface BuiltAi {
   highUsd: number;
 }
 export interface BuiltHttp { kind: 'http'; retries: number | null }
-export interface BuiltFree { kind: 'formula' | 'lookup' }
-export type BuiltStep = BuiltEnrichment | BuiltAi | BuiltHttp | BuiltFree;
+export interface BuiltFormula { kind: 'formula'; compiled: CompiledFormula }   // {{input_key}} refs
+export interface BuiltLookup { kind: 'lookup' }
+export type BuiltStep = BuiltEnrichment | BuiltAi | BuiltHttp | BuiltFormula | BuiltLookup;
+
+// A check after a step that found a value: treg's email verify (accepted by
+// strategy, lib/enrich-email-status.ts) or a formula over {{value}} and the
+// inputs (a truthy result passes). A value that fails is rejected and the
+// waterfall goes on.
+export type CheckChoices = { kind: 'verify'; accept: EmailStrategy } | { kind: 'formula'; formula: string };
+export interface BuiltVerifyCheck {
+  kind: 'verify';
+  tool: RequestTool;
+  toolKind: 'waterfall' | 'single';
+  exclude: string[];
+  providerNames: Record<string, string>;
+  capUsd: number | null;           // one check's ceiling; null: unpriced
+}
+export interface BuiltFormulaCheck { kind: 'formula'; compiled: CompiledFormula }
+export interface StepCheck { choices: CheckChoices; built: BuiltVerifyCheck | BuiltFormulaCheck }
 
 export interface WaterfallStep {
   id: string;                      // 's' + 6 characters, kept across edits
@@ -75,6 +96,7 @@ export interface WaterfallStep {
   requires: string[][];            // alternatives of input keys ([]: none needed)
   choices: StepChoices;
   built: BuiltStep;
+  check?: StepCheck | null;
 }
 
 export interface WaterfallDry {
@@ -113,6 +135,15 @@ export function waterfallConfigOf(raw: string | null | undefined): WaterfallRunC
 export const ANSWERED_BY_PATH = '$.answered_by';
 export const stepPath = (stepId: string): string => `$.steps.${stepId}`;
 export const STEP_ID_PATTERN = /^s[a-z0-9]{6}$/;
+const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+// A new step's id, not one of `taken`.
+export function newStepId(taken: ReadonlySet<string>): string {
+  for (;;) {
+    const id = `s${[...randomBytes(6)].map(b => ID_CHARS[b % ID_CHARS.length]).join('')}`;
+    if (!taken.has(id)) return id;
+  }
+}
 
 // The step a mapping's path names, or null.
 export function stepIdOfPath(path: string): string | null {
@@ -134,7 +165,6 @@ export function waterfallColumns(config: WaterfallRunConfig): {
   return { answeredBy, steps };
 }
 
-export const isPaidStep = (s: WaterfallStep): boolean => s.built.kind === 'enrichment' || s.built.kind === 'ai';
 export const onSteps = (w: WaterfallBlock): WaterfallStep[] => w.steps.filter(s => s.on);
 
 // The steps a row walks: the on steps in order, or a dry run's one step.
@@ -144,25 +174,13 @@ export function rowSteps(config: WaterfallRunConfig): WaterfallStep[] {
   return only ? w.steps.filter(s => s.id === only) : w.steps.filter(s => s.on);
 }
 
-// The treg part of the steps a row walks: whether one runs (today's
-// enrichment limit applies) and whether one has no known price (its tool
-// should bill the team's own provider key; that limit then stops on what treg
-// really charged, as an enrichment run's does).
-export function tregPart(config: WaterfallRunConfig): { any: boolean; unpriced: boolean } {
-  const treg = rowSteps(config).filter(s => s.built.kind === 'enrichment');
-  return { any: treg.length > 0, unpriced: treg.some(s => s.built.kind === 'enrichment' && s.built.capUsd === null) };
-}
-
-// The per-row cap today's limit is checked with: the priced treg part (room
-// for it is waited for; what treg really charged counts in what's spent), or
-// null when only unpriced treg steps run (it stops on what treg charged).
-export const dayCapOf = (tregCapUsd: number, unpriced: boolean): number | null =>
-  (tregCapUsd > 0 ? tregCapUsd : unpriced ? null : 0);
-
 // treg's provider ids → the names a run shows, over every enrichment step.
 export function providerNamesFrom(steps: readonly WaterfallStep[]): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const s of steps) if (s.built.kind === 'enrichment') Object.assign(out, s.built.providerNames);
+  for (const s of steps) {
+    if (s.built.kind === 'enrichment') Object.assign(out, s.built.providerNames);
+    if (s.check?.built.kind === 'verify') Object.assign(out, s.check.built.providerNames);
+  }
   return out;
 }
 

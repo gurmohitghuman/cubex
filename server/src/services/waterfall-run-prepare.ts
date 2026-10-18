@@ -122,7 +122,8 @@ export async function prepareWaterfallStart(
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
   const rule = checkRunRule(sheetId, userId, input.runIf);
   if ('error' in rule) return bad(rule.error);
-  const inScope = await rowsInScope(sheetId, userId, input, span.count, rule.ok);
+  // A dry run picks its few rows itself: counting the whole sheet's would be wasted.
+  const inScope = input.dry ? span.count : await rowsInScope(sheetId, userId, input, span.count, rule.ok);
   if (inScope === 0 && !input.dry) {
     const why = rule.ok ? 'No rows here pass "Only run if". Pick other rows to run.'
       : NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.';

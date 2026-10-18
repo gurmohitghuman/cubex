@@ -17,8 +17,9 @@ import { enrichConcurrency } from '../lib/enrich-run-config';
 import { redactError, redactSecrets } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
 import {
-  dayCapOf, isPaidStep, providerNamesFrom, rowSteps, tregPart, type WaterfallRunConfig,
+  providerNamesFrom, rowSteps, type WaterfallRunConfig,
 } from '../lib/waterfall/config';
+import { dayCapOf, isPaidStep, tregPart, usesTreg } from '../lib/waterfall/caps';
 import { getDailyLimitMicro, getTregToken, spentTodayMicro } from './treg-key';
 import { getReuseDays } from './enrich-reuse';
 import { dropHold, heldMicro, releaseRow, setRunHold } from './enrich-holds';
@@ -28,6 +29,7 @@ import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
 import { processWaterfallRow, type WaterfallRowCtx } from './waterfall-row';
 import { pruneKeptAnswers } from './waterfall-journal';
+import { RunFormulas } from './waterfall-formulas';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -99,13 +101,22 @@ function holdRows(run: HTTPRunRow, config: WaterfallRunConfig, generation: numbe
   }).immediate();
 }
 
+// A dry run's rows still to do: its targets without a result yet (a resume).
+function dryRowsLeft(run: HTTPRunRow, targets: number[]): number[] {
+  const done = new Set(db.prepare('SELECT row_index FROM http_results WHERE run_id = ? AND user_id = ?').pluck()
+    .all(run.id, run.user_id) as number[]);
+  return targets.filter(i => !done.has(i));
+}
+
 export async function processWaterfallRun(
-  run: HTTPRunRow, config: WaterfallRunConfig, generation: number, targets: number[] | null,
+  run: HTTPRunRow, config: WaterfallRunConfig, generation: number, allTargets: number[] | null,
 ): Promise<void> {
   const w = config.waterfall;
+  const targets = w.dry && allTargets ? dryRowsLeft(run, allTargets) : allTargets;
   const steps = rowSteps(config);
   const wake = new AbortController();
-  let aiHalt: string | null = null;
+  // A run-level stop a row met outside treg: OpenRouter refused the account, a formula ran too slow.
+  const own: { halt: { reason: string; message: string } | null } = { halt: null };
   const enrich: RunCtx = {
     runId: run.id, userId: run.user_id, sheetId: run.sheet_id, statusColumn: run.master_column_name, token: '',
     autorunId: run.autorun_id ?? null,
@@ -114,12 +125,12 @@ export async function processWaterfallRun(
     providerNames: providerNamesFrom(steps),
     reuseDays: w.fresh || w.noReuse ? 0 : getReuseDays(run.user_id),
   };
-  const halted = () => !!enrich.halt || aiHalt !== null;
+  const halted = () => !!enrich.halt || own.halt !== null;
   const stopped = () => halted() || enrich.stopped();
   const stop = (reason: string, message: string): Promise<void> | void => (run.autorun_id
     ? stopAutorunRun(run, generation, reason, message, targets)
     : pauseWaterfallRun(run.id, generation, reason, message));
-  const needsTreg = steps.some(s => s.built.kind === 'enrichment');
+  const needsTreg = steps.some(usesTreg);
   const needsAi = steps.some(s => s.built.kind === 'ai');
   if (needsTreg) {
     const key = getTregToken(run.user_id);
@@ -141,16 +152,21 @@ export async function processWaterfallRun(
     }
     return columns;
   };
+  const formulas = new RunFormulas(message => {
+    if (own.halt === null) { own.halt = { reason: 'too_slow', message }; wake.abort(); }
+  });
   const ctx: WaterfallRowCtx = {
     run, config, generation, enrich, ai, signal: wake.signal, stopped,
-    halt: message => { if (aiHalt === null) { aiHalt = message; wake.abort(); } },
+    halt: (message, reason = 'ai_key') => { if (own.halt === null) { own.halt = { reason, message }; wake.abort(); } },
+    formulas,
     allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns,
   };
   const paid = steps.some(isPaidStep);
   const concurrency = enrichConcurrency(config);
   const masterCol = run.master_column_name;
-  const remaining = countRunRows(run.sheet_id, run.user_id, masterCol, targets);
-  let completed = masterCol ? Math.max(0, (run.total_rows || remaining) - remaining) : 0;
+  // A dry run's rows are its few targets (counting them would walk the whole sheet).
+  const remaining = w.dry ? targets?.length ?? 0 : countRunRows(run.sheet_id, run.user_id, masterCol, targets);
+  let completed = masterCol || w.dry ? Math.max(0, (run.total_rows || remaining) - remaining) : 0;
   const progress = db.prepare("UPDATE http_runs SET processed_rows = ?, updated_at = datetime('now') WHERE id = ?");
   const source = runRows(run.sheet_id, run.user_id, masterCol, targets)[Symbol.asyncIterator]();
   const out = new Set<Promise<void>>();
@@ -201,6 +217,7 @@ export async function processWaterfallRun(
   } finally {
     await Promise.allSettled([...out]);
     clearInterval(poll);
+    formulas.dispose();
     if (paid) dropHold(run.id, generation);
     try { pruneKeptAnswers(run.user_id); } catch (error) {
       console.error('Pruning waterfall answers failed:', redactError(error));
@@ -211,7 +228,7 @@ export async function processWaterfallRun(
     await stop(enrich.halt.reason, enrich.halt.message);
     return;
   }
-  if (aiHalt !== null) { await stop('ai_key', aiHalt); return; }
+  if (own.halt !== null) { await stop(own.halt.reason, own.halt.message); return; }
   if (enrich.stopped()) return;
   if (ended) await stop(ended.reason, ended.message);
 }

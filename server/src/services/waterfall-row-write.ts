@@ -3,7 +3,7 @@
 // the write: the row stays ⏳ and the resume replays its finished steps free):
 // its http_results row (the cells, the trace, the row's cost), its cells, the
 // run's per-step tallies, and the end of the row's kept step answers (a failed
-// row keeps its paid misses for a retry, waterfall-journal.ts). When an
+// row keeps what it paid for, for a retry, waterfall-retry-kept.ts). When an
 // enrichment step answered from a call of this run, its treg answer is stored
 // with the row (raw part dropped) under a reuse key, so a later run of any
 // sheet can reuse it (services/enrich-reuse.ts). A dry run writes no cells.
@@ -15,13 +15,14 @@ import { withFill } from '../lib/answer-store';
 import { trimAnswer } from '../lib/answer-trim';
 import { nowDate } from '../lib/clock';
 import { rowCells, traceCostUsd, type Trace, type TraceStep } from '../lib/waterfall/trace';
-import { settingsKey } from '../lib/waterfall/keys';
+import { tallyKey } from '../lib/waterfall/keys';
 import { rowSteps, type WaterfallRunConfig } from '../lib/waterfall/config';
 import type { RunRow } from '../lib/run-rows';
 import type { StepFrom } from '../lib/waterfall/trace';
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import { answerTime, noteReusedRow } from './enrich-reuse';
-import { dropRowAnswers, keepRowMisses, type PaidMiss } from './waterfall-journal';
+import { dropRowAnswers } from './waterfall-journal';
+import { keepForRetry, type RetryKept } from './waterfall-retry-kept';
 import type { StepRun } from './waterfall-step-types';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -47,7 +48,7 @@ export function keptBody(r: StepRun): unknown {
 export interface WaterfallWrite {
   run: HTTPRunRow; config: WaterfallRunConfig; generation: number; row: RunRow;
   trace: TraceStep[]; answer: AnswerOf | null; scope: string; rowRef: string;
-  misses: PaidMiss[];             // its paid steps that found nothing (kept only when the row failed)
+  kept: RetryKept[];              // what a retry shouldn't pay for again (kept only when the row failed)
 }
 
 // A found answer this run bought, kept whole enough for a later run to read:
@@ -68,7 +69,7 @@ function stored(trace: Trace, answer: AnswerOf | null): unknown {
 
 function tally(run: HTTPRunRow, config: WaterfallRunConfig, trace: TraceStep[]): void {
   const w = config.waterfall;
-  const keyOf = new Map(w.steps.map(s => [s.id, settingsKey(w, s)]));
+  const keyOf = new Map(w.steps.map(s => [s.id, tallyKey(w, s)]));
   const up = db.prepare(`INSERT INTO waterfall_step_tally (run_id, step_id, user_id, step_key, reached, answered,
       rejected, failed, skipped, cost_usd) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
     ON CONFLICT(run_id, step_id) DO UPDATE SET reached = reached + 1, answered = answered + excluded.answered,
@@ -113,9 +114,9 @@ export function writeWaterfallRow(x: WaterfallWrite): boolean {
       writeRowColumns(run.sheet_id, run.user_id, x.row.rowIndex, Object.entries(values));
       touchSheet(run.sheet_id, run.user_id);
       dropRowAnswers(run.user_id, x.scope, x.rowRef);
-      const paidSteps = rowSteps(config).filter(s => s.choices.kind === 'enrichment' || s.choices.kind === 'ai');
-      keepRowMisses(run.user_id, x.row.rowId, run.id, paidSteps.map(s => s.id),
-        cells.status === 'failed' ? x.misses : []);
+      const paidSteps = rowSteps(config).filter(s => s.choices.kind === 'enrichment' || s.choices.kind === 'ai'
+        || s.check?.built.kind === 'verify');
+      keepForRetry(run.user_id, x.row.rowId, run.id, paidSteps.map(s => s.id), cells.status === 'failed' ? x.kept : []);
     }
     written = true;
   }).immediate();

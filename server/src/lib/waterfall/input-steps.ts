@@ -1,3 +1,4 @@
+// Over 200 lines: each step kind's strict parse sits here together, a few lines each.
 // A waterfall's steps as a start request sends them, parsed strictly (pure):
 // every level refuses a key it doesn't know (a misspelling is never dropped),
 // and every value has a type and a size. What a step means against the sheet
@@ -9,7 +10,8 @@ import {
   WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_INPUTS, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS,
 } from '../constants';
 import { strayKey } from '../enrich-agent-args';
-import { STEP_ID_PATTERN, type StepChoices } from './config';
+import { STEP_ID_PATTERN, type CheckChoices, type StepChoices } from './config';
+import { formulaText, parseCheck } from './input-check';
 import { INPUT_KEY_PATTERN } from './inputs';
 
 type Json = Record<string, unknown>;
@@ -24,6 +26,7 @@ export interface StepInput {
   on: boolean;
   requires: string[][] | null;     // null: what the step reads (or the tool's own rule)
   choices: StepChoices;
+  check: CheckChoices | null;      // a check on the value it finds
 }
 
 export type Parsed<T> = { ok: T } | { error: string };
@@ -147,12 +150,19 @@ function http(c: Json, where: string): Parsed<StepChoices> {
   };
 }
 
-const KINDS: Record<string, (c: Json, where: string) => Parsed<StepChoices>> = { enrichment, ai, http };
+function formula(c: Json, where: string): Parsed<StepChoices> {
+  const stray = strayKey(c, ['kind', 'formula'], where);
+  if (stray) return bad(stray);
+  const text = formulaText(c.formula, where);
+  return 'error' in text ? text : { ok: { kind: 'formula', formula: text.ok } };
+}
+
+const KINDS: Record<string, (c: Json, where: string) => Parsed<StepChoices>> = { enrichment, ai, http, formula };
 
 export function parseStep(v: unknown, i: number): Parsed<StepInput> {
   const where = `Step ${i + 1}`;
   if (!isObj(v)) return bad(`${where} must be an object.`);
-  const stray = strayKey(v, ['id', 'label', 'on', 'requires', 'choices'], where);
+  const stray = strayKey(v, ['id', 'label', 'on', 'requires', 'choices', 'check'], where);
   if (stray) return bad(stray);
   if (v.id !== undefined && v.id !== null && (typeof v.id !== 'string' || !STEP_ID_PATTERN.test(v.id))) {
     return bad(`${where}: id isn't a step id.`);
@@ -167,12 +177,14 @@ export function parseStep(v: unknown, i: number): Parsed<StepInput> {
   const c = v.choices;
   if (!isObj(c) || typeof c.kind !== 'string') return bad(`${where}: choices.kind is required.`);
   const kind = KINDS[c.kind];
-  if (!kind) return bad(`${where}: a step is an enrichment, ai or http step.`);
+  if (!kind) return bad(`${where}: a step is an enrichment, ai, http or formula step.`);
   const choices = kind(c, where);
   if ('error' in choices) return choices;
+  const check = parseCheck(v.check, where);
+  if ('error' in check) return check;
   const label = typeof v.label === 'string' && v.label.trim() ? v.label.trim() : null;
   const id = (v.id as string | null | undefined) ?? null;
-  return { ok: { id, label, on: v.on !== false, requires: requires.ok, choices: choices.ok } };
+  return { ok: { id, label, on: v.on !== false, requires: requires.ok, choices: choices.ok, check: check.ok } };
 }
 
 export function parseSteps(v: unknown): Parsed<StepInput[]> {

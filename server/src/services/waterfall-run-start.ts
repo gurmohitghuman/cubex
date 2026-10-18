@@ -14,7 +14,8 @@ import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { savedKeyRefsInRun } from '../lib/http-secrets-scan';
-import { ANSWERED_BY_PATH, onSteps } from '../lib/waterfall/config';
+import { ANSWERED_BY_PATH, rowSteps } from '../lib/waterfall/config';
+import { usesTreg } from '../lib/waterfall/caps';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { asRunStart } from './run-seed';
 import { rowFilterSql } from './enrich-rows-filter';
@@ -34,12 +35,13 @@ const generationOf = (sheetId: string, userId: string): number | undefined => db
   'SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?',
 ).pluck().get(sheetId, userId) as number | undefined;
 
-// What the run's steps need before it can start, or why it can't.
+// What the steps the run walks need before it can start (a dry run of one
+// step: that step's), or why it can't.
 export function keysProblem(
   userId: string, p: Pick<PreparedWaterfall, 'config'>, hasSecretsScope: boolean,
 ): RunFail | { allowSecrets: number } {
-  const on = onSteps(p.config.waterfall);
-  if (on.some(s => s.built.kind === 'enrichment') && !getTregToken(userId)) {
+  const on = rowSteps(p.config);
+  if (on.some(usesTreg) && !getTregToken(userId)) {
     return { fail: 'conflict', message: 'Add your treg key in Settings first: an enrichment step needs it.' };
   }
   if (on.some(s => s.built.kind === 'ai') && !getOpenRouterApiKey(userId)) {

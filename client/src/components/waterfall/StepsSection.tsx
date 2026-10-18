@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Bot, DatabaseZap, Globe } from 'lucide-react'
+import { Bot, DatabaseZap, FunctionSquare, Globe } from 'lucide-react'
 import type { ResultType, StepKind } from '@/utils/api/waterfall'
 import { emptyChoices, moveStep, newStep, type DraftInput, type DraftStep } from './draft'
 import { StepCard } from './StepCard'
@@ -10,12 +10,13 @@ interface Props {
   resultType: ResultType
   resultLabel: string
   onChange: (steps: DraftStep[]) => void
+  onTest?: (stepId: string) => void
 }
 
 // The steps in order: each row tries them top to bottom and stops at the
 // first answer. Drag a step (or use its arrows) to reorder, switch one off to
 // skip it. A new step opens for its setup.
-export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resultLabel, onChange }) => {
+export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resultLabel, onChange, onTest }) => {
   const [open, setOpen] = useState<string | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
@@ -37,6 +38,7 @@ export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resul
             onToggleOpen={() => setOpen(open === s.key ? null : s.key)} onChange={next => set(i, next)}
             onRemove={() => onChange(steps.filter((_, k) => k !== i))}
             onMove={d => onChange(moveStep(steps, i, i + d))}
+            onTest={onTest && s.id ? () => onTest(s.id!) : undefined}
             drag={{
               onDragStart: () => setDragging(i),
               onDragOver: e => { e.preventDefault(); setOver(i) },
@@ -57,6 +59,10 @@ export const StepsSection: React.FC<Props> = ({ steps, inputs, resultType, resul
         </button>
         <button type="button" className="btn-secondary flex items-center gap-1" onClick={() => add('http')}>
           <Globe className="h-3 w-3" /> HTTP API
+        </button>
+        <button type="button" className="btn-secondary flex items-center gap-1" onClick={() => add('formula')}
+          title="Free: JavaScript over the inputs, such as a guess at an address">
+          <FunctionSquare className="h-3 w-3" /> Formula
         </button>
       </div>
     </div>

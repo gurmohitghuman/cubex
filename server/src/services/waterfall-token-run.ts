@@ -23,6 +23,7 @@ import { dailyLimitOf } from './enrich-agent-shared';
 import { runIfReply } from './run-rule';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
+import { tokenDryRun } from './waterfall-token-dry';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -82,6 +83,7 @@ export async function tokenWaterfall(
   if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
+  if (parsed.ok.dry) return tokenDryRun(c, sheetId, parsed.ok, a);
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
   const estimateOnly = a.estimate_only === undefined

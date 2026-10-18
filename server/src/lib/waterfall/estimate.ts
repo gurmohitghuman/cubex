@@ -71,6 +71,21 @@ export function enrichmentStepCost(tool: EnrichTool, pick: ProviderPick, capUsd:
   };
 }
 
+// A check after the step: it's paid on each value the step finds (the
+// column's own share found when its runs have one, else the step's answer
+// rate, else every row), and until the column's runs say how often values
+// pass it, the step counts as never answering (the average errs high).
+export function withCheck(
+  cost: StepCost, check: { usd: number; preRate: number | null; found: number | null } | null,
+): StepCost {
+  if (!check) return cost;
+  const found = clamp01(check.found ?? check.preRate ?? 1);
+  return {
+    ...cost, maxUsd: round6(cost.maxUsd + check.usd), expectedUsd: round6(cost.expectedUsd + found * check.usd),
+    ...(cost.rateFrom === 'history' ? {} : { answerRate: null, rateFrom: null }),
+  };
+}
+
 // An earlier runs' rate replaces the catalog's once enough rows reached the step.
 export function withHistory(cost: StepCost, history: { reached: number; answered: number } | null,
   minRows: number): StepCost {

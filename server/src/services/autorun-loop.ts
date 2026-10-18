@@ -7,6 +7,7 @@
 // cleared here: caps when today allows a row again (midnight UTC or a raise),
 // treg's stops after AUTORUN_RETRY_MS, a missing column once it is back, a
 // missing key once one is saved, a loop of list auto-runs once it is broken.
+import { usesTreg } from '../lib/waterfall/caps';
 import { db } from '../lib/db';
 import { AUTORUN_MAX_ROWS, AUTORUN_RETRY_MS, AUTORUN_SWEEP_MS } from '../lib/constants';
 import { sheetBusyWith } from '../lib/sheet-busy';
@@ -60,7 +61,7 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
     db.prepare('UPDATE autorun_columns SET input_columns = ? WHERE id = ?').run(watched, e.id);
   }
   const steps = isWaterfallConfig(config) ? onSteps(config.waterfall) : [];
-  if ((isEnrichmentConfig(config) || steps.some(s => s.built.kind === 'enrichment')) && !getTregToken(e.user_id)) {
+  if ((isEnrichmentConfig(config) || steps.some(usesTreg)) && !getTregToken(e.user_id)) {
     return { reason: 'no_key', message: 'No treg key. Add one in Settings and auto-run goes on.' };
   }
   if (steps.some(s => s.built.kind === 'ai') && !getOpenRouterApiKey(e.user_id)) {

@@ -13,7 +13,10 @@ interface RunRow { id: string; status: string; config: string | null }
 
 function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<string, unknown> {
   const c = s.choices;
-  const base = { id: s.id, label: s.label, kind: c.kind, on: s.on };
+  const ch = s.check?.choices;
+  const check = !ch ? {} : ch.kind === 'verify' ? { check: { kind: 'verify', accept: ch.accept } }
+    : { check: { kind: 'formula', formula: ctx.cut(column, ch.formula) } };
+  const base = { id: s.id, label: s.label, kind: c.kind, on: s.on, ...check };
   if (c.kind === 'enrichment') {
     const toolName = s.built.kind === 'enrichment' ? s.built.toolName : undefined;
     return { ...base, tool_id: c.toolId, ...(toolName ? { tool_name: toolName } : {}) };
@@ -28,6 +31,7 @@ function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<
       value_path: c.valuePath,
     };
   }
+  if (c.kind === 'formula') return { ...base, formula: ctx.cut(column, c.formula) };
   return base;
 }
 
