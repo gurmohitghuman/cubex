@@ -12,6 +12,7 @@ import { db } from '../lib/db';
 import { ENRICH_LIST_RECOUNT_SLACK, MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, countRows, purgeResultsForRows } from '../lib/sql-helpers';
 import { nextRowIndex } from '../lib/sheet-busy';
+import { settleRows } from './auto-dedupe-settle';
 import { redactError } from '../lib/redact';
 import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { dedupeKey, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
@@ -153,10 +154,13 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
     const from = db.prepare(`INSERT INTO enrichment_list_rows (dest_row_id, user_id, dest_sheet_id, source_sheet_id,
       source_row_id, status_column, run_id, dedupe_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const rids: number[] = [];
+    const ids = new Set<string>();
     for (const r of rows) {
       const id = uuidv4();
       for (const c of dropped) delete r.cells[c];
-      insert.run(id, j.dest_sheet_id, j.user_id, next++, JSON.stringify(r.cells));
+      rids.push(Number(insert.run(id, j.dest_sheet_id, j.user_id, next++, JSON.stringify(r.cells)).lastInsertRowid));
+      ids.add(id);
       from.run(id, j.user_id, j.dest_sheet_id, j.source_sheet_id, j.source_row_id, column ?? '', j.run_id, r.key);
     }
     if (earlier.length) {
@@ -168,13 +172,17 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
         AND user_id = ?`).run(ids, j.user_id);
       if (live.length) autorunRowsRemoved(j.dest_sheet_id, j.user_id);
     }
-    count.rows = after(have);
-    writeSourceCell(j, column, listCell.added(rows.length, skipped));
+    // Auto-dedupe in the other sheet: a row it already has isn't added again (or replaces it).
+    const deduped = settleRows(j.dest_sheet_id, j.user_id, rids, 'arrived');
+    const notKept = deduped?.removed.filter(r => ids.has(r.id)).length ?? 0;
+    const added = rows.length - notKept;
+    count.rows = after(have) - (deduped?.removed.length ?? 0);
+    writeSourceCell(j, column, listCell.added(added, skipped + notKept));
     db.prepare('DELETE FROM enrichment_list_items WHERE id = ?').run(j.id);
     db.prepare('UPDATE http_runs SET list_rows_added = list_rows_added + ? WHERE id = ? AND user_id = ?')
-      .run(rows.length, j.run_id, j.user_id);
+      .run(added, j.run_id, j.user_id);
     bump(j.dest_sheet_id, j.user_id);
-    out = { added: rows.length, skipped };
+    out = { added, skipped: skipped + notKept };
   }).immediate();
   // The wait is recorded either way: a stop that fails here is tried again next round.
   if (stopRunId) {

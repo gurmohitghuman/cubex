@@ -7,7 +7,7 @@ import { ScrapedDataModal, type SourcesCell } from '@/components/ScrapedDataModa
 import { ImportCSVModal } from '@/components/sheet/ImportCSVModal'
 import { NewColumnModal } from '@/components/sheet/NewColumnModal'
 import { SheetRunDrawers } from '@/components/sheet/SheetRunDrawers'
-import { RemoveDuplicatesModal } from '@/components/dedupe/RemoveDuplicatesModal'
+import { RemoveDuplicatesModal, type DedupeTab } from '@/components/dedupe/RemoveDuplicatesModal'
 import { Sheet, SheetData } from '@/utils/api'
 import type { EnrichOpenRequest } from '@/components/enrich-modal/useOpenRequest'
 import { plural } from '@/lib/utils'
@@ -18,6 +18,7 @@ import { toastLookupStarted } from '@/hooks/sheet/useLookupColumnActions'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 import { toastDeleted } from '@/components/trash/trashToast'
+import { importDedupeText } from '@/components/dedupe/autoDedupeToast'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -38,6 +39,7 @@ interface SheetModalsProps {
   newColumnOpen: NewColumnOpenTarget | null
   scrapedDataModal: { isOpen: boolean; cell: SourcesCell | null }
   showDedupeModal: boolean
+  dedupeTab: DedupeTab
   // setters
   setConfirmTopbarDeleteOpen: (b: boolean) => void
   setShowImportModal: (b: boolean) => void
@@ -77,7 +79,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
     activeSheet, sheetData, selectedRowIndices,
     confirmTopbarDeleteOpen, showImportModal, showAddColumnModal,
     showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, enrichWatch, showNewColumnModal, scrapedDataModal,
-    newColumnOpen, clearNewColumnOpen, showDedupeModal, setShowDedupeModal,
+    newColumnOpen, clearNewColumnOpen, showDedupeModal, setShowDedupeModal, dedupeTab,
     setConfirmTopbarDeleteOpen, setShowImportModal, setShowAddColumnModal, setShowHTTPAPIColumnModal,
     setShowEnrichmentDrawer, clearEnrichOpen, stopEnrichWatch, setShowNewColumnModal, setScrapedDataModal,
     setSelectedRowIndices, clearGridSelection, setSheetData, setLoadedRowsCount,
@@ -142,7 +144,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           dropAllPending(activeSheet.id)
           return true
         }}
-        onImported={async ({ rowsImported, newColumns }) => {
+        onImported={async ({ rowsImported, newColumns, autoDedupe }) => {
           if (!activeSheet) return
           // Did the sheet already have data BEFORE this import? (Capture before
           // the reload replaces sheetData.) New columns only land off-screen to
@@ -154,10 +156,10 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           await loadSheetData(activeSheet.id, INITIAL_ROW_LOAD, 0)
           if (sheetHadData && newColumns.length > 0) {
             const noun = newColumns.length === 1 ? 'column' : 'columns'
-            toast.success(
-              `Imported ${plural(rowsImported, 'row')} in ${newColumns.length} new ${noun}. Scroll right to view.`)
+            toast.success(`Imported ${plural(rowsImported, 'row')} in ${newColumns.length} new ${noun}. `
+              + `Scroll right to view.${importDedupeText(autoDedupe)}`)
           } else {
-            toast.success(`${plural(rowsImported, 'row')} imported`)
+            toast.success(`${plural(rowsImported, 'row')} imported.${importDedupeText(autoDedupe)}`)
           }
         }}
       />
@@ -206,7 +208,11 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
       {activeSheet && (
         <RemoveDuplicatesModal
           isOpen={showDedupeModal} onClose={() => setShowDedupeModal(false)} sheetId={activeSheet.id}
+          tab={dedupeTab} columnTypes={sheetData?.data.columnTypes ?? {}}
           columns={sheetData?.data.columns ?? []} cleanColumns={sheetData?.data.cleanColumns ?? {}}
+          autoDedupe={sheetData?.data.autoDedupe ?? null}
+          onAutoDedupeChanged={view => setSheetData(prev =>
+            (prev && prev.sheet.id === activeSheet.id ? { ...prev, data: { ...prev.data, autoDedupe: view } } : prev))}
           onBeforeRemove={() => waitForSaves(5000)}
           onRemoved={async ({ removed, trashId }) => {
             const sheetId = activeSheet.id

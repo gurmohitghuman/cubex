@@ -110,6 +110,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
+| `set_auto_dedupe` | Keep one row per key as rows arrive (webhooks, appends, imports, transfers, edits), for free: the oldest or the newest row of a key stays, the others go to the trash. See [Auto-dedupe](#auto-dedupe). |
 | `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup; list and delete the saved ones. See [Setups](#setups). |
 | `apply_setup`, `get_setup_run`, `control_setup_run` | Build a saved setup's columns on another sheet and fill them in order (an estimate unless `estimate_only: false`), follow it, and pause, resume or stop it. See [Setups](#setups). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
@@ -314,11 +315,28 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - A dry run needs the `read` scope; `dry_run: false` needs `write`. Removed rows go to the trash as one batch (the answer's `trash` says how to restore them); their AI and HTTP results go. The whole sheet is checked; filters don't apply.
 - Refused while a run is active on the sheet: stop or finish it first. Rows appended while a removal works are left alone.
 
+## Auto-dedupe
+
+`set_auto_dedupe` keeps one row per key in a sheet from now on, for free. Pick one key column and how it matches (`match`, the same as `remove_duplicates`), and which row of a key stays:
+
+```json
+{"sheet_id": "...", "column": "Email", "match": "email", "keep": "oldest"}
+```
+
+- `keep`: `oldest` (the default: the row already there stays, a new row with its key is not kept) or `newest` (the new row replaces the older rows with its key, enriched cells and all).
+- **What's checked:** a row that arrives (a webhook event, `append_rows`, `import_csv` or an upload link, `transfer_rows`, list rows from an enrichment), and a row someone gives a new key (`update_cells`, the app). Values that runs and other filled columns write, and rows `restore_from_trash` brings back, are never checked. Blank cells, run statuses and cells over 200 characters never match.
+- **The key column** must be one rows arrive with: not an AI, HTTP, enrichment, waterfall, clean, formula or lookup column. To match on a cleaned value, pick the raw column and the `match` that cleans it (a website column as `domain`).
+- **What it answers:** `append_rows`, `update_cells`, `transfer_rows` and `import_csv` answer `auto_dedupe`: which of the call's rows were `not_kept`, which older rows they `replaced`, and the `trash` batch with the `seqs` that put just those rows back (`restore_from_trash` with `trash_id` and `seqs`). A restore isn't checked, so the rows stay; a row that arrives later with the same key is checked against them like any other.
+- **Where they go:** the trash, one batch per sheet a day. `list_trash` with `how: "auto_dedupe"` and the `sheet_id` lists them.
+- **Rows already there** stay as they are when it's turned on: `get_sheet`'s `auto_dedupe.shared_rows` says how many share a key with an older row, and `remove_duplicates` cleans those up once. On a big sheet the keys take a moment to read (`state: "building"`); rows arriving meanwhile are checked once it's done.
+- **Runs:** a row a run is working on is never removed; that check waits for the run (`waiting_rows`). Turning it on, changing it and turning it off are refused while a run is active on the sheet.
+- Call it again to change it (fields left out stay); `off: true` turns it off. `get_sheet` shows the setting as `auto_dedupe` (or `null`). Needs the `write` scope.
+
 ## The trash
 
 Deleted rows, sheets and tables aren't gone at once: they wait in the trash for the days set in Settings (30 by default, up to 90; 0 deletes at once), then are deleted for good. The app has a Trash page; agents use `list_trash` and `restore_from_trash`.
 
-- **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
+- **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; rows [auto-dedupe](#auto-dedupe) didn't keep, one batch per sheet a day; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
 - **The answer:** each of those deletes answers with `trash`: `trash_id`, `kept_days`, `restorable_until` and `how_to_restore`.
 - **Restoring rows:** a batch goes back to its old places when the sheet hasn't been sorted, replaced or deduplicated since and those places are free; otherwise to the end of the sheet, in the order the rows had. Rows keep their ids. Columns they need that the sheet lost come back (`columns_added`); when the sheet has no room for them, the restore is refused rather than leaving cells out. Rows moved out with `transfer_rows` are still in their new sheet, so restoring them keeps both. Auto-run doesn't run restored rows. A run active on the sheet refuses a restore. A batch over 20,000 rows answers `"state": "restoring"` and finishes in the background.
 - **Finding rows:** `list_trash` with a batch's `trash_id` reads its rows (`seq`, `row_id`, `old_row_index`, `cells`); `column` and `contains` search them. Pass the `seq`s you want to `restore_from_trash` with that `trash_id`.
@@ -508,6 +526,7 @@ All paths below are relative to `/api/v1`.
 | `POST /sheets/:id/lookup-columns` | `{"column": "Industry", "source_column": "Domain", "other_sheet_id": "…", "match_column": "Website", "returns": "value", "return_column": "Industry"}`, plus optional `match`, `return_columns`, `limit`, `auto_run` and `preview`. Same as `lookup_column` (see [Lookups](#lookups)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
 | `POST /sheets/:id/remove-duplicates` | `{"columns": ["Email"], "keep": "first", "dry_run": false}`. Same as `remove_duplicates` (see [Remove duplicates](#remove-duplicates)): a dry run unless `dry_run` is `false`. `read` scope for a dry run, `write` to remove. |
+| `PUT /sheets/:id/auto-dedupe` · `DELETE /sheets/:id/auto-dedupe` | `{"column": "Email", "match": "email", "keep": "oldest"}` turns it on or changes it (fields left out stay); `DELETE` turns it off. Same as `set_auto_dedupe` (see [Auto-dedupe](#auto-dedupe)); `GET /sheets/:id` shows it as `auto_dedupe`. `write` scope. |
 | `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` to rename (URL-encode the old name), `{"description": "…"}` to describe (`""` removes it), or both: the description is checked first, so a bad one changes nothing. |
 | `DELETE /sheets/:id/columns/:name` | |
@@ -683,7 +702,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`;
 
 | Endpoint | Body or query |
 |---|---|
-| `GET /trash` | Same as `list_trash` without an id: `?q=` (a table, sheet or token name), `kind` (`rows`, `sheet`, `table`), `sheet_id`, `before` (the next page), `limit`. `read` scope. |
+| `GET /trash` | Same as `list_trash` without an id: `?q=` (a table, sheet or token name), `kind` (`rows`, `sheet`, `table`), `how` (`grid`, `api`, `duplicates`, `auto_dedupe`, `import`, `transfer`, `sheet`, `table`), `sheet_id`, `before` (the next page), `limit`. `read` scope. |
 | `GET /trash/:id` · `GET /trash/:id/rows` | One item; a batch's rows: `?after=` (a `seq`), `limit` (up to 500), `column` and `contains` to search. `read` scope. |
 | `GET /trash/:id/csv` | A batch's rows as CSV. `read` scope. |
 | `POST /trash/restore` | `{"trash_ids": [12, 14]}`: tables first, then sheets, then rows. `results` says what each did. `write` scope. |

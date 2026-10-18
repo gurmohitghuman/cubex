@@ -79,7 +79,7 @@ async function receiveUpload(req: express.Request, res: express.Response) {
     () => importUploadedCsv(req, link.sheet_id, link.user_id, replace));
   if (!('fail' in result)) {
     // The new rows' auto-runs (an agent made the link; it should know what they spend).
-    const notice = await appendAutorunNotice(link.user_id, link.sheet_id, result.ok.rowsImported);
+    const notice = await appendAutorunNotice(link.user_id, link.sheet_id, result.ok.rowsKept);
     return void res.status(201).json({ ...importSummary(result.ok, replace, link.user_id), ...notice });
   }
   // Busy (a heavy job or an export got there first): nothing was imported, so

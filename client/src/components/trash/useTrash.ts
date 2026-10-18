@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { trashAPI, type TrashEntry, type TrashKind } from '@/utils/api'
+import { trashAPI, type TrashEntry, type TrashHow, type TrashKind } from '@/utils/api'
+
+// What a link can narrow the list to: one sheet's batches and how they went
+// (the auto-dedupe dialog's "See them in the trash").
+export interface TrashScope { sheetId?: string; how?: TrashHow }
 
 // The Trash page's list: newest first, searched as you type (q), narrowed by
-// kind, a page at a time ("Load more"). While something is being restored or
-// deleted for good, it looks again every few seconds to show it moving on.
-export function useTrash() {
+// kind (and a scope), a page at a time ("Load more"). While something is being
+// restored or deleted for good, it looks again every few seconds to show it moving on.
+export function useTrash(scope: TrashScope = {}) {
   const [q, setQ] = useState('')
   const [kind, setKind] = useState<TrashKind | ''>('')
   const [items, setItems] = useState<TrashEntry[]>([])
@@ -15,18 +19,19 @@ export function useTrash() {
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const ask = useRef(0)
+  const { sheetId, how } = scope
 
   // A new search starts over; a refresh (tick) keeps the pages loaded below the first.
   const lastAsk = useRef('')
   useEffect(() => {
     const ctl = new AbortController()
     const n = ++ask.current
-    const key = `${q.trim()}|${kind}`
+    const key = `${q.trim()}|${kind}|${sheetId ?? ''}|${how ?? ''}`
     const fresh = key !== lastAsk.current
     lastAsk.current = key
     const wait = setTimeout(() => {
       setLoading(true)
-      trashAPI.list({ q: q.trim() || undefined, kind: kind || undefined }, ctl.signal)
+      trashAPI.list({ q: q.trim() || undefined, kind: kind || undefined, how, sheet_id: sheetId }, ctl.signal)
         .then(list => {
           if (n !== ask.current) return
           const oldest = list.items.length ? list.items[list.items.length - 1].id : 0
@@ -39,7 +44,7 @@ export function useTrash() {
         .finally(() => { if (n === ask.current) setLoading(false) })
     }, q ? 250 : 0)
     return () => { clearTimeout(wait); ctl.abort() }
-  }, [q, kind, tick])
+  }, [q, kind, tick, sheetId, how])
 
   const moving = items.some(i => i.state === 'restoring' || i.state === 'purging' || i.state === 'moving')
   useEffect(() => {
@@ -52,11 +57,13 @@ export function useTrash() {
   const loadMore = useCallback(async () => {
     if (next === null) return
     const n = ask.current
-    const list = await trashAPI.list({ q: q.trim() || undefined, kind: kind || undefined, before: next })
+    const list = await trashAPI.list({
+      q: q.trim() || undefined, kind: kind || undefined, how, sheet_id: sheetId, before: next,
+    })
     if (n !== ask.current) return // the search changed meanwhile
     setItems(prev => [...prev, ...list.items.filter(i => !prev.some(p => p.id === i.id))])
     setNext(list.next_before)
-  }, [next, q, kind])
+  }, [next, q, kind, sheetId, how])
 
   return { q, setQ, kind, setKind, items, days, totalBytes, hasMore: next !== null, loading, error, reload, loadMore }
 }

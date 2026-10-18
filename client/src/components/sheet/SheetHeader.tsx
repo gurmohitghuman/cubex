@@ -39,6 +39,8 @@ interface SheetHeaderProps {
   viewNarrows: boolean
   viewName: string
   onRemoveDuplicates: () => void
+  // Auto-dedupe is on: the Remove duplicates button says so.
+  autoDedupeOn?: boolean
   onSaveSetup: () => void
   onUseSetup: () => void
   onAddAIColumn: () => void
@@ -72,7 +74,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onDeleteSelectedRows,
   onImport,
   onExport, viewNarrows, viewName,
-  onRemoveDuplicates,
+  onRemoveDuplicates, autoDedupeOn,
   onSaveSetup,
   onUseSetup,
   onAddAIColumn,
@@ -184,10 +186,18 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               <ExportButton isExporting={isExporting} disabled={!hasRows} viewNarrows={viewNarrows}
                 viewName={viewName} onExport={scope => onExport(scope, viewName)} />
 
-              <button onClick={onRemoveDuplicates} disabled={!hasRows} title="Find and remove duplicate rows"
-                className="btn-secondary flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={onRemoveDuplicates} disabled={columnCount === 0} data-testid="remove-duplicates"
+                title={autoDedupeOn ? 'Auto-dedupe is on: new rows with a key already in the sheet go to the trash'
+                  : 'Find and remove duplicate rows'}
+                className={'btn-secondary relative flex items-center space-x-1 disabled:opacity-50 '
+                  + 'disabled:cursor-not-allowed'}>
                 <CopyMinus className="h-3 w-3" />
                 <span>Remove duplicates</span>
+                {/* Auto-dedupe on: a dot on the corner (the toolbar has no room for a label at 1280px). */}
+                {autoDedupeOn && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-cube-black ring-2 ring-white"
+                    data-testid="auto-dedupe-chip"><span className="sr-only">(auto-dedupe on)</span></span>
+                )}
               </button>
               <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} />
               <SheetUsageButton sheetId={sheetId ?? null} sheetName={sheetName ?? ''} />

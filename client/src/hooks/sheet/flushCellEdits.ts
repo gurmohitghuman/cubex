@@ -1,9 +1,12 @@
+// Over 200 lines: one flush and every outcome the server answers, settled in one place.
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI } from '@/utils/api'
 import { CELL_MAX_BASIC, SHEET_BUSY_RETRY_MS } from '@/lib/constants'
 import { RetryLaterError } from '@/hooks/useAutosave'
 import { CellChange, SavedCell, recentlySavedKey, isNonRetryableStatus, cellMatches } from './cellQueue'
+import { toastAutoDeduped } from '@/components/dedupe/autoDedupeToast'
+import type { GridAutoDedupe } from '@/utils/api'
 
 interface FlushContext {
   recentlySavedRef: MutableRefObject<Map<string, SavedCell>>
@@ -70,6 +73,10 @@ export async function flushCellEdits(
   // >8k that bypassed the client pre-guard — legacy/programmatic). Purge +
   // toast, same as skipped.
   const oversizeDropped: CellChange[] = []
+  // Rows auto-dedupe sent to the trash: an edited key matched another row's
+  // (server services/auto-dedupe-settle.ts). Their queued edits go, and the
+  // sheet reloads without them.
+  const deduped: Array<{ sheetId: string; d: GridAutoDedupe }> = []
   const at = Date.now()
   const results = await Promise.allSettled(
     Array.from(bySheet.values()).map((group) =>
@@ -86,7 +93,8 @@ export async function flushCellEdits(
         // them can't resurrect deleted structure. A skipped cell (row/column
         // gone) is a no-op here; the silent-reload overlay corrects the view.
         'update',
-      ).then(({ lockedColumns, skippedCells, oversizeCells }) => {
+      ).then(({ lockedColumns, skippedCells, oversizeCells, autoDedupe }) => {
+        if (autoDedupe) deduped.push({ sheetId: group[0].sheetId, d: autoDedupe })
         const locked = new Set(lockedColumns)
         // Skipped cells (stale row/column) keyed for O(1) lookup. These did
         // NOT persist — exclude them from "recently saved" and purge below.
@@ -192,6 +200,17 @@ export async function flushCellEdits(
     purgeFromQueue(oversizeDropped)
     toast.error(`${oversizeDropped.length} edit${oversizeDropped.length === 1 ? '' : 's'} exceeded the ${CELL_MAX_BASIC.toLocaleString()}-character cell limit and ${oversizeDropped.length === 1 ? 'was' : 'were'} not saved.`)
     reloadActiveSheet({ silent: true })
+  }
+  for (const { sheetId, d } of deduped) {
+    const gone = new Set(d.removed)
+    if (gone.size > 0) {
+      setUnsavedChanges(prev => prev.filter(p => p.sheetId !== sheetId || !gone.has(p.rowIndex)))
+      for (const [k, v] of recentlySavedRef.current) {
+        if (v.sheetId === sheetId && gone.has(v.rowIndex)) recentlySavedRef.current.delete(k)
+      }
+      reloadActiveSheet({ silent: true })
+    }
+    toastAutoDeduped(d, () => reloadActiveSheet({ silent: true }))
   }
   if (busy) {
     toast('This sheet is busy with a big change. Your edits will save when it finishes.', { id: 'autosave-sheet-busy' })

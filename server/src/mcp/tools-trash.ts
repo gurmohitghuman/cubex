@@ -8,6 +8,7 @@ import {
   CHANGE_LOG_DAYS, CHANGE_LOG_PAGE_MAX, TRASH_IDS_MAX, TRASH_LIST_PAGE, TRASH_RESTORE_PICK_MAX, TRASH_ROWS_PAGE_MAX,
 } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';
+import { TRASH_HOWS, type TrashHow } from '../lib/trash/store';
 import { getTrashEntry, listTrash, readTrashRows } from '../services/trash-read';
 import { holdersFirst, restoreFromTrash } from '../services/trash-actions';
 import { restoreRows } from '../services/trash-restore';
@@ -17,18 +18,22 @@ import { McpAuthCtx, err, lenientInt, missingScope, ok, registerTool } from './t
 export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'list_trash', {
     description:
-      'What was deleted and can still be restored: batches of rows (from delete_rows, remove_duplicates, a CSV '
-      + 'import that replaced the rows, transfer_rows moving rows out, or the app), whole sheets and whole tables. '
+      'What was deleted and can still be restored: batches of rows (from delete_rows, remove_duplicates, '
+      + 'auto-dedupe, a CSV import that replaced the rows, transfer_rows moving rows out, or the app), whole '
+      + 'sheets and whole tables. '
       + 'Each item has its trash_id, what it was (table_name, sheet_name, rows), how and by whom it was deleted, '
       + 'and expires_at (kept for kept_days, set in Settings; then gone for good). Without trash_id: the list, '
-      + 'newest first (q finds words in a table or sheet name or the token that deleted it; kind and sheet_id '
-      + 'narrow it; before pages on). With trash_id: that item, and for a batch its rows (cells as they were, seq, '
+      + 'newest first (q finds words in a table or sheet name or the token that deleted it; kind, how and '
+      + 'sheet_id narrow it: how auto_dedupe with a sheet_id lists the rows auto-dedupe removed there, one '
+      + 'batch a day; before pages on). With trash_id: that item, and for a batch its rows (cells as they were, seq, '
       + 'row_id, old_row_index), a page at a time (after), or only rows whose column (or any cell, without one) '
       + 'contains a text: a search reads part of a big batch per call and next_after goes on. Read-only.',
     inputSchema: {
       trash_id: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('One item, with its rows'),
       q: z.string().max(200).optional(),
       kind: z.enum(['rows', 'sheet', 'table']).optional(),
+      how: z.enum(TRASH_HOWS as [TrashHow, ...TrashHow[]]).optional()
+        .describe('How it went: grid, api, duplicates, auto_dedupe, import, transfer, sheet or table'),
       sheet_id: z.string().optional().describe('Only batches of rows from this sheet, and the sheet'),
       before: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('List: the next page, below this id'),
       limit: lenientInt(1, TRASH_ROWS_PAGE_MAX).optional()
@@ -38,14 +43,15 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       contains: z.string().max(500).optional().describe('Rows: only rows holding this text (any case)'),
     },
   }, async (a: {
-    trash_id?: number; q?: string; kind?: 'rows' | 'sheet' | 'table'; sheet_id?: string; before?: number;
+    trash_id?: number; q?: string; kind?: 'rows' | 'sheet' | 'table'; how?: TrashHow; sheet_id?: string;
+    before?: number;
     limit?: number; after?: number; column?: string; contains?: string;
   }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
     if (a.trash_id === undefined) {
       return ok(listTrash(ctx.userId, {
-        q: a.q, kind: a.kind, sheetId: a.sheet_id, before: a.before,
+        q: a.q, kind: a.kind, how: a.how, sheetId: a.sheet_id, before: a.before,
         limit: Math.min(a.limit ?? TRASH_LIST_PAGE, TRASH_LIST_PAGE),
       }));
     }

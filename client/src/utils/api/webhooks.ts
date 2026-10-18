@@ -39,7 +39,8 @@ export interface WebhookDelivery {
   retained: boolean
   payload: unknown | null
   payloadBytes: number
-  status: 'stored' | 'partial' | 'pruned' | 'error'
+  // duplicate: auto-dedupe didn't keep its row (another row has its key).
+  status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error'
   errorMessage: string | null
   receivedAt: string
 }

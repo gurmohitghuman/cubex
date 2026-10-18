@@ -30,6 +30,8 @@ import { forgetUnlistedCleanColumns } from '../lib/clean-columns';
 import { forgetUnlistedFormulaColumns } from '../lib/formula-columns';
 import { forgetUnlistedLookupColumns } from '../lib/lookup-columns';
 import { forgetUnlistedColumnDescriptions } from '../lib/column-descriptions';
+import { forgetUnlistedAutoDedupe } from '../lib/auto-dedupe/refs';
+import { checkImportedRows, queueImportedRows, type ImportDedupe } from './auto-dedupe-import';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
 
@@ -42,6 +44,10 @@ export type CsvImportOutcome =
       droppedSeedRows: boolean;
       // A replace: the trash batch holding the rows it replaced (null: none, or none kept).
       trashId: number | null;
+      // What auto-dedupe did with the imported rows (null: the sheet has none),
+      // and how many of them stayed.
+      autoDedupe: ImportDedupe | null;
+      rowsKept: number;
     } }
   | { fail: 'validation' | 'busy'; error: string }
   | { fail: 'locked'; columns: string[] };
@@ -133,6 +139,10 @@ export async function importCsv(
       let next = startingRow;
       let truncatedCells = 0;
       let batch: Array<Record<string, unknown>> = [];
+      // The rowids the import's rows got (in order): auto-dedupe checks them once they are all in.
+      let firstRid: number | null = null;
+      let lastRid: number | null = null;
+      let dedupeQueued = false;
       const flush = db.transaction(() => {
         for (const row of batch) {
           // The journal reserved exactly rowCount rows; never write past them.
@@ -143,7 +153,8 @@ export async function importCsv(
             if (stripped.length > CELL_MAX_BASIC) truncatedCells++;
             data[k] = clampCellChars(stripped, CELL_MAX_BASIC);
           }
-          insertRow.run(uuidv4(), sheetId, userId, next++, JSON.stringify(data));
+          lastRid = Number(insertRow.run(uuidv4(), sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
+          firstRid ??= lastRid;
         }
         batch = [];
       });
@@ -179,6 +190,7 @@ export async function importCsv(
           pruneViewsToColumns(sheetId, userId);
           forgetUnlistedLookupColumns(sheetId, userId);
           forgetUnlistedColumnDescriptions(sheetId, userId);
+          forgetUnlistedAutoDedupe(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {
@@ -186,14 +198,18 @@ export async function importCsv(
             .run(sheetId, userId);
         }
         db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(sheetId);
+        if (firstRid !== null) dedupeQueued = queueImportedRows(sheetId, userId, firstRid, lastRid!, csvColumns);
       })();
 
       logImport(sheetId, userId, next - startingRow, replaced);
+      const autoDedupe = dedupeQueued
+        ? await checkImportedRows(sheetId, userId, { first: startingRow, end: next, count: next - startingRow }) : null;
       return {
         ok: {
           trashId: replaced?.trashId ?? null,
           rowsImported: next - startingRow, startingRow,
-          newColumns: replace ? [] : newColumns, truncatedCells, droppedSeedRows,
+          newColumns: replace ? [] : newColumns, truncatedCells, droppedSeedRows, autoDedupe,
+          rowsKept: next - startingRow - (autoDedupe?.notKept ?? 0),
         },
       };
     } catch (error) {

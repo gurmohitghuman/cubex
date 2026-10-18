@@ -4,7 +4,7 @@ import express from 'express';
 import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { parseCellMap, failResponse } from './api-v1-shared';
-import { appendRows, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
@@ -41,7 +41,10 @@ router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequ
 
     const result = appendRows(sheetId, req.userId!, parsedRows);
     if ('fail' in result) return failResponse(res, result);
-    res.status(201).json({ ...result.ok, ...await appendAutorunNotice(req.userId!, sheetId, result.ok.rows.length) });
+    res.status(201).json({
+      ...appendAnswer(req.userId!, result.ok, 'rest'),
+      ...await appendAutorunNotice(req.userId!, sheetId, result.ok.kept),
+    });
   } catch (error) {
     console.error('POST /v1/sheets/:id/rows error:', error);
     res.status(500).json({ error: 'Failed to append rows' });
@@ -60,7 +63,7 @@ router.patch('/rows/:rowId', requireScope('write'), (req: TokenAuthRequest, res)
       if (result.fail === 'not_found') return res.status(404).json({ error: 'Row not found' });
       return failResponse(res, result);
     }
-    res.json(result.ok);
+    res.json(patchAnswer(req.userId!, result.ok, 'rest'));
   } catch (error) {
     console.error('PATCH /v1/rows/:rowId error:', error);
     res.status(500).json({ error: 'Failed to update row' });
@@ -84,7 +87,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
       if ('error' in cells) return res.status(400).json({ error: cells.error });
       parsed.push({ rowId: update.row_id, cells: cells.cells });
     }
-    const result = batchUpdateRows(sheetId, req.userId!, parsed);
+    const result = batchUpdateRows(sheetId, req.userId!, parsed, 'rest');
     if ('fail' in result) {
       if (result.fail === 'duplicate_rows') {
         return res.status(400).json({ error: 'updates must not contain duplicate row ids' });

@@ -14,6 +14,7 @@ import { CELL_MAX_BASIC, MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv, type CsvImportOutcome } from './csv-import';
 import { trashAnswer } from './trash-answer';
+import { importDedupeAnswer } from './auto-dedupe-answer';
 
 export type UploadFailure = { fail: 'too_big' | 'aborted' | 'parse'; error: string };
 
@@ -33,6 +34,7 @@ export function importSummary(
     new_columns: ok.newColumns,
     replaced: replace,
     ...(ok.droppedSeedRows ? { dropped_blank_starter_rows: true } : {}),
+    ...(ok.autoDedupe ? { auto_dedupe: importDedupeAnswer(userId, ok.autoDedupe, 'mcp') } : {}),
     ...(ok.truncatedCells > 0 ? {
       truncated_cells: ok.truncatedCells,
       note: `${ok.truncatedCells} cell(s) were longer than ${CELL_MAX_BASIC} characters and were cut to fit.`,

@@ -12,6 +12,7 @@ import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
 import { resumeAgePrunes } from '../services/answer-prune-age';
 import { startLookupLoop } from '../services/lookup-host';
+import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
 
@@ -46,6 +47,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   resumeAgePrunes();
   // Lookups: dropped keys deleted, looked-up sheets kept current (services/lookup-purge.ts).
   startLookupLoop();
+  // Auto-dedupe: builds a restart cut short go on, waiting checks are made (services/auto-dedupe-checks.ts).
+  startAutoDedupeLoop();
   // "Run finished" webhooks: finished runs become signed notices (services/run-hooks-dispatch.ts).
   startRunHookLoop();
   // The trash: what was kept long enough goes for good, in slices; the change log is pruned (services/trash-purge.ts).

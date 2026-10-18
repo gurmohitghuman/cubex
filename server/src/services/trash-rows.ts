@@ -52,7 +52,8 @@ export function deleteRowsToTrash(
   return { ...removed, trashId: item };
 }
 
-function widenColumns(itemId: number, columns: string[]): void {
+// A batch that goes on keeps every column its rows had (one added meanwhile too).
+export function widenColumns(itemId: number, columns: string[]): void {
   const raw = db.prepare('SELECT columns FROM trash_items WHERE id = ?').pluck().get(itemId) as string;
   let have: string[] = [];
   try { have = JSON.parse(raw); } catch { /* the sheet's list stands */ }

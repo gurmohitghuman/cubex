@@ -55,10 +55,11 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       columnMapping: input.column_mapping ?? {},
       idempotencyKey: input.idempotency_key,
     };
-    const result = transferRows(ctx.userId, request);
+    const result = transferRows(ctx.userId, request, 'mcp');
     if ('fail' in result) return err(result.error);
     const notice = result.replayed ? {}
-      : await appendAutorunNotice(ctx.userId, input.destination_sheet_id, result.ok.copied + result.ok.moved);
+      : await appendAutorunNotice(ctx.userId, input.destination_sheet_id,
+        result.ok.copied + result.ok.moved - (result.ok.auto_dedupe?.not_kept_count ?? 0));
     const trash = result.ok.moved ? { trash: trashAnswer(ctx.userId, result.ok.trash_id ?? null, 'mcp') } : {};
     return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash });
   });

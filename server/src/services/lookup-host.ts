@@ -8,6 +8,8 @@ import { extname, join } from 'path';
 import { LOOKUP_PURGE_TICK_MS, LOOKUP_STEP_ROUND_MS } from '../lib/constants';
 import { maintainLookupSheet } from './lookup-maintain';
 import { checkLookupSources, lookupBackgroundRound } from './lookup-purge';
+import { maintainAutoDedupeSheet } from './auto-dedupe-index';
+import { autoDedupeBackgroundRound } from './auto-dedupe-purge';
 import type { LookupAsk, LookupReply } from './lookup-worker';
 
 // The worker's file next to this one: .ts under tsx (it registers tsx itself:
@@ -19,7 +21,7 @@ function newWorker(): Worker {
   return new Worker(`require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`, { eval: true });
 }
 
-type Ask = { kind: 'maintain'; sheetId: string; userId: string; ms: number } | { kind: 'round' };
+type Ask = { kind: 'maintain' | 'dedupe'; sheetId: string; userId: string; ms: number } | { kind: 'round' };
 
 let worker: Worker | null = null;
 let starting: Promise<Worker | null> | null = null;
@@ -76,6 +78,16 @@ export async function maintainLookupInBackground(
   return maintainLookupSheet(sheetId, userId, Date.now() + ms);
 }
 
+// Brings an auto-dedupe sheet's keys up to date for at most `ms` (services/auto-dedupe-index.ts).
+export async function maintainAutoDedupeInBackground(
+  sheetId: string, userId: string, ms: number,
+): Promise<'ready' | 'later'> {
+  const r = await ask({ kind: 'dedupe', sheetId, userId, ms });
+  if (r.state) return r.state;
+  if (r.error && r.error !== 'no worker' && r.error !== 'The lookup worker stopped.') throw new Error(r.error);
+  return maintainAutoDedupeSheet(sheetId, userId, Date.now() + ms);
+}
+
 // Keeps the worker on one sheet's keys until they are current (one driver per
 // sheet): a fill waiting for a big build doesn't hold its own sheet meanwhile.
 const driving = new Set<string>();
@@ -102,7 +114,11 @@ export function startLookupLoop(): void {
     if (rounding) return;
     rounding = true;
     ask({ kind: 'round' })
-      .then(r => (r.error === 'no worker' ? lookupBackgroundRound() : undefined))
+      .then(async r => {
+        if (r.error !== 'no worker') return;
+        await lookupBackgroundRound();
+        await autoDedupeBackgroundRound();
+      })
       .catch(err => console.error('Lookup background work failed:', err))
       .finally(() => { rounding = false; });
   }, LOOKUP_PURGE_TICK_MS).unref();

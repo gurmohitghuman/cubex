@@ -8,17 +8,20 @@ import { TRASH_DAYS_DEFAULT, TRASH_DAYS_MAX } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
 
 export type TrashKind = 'rows' | 'sheet' | 'table';
-// How the rows went: the grid, delete_rows (REST/MCP), removing duplicates, a
-// CSV import replacing the rows, transfer_rows moving them out; or the sheet
-// or table itself was deleted.
-export type TrashHow = 'grid' | 'api' | 'duplicates' | 'import' | 'transfer' | 'sheet' | 'table';
+// How the rows went: the grid, delete_rows (REST/MCP), removing duplicates,
+// auto-dedupe as rows arrived, a CSV import replacing the rows, transfer_rows
+// moving them out; or the sheet or table itself was deleted.
+export type TrashHow =
+  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'sheet' | 'table';
+export const TRASH_HOWS: readonly TrashHow[] =
+  ['grid', 'api', 'duplicates', 'auto_dedupe', 'import', 'transfer', 'sheet', 'table'];
 export type TrashState = 'moving' | 'kept' | 'restoring' | 'purging';
 
 export interface TrashItem {
   id: number; user_id: string; kind: TrashKind; table_id: string; sheet_id: string | null;
   table_name: string; sheet_name: string | null; how: TrashHow; via: string; token_name: string | null;
   row_count: number; bytes: number; columns: string; row_generation: number | null; top_index: number | null;
-  state: TrashState; restore_at: number | null; restored: number; deleted_at: string;
+  state: TrashState; restore_at: number | null; restored: number; deleted_at: string; seq_high: number;
 }
 
 export function getTrashDays(userId: string): number {

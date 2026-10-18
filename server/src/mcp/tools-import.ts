@@ -67,7 +67,7 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
       }
       return ok({
         ...importSummary(result.ok, replace, ctx.userId),
-        ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsImported),
+        ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsKept),
       });
     },
   );

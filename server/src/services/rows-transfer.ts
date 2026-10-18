@@ -1,3 +1,4 @@
+// Over 200 lines: one transfer, from its checks to the ledger, in the transaction that makes it.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
@@ -17,6 +18,9 @@ import { cellOf } from './row-selection';
 import { prepareWhere } from './row-filter';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
 import { nextRowIndex } from '../lib/sheet-busy';
+import { settleRows } from './auto-dedupe-settle';
+import { autoDedupeAnswer } from './auto-dedupe-answer';
+import type { Surface } from './trash-answer';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
@@ -30,7 +34,9 @@ export type TransferOutcome =
 
 class TransferBudgetError extends Error {}
 
-function executeTransfer(userId: string, request: TransferRequest, hashes: string[]): TransferOutcome {
+function executeTransfer(
+  userId: string, request: TransferRequest, hashes: string[], surface: Surface,
+): TransferOutcome {
   const hash = hashes[0];
   const replay = readTransferLedger(userId, request.idempotencyKey, hashes);
   if (replay) return 'conflict' in replay
@@ -114,6 +120,8 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
   // A move takes the source rows to the trash, whole (columns left out of the
   // mapping included), one batch for the whole move.
   let trashId: number | null = null;
+  const rids: number[] = [];
+  const added = new Set<string>();
   scanTransferRows(request.sourceSheetId, userId, found, rows => {
     checkTime();
     for (const row of rows) {
@@ -123,7 +131,10 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
       // materialized as a blank cell: the read path prunes column_order entries
       // no row backs, which would silently un-reserve the marker again.
       for (const marker of plan.ghostMarkers) data[marker] = '';
-      insert.run(uuidv4(), request.destinationSheetId, userId, nextIndex++, JSON.stringify(data));
+      const id = uuidv4();
+      added.add(id);
+      rids.push(Number(insert.run(id, request.destinationSheetId, userId, nextIndex++, JSON.stringify(data))
+        .lastInsertRowid));
     }
     if (request.operation === 'move') {
       const moved = deleteRowsToTrash(request.sourceSheetId, userId, 'transfer', { ids: rows.map(r => r.id) },
@@ -135,6 +146,10 @@ function executeTransfer(userId: string, request: TransferRequest, hashes: strin
     'DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?',
   ).run(request.destinationSheetId, userId, SEED_ROW_COUNT);
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
+  // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
+  const auto = autoDedupeAnswer(userId, settleRows(request.destinationSheetId, userId, rids, 'arrived'), added,
+    surface);
+  if (auto) result.auto_dedupe = auto;
   // Moved rows leave the source: auto-run's fence there follows. The copies are
   // new rows in the destination, which auto-run fills when it is on there.
   // The MCP and /api/v1 answers list the auto-runs they set off (enrich-agent-autorun.ts).
@@ -167,7 +182,7 @@ function logTransfer(userId: string, request: TransferRequest, count: number, tr
     { detail: { rows: count, from_sheet_id: request.sourceSheetId } });
 }
 
-export function transferRows(userId: string, request: TransferRequest): TransferOutcome {
+export function transferRows(userId: string, request: TransferRequest, surface: Surface = 'rest'): TransferOutcome {
   if (!request.idempotencyKey || request.idempotencyKey.length > 200) {
     return { fail: 'invalid', error: 'idempotency_key must contain 1-200 characters.' };
   }
@@ -186,7 +201,7 @@ export function transferRows(userId: string, request: TransferRequest): Transfer
   };
   const hashes = transferHashes(request);
   try {
-    return db.transaction(() => executeTransfer(userId, request, hashes)).immediate();
+    return db.transaction(() => executeTransfer(userId, request, hashes, surface)).immediate();
   } catch (error) {
     if (error instanceof TransferBudgetError) return { fail: 'budget', error: error.message };
     const winner = readTransferLedger(userId, request.idempotencyKey, hashes);

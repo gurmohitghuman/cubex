@@ -32,9 +32,9 @@ export function WebhookDeliveries({ deliveries }: { deliveries: WebhookDelivery[
                 </button>
                 {open && (
                   <div className="border-t border-gray-100 px-2 py-1.5">
-                    {d.errorMessage && (
-                      <p className="text-red-600 mb-1">⚠ {d.errorMessage}</p>
-                    )}
+                    {d.errorMessage && (d.status === 'duplicate'
+                      ? <p className="text-gray-600 mb-1">{d.errorMessage}</p>
+                      : <p className="text-red-600 mb-1">⚠ {d.errorMessage}</p>)}
                     {d.retained && d.payload != null ? (
                       <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px] text-gray-700 max-h-48 overflow-y-auto">
                         {JSON.stringify(d.payload, null, 2)}
@@ -57,6 +57,7 @@ function StatusBadge({ status }: { status: WebhookDelivery['status'] }) {
   const map: Record<WebhookDelivery['status'], { label: string; cls: string }> = {
     stored: { label: 'stored', cls: 'bg-green-100 text-green-700' },
     partial: { label: 'partial', cls: 'bg-amber-100 text-amber-700' },
+    duplicate: { label: 'not kept', cls: 'bg-gray-100 text-gray-600' },
     pruned: { label: 'pruned', cls: 'bg-gray-100 text-gray-500' },
     error: { label: 'error', cls: 'bg-red-100 text-red-700' },
   }

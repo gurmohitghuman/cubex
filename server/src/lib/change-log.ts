@@ -10,7 +10,7 @@ import { currentActor } from './actor';
 export type ChangeAction =
   | 'column_added' | 'column_renamed' | 'column_deleted'
   | 'run_started' | 'run_paused' | 'run_resumed' | 'run_stopped' | 'runs_stopped'
-  | 'auto_run' | 'default_model'
+  | 'auto_run' | 'auto_dedupe' | 'default_model'
   | 'clean_column' | 'formula_column' | 'lookup_column' | 'answer_field' | 'list_fields'
   | 'view_created' | 'view_changed' | 'view_deleted'
   | 'webhook' | 'setup_used' | 'description'

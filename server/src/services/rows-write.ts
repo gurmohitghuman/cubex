@@ -11,10 +11,26 @@ import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
 import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
+import { settleEdits, settleRows, type AutoDedupeOutcome } from './auto-dedupe-settle';
+import { autoDedupeAnswer } from './auto-dedupe-answer';
+import type { Surface } from './trash-answer';
 
-export type AppendOutcome =
-  | { ok: { rows: Array<{ id: string; index: number }> } }
-  | TxnFail;
+// rows: every row the call made, in the order given; notKept: those
+// auto-dedupe didn't keep (another row had their key), kept: how many stayed.
+export interface Appended {
+  rows: Array<{ id: string; index: number }>; deduped: AutoDedupeOutcome | null; notKept: Set<string>;
+  kept: number;
+}
+export type AppendOutcome = { ok: Appended } | TxnFail;
+
+// What REST and MCP answer for an append: its rows in the order given (one
+// auto-dedupe didn't keep says kept: false, so rows[i] is still the i-th
+// row sent), and what auto-dedupe did.
+export function appendAnswer(userId: string, a: Appended, surface: Surface): Record<string, unknown> {
+  const auto = autoDedupeAnswer(userId, a.deduped, new Set(a.rows.map(r => r.id)), surface);
+  const rows = a.rows.map(r => (a.notKept.has(r.id) ? { ...r, kept: false } : r));
+  return { rows, ...(auto ? { auto_dedupe: auto } : {}) };
+}
 
 // ONE immediate txn: MAX(row_index)+1 and all N inserts are atomic vs
 // concurrent webhook/UI adds. Caller has validated cell maps + batch size.
@@ -28,6 +44,7 @@ export function appendRows(
 
   let fail: TxnFail | null = null;
   const created: Array<{ id: string; index: number }> = [];
+  let deduped: AutoDedupeOutcome | null = null;
   db.transaction(() => {
     fail = checkColumns(sheetId, userId, incomingCols);
     if (fail) return;
@@ -40,21 +57,26 @@ export function appendRows(
     const insert = db.prepare(
       'INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)',
     );
+    const rids: number[] = [];
     for (const cells of parsedRows) {
       const id = uuidv4();
-      insert.run(id, sheetId, userId, next, JSON.stringify(cells));
+      rids.push(Number(insert.run(id, sheetId, userId, next, JSON.stringify(cells)).lastInsertRowid));
       created.push({ id, index: next });
       next++;
     }
+    deduped = settleRows(sheetId, userId, rids, 'arrived');
     bumpDataVersion(sheetId, userId);
   }).immediate();
 
   if (fail) return fail;
-  return { ok: { rows: created } };
+  const gone = new Set((deduped as AutoDedupeOutcome | null)?.removed.map(r => r.id) ?? []);
+  const notKept = new Set(created.filter(r => gone.has(r.id)).map(r => r.id));
+  return { ok: { rows: created, deduped, notKept, kept: created.length - notKept.size } };
 }
 
+// removed: auto-dedupe sent the row to the trash (another row has its new key).
 export type PatchOutcome =
-  | { ok: { id: string; index: number; data: Record<string, string> } }
+  | { ok: { id: string; index: number; data: Record<string, string>; deduped: AutoDedupeOutcome | null } }
   | TxnFail;
 
 // Update cells on ONE row by stable id. Lookup, writes, bump, and the fresh
@@ -64,11 +86,11 @@ export function patchRowById(
   rowId: string, userId: string, cells: Record<string, string>,
 ): PatchOutcome {
   let fail: TxnFail | null = null;
-  let result: { id: string; index: number; data: string } | null = null;
+  let result: { id: string; index: number; data: string; deduped: AutoDedupeOutcome | null } | null = null;
   db.transaction(() => {
     const row = db.prepare(
-      'SELECT id, sheet_id, row_index FROM rows WHERE id = ? AND user_id = ?',
-    ).get(rowId, userId) as { id: string; sheet_id: string; row_index: number } | undefined;
+      'SELECT rowid AS rid, id, sheet_id, row_index FROM rows WHERE id = ? AND user_id = ?',
+    ).get(rowId, userId) as { rid: number; id: string; sheet_id: string; row_index: number } | undefined;
     if (!row) { fail = { fail: 'not_found' }; return; }
     // Addressed by row id, so outside the sheet routes' busy gate: a sort, an
     // import or a column rewrite in progress (lib/sheet-busy.ts) is checked here.
@@ -84,11 +106,21 @@ export function patchRowById(
     bumpDataVersion(row.sheet_id, userId);
     const fresh = db.prepare('SELECT data FROM rows WHERE id = ? AND user_id = ?')
       .get(row.id, userId) as { data: string };
-    result = { id: row.id, index: row.row_index, data: fresh.data };
+    const deduped = settleEdits(row.sheet_id, userId, [{ rid: row.rid, columns: Object.keys(cells) }]);
+    result = { id: row.id, index: row.row_index, data: fresh.data, deduped };
   }).immediate();
   if (fail) return fail;
-  const done = result as unknown as { id: string; index: number; data: string };
-  return { ok: { id: done.id, index: done.index, data: parseRowData(done.data) } };
+  const done = result as unknown as { id: string; index: number; data: string; deduped: AutoDedupeOutcome | null };
+  return { ok: { id: done.id, index: done.index, data: parseRowData(done.data), deduped: done.deduped } };
+}
+
+// What REST and MCP answer for a one-row update.
+export function patchAnswer(
+  userId: string, p: { id: string; index: number; data: Record<string, string>; deduped: AutoDedupeOutcome | null },
+  surface: Surface,
+): Record<string, unknown> {
+  const auto = autoDedupeAnswer(userId, p.deduped, new Set([p.id]), surface);
+  return { id: p.id, index: p.index, data: p.data, ...(auto ? { auto_dedupe: auto } : {}) };
 }
 
 export type DeleteRowsOutcome = { ok: { deleted: number; trashId: number | null } } | TxnFail;

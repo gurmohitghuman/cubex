@@ -1,6 +1,6 @@
 // The trash's query and body checks, shared by /api/trash, /api/v1/trash and MCP.
 import { TRASH_IDS_MAX, TRASH_LIST_PAGE, TRASH_ROWS_PAGE_MAX } from '../lib/constants';
-import type { TrashKind } from '../lib/trash/store';
+import { TRASH_HOWS, type TrashHow, type TrashKind } from '../lib/trash/store';
 
 const KINDS: TrashKind[] = ['rows', 'sheet', 'table'];
 
@@ -18,16 +18,21 @@ export function parseTrashIds(v: unknown): number[] | null {
 }
 
 export function trashListAsk(q: Record<string, unknown>):
-  { q?: string; kind?: TrashKind; sheetId?: string; before?: number; limit?: number } | { error: string } {
+  { q?: string; kind?: TrashKind; how?: TrashHow; sheetId?: string; before?: number; limit?: number }
+  | { error: string } {
   const before = posInt(q.before);
   const limit = posInt(q.limit);
   if (before === null) return { error: 'before must be a trash id.' };
   if (limit === null) return { error: `limit must be a whole number from 1 to ${TRASH_LIST_PAGE}.` };
   const kind = q.kind === undefined || q.kind === '' ? undefined : q.kind;
   if (kind !== undefined && !KINDS.includes(kind as TrashKind)) return { error: 'kind must be rows, sheet or table.' };
+  const how = q.how === undefined || q.how === '' ? undefined : q.how;
+  if (how !== undefined && !TRASH_HOWS.includes(how as TrashHow)) {
+    return { error: `how must be one of: ${TRASH_HOWS.join(', ')}.` };
+  }
   const sheetId = typeof q.sheet_id === 'string' && q.sheet_id ? q.sheet_id : undefined;
   return { q: typeof q.q === 'string' ? q.q.slice(0, 200) : undefined, kind: kind as TrashKind | undefined,
-    sheetId, before, limit };
+    how: how as TrashHow | undefined, sheetId, before, limit };
 }
 
 export function trashRowsAsk(q: Record<string, unknown>):

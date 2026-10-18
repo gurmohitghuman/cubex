@@ -71,7 +71,8 @@ router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), async (req
       return res.status(status).json({ error: result.error });
     }
     const notice = result.replayed ? {}
-      : await appendAutorunNotice(req.userId!, body.destination_sheet_id as string, result.ok.copied + result.ok.moved);
+      : await appendAutorunNotice(req.userId!, body.destination_sheet_id as string,
+        result.ok.copied + result.ok.moved - (result.ok.auto_dedupe?.not_kept_count ?? 0));
     const trash = result.ok.moved ? { trash: trashAnswer(req.userId!, result.ok.trash_id ?? null, 'rest') } : {};
     return res.json({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash });
   } catch (error) {

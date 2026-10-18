@@ -11,6 +11,7 @@ import { usesTreg } from '../lib/waterfall/caps';
 import { db } from '../lib/db';
 import { AUTORUN_MAX_ROWS, AUTORUN_RETRY_MS, AUTORUN_SWEEP_MS } from '../lib/constants';
 import { sheetBusyWith } from '../lib/sheet-busy';
+import { autoDedupeChecking } from '../lib/auto-dedupe/store';
 import { sheetYielding } from '../lib/sheet-yield';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { missingRequestRead, requestColumns, watchedColumns, type CandidatePlan } from '../lib/autorun-rules';
@@ -97,6 +98,8 @@ export async function autorunTick(id: string): Promise<void> {
   if (isFollowKind(e.kind)) return derivedFollowTick(e);
   if (e.paused_reason && !pauseLifted(e)) return;
   if (sheetBusyWith(e.sheet_id) || sheetYielding(e.sheet_id)) return;
+  // New rows auto-dedupe hasn't checked yet may be about to go: not paid for.
+  if (autoDedupeChecking(e.sheet_id)) return;
   if (generationMoved(e) || !hasWork(e)) return;
   if (columnRunActive(e.sheet_id, e.user_id, e.status_column)) return;
   // Every time: a run started by hand can point a list column somewhere that adds rows back.

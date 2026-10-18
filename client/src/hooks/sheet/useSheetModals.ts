@@ -6,6 +6,7 @@ import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
 import type { LookupOpenTarget } from '@/components/lookup/useLookupForm'
 import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
+import type { DedupeTab } from '@/components/dedupe/RemoveDuplicatesModal'
 
 export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
@@ -49,6 +50,9 @@ export const useSheetModals = () => {
   }, [])
   const [showWebhookDrawer, setShowWebhookDrawer] = useState(false)
   const [showDedupeModal, setShowDedupeModal] = useState(false)
+  // The Remove duplicates dialog's tab: remove them now, or as rows arrive (auto-dedupe).
+  const [dedupeTab, setDedupeTab] = useState<DedupeTab>('now')
+  const openDedupe = useCallback((tab: DedupeTab) => { setDedupeTab(tab); setShowDedupeModal(true) }, [])
   // Save as setup: open, on the column its menu was opened on (null: from the header, nothing ticked).
   const [saveSetupFor, setSaveSetupFor] = useState<{ column: string | null } | null>(null)
   const openSaveSetup = useCallback((column: string | null) => setSaveSetupFor({ column }), [])
@@ -69,7 +73,9 @@ export const useSheetModals = () => {
     showNewColumnModal, setShowNewColumnModal,
     newColumnOpen, openClean, openFormula, openLookup, clearNewColumnOpen: () => setNewColumnOpen(null),
     showWebhookDrawer, setShowWebhookDrawer,
-    showDedupeModal, setShowDedupeModal,
+    showDedupeModal, setShowDedupeModal, dedupeTab, openDedupe,
+    // From the webhook drawer: it closes, the dialog opens on auto-dedupe.
+    openAutoDedupe: () => { setShowWebhookDrawer(false); openDedupe('auto') },
     saveSetupFor, openSaveSetup, closeSaveSetup: () => setSaveSetupFor(null),
     showUseSetup, setShowUseSetup,
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,

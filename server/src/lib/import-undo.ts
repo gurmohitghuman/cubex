@@ -9,6 +9,7 @@ import { forgetUnlistedFormulaColumns } from './formula-columns';
 import { pruneViewsToColumns } from '../services/view-columns';
 import { forgetUnlistedLookupColumns } from './lookup-columns';
 import { forgetUnlistedColumnDescriptions } from './column-descriptions';
+import { forgetUnlistedAutoDedupe } from './auto-dedupe/refs';
 import { movingBatch, trashRowRange } from '../services/trash-batch';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
@@ -95,6 +96,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
       pruneViewsToColumns(job.sheet_id, job.user_id);
       forgetUnlistedLookupColumns(job.sheet_id, job.user_id);
       forgetUnlistedColumnDescriptions(job.sheet_id, job.user_id);
+      forgetUnlistedAutoDedupe(job.sheet_id, job.user_id);
     }
     else autorunRowsRemoved(job.sheet_id, job.user_id);
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')

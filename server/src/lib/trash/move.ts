@@ -36,8 +36,9 @@ export function removeRows(
     .all(list, sheetId, userId) as number[];
   if (indexes.length === 0) return { count: 0, indexes };
   if (itemId !== null) {
-    const after = (db.prepare('SELECT MAX(seq) FROM trash_rows WHERE item_id = ?').pluck().get(itemId) as
-      number | null) ?? 0;
+    // Past every seq the batch ever gave (seq_high), not only those still in it.
+    const after = db.prepare(`SELECT MAX(IFNULL((SELECT MAX(seq) FROM trash_rows WHERE item_id = ?), 0), seq_high)
+      FROM trash_items WHERE id = ?`).pluck().get(itemId, itemId) as number;
     db.prepare(`INSERT INTO trash_rows (item_id, seq, row_index, row_id, data)
       SELECT ?, ? + ROW_NUMBER() OVER (ORDER BY row_index), row_index, id, data FROM rows WHERE ${where}`)
       .run(itemId, after, list, sheetId, userId);
@@ -45,7 +46,8 @@ export function removeRows(
       MAX(row_index) AS top FROM trash_rows WHERE item_id = ? AND seq > ?`)
       .get(itemId, after) as { n: number; bytes: number; top: number };
     db.prepare(`UPDATE trash_items SET row_count = row_count + ?, bytes = bytes + ?,
-      top_index = MAX(IFNULL(top_index, ?), ?) WHERE id = ?`).run(added.n, added.bytes, added.top, added.top, itemId);
+      top_index = MAX(IFNULL(top_index, ?), ?), seq_high = ? WHERE id = ?`)
+      .run(added.n, added.bytes, added.top, added.top, after + added.n, itemId);
   }
   db.prepare(`DELETE FROM rows WHERE ${where}`).run(list, sheetId, userId);
   if (purgeResults) purgeResultsForRows(sheetId, userId, indexes);

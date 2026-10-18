@@ -1,14 +1,14 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArchiveRestore, ArrowLeft, Loader2, Search, Trash2 } from 'lucide-react'
+import { ArchiveRestore, ArrowLeft, Loader2, Search, Trash2, X } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { TrashList } from '@/components/trash/TrashList'
 import { TrashRowsDrawer } from '@/components/trash/TrashRowsDrawer'
 import { useTrash } from '@/components/trash/useTrash'
-import { restoredText, sizeText, titleOf } from '@/components/trash/trash-copy'
+import { howText, restoredText, sizeText, titleOf } from '@/components/trash/trash-copy'
 import { plural } from '@/lib/utils'
-import { trashAPI, type TrashEntry, type TrashKind } from '@/utils/api'
+import { trashAPI, type TrashEntry, type TrashHow, type TrashKind } from '@/utils/api'
 
 const KINDS: Array<{ id: TrashKind | ''; label: string }> = [
   { id: '', label: 'All' }, { id: 'table', label: 'Tables' }, { id: 'sheet', label: 'Sheets' },
@@ -20,7 +20,12 @@ const KINDS: Array<{ id: TrashKind | ''; label: string }> = [
 // several), look inside a batch, download it, or delete it for good now.
 export const TrashPage: React.FC = () => {
   const navigate = useNavigate()
-  const t = useTrash()
+  // A link can narrow it to one sheet and how its rows went (?sheet=…&how=auto_dedupe).
+  const [params, setParams] = useSearchParams()
+  const scope = {
+    sheetId: params.get('sheet') ?? undefined, how: (params.get('how') ?? undefined) as TrashHow | undefined,
+  }
+  const t = useTrash(scope)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState<Set<number>>(new Set())
   const [looking, setLooking] = useState<TrashEntry | null>(null)
@@ -112,6 +117,16 @@ export const TrashPage: React.FC = () => {
             <input className="input pl-8" placeholder="Search by table, sheet or access token" value={t.q}
               onChange={e => t.setQ(e.target.value)} data-testid="trash-search" />
           </div>
+          {(scope.sheetId || scope.how) && (
+            <button type="button" onClick={() => setParams({})} data-testid="trash-scope"
+              className="flex items-center gap-1 px-2 py-1.5 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">
+              <span>
+                {scope.how ? howText(scope.how) : 'Deleted'}
+                {scope.sheetId && t.items[0]?.sheet_name ? ` from "${t.items[0].sheet_name}"` : ''}
+              </span>
+              <X className="h-3.5 w-3.5" aria-label="Show everything" />
+            </button>
+          )}
           <div className="flex border border-gray-300" role="group" aria-label="Show">
             {KINDS.map(k => (
               <button key={k.id} type="button" onClick={() => t.setKind(k.id)} aria-pressed={t.kind === k.id}
@@ -141,7 +156,8 @@ export const TrashPage: React.FC = () => {
             t.loading ? <p className="text-sm text-gray-600 flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />Loading…</p>
               : <p className="text-sm text-gray-600" data-testid="trash-empty">
-                {t.q || t.kind ? 'Nothing in the trash matches.' : 'The trash is empty.'}</p>
+                {t.q || t.kind || scope.sheetId || scope.how ? 'Nothing in the trash matches.'
+                  : 'The trash is empty.'}</p>
           ) : (
             <TrashList items={t.items} selected={selected} onToggle={toggle} busy={busy}
               onRestore={e => void restore([e])} onLook={setLooking} onDownload={e => void download(e)}

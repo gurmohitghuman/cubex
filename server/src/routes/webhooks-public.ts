@@ -115,6 +115,8 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
       recordSourceError(source.id, result.reason);
       return res.status(409).json({ error: result.reason });
     }
+    // The same answer when auto-dedupe didn't keep the row: the URL can add
+    // rows, never tell what the sheet holds (the delivery log says "not kept").
     return res.status(202).json({ ok: true });
   } catch (err) {
     console.error('Webhook ingest error:', err);

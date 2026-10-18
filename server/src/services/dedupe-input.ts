@@ -18,7 +18,8 @@ const KEY_FIELDS = ['column', 'match', 'phone_country'];
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const quoted = (s: string) => `"${s.slice(0, 200)}"`;
 
-function parseKey(item: unknown, columns: string[]): DedupeKey | RunFail {
+// One key column: a name, or { column, match, phone_country } (auto-dedupe takes the same).
+export function parseDedupeKey(item: unknown, columns: string[]): DedupeKey | RunFail {
   const o = (typeof item === 'string' ? { column: item } : item) as Record<string, unknown> | null;
   if (!o || typeof o !== 'object' || Array.isArray(o)) {
     return bad('Each entry of columns is a column name, or { column, match }.');
@@ -46,7 +47,7 @@ export function parseDedupeRequest(columns: string[], raw: DedupeArgs): { ok: De
   }
   const keys: DedupeKey[] = [];
   for (const item of list) {
-    const key = parseKey(item, columns);
+    const key = parseDedupeKey(item, columns);
     if ('fail' in key) return key;
     if (keys.some(k => k.column === key.column)) return bad(`${quoted(key.column)} is listed twice.`);
     keys.push(key);

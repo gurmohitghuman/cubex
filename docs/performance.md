@@ -57,6 +57,19 @@ Lookups were measured with two sheets of 1,000,000 rows, one looking up the othe
 
 While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
 
+### Auto-dedupe
+
+Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows keyed by email:
+
+| Action | Time | Others waited |
+|---|---|---|
+| Turn auto-dedupe on (the keys of the 1,000,000 rows already there read in the background) | 7 to 10 s | 0.02 s |
+| Add one row through the API or a webhook (the same with auto-dedupe off: most of it is the row limit check) | 0.03 s | none |
+| Type a key into a row | under 0.01 s | none |
+| Import 100,000 rows, 10,000 of them already in the sheet, keeping the newest (3 s with auto-dedupe off) | 7.5 to 9.4 s | 0.2 to 0.3 s |
+
+Writing to a sheet without auto-dedupe costs nothing measurable. The keys take about 85 MB for a million emails. While an import's rows are checked, the sheet stays busy, so auto-run doesn't start on rows that are about to go.
+
 ### The trash
 
 Deleted rows go to the trash, a slice at a time. Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows and 10 columns (a 1.1 GB database):
