@@ -24,6 +24,7 @@ import { renameWaterfallLookupRefs } from '../lib/waterfall/lookup-refs';
 import { renameColumnDescriptionRefs } from '../lib/column-descriptions';
 import { renameAutoDedupeColumnRefs } from '../lib/auto-dedupe/refs';
 import { renameRunInputKey } from '../lib/run-inputs/keys';
+import { renameUndoColumn } from '../lib/run-undo/columns';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
@@ -242,6 +243,8 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameAutoDedupeColumnRefs(sheetId, userId, columnName, trimmedNew);
   // A run column's fingerprints stay under its key (out-of-date results, lib/run-inputs).
   renameRunInputKey(sheetId, userId, columnName, trimmedNew);
+  // Undo journals of runs that wrote it name it by its slot (lib/run-undo/columns.ts).
+  renameUndoColumn(sheetId, userId, columnName, trimmedNew);
   // The change log: its lines about the column follow its name (History by column).
   db.prepare('UPDATE sheet_changes SET column_name = ? WHERE sheet_id = ? AND user_id = ? AND column_name = ?')
     .run(trimmedNew, sheetId, userId, columnName);

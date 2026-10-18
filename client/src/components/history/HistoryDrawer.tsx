@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  ArchiveRestore, ArrowDownUp, Columns, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Upload, Webhook,
+  ArchiveRestore, ArrowDownUp, Columns, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Undo2, Upload,
+  Webhook,
 } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
 import { historyAPI, trashAPI, type SheetChange } from '@/utils/api'
@@ -12,6 +13,7 @@ interface Props { isOpen: boolean; onClose: () => void; sheetId: string }
 type Icon = React.FC<{ className?: string }>
 const ICONS: Array<[RegExp, Icon]> = [
   [/^column_|_column$|answer_field|list_fields/, Columns],
+  [/run_undone/, Undo2],
   [/^run|auto_run|setup_used|default_model/, Play],
   [/^view_/, Eye],
   [/^webhook/, Webhook],

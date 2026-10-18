@@ -107,7 +107,7 @@ export async function processHTTPRow(
         status: 'completed', extractedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
-      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
+      writeRowColumns(run.id, run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
   } catch (error: any) {
@@ -136,7 +136,7 @@ export async function processHTTPRow(
         status: 'failed', extractedFields: failedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
-      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
+      writeRowColumns(run.id, run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
   }

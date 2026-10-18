@@ -18,7 +18,7 @@ import { jsonPath } from '../lib/sql-rows';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { yieldToRequests } from '../lib/slices';
 import { sheetBusyWith } from '../lib/sheet-busy';
-import { markAutorunInputs } from '../lib/autorun-mark';
+import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import { onFollowQueued } from '../lib/autorun-kick';
 import { clearEntryPause, loadEntry, pauseEntry, type AutorunEntry } from './autorun-entry';
 import { generationMoved, hasWork } from './autorun-fence';
@@ -51,8 +51,8 @@ function queuedSlice(s: Step): boolean {
   db.transaction(() => {
     if (!stillCurrent(s)) return;
     const sel = derivedSelect(s.rec.column_name, s.inputs, 'r.');
-    const read = readDerivedRows(db.prepare(`SELECT p.row_id AS id, r.rowid AS rowid, r.row_index AS i,
-        r.sheet_id AS sheet, ${sel.sql}
+    const read = readDerivedRows(db.prepare(`SELECT p.row_id AS id, p.quiet AS quiet, r.rowid AS rowid,
+        r.row_index AS i, r.sheet_id AS sheet, ${sel.sql}
       FROM autorun_pending p LEFT JOIN rows r ON r.id = p.row_id
       WHERE p.autorun_id = ? ORDER BY p.row_id LIMIT ?`)
       .iterate(...sel.params, e.id, s.page), s.page, s.inputs.length);
@@ -66,7 +66,7 @@ function queuedSlice(s: Step): boolean {
     const leave = rows.filter(r => r.sheet !== e.sheet_id || worked.has(r.id)).map(r => r.id);
     db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
       .run(e.id, JSON.stringify(leave));
-    finishSlice(s, counts.changed);
+    finishSlice(s, counts.changed, new Set(live.filter(r => r.quiet === 1).map(r => r.rowid as number)));
     more = read.capped || counts.done < live.length;
     s.page = pageAfter(s.page, live.length, counts.done);
   }).immediate();
@@ -104,10 +104,14 @@ function newSlice(s: Step): boolean {
   return more;
 }
 
-function finishSlice(s: Step, changed: number[]): void {
+function finishSlice(s: Step, changed: number[], quiet: ReadonlySet<number> = new Set()): void {
   if (changed.length === 0) return;
-  // Columns worked out from this one (and other auto-runs reading it) follow in turn.
-  markAutorunInputs(s.entry.sheet_id, s.entry.user_id, [s.entry.status_column], { rowids: changed });
+  // Columns worked out from this one (and other auto-runs reading it) follow in
+  // turn; rows an undo queued (quiet) reach only other clean, formula and lookup columns.
+  const [hushed, loud] = [changed.filter(r => quiet.has(r)), changed.filter(r => !quiet.has(r))];
+  const sheet = s.entry.sheet_id, user = s.entry.user_id, column = [s.entry.status_column];
+  if (loud.length) markAutorunInputs(sheet, user, column, { rowids: loud });
+  if (hushed.length) markDerivedInputs(sheet, user, column, { rowids: hushed });
   db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
     WHERE id = ? AND user_id = ?`).run(s.entry.sheet_id, s.entry.user_id);
 }

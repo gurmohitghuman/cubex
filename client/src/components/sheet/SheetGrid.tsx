@@ -30,6 +30,8 @@ import { WaterfallRerunConfirm } from '@/components/waterfall/WaterfallRerunConf
 import { TracePanel } from '@/components/waterfall/TracePanel'
 import { useGridRunControls } from '@/hooks/sheet/useGridRunControls'
 import { RunControlConfirm } from './RunControlConfirm'
+import { UndoRunConfirm } from './UndoRunConfirm'
+import { useRunUndo } from '@/hooks/sheet/useRunUndo'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 export interface SheetGridProps {
@@ -174,8 +176,12 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef,
   })
 
+  // "Undo last run": the confirm, then the cells back (and the header's failed counts read again).
+  const undo = useRunUndo({ activeSheet, reloadSheetData, onUndone: () => run.controls.refreshFailed() })
+
   const runActions: RunMenuActions = {
     onRunControl: run.controls.ask,
+    onUndoRun: undo.ask,
     onRunHTTPForRows: actions.handleRunHTTPForRows,
     onRunFirstRows: (kind, column, columnName) => runDialogs.askFirstRows({ kind, column, columnName }),
     onEditAIColumn: actions.handleEditAIColumn,
@@ -197,6 +203,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       {runDialogs.dialogs}
       <RunControlConfirm pending={run.controls.pending} onConfirm={run.controls.confirm}
         onCancel={run.controls.cancel} />
+      <UndoRunConfirm pending={undo.pending} onConfirm={undo.confirm} onCancel={undo.cancel} />
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
       <AnswerPanel {...answers.panel} />
       <WaterfallRerunConfirm pending={waterfall.pending} onConfirm={waterfall.confirm} onCancel={waterfall.cancel} />

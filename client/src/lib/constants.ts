@@ -153,3 +153,9 @@ export const GRID_DELETE_CALL_ROWS = 2_000;
 export const SAMPLE_CREATE_TIMEOUT_MS = 90_000;
 export const SAMPLE_AI_COLUMN = 'Good fit (Output)';
 export const SAMPLE_DEDUPE_COLUMNS = [{ column: 'Email', match: 'email' as const }];
+
+// A run can be undone this many days after it starts (server lib/constants.ts UNDO_KEEP_DAYS).
+export const UNDO_KEEP_DAYS = 7;
+// How often "Undo last run" reads how far a big undo got, and failed reads in a row before it gives up.
+export const UNDO_POLL_MS = 1_500;
+export const UNDO_POLL_MISSES = 5;

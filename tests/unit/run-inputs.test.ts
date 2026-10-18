@@ -41,6 +41,8 @@ const { deleteRunInputKey } = await import('../../server/src/lib/run-inputs/keys
 const { purgeColumnKey, recordPurge } = await import('../../server/src/lib/column-purge')
 
 const uid = uuid(), tid = uuid(), sid = uuid()
+// The run whose undo journal the writes go into (not read here).
+const RUN = { kind: 'ai' as const, id: uuid() }
 const OUT = 'Summary (Output)'
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
@@ -62,7 +64,7 @@ const setCell = (i: number, column: string, value: string) => db.prepare(
 // The run: rows 0-3 get a result (row 3 fails), row 4 is never run.
 const stamper = aiRunStamper(ai)
 for (const i of [0, 1, 2, 3]) {
-  writeRunCells(sid, uid, i, [[OUT, i === 3 ? '❌ Error: boom' : `About ${people[i][0]}`]], stamper.stamp(raw(i)))
+  writeRunCells(RUN, sid, uid, i, [[OUT, i === 3 ? '❌ Error: boom' : `About ${people[i][0]}`]], stamper.stamp(raw(i)))
 }
 const staleRows = () => {
   const c = columnStaleCheck(sid, uid, OUT)
@@ -152,7 +154,7 @@ await check('an HTTP API column stamps its {{inputs}}; enrichment statuses count
     .run(uuid(), sid, uid, JSON.stringify(config), 'completed', 'Lookup')
   const s = requestRunStamper({ sheet_id: sid, user_id: uid, master_column_name: 'Lookup' }, config as never)!
   for (const i of [0, 1, 2, 3, 4]) {
-    writeRunCells(sid, uid, i, [['Lookup', i === 4 ? '⏭️ Not found' : '✅']], s.stamp(raw(i)))
+    writeRunCells(RUN, sid, uid, i, [['Lookup', i === 4 ? '⏭️ Not found' : '✅']], s.stamp(raw(i)))
   }
   setCell(4, 'Name', 'Eddie')
   setCell(1, 'Town', 'Turin')
@@ -192,7 +194,7 @@ await check('a deleted input makes out of date only the rows whose cell in it he
   const s = requestRunStamper({ sheet_id: s2, user_id: uid, master_column_name: 'Call' }, config as never)!
   const raw2 = (i: number) => db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND row_index = ?').pluck()
     .get(s2, i) as string
-  for (const i of [0, 1, 2]) writeRunCells(s2, uid, i, [['Call', '✅ Success']], s.stamp(raw2(i)))
+  for (const i of [0, 1, 2]) writeRunCells(RUN, s2, uid, i, [['Call', '✅ Success']], s.stamp(raw2(i)))
   assert.deepEqual(await resolveRerunTargets(s2, uid, 'Call', 'out_of_date'), [])
   const out = await deleteSheetColumn(s2, uid, 'Extra')
   assert.ok('ok' in out || 'success' in (out as object), JSON.stringify(out))

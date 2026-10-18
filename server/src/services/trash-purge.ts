@@ -6,10 +6,11 @@
 //
 // A batch of rows: its trash_rows, then the item. A sheet: lookups that look
 // in it learn it is gone and its looked-up keys go (lib/trash/lookups.ts), then
-// the row batches of it still in the trash, its rows, its runs' results, its
-// auto-run queue, list provenance and webhook deliveries, each in slices; then
-// the sheet itself in one small transaction (the rest cascades). A table: each
-// of its sheets, then the table. The sweep also prunes the change log.
+// the row batches of it still in the trash, its rows, its runs' results and
+// undo journals, its auto-run queue, list provenance and webhook deliveries,
+// each in slices; then the sheet itself in one small transaction (the rest
+// cascades). A table: each of its sheets, then the table. The sweep also
+// prunes the change log and old undo journals (services/run-undo-prune.ts).
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS, TRASH_PURGE_BATCH_ROWS, TRASH_SLICE_ROWS, TRASH_SWEEP_MS } from '../lib/constants';
 import { runInCheckpointedSlices } from '../lib/slices';
@@ -19,6 +20,7 @@ import { autorunDropPending } from '../lib/autorun-mark';
 import { lookupsLoseSheet } from '../lib/trash/lookups';
 import type { TrashItem } from '../lib/trash/store';
 import { pruneChangeLog } from './sheet-history';
+import { dropSheetUndos, pruneRunUndos } from './run-undo-prune';
 
 let sweeping = false;
 let again = false;
@@ -41,6 +43,7 @@ export function kickTrashPurge(): void {
         again = false;
         await purgeDue();
         await pruneChangeLog();
+        await pruneRunUndos();
       } while (again);
     } catch (error) {
       console.error('Emptying the trash failed (tried again next sweep):', error);
@@ -102,6 +105,7 @@ async function purgeSheet(sheetId: string, userId: string, itemId: number | null
   await deleteInSlices(`DELETE FROM rows WHERE rowid IN (SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ?
     LIMIT ?)`, [sheetId, userId], TRASH_SLICE_ROWS);
   await purgeSheetResults(sheetId, userId);
+  await dropSheetUndos(sheetId);
   await autorunDropPending(sheetId, userId);
   await deleteInSlices(`DELETE FROM enrichment_list_rows WHERE rowid IN (SELECT rowid FROM enrichment_list_rows
     WHERE dest_sheet_id = ? LIMIT ?)`, [sheetId], HEAVY_SLICE_ROWS);

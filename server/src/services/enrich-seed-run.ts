@@ -19,6 +19,7 @@ import { seedVerdict, type SeedPlan } from '../lib/enrich-seed';
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import type { WaterfallRunConfig } from '../lib/waterfall/config';
 import { enqueueHTTPRun } from '../queue';
+import { journalSeed, type RunRef } from '../lib/run-undo/journal';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 
 // The out-of-date flag, selected next to a row's data when the run's rows depend on it.
@@ -81,6 +82,9 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
   if (targets && targets.length === 0) return { seeded: 0, missing, notMet: 0 };
   const rowIds = await sheetRowIds(job.sheetId, job.userId, targets ? { targets } : { upTo: job.lastRow });
   let seeded = 0, notMet = 0, stopped = false;
+  const run: RunRef = { kind: 'http', id: job.runId };
+  const running = job.columns.map((c): [string, string] => [c, PLACEHOLDER]);
+  const notMetCell: Array<[string, string]> = [[job.columns[0], CONDITION_NOT_MET]];
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
     const take: number[] = [], keptOut: number[] = [];
@@ -98,8 +102,17 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
         if (takesConditionMark(was) && !isConditionNotMet(was)) keptOut.push(r.id);
       }
     }
-    if (take.length) set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);
-    if (keptOut.length) mark.run(markPath, JSON.stringify(keptOut), job.sheetId, job.userId);
+    // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
+    db.transaction(() => {
+      if (take.length) {
+        journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(take) }, running);
+        set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);
+      }
+      if (keptOut.length) {
+        journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(keptOut) }, notMetCell);
+        mark.run(markPath, JSON.stringify(keptOut), job.sheetId, job.userId);
+      }
+    }).immediate();
     seeded += take.length;
   });
   return stopped ? null : { seeded, missing, notMet };

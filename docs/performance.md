@@ -24,7 +24,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Sort every row by a column | 24 s | 0.15 s | 680 MB |
 | Export to CSV | 2.7 s | 0.04 s | 590 MB |
 | Receive a webhook (adds row 1,000,001) | 0.08 s | 0.04 s | 850 MB |
-| Start an HTTP run on every row | answers in 0.1 s; the run starts 2.8 s later | 0.08 s | 890 MB |
+| Start an HTTP run on every row | answers in 0.1 s; the run starts 2.8 s later (about 1 s more since a run keeps what it overwrites, so it can be undone) | 0.08 s | 890 MB |
 | Stop that run | answers in 0.03 s; leftover cells clear 3.2 s later | 0.04 s | 620 MB |
 | Start an enrichment with "Only run if" (158,000 rows match) | answers in about 1 s; the rows are ready 2.8 s later | 0.04 s | 440 MB |
 | Add a column from stored answers (900,000 answers over 20,000 auto-run runs) | 13 s | 0.17 s | 450 MB |
@@ -59,7 +59,7 @@ A filter has to check every row to count the matches, so a filtered read takes a
 
 Lookups were measured with two sheets of 1,000,000 rows, one looking up the other. The column a lookup reads in the other sheet gets an index, built in the background the first time: about 70 MB for a million short values, 175 MB with contains. Writing to that sheet costs a little more while it's looked up: changing another of its columns takes 15 to 30% longer in a big run, and a sheet nobody looks up pays nothing measurable. After a sort of a looked-up sheet, the index reads every row's new position again in the background (about 2 to 7 s at a million rows), and lookups into that sheet wait until it has. Contains on a million different values against a million rows depends on the words: about a minute for company names, more when every value shares the same few letters.
 
-While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows, undoing a run) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
 
 ### Auto-dedupe
 
@@ -88,3 +88,17 @@ Deleted rows go to the trash, a slice at a time. Measured with a script on the s
 | Empty a batch of 990,000 rows from the trash | 9 s | 0.5 s |
 
 Rows in the trash keep their space in the database until they leave it. The file doesn't shrink then: SQLite reuses the freed space for new rows.
+
+### Undoing a run
+
+Before a run writes a cell, it keeps what the cell held, so the run can be undone. Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows and 12 columns (a 600 MB database), with an HTTP API run filling 2 columns of every row (half of them held an earlier answer):
+
+| Action | Time | Others waited |
+|---|---|---|
+| Put ⏳ in every row as the run starts (2.5 s without keeping anything) | 3.5 s | 0.03 s |
+| Write one row's result (0.035 ms without) | 0.06 ms | none |
+| Undo the run: 1,960,000 cells back, 40,000 changed since by a person or another run left as they are (answers at once, then in the background) | 5.2 s | 0.03 s |
+| Delete what it kept, once undone (in the background) | 1.2 s | 0.03 s |
+
+What a run keeps takes about 50 bytes a cell when the old values are short, more when they're long: 97 MB for this run. It's kept 7 days after the run starts, then deleted a slice at a time; an undone run's is deleted right away.
+

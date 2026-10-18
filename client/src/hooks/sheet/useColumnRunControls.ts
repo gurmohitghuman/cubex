@@ -124,7 +124,7 @@ export function useColumnRunControls(a: Args) {
   const cancel = () => { seq.current++; setPending(null) }
 
   const cells = useMemo(() => ({ rowCost, runRow }), [rowCost, runRow])
-  return { failed, retryFailed, ask, pending, confirm, cancel, cells }
+  return { failed, retryFailed, ask, pending, confirm, cancel, cells, refreshFailed: () => refreshFailed(0) }
 }
 
 const EMPTY: RunControlEstimate = {

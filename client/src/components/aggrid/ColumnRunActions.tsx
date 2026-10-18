@@ -5,6 +5,7 @@ import type { MenuState } from './HeaderContextMenu'
 import type { RunByColumn, RunMenuActions } from './types'
 import type { AutorunColumn } from '@/utils/api/types-autorun'
 import { AutorunMenuItems } from './AutorunMenuItems'
+import { UndoRunItem } from './UndoRunItem'
 import { rowsFor, useRunColumnCounts } from './useRunColumnCounts'
 import { runItemLabel } from '@/lib/run-controls-copy'
 import type { RunCounts } from '@/utils/api/run-controls'
@@ -77,6 +78,7 @@ const AIActions: React.FC<AIActionsProps & { counts: RunCounts | null }> = ({
       <DropdownMenuSeparator />
       <DropdownMenuLabel>AI Column Actions</DropdownMenuLabel>
       {!runColumn && <RunControlItems columnId={columnId} counts={counts} setMenu={setMenu} actions={actions} />}
+      {!runColumn && <UndoRunItem columnId={columnId} setMenu={setMenu} actions={actions} />}
       {actions.onRunFirstRows && (
         <DropdownMenuItem onClick={() => { actions.onRunFirstRows?.('ai', base, columnId); setMenu(null) }}
           className={ITEM}>
@@ -119,6 +121,7 @@ export const HTTPColumnActions: React.FC<HTTPActionsProps> = ({
       <DropdownMenuSeparator />
       <DropdownMenuLabel>HTTP API Actions</DropdownMenuLabel>
       {!active && <RunControlItems columnId={columnId} counts={counts} setMenu={setMenu} actions={actions} />}
+      {!active && <UndoRunItem columnId={columnId} setMenu={setMenu} actions={actions} />}
       {actions.onRunFirstRows && (
         <DropdownMenuItem onClick={() => { actions.onRunFirstRows?.('http', columnId); setMenu(null) }}
           className={ITEM}>
