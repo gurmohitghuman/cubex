@@ -13,6 +13,10 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | An agent counting the rows where any run failed (`has_error` over 4 run columns, 216,667 rows) | 1.2 s | 0.02 s | 570 MB |
 | An agent reading a page of those rows, at the start or 900,000 rows in | 0.01 s | 0.01 s | 560 MB |
 | Download those 216,667 rows as CSV (`create_download_link` with `where`) | 1.4 s | 0.01 s | 620 MB |
+| A run column's menu counts its rows: empty, out of date (10,000 whose input changed) and failed | 2.6 s | 0.01 s | 510 MB |
+| Find those 10,000 out-of-date rows for a rerun (mode `out_of_date`) | 1.5 s | 0.02 s | 510 MB |
+| An agent counting out-of-date rows (`where` with `out_of_date`) | 1.8 s | 0.01 s | 520 MB |
+| A page of rows with `include_status` (out of date included), 500,000 rows in | 0.001 s | none | 520 MB |
 | Copy 8,334 rows a `where` picks to another sheet (`transfer_rows`, one transaction) | 0.8 s | 0.8 s | 570 MB |
 | Add a column | 0.05 s | none | 510 MB |
 | Rename a column | 5 s | 0.07 s | 620 MB |

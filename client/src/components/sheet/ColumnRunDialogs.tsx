@@ -1,19 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
 import Modal from '@/components/Modal'
 import { FIRST_ROWS_DEFAULT, FIRST_ROWS_MAX } from '@/lib/constants'
 import { plural } from '@/lib/utils'
 
-// The column menu's run confirms for AI and HTTP API columns (SheetGrid):
-// "Run All Rows" asks first, as it spends credits or requests on every row
-// again; "Run First Rows" asks how many of the sheet's top rows to run again,
-// a test before a big run. columnName: the AI header clicked (a structured run
-// reruns from any of its columns).
+// The column menu's "Run First Rows" for AI and HTTP API columns (SheetGrid):
+// asks how many of the sheet's top rows to run again, a test before a big
+// run. (Its other runs confirm with their estimate: RunControlConfirm.)
+// columnName: the AI header clicked (a structured run reruns from any of its columns).
 export interface RunAsk { kind: 'ai' | 'http'; column: string; columnName?: string }
 
 interface Runs {
-  handleRunAIForColumn: (baseName: string, columnName?: string) => unknown
-  handleRunHTTPForColumn: (column: string) => unknown
   handleRunAIFirstRows: (baseName: string, columnName: string, rows: number) => unknown
   handleRunHTTPFirstRows: (column: string, rows: number) => unknown
 }
@@ -60,14 +56,7 @@ const FirstRowsDialog: React.FC<{
 }
 
 export function useColumnRunDialogs(runs: Runs, sheetRows: number) {
-  const [runAll, setRunAll] = useState<RunAsk | null>(null)
   const [first, setFirst] = useState<RunAsk | null>(null)
-  const confirmAll = async () => {
-    const c = runAll
-    setRunAll(null)
-    if (c?.kind === 'ai') await runs.handleRunAIForColumn(c.column, c.columnName)
-    else if (c) await runs.handleRunHTTPForColumn(c.column)
-  }
   const runFirst = async (rows: number) => {
     const c = first
     setFirst(null)
@@ -75,21 +64,8 @@ export function useColumnRunDialogs(runs: Runs, sheetRows: number) {
     else if (c) await runs.handleRunHTTPFirstRows(c.column, rows)
   }
   const dialogs = (
-    <>
-      <ConfirmDialog
-        isOpen={!!runAll}
-        title="Run all rows again?"
-        message={runAll?.kind === 'ai'
-          ? `"${runAll.column}" will be cleared and filled again on every row, using your OpenRouter credits. `
-            + 'To fill only empty or failed rows, use "Run Missing or Errors" instead.'
-          : `"${runAll?.column ?? ''}" will call the API again for every row and replace the current results.`}
-        confirmText="Run all rows"
-        onConfirm={confirmAll}
-        onCancel={() => setRunAll(null)}
-      />
-      <FirstRowsDialog ask={first} sheetRows={sheetRows} onRun={rows => void runFirst(rows)}
-        onCancel={() => setFirst(null)} />
-    </>
+    <FirstRowsDialog ask={first} sheetRows={sheetRows} onRun={rows => void runFirst(rows)}
+      onCancel={() => setFirst(null)} />
   )
-  return { askRunAll: setRunAll, askFirstRows: setFirst, dialogs }
+  return { askFirstRows: setFirst, dialogs }
 }

@@ -34,7 +34,7 @@ export async function processMultiRow(
   const statusColumn = run.status_column || run.column_name;
   const ctx: MultiWriteCtx = {
     runId, userId: run.user_id, sheetId: run.sheet_id, rowIndex: row.rowIndex,
-    inputValues: JSON.stringify(row.data), statusColumn, myGeneration,
+    inputValues: JSON.stringify(row.data), statusColumn, myGeneration, stamp: row.stamp,
   };
   const outputNames = specs.map(s => s.columnName);
   const search = runSearchConfig(run);

@@ -9,7 +9,7 @@ import { MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS } from './constants'
 export type ValueFilterOp =
   | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'eq' | 'neq' | 'any_of' | 'not_any_of'
   | 'gt' | 'gte' | 'lt' | 'lte'
-export type RunStateOp = 'has_error' | 'has_result' | 'not_run' | 'condition_not_met' | 'running'
+export type RunStateOp = 'has_error' | 'has_result' | 'not_run' | 'condition_not_met' | 'running' | 'out_of_date'
 export type FilterOp = ValueFilterOp | RunStateOp | 'empty' | 'not_empty'
 
 export interface ColumnFilter { type: FilterOp; value?: string; values?: string[] }
@@ -36,6 +36,7 @@ export const RUN_STATE_FILTERS: ReadonlyArray<{ op: RunStateOp; label: string }>
   { op: 'not_run', label: 'Rows not run yet' },
   { op: 'condition_not_met', label: 'Rows kept out by "Only run if"' },
   { op: 'running', label: 'Rows still running' },
+  { op: 'out_of_date', label: 'Rows out of date (inputs changed)' },
 ]
 
 // Columns a run fills: the ones run-state filters work on.

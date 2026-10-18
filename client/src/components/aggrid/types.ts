@@ -4,13 +4,15 @@ import type { ColumnSpend, SheetAutorun } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
 import type { FormulaColumnView } from '@/utils/api/formula'
 import type { LookupColumnView } from '@/utils/api/lookup'
+import type { RunRows } from '@/utils/api/run-controls'
+import type { RunCellApi } from './RunCellContext'
 
 export type RunByColumn = Record<string, { runId: string; status: 'running' | 'paused' | 'pending' }>
 
 // The column menu's Enrichment Actions: run the column again on rows by status
-// (not enriched yet, failed), on the selected rows or on every row; edit its
-// setup; watch or stop its active run.
-export type EnrichMenuAction = 'not_enriched' | 'failed' | 'selected' | 'all' | 'edit' | 'view' | 'stop'
+// (empty or out of date, failed), on the selected rows or on every row; edit
+// its setup; watch or stop its active run.
+export type EnrichMenuAction = 'stale' | 'failed' | 'selected' | 'all' | 'edit' | 'view' | 'stop'
 
 // The column menu's clean data items: clean any column into a new one ('new'),
 // and on a clean column, edit how it's cleaned, clean every row again, and
@@ -26,13 +28,12 @@ export type FormulaMenuAction = 'edit' | 'again' | 'autorun_on' | 'autorun_off'
 export type LookupMenuAction = 'edit' | 'again' | 'autorun_on' | 'autorun_off'
 
 export interface RunMenuActions {
-  onRunHTTPForColumn?: (columnName: string) => void
+  // An AI or HTTP API column's "Run N empty or out-of-date rows", "Retry N
+  // failed rows" and "Force run all N rows": each confirmed with its estimate (useColumnRunControls).
+  onRunControl?: (columnName: string, rows: RunRows) => void
   // Batched: re-run the whole row selection in ONE run (N per-row runs would
   // trip the per-user concurrency cap). See useHTTPColumnRunActions.
   onRunHTTPForRows?: (columnName: string, rowIndices: number[]) => void
-  onRunHTTPForMissingOrError?: (columnName: string) => void
-  onRunAIForColumn?: (baseName: string, columnName: string) => void
-  onRunAIMissingOrError?: (baseName: string, columnName: string) => void
   // "Run First Rows": a dialog asks how many of the sheet's top rows to run again.
   // AI: column is the base name, columnName the header clicked.
   onRunFirstRows?: (kind: 'ai' | 'http', column: string, columnName?: string) => void
@@ -99,6 +100,11 @@ export interface AGGridSpreadsheetProps {
   onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   // What the column menu's run blocks call (AI, HTTP API and enrichment columns).
   runActions?: RunMenuActions
+  // Failed rows per run column (the header's "N failed, retry"), its one-click
+  // retry, and a run cell's play button (RunCellContext).
+  failedRuns?: Record<string, number>
+  onRetryFailed?: (columnName: string) => void
+  runCells?: RunCellApi | null
   activeHTTPRunsByColumn?: RunByColumn
   activeAIRunsByColumn?: RunByColumn
   onColumnReorder?: (newColumnOrder: string[]) => void | Promise<void>

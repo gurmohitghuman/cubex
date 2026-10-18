@@ -9,10 +9,12 @@
 // output columns are blanked too, so no cell is stranded on the spinner.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { jsonPath, touchSheet } from '../lib/sql-helpers';
+import { touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
 import { markAutorunInputs } from '../lib/autorun-mark';
+import type { RowStamp } from '../lib/run-inputs/stamp';
+import { writeRunCells } from '../lib/run-cells-write';
 
 export interface MultiWriteCtx {
   runId: string;
@@ -22,17 +24,15 @@ export interface MultiWriteCtx {
   inputValues: string;   // JSON.stringify(row.data)
   statusColumn: string;
   myGeneration: number;
+  stamp?: RowStamp;      // what the row's result is made from (lib/run-inputs)
 }
 
 const STATUS_OK = '✅';
 
-// json_set(data, p1, v1, p2, v2, ...) built from ordered (path, value) pairs.
-function jsonSetPairs(pairs: Array<[string, string]>): { expr: string; args: string[] } {
-  const expr = 'json_set(data' + pairs.map(() => ', ?, ?').join('') + ')';
-  const args: string[] = [];
-  for (const [path, value] of pairs) args.push(path, value);
-  return { expr, args };
-}
+// The row's cells from ordered (column, value) pairs, and the stamp of the
+// inputs they were made from, in one UPDATE.
+const writeCells = (ctx: MultiWriteCtx, pairs: Array<[string, string]>) =>
+  writeRunCells(ctx.sheetId, ctx.userId, ctx.rowIndex, pairs, ctx.stamp);
 
 // A run with a web tool also writes its sources: the "(Data)" cell summary and
 // the full list for the sources viewer (ai_results.scraped_data).
@@ -57,14 +57,10 @@ export function writeMultiSuccess(
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, rawJson, sources?.json ?? null,
       ...usageColumns(usage));
 
-    const pairs: Array<[string, string]> = Object.entries(values).map(([col, val]) => [jsonPath(col), val]);
-    if (sources) pairs.push([jsonPath(sources.column), sources.summary]);
-    pairs.push([jsonPath(ctx.statusColumn), STATUS_OK]);
-    const { expr, args } = jsonSetPairs(pairs);
-    db.prepare(`
-      UPDATE rows SET data = ${expr}, updated_at = datetime('now')
-      WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-    `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
+    const pairs: Array<[string, string]> = Object.entries(values);
+    if (sources) pairs.push([sources.column, sources.summary]);
+    pairs.push([ctx.statusColumn, STATUS_OK]);
+    writeCells(ctx, pairs);
     // A column another column's auto-run reads queues this row for it.
     const written = [...Object.keys(values), ctx.statusColumn, ...(sources ? [sources.column] : [])];
     markAutorunInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
@@ -94,13 +90,9 @@ export function writeMultiFailure(
       VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
 
-    const pairs: Array<[string, string]> = outputColumns.map(col => [jsonPath(col), '']);
-    pairs.push([jsonPath(ctx.statusColumn), `❌ Error: ${errorMessage}`]);
-    const { expr, args } = jsonSetPairs(pairs);
-    db.prepare(`
-      UPDATE rows SET data = ${expr}, updated_at = datetime('now')
-      WHERE user_id = ? AND sheet_id = ? AND row_index = ?
-    `).run(...args, ctx.userId, ctx.sheetId, ctx.rowIndex);
+    const pairs: Array<[string, string]> = outputColumns.map(col => [col, '']);
+    pairs.push([ctx.statusColumn, `❌ Error: ${errorMessage}`]);
+    writeCells(ctx, pairs);
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

@@ -16,6 +16,7 @@ import { storedRule } from './run-rule';
 import type { RunFail } from './run-shared';
 import { countReusable, reuseJobFor, type ReuseCount } from './enrich-reuse-count';
 import { prepareEnrichmentStart } from './enrich-run-prepare';
+import { statusStaleCheck } from './run-inputs';
 
 export interface RerunEstimate {
   column: string; toolName: string; rows: number;
@@ -60,7 +61,10 @@ export async function rerunEnrichmentColumn(
   const { mode, rowIndexes } = req.rows;
   const rule = storedRule(sheetId, userId, choices.runIf);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error } satisfies RunFail;
-  const scope = { mode, rowIndexes, where: choices.conditions, rule: rule.ok?.tree ?? null };
+  const scope = {
+    mode, rowIndexes, where: choices.conditions, rule: rule.ok?.tree ?? null,
+    stale: statusStaleCheck(sheetId, userId, req.column, req.rows.status),
+  };
   const counts = await enrichRowCounts(sheetId, userId, req.column, scope);
   const rows = countFor(counts, req.rows.status);
   const reuse = await rerunReuse(userId, sheetId, choices, req, rows);

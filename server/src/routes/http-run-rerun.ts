@@ -4,6 +4,7 @@ import { rerunHttpColumn } from '../services/http-run-rerun';
 import { runFailHttpStatus } from '../services/run-shared';
 import { parseFirstRows, parseRowIndices } from './ai-run-rerun';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
+import { isRerunMode, RERUN_MODES } from '../services/ai-rerun-modes';
 
 // Thin wrapper over services/http-run-rerun.ts (shared with /api/v1 and MCP).
 // Three callers, all keyed on the master/status column name:
@@ -22,6 +23,9 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     if (typeof sheetId !== 'string' || !sheetId || typeof masterColumnName !== 'string' || !masterColumnName) {
       return res.status(400).json({ error: 'sheetId and masterColumnName are required (strings).' });
     }
+    if (mode !== undefined && !isRerunMode(mode)) {
+      return res.status(400).json({ error: `mode must be one of: ${RERUN_MODES.join(', ')}.` });
+    }
     const parsed = parseRowIndices(rawRowIndices);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
     const first = parseFirstRows((req.body as { firstRows?: unknown }).firstRows, 'firstRows',
@@ -38,7 +42,7 @@ router.post('/rerun', async (req: AuthRequest, res) => {
 
     const result = await rerunHttpColumn(req.userId!, {
       sheetId, masterColumnName,
-      mode: typeof mode === 'string' ? mode : undefined,
+      mode,
       rowIndices: parsed.rowIndices, firstRows: first.firstRows,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });

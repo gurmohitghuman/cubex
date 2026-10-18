@@ -73,7 +73,7 @@ What the status column says:
 | `⏳ Processing...` | The row is running. |
 | `⏭️ Condition not met` | **Only run if** kept the row out. It wasn't enriched and cost nothing. |
 
-An empty status cell means the row hasn't run. To see only the rows that failed, pick **Rows with errors** in the column's menu (its **Run state** item has rows not run yet, still running and the rest). **Run Rows Not Enriched** also takes rows that show `⏭️ Condition not met`, and checks the rule on them again. Click the status column's header for its menu: **Run Rows Not Enriched**, **Retry Failed Rows**, **Run Selected Rows** (when you've selected rows), **Run All Rows Again**, **Edit Enrichment** and the auto-run settings. Each run shows its estimate in a confirm first. Running rows again replaces their results, and they cost again.
+An empty status cell means the row hasn't run. To see only the rows that failed, pick **Rows with errors** in the column's menu (its **Run state** item has rows not run yet, still running and the rest). Click the status column's header for its menu: **Run N empty or out-of-date rows**, **Retry N failed rows**, **Run Selected Rows** (when you've selected rows), **Force run all N rows**, **Edit Enrichment** and the auto-run settings. A row is out of date when one of its input cells changed since the row was enriched; empty rows include those that show `⏭️ Condition not met`, and the rule is checked on them again. Each run shows its estimate in a confirm first. Running rows again replaces their results, and they cost again. A status column with failed rows says **N failed, retry** in its header: one click runs them again, with a run limit sized to them. To run one row, hover its cell and click ▶.
 
 ## Examples
 

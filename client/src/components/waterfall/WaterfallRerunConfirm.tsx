@@ -6,8 +6,8 @@ import type { PendingWaterfallRun, WaterfallRerunAction } from '@/hooks/sheet/us
 interface Props { pending: PendingWaterfallRun | null; onConfirm: () => void; onCancel: () => void }
 
 const TITLE: Record<WaterfallRerunAction, string> = {
-  not_enriched: 'Run the rows not run yet', failed: 'Retry the failed rows', selected: 'Run the selected rows',
-  all: 'Run every row again',
+  stale: 'Run empty or out-of-date rows', failed: 'Retry the failed rows', selected: 'Run the selected rows',
+  all: 'Force run all rows',
 }
 const money = (v: number) => (v === 0 ? '$0' : formatCost(v))
 
@@ -18,7 +18,8 @@ export const WaterfallRerunConfirm: React.FC<Props> = ({ pending, onConfirm, onC
   const error = pending?.error ?? null
   const closeOnly = e?.rows === 0 || (!!error && !e)
   const message = !e ? error ?? 'Counting the rows and estimating the cost…'
-    : e.rows === 0 ? 'No rows here to run.'
+    : e.rows === 0
+      ? (pending?.action === 'stale' ? 'No row here is empty or out of date.' : 'No rows here to run.')
       : `${error ? `${error} ` : ''}${e.rows.toLocaleString()} rows: about ${money(e.total.average_usd)}, at most `
         + `${money(e.total.max_usd)}. Enrichment steps bill your treg balance, AI steps OpenRouter.`
   return (

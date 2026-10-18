@@ -1,9 +1,12 @@
-import React, { useLayoutEffect, useRef, useState } from 'react'
+import React, { memo, useContext, useLayoutEffect, useRef, useState } from 'react'
 import { startTyping } from './aggrid/typingTicker'
+import { RunCellContext } from './aggrid/RunCellContext'
+import { RunRowButton } from './aggrid/RunRowButton'
 
 interface LoadingCellRendererProps {
   value: string
   colDef: any
+  data?: { __rowIndex?: number }
 }
 
 // Detect "the server hasn't returned yet" state. Server seeds the placeholder
@@ -19,7 +22,25 @@ const isDataAffordance = (field: string | undefined, v: string) => !!field?.ends
 const justArrived = (prev: string, next: string, field: string | undefined) =>
   isProcessingPlaceholder(prev) && !isProcessingPlaceholder(next) && next.length > 0 && !isDataAffordance(field, next)
 
-export const LoadingCellRenderer: React.FC<LoadingCellRendererProps> = ({ value, colDef }) => {
+// A run column's cell (AI, HTTP API, enrichment, waterfall) gets a play button
+// on hover that runs its row alone, unless the column's run is going (a ⏳ a
+// stopped run left behind can be run again).
+export const LoadingCellRenderer: React.FC<LoadingCellRendererProps> = (props) => {
+  const runCells = useContext(RunCellContext)
+  const main = runCells?.mainOf(props.colDef.field) ?? null
+  const row = props.data?.__rowIndex
+  const playable = !!runCells && main !== null && row !== undefined && !runCells.running(main)
+  // One shape either way, so the content keeps its state (a value typing in) when the button comes or goes.
+  return (
+    <>
+      <CellContent value={props.value} colDef={props.colDef} />
+      {playable && <RunRowButton api={runCells!} main={main!} row={row!} />}
+    </>
+  )
+}
+
+// Memoized: a change to the run cells' context re-renders the wrapper, not the text and its typing.
+const CellContent: React.FC<LoadingCellRendererProps> = memo(({ value, colDef }) => {
   const cellValue = value || ''
 
   // Placeholder -> real value: type it in. Decided DURING render (React's
@@ -96,4 +117,4 @@ export const LoadingCellRenderer: React.FC<LoadingCellRendererProps> = ({ value,
 
   // Default: stable real value, no animation.
   return <span className="text-sm">{cellValue}</span>
-}
+})

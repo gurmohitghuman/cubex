@@ -28,6 +28,7 @@ import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 import { rerunAiMultiColumn, structuredRunByBase } from './ai-run-rerun-multi';
 import { structuredRunOwning } from '../lib/structured-run-owner';
 import { logRunStarted } from '../lib/change-log';
+import { dataColumnName } from './ai-row-writers';
 
 export type { AiRerunMode } from './ai-rerun-modes';
 
@@ -75,8 +76,11 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   const registered = new Set(getSheetColumns(p.sheetId, userId, false));
   const cleanBase = registered.has(`${p.baseColumnName} (Output)`) || registered.has(`${p.baseColumnName} (Status)`)
     ? p.baseColumnName : sanitizeColumnName(p.baseColumnName);
-  const outputCol = `${cleanBase} (Output)`;
-  const dataCol = `${cleanBase} (Data)`;
+  // The exact column a single-column run fills wins: one renamed without its " (Output)" ends otherwise.
+  const owned = p.columnName && db.prepare(`SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ?
+    AND column_name = ? AND output_columns IS NULL LIMIT 1`).get(p.sheetId, userId, p.columnName);
+  const outputCol = owned ? p.columnName! : `${cleanBase} (Output)`;
+  const dataCol = owned ? dataColumnName(outputCol) : `${cleanBase} (Data)`;
 
   // A structured run (several typed columns from one call per row) anchors on
   // its "(Status)" column, not the "(Output)" naming below: its own path. With

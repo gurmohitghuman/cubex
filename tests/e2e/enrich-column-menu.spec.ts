@@ -69,16 +69,16 @@ test('the column menu runs, retries, edits and stops an enrichment column', asyn
 
   await openMenu(page)
   const menu = page.getByRole('menu')
-  const items = ['Enrichment Actions', 'Run Rows Not Enriched', 'Retry Failed Rows', 'Run All Rows Again',
-    'Edit Enrichment']
+  const items = ['Enrichment Actions', 'Run 0 empty or out-of-date rows', 'Retry 1 failed row',
+    'Force run all 5 rows', 'Edit Enrichment']
   for (const t of items) await expect(menu).toContainText(t)
   await expect(menu).not.toContainText('HTTP API Actions')
   await page.keyboard.press('Escape')
 
-  // Retry Failed Rows: only the ❌ row, once treg takes its domain.
+  // Retry 1 failed row: only the ❌ row, once treg takes its domain.
   await mockTreg.set({ badDomains: [] })
   let before = runIdsOf(sheetId).length
-  let dialog = await menuRun(page, /Retry Failed Rows/, 'Retry failed rows', '1 row that failed')
+  let dialog = await menuRun(page, /Retry 1 failed row/, 'Retry failed rows', '1 row that failed')
   await expect(dialog).toContainText(/Estimated \$[\d.]+ to \$[\d.]+/)
   await dialog.getByRole('button', { name: 'Run', exact: true }).click()
   expect((await newestRunDone(api, sheetId, before)).totalRows).toBe(1)
@@ -93,14 +93,28 @@ test('the column menu runs, retries, edits and stops an enrichment column', asyn
   expect((await newestRunDone(api, sheetId, before)).totalRows).toBe(1)
   expect((await statuses(api, sheetId))[3]).toBe('✅ Found')
 
-  // Nothing left to run: the confirm only says so.
-  const none = `Every row in ${COL} is enriched already.`
-  dialog = await menuRun(page, /Run Rows Not Enriched/, 'Run rows not enriched', none)
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  // Nothing left to run: the item says 0 and can't be picked.
+  await openMenu(page)
+  await expect(page.getByRole('menuitem', { name: /Run 0 empty or out-of-date rows/ })).toBeDisabled()
+  await expect(page.getByRole('menuitem', { name: /Retry 0 failed rows/ })).toBeDisabled()
+  await page.keyboard.press('Escape')
 
-  // Run All Rows Again: every row, results replaced.
+  // An input changes: that row's result is out of date, and only it runs again.
+  expect((await api.put(`/api/sheets/${sheetId}/data`, {
+    data: { updates: [{ rowIndex: 4, columnName: 'Website', value: 'good5b.example' }] } })).ok()).toBeTruthy()
   before = runIdsOf(sheetId).length
-  dialog = await menuRun(page, /Run All Rows Again/, 'Run all rows again', 'all 5 rows again')
+  dialog = await menuRun(page, /Run 1 empty or out-of-date row$/, 'Run empty or out-of-date rows',
+    '1 row that is empty or out of date')
+  await expect(dialog).toContainText('Any out-of-date results are replaced.')
+  await dialog.getByRole('button', { name: 'Run', exact: true }).click()
+  expect((await newestRunDone(api, sheetId, before)).totalRows).toBe(1)
+  await openMenu(page)
+  await expect(page.getByRole('menu')).toContainText('Run 0 empty or out-of-date rows')
+  await page.keyboard.press('Escape')
+
+  // Force run all 5 rows: every row, results replaced.
+  before = runIdsOf(sheetId).length
+  dialog = await menuRun(page, /Force run all 5 rows/, 'Force run all rows', 'all 5 rows again')
   await expect(dialog).toContainText('replaced')
   await dialog.getByRole('button', { name: 'Run', exact: true }).click()
   expect((await newestRunDone(api, sheetId, before)).totalRows).toBe(5)
@@ -118,7 +132,7 @@ test('the column menu runs, retries, edits and stops an enrichment column', asyn
   // One batch of 5 rows, each answer 5 s away: time to edit and stop it.
   await mockTreg.set({ delayMs: 5000 })
   before = runIdsOf(sheetId).length
-  dialog = await menuRun(page, /Run All Rows Again/, 'Run all rows again', 'all 5 rows again')
+  dialog = await menuRun(page, /Force run all 5 rows/, 'Force run all rows', 'all 5 rows again')
   await dialog.getByRole('button', { name: 'Run', exact: true }).click()
   await expect.poll(() => runIdsOf(sheetId).length, { timeout: 15_000 }).toBe(before + 1)
   const slow = runIdsOf(sheetId)[before]
@@ -130,7 +144,7 @@ test('the column menu runs, retries, edits and stops an enrichment column', asyn
   await page.keyboard.press('Escape')
   await openMenu(page)
   await expect(page.getByRole('menu')).toContainText('Stop Enrichment Run')
-  await expect(page.getByRole('menu')).not.toContainText('Retry Failed Rows')
+  await expect(page.getByRole('menu')).not.toContainText('Retry')
   await page.getByRole('menuitem', { name: /Stop Enrichment Run/ }).click()
   expect((await waitRun(api, slow, ['cancelled'])).status).toBe('cancelled')
   // Stopping clears what it hadn't reached: no ⏳ left, in its outputs either.
@@ -170,7 +184,7 @@ test("a rerun's estimate is a pure read; the spend card adds up the ledger", asy
   // Counts by status for the drawer.
   const counts = await (await api.post(`/api/enrich/sheets/${sheetId}/row-counts`,
     { data: { column: COL, mode: 'all' } })).json()
-  expect(counts).toEqual({ total: 5, notEnriched: 0, noResult: 0, failed: 0 })
+  expect(counts).toEqual({ total: 5, notEnriched: 0, noResult: 0, failed: 0, outOfDate: 0 })
 
   const spent = (await runStatus(api, first)).spentUsd as number
   await context.addCookies((await api.storageState()).cookies)

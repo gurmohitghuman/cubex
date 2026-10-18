@@ -61,6 +61,9 @@ export const useColumnRename = ({
             ? { ...v, hidden_columns: v.hidden_columns.map(c => (c === from ? to : c)) } : v)),
           // Its description goes with it (the server moves it too).
           columnDescriptions: renameKey(prev.data.columnDescriptions, from, to),
+          // A run's columns name its main column (a cell's play button): both sides follow.
+          runColumns: prev.data.runColumns && Object.fromEntries(Object.entries(prev.data.runColumns)
+            .map(([c, main]) => [c === from ? to : c, main === from ? to : main])),
           rows: prev.data.rows.map(r => {
             if (!(from in r.data)) return r
             const { [from]: val, ...rest } = r.data

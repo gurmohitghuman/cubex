@@ -14,6 +14,7 @@ import { nextRetryWait, retryPolicyOf, tryFailureOf, waitUnlessStopped } from '.
 import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import { httpResultCellValues } from '../lib/http-cell-values';
+import type { RunRow } from '../lib/run-rows';
 
 const shouldStop = shouldStopHttpRun;
 
@@ -24,7 +25,7 @@ const STOP_SENTINEL = Symbol('run-stopped');
 // Process a single sheet row: build the request, extract fields, write back into rows.data.
 export async function processHTTPRow(
   runId: string,
-  row: { rowIndex: number; data: Record<string, string> },
+  row: RunRow,
   run: HTTPRunRow,
   config: HTTPAPIConfig,
   signal: AbortSignal | undefined,
@@ -106,7 +107,7 @@ export async function processHTTPRow(
         status: 'completed', extractedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
-      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes);
+      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
   } catch (error: any) {
@@ -135,7 +136,7 @@ export async function processHTTPRow(
         status: 'failed', extractedFields: failedFields, mappingColumns, statusColumns,
         masterColumn: run.master_column_name,
       }));
-      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes);
+      writeRowColumns(run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
   }

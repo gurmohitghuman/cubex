@@ -19,6 +19,10 @@ import { seedVerdict, type SeedPlan } from '../lib/enrich-seed';
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import type { WaterfallRunConfig } from '../lib/waterfall/config';
 import { enqueueHTTPRun } from '../queue';
+import type { CompiledFilter } from '../lib/row-filter/sql';
+
+// The out-of-date flag, selected next to a row's data when the run's rows depend on it.
+const staleFlag = (c: CompiledFilter | null) => (c ? `${c.sql} IS 1` : '0');
 
 export interface SeedJob {
   runId: string; sheetId: string; userId: string;
@@ -35,19 +39,20 @@ const TEST_PAGE = 500;
 // The first `n` rows (row order) the run would take: a short scan in pages.
 async function firstMatching(job: SeedJob, n: number): Promise<{ targets: number[]; missing: number }> {
   const inTargets = job.targets ? new Set(job.targets) : null;
-  const page = db.prepare(`SELECT row_index, data FROM rows
+  const stale = job.plan.stale ?? null;
+  const page = db.prepare(`SELECT row_index, data, ${staleFlag(stale)} AS stale FROM rows
     WHERE sheet_id = ? AND user_id = ? AND row_index > ? AND row_index <= ?${job.rowFilter.clause}
     ORDER BY row_index LIMIT ${TEST_PAGE}`);
   const targets: number[] = [];
   let missing = 0;
   for (let after = Number.MIN_SAFE_INTEGER; targets.length < n;) {
-    const rows = page.all(job.sheetId, job.userId, after, job.lastRow, ...job.rowFilter.params) as
-      Array<{ row_index: number; data: string }>;
+    const rows = page.all(...(stale?.params ?? []), job.sheetId, job.userId, after, job.lastRow,
+      ...job.rowFilter.params) as Array<{ row_index: number; data: string; stale: number }>;
     for (const r of rows) {
       // Rows past the test rows aren't part of the run: neither run nor skipped.
       if (targets.length >= n) break;
       if (inTargets && !inTargets.has(r.row_index)) continue;
-      const v = seedVerdict(parseRowData(r.data), job.plan);
+      const v = seedVerdict(parseRowData(r.data), job.plan, r.stale === 1);
       if (v === 'missing') missing++;
       if (v === 'run') targets.push(r.row_index);
     }
@@ -68,8 +73,9 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const set = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
-  const read = db.prepare(`SELECT rowid AS id, data FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
-    AND +sheet_id = ? AND +user_id = ?${job.rowFilter.clause}`);
+  const stale = job.plan.stale ?? null;
+  const read = db.prepare(`SELECT rowid AS id, data, ${staleFlag(stale)} AS stale FROM rows
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?${job.rowFilter.clause}`);
   let targets = job.targets, missing = 0;
   if (job.test !== null) ({ targets, missing } = await firstMatching(job, job.test));
   if (targets && targets.length === 0) return { seeded: 0, missing, notMet: 0 };
@@ -78,11 +84,11 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
     const take: number[] = [], keptOut: number[] = [];
-    const found = read.all(ids, job.sheetId, job.userId, ...job.rowFilter.params) as
-      Array<{ id: number; data: string }>;
+    const found = read.all(...(stale?.params ?? []), ids, job.sheetId, job.userId, ...job.rowFilter.params) as
+      Array<{ id: number; data: string; stale: number }>;
     for (const r of found) {
       const data = parseRowData(r.data);
-      const v = job.test !== null ? 'run' : seedVerdict(data, job.plan);
+      const v = job.test !== null ? 'run' : seedVerdict(data, job.plan, r.stale === 1);
       if (v === 'run') take.push(r.id);
       else if (v === 'missing') missing++;
       else if (v === 'condition') {
