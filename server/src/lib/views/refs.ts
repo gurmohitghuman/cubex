@@ -2,13 +2,18 @@
 // columns. A column rename or delete rewrites them (services/view-columns.ts),
 // as it does the sheet's own filters; a filter left on a gone column would
 // hide rows with no header left to clear it from.
-import { isOrGroup, type FilterCondition, type WhereItem } from '../row-filter/where';
+import {
+  activeWhere, groupItems, isGroup, isOrGroup, type FilterCondition, type WhereItem,
+} from '../row-filter/where';
 import { parseRowFilter, type ViewFilters } from './filters';
 
 export interface ViewColumnFields extends ViewFilters { hidden_columns?: string | null }
 
 // A column's new name, or null when it is gone.
 type ColumnMap = (column: string) => string | null;
+// A row-filter item after a rename or delete: itself (renamed), or gone and
+// passing every row ('all'), or gone and never counted ('drop').
+type Mapped = WhereItem | 'all' | 'drop';
 
 function mapDict(raw: string | null, to: ColumnMap): string | null | undefined {
   if (!raw) return undefined;
@@ -29,25 +34,30 @@ function mapDict(raw: string | null, to: ColumnMap): string | null | undefined {
 function mapRowFilter(raw: string | null, to: ColumnMap): string | null | undefined {
   if (!raw) return undefined;
   let changed = false;
-  const mapCondition = (c: FilterCondition): FilterCondition | null => {
+  // What a condition on a gone column becomes: 'all' (it passed every row
+  // from now on) when on, 'drop' (it never counted) when off.
+  const mapCondition = (c: FilterCondition): Mapped => {
     if (c.column === undefined) return c;
     const next = to(c.column);
     if (next === c.column) return c;
     changed = true;
-    return next === null ? null : { ...c, column: next };
+    if (next !== null) return { ...c, column: next };
+    return c.enabled === false ? 'drop' : 'all';
   };
-  const out: WhereItem[] = [];
-  for (const item of parseRowFilter(raw)) {
-    if (isOrGroup(item)) {
-      // A condition gone from an OR group takes the group with it: keeping the
-      // rest would narrow the rows (they no longer pass through the gone one).
-      const or = item.or.map(mapCondition);
-      if (or.every((c): c is FilterCondition => c !== null)) out.push({ or });
-    } else {
-      const c = mapCondition(item);
-      if (c) out.push(c);
-    }
-  }
+  // An AND group leaves out what passes every row; an OR group holding one
+  // passes every row itself (keeping the rest would narrow the rows: they no
+  // longer pass through the gone one). A group left empty goes as its items did.
+  const mapItem = (item: WhereItem): Mapped => {
+    if (!isGroup(item)) return mapCondition(item);
+    const mapped = groupItems(item).map(mapItem).filter(m => m !== 'drop');
+    const kept = mapped.filter((m): m is WhereItem => m !== 'all');
+    // An AND group left with only off conditions passes every row too (it no
+    // longer counts, and its gone condition did): kept, an OR above would narrow.
+    if (kept.length < mapped.length && (isOrGroup(item) || activeWhere(kept).length === 0)) return 'all';
+    if (kept.length) return isOrGroup(item) ? { or: kept } : { and: kept };
+    return 'drop';
+  };
+  const out = parseRowFilter(raw).map(mapItem).filter((m): m is WhereItem => m !== 'all' && m !== 'drop');
   if (!changed) return undefined;
   return out.length ? JSON.stringify(out) : null;
 }

@@ -1,13 +1,16 @@
 // A `where` (where.ts) as one SQL condition over rows.data (pure), so every
 // reader filters inside SQLite, a page or a slice at a time, never by loading
-// rows. Text and number operators call foldText and asNumber (ops.ts) as the
-// SQL functions cubex_fold and cubex_num (sql-functions.ts), so SQL and
-// "Only run if" read cells alike. Run-state operators are the rules of
+// rows. Text, number and date operators call foldText, asNumber and asDate
+// (ops.ts, dates.ts) as the SQL functions cubex_fold, cubex_num and cubex_date
+// (sql-functions.ts), so SQL and "Only run if" read cells alike. Run-state operators are the rules of
 // cellStatus (cell-status.ts) in plain SQL over the run's own words.
 import { jsonPath } from '../json-path';
 import { BLANK_CHARS, CONDITION_NOT_MET, FAILED_MARK, LIST_MARK, RUNNING_MARK, SKIPPED_MARK } from '../run-markers';
-import { asNumber, foldText, isListOp, isNumberOp, isStateOp, type StateOp } from './ops';
-import { isOrGroup, type FilterCondition, type WhereItem } from './where';
+import { asDate } from './dates';
+import { asNumber, foldText, isDateOp, isListOp, isNumberOp, isStateOp, type StateOp } from './ops';
+import {
+  activeWhere, groupItems, isGroup, isOrGroup, type FilterCondition, type WhereItem,
+} from './where';
 
 // sql is a condition on the `rows` table's `data` column; params bind in order.
 export interface CompiledFilter { sql: string; params: unknown[] }
@@ -127,6 +130,12 @@ function conditionSql(q: Sql, c: FilterCondition, runColumns: RunColumnMap): str
     const sign = { gt: '>', gte: '>=', lt: '<', lte: '<=' }[op];
     return `cubex_num(json_extract(data, ?)) ${sign} ${q.bind(asNumber(c.value))}`;
   }
+  if (isDateOp(op)) {
+    q.params.push(jsonPath(column));
+    const sign = { date_eq: '=', date_neq: '<>', date_gt: '>', date_gte: '>=', date_lt: '<', date_lte: '<=' }[op];
+    // NULL (no date in the cell) fails every comparison, <> included, as datePasses does.
+    return `cubex_date(json_extract(data, ?)) ${sign} ${q.bind(asDate(c.value))}`;
+  }
   q.params.push(jsonPath(column));
   if (isListOp(op)) {
     const list = q.bind(JSON.stringify((c.values ?? []).map(foldText)));
@@ -148,16 +157,18 @@ function conditionSql(q: Sql, c: FilterCondition, runColumns: RunColumnMap): str
 
 // runColumns: the sheet's run columns → the column holding their run's state
 // (services/row-filter.ts sheetRunColumns: a state column is a run column
-// mapped to itself). An empty `where` passes every row. cells: run-state
-// conditions read these columns from the given SQL instead (see TRIMMED_CELL_SQL).
+// mapped to itself). An empty `where`, or one whose conditions are all off,
+// passes every row. cells: run-state conditions read these columns from the
+// given SQL instead (see TRIMMED_CELL_SQL).
 export function compileWhere(
   where: readonly WhereItem[], runColumns: RunColumnMap, cells?: ReadonlyMap<string, string>,
 ): CompiledFilter {
-  if (where.length === 0) return { sql: '1', params: [] };
+  const active = activeWhere(where);
+  if (active.length === 0) return { sql: '1', params: [] };
   const q = new Sql(cells);
-  const parts = where.map(item => {
-    if (!isOrGroup(item)) return `(${conditionSql(q, item, runColumns)})`;
-    return `(${item.or.map(c => `(${conditionSql(q, c, runColumns)})`).join(' OR ')})`;
-  });
-  return { sql: parts.join(' AND '), params: q.params };
+  const itemSql = (item: WhereItem): string => {
+    if (!isGroup(item)) return `(${conditionSql(q, item, runColumns)})`;
+    return `(${groupItems(item).map(itemSql).join(isOrGroup(item) ? ' OR ' : ' AND ')})`;
+  };
+  return { sql: active.map(itemSql).join(' AND '), params: q.params };
 }

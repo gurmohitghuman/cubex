@@ -98,6 +98,8 @@ export interface AGGridSpreadsheetProps {
   hiddenColumns?: ReadonlySet<string>
   // The view has a filter no column header shows: an empty grid says so.
   rowFilterActive?: boolean
+  // The view's whole filter off at once (the empty grid's Clear filter): groups and rules turned off too.
+  onClearAllFilters?: () => void
   onSelectedRowsChange?: (rows: number[]) => void
   onCellClick?: (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => void
   // What the column menu's run blocks call (AI, HTTP API and enrichment columns).

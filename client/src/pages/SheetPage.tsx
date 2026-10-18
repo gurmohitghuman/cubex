@@ -39,7 +39,7 @@ import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { useSheetViews } from '@/hooks/sheet/useSheetViews'
 import { useSheetSearch } from '@/hooks/sheet/useSheetSearch'
 import { SheetViewBar } from '@/components/views/SheetViewBar'
-import { activeViewOf, rowFilterOf, viewNarrows } from '@/lib/views'
+import { activeViewOf, rowFilterOn, viewNarrows } from '@/lib/views'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 import { useAutorun } from '@/hooks/sheet/useAutorun'
 import { useTableRouting } from '@/hooks/sheet/useTableRouting'
@@ -259,7 +259,7 @@ export const SheetPage: React.FC = () => {
   const totalDisplayedRows = sheetData?.data.totalRows || 0
   // Loader, import empty state, or the grid — rules + rationale in gridAreaMode.
   const gridArea = gridAreaMode(isLoading, totalDisplayedRows, emptyFilter, columnFilters,
-    rowFilterOf(sheetData).length > 0)
+    rowFilterOn(sheetData))
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">

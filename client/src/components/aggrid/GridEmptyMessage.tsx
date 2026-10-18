@@ -2,7 +2,8 @@ import React from 'react'
 import type { AGGridSpreadsheetProps } from './types'
 
 type Props = Pick<AGGridSpreadsheetProps,
-  'emptyFilter' | 'columnFilters' | 'onEmptyFilterChange' | 'onColumnFilterChange' | 'rowFilterActive'>
+  'emptyFilter' | 'columnFilters' | 'onEmptyFilterChange' | 'onColumnFilterChange' | 'rowFilterActive'
+  | 'onClearAllFilters'>
 
 // What the grid area shows when there are zero rows to render.
 //
@@ -13,7 +14,7 @@ type Props = Pick<AGGridSpreadsheetProps,
 // Both filter systems can hide every row; list + clear BOTH so a
 // text-filter-that-matches-nothing is escapable, not just empty filters.
 export const GridEmptyMessage: React.FC<Props> = ({
-  emptyFilter, columnFilters, onEmptyFilterChange, onColumnFilterChange, rowFilterActive,
+  emptyFilter, columnFilters, onEmptyFilterChange, onColumnFilterChange, rowFilterActive, onClearAllFilters,
 }) => {
   const emptyCols = Object.keys(emptyFilter || {})
   const textCols = Object.keys(columnFilters || {})
@@ -23,9 +24,11 @@ export const GridEmptyMessage: React.FC<Props> = ({
       <div className="text-center text-gray-500">
         <p className="text-lg">All rows are hidden by a column filter</p>
         <p className="text-sm mb-3">Filtering on: {filteredColumns.join(', ')}</p>
-        {(onEmptyFilterChange || onColumnFilterChange) && (
+        {(onClearAllFilters || onEmptyFilterChange || onColumnFilterChange) && (
           <button
             onClick={() => {
+              // The whole filter, so a group or a second rule left in Filter can't keep hiding every row.
+              if (onClearAllFilters) return onClearAllFilters()
               emptyCols.forEach(col => onEmptyFilterChange?.(col, null))
               textCols.forEach(col => onColumnFilterChange?.(col, null))
             }}
@@ -37,12 +40,12 @@ export const GridEmptyMessage: React.FC<Props> = ({
       </div>
     )
   }
-  // A view's filter no header shows (the bar above the grid lists it, with a clear button).
+  // A view's filter no header shows (Filter, in the bar above the grid, edits and clears it).
   if (rowFilterActive) {
     return (
       <div className="text-center text-gray-500">
         <p className="text-lg">No rows match this view</p>
-        <p className="text-sm">Clear its filter in the bar above the grid, or switch views.</p>
+        <p className="text-sm">Change or clear its filter with Filter, above the grid, or switch views.</p>
       </div>
     )
   }

@@ -1,10 +1,11 @@
 import React from 'react'
 import {
-  VALUE_FILTERS, filterText, isListFilter, isValueFilter, sameFilter, valueFilterFrom,
+  VALUE_FILTERS, filterText, isDateFilter, isListFilter, isValueFilter, sameFilter, valueFilterFrom,
   type ColumnFilter, type ValueFilterOp,
 } from '@/lib/filters'
 import { MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS } from '@/lib/constants'
 import { ValuePicker, keepFocus } from './ValuePicker'
+import { DateValueInput } from '../filters/DateValueInput'
 
 // A list filter from picked values (null: none picked), or a message.
 function listFilterFrom(op: ValueFilterOp, values: string[]): ColumnFilter | null | string {
@@ -77,7 +78,8 @@ export const ColumnFilterEditor: React.FC<{
   const leaving = (e: React.FocusEvent) => { if (!box.current?.contains(e.relatedTarget as Node)) apply() }
   const frame = 'text-sm border border-gray-300 rounded py-1 focus:outline-none focus:border-cube-black'
   const hint = list ? (dirty && filled ? 'Pick values, then Apply' : 'Pick or type values')
-    : dirty && text.trim() ? 'Press Enter to apply' : 'Type, then press Enter'
+    : dirty && text.trim() ? 'Press Enter to apply' : isDateFilter(op) ? 'Pick or type a date, then press Enter'
+    : 'Type, then press Enter'
 
   return (
     <div ref={box} className="px-2 py-1.5 space-y-1" onKeyDown={e => e.stopPropagation()}
@@ -97,6 +99,9 @@ export const ColumnFilterEditor: React.FC<{
       </div>
       {list ? (
         <ValuePicker sheetId={sheetId} column={columnId} picked={picked} onChange={setPicked} />
+      ) : isDateFilter(op) ? (
+        <DateValueInput autoFocus value={text} onChange={setText} onBlur={leaving} onCommit={() => apply()}
+          className={`w-full px-2 ${frame}`} />
       ) : (
         <input autoFocus value={text} onChange={e => setText(e.target.value)} onBlur={leaving}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); apply() } }}

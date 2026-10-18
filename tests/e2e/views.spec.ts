@@ -156,7 +156,7 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   await page.getByRole('menuitem', { name: 'Rows with errors' }).click()
   await expect(page.getByTestId('view-menu')).toHaveText(/Rows with errors/)
   await expect.poll(() => shownVals(page)).toEqual(['v0', 'v1', 'v2'])
-  await expect(page.getByTestId('row-filter-chip')).toContainText('has an error')
+  await expect(page.getByTestId('filter-button')).toContainText('has an error')
   await shot(page, '05-rows-with-errors')
 
   // Export: this view (its rows and visible columns) or the whole sheet.
@@ -174,8 +174,8 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   await page.getByRole('menuitem', { name: /Whole sheet/ }).click()
   expect(fs.readFileSync((await (await whole).path())!, 'utf8').trim().split(/\r?\n/)).toHaveLength(7)
 
-  // Clearing the chip's filter shows every row in this view.
-  await page.getByLabel('Clear this filter').click()
+  // Clearing the view's filter shows every row in this view.
+  await page.getByLabel('Clear all filters').click()
   await expect.poll(() => shownVals(page)).toEqual(['v0', 'v1', 'v2', 'v3', 'v4', 'v5'])
 
   // New view: a copy of the one showing, then renamed; deleting it goes back to Default.

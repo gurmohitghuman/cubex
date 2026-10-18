@@ -1,11 +1,17 @@
 // A `where` (pure): which rows read_rows, REST rows/query, CSV export,
-// transfer_rows and transform_column take, and (one condition per column) the
-// grid's column filters. A list of conditions that must all pass; an item can
-// instead be an OR group, {"or": [conditions]}, which passes when any of its
-// conditions does (one level: a group holds conditions, not groups).
-import { MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS, MAX_WHERE_CONDITIONS } from '../constants-filters';
+// transfer_rows and transform_column take, and the grid's filters (a view's
+// three saved parts, lib/views/filters.ts). A list of items that must all
+// pass. An item is a condition or a group: {"or": [items]} passes when any of
+// its items does, {"and": [items]} when all do, and a group's items can be
+// groups, MAX_WHERE_DEPTH deep. A condition with "enabled": false is off: it
+// is kept (the grid shows it, a rename rewrites it) but no reader counts it,
+// and a group left with nothing on counts for nothing either (activeWhere).
 import {
-  FILTER_OPS, asNumber, foldText, isFilterOp, isListOp, isNumberOp, isStateOp, type FilterOp,
+  MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS, MAX_WHERE_CONDITIONS, MAX_WHERE_DEPTH,
+} from '../constants-filters';
+import { asDate } from './dates';
+import {
+  FILTER_OPS, asNumber, foldText, isDateOp, isFilterOp, isListOp, isNumberOp, isStateOp, type FilterOp,
 } from './ops';
 
 export interface FilterCondition {
@@ -14,25 +20,55 @@ export interface FilterCondition {
   operator: FilterOp;
   value?: string;
   values?: string[];
+  // false: off. Only false is stored (on is the default).
+  enabled?: false;
 }
-export interface OrGroup { or: FilterCondition[] }
-export type WhereItem = FilterCondition | OrGroup;
+export interface OrGroup { or: WhereItem[] }
+export interface AndGroup { and: WhereItem[] }
+export type FilterGroup = OrGroup | AndGroup;
+export type WhereItem = FilterCondition | FilterGroup;
 
 export const isOrGroup = (item: WhereItem): item is OrGroup => 'or' in item;
+export const isGroup = (item: WhereItem): item is FilterGroup => 'or' in item || 'and' in item;
+export const groupItems = (group: FilterGroup): WhereItem[] => ('or' in group ? group.or : group.and);
+// Every condition, inside groups too, off ones included.
 export const whereConditions = (where: readonly WhereItem[]): FilterCondition[] =>
-  where.flatMap(item => (isOrGroup(item) ? item.or : [item]));
+  where.flatMap(item => (isGroup(item) ? whereConditions(groupItems(item)) : [item]));
+
+// The `where` readers filter by: off conditions dropped, then any group left
+// empty (it no longer narrows anything). Off everywhere: [] (every row).
+export function activeWhere(where: readonly WhereItem[]): WhereItem[] {
+  const out: WhereItem[] = [];
+  for (const item of where) {
+    if (!isGroup(item)) {
+      if (item.enabled !== false) out.push(item);
+      continue;
+    }
+    const items = activeWhere(groupItems(item));
+    if (items.length) out.push(isOrGroup(item) ? { or: items } : { and: items });
+  }
+  return out;
+}
+
+// A tool that changes rows (transfer_rows, transform_column) refuses a
+// `where` with nothing on: it would pick every row without saying so.
+export const allOffError = (where: readonly WhereItem[], every: string): string | null =>
+  (where.length > 0 && activeWhere(where).length === 0
+    ? `Every condition in where is turned off (enabled: false), which would pick every row. Turn one on, or ${every}.`
+    : null);
 
 const EXAMPLE = '{"column":"Status","operator":"eq","value":"Done"}';
+const KEYS = ['column', 'operator', 'value', 'values', 'enabled'];
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-// One condition's shape: known keys and types only.
+// One condition's shape: known keys and types only. "enabled": true is the
+// default and isn't kept.
 function conditionShape(raw: unknown): FilterCondition | string {
   if (!isObject(raw)) return `Each where condition is an object like ${EXAMPLE}.`;
-  const extra = Object.keys(raw).filter(k => !['column', 'operator', 'value', 'values'].includes(k));
+  const extra = Object.keys(raw).filter(k => !KEYS.includes(k));
   if (extra.length) {
-    return extra.includes('or')
-      ? 'An OR group holds conditions, not other groups: {"or":[condition, condition]}.'
-      : `Unknown key "${extra[0]}" in a where condition. A condition has column, operator, and value or values.`;
+    return `Unknown key "${extra[0]}" in a where condition. A condition has column, operator, value or values, `
+      + 'and enabled.';
   }
   if (raw.column !== undefined && typeof raw.column !== 'string') return 'A where column is a column name (text).';
   if (!isFilterOp(String(raw.operator))) {
@@ -44,40 +80,53 @@ function conditionShape(raw: unknown): FilterCondition | string {
   if (raw.values !== undefined && (!Array.isArray(raw.values) || raw.values.some(v => typeof v !== 'string'))) {
     return 'values is a list of strings, e.g. ["SaaS","Fintech"].';
   }
-  return raw as unknown as FilterCondition;
+  if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') {
+    return 'enabled is true or false (false turns the condition off).';
+  }
+  const { enabled, ...condition } = raw;
+  return (enabled === false ? { ...condition, enabled: false } : condition) as unknown as FilterCondition;
 }
 
-// The shape of a JSON `where` (REST bodies, stored link options; MCP's zod
-// schema in mcp/tool-helpers.ts says the same). What the values mean is
-// checked against the sheet by checkWhere.
+// One item, a group read with its items. depth: groups around it.
+function itemShape(raw: unknown, depth: number, count: { n: number }): WhereItem | string {
+  if (!isObject(raw) || !('or' in raw || 'and' in raw)) {
+    const shaped = conditionShape(raw);
+    if (typeof shaped !== 'string') count.n++;
+    return shaped;
+  }
+  if ('or' in raw && 'and' in raw) return 'A group is {"or":[...]} or {"and":[...]}, not both: nest one in the other.';
+  const key = 'or' in raw ? 'or' : 'and';
+  const name = key.toUpperCase();
+  if (Object.keys(raw).length !== 1) return `An ${name} group has only "${key}": {"${key}":[condition, ...]}.`;
+  if (depth >= MAX_WHERE_DEPTH) return `Groups can sit inside groups at most ${MAX_WHERE_DEPTH} deep.`;
+  const list = raw[key];
+  if (!Array.isArray(list) || list.length === 0) {
+    return `An ${name} group is {"${key}":[condition, ...]} with at least one condition or group.`;
+  }
+  const items: WhereItem[] = [];
+  for (const item of list) {
+    const shaped = itemShape(item, depth + 1, count);
+    if (typeof shaped === 'string') return shaped;
+    items.push(shaped);
+  }
+  return key === 'or' ? { or: items } : { and: items };
+}
+
+// The shape of a JSON `where` (REST bodies, stored link options, MCP's
+// loosely typed groups via services/row-filter.ts prepareWhere). What the
+// values mean is checked against the sheet by checkWhere.
 export function parseWhere(raw: unknown): { where: WhereItem[] } | { error: string } {
   if (!Array.isArray(raw) || raw.length === 0) {
-    return { error: 'where must be a non-empty list of conditions (and OR groups).' };
+    return { error: 'where must be a non-empty list of conditions (and groups).' };
   }
   const where: WhereItem[] = [];
-  let count = 0;
+  const count = { n: 0 };
   for (const item of raw) {
-    if (isObject(item) && 'or' in item) {
-      if (Object.keys(item).length !== 1) return { error: 'An OR group has only "or": {"or":[condition, ...]}.' };
-      if (!Array.isArray(item.or) || item.or.length === 0) {
-        return { error: 'An OR group is {"or":[condition, ...]} with at least one condition.' };
-      }
-      const group: FilterCondition[] = [];
-      for (const c of item.or) {
-        const shaped = conditionShape(c);
-        if (typeof shaped === 'string') return { error: shaped };
-        group.push(shaped);
-      }
-      count += group.length;
-      where.push({ or: group });
-    } else {
-      const shaped = conditionShape(item);
-      if (typeof shaped === 'string') return { error: shaped };
-      count++;
-      where.push(shaped);
-    }
+    const shaped = itemShape(item, 0, count);
+    if (typeof shaped === 'string') return { error: shaped };
+    where.push(shaped);
   }
-  if (count > MAX_WHERE_CONDITIONS) return { error: `where can hold at most ${MAX_WHERE_CONDITIONS} conditions.` };
+  if (count.n > MAX_WHERE_CONDITIONS) return { error: `where can hold at most ${MAX_WHERE_CONDITIONS} conditions.` };
   return { where };
 }
 
@@ -109,6 +158,9 @@ export function conditionValueError(c: FilterCondition): string | null {
     return `${op} requires a non-empty value`;
   }
   if (isNumberOp(op) && asNumber(c.value) === null) return `${op} requires a numeric value`;
+  if (isDateOp(op) && asDate(c.value) === null) {
+    return `${op} requires a date, like 2024-01-31 or Jan 31, 2024 ("${c.value}" isn't one).`;
+  }
   return null;
 }
 
@@ -121,7 +173,8 @@ export interface WhereSheet {
 const RUN_KINDS = 'AI, HTTP API or enrichment column';
 
 // The `where` against the sheet: its columns exist, its values fit their
-// operators, and run-state operators name run columns. null = fine.
+// operators, and run-state operators name run columns. Off conditions are
+// checked too: turning one on must not find it broken. null = fine.
 export function checkWhere(where: readonly WhereItem[], sheet: WhereSheet): string | null {
   const conditions = whereConditions(where);
   // Every surface, MCP's schema-checked `where` included (parseWhere counts REST's).

@@ -5,8 +5,11 @@
 // "⏭️ Condition not met" instead of a run, and costs nothing.
 import { resolveColumnRef, suggestColumn } from './column-ref-resolve';
 import { holdsRunMarker } from './run-markers';
-import { asNumber, foldText, numberPasses, textPasses } from './row-filter/ops';
-import { parseRule, RuleError, MAX_RULE_CHARS, type Compare, type RuleNode } from './run-condition-parse';
+import { asDate } from './row-filter/dates';
+import { asNumber, datePasses, foldText, numberPasses, textPasses } from './row-filter/ops';
+import {
+  parseRule, RuleError, MAX_RULE_CHARS, type Compare, type DateCompareOp, type RuleNode,
+} from './run-condition-parse';
 import type { EnrichCondition } from './enrich-run-config';
 
 export { RuleError, MAX_RULE_CHARS } from './run-condition-parse';
@@ -24,6 +27,8 @@ const quote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
 const OP_TEXT: Record<Compare['op'], string> = {
   is: 'is', is_not: 'is not', contains: 'contains', not_contains: 'does not contain',
   empty: 'is empty', not_empty: 'is not empty', gt: '>', lt: '<', gte: '>=', lte: '<=',
+  on: 'is on', not_on: 'is not on', before: 'is before', after: 'is after',
+  on_or_before: 'is on or before', on_or_after: 'is on or after',
 };
 
 // The rule as Cubex writes it back: one spelling per operator, AND/OR/NOT in
@@ -53,6 +58,14 @@ export function checkRule(text: string, sheetColumns: string[]): CheckedRule {
     if (col.includes('}}')) throw new RuleError(`"${col}" can't be used in a rule: rename it without "}}".`);
     c.column = col;
     used.add(col);
+    if (isDateCompare(c.op) && asDate(c.value) === null) {
+      throw new RuleError(`"${c.value}" isn't a date. Write one like "2024-01-31" or "Jan 31, 2024".`);
+    }
+    // > and < compare numbers: on a date they'd never pass.
+    if (['gt', 'lt', 'gte', 'lte'].includes(c.op) && asNumber(c.value) === null && asDate(c.value) !== null) {
+      throw new RuleError(`${OP_TEXT[c.op]} compares numbers. For dates write is before, is after, `
+        + `is on or before or is on or after "${c.value}".`);
+    }
   });
   return { rule: formatRule(tree), tree, columns: [...used] };
 }
@@ -73,6 +86,9 @@ export function ruleColumns(rule: string): string[] {
 // so a rule and a filter read a cell alike.
 const TEXT_OP = { is: 'eq', is_not: 'neq', contains: 'contains', not_contains: 'not_contains',
   empty: 'empty', not_empty: 'not_empty' } as const;
+const DATE_OP = { on: 'date_eq', not_on: 'date_neq', before: 'date_lt', after: 'date_gt',
+  on_or_before: 'date_lte', on_or_after: 'date_gte' } as const;
+const isDateCompare = (op: Compare['op']): op is DateCompareOp => op in DATE_OP;
 
 function comparePasses(c: Compare, data: Record<string, string>): boolean {
   const raw = data[c.column] ?? '';
@@ -81,6 +97,7 @@ function comparePasses(c: Compare, data: Record<string, string>): boolean {
   if (c.op === 'gt' || c.op === 'lt' || c.op === 'gte' || c.op === 'lte') {
     return numberPasses(c.op, asNumber(cell), asNumber(c.value));
   }
+  if (isDateCompare(c.op)) return datePasses(DATE_OP[c.op], asDate(cell), asDate(c.value));
   // `is 50` (a bare number) also matches "50.0" and "1,000" = 1000.
   if (c.numeric && (c.op === 'is' || c.op === 'is_not')) {
     const a = asNumber(cell), b = asNumber(c.value);
@@ -91,7 +108,8 @@ function comparePasses(c: Compare, data: Record<string, string>): boolean {
 
 // True = the row runs. Text compares ignore case and outer spaces; a cell
 // holding a run's own word (⏳, ❌, ⏭️, ➕) reads as empty; >, <, >= and <=
-// need a number on both sides (commas allowed), else the check fails.
+// need a number on both sides (commas allowed), and is before, is after and
+// is on a date on both sides (row-filter/dates.ts), else the check fails.
 export function rulePasses(tree: RuleNode, data: Record<string, string>): boolean {
   if (tree.kind === 'cmp') return comparePasses(tree, data);
   if (tree.kind === 'not') return !rulePasses(tree.item, data);

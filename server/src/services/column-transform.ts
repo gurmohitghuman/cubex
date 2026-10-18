@@ -16,6 +16,7 @@ import {
 import { getLockedRunColumns } from '../routes/sheets-shared';
 import { cellOf } from './row-selection';
 import { prepareWhere } from './row-filter';
+import { allOffError } from '../lib/row-filter/where';
 import type { WhereItem } from '../lib/row-filter/where';
 import {
   applyCellOp, applyTemplate, validateRegexPattern, type TransformOp,
@@ -71,6 +72,8 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
   if (p.where?.length) {
     const prepared = prepareWhere(p.sheetId, userId, p.where, columns);
     if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
+    const off = allOffError(p.where, 'leave where out to transform every row');
+    if (off) return { fail: 'invalid', error: off };
     filter = prepared.ok.filter;
   }
 

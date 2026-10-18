@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { viewsAPI, type Sheet, type SheetData, type ViewStarter } from '@/utils/api'
+import type { WhereItem } from '@/utils/api/views'
 import { activeViewOf } from '@/lib/views'
 import { viewChanged } from './viewChanged'
 import { PENDING_HIDDEN_MS } from '@/lib/constants'
@@ -11,6 +12,9 @@ interface Args {
   setSheetData: React.Dispatch<React.SetStateAction<SheetData | null>>
   reloadActiveSheet: (opts?: { silent?: boolean }) => Promise<void> | void
 }
+
+// A change made in a view that is no longer showing: the sheet reloads, no toast.
+const VIEW_MOVED = 'Another view is showing now.'
 
 const errorText = (e: unknown, fallback: string): string =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback
@@ -39,20 +43,26 @@ export function useSheetViews({ activeSheet, sheetData, setSheetData, reloadActi
   const hiddenColumns = useMemo(() => (hiddenKey ? hiddenKey.split('\u0000') : []), [hiddenKey])
 
   // One view change after the ones before it, then a reload of the sheet.
-  const queue = useCallback((fallback: string, call: (sheetId: string) => Promise<unknown>) => {
-    if (!activeSheet) return Promise.resolve(false)
+  // null: done; else what went wrong (another view showing reloads it).
+  const run = useCallback((fallback: string, call: (sheetId: string) => Promise<unknown>) => {
+    if (!activeSheet) return Promise.resolve<string | null>(fallback)
     const sheetId = activeSheet.id
     const done = saveChain.current.then(() => call(sheetId)).then(async () => {
       if (activeSheet.id === sheetId) await reloadActiveSheet({ silent: true })
-      return true
+      return null
     }).catch(async e => {
-      if (viewChanged(e)) await reloadActiveSheet({ silent: true })
-      else toast.error(errorText(e, fallback))
-      return false
+      if (!viewChanged(e)) return errorText(e, fallback)
+      await reloadActiveSheet({ silent: true })
+      return VIEW_MOVED
     })
     saveChain.current = done
     return done
   }, [activeSheet, reloadActiveSheet])
+  const queue = useCallback((fallback: string, call: (sheetId: string) => Promise<unknown>) =>
+    run(fallback, call).then(problem => {
+      if (problem && problem !== VIEW_MOVED) toast.error(problem)
+      return problem === null
+    }), [run])
 
   const switchTo = useCallback((viewId: string) =>
     queue('Could not switch views. Please try again.', id => viewsAPI.activate(id, viewId)), [queue])
@@ -66,9 +76,10 @@ export function useSheetViews({ activeSheet, sheetData, setSheetData, reloadActi
   const starter = useCallback((kind: ViewStarter) =>
     queue('Could not add the view. Please try again.', id => viewsAPI.starter(id, kind)), [queue])
   const activeId = active?.id ?? null
-  const clearRowFilter = useCallback(() =>
-    queue('Could not clear the filter. Please try again.', id => viewsAPI.clearRowFilter(id, activeId)),
-  [queue, activeId])
+  // The filter panel's whole filter; the panel shows what went wrong itself.
+  const saveFilters = useCallback((where: WhereItem[] | null) =>
+    run('Could not apply the filter. Please try again.', id => viewsAPI.saveFilters(id, activeId, where)),
+  [run, activeId])
 
   const setHidden = useCallback((next: string[]) => {
     if (!activeSheet || !active) return
@@ -107,7 +118,7 @@ export function useSheetViews({ activeSheet, sheetData, setSheetData, reloadActi
 
   return {
     views, active, hiddenColumns, hiddenSet, saveChain,
-    switchTo, create, rename, remove, starter, clearRowFilter, setHidden, hideColumn,
+    switchTo, create, rename, remove, starter, saveFilters, setHidden, hideColumn,
   }
 }
 
