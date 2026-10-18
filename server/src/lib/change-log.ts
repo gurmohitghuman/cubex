@@ -16,7 +16,7 @@ export type ChangeAction =
   | 'webhook' | 'setup_used' | 'description'
   | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored'
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
-  | 'rows_moved_in' | 'rows_moved_out';
+  | 'rows_moved_in' | 'rows_moved_out' | 'sample_created';
 
 export interface ChangeExtra { column?: string | null; detail?: Record<string, unknown> }
 

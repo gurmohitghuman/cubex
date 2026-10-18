@@ -5,8 +5,9 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { getDraft, deleteDraft } from '../lib/ai-drafts';
 
 // AI Column draft hydration surface.
-// Read + delete only — the draft is WRITTEN exclusively by /ai/preview (server-
-// side, from the exact data the preview used) and CONSUMED by /ai/run. There is
+// Read + delete only — the draft is WRITTEN by /ai/preview (server-side, from
+// the exact data the preview used; the sample table writes a config-only one,
+// services/sample-table.ts) and CONSUMED by /ai/run. There is
 // deliberately no PUT: a client-supplied draft would carry client-computed
 // hashes, which the credit-reuse promotion must never trust.
 const router = express.Router();

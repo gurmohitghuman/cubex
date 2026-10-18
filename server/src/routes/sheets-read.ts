@@ -19,6 +19,7 @@ import { sheetColumnDescriptions } from '../lib/column-descriptions';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 import { waterfallColumnSpend } from '../services/waterfall-status';
 import { autoDedupeView } from '../services/auto-dedupe-setting';
+import { isSampleSheet } from '../services/sample-table';
 
 const RUN_MAIN_TYPES = new Set<string | undefined>(['ai-output', 'http-master', 'enrich-status', 'waterfall']);
 
@@ -123,6 +124,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
         columnDescriptions, runColumns,
         // Auto-dedupe's setting (services/auto-dedupe-setting.ts): the toolbar shows it's on.
         autoDedupe: autoDedupeView(id, req.userId!),
+        // The sample sheet (services/sample-table.ts) shows its guide above the grid.
+        sample: isSampleSheet(id, req.userId!),
       },
     });
   } catch (error) {

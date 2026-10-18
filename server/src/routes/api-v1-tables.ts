@@ -6,6 +6,8 @@ import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth'
 import { listTablesWithSheets } from '../services/workspace-read';
 import { createTable, renameTable, deleteTable, tableFailHttpStatus } from '../services/table-crud';
 import { trashAnswer } from '../services/trash-answer';
+import { createSampleTable } from '../services/sample-table';
+import { sampleAnswer } from '../services/sample-answer';
 
 const router = express.Router();
 
@@ -31,6 +33,19 @@ router.post('/tables', requireScope('write'), (req: TokenAuthRequest, res) => {
   } catch (error) {
     console.error('POST /v1/tables error:', error);
     res.status(500).json({ error: 'Failed to create table' });
+  }
+});
+
+// POST /v1/tables/sample — a new table of made-up leads, its free columns
+// filled and its AI column set up but not run (services/sample-table.ts).
+router.post('/tables/sample', requireScope('write'), async (req: TokenAuthRequest, res) => {
+  try {
+    const result = await createSampleTable(req.userId!);
+    if ('fail' in result) return res.status(400).json({ error: result.message });
+    res.status(201).json(sampleAnswer(result.ok, 'rest'));
+  } catch (error) {
+    console.error('POST /v1/tables/sample error:', error);
+    res.status(500).json({ error: 'Failed to create the sample table' });
   }
 });
 

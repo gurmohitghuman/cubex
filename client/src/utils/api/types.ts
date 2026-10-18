@@ -81,6 +81,8 @@ export interface SheetData {
     autoDedupe?: AutoDedupeView | null
     // Each column a run fills (AI, HTTP API, enrichment, waterfall) → its run's main column.
     runColumns?: Record<string, string>
+    // The sample sheet (Try with sample data): it shows its guide above the grid.
+    sample?: boolean
   }
 }
 

@@ -6,7 +6,8 @@ import { AI_DRAFT_MAX_PREVIEW_BYTES } from './constants';
 
 // AI Column draft persistence (ai_column_drafts, migration 030) — the modal's
 // config + last COMPLETE preview, one row per (user, sheet). Written by
-// /ai/preview (config at stream start, results all-or-nothing at stream end),
+// /ai/preview (config at stream start, results all-or-nothing at stream end)
+// and, config only, by the sample table (services/sample-table.ts);
 // read by GET /ai/drafts/:sheetId (modal hydration) and by run-start promotion
 // (lib/ai-run-promote.ts — credit reuse). Deliberately separate from ai_runs:
 // this is MODAL state, not run state.
