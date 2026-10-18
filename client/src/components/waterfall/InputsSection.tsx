@@ -6,6 +6,7 @@ interface Props {
   inputs: DraftInput[]
   columns: string[]
   onChange: (inputs: DraftInput[]) => void
+  inUse: Set<string>      // inputs a step reads or requires: they stay
 }
 
 const KEY = /^[a-z][a-z0-9_]{0,39}$/
@@ -16,7 +17,7 @@ const keyOf = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/
 // fixed value): every step reads these, never a column, so moving a column
 // changes every step at once. An input left unmapped reads empty, and a step
 // that needs it skips its rows.
-export const InputsSection: React.FC<Props> = ({ inputs, columns, onChange }) => {
+export const InputsSection: React.FC<Props> = ({ inputs, columns, onChange, inUse }) => {
   const [adding, setAdding] = useState('')
   const set = (i: number, patch: Partial<DraftInput>) =>
     onChange(inputs.map((x, k) => (k === i ? { ...x, ...patch } : x)))
@@ -58,8 +59,9 @@ export const InputsSection: React.FC<Props> = ({ inputs, columns, onChange }) =>
                   aria-label={`${input.label} value`} onChange={e => set(i, { source: { value: e.target.value } })} />
               )}
             </div>
-            <button type="button" className="p-1.5 mt-1 text-gray-400 hover:text-gray-700"
-              aria-label={`Remove ${input.label}`}
+            <button type="button" className="p-1.5 mt-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+              aria-label={`Remove ${input.label}`} disabled={inUse.has(input.key)}
+              title={inUse.has(input.key) ? 'A step reads it: change that step first' : undefined}
               onClick={() => onChange(inputs.filter((_, k) => k !== i))}>
               <X className="h-3.5 w-3.5" />
             </button>

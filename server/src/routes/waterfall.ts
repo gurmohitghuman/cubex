@@ -18,6 +18,7 @@ import { resumeWaterfallRun } from '../services/waterfall-agent-control';
 import { startWaterfallDryRun } from '../services/waterfall-dry-run';
 import { readDryRun } from '../services/waterfall-dry-read';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
+import { WATERFALL_TEMPLATES } from '../lib/waterfall/templates';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -38,6 +39,11 @@ function handle(what: string, fn: (req: AuthRequest, res: express.Response, shee
     }
   };
 }
+
+// The starter waterfalls for the drawer's first screen (fixed, so it answers at once).
+router.get('/templates', (_req: AuthRequest, res) => {
+  res.json(WATERFALL_TEMPLATES);
+});
 
 router.post('/sheets/:id/estimate', handle('estimate the waterfall', async (req, res, id) => {
   const parsed = parseWaterfallInput(req.body);

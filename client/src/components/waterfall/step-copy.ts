@@ -72,6 +72,22 @@ export function defaultNeeds(s: DraftStep, inputs: DraftInput[]): string {
   return keys.length ? keys.map(label).join(' + ') : 'nothing'
 }
 
+// The input keys a step reads or requires: one in use can't be removed (its
+// build would refuse a reference to an input that isn't there).
+export function stepInputKeys(s: DraftStep, keys: string[]): string[] {
+  const c = s.choices
+  const refs = (text: string) => keys.filter(k => new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`).test(text))
+  const used = new Set<string>((s.requires ?? []).flat())
+  const add = (ks: string[]) => ks.forEach(k => used.add(k))
+  if (c.kind === 'enrichment') add(Object.values(c.inputs).filter((v): v is string => typeof v === 'string'))
+  if (c.kind === 'ai') add(keys.filter(k => new RegExp(`(^|[^/:\\w])/${k}\\b`).test(c.prompt)))
+  if (c.kind === 'http') add(refs([c.url, c.body ?? '', ...Object.entries(c.headers).flat()].join(' ')))
+  if (c.kind === 'formula') add(refs(c.formula))
+  if (c.kind === 'lookup' && c.inputKey) used.add(c.inputKey)
+  if (s.check?.kind === 'formula') add(refs(s.check.formula))
+  return [...used]
+}
+
 export const OUTCOME_TEXT: Record<StepOutcome, string> = {
   answered: 'Answered', rejected: 'Rejected by its check', not_found: 'Found nothing', no_inputs: 'Skipped: no inputs',
   error: 'Failed', budget: 'Reached its cost cap',

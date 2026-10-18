@@ -131,6 +131,12 @@ export interface DryRunView {
   steps: Array<{ id: string; label: string; kind: StepKind }>; rows: DryRow[]
 }
 
+// A starter waterfall (server lib/waterfall/templates.ts): its steps as a start request takes them.
+export interface WaterfallTemplateView {
+  id: string; title: string; description: string; resultType: ResultType
+  inputs: Array<{ key: string; label: string }>; steps: StepInput[]
+}
+
 export interface WaterfallRerunRequest {
   column: string; status: RowsStatus; rowIndexes?: number[]; rowGeneration?: number; spendLimitUsd?: number
   noReuse?: boolean   // this run asks every step afresh ("Run this row again")
@@ -142,6 +148,9 @@ export const waterfallAPI = {
 
   start: (sheetId: string, body: WaterfallRunInput): Promise<WaterfallStarted> =>
     api.post(`/waterfall/sheets/${sheetId}/runs`, body, noServerToast).then(res => res.data),
+
+  templates: (): Promise<WaterfallTemplateView[]> =>
+    api.get('/waterfall/templates', noServerToast).then(res => res.data),
 
   columnSetup: (sheetId: string, column: string): Promise<WaterfallSetup> =>
     api.get(`/waterfall/sheets/${sheetId}/column-setup`, { ...noServerToast, params: { column } })
