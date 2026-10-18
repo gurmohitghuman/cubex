@@ -84,11 +84,12 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | Tool | What it does |
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
-| `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. |
+| `get_sheet` | A sheet's columns, row count, description, and how many rows and columns are left. `column_details` says what each column is and what fills it, and `include_counts` adds how many rows are filled, empty or errors. Also lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. See [Column details](#column-details). |
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. `group_by` and `aggregates` count, sum and average per value instead of reading rows, and `columns` can take one value out of a JSON cell. See [Finding rows](#finding-rows). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
-| `add_column`, `rename_column`, `delete_column` | Manage columns. |
+| `add_column`, `rename_column`, `delete_column` | Manage columns. `add_column` takes an optional `description`. |
+| `set_description` | Describe a column, or the sheet when `column` is left out. See [Descriptions](#descriptions). |
 | `sort_sheet` | Permanently reorders the rows by a column. |
 | `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. |
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
@@ -181,6 +182,37 @@ An item of `columns` can take one value out of a cell holding JSON, such as an H
 A view is a name, an optional description, filters and hidden columns. It never sorts rows (a sort is a one-time reorder of the sheet) and never changes the column order. Every sheet has a **Default** view, which can't be deleted. In the app, switch views from the bar above the grid; a new view starts as a copy of the one showing, and changing a filter or hiding a column changes the view showing. The view menu also offers two ready-made views, made only when you pick one: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result).
 
 `read_rows`, `export_csv` and `create_download_link` (and REST `rows/query` and `export`) take `view`, a view's name or id, or `active` for the one the app shows: its filters are added to `where`, and when it hides columns its visible columns are the columns unless you pass `columns`. A read through a view answers `view_version`; to page, send it back as `expected_view_version` (plus `expected_data_version` and `expected_row_generation` when the view filters), and you're asked to start again if someone switched or edited the view in between. `get_sheet` lists the views, each with its filters as a `where`. Agents read views; to create or change them, use the app or the REST endpoints below.
+
+## Column details
+
+`get_sheet` returns `column_details`: every column in the sheet's order, saying what it is and what fills it, so an agent can tell an AI column from a typed one before it runs or fixes anything.
+
+```json
+{"name": "Work email", "kind": "enrichment", "role": "status", "description": "Checked work email",
+ "fill": {"run_id": "…", "run_status": "completed", "tool_id": "work_email", "tool_name": "Work email",
+          "max_cost_per_row_usd": 0.05, "spend_limit_usd": 10},
+ "reads": ["Name", "Domain"], "auto_run": true, "auto_run_caps": {"usd_per_day": 5},
+ "run_if": "{{Title}} contains \"VP\"", "counts": {"filled": 412, "empty": 80, "errors": 8}}
+```
+
+- `kind` is `plain`, `ai`, `http`, `enrichment`, `webhook`, `clean`, `formula` or `lookup`.
+- A run that fills several columns describes its run on its main column. The others say which part they are (`role`) and name the main column in `filled_by`: an AI run's `answer` column, or its `status` column with `output` columns and a `sources` ("(Data)") column; an HTTP API column's `response` column and its `field` columns (with their `json_path`); an enrichment's `status` column and its `output` columns; a webhook's `payload` column and its `field` columns.
+- `fill` is the column's newest run (`run_id` and `run_status`, for `get_run_status` and `control_run`) with its settings: an AI run's model and prompt, an HTTP API column's method, URL and header names (never their values; a key typed into the URL reads `…`), an enrichment's tool and its limits. A clean, formula or lookup column shows its setup.
+- `reads` lists the columns it reads. `auto_run` says whether it fills new rows on its own (`auto_run_paused` says why it stopped, `auto_run_caps` gives its daily caps). `run_if` is the "Only run if" rule its next run checks.
+- Prompts, formulas and URLs are cut to 300 characters. Name columns in `columns` to see them in full (up to 10,000 characters each and 40,000 in one answer; past that they are cut too). A very wide sheet lists its later columns by name and kind only, and `column_details_note` says so.
+- `include_counts: true` adds `counts` to each column: `filled` (a value), `errors` (a failed run, or a cell starting with `❌`) and `empty` (the rest: blank, not run yet, skipped, condition not met, running). They agree with the `has_result` and `has_error` filters: an output column of a failed run counts as an error. Counting reads every row, about 0.7 s per column on a million rows, so it counts up to 20 columns: the ones in `columns`, or else the first 20. `counts_note` says what wasn't counted and why (a column still filling, or the sheet busy with an import or a sort).
+
+REST: `GET /api/v1/sheets/:id?include_counts=true&columns=Email&columns=Phone`.
+
+## Descriptions
+
+A sheet and each column can have a description: a few words on what it holds, where its values come from or how to read them. People see a column's when they point at its name (an ⓘ marks it) and a sheet's when they point at its tab; agents read them in `get_sheet` (`description` and `column_details`). Descriptions are never added to AI prompts.
+
+- `set_description` with `sheet_id`, `column` and `description` describes a column; leave `column` out to describe the sheet. An empty `description` removes it.
+- Up to 1,000 characters for a column and 2,000 for a sheet. Line breaks are kept; invisible and direction-changing characters are removed.
+- Renaming a column keeps its description; deleting the column deletes it.
+- In the app: a column's menu has **Edit description…**, and so does a sheet tab's menu (the ⌃ on the tab).
+- REST: `PATCH /sheets/:id/columns/:name` and `PATCH /tables/:tableId/sheets/:sheetId` take `description`, and `POST /sheets/:id/columns` takes it with the new column's `name`.
 
 ## Only run if
 
@@ -384,17 +416,17 @@ All paths below are relative to `/api/v1`.
 | `POST /tables` · `PATCH /tables/:id` | `{"name": "Leads"}` |
 | `DELETE /tables/:id` | Deletes the table, its sheets and their rows. Stops its runs first. |
 | `POST /tables/:tableId/sheets` | `{"name": "Q3", "after_sheet_id": "..."}` (both optional) |
-| `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` |
+| `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` to rename, `{"description": "…"}` to describe (`""` removes it), or both. |
 | `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
-| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its clean, formula and lookup columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
-| `POST /sheets/:id/columns` | `{"name": "Status"}` |
+| `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its `description` and `column_details` (see [Column details](#column-details); `?include_counts=true` counts rows, `&columns=Email` names columns to show in full and count first), its clean, formula and lookup columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
+| `POST /sheets/:id/columns` | `{"name": "Status"}`, plus an optional `description`. |
 | `POST /sheets/:id/formula-columns` | `{"column": "Work email", "formula": "{{Response}}?.emails?.find(e => e.type == \"work\")?.value"}`, plus optional `description`, `auto_run` and `preview`. Same as `formula_column` (see [Formulas](#formulas)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/lookup-columns` | `{"column": "Industry", "source_column": "Domain", "other_sheet_id": "…", "match_column": "Website", "returns": "value", "return_column": "Industry"}`, plus optional `match`, `return_columns`, `limit`, `auto_run` and `preview`. Same as `lookup_column` (see [Lookups](#lookups)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
 | `POST /sheets/:id/formula-columns/write` | `{"words": "the work email from Response"}`, plus optional `model`. Same as `write_formula`. `run` scope. |
 | `POST /sheets/:id/remove-duplicates` | `{"columns": ["Email"], "keep": "first", "dry_run": false}`. Same as `remove_duplicates` (see [Remove duplicates](#remove-duplicates)): a dry run unless `dry_run` is `false`. `read` scope for a dry run, `write` to remove. |
 | `POST /sheets/:id/clean-columns` | `{"source_column": "Name", "cleaner": "first_name"}`, plus optional `column`, `phone_format`, `phone_country`, `auto_run` and `preview`. Same as `clean_column` (see [Clean data](#clean-data)). `201` for a new column, `200` for a changed one or a preview. `write` scope. |
-| `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` (URL-encode the old name) |
+| `PATCH /sheets/:id/columns/:name` | `{"name": "New name"}` to rename (URL-encode the old name), `{"description": "…"}` to describe (`""` removes it), or both: the description is checked first, so a bad one changes nothing. |
 | `DELETE /sheets/:id/columns/:name` | |
 | `PUT /sheets/:id/columns/order` | `{"order": ["Email", "Company", "Status"]}` (every column, once) |
 | `POST /sheets/:id/sort` | `{"column": "Score", "direction": "desc"}`. Permanently reorders the rows. |

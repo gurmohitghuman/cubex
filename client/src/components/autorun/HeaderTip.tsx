@@ -20,7 +20,7 @@ export const HeaderTip: React.FC<Props> = ({ text, amber, children }) => {
         <div role="tooltip" data-testid="header-tip"
           className="fixed z-50 max-w-xs bg-white border border-gray-200 shadow-md px-2.5 py-2 text-xs space-y-1"
           style={{ top: at.bottom + 6, left: Math.max(8, Math.min(at.left, window.innerWidth - 328)) }}>
-          {text && <p className="text-gray-700">{text}</p>}
+          {text && <p className="text-gray-700 whitespace-pre-line break-words">{text}</p>}
           {amber && <p className="text-amber-700">{amber}</p>}
         </div>,
         document.body,

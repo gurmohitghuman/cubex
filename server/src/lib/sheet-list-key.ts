@@ -3,7 +3,7 @@ import { db } from './db';
 import { ADDING_ROWS_SQL } from './sheet-crud-helpers';
 
 // A short fingerprint of a table's name and its tab list (ids, names, order,
-// and which tabs have rows being added: lib/sheet-crud-helpers.ts).
+// descriptions, and which tabs have rows being added: lib/sheet-crud-helpers.ts).
 // The table GET hands it to the client and the sheet change-poll resolves when
 // it moves, so a tab opened before a sheet was created, renamed, reordered or
 // deleted elsewhere (the API, MCP, another tab) refreshes its tab bar. Null
@@ -14,11 +14,11 @@ export function sheetListKey(tableId: string, userId: string): string | null {
     { name: string } | undefined;
   if (!table) return null;
   const sheets = db.prepare(
-    `SELECT id, name, ${ADDING_ROWS_SQL} AS adding FROM sheets WHERE table_id = ? AND user_id = ?
+    `SELECT id, name, description, ${ADDING_ROWS_SQL} AS adding FROM sheets WHERE table_id = ? AND user_id = ?
       ORDER BY position, created_at`,
-  ).all(tableId, userId) as Array<{ id: string; name: string; adding: number }>;
+  ).all(tableId, userId) as Array<{ id: string; name: string; description: string | null; adding: number }>;
   const h = createHash('sha1').update(table.name);
   // A tab's dot (rows being added to it) moves the key too.
-  for (const s of sheets) h.update(`\u0000${s.id}\u0000${s.name}\u0000${s.adding}`);
+  for (const s of sheets) h.update(`\u0000${s.id}\u0000${s.name}\u0000${s.adding}\u0000${s.description ?? ''}`);
   return h.digest('base64url').slice(0, 16);
 }

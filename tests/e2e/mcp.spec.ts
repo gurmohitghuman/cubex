@@ -52,7 +52,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'remove_duplicates',
     'rename_column',
     'run_ai_column', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'search_enrichments', 'set_auto_run',
-    'set_default_model', 'sort_sheet',
+    'set_default_model', 'set_description', 'sort_sheet',
     ...(flagged ? ['transfer_rows', 'transform_column'] : []),
     'update_cells', 'write_formula', 'write_run_condition',
   ])

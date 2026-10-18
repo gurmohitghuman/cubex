@@ -7,6 +7,8 @@ import { addSheetColumn } from '../services/column-add';
 import { renameSheetColumn } from '../services/column-rename';
 import { deleteSheetColumn } from '../services/column-delete';
 import { physicalSortSheet } from '../services/sheet-sort';
+import { describeColumn, describeSheet, descriptionProblem } from '../services/descriptions';
+import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
@@ -18,16 +20,51 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Add a column (empty on every existing row). ' +
-        'Names are Google-Sheets-permissive; case/token variants of existing names are rejected.',
-      inputSchema: { sheet_id: z.string(), name: z.string() },
+        'Names are Google-Sheets-permissive; case/token variants of existing names are rejected. ' +
+        'description (optional) says what the column holds, as set_description does.',
+      inputSchema: {
+        sheet_id: z.string(), name: z.string(),
+        description: z.string().optional().describe('What the column holds, for people and agents'),
+      },
     },
-    async ({ sheet_id, name }) => {
+    async ({ sheet_id, name, description }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      const problem = descriptionProblem(description, 'column');
+      if (problem) return err(problem);
       const result = addSheetColumn(sheet_id, ctx.userId, name, { bumpDataVersion: true, seedEmptyRow: false });
       if ('fail' in result) return err(result.error);
-      return ok({ name: result.name });
+      if (description === undefined) return ok({ name: result.name });
+      const described = describeColumn(sheet_id, ctx.userId, result.name, description);
+      return ok({ name: result.name, ...('ok' in described ? described.ok : {}) });
+    },
+  );
+
+  registerTool(server,
+    'set_description',
+    {
+      description:
+        'Describe a column, or the sheet itself when column is left out: what it holds, where its values come '
+        + 'from, how to read it. People see it in the app (on the column header, on the sheet\'s tab) and agents '
+        + 'in get_sheet (description and column_details). It is never sent to AI runs. An empty description '
+        + `clears it. Up to ${MAX_COLUMN_DESCRIPTION_CHARS.toLocaleString('en-US')} characters for a column, `
+        + `${MAX_SHEET_DESCRIPTION_CHARS.toLocaleString('en-US')} for a sheet. Renaming a column keeps its `
+        + 'description; deleting it deletes the description too.',
+      inputSchema: {
+        sheet_id: z.string(),
+        column: z.string().optional().describe('The column to describe; leave out to describe the sheet'),
+        description: z.string().describe('The words; "" clears it'),
+      },
+    },
+    async ({ sheet_id, column, description }) => {
+      const denied = missingScope(ctx, 'write');
+      if (denied) return denied;
+      const outcome = column === undefined
+        ? describeSheet(sheet_id, ctx.userId, description)
+        : describeColumn(sheet_id, ctx.userId, column, description);
+      if ('fail' in outcome) return err(outcome.message);
+      return ok({ ...(column === undefined ? {} : { column }), description: outcome.ok.description });
     },
   );
 

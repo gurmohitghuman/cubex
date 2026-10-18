@@ -38,6 +38,8 @@ interface BuildColumnDefsArgs {
   hiddenColumns?: ReadonlySet<string>
   // Lookup columns' setups: the header's lookup icon and its hover note.
   lookupColumns?: Record<string, LookupColumnView>
+  // Column descriptions: the header's note.
+  columnDescriptions?: Record<string, string>
   // Digits of the largest row number held: the "#" column's width (a deep window's are long).
   rowNumberDigits?: number
 }
@@ -55,7 +57,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
     columns, columnTypes, columnWidths,
     onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete, openColumnMenu,
     emptyFilter = {}, columnFilters = {}, autorun, columnSpend, cleanColumns, formulaColumns, hiddenColumns,
-    lookupColumns, rowNumberDigits = 1,
+    lookupColumns, columnDescriptions, rowNumberDigits = 1,
   } = args
 
   const rowNumbersColumn: ColDef = {
@@ -139,6 +141,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
           clean: cleanColumns?.[column],
           formula: formulaColumns?.[column],
           lookup: lookupColumns?.[column],
+          description: columnDescriptions?.[column],
         },
       }),
       // Webhook marker column uses its own read-only renderer (marker or muted —);

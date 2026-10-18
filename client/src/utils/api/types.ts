@@ -19,6 +19,8 @@ export interface Sheet {
   id: string
   table_id: string
   name: string
+  // What the sheet is for, in its owner's words (the tab's hover note, its menu's Description).
+  description?: string | null
   position: number
   created_at: string
   updated_at: string
@@ -72,6 +74,8 @@ export interface SheetData {
     views?: SheetView[]
     // Lookup columns' setups, by column (the header icon, the column menu, Edit lookup).
     lookupColumns?: Record<string, LookupColumnView>
+    // Column descriptions, by column (the header's note, the column menu's Description).
+    columnDescriptions?: Record<string, string>
   }
 }
 

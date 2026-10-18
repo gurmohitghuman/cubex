@@ -29,6 +29,7 @@ import { autorunAfterReplace, autorunDropPending, autorunSkipImport } from '../l
 import { forgetUnlistedCleanColumns } from '../lib/clean-columns';
 import { forgetUnlistedFormulaColumns } from '../lib/formula-columns';
 import { forgetUnlistedLookupColumns } from '../lib/lookup-columns';
+import { forgetUnlistedColumnDescriptions } from '../lib/column-descriptions';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
 
@@ -172,6 +173,7 @@ export async function importCsv(
           forgetUnlistedFormulaColumns(sheetId, userId);
           pruneViewsToColumns(sheetId, userId);
           forgetUnlistedLookupColumns(sheetId, userId);
+          forgetUnlistedColumnDescriptions(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {

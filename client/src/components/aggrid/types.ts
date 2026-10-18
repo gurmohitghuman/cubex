@@ -51,6 +51,8 @@ export interface RunMenuActions {
   onSaveSetup?: (columnName: string) => void
   // Hide the column in the view showing (rows and column order don't change).
   onHideColumn?: (columnName: string) => void
+  // Edit description: the dialog opened on the column.
+  onEditDescription?: (columnName: string) => void
 }
 
 export interface AGGridSpreadsheetProps {
@@ -67,6 +69,8 @@ export interface AGGridSpreadsheetProps {
   formulaColumns?: Record<string, FormulaColumnView>
   // Lookup columns' setups: the header's lookup icon and its hover note.
   lookupColumns?: Record<string, LookupColumnView>
+  // Column descriptions: the header's note.
+  columnDescriptions?: Record<string, string>
   data: Array<{ rowIndex: number; data: Record<string, string> }>
   totalRows: number
   onCellEdit: (rowIndex: number, column: string, value: string) => void

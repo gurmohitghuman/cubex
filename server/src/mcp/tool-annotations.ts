@@ -39,6 +39,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   delete_rows: write('Delete rows (permanent)', true, true),
   add_column: write('Add a column', false, false),
   rename_column: write('Rename a column', true, true),
+  set_description: write('Describe a sheet or column', true, true),
   delete_column: write('Delete a column (permanent)', true, true),
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
   // A dry run (the default) changes nothing; a removal deletes rows for good. Repeating it removes nothing more.

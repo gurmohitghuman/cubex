@@ -9,6 +9,7 @@ import { addSheetColumn } from '../services/column-add';
 import { renameSheetColumn } from '../services/column-rename';
 import { deleteSheetColumn } from '../services/column-delete';
 import { reorderSheetColumns } from '../services/column-reorder';
+import { describeColumn, descriptionProblem } from '../services/descriptions';
 
 const router = express.Router();
 
@@ -16,21 +17,24 @@ function ownsSheet(sheetId: string, userId: string): boolean {
   return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
 }
 
-// POST /v1/sheets/:id/columns — add via the shared service (collision 409).
+// POST /v1/sheets/:id/columns {name, description?} — add via the shared service (collision 409).
 router.post('/sheets/:id/columns', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
     if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
 
-    const { name } = req.body as { name?: unknown };
+    const { name, description } = req.body as { name?: unknown; description?: unknown };
     if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'name is required' });
     }
+    const problem = descriptionProblem(description, 'column');
+    if (problem) return res.status(400).json({ error: problem });
     const result = addSheetColumn(sheetId, req.userId!, name, { bumpDataVersion: true, seedEmptyRow: false });
     if ('fail' in result) {
       return res.status(result.fail === 'collision' ? 409 : 400).json({ error: result.error });
     }
-    res.status(201).json({ name: result.name });
+    const described = description === undefined ? null : describeColumn(sheetId, req.userId!, result.name, description);
+    res.status(201).json({ name: result.name, ...(described && 'ok' in described ? described.ok : {}) });
   } catch (error) {
     console.error('POST /v1/sheets/:id/columns error:', error);
     res.status(500).json({ error: 'Failed to add column' });
@@ -54,15 +58,30 @@ router.put('/sheets/:id/columns/order', requireScope('write'), (req: TokenAuthRe
   }
 });
 
-// PATCH /v1/sheets/:id/columns/:name {name} — rename via the shared cascade
-// service (rows.data key, column_order, filters, HTTP-run +
-// http_column_associations + webhook refs, active-run 409).
+// PATCH /v1/sheets/:id/columns/:name {name?, description?} — rename via the
+// shared cascade service (rows.data key, column_order, filters, HTTP-run +
+// http_column_associations + webhook refs, active-run 409), and/or describe it
+// (services/descriptions.ts; "" or null clears). The description is checked
+// before the rename, so a bad one changes nothing.
 router.patch('/sheets/:id/columns/:name', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     if (!ownsSheet(req.params.id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
-    const { name } = req.body as { name?: unknown };
-    if (typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'name is required' });
+    const body = (req.body ?? {}) as { name?: unknown; description?: unknown };
+    const { name } = body;
+    const describing = 'description' in body;
+    if (!describing && (typeof name !== 'string' || !name.trim())) {
+      return res.status(400).json({ error: 'name or description is required' });
+    }
+    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+      return res.status(400).json({ error: 'name must be a non-empty string' });
+    }
+    const problem = describing ? descriptionProblem(body.description, 'column') : null;
+    if (problem) return res.status(400).json({ error: problem });
+    if (typeof name !== 'string') {
+      const described = describeColumn(req.params.id, req.userId!, req.params.name, body.description);
+      if ('fail' in described) return res.status(described.fail === 'not_found' ? 404 : 400)
+        .json({ error: described.message });
+      return res.json({ name: req.params.name, ...described.ok });
     }
     const result = await renameSheetColumn(
       req.params.id, req.userId!, req.params.name, name, { bumpDataVersion: true },
@@ -80,7 +99,9 @@ router.patch('/sheets/:id/columns/:name', requireScope('write'), async (req: Tok
           return res.status(400).json({ error: result.error });
       }
     }
-    res.json({ name: result.newName });
+    if (!describing) return res.json({ name: result.newName });
+    const described = describeColumn(req.params.id, req.userId!, result.newName, body.description);
+    res.json({ name: result.newName, ...('ok' in described ? described.ok : {}) });
   } catch (error) {
     console.error('PATCH /v1/sheets/:id/columns/:name error:', error);
     res.status(500).json({ error: 'Failed to rename column' });

@@ -77,7 +77,7 @@ export const ADDING_ROWS_SQL = `(EXISTS (SELECT 1 FROM http_runs r WHERE r.dest_
   OR EXISTS (SELECT 1 FROM enrichment_list_items li WHERE li.dest_sheet_id = sheets.id
     AND li.status = 'pending' AND li.wait_reason IS NULL AND li.user_id = sheets.user_id))`;
 const SHEET_CLIENT_COLUMNS =
-  `id, table_id, name, position, created_at, updated_at,
+  `id, table_id, name, description, position, created_at, updated_at,
    sort_state, empty_filter, column_filters, row_filter, active_view_id,
    default_ai_model, default_ai_concurrency, row_generation, data_version,
    ${ADDING_ROWS_SQL} AS adding_rows`;

@@ -22,6 +22,13 @@ interface UseColumnRenameArgs {
   setAutosavePaused: (paused: boolean) => void
 }
 
+// A map keyed by column name with one key renamed (the same map when it has no such key).
+function renameKey<T>(map: Record<string, T> | undefined, from: string, to: string): Record<string, T> | undefined {
+  if (!map || !(from in map)) return map
+  const { [from]: value, ...rest } = map
+  return { ...rest, [to]: value }
+}
+
 // Optimistic column rename (Google-Sheets feel) — extracted from useColumnOps to
 // keep both files under the 200-line cap. The new header shows IMMEDIATELY and the
 // save runs in the background; data-safety invariants are preserved (see handler).
@@ -52,6 +59,8 @@ export const useColumnRename = ({
           // Saved views hide columns by name (the server renames them too).
           views: prev.data.views?.map(v => (v.hidden_columns.includes(from)
             ? { ...v, hidden_columns: v.hidden_columns.map(c => (c === from ? to : c)) } : v)),
+          // Its description goes with it (the server moves it too).
+          columnDescriptions: renameKey(prev.data.columnDescriptions, from, to),
           rows: prev.data.rows.map(r => {
             if (!(from in r.data)) return r
             const { [from]: val, ...rest } = r.data

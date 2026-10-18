@@ -9,6 +9,7 @@ import express, { type Response } from 'express';
 import { authenticateToken, type AuthRequest } from '../middleware/auth';
 import { findMatch, countMatches, type SearchCell } from '../services/sheet-search';
 import { columnValueCounts } from '../services/value-counts';
+import { watchGone } from '../lib/request-gone';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -21,13 +22,6 @@ const cellOf = (q: AuthRequest['query']): SearchCell | undefined => {
   const row = int(q.row);
   return row !== undefined && typeof q.column === 'string' ? { row, column: q.column } : undefined;
 };
-
-// Stops a walk once the tab has gone (closed the request).
-function watchGone(res: Response): () => boolean {
-  let gone = false;
-  res.on('close', () => { if (!res.writableFinished) gone = true; });
-  return () => gone;
-}
 
 type Fail = { fail: 'invalid' | 'not_found' | 'view_changed'; error: string };
 function sendFail(res: Response, f: Fail) {

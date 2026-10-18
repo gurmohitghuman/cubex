@@ -75,6 +75,12 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           setRenaming({ x: menu.x, y: menu.y, oldName: menu.columnId, value: menu.columnId })
           setMenu(null)
         }}>Rename column</DropdownMenuItem>
+        {runActions.onEditDescription && (
+          <DropdownMenuItem data-testid="edit-description"
+            onClick={() => { runActions.onEditDescription!(menu.columnId); setMenu(null) }}>
+            Edit description…
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => { onSortChange?.(menu.columnId, 'asc'); setMenu(null) }}>
           Sort ascending

@@ -13,6 +13,8 @@ interface SheetTabsBarProps {
   onSelectSheet: (s: Sheet) => void
   onAddSheet: () => void
   onRenameSheet: (sheetId: string, name: string) => void
+  // Edit description: the dialog opened on the sheet (hooks/sheet/useDescriptions.ts).
+  onDescribeSheet: (s: Sheet) => void
   onDeleteSheet: (s: Sheet) => void
   onReorderSheets: (orderedSheetIds: string[]) => void
   onAddRows: (count: number) => void
@@ -29,7 +31,7 @@ type RenameState = { sheetId: string; value: string } | null
 // matching column reorder (AG-Grid drag) and the Google-Sheets/Excel tab UX; keyboard
 // reorder is a deliberate non-goal here (would be inconsistent with the rest of the app).
 export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
-  sheets, activeSheet, onSelectSheet, onAddSheet, onRenameSheet, onDeleteSheet,
+  sheets, activeSheet, onSelectSheet, onAddSheet, onRenameSheet, onDescribeSheet, onDeleteSheet,
   onReorderSheets, onAddRows,
 }) => {
   const [renaming, setRenaming] = useState<RenameState>(null)
@@ -118,6 +120,8 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                 onClick={() => onSelectSheet(sheet)}
                 onDoubleClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}
                 aria-current={isActive ? 'page' : undefined}
+                // Its description shows on hover.
+                title={sheet.description || undefined}
                 className={`pl-3.5 pr-1.5 text-[13px] cursor-grab active:cursor-grabbing flex items-center gap-1.5 ${
                   isActive ? 'font-semibold' : 'font-medium'}`}
               >
@@ -149,6 +153,9 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                 <DropdownMenuContent className="w-44" align="start" alignOffset={-72} side="top" sideOffset={6}>
                   <DropdownMenuItem onClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}>
                     Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDescribeSheet(sheet)} data-testid="describe-sheet">
+                    Edit description…
                   </DropdownMenuItem>
                   {sheets.length > 1 && (
                     <>

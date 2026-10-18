@@ -2,7 +2,7 @@
 // the UI route and /api/v1 share one implementation. Cascades: rows.data key,
 // column_order, empty_filter, column_filters,
 // http_column_associations, stored HTTP run configs, webhook mappings, auto-run
-// and clean column settings; guards:
+// and clean column settings, descriptions; guards:
 // active-run 409, webhook raw-marker protection, last-column.
 // Over 200 lines: one delete with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
@@ -17,6 +17,7 @@ import { deleteAutorunColumnRefs, dropAutorunQueueOf } from '../lib/autorun-colu
 import { deleteCleanColumnRefs } from '../lib/clean-columns';
 import { deleteFormulaColumnRefs } from '../lib/formula-columns';
 import { deleteLookupColumnRefs } from '../lib/lookup-columns';
+import { deleteColumnDescriptionRefs } from '../lib/column-descriptions';
 import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
@@ -199,6 +200,7 @@ export async function deleteSheetColumn(
       deleteViewColumnRefs(sheetId, userId, columnName);
       // A lookup column's too; lookups in other sheets that read this column stop, with a message.
       deleteLookupColumnRefs(sheetId, userId, columnName);
+      deleteColumnDescriptionRefs(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

@@ -100,12 +100,15 @@ export const useColumnOps = ({
             Object.entries(row.data).filter(([key]) => key !== columnName),
           ),
         }))
+        // Its description went with it on the server.
+        const { [columnName]: _gone, ...columnDescriptions } = prev.data.columnDescriptions ?? {}
         return {
           ...prev,
           data: {
             ...prev.data,
             columns: prev.data.columns.filter(col => col !== columnName),
             rows: updatedRows,
+            columnDescriptions,
           },
         }
       })

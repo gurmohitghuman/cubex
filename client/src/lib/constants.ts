@@ -131,3 +131,7 @@ export const MAX_OUTPUT_COLUMNS_PER_RUN = 20;
 
 // A saved hidden-columns change waits this long for a load to show it (useSheetViews).
 export const PENDING_HIDDEN_MS = 5000;
+
+// Descriptions (mirror server/src/lib/constants-columns.ts): characters in a column's and a sheet's.
+export const MAX_COLUMN_DESCRIPTION_CHARS = 1000;
+export const MAX_SHEET_DESCRIPTION_CHARS = 2000;

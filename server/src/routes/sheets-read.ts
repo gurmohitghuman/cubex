@@ -15,6 +15,7 @@ import { scheduleColumnRepair } from '../lib/column-repair';
 import { liveRunColumns, savedFilterSql } from '../services/row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
 import { listViews } from '../services/view-store';
+import { sheetColumnDescriptions } from '../lib/column-descriptions';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
 
 const router = express.Router();
@@ -101,10 +102,14 @@ router.get('/:id', async (req: AuthRequest, res) => {
     const formulaColumns = sheetFormulaView(id, req.userId!, columns);
     // Lookup columns' setups: the header tip, the column menu and the Edit lookup dialog.
     const lookupColumns = sheetLookupView(id, req.userId!, columns);
+    // Column descriptions: the header tip and the column menu's Edit description.
+    const columnDescriptions = Object.fromEntries(
+      [...sheetColumnDescriptions(id, req.userId!)].filter(([c]) => columns.includes(c)));
     res.json({
       sheet: sheetForClient,
       data: {
         rows, columns, totalRows, columnTypes, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns, views,
+        columnDescriptions,
       },
     });
   } catch (error) {

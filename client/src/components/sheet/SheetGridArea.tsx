@@ -46,6 +46,8 @@ interface Props {
   // The read-only webhook marker column (clicking a cell opens its raw payload).
   webhookColumn: string | undefined
   onWebhookCell: (rowIndex: number) => void
+  // The column menu's Edit description (hooks/sheet/useDescriptions.ts).
+  onEditDescription: (column: string) => void
 }
 
 // The sheet's main area: the loader, the import empty state, or the grid wired
@@ -75,6 +77,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           cleanColumns={sheetData?.data.cleanColumns} onOpenClean={modals.openClean}
           formulaColumns={sheetData?.data.formulaColumns} onOpenFormula={modals.openFormula}
           lookupColumns={sheetData?.data.lookupColumns} onOpenLookup={modals.openLookup}
+          columnDescriptions={sheetData?.data.columnDescriptions} onEditDescription={p.onEditDescription}
           activeHTTPRuns={runs.httpRuns} activeAIRunsList={runs.aiRuns}
           activeHTTPRunsByColumn={runs.httpByColumn} activeAIRunsByColumn={runs.aiByColumn}
           structuredAIColumns={runs.aiStructuredColumns}

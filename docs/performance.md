@@ -38,6 +38,8 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Search: a text found only near the end (the grid then shows that part of the sheet in 0.05 s) | 0.4 s | 0.01 s | 470 MB |
 | Search: a text in no cell (0.3 s; 1.1 s for letters a quick text check can't fold, such as Cyrillic or "ß"), or one that is also a column name (1.8 s) | 0.3 to 1.8 s | 0.01 to 0.04 s | 470 MB |
 | Search count: "3 of 1,240" (stops at 10,000 matches, 0.05 s; a rare text reads the whole sheet) | 0.05 to 0.35 s | 0.01 s | 470 MB |
+| An agent's `get_sheet` with column details (no counts) | 0.03 s | none | 460 MB |
+| An agent's `get_sheet` counting filled, empty and error rows (one column 0.7 s, 12 columns 3.6 s) | 0.7 to 3.6 s | 0.04 s | 510 MB |
 | Search in a filtered view (Country is Germany, 33,000 rows), going on from row 990,000 | 0.65 s | 0.01 s | 560 MB |
 | An agent counting rows per value (`group_by` Industry, 30 values; while a big job holds the sheet it answers busy at once) | 1.0 s | 0.01 s | 470 MB |
 | `group_by` two columns (900 groups) with sum, average, min, max and a count | 2.5 s | 0.02 s | 480 MB |
