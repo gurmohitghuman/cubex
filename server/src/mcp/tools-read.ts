@@ -9,6 +9,9 @@ import { listTablesWithSheets, getSheetMeta, readRowsPage } from '../services/wo
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
+import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema } from './query-schema';
+import { parseColumns } from '../lib/row-select/paths';
+import { parseAggregate } from '../lib/row-aggregate/spec';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
@@ -82,13 +85,14 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'FILTERS: `where` (described on the field) finds rows by text, number, a list of values, OR groups, and run '
         + 'state: [{"operator":"has_error"}] returns the rows where any AI, HTTP API or enrichment run failed, and '
         + 'return_mode count says how many without reading them. include_status returns each run column\'s cell as '
-        + '{status, value, error}, so you never parse ❌ / ⏭️ / ⏳ yourself.',
+        + '{status, value, error}, so you never parse ❌ / ⏭️ / ⏳ yourself. '
+        + 'PROFILE OR SUM UP without reading rows: group_by and aggregates answer counts, sums and averages per '
+        + 'value (top values of a column: group_by:["Industry"]). columns can take one value out of a JSON cell.',
       inputSchema: {
         sheet_id: z.string(),
         cursor: z.number().int().min(0).optional().describe('index of the last row already received'),
         limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional(),
-        columns: z.array(z.string()).min(1).optional()
-          .describe('Only these columns. Omit for all (expensive on wide sheets).'),
+        columns: columnsSchema.optional(),
         where: whereSchema.optional(),
         return_mode: z.enum(['rows', 'ids', 'count']).optional(),
         include_status: lenientBoolean().optional().describe(INCLUDE_STATUS_HELP),
@@ -97,6 +101,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         expected_row_generation: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). '
             + 'Echo row_generation from the previous page.'),
+        group_by: groupBySchema.optional(),
+        aggregates: aggregatesSchema.optional(),
         view: z.string().min(1).optional().describe(VIEW_HELP),
         expected_view_version: z.string().optional()
           .describe('REQUIRED when paging through a view (view + cursor). Echo view_version from the previous page.'),
@@ -104,20 +110,26 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
-      expected_row_generation, view, expected_view_version,
+      expected_row_generation, view, expected_view_version, group_by, aggregates,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
-      if (!columns && !where && !view && !return_mode && expected_data_version === undefined
-        && expected_row_generation === undefined) {
+      if (!columns && !where && !view && !return_mode && !group_by && !aggregates
+        && expected_data_version === undefined && expected_row_generation === undefined) {
         const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
         return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize, include_status === true));
       }
+      const picked = columns ? parseColumns(columns) : undefined;
+      if (picked && 'error' in picked) return err(picked.error);
+      const aggregate = parseAggregate(group_by, aggregates);
+      if ('error' in aggregate) return err(aggregate.error);
       const result = await queryRows(sheet_id, ctx.userId, {
         after: cursor ?? -1,
         limit,
-        columns,
+        columns: picked?.names,
+        ...(picked?.picks ? { picks: picked.picks } : {}),
+        ...(aggregate.spec ? { aggregate: aggregate.spec } : {}),
         where: where as WhereItem[] | undefined,
         returnMode: return_mode ?? 'rows',
         includeStatus: include_status === true,
@@ -126,7 +138,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         view,
         expectedViewVersion: expected_view_version,
       });
-      return 'fail' in result ? err(result.error) : ok(result.ok);
+      if ('fail' in result) return err(result.error);
+      return ok(aggregate.spec ? fitGroups(result.ok) : result.ok);
     },
   );
 }

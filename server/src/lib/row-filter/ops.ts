@@ -5,7 +5,9 @@
 // (lib/run-condition.ts). Text compares ignore case and outer spaces, and a
 // missing cell reads as ''. Run-state operators read the words a run writes
 // (cell-status.ts).
-export const TEXT_OPS = ['eq', 'neq', 'contains', 'not_contains', 'empty', 'not_empty'] as const;
+export const TEXT_OPS = [
+  'eq', 'neq', 'contains', 'not_contains', 'starts_with', 'ends_with', 'empty', 'not_empty',
+] as const;
 export const LIST_OPS = ['any_of', 'not_any_of'] as const;
 export const NUMBER_OPS = ['gt', 'gte', 'lt', 'lte'] as const;
 export const STATE_OPS = ['has_error', 'has_result', 'not_run', 'condition_not_met', 'running'] as const;
@@ -54,6 +56,8 @@ export function textPasses(op: TextOp, cell: string, value: string): boolean {
     case 'neq': return cell !== value;
     case 'contains': return cell.includes(value);
     case 'not_contains': return !cell.includes(value);
+    case 'starts_with': return cell.startsWith(value);
+    case 'ends_with': return cell.endsWith(value);
     case 'empty': return cell === '';
     case 'not_empty': return cell !== '';
   }

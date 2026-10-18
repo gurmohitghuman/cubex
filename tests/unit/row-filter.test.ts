@@ -65,10 +65,10 @@ const jsMatches = (where: WhereItem[], runs: ReadonlyMap<string, string>): numbe
   rows.flatMap((data, i) => (referencePasses(where, data, runs) ? [i + 1] : []))
 
 const VALUES = ['münchen', 'MÜNCHEN', ' münchen ', 'acme', ',', '1,000', '1000', "o'brien", '%', '_', 'istanbul',
-  'ss', '', '12', '1.5', '❌']
+  'ss', '', '12', '1.5', '❌', 'mün', 'chen', 'inc.', '000', 'i̇stanbul', '€', '😀x']
 const conditions: FilterCondition[] = []
 for (const value of VALUES) {
-  for (const operator of ['eq', 'neq', 'contains', 'not_contains'] as const) {
+  for (const operator of ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'ends_with'] as const) {
     conditions.push({ column: 'A', operator, value })
   }
 }
@@ -121,6 +121,19 @@ check('text compares ignore case (beyond ASCII) and outer spaces', () => {
   assert.equal(one(undefined, { operator: 'neq', value: 'x' }), true)
   assert.equal(one(undefined, { operator: 'not_any_of', values: ['x'] }), true)
   assert.equal(one('', { operator: 'any_of', values: ['', 'x'] }), true)
+})
+check('starts_with / ends_with: folded, outer spaces off, characters beyond ASCII', () => {
+  assert.equal(one(' MÜNCHEN GmbH ', { operator: 'starts_with', value: 'münchen' }), true)
+  assert.equal(one(' MÜNCHEN GmbH ', { operator: 'ends_with', value: 'GMBH' }), true)
+  assert.equal(one('MÜNCHEN GmbH', { operator: 'ends_with', value: 'münchen' }), false)
+  assert.equal(one('ab', { operator: 'starts_with', value: 'abc' }), false)
+  assert.equal(one('bc', { operator: 'ends_with', value: 'abc' }), false)
+  assert.equal(one('😀x', { operator: 'starts_with', value: '😀' }), true)
+  assert.equal(one('a😀', { operator: 'ends_with', value: '😀' }), true)
+  assert.equal(one('50%', { operator: 'ends_with', value: '%' }), true)
+  assert.equal(one(undefined, { operator: 'starts_with', value: 'a' }), false)
+  assert.match(checkWhere([{ column: 'A', operator: 'ends_with', value: ' ' }], { columns: ['A'], runColumns })!,
+    /non-empty value/)
 })
 check('numbers: commas allowed; text that is not a number never passes', () => {
   assert.equal(one('1,000', { operator: 'gt', value: '999' }), true)

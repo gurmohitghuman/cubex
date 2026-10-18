@@ -15,13 +15,17 @@ import type { MenuState } from './HeaderContextMenu'
 // states sit under "Run state".
 export const ColumnFilterMenu: React.FC<{
   columnId: string
+  sheetId?: string
   columnType?: ColumnType
   emptyFilter?: 'empty' | 'not_empty'
   columnFilter?: ColumnFilter
   setMenu: (m: MenuState) => void
   onEmptyFilterChange?: (column: string, value: 'empty' | 'not_empty' | null) => void
   onColumnFilterChange?: (column: string, filter: ColumnFilter | null) => void
-}> = ({ columnId, columnType, emptyFilter, columnFilter, setMenu, onEmptyFilterChange, onColumnFilterChange }) => {
+}> = (props) => {
+  const {
+    columnId, sheetId, columnType, emptyFilter, columnFilter, setMenu, onEmptyFilterChange, onColumnFilterChange,
+  } = props
   const state = columnFilter && isRunStateFilter(columnFilter.type) ? columnFilter.type : null
   const pickState = (op: RunStateOp) => {
     if (emptyFilter) onEmptyFilterChange?.(columnId, null)
@@ -66,7 +70,7 @@ export const ColumnFilterMenu: React.FC<{
       )}
       {onColumnFilterChange && (
         <ColumnFilterEditor
-          columnId={columnId}
+          columnId={columnId} sheetId={sheetId}
           current={columnFilter}
           onApply={f => onColumnFilterChange(columnId, f)}
           hasEmptyFilter={!!emptyFilter}

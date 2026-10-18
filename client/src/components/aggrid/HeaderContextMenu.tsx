@@ -43,13 +43,15 @@ export interface HeaderContextMenuProps {
   onDeleteColumn?: (columnName: string) => void | Promise<void>
   onDeleteRows?: (rowIndexes: number[]) => void | Promise<void>
   runActions: RunMenuActions
+  // The value picker of "is any of" counts this sheet's values.
+  sheetId?: string
 }
 
 export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
   const {
     menu, setMenu, setRenaming, columnTypes, autorunColumns, emptyFilter, columnFilters,
     setConfirmDeleteColumn, setConfirmDeleteRows, activeHTTPRunsByColumn, activeAIRunsByColumn,
-    onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows, runActions,
+    onSortChange, onEmptyFilterChange, onColumnFilterChange, onDeleteColumn, onDeleteRows, runActions, sheetId,
   } = props
 
   if (!menu) return null
@@ -106,7 +108,7 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           </>
         )}
 
-        <ColumnFilterMenu columnId={menu.columnId} columnType={columnType} setMenu={setMenu}
+        <ColumnFilterMenu columnId={menu.columnId} sheetId={sheetId} columnType={columnType} setMenu={setMenu}
           emptyFilter={emptyFilter?.[menu.columnId]} columnFilter={columnFilters?.[menu.columnId]}
           onEmptyFilterChange={onEmptyFilterChange} onColumnFilterChange={onColumnFilterChange} />
 

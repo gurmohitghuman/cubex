@@ -7,7 +7,8 @@ import type { ColumnType } from '@/utils/api/types'
 import { MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS } from './constants'
 
 export type ValueFilterOp =
-  | 'contains' | 'not_contains' | 'eq' | 'neq' | 'any_of' | 'not_any_of' | 'gt' | 'gte' | 'lt' | 'lte'
+  | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'eq' | 'neq' | 'any_of' | 'not_any_of'
+  | 'gt' | 'gte' | 'lt' | 'lte'
 export type RunStateOp = 'has_error' | 'has_result' | 'not_run' | 'condition_not_met' | 'running'
 export type FilterOp = ValueFilterOp | RunStateOp | 'empty' | 'not_empty'
 
@@ -17,6 +18,8 @@ export type ColumnFilters = Record<string, ColumnFilter>
 export const VALUE_FILTERS: ReadonlyArray<{ op: ValueFilterOp; label: string }> = [
   { op: 'contains', label: 'Contains' },
   { op: 'not_contains', label: 'Does not contain' },
+  { op: 'starts_with', label: 'Starts with' },
+  { op: 'ends_with', label: 'Ends with' },
   { op: 'eq', label: 'Is' },
   { op: 'neq', label: 'Is not' },
   { op: 'any_of', label: 'Is any of' },

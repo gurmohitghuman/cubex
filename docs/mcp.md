@@ -85,7 +85,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 |---|---|
 | `list_tables` | Tables and their sheets. Start here to turn names into ids. |
 | `get_sheet` | A sheet's columns, row count, and how many rows and columns are left. Lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. |
-| `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. See [Finding rows](#finding-rows). |
+| `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. `group_by` and `aggregates` count, sum and average per value instead of reading rows, and `columns` can take one value out of a JSON cell. See [Finding rows](#finding-rows). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. |
@@ -134,7 +134,7 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 ]
 ```
 
-- **Text:** `eq`, `neq`, `contains`, `not_contains`, `empty` and `not_empty`. `any_of` and `not_any_of` take `values`, a list. They ignore case and spaces at either end.
+- **Text:** `eq`, `neq`, `contains`, `not_contains`, `starts_with`, `ends_with`, `empty` and `not_empty`. `any_of` and `not_any_of` take `values`, a list. They ignore case and spaces at either end.
 - **Numbers:** `gt`, `gte`, `lt` and `lte`. The cell has to hold a number (`1,000` counts, `1,5` doesn't); other cells never pass.
 - **Run state**, on AI, HTTP API and enrichment columns: `has_error`, `has_result`, `not_run`, `condition_not_met` and `running`. They read the words runs write into cells (`❌`, `⏭️ Condition not met`, `⏳`, `➕`), so you don't have to. Leave `column` out to match any run column: `[{"operator": "has_error"}]` finds every row where a run failed. An output column reads the state from its run's status column, so `has_error` on Email finds the rows where the enrichment that fills Email failed.
 
@@ -153,7 +153,28 @@ With `include_status: true`, `read_rows` (and the REST row reads) return each ru
 
 Other columns come back as text, the same as without it.
 
-In the app, each column's menu has the same filters, one per column: text, number and list conditions on any column, and on a run column **Rows with errors** plus the other run states.
+In the app, each column's menu has the same filters, one per column: text, number and list conditions on any column, and on a run column **Rows with errors** plus the other run states. **Is any of** lists the column's most common values with how many rows hold each (counted over the view's other filters), with a box to narrow the list; a value typed there and Enter adds it, even one the list doesn't show.
+
+### Counting and summing
+
+Pass `group_by` (up to 3 columns) and `aggregates` to get groups instead of rows. Groups compare values the way `eq` does (case and outer spaces ignored); an empty cell is the group `""`.
+
+```json
+{"group_by": ["Industry"], "aggregates": [{"op": "sum", "column": "Revenue"}, {"op": "avg", "column": "Revenue"}],
+ "where": [{"column": "Country", "operator": "eq", "value": "Germany"}]}
+```
+
+The answer has `rows_matched`, `group_count`, `groups` (the 1,000 largest by row count, each `{group, count, values}`, ties by value) and `truncated` when there were more. `op` is `count` (rows; with a `column`, its non-empty cells), `sum`, `avg`, `min` or `max`. Numbers are read as `gt` reads them: `1,000` counts, text that isn't a number is skipped, and the value is `null` when no cell held one. Leave `group_by` out to aggregate over every matching row at once. It takes `where` and `view`, not `cursor`, `limit`, `columns`, `return_mode` or `include_status`. Grouping by a column with very many different values (emails, ids) stops past 100,000 groups with a message. While the sheet is busy with an import, a sort or a column filling, it answers busy (REST: 409 with `busy: true`): try again when that finishes. Over MCP a long answer keeps the largest groups up to about 40,000 characters and says `truncated`.
+
+### Values inside JSON cells
+
+An item of `columns` can take one value out of a cell holding JSON, such as an HTTP API answer:
+
+```json
+{"columns": ["Company", {"column": "Response", "path": ["data", "emails", 0], "as": "Email"}]}
+```
+
+`path` is a list of plain keys, at most 5: an object's key, or a list position from 0. It is not JSONPath. The value comes back as it is in the JSON (text, number, object or list), or `null` when the cell isn't JSON or has no such key. Without `as`, it is named after its path (`Response.data.emails.0`).
 
 ### Saved views
 
@@ -410,7 +431,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | Endpoint | Body or query |
 |---|---|
 | `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. Add `&include_status=true` for run columns as `{status, value, error}`. |
-| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. |
+| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `columns` can take a value out of a JSON cell ([Values inside JSON cells](#values-inside-json-cells)), and `group_by` with `aggregates` answers groups instead of rows ([Counting and summing](#counting-and-summing)). `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. |
 | `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |

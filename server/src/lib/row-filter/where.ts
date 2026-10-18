@@ -82,6 +82,8 @@ export function parseWhere(raw: unknown): { where: WhereItem[] } | { error: stri
 }
 
 const tooLong = (v: string) => v.length > MAX_FILTER_VALUE_CHARS;
+// Operators an empty value would make meaningless (every cell contains '').
+const NEEDS_TEXT = new Set<FilterOp>(['contains', 'not_contains', 'starts_with', 'ends_with']);
 
 // What one condition's operator needs, without the sheet: the grid's saved
 // filters are checked with this alone. null = fine.
@@ -103,7 +105,7 @@ export function conditionValueError(c: FilterCondition): string | null {
   if (op === 'empty' || op === 'not_empty') return c.value !== undefined ? `${op} does not accept a value` : null;
   if (c.value === undefined) return `${op} requires a value`;
   if (tooLong(c.value)) return `A where value can be at most ${MAX_FILTER_VALUE_CHARS} characters.`;
-  if ((op === 'contains' || op === 'not_contains') && foldText(c.value) === '') {
+  if (NEEDS_TEXT.has(op) && foldText(c.value) === '') {
     return `${op} requires a non-empty value`;
   }
   if (isNumberOp(op) && asNumber(c.value) === null) return `${op} requires a numeric value`;

@@ -57,7 +57,10 @@ router.post('/sheets/:id/rows/query', requireScope('read'), async (req: TokenAut
     const parsed = parseRowQueryBody(req.body, API_V1_MAX_ROWS_PAGE);
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
     const result = await queryRows(req.params.id, req.userId!, parsed.query);
-    if ('fail' in result) return res.status(result.fail === 'version_conflict' ? 409 : 400).json({ error: result.error });
+    if ('fail' in result) {
+      return res.status(result.fail === 'invalid' ? 400 : 409)
+        .json({ error: result.error, ...(result.fail === 'busy' ? { busy: true } : {}) });
+    }
     return res.json(result.ok);
   } catch (error) {
     console.error('POST /v1/sheets/:id/rows/query error:', error);

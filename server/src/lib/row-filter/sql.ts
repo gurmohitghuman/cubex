@@ -56,6 +56,17 @@ function statePredicate(q: Sql, op: StateOp, column: string, state: string | nul
   }
 }
 
+// The folded cell starts (side 1) or ends (side -1) with `value`: its first or
+// last length(value) characters equal it. The cell's path is already bound.
+function affix(q: Sql, side: 1 | -1, value: string): string {
+  const n = [...value].length;
+  // Every text starts and ends with '' (the path stays bound: cubex_fold is never NULL).
+  if (n === 0) return `${FOLDED} IS NOT NULL`;
+  return side === 1
+    ? `substr(${FOLDED}, 1, ${n}) = ${q.bind(value)}`
+    : `substr(${FOLDED}, -${n}) = ${q.bind(value)}`;
+}
+
 function conditionSql(q: Sql, c: FilterCondition, runColumns: ReadonlyMap<string, string>): string {
   const op = c.operator;
   if (isStateOp(op)) {
@@ -88,6 +99,10 @@ function conditionSql(q: Sql, c: FilterCondition, runColumns: ReadonlyMap<string
     case 'neq': return `${FOLDED} <> ${q.bind(foldText(c.value))}`;
     case 'contains': return `instr(${FOLDED}, ${q.bind(foldText(c.value))}) > 0`;
     case 'not_contains': return `instr(${FOLDED}, ${q.bind(foldText(c.value))}) = 0`;
+    // substr counts characters, as length() does; JS startsWith counts UTF-16
+    // units, which agree on the same folded text.
+    case 'starts_with': return affix(q, 1, foldText(c.value));
+    case 'ends_with': return affix(q, -1, foldText(c.value));
     case 'empty': return `${FOLDED} = ''`;
     case 'not_empty': return `${FOLDED} <> ''`;
   }

@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { getSheetColumns } from '../lib/sql-helpers';
 import type { WhereItem } from '../lib/row-filter/where';
 import { activeViewId, ensuredViewRows, sheetViewState, viewByRef, viewInfo, type ViewInfo } from './view-store';
-import type { RowQuery } from './row-selection';
+import type { RowQuery } from './row-query-input';
 
 export interface ViewRead { view: ViewInfo; where: WhereItem[]; columns?: string[]; version: string }
 
@@ -46,8 +46,8 @@ export function applyView(
 
 type QueryFail = { fail: 'invalid' | 'version_conflict'; error: string };
 
-// A row query with its view's filters and columns in it (a count takes no
-// columns), checked against the view_version a later page echoes.
+// A row query with its view's filters and columns in it (a count or an
+// aggregate takes no columns), checked against the view_version a later page echoes.
 export function withView(
   sheetId: string, userId: string, q: RowQuery,
 ): { query: RowQuery; version?: string } | QueryFail {
@@ -61,6 +61,6 @@ export function withView(
   if (q.expectedViewVersion !== undefined && q.expectedViewVersion !== viewed.version) {
     return { fail: 'version_conflict', error: 'The view changed (switched or its filters edited); restart paging.' };
   }
-  const columns = q.returnMode === 'count' ? q.columns : viewed.columns;
+  const columns = q.returnMode === 'count' || q.aggregate ? q.columns : viewed.columns;
   return { query: { ...q, where: viewed.where, columns }, version: viewed.version };
 }
