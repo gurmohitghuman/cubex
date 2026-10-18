@@ -326,7 +326,3 @@ Cubex is open source under the [GNU Affero General Public License v3.0](LICENSE)
 - The license covers the code, not the Cubex name or logo. If you share a changed version, give it its own name so people don't mistake it for Cubex.
 
 Other names and logos in this README belong to their owners: Claude and Claude Code to Anthropic, Cursor to Anysphere, Codex and the OpenAI logo to OpenAI, and OpenRouter to OpenRouter, Inc. The same goes for the Model Context Protocol and treg.to logos. They're shown only to say which tools Cubex works with. Cubex isn't affiliated with or endorsed by any of them.
-
-## About this project
-
-Cubex is a side project I've worked on over the past year. It comes as is, with no warranty and no promise of support. Use it at your own risk, and keep backups of any data you care about (see [Your data and backups](docs/configuration.md#your-data-and-backups)).
