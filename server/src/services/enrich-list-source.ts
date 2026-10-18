@@ -56,6 +56,26 @@ export function writeSourceCell(j: JournalRef, column: string | null, cell: stri
   return true;
 }
 
+// Source sheets going to the trash (in that transaction, before their journal
+// rows are dropped): their rows still showing ➕ say the results weren't
+// added, so a sheet restored later isn't left waiting for them.
+export function sourcesGone(sourceIds: string[], cell: string): void {
+  const groups = db.prepare(`SELECT li.source_sheet_id AS sheet, li.user_id, r.master_column_name AS col
+    FROM enrichment_list_items li JOIN http_runs r ON r.id = li.run_id
+    WHERE li.source_sheet_id IN (SELECT value FROM json_each(?)) AND li.status = 'pending'
+      AND r.master_column_name IS NOT NULL
+    GROUP BY li.source_sheet_id, li.user_id, r.master_column_name`).all(JSON.stringify(sourceIds)) as
+    Array<{ sheet: string; user_id: string; col: string }>;
+  for (const g of groups) {
+    const path = jsonPath(g.col);
+    db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
+      WHERE id IN (SELECT li.source_row_id FROM enrichment_list_items li JOIN http_runs r ON r.id = li.run_id
+        WHERE li.source_sheet_id = ? AND li.user_id = ? AND li.status = 'pending' AND r.master_column_name = ?)
+        AND +sheet_id = ? AND +user_id = ? AND substr(ltrim(json_extract(data, ?)), 1, 1) = ?`)
+      .run(path, cell, g.sheet, g.user_id, g.col, g.sheet, g.user_id, path, LIST_MARK);
+  }
+}
+
 // Destinations about to be deleted (in the delete transaction, before the
 // cascade drops their journal rows): the source rows still showing ➕ say the
 // results weren't added, unless results of the same column are still on

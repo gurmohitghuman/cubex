@@ -10,12 +10,13 @@ import { ADDING_ROWS_SQL } from './sheet-crud-helpers';
 // when the table is gone. Tables hold a handful of sheets, so this is one
 // small indexed read.
 export function sheetListKey(tableId: string, userId: string): string | null {
-  const table = db.prepare('SELECT name FROM tables WHERE id = ? AND user_id = ?').get(tableId, userId) as
+  const table = db.prepare('SELECT name FROM tables WHERE id = ? AND user_id = ? AND trash_id IS NULL')
+    .get(tableId, userId) as
     { name: string } | undefined;
   if (!table) return null;
   const sheets = db.prepare(
     `SELECT id, name, description, ${ADDING_ROWS_SQL} AS adding FROM sheets WHERE table_id = ? AND user_id = ?
-      ORDER BY position, created_at`,
+      AND trash_id IS NULL ORDER BY position, created_at`,
   ).all(tableId, userId) as Array<{ id: string; name: string; description: string | null; adding: number }>;
   const h = createHash('sha1').update(table.name);
   // A tab's dot (rows being added to it) moves the key too.

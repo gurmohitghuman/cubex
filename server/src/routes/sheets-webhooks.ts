@@ -16,6 +16,7 @@ import {
 } from '../lib/webhook-service';
 import { validateMappingPath } from '../lib/jsonpath-extract';
 import { dropWebhookBucket } from '../lib/webhook-bucket';
+import { logSheetChange } from '../lib/change-log';
 
 // Authenticated webhook management for a sheet. Mounted under /api/sheets via the
 // sheets aggregator, so every route proves req.userId owns :id (the Cubex pattern).
@@ -46,6 +47,7 @@ router.post('/:id/webhook', (req: AuthRequest, res) => {
     return res.status(400).json({ error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet).` });
   }
   const { source } = createSourceWithColumn(id, req.userId!, name);
+  logSheetChange(id, req.userId!, 'webhook', 'Added a webhook to the sheet');
   res.status(201).json({ source: serializeSource(source), mappings: [] });
 });
 
@@ -56,6 +58,7 @@ router.post('/:id/webhook/rotate', (req: AuthRequest, res) => {
   const src = getSourceForSheet(id, req.userId!);
   if (!src) return res.status(404).json({ error: 'No webhook on this sheet.' });
   rotateSource(src);
+  logSheetChange(id, req.userId!, 'webhook', 'Made a new webhook URL (the old one stopped working)');
   const fresh = getSourceForSheet(id, req.userId!)!;
   res.json({ source: serializeSource(fresh) });
 });
@@ -70,6 +73,7 @@ router.patch('/:id/webhook', (req: AuthRequest, res) => {
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) required.' });
   db.prepare("UPDATE webhook_sources SET enabled = ?, updated_at = datetime('now') WHERE id = ?")
     .run(enabled ? 1 : 0, src.id);
+  logSheetChange(id, req.userId!, 'webhook', `Turned the webhook ${enabled ? 'on' : 'off'}`);
   res.json({ source: serializeSource(getSourceForSheet(id, req.userId!)!) });
 });
 
@@ -82,6 +86,7 @@ router.delete('/:id/webhook', (req: AuthRequest, res) => {
   if (!src) return res.status(404).json({ error: 'No webhook on this sheet.' });
   db.prepare('DELETE FROM webhook_sources WHERE id = ? AND user_id = ?').run(src.id, req.userId!);
   dropWebhookBucket(src.id); // free the per-source rate-limit bucket
+  logSheetChange(id, req.userId!, 'webhook', 'Deleted the webhook');
   res.json({ message: 'Webhook deleted.' });
 });
 
@@ -133,6 +138,8 @@ router.post('/:id/webhook/mappings', (req: AuthRequest, res) => {
          VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(mappingId, src.id, req.userId!, rawPath, columnName, valueMode);
     touchSheet(id, req.userId!);
+    logSheetChange(id, req.userId!, 'webhook', `The webhook fills "${columnName}" from ${rawPath}`,
+      { column: columnName });
   })();
 
   res.status(201).json({ mappings: listMappings(src.id) });
@@ -148,6 +155,7 @@ router.delete('/:id/webhook/mappings/:mappingId', (req: AuthRequest, res) => {
   const r = db.prepare('DELETE FROM webhook_mappings WHERE id = ? AND source_id = ? AND user_id = ?')
     .run(mappingId, src.id, req.userId!);
   if (r.changes === 0) return res.status(404).json({ error: 'Mapping not found.' });
+  logSheetChange(id, req.userId!, 'webhook', 'Removed a field the webhook filled (its column stays)');
   res.json({ mappings: listMappings(src.id) });
 });
 

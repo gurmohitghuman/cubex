@@ -90,11 +90,11 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `get_sheet` | A sheet's columns, row count, description, and how many rows and columns are left. `column_details` says what each column is and what fills it, and `include_counts` adds how many rows are filled, empty or errors. Also lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. See [Column details](#column-details). |
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. `group_by` and `aggregates` count, sum and average per value instead of reading rows, and `columns` can take one value out of a JSON cell. See [Finding rows](#finding-rows). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
-| `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. |
+| `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. Deleted rows go to the trash. |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. `add_column` takes an optional `description`. |
 | `set_description` | Describe a column, or the sheet when `column` is left out. See [Descriptions](#descriptions). |
 | `sort_sheet` | Permanently reorders the rows by a column. |
-| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. |
+| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. A deleted table or sheet goes to the trash whole. |
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
@@ -121,8 +121,10 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts, your own APIs, free formulas and lookups in your other sheets, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
 | `list_run_webhooks` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). |
+| `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, sheets and tables. Look inside a batch and search its rows, then restore whole items or rows you pick. See [The trash](#the-trash). |
+| `get_sheet_history` | A sheet's change log: columns added, renamed and deleted, runs, auto-run, views, its webhook, rows deleted, restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
 
-Deletes are permanent; there's no undo. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
+Deleted rows, sheets and tables go to the trash for the days set in Settings (30 by default), and the delete's answer says how to restore them; deleting a column, sorting and deleting a setup are permanent. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
@@ -309,8 +311,21 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 - Some things that tell rows apart are kept even where the matching is loose: an address at a free email provider (Gmail, Outlook, Yahoo and others) never matches by `domain`, a page on a shared site (Facebook, LinkedIn, Instagram, Google Sites, Yelp, Substack and others) matches only the same page, a `phone` extension keeps numbers apart, and so do Jr and Sr in a `person_name`.
 - A row with any listed column empty, unreadable as its match (an email column holding "n/a"), or holding a run status such as `⏭️ Not found` is never removed. The answer counts them in `rows_with_empty_key`.
 - The answer has `rows_checked`, `duplicate_groups`, `rows_to_remove` (or `rows_removed`), `rows_left`, up to 5 `samples` (the row that stays and up to 3 that go, each with its row `id`, row number and the listed cells), and the `largest_group` when it's bigger than those, so a value like "n/a" shared by thousands of rows shows up before anything goes.
-- A dry run needs the `read` scope; `dry_run: false` needs `write`. Removed rows are deleted for good, with their AI and HTTP results. The whole sheet is checked; filters don't apply.
+- A dry run needs the `read` scope; `dry_run: false` needs `write`. Removed rows go to the trash as one batch (the answer's `trash` says how to restore them); their AI and HTTP results go. The whole sheet is checked; filters don't apply.
 - Refused while a run is active on the sheet: stop or finish it first. Rows appended while a removal works are left alone.
+
+## The trash
+
+Deleted rows, sheets and tables aren't gone at once: they wait in the trash for the days set in Settings (30 by default, up to 90; 0 deletes at once), then are deleted for good. The app has a Trash page; agents use `list_trash` and `restore_from_trash`.
+
+- **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
+- **The answer:** each of those deletes answers with `trash`: `trash_id`, `kept_days`, `restorable_until` and `how_to_restore`.
+- **Restoring rows:** a batch goes back to its old places when the sheet hasn't been sorted, replaced or deduplicated since and those places are free; otherwise to the end of the sheet, in the order the rows had. Rows keep their ids. Columns they need that the sheet lost come back (`columns_added`); when the sheet has no room for them, the restore is refused rather than leaving cells out. Rows moved out with `transfer_rows` are still in their new sheet, so restoring them keeps both. Auto-run doesn't run restored rows. A run active on the sheet refuses a restore. A batch over 20,000 rows answers `"state": "restoring"` and finishes in the background.
+- **Finding rows:** `list_trash` with a batch's `trash_id` reads its rows (`seq`, `row_id`, `old_row_index`, `cells`); `column` and `contains` search them. Pass the `seq`s you want to `restore_from_trash` with that `trash_id`.
+- **Restoring a sheet or table:** it comes back as it was, renamed "(restored)" if its name was taken meanwhile. A sheet whose table is in the trash waits for the table, and rows wait for their sheet.
+- **Deleting for good** is only in the app.
+
+`get_sheet_history` reads a sheet's change log (kept 90 days): what changed and who did it, the app or an access token by name. A line about rows still in the trash has `in_trash: true` and their `trash_id`.
 
 ## Setups
 
@@ -482,10 +497,10 @@ All paths below are relative to `/api/v1`.
 |---|---|
 | `GET /tables` | Tables with their sheets. |
 | `POST /tables` · `PATCH /tables/:id` | `{"name": "Leads"}` |
-| `DELETE /tables/:id` | Deletes the table, its sheets and their rows. Stops its runs first. |
+| `DELETE /tables/:id` | Puts the table, its sheets and their rows in the trash. Stops its runs first. |
 | `POST /tables/:tableId/sheets` | `{"name": "Q3", "after_sheet_id": "..."}` (both optional) |
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` to rename, `{"description": "…"}` to describe (`""` removes it), or both. |
-| `DELETE /tables/:tableId/sheets/:sheetId` | A table always keeps one sheet. |
+| `DELETE /tables/:tableId/sheets/:sheetId` | Puts the sheet in the trash, whole. A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
 | `GET /sheets/:id` | Columns, row count, `data_version`, `row_generation`, its `description` and `column_details` (see [Column details](#column-details); `?include_counts=true` counts rows, `&columns=Email` names columns to show in full and count first), its clean, formula and lookup columns, its saved `views`, and what's running on it now: `active_runs` (AI, HTTP and enrichment runs) and `active_setup_runs`. |
 | `POST /sheets/:id/columns` | `{"name": "Status"}`, plus an optional `description`. |
@@ -535,8 +550,8 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |
-| `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. Permanent. |
-| `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending. |
+| `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. They go to the trash: the answer's `trash` gives the `trash_id`. |
+| `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending (the replaced rows go to the trash). |
 | `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. |
 | `POST /sheets/:sourceId/rows/transfer` | Copy or move rows to another sheet. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 
@@ -663,6 +678,17 @@ URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`;
 | `POST /sheets/:id/enrichment-list-fields` | `{"column": "People", "fields": [{"path": "$.first_name", "column_name": "First name"}], "dedupe_path": null}`: adds the waiting results as rows. |
 | `POST /sheets/:id/enrichment-fields` | `{"column": "Work email", "json_path": "$.output.linkedin_url", "column_name": "LinkedIn"}`: a column from stored answers (`202`; it fills in the background). |
 | `PUT /sheets/:id/enrichment-auto-run` | `{"column": "Work email", "enabled": true, "daily_cap_usd": 5}`, or `{"paused": true}` for every auto-run on the sheet. |
+
+### Trash and history
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /trash` | Same as `list_trash` without an id: `?q=` (a table, sheet or token name), `kind` (`rows`, `sheet`, `table`), `sheet_id`, `before` (the next page), `limit`. `read` scope. |
+| `GET /trash/:id` · `GET /trash/:id/rows` | One item; a batch's rows: `?after=` (a `seq`), `limit` (up to 500), `column` and `contains` to search. `read` scope. |
+| `GET /trash/:id/csv` | A batch's rows as CSV. `read` scope. |
+| `POST /trash/restore` | `{"trash_ids": [12, 14]}`: tables first, then sheets, then rows. `results` says what each did. `write` scope. |
+| `POST /trash/:id/restore` | One item, or `{"seqs": [3, 9]}` for rows picked from a batch. `write` scope. |
+| `GET /sheets/:id/history` | Same as `get_sheet_history`: `?before=` (a change id), `limit`, `column`. `read` scope. |
 
 ### Responses and errors
 

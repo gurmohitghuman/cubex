@@ -1,3 +1,4 @@
+// Over 200 lines: one delivery, parsed, checked and appended in its transaction; split, the checks would scatter.
 import crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
@@ -31,7 +32,7 @@ export interface WebhookMappingRow {
 
 export type IngestResult =
   | { ok: true; rowIndex: number; status: 'stored' | 'partial' }
-  | { ok: false; code: 409; reason: string };
+  | { ok: false; code: 404 | 409; reason: string };
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
 // missing/null -> ''; scalar -> stringified; object/array -> '' unless the
@@ -135,6 +136,11 @@ export function appendWebhookDelivery(
   let result: IngestResult = { ok: true, rowIndex: -1, status: partial ? 'partial' : 'stored' };
 
   db.transaction(() => {
+    // Its sheet went to the trash since the token was checked: the same 404.
+    if (!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND trash_id IS NULL').get(source.sheet_id)) {
+      result = { ok: false, code: 404, reason: 'Not found' };
+      return;
+    }
     // Row cap inside the txn so a burst can't push a sheet past its row limit.
     const { rows: currentRows } = countRows(source.sheet_id, source.user_id);
     if (currentRows >= MAX_ROWS_PER_SHEET) {

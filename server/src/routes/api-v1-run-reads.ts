@@ -1,6 +1,7 @@
 // /v1 run reads (design-doc Phase 2): status summaries, keyset-paged per-row
 // results, and the OpenRouter model-list passthrough. No SSE on v1 — clients
 // and agents poll GET status.
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import {
@@ -11,7 +12,6 @@ import { fetchModels } from '../lib/openrouter';
 import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
 import { searchModels } from '../lib/model-search';
 import { getAccountDefaultModel } from '../lib/ai-model-resolve';
-import { db } from '../lib/db';
 import { answersNeedSecrets } from '../services/run-status-enrich';
 import { listRuns, RUN_LIST_DEFAULT, RUN_LIST_MAX, type RunListFilter } from '../services/run-list';
 
@@ -46,7 +46,7 @@ router.get('/models', requireScope('read'), async (req: TokenAuthRequest, res) =
 router.get('/runs', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = typeof req.query.sheet_id === 'string' && req.query.sheet_id ? req.query.sheet_id : undefined;
-    if (sheetId && !db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, req.userId!)) {
+    if (sheetId && !verifySheetOwnership(sheetId, req.userId!)) {
       return res.status(404).json({ error: 'Sheet not found' });
     }
     const filter = req.query.filter ?? 'all';

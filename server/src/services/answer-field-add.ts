@@ -24,6 +24,7 @@ import { columnRunActive } from './autorun-entry';
 import { runFieldJob } from './answer-field-fill';
 import type { RunFail } from './run-shared';
 import { isWaterfallConfig } from '../lib/waterfall/config';
+import { logSheetChange } from '../lib/change-log';
 
 export interface AddFieldInput { column: string; jsonPath: string; name: string; row: number | null }
 export type AddFieldOutcome = { ok: { column: string; jobId: string } } | RunFail;
@@ -140,6 +141,9 @@ export async function addAnswerField(
     }).immediate();
     if (problem) return problem;
     continueInBackground(sheetId, 'filling a column', () => runFieldJob(jobId));
+    logSheetChange(sheetId, userId, 'answer_field',
+      `Added the column "${name}" from the answers of "${owner.statusColumn}"`,
+      { column: name, detail: { from_column: owner.statusColumn } });
     return { ok: { column: name, jobId } };
   });
   return 'busy' in out && typeof out.busy === 'string'

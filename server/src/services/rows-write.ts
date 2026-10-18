@@ -4,12 +4,13 @@
 // bump inside every transaction, result purge on delete.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { countRows, jsonPath, parseRowData, purgeResultsForRows } from '../lib/sql-helpers';
+import { countRows, jsonPath, parseRowData } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { bumpDataVersion, sheetHasActiveRun, checkColumns, TxnFail } from './data-plane-shared';
 import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
 import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
+import { deleteRowsToTrash } from './trash-rows';
 
 export type AppendOutcome =
   | { ok: { rows: Array<{ id: string; index: number }> } }
@@ -90,17 +91,19 @@ export function patchRowById(
   return { ok: { id: done.id, index: done.index, data: parseRowData(done.data) } };
 }
 
-export type DeleteRowsOutcome = { ok: { deleted: number } } | TxnFail;
+export type DeleteRowsOutcome = { ok: { deleted: number; trashId: number | null } } | TxnFail;
 
-// Bulk delete by stable row ids: resolve ids → owned row_indices INSIDE the
-// txn, sheet-wide active-run guard, purge per-row AI/HTTP results for those
-// indices, bump data_version. No rowGeneration echo — ids are generation-immune.
+// Bulk delete by stable row ids: resolve ids → owned rows INSIDE the txn,
+// sheet-wide active-run guard, then into one trash batch (trash-rows.ts, which
+// purges their AI/HTTP results), bump data_version. No rowGeneration echo —
+// ids are generation-immune.
 export function deleteRowsByIds(
   sheetId: string, userId: string, rowIds: string[],
 ): DeleteRowsOutcome {
   const unique = Array.from(new Set(rowIds));
   let fail: TxnFail | null = null;
   let deleted = 0;
+  let trashId: number | null = null;
   db.transaction(() => {
     if (sheetHasActiveRun(sheetId, userId)) {
       // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
@@ -108,19 +111,13 @@ export function deleteRowsByIds(
       fail = block?.message ? { fail: 'busy', message: block.message } : { fail: 'active_run' };
       return;
     }
-    const ph = unique.map(() => '?').join(',');
-    const found = db.prepare(
-      `SELECT id, row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND id IN (${ph})`,
-    ).all(sheetId, userId, ...unique) as Array<{ id: string; row_index: number }>;
-    if (found.length === 0) return;
-    db.prepare(
-      `DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND id IN (${found.map(() => '?').join(',')})`,
-    ).run(sheetId, userId, ...found.map(r => r.id));
-    deleted = found.length;
-    purgeResultsForRows(sheetId, userId, found.map(r => r.row_index));
+    const removed = deleteRowsToTrash(sheetId, userId, 'api', { ids: unique });
+    if (removed.count === 0) return;
+    deleted = removed.count;
+    trashId = removed.trashId;
     autorunRowsRemoved(sheetId, userId);
     bumpDataVersion(sheetId, userId);
   }).immediate();
   if (fail) return fail;
-  return { ok: { deleted } };
+  return { ok: { deleted, trashId } };
 }

@@ -20,6 +20,7 @@ import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
 import { applyListStart, listRowsBeingAdded } from './enrich-list-start';
 import { activeRunOn, prepareEnrichmentStart, seedPlanFor } from './enrich-run-prepare';
+import { logRunStarted } from '../lib/change-log';
 
 // destSheetId: where a list job's rows go (a new sheet is made by the start).
 // rowsInScope: the most rows the run can take (seeding skips rows missing an input).
@@ -104,6 +105,10 @@ export async function startEnrichmentRun(
       rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
       targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null,
       lastRow: span.lastRow, test: input.rows.test,
+    });
+    logRunStarted(sheetId, userId, {
+      kind: 'enrichment', column: statusColumn, runId, rows: upperBound, again: input.continueColumn,
+      runIf: input.runIf,
     });
     return { ok: { runId, statusColumn, outputColumns: outputNames, destSheetId, rowsInScope: upperBound } };
   });

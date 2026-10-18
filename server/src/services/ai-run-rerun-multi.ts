@@ -23,6 +23,7 @@ import { enqueueAIRerun } from '../queue';
 import { DEFAULT_AI_RERUN_MODE, resolveRerunTargets } from './ai-rerun-modes';
 import { rerunConcurrency, type AiRerunParams, type RerunOutcome } from './ai-run-rerun';
 import { NO_TARGET_ROWS } from './rerun-targets';
+import { logRunStarted } from '../lib/change-log';
 
 // For a caller holding only a base name (the sheet menu before it sent the
 // exact header): the run whose status or "(Data)" column that base names.
@@ -128,6 +129,9 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns,
       targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, statusColumn),
       enqueue: () => enqueueAIRerun(runId, targets),
+    });
+    logRunStarted(p.sheetId, userId, {
+      kind: 'ai', column: statusColumn.replace(/ \(Status\)$/, ''), runId, rows: targets.length, again: true, model,
     });
     return { ok: { runId, targetCount: targets.length } };
   });

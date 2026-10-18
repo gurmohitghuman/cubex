@@ -12,6 +12,7 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { newestColumnRun } from './enrich-column';
 import { fieldlessRuns, giveFields } from './enrich-list-held';
 import type { RunFail } from './run-shared';
+import { logSheetChange } from '../lib/change-log';
 
 export interface ListFieldChoices {
   fields: ListFieldInfo[];
@@ -91,6 +92,10 @@ export function pickListFields(
     }).immediate();
   } catch (error) {
     if (error !== ROLLBACK) throw error;
+  }
+  if (!('fail' in out)) {
+    logSheetChange(sheetId, userId, 'list_fields', `Picked the fields of the rows "${column}" adds`,
+      { column, detail: { fields: fields.map(f => f.columnName) } });
   }
   return 'fail' in out ? out : { ok: out };
 }

@@ -25,6 +25,7 @@ import { renameColumnDescriptionRefs } from '../lib/column-descriptions';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
+import { logSheetChange } from '../lib/change-log';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
@@ -160,6 +161,8 @@ export async function renameSheetColumn(
       recordPurge(sheetId, userId, columnName);
     })();
     await finishColumnChange(sheetId, userId, columnName);
+    logSheetChange(sheetId, userId, 'column_renamed', `Renamed the column "${columnName}" to "${trimmedNew}"`,
+      { column: trimmedNew, detail: { from: columnName, to: trimmedNew } });
     return { ok: true as const, newName: trimmedNew };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
@@ -233,4 +236,7 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameWaterfallLookupRefs(sheetId, userId, columnName, trimmedNew);
   // Its description goes with it.
   renameColumnDescriptionRefs(sheetId, userId, columnName, trimmedNew);
+  // The change log: its lines about the column follow its name (History by column).
+  db.prepare('UPDATE sheet_changes SET column_name = ? WHERE sheet_id = ? AND user_id = ? AND column_name = ?')
+    .run(trimmedNew, sheetId, userId, columnName);
 }

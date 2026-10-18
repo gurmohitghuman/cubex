@@ -74,7 +74,8 @@ export const RemoveDuplicatesModal: React.FC<Props> = props => {
       )}
       <div className="px-6 pb-6 flex items-center justify-between gap-4">
         <p className="text-xs text-gray-500">
-          The whole sheet is checked; filters don&apos;t apply. Removed rows can&apos;t be brought back.
+          The whole sheet is checked; filters don&apos;t apply. Removed rows go to the trash, where you can
+          restore them.
         </p>
         <div className="flex gap-3 flex-shrink-0">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={removing}>Cancel</button>

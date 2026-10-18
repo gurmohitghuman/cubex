@@ -44,11 +44,12 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
     return res.status(415).json({ error: 'Content-Type must be application/json.' });
   }
 
-  // Step 3: token_hash lookup -> unknown OR disabled both return generic 404.
+  // Step 3: token_hash lookup -> unknown, disabled or its sheet in the trash: generic 404.
   const tokenHash = sha256Hex(token);
   const source = db.prepare(
     `SELECT id, user_id, sheet_id, enabled, raw_column_name, store_raw_mode, total_received
-       FROM webhook_sources WHERE token_hash = ?`,
+       FROM webhook_sources ws WHERE token_hash = ?
+         AND EXISTS (SELECT 1 FROM sheets s WHERE s.id = ws.sheet_id AND s.trash_id IS NULL)`,
   ).get(tokenHash) as WebhookSourceRow | undefined;
   if (!source || source.enabled !== 1) {
     return res.status(404).json({ error: 'Not found' });
@@ -108,6 +109,8 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
   try {
     const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText);
     if (!result.ok) {
+      // Its sheet went to the trash meanwhile: the generic 404.
+      if (result.code === 404) return res.status(404).json({ error: 'Not found' });
       // Row cap reached -> 409 ("webhook full").
       recordSourceError(source.id, result.reason);
       return res.status(409).json({ error: result.reason });

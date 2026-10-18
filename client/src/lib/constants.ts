@@ -139,3 +139,6 @@ export const PENDING_HIDDEN_MS = 5000;
 // Descriptions (mirror server/src/lib/constants-columns.ts): characters in a column's and a sheet's.
 export const MAX_COLUMN_DESCRIPTION_CHARS = 1000;
 export const MAX_SHEET_DESCRIPTION_CHARS = 2000;
+
+// Rows a grid delete sends per call (server lib/constants-trash.ts GRID_DELETE_CALL_ROWS).
+export const GRID_DELETE_CALL_ROWS = 2_000;

@@ -180,7 +180,8 @@ export type UsageAsk = { ok: { scope: UsageScope; query: UsageQuery; name: strin
 export function usageAsk(userId: string, sheetId: string | null, input: Record<string, unknown>): UsageAsk {
   let name = 'All sheets';
   if (sheetId !== null) {
-    const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck().get(sheetId, userId);
+    const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').pluck()
+      .get(sheetId, userId);
     if (typeof sheet !== 'string') return { fail: 'not_found', message: 'Sheet not found' };
     name = sheet;
   }

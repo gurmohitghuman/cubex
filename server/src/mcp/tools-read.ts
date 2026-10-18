@@ -16,7 +16,7 @@ import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 

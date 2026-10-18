@@ -3,6 +3,8 @@ import { useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
 import { toastBlocked } from '@/components/sheet/blockedToast'
+import { toastDeleted } from '@/components/trash/trashToast'
+import { GRID_DELETE_CALL_ROWS } from '@/lib/constants'
 
 interface UseRowOpsArgs {
   activeSheet: Sheet | null
@@ -69,11 +71,11 @@ export const useRowOps = ({
       return
     }
     dropPendingForRows(unique)
-    // Single bulk-delete request — one HTTP call, one SQL transaction, no
-    // rate-limit risk regardless of selection size. Server caps at 10k per
-    // call (MAX_BULK_DELETE_ROWS), so chunk if the user somehow selects more.
-    const CHUNK = 10000
-    // A selection above 10k rows takes several chunks. On a mid-loop failure,
+    // Bulk-delete calls of GRID_DELETE_CALL_ROWS: each one transaction short
+    // enough not to hold the server at a million rows (the server takes up to
+    // 10k); every call lands in the first one's trash batch.
+    const CHUNK = GRID_DELETE_CALL_ROWS
+    // A big selection takes several chunks. On a mid-loop failure,
     // reloadActiveSheet() is the cheap, correct floor (no UI/server desync — see
     // the catch below); per-chunk optimistic removal + "deleted N of M" reporting
     // would be the nicer upgrade.
@@ -84,12 +86,18 @@ export const useRowOps = ({
       // yet — bulk-delete now REQUIRES a generation server-side. If the real
       // generation has since advanced, the server 409s and we reload (catch below).
       const gen = rowGenerationRef.current.get(originSheetId) ?? 0
+      // Every chunk lands in the first one's trash batch, so one Restore brings them all back.
+      let trashId: number | undefined
       for (let i = 0; i < unique.length; i += CHUNK) {
         const chunk = unique.slice(i, i + CHUNK)
-        const { deletedCount } = await sheetsAPI.bulkDeleteRows(originSheetId, chunk, gen)
+        const { deletedCount, trash } = await sheetsAPI.bulkDeleteRows(originSheetId, chunk, gen, trashId)
         totalDeleted += deletedCount
+        trashId = trash?.id ?? trashId
         chunksAcked++
       }
+      const deletedWords = `${totalDeleted} row${totalDeleted === 1 ? '' : 's'} deleted`
+      // Restore reloads the sheet the rows came back to, if it is still the one showing.
+      const onRestored = () => { if (activeSheetIdRef.current === originSheetId) reloadActiveSheet() }
       // The user may have switched sheets during the round-trip (fire-and-forget
       // delete, dialog already closed). The server delete on originSheetId
       // succeeded — report it — but DON'T apply optimistic removal to whatever
@@ -98,7 +106,7 @@ export const useRowOps = ({
       // corrupt its loadMore offset. The abandoned origin sheet re-syncs from
       // server truth on its next load, so skipping the local mutation is safe.
       if (activeSheetIdRef.current !== originSheetId) {
-        toast.success(`${totalDeleted} row${totalDeleted === 1 ? '' : 's'} deleted`, { id: toastId })
+        toastDeleted(deletedWords, trashId, { id: toastId, onRestored })
         return
       }
       // Optimistic local removal — matches handleColumnDelete.
@@ -132,7 +140,7 @@ export const useRowOps = ({
         }
       })
       setLoadedRowsCount(prev => Math.max(0, prev - removedFromWindow))
-      toast.success(`${totalDeleted} row${totalDeleted === 1 ? '' : 's'} deleted`, { id: toastId })
+      toastDeleted(deletedWords, trashId, { id: toastId, onRestored })
     } catch (error: any) {
       // Two distinct 409s from bulk-delete:
       //   1. An active AI/HTTP run on the sheet (no currentGeneration in the body).

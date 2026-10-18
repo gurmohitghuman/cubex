@@ -26,7 +26,7 @@ import { asRunStart } from './run-seed';
 import { getTool } from './enrich-catalog';
 import { buildEnrichmentConfig } from './enrich-run-build';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
+import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import {
   columnOutputs, columnRunActive, loadEntry, pauseEntry, type AutorunEntry, type ColumnRunRow,
 } from './autorun-entry';
@@ -130,7 +130,7 @@ export async function startAutorunRun(
       const dest = prep.dest;
       const destHave = dest ? getSheetColumns(dest.destSheetId, e.user_id, false) : [];
       const destAdd = dest ? dest.newColumns.filter(c => !destHave.includes(c)) : [];
-      if (dest && !db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ?').get(dest.destSheetId, e.user_id)) {
+      if (dest && !verifySheetOwnership(dest.destSheetId, e.user_id)) {
         return;
       }
       // Busy (a column change rewrites the runs into it by page) or changed since the prep: next tick.

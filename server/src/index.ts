@@ -31,6 +31,7 @@ import { resumeRunCleanups } from './lib/run-placeholders';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
+import { resumeTrashRestores } from './services/trash-restore';
 import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
 import { DERIVED_KINDS } from './services/derived-kinds';
@@ -52,6 +53,7 @@ import waterfallRoutes from './routes/waterfall';
 import autorunRoutes from './routes/autorun';
 import setupsRoutes from './routes/setups';
 import setupRunsRoutes from './routes/setup-runs';
+import trashRoutes from './routes/trash';
 import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
 
@@ -138,6 +140,7 @@ app.use('/api/waterfall', waterfallRoutes);
 app.use('/api/autorun', autorunRoutes);
 app.use('/api/setups', setupsRoutes);
 app.use('/api/setup-runs', setupRunsRoutes);
+app.use('/api/trash', trashRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Liveness/readiness probe (see routes/health.ts).
@@ -196,11 +199,12 @@ createAccountFromEnv().then((result) => {
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
-  // duplicate removals). Each marks its sheet busy synchronously, before the
-  // first request.
+  // duplicate removals, 036's restores from the trash). Each marks its sheet
+  // busy synchronously, before the first request.
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();
+  resumeTrashRestores();
   resumeRunRewrites();
   resumeColumnPurges();
   resumeFieldJobs();

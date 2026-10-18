@@ -4,9 +4,9 @@
 // (lib/file-links.ts) and moves the file with the curl command that comes with
 // it (routes/file-links.ts). Each needs only what the token can already do:
 // write to import (as import_csv), read to export (as export_csv).
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { db } from '../lib/db';
 import { planSheetExport } from '../lib/csv-export';
 import { createFileLink, fileLinkUrl } from '../lib/file-links';
 import { tooManyMessage } from '../lib/rate-window';
@@ -39,8 +39,9 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         `Import a CSV file of any size (up to ${MAX_MB} MB) into a sheet without its contents passing through `
         + 'your context. Returns a one-time link; upload the file to it with the curl command in the result, '
         + 'from any machine that can reach Cubex. curl prints the import result (rows imported, new columns). '
-        + 'Same header rules as import_csv; mode "replace" DELETES all existing rows when the file arrives '
-        + `(permanent). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write scope.`
+        + 'Same header rules as import_csv; mode "replace" deletes all existing rows when the file arrives (to the '
+        + `trash, restorable). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write `
+        + 'scope.'
         + (canWrite ? '' : ` ${NO_WRITE_NOTE}`),
       inputSchema: {
         sheet_id: z.string(),
@@ -49,7 +50,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
     },
     async ({ sheet_id, mode }) => {
       if (!canWrite) return err(NO_WRITE);
-      if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheet_id, ctx.userId)) {
+      if (!verifySheetOwnership(sheet_id, ctx.userId)) {
         return err('Sheet not found');
       }
       // Each link is one import, so it takes a slot from the same budget.

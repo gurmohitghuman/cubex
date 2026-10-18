@@ -19,7 +19,7 @@ import { isHttps } from './cookie';
 import { FILE_LINK_TTL_MINUTES } from './api-v1-constants';
 
 export type FileLinkKind = 'upload' | 'download';
-export interface FileLink { id: string; user_id: string; sheet_id: string; options: string }
+export interface FileLink { id: string; user_id: string; sheet_id: string; options: string; token_name: string }
 
 // SQLite's datetime('now') format, so expires_at compares as text.
 const sqlTime = (d: Date): string => d.toISOString().slice(0, 19).replace('T', ' ');
@@ -45,8 +45,9 @@ export function createFileLink(args: {
 // unexpired, and made by an access token that is still valid. Marks nothing.
 export function findFileLink(token: string, kind: FileLinkKind): FileLink | null {
   const link = db.prepare(`
-    SELECT l.id, l.user_id, l.sheet_id, l.options FROM file_links l
+    SELECT l.id, l.user_id, l.sheet_id, l.options, t.name AS token_name FROM file_links l
     JOIN access_tokens t ON t.id = l.access_token_id AND t.user_id = l.user_id
+    JOIN sheets s ON s.id = l.sheet_id AND s.trash_id IS NULL
     WHERE l.token_hash = ? AND l.kind = ? AND l.used_at IS NULL AND l.expires_at > datetime('now')
       AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))
   `).get(sha256Hex(token), kind) as FileLink | undefined;

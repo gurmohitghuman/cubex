@@ -32,6 +32,7 @@ import { RerunOutcome } from './ai-run-rerun';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { autorunFillingColumn } from './autorun-block';
 import { chooseRerunTargets, httpCellMissing, NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
+import { logRunStarted } from '../lib/change-log';
 
 // rowIndices: an explicit subset, which wins over mode; firstRows / withinRows
 // narrow the rows mode picks from (rerun-targets.ts).
@@ -185,6 +186,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
       targets, lastRow: Number.MAX_SAFE_INTEGER, rule: ruleSeed(rule.ok, cleanMaster),
       enqueue: () => enqueueHTTPRerun(newRunId, targets),
     });
+    logRunStarted(p.sheetId, userId, { kind: 'http', column: cleanMaster, runId: newRunId, rows: targets.length,
+      again: true });
     return { ok: { runId: newRunId, targetCount: targets.length } };
   });
 }

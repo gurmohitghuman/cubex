@@ -16,6 +16,7 @@ import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
 import { buildMcpServer } from '../mcp/build-server';
 import { linkBase } from '../lib/file-links';
+import { runAs } from '../lib/actor';
 
 const router = express.Router();
 
@@ -71,7 +72,9 @@ router.post('/', async (req: TokenAuthRequest, res) => {
     });
     res.on('close', () => { void transport.close(); void server.close(); });
     await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    // What the tools change is done by this token over MCP (lib/actor.ts).
+    await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null },
+      () => transport.handleRequest(req, res, req.body));
   } catch (error) {
     console.error('MCP request error:', error);
     if (!res.headersSent) {

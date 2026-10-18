@@ -10,6 +10,7 @@ import { SheetEnrichActions } from './SheetEnrichActions'
 import { SheetSetupsMenu } from './SheetSetupsMenu'
 import { SheetUsageButton } from './SheetUsageButton'
 import { ExportButton, type ExportScope } from '@/components/views/ExportButton'
+import { SheetHistoryButton } from './SheetHistoryButton'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -190,6 +191,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               </button>
               <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} />
               <SheetUsageButton sheetId={sheetId ?? null} sheetName={sheetName ?? ''} />
+              <SheetHistoryButton sheetId={sheetId ?? null} />
             </div>
 
             {/* Divider between data-management (Import/Export) and the enrich

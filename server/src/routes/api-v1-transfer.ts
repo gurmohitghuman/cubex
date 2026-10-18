@@ -2,6 +2,7 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
+import { trashAnswer } from '../services/trash-answer';
 import { parseRowQueryBody } from '../services/row-selection';
 import { TransferSelection } from '../services/transfer-selection';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
@@ -71,7 +72,8 @@ router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), async (req
     }
     const notice = result.replayed ? {}
       : await appendAutorunNotice(req.userId!, body.destination_sheet_id as string, result.ok.copied + result.ok.moved);
-    return res.json({ ...result.ok, replayed: result.replayed ?? false, ...notice });
+    const trash = result.ok.moved ? { trash: trashAnswer(req.userId!, result.ok.trash_id ?? null, 'rest') } : {};
+    return res.json({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash });
   } catch (error) {
     console.error('POST /v1/sheets/:sourceId/rows/transfer error:', error);
     return res.status(500).json({ error: 'Failed to transfer rows' });

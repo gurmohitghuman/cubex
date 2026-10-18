@@ -6,6 +6,7 @@
 // is read only once its link checks out and its size is known. The global body
 // parsers skip /api/files (applyServerMiddleware), so an upload streams
 // straight to disk.
+import { runAs } from '../lib/actor';
 import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
 import { planSheetExport } from '../lib/csv-export';
@@ -73,11 +74,13 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   if (!useFileLink(link)) return notFound(res);
 
   const replace = linkOptions<{ mode: string }>(link).mode === 'replace';
-  const result = await importUploadedCsv(req, link.sheet_id, link.user_id, replace);
+  // The import is the link's token's doing, over MCP (lib/actor.ts: the change log and trash say so).
+  const result = await runAs({ via: 'mcp', tokenName: link.token_name },
+    () => importUploadedCsv(req, link.sheet_id, link.user_id, replace));
   if (!('fail' in result)) {
     // The new rows' auto-runs (an agent made the link; it should know what they spend).
     const notice = await appendAutorunNotice(link.user_id, link.sheet_id, result.ok.rowsImported);
-    return void res.status(201).json({ ...importSummary(result.ok, replace), ...notice });
+    return void res.status(201).json({ ...importSummary(result.ok, replace, link.user_id), ...notice });
   }
   // Busy (a heavy job or an export got there first): nothing was imported, so
   // the link may try again.

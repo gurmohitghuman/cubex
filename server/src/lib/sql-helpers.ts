@@ -13,11 +13,13 @@ export {
   listColumnsInInsertionOrder, getSheetColumns, appendColumnsToOrder,
 } from './sheet-columns';
 
-// Returns the sheet row if the user owns it, null otherwise.
+// Returns the sheet row if the user owns it, null otherwise. A sheet in the
+// trash (migration 036) is not found: everything that resolves a sheet by id
+// checks it here first.
 // Use in routes: `if (!verifySheetOwnership(...)) return res.status(404).json(...)`
 export function verifySheetOwnership(sheetId: string, userId: string): { id: string } | null {
   const sheet = db.prepare(
-    'SELECT id FROM sheets WHERE id = ? AND user_id = ?',
+    'SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL',
   ).get(sheetId, userId) as { id: string } | undefined;
   return sheet || null;
 }

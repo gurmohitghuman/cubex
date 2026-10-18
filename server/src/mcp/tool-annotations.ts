@@ -34,22 +34,25 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   list_models: read('List AI models', true),
   get_balances: read('Read balances', true),
   get_usage: read('Read usage and costs'),
+  list_trash: read('List the trash'),
+  get_sheet_history: read("Read a sheet's change log"),
   append_rows: write('Append rows', false, false),
   update_cells: write('Update cells', true, true),
-  delete_rows: write('Delete rows (permanent)', true, true),
+  // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back.
+  delete_rows: write('Delete rows (to the trash)', true, true),
   add_column: write('Add a column', false, false),
   rename_column: write('Rename a column', true, true),
   set_description: write('Describe a sheet or column', true, true),
   delete_column: write('Delete a column (permanent)', true, true),
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
-  // A dry run (the default) changes nothing; a removal deletes rows for good. Repeating it removes nothing more.
-  remove_duplicates: write('Remove duplicate rows (permanent)', true, true),
-  manage_table: write('Create, rename or delete a table', true, false),
-  manage_sheet: write('Create, rename, delete or reorder sheets', true, false),
+  // A dry run (the default) changes nothing; a removal moves rows to the trash. Repeating it removes nothing more.
+  remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
+  manage_table: write('Create, rename or delete a table (to the trash)', true, false),
+  manage_sheet: write('Create, rename, delete or reorder sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.
-  // An upload link in replace mode deletes the rows when the file arrives.
+  // An upload link in replace mode moves the rows to the trash when the file arrives.
   create_upload_link: write('Create a one-time CSV upload link', true, false, true),
   create_download_link: write('Create a one-time CSV download link', false, false, true),
   set_default_model: write('Set the default AI model', true, true),
@@ -93,4 +96,6 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_setup_run: read('Get a setup run'),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_run_webhooks: read('List run webhooks'),
+  // Puts rows, sheets and tables back; repeating it finds nothing more to restore.
+  restore_from_trash: write('Restore from the trash', false, true),
 };

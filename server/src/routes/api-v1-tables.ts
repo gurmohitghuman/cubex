@@ -5,6 +5,7 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { listTablesWithSheets } from '../services/workspace-read';
 import { createTable, renameTable, deleteTable, tableFailHttpStatus } from '../services/table-crud';
+import { trashAnswer } from '../services/trash-answer';
 
 const router = express.Router();
 
@@ -45,12 +46,12 @@ router.patch('/tables/:id', requireScope('write'), (req: TokenAuthRequest, res) 
   }
 });
 
-// DELETE /v1/tables/:id — aborts active runs, drops webhook buckets.
+// DELETE /v1/tables/:id — into the trash with its sheets (services/trash-sheets.ts).
 router.delete('/tables/:id', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const result = deleteTable(req.userId!, req.params.id);
     if ('fail' in result) return res.status(tableFailHttpStatus(result)).json({ error: result.message });
-    res.json({ deleted: true });
+    res.json({ deleted: true, trash: trashAnswer(req.userId!, result.ok.trashId, 'rest') });
   } catch (error) {
     console.error('DELETE /v1/tables/:id error:', error);
     res.status(500).json({ error: 'Failed to delete table' });

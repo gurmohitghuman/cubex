@@ -27,6 +27,7 @@ import { setDerivedAutorun } from './derived-autorun';
 import { LOOKUP_FILLING, lookupKind, readsFilling } from './lookup-kind';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
 import type { RunFail } from './run-shared';
+import { logSheetChange } from '../lib/change-log';
 
 export interface LookupColumnInput {
   column?: unknown;         // the lookup column's name (a preview can leave it out)
@@ -55,7 +56,7 @@ function otherSide(
   userId: string, sheetId: string, input: LookupColumnInput,
 ): { otherSheetId: string; otherName: string; columns: string[] } | RunFail {
   if (typeof input.otherSheetId !== 'string' || !input.otherSheetId) return bad('Pick the sheet to look in.');
-  const other = db.prepare('SELECT id, name FROM sheets WHERE id = ? AND user_id = ?')
+  const other = db.prepare('SELECT id, name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
     .get(input.otherSheetId, userId) as { id: string; name: string } | undefined;
   if (!other) return { fail: 'not_found', message: "The sheet to look in wasn't found." };
   if (other.id === sheetId) return bad('Pick another sheet: a lookup reads a different sheet than its own.');
@@ -206,6 +207,11 @@ export async function startLookupColumn(
       setDerivedAutorun('lookup', sheetId, userId, column, [s.source], input.autoRun ?? (created ? true : undefined));
       db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
         WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+      logSheetChange(sheetId, userId, 'lookup_column', `${created ? 'Added' : 'Changed'} the lookup column "${column}"`,
+        { column, detail: {
+          source_column: s.source, other_sheet_id: s.otherSheetId, match_column: s.matchColumn, match: s.match,
+          returns: s.returns,
+        } });
       return { ok: { id, column, created } };
     }).immediate();
     if ('ok' in result) continueInBackground(sheetId, LOOKUP_FILLING, () => runDerivedFill(lookupKind, result.ok.id));

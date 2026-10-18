@@ -1,23 +1,24 @@
-// Sheet-tab create/rename/delete/reorder — extracted verbatim from
-// routes/api-v1-table-sheets.ts so the /v1 routes and the MCP manage_sheet
-// tool share one implementation, on top of the same lib/sheet-crud-helpers
-// txns the UI uses. Invariants preserved: table-scoped ownership, name
-// conflicts, last-sheet delete guard, run abort + webhook-source capture INSIDE
-// the delete txn, bucket drop after commit. (No sheets-per-table cap.)
+// Sheet-tab create/rename/delete/reorder: one implementation for the app
+// (routes/tables-sheets.ts), the /v1 routes and the MCP manage_sheet tool, on
+// top of the lib/sheet-crud-helpers txns. Invariants: table-scoped ownership,
+// name conflicts among live sheets, the last-sheet delete guard; a delete
+// puts the sheet in the trash whole (services/trash-sheets.ts). (No
+// sheets-per-table cap.)
 import { db } from '../lib/db';
 import { validateSheetName } from '../lib/sheet-validation';
-import { abortListRunsInto, abortRunsForSheets, clearListRunCells } from './run-control';
-import { resultsNotAdded, type ResultsNotAdded } from './enrich-list-guard';
-import { dropBucketsForSheets } from '../lib/webhook-bucket';
-import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import type { ResultsNotAdded } from './enrich-list-guard';
+import { trashSheet } from './trash-sheets';
 import {
   verifyTableOwnership, verifySheetInTable, listSheets, sheetNameTaken, createSheetTxn,
 } from '../lib/sheet-crud-helpers';
 import { TableCrudFail } from './table-crud';
 import { normalizeNameSpacing } from '../lib/name-safety';
+import { logSheetChange } from '../lib/change-log';
 
 type Fail = TableCrudFail;
-export type SheetCrudOutcome = { ok: { sheet?: unknown; sheets: unknown[]; notAdded?: ResultsNotAdded } } | Fail;
+export type SheetCrudOutcome =
+  | { ok: { sheet?: unknown; sheets: unknown[]; notAdded?: ResultsNotAdded; trashId?: number | null } }
+  | Fail;
 
 export function createSheet(
   userId: string, tableId: string, rawName: unknown, afterSheetId: string | undefined,
@@ -58,42 +59,28 @@ export function renameSheet(
       fail = { fail: 'conflict', message: `A sheet named "${name}" already exists in this table` };
       return;
     }
+    const old = db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(sheetId) as string;
     db.prepare("UPDATE sheets SET name = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
       .run(name, sheetId, userId);
+    if (old !== name) {
+      logSheetChange(sheetId, userId, 'sheet_renamed', `Renamed the sheet "${old}" to "${name}"`,
+        { detail: { from: old, to: name } });
+    }
   }).immediate();
   if (fail) return fail;
   return { ok: { sheet: { id: sheetId, name }, sheets: listSheets(tableId, userId) } };
 }
 
-// Last-sheet guard + run abort + webhook-source capture INSIDE the txn (a
-// delete losing the last-sheet race must never cancel runs on a surviving
-// sheet); bucket drop after commit.
+// Into the trash, whole (services/trash-sheets.ts): the last-sheet guard, the
+// runs stopped and the sheet hidden in one transaction.
 export function deleteSheet(userId: string, tableId: string, sheetId: string): SheetCrudOutcome {
   if (!verifyTableOwnership(tableId, userId)) return { fail: 'not_found', message: 'Table not found' };
-  if (!verifySheetInTable(sheetId, tableId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
-  const busy = sheetBusyWith(sheetId);
-  if (busy) return { fail: 'conflict', message: busyMessage(busy) };
-
-  let isLastSheet = false;
-  let sourceIds: string[] = [];
-  let listRuns: string[] = [];
-  let notAdded: ResultsNotAdded | null = null;
-  db.transaction(() => {
-    const { c } = db.prepare('SELECT COUNT(*) AS c FROM sheets WHERE table_id = ? AND user_id = ?')
-      .get(tableId, userId) as { c: number };
-    if (c <= 1) { isLastSheet = true; return; }
-    sourceIds = (db.prepare('SELECT id FROM webhook_sources WHERE sheet_id = ? AND user_id = ?')
-      .all(sheetId, userId) as Array<{ id: string }>).map(r => r.id);
-    abortRunsForSheets([sheetId]);
-    listRuns = abortListRunsInto([sheetId]);
-    // Results its list columns bought that aren't rows yet go with it: the answer says so.
-    notAdded = resultsNotAdded(sheetId, userId);
-    db.prepare('DELETE FROM sheets WHERE id = ? AND user_id = ?').run(sheetId, userId);
-  }).immediate();
-  clearListRunCells(listRuns);
-  if (isLastSheet) return { fail: 'bad_request', message: 'A table must have at least one sheet.' };
-  dropBucketsForSheets(sourceIds);
-  return { ok: { sheets: listSheets(tableId, userId), ...(notAdded ? { notAdded } : {}) } };
+  const out = trashSheet(userId, tableId, sheetId);
+  if ('fail' in out) return out;
+  return {
+    ok: { sheets: listSheets(tableId, userId), trashId: out.ok.trashId,
+      ...(out.ok.notAdded ? { notAdded: out.ok.notAdded } : {}) },
+  };
 }
 
 export function reorderSheets(
@@ -103,7 +90,7 @@ export function reorderSheets(
 
   let bad = false;
   db.transaction(() => {
-    const current = (db.prepare('SELECT id FROM sheets WHERE table_id = ? AND user_id = ?')
+    const current = (db.prepare('SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
       .all(tableId, userId) as Array<{ id: string }>).map(r => r.id);
     const a = [...current].sort();
     const b = [...orderedSheetIds].sort();

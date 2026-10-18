@@ -29,6 +29,7 @@ import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planIfSearching } from './web-search-catalog';
+import { logRunStarted } from '../lib/change-log';
 
 
 export async function startAiMultiRun(userId: string, p: AiRunStartParams): Promise<AiRunStartOutcome> {
@@ -155,6 +156,10 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
       kind: 'ai', runId, sheetId: p.sheetId, userId, columns: allColumns,
       targets, lastRow: span.lastRow, rule: ruleSeed(rule.ok, statusColumn),
       enqueue: () => (targets ? enqueueAIRerun(runId, targets) : enqueueAIRun(runId)),
+    });
+    logRunStarted(p.sheetId, userId, {
+      kind: 'ai', column: p.cleanColumnName, runId, rows: targetCount, model: resolvedModel,
+      runIf: rule.ok?.rule ?? null,
     });
 
     return {

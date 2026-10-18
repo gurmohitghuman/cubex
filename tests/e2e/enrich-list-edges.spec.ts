@@ -143,7 +143,8 @@ test('a row whose results wait for fields is not processing', async ({ page, con
   await page.getByRole('button', { name: /^Sheet options for / }).first().click()
   await page.getByRole('menuitem', { name: 'Delete' }).click()
   await expect(page.getByRole('dialog')).toContainText(
-    `${notAdded.results} results from it haven't been added to Prospects yet. Deleting the sheet drops them.`)
+    `${notAdded.results} results from it haven't been added to Prospects yet. They're dropped, and restoring `
+      + "the sheet doesn't bring them back.")
   await page.getByRole('button', { name: 'Cancel' }).click()
   // A full run without fields is refused; picking them adds the rows.
   const full = await api.post(`/api/enrich/sheets/${sheetId}/runs`, {

@@ -100,8 +100,8 @@ export function saveColumnFilters(sheetId: string, userId: string, raw: unknown)
     }
     if (Object.keys(cleaned).length > 0) stored = JSON.stringify(cleaned);
   }
-  const owns = db.prepare('SELECT column_filters FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId) as
-    { column_filters: string | null } | undefined;
+  const owns = db.prepare('SELECT column_filters FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
+    .get(sheetId, userId) as { column_filters: string | null } | undefined;
   if (!owns) return { fail: 'not_found', error: 'Sheet not found' };
   if (stored !== null) {
     const columns = getSheetColumns(sheetId, userId);

@@ -13,6 +13,7 @@ import { UPLOAD_DIR } from '../lib/uploads';
 import { CELL_MAX_BASIC, MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv, type CsvImportOutcome } from './csv-import';
+import { trashAnswer } from './trash-answer';
 
 export type UploadFailure = { fail: 'too_big' | 'aborted' | 'parse'; error: string };
 
@@ -20,11 +21,13 @@ export const tooBigMessage = (): string =>
   `The file is bigger than the ${Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024))} MB import limit.`;
 
 // What an import reports, the same through import_csv and an upload link. The
-// extras appear only when they happened, so a normal import isn't noisier.
+// extras appear only when they happened, so a normal import isn't noisier: a
+// replace that moved rows to the trash says how to get them back.
 export function importSummary(
-  ok: Extract<CsvImportOutcome, { ok: unknown }>['ok'], replace: boolean,
+  ok: Extract<CsvImportOutcome, { ok: unknown }>['ok'], replace: boolean, userId: string,
 ): Record<string, unknown> {
   return {
+    ...(replace && ok.trashId !== null ? { trash: trashAnswer(userId, ok.trashId, 'mcp') } : {}),
     rows_imported: ok.rowsImported,
     starting_row: ok.startingRow,
     new_columns: ok.newColumns,

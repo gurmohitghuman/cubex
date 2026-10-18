@@ -55,4 +55,19 @@ A filter has to check every row to count the matches, so a filtered read takes a
 
 Lookups were measured with two sheets of 1,000,000 rows, one looking up the other. The column a lookup reads in the other sheet gets an index, built in the background the first time: about 70 MB for a million short values, 175 MB with contains. Writing to that sheet costs a little more while it's looked up: changing another of its columns takes 15 to 30% longer in a big run, and a sheet nobody looks up pays nothing measurable. After a sort of a looked-up sheet, the index reads every row's new position again in the background (about 2 to 7 s at a million rows), and lookups into that sheet wait until it has. Contains on a million different values against a million rows depends on the words: about a minute for company names, more when every value shares the same few letters.
 
-While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+
+### The trash
+
+Deleted rows go to the trash, a slice at a time. Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows and 10 columns (a 1.1 GB database):
+
+| Action | Time | Others waited |
+|---|---|---|
+| Delete 2,000 selected rows (the grid sends a bigger selection 2,000 rows a call) | 0.09 s | 0.09 s |
+| Delete a sheet of 1,000,000 rows (it's hidden at once, kept whole) | 0.05 s | 0.05 s |
+| Empty that sheet from the trash (in the background) | 41 s | 0.5 s |
+| A CSV import replacing 990,000 rows: the old rows moving to the trash, before the new ones go in | 52 s | 0.7 s |
+| Restore those 990,000 rows | 55 s | 0.6 s |
+| Empty a batch of 990,000 rows from the trash | 9 s | 0.5 s |
+
+Rows in the trash keep their space in the database until they leave it. The file doesn't shrink then: SQLite reuses the freed space for new rows.

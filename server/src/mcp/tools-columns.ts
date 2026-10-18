@@ -12,7 +12,7 @@ import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../li
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 

@@ -53,7 +53,7 @@ export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view
 export function planSheetExport(
   sheetId: string, userId: string, options: ExportSelection = {},
 ): SheetExportPlan | { fail: 'not_found' } | { fail: 'invalid'; error: string } {
-  const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?')
+  const sheet = db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
     .get(sheetId, userId) as { name: string } | undefined;
   if (!sheet) return { fail: 'not_found' };
   const opts = applyView(sheetId, userId, options.view, options);

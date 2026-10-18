@@ -32,8 +32,8 @@ type SheetFilters = { empty_filter: string | null; column_filters: string | null
 export async function columnValueCounts(
   sheetId: string, userId: string, column: unknown, viewId: unknown, stop?: () => boolean,
 ): Promise<ValueCountsOutcome> {
-  const sheet = db.prepare('SELECT empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as SheetFilters | undefined;
+  const sheet = db.prepare(`SELECT empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?
+    AND trash_id IS NULL`).get(sheetId, userId) as SheetFilters | undefined;
   if (!sheet) return { fail: 'not_found', error: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   if (typeof column !== 'string' || !columns.includes(column)) {

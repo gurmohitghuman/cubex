@@ -28,7 +28,8 @@ export interface DedupeCheckResult extends DedupeReport {
   // A run holding the sheet: removing is refused until it ends.
   blockedBy: { message: string; run: DedupeBlockingRun } | null
 }
-export interface DedupeRemoveResult extends DedupeReport { removed: number; rowsLeft: number }
+// trashId: the trash batch holding the removed rows (null: none removed, or Settings keeps nothing).
+export interface DedupeRemoveResult extends DedupeReport { removed: number; rowsLeft: number; trashId: number | null }
 
 // Each caller shows the server's error in place, so the generic server-error toast stays off.
 const options = { skipServerErrorToast: true, timeout: DEDUPE_REQUEST_TIMEOUT_MS } as const

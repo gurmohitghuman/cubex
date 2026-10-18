@@ -34,7 +34,8 @@ export const DeleteConfirms: React.FC<Props> = ({
     <ConfirmDialog
       isOpen={!!confirmDeleteRows}
       title="Delete Rows"
-      message={`Are you sure you want to delete ${confirmDeleteRows?.length || 0} selected row(s)?`}
+      message={`Delete ${confirmDeleteRows?.length || 0} selected row(s)? `
+        + 'They go to the trash, where you can restore them.'}
       confirmText="Delete" isDestructive
       onConfirm={() => {
         // Close the dialog + clear selection IMMEDIATELY, then run the delete

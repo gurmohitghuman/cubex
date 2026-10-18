@@ -14,7 +14,7 @@ import { describeColumn, descriptionProblem } from '../services/descriptions';
 const router = express.Router();
 
 function ownsSheet(sheetId: string, userId: string): boolean {
-  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 }
 
 // POST /v1/sheets/:id/columns {name, description?} — add via the shared service (collision 409).

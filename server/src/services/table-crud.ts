@@ -7,9 +7,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { validateTableName } from '../lib/table-validation';
-import { abortRunsForTable } from './run-control';
-import { dropBucketsForSheets } from '../lib/webhook-bucket';
-import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { trashTable } from './trash-sheets';
 import { normalizeNameSpacing } from '../lib/name-safety';
 import { createDefaultView } from './view-store';
 
@@ -35,7 +33,8 @@ export function createTable(userId: string, rawName: unknown): CreateTableOutcom
   const sheetId = uuidv4();
   let fail: TableCrudFail | null = null;
   db.transaction(() => {
-    if (db.prepare('SELECT 1 FROM tables WHERE user_id = ? AND name = ? LIMIT 1').get(userId, name)) {
+    if (db.prepare('SELECT 1 FROM tables WHERE user_id = ? AND name = ? AND trash_id IS NULL LIMIT 1')
+      .get(userId, name)) {
       fail = { fail: 'conflict', message: `A table named "${name}" already exists` };
       return;
     }
@@ -61,13 +60,13 @@ export function renameTable(userId: string, tableId: string, rawName: unknown): 
   let fail: TableCrudFail | null = null;
   try {
     db.transaction(() => {
-      if (db.prepare('SELECT 1 FROM tables WHERE user_id = ? AND name = ? AND id != ? LIMIT 1')
+      if (db.prepare('SELECT 1 FROM tables WHERE user_id = ? AND name = ? AND id != ? AND trash_id IS NULL LIMIT 1')
         .get(userId, name, tableId)) {
         fail = { fail: 'conflict', message: `A table named "${name}" already exists` };
         return;
       }
       const result = db.prepare(
-        "UPDATE tables SET name = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+        "UPDATE tables SET name = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ? AND trash_id IS NULL",
       ).run(name, tableId, userId);
       if (result.changes === 0) fail = { fail: 'not_found', message: 'Table not found' };
     }).immediate();
@@ -81,26 +80,14 @@ export function renameTable(userId: string, tableId: string, rawName: unknown): 
   return { ok: { id: tableId, name } };
 }
 
-export type DeleteTableOutcome = { ok: { deleted: true } } | TableCrudFail;
+export type DeleteTableOutcome = { ok: { deleted: true; trashId: number | null } } | TableCrudFail;
 
-// Abort active runs FIRST (workers must not keep writing into rows the FK
-// cascade is about to wipe); capture webhook source ids BEFORE the cascade
-// removes them; drop their in-memory buckets after.
+// Into the trash, whole, with its sheets (services/trash-sheets.ts): their runs
+// stop, their webhooks stop answering, and the table and sheets are hidden.
 export function deleteTable(userId: string, tableId: string): DeleteTableOutcome {
-  if (!db.prepare('SELECT id FROM tables WHERE id = ? AND user_id = ?').get(tableId, userId)) {
-    return { fail: 'not_found', message: 'Table not found' };
-  }
-  const sheetIds = db.prepare('SELECT id FROM sheets WHERE table_id = ? AND user_id = ?').pluck().all(tableId, userId) as string[];
-  const busy = sheetIds.map(sheetBusyWith).find(Boolean);
-  if (busy) return { fail: 'conflict', message: busyMessage(busy) };
-  abortRunsForTable(tableId);
-  const sourceIds = (db.prepare(
-    `SELECT ws.id FROM webhook_sources ws JOIN sheets s ON s.id = ws.sheet_id
-     WHERE s.table_id = ? AND s.user_id = ? AND ws.user_id = ?`,
-  ).all(tableId, userId, userId) as Array<{ id: string }>).map(r => r.id);
-  db.prepare('DELETE FROM tables WHERE id = ? AND user_id = ?').run(tableId, userId);
-  dropBucketsForSheets(sourceIds);
-  return { ok: { deleted: true } };
+  const out = trashTable(userId, tableId);
+  if ('fail' in out) return out;
+  return { ok: { deleted: true, trashId: out.ok.trashId } };
 }
 
 export const tableFailHttpStatus = (f: TableCrudFail): number =>

@@ -13,6 +13,7 @@ import { type AIRunRow } from './ai-runner';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueAIRun, enqueueAIRerun, enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
 import { autorunStoppedByUser } from './autorun-stop';
+import { logRunControl } from '../lib/change-log';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -29,6 +30,9 @@ const getRun = (kind: RunKind, runId: string, userId: string) =>
   db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ? AND user_id = ?`)
     .get(runId, userId) as (AIRunRow & HTTPRunRow) | undefined;
 
+const columnOf = (kind: RunKind, run: AIRunRow & HTTPRunRow): string | null =>
+  (kind === 'ai' ? run.column_name : run.master_column_name) ?? null;
+
 export function pauseRun(kind: RunKind, runId: string, userId: string): ControlOutcome {
   const run = getRun(kind, runId, userId);
   if (!run) return { fail: 'not_found', message: 'Run not found' };
@@ -42,6 +46,7 @@ export function pauseRun(kind: RunKind, runId: string, userId: string): ControlO
      WHERE id = ? AND user_id = ? AND status IN ('pending','running') AND placeholder_work IS NULL`,
   ).run(runId, userId);
   if (r.changes === 0) return { fail: 'not_active', message: `Run is not active (status: ${run.status})` };
+  logRunControl(run.sheet_id, userId, 'run_paused', columnOf(kind, run), runId);
   return { ok: true };
 }
 
@@ -123,6 +128,7 @@ export async function resumeRun(
     ).run(runId, userId);
     throw enqueueError;
   }
+  logRunControl(run.sheet_id, userId, 'run_resumed', columnOf(kind, run), runId);
   return { ok: true };
 }
 
@@ -153,5 +159,6 @@ export async function cancelRun(kind: RunKind, runId: string, userId: string): P
   clearRunPlaceholders(kind, runId)
     .catch(err => console.error(`Clearing the cells of cancelled ${kind} run ${runId} failed (retried later):`, err));
   touchSheet(run.sheet_id, userId);
+  logRunControl(run.sheet_id, userId, 'run_stopped', columnOf(kind, run), runId);
   return { ok: true };
 }

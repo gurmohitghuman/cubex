@@ -31,6 +31,7 @@ import { setLookupColumnAutorun } from './lookup-column';
 import { httpRunMode } from '../lib/http-run-mode';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { waterfallIsPaid, waterfallUnpriced } from './waterfall-autorun';
+import { logAutorunPaused, logAutorunSaved, withoutChangeLog } from '../lib/change-log';
 
 export interface AutorunSettingsInput {
   column: string;
@@ -72,6 +73,15 @@ function capsFor(
 }
 
 export async function saveAutorunSettings(
+  userId: string, sheetId: string, input: AutorunSettingsInput, opts: { hasSecretsScope: boolean },
+): Promise<{ ok: { column: string } } | RunFail> {
+  // One change-log line, whatever the save sets off (a clean column worked out again).
+  const out = await withoutChangeLog(() => applyAutorunSettings(userId, sheetId, input, opts));
+  if ('ok' in out) logAutorunSaved(sheetId, userId, input);
+  return out;
+}
+
+async function applyAutorunSettings(
   userId: string, sheetId: string, input: AutorunSettingsInput, opts: { hasSecretsScope: boolean },
 ): Promise<{ ok: { column: string } } | RunFail> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
@@ -185,5 +195,6 @@ export function setSheetAutorunPaused(userId: string, sheetId: string, paused: b
         rescan = 1, updated_at = datetime('now') WHERE sheet_id = ? AND user_id = ? AND enabled = 1${one}`)
       .run(...params);
   }
+  logAutorunPaused(sheetId, userId, paused, column);
   return true;
 }

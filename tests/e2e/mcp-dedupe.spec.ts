@@ -24,7 +24,7 @@ test('remove_duplicates: dry run by default, scopes, removal, stale tabs', async
 
   const tool = (await rw.listTools()).tools.find(t => t.name === 'remove_duplicates')
   expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
-  expect(tool?.description).toContain('PERMANENTLY')
+  expect(tool?.description).toContain('Removed rows go to the trash as one batch')
 
   const dry = await call(ro, 'remove_duplicates', { sheet_id: sheetId, columns: BY_EMAIL })
   expect(dry).toMatchObject({

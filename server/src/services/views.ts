@@ -14,6 +14,7 @@ import {
   activeViewId, ensuredViewRows, filtersOf, findView, sheetViewState, viewInfo, viewRows,
   type ViewFail, type ViewInfo, type ViewRow,
 } from './view-store';
+import { logSheetChange } from '../lib/change-log';
 
 // Any case, accents included (SQLite's LOWER, behind the unique index, folds ASCII only).
 const nameTaken = (rows: readonly ViewRow[], name: string, exceptId: string): boolean =>
@@ -88,6 +89,7 @@ export function createView(
       .run(id, sheetId, userId, checked.name, checked.description ?? null, filters.empty_filter,
         filters.column_filters, filters.row_filter, hidden, position);
     if (input.activate) switchTo(sheetId, userId, viewRows(sheetId, userId).find(r => r.id === id)!, activeId);
+    logSheetChange(sheetId, userId, 'view_created', `Added the view "${checked.name}"`, { detail: { view_id: id } });
   }).immediate();
   return fail ?? { ok: result(sheetId, userId, id, columns) };
 }
@@ -118,6 +120,7 @@ export function updateView(sheetId: string, userId: string, ref: string, input: 
       const active = activeViewId(sheetViewState(sheetId, userId)!, rows) === view.id;
       writeFilters(sheetId, userId, view.id, active, checked.filters);
     }
+    logViewChange(sheetId, userId, view.name, checked);
   }).immediate();
   return fail ?? { ok: result(sheetId, userId, id, columns) };
 }
@@ -136,8 +139,25 @@ export function deleteView(sheetId: string, userId: string, ref: string): { ok: 
       switchTo(sheetId, userId, rows.find(r => r.is_default)!, view.id);
     }
     db.prepare('DELETE FROM sheet_views WHERE id = ? AND user_id = ?').run(view.id, userId);
+    logSheetChange(sheetId, userId, 'view_deleted', `Deleted the view "${view.name}"`,
+      { detail: { view_id: view.id } });
   }).immediate();
   return fail ?? { ok: true };
+}
+
+// What an edit changed, in the change log: "Changed the view "Leads" (renamed "Leads US", filters)".
+function logViewChange(
+  sheetId: string, userId: string, name: string,
+  c: { name?: string; description?: string | null; filters?: unknown; hidden?: unknown },
+): void {
+  const parts = [
+    c.name !== undefined && c.name !== name ? `renamed "${c.name}"` : null,
+    c.description !== undefined ? 'description' : null,
+    c.filters ? 'filters' : null,
+    c.hidden !== undefined ? 'hidden columns' : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return;
+  logSheetChange(sheetId, userId, 'view_changed', `Changed the view "${name}" (${parts.join(', ')})`);
 }
 
 export function activateView(sheetId: string, userId: string, ref: string): ViewOutcome {

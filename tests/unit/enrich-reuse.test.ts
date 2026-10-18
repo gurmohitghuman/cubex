@@ -185,6 +185,16 @@ async function main() {
   const quiet = await runOn(sheet('Quiet', ['Una']), false, [])
   check('a run with no outputs keys nothing', results(quiet)[0].reuse_key === null)
 
+  // Answers kept by sheets in the trash aren't reused (they come back with the sheet).
+  const keyed = db.prepare(`SELECT DISTINCT h.sheet_id FROM http_results r JOIN http_runs h ON h.id = r.run_id
+    WHERE r.reuse_key IS NOT NULL`).pluck().all() as string[]
+  const trashSet = db.prepare('UPDATE sheets SET trash_id = ? WHERE id IN (SELECT value FROM json_each(?))')
+  trashSet.run(999_999, JSON.stringify(keyed))
+  asked.length = 0
+  await runOn(sheet('Trashed', ['Grace']))
+  check("an answer from a sheet in the trash isn't reused", asked.join() === 'Grace')
+  trashSet.run(null, JSON.stringify(keyed))
+
   // A spent day stops the rows that would cost; rows reusing an answer still fill.
   setDailyLimitMicro(uid, 10_000)
   db.prepare(`INSERT INTO enrich_daily_spend (user_id, day, spent_micro) VALUES (?, ?, 10000)

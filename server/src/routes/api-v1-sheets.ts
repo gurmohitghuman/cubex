@@ -1,8 +1,8 @@
 // /v1 sheet reads: meta + paged rows. Rows are returned with their STABLE id —
 // v1 writes address rows by id, never row_index (immune to physical sort /
 // CSV-replace reindexing).
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import express from 'express';
-import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
@@ -40,7 +40,7 @@ router.get('/sheets/:id', requireScope('read'), async (req: TokenAuthRequest, re
 // tool). include_status=true: run columns' cells as {status, value, error}.
 router.get('/sheets/:id/rows', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
-    if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(req.params.id, req.userId!)) {
+    if (!verifySheetOwnership(req.params.id, req.userId!)) {
       return res.status(404).json({ error: 'Sheet not found' });
     }
     const rawLimit = parseInt(String(req.query.limit ?? ''), 10);
@@ -63,7 +63,7 @@ router.get('/sheets/:id/rows', requireScope('read'), (req: TokenAuthRequest, res
 
 router.post('/sheets/:id/rows/query', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
-    if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(req.params.id, req.userId!)) {
+    if (!verifySheetOwnership(req.params.id, req.userId!)) {
       return res.status(404).json({ error: 'Sheet not found' });
     }
     const parsed = parseRowQueryBody(req.body, API_V1_MAX_ROWS_PAGE);

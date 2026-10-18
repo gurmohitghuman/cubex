@@ -39,6 +39,8 @@ export function reuseSince(days: number, now: Date = nowDate()): string | null {
 
 export interface FoundAnswer { body: unknown; from: ReusedFrom; notes: AnswerNotes }
 
+// An answer from a sheet in the trash isn't reused (NOT EXISTS below): deleting
+// a sheet took its answers with it before the trash, and does once it's gone.
 // The newest found answer to this lookup since `since` from another run, as
 // treg gave it (plus the earlier row's _cubex notes; a pruned answer has lost
 // its raw part only). A run's own rows share a lookup through runStep instead
@@ -48,6 +50,8 @@ export function findReusable(userId: string, key: string, since: string, runId: 
     SELECT r.response_data AS data, r.run_id AS runId, r.answered_at AS at, h.sheet_id AS sheetId
     FROM http_results r JOIN http_runs h ON h.id = r.run_id
     WHERE r.user_id = ? AND r.reuse_key = ? AND r.answered_at >= ? AND r.run_id != ?
+      AND NOT EXISTS (SELECT 1 FROM http_runs hr JOIN sheets s ON s.id = hr.sheet_id
+        WHERE hr.id = r.run_id AND s.trash_id IS NOT NULL)
     ORDER BY r.answered_at DESC LIMIT 1
   `).get(userId, key, since, runId) as { data: string | null; runId: string; at: string; sheetId: string } | undefined;
   const stored = r ? parseStored(r.data) : null;
@@ -60,17 +64,19 @@ export function findReusable(userId: string, key: string, since: string, runId: 
 }
 
 // Whether any found answer to this lookup is young enough (the estimate's
-// count: the index alone answers it). whole: the run reads the raw part, so
+// count: the index finds it, then one look at its sheet). whole: the run reads the raw part, so
 // only an answer that kept all of it counts (reading it costs a row read; the
 // worker checks each path exactly, so this count may only be lower).
 export function hasReusable(userId: string, key: string, since: string, whole = false): boolean {
   if (!whole) {
-    return !!db.prepare(`SELECT 1 FROM http_results WHERE user_id = ? AND reuse_key = ? AND answered_at >= ? LIMIT 1`)
-      .get(userId, key, since);
+    return !!db.prepare(`SELECT 1 FROM http_results r WHERE user_id = ? AND reuse_key = ? AND answered_at >= ?
+      AND NOT EXISTS (SELECT 1 FROM http_runs hr JOIN sheets s ON s.id = hr.sheet_id
+      WHERE hr.id = r.run_id AND s.trash_id IS NOT NULL) LIMIT 1`).get(userId, key, since);
   }
-  return !!db.prepare(`SELECT 1 FROM http_results WHERE user_id = ? AND reuse_key = ? AND answered_at >= ?
+  return !!db.prepare(`SELECT 1 FROM http_results r WHERE user_id = ? AND reuse_key = ? AND answered_at >= ?
     AND json_extract(response_data, '$."$prunedAt"') IS NULL AND json_extract(response_data, '$."$trimmedPaths"') IS NULL
-    LIMIT 1`).get(userId, key, since);
+    AND NOT EXISTS (SELECT 1 FROM http_runs hr JOIN sheets s ON s.id = hr.sheet_id
+      WHERE hr.id = r.run_id AND s.trash_id IS NOT NULL) LIMIT 1`).get(userId, key, since);
 }
 
 // Counted in the transaction that writes the reused row's result.

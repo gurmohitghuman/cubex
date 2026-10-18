@@ -1,12 +1,14 @@
 // remove_duplicates for agents: MCP and POST /api/v1/sheets/:id/remove-duplicates
-// call this one function. dry_run defaults to TRUE: removed rows can't be
-// brought back, and an agent client may approve tools on its own, so a removal
+// call this one function. dry_run defaults to TRUE: removed rows go to the
+// trash (or for good, when Settings keeps 0 days) with their AI and HTTP
+// results, and an agent client may approve tools on its own, so a removal
 // takes an explicit dry_run: false (the app's confirm button, for agents).
 import { strayKey } from '../lib/enrich-agent-args';
 import { flagOf } from '../lib/enrich-agent-input';
 import { checkDuplicates } from './dedupe-check';
 import { removeDuplicates, type DedupeFail } from './dedupe-remove';
 import type { DedupeReport, SampleGroup } from './dedupe-report';
+import { trashAnswer, type Surface } from './trash-answer';
 
 export interface AgentDedupeArgs { columns?: unknown; keep?: unknown; dry_run?: unknown }
 const KNOWN = ['columns', 'keep', 'dry_run'];
@@ -34,7 +36,7 @@ function reportJson(r: DedupeReport) {
 }
 
 export async function agentRemoveDuplicates(
-  userId: string, sheetId: string, a: AgentDedupeArgs,
+  userId: string, sheetId: string, a: AgentDedupeArgs, surface: Surface,
 ): Promise<{ ok: Record<string, unknown> } | DedupeFail> {
   const stray = strayKey(a as Record<string, unknown>, KNOWN, '');
   if (stray) return { fail: 'bad_request', message: `${stray} Nothing was changed.` };
@@ -50,13 +52,18 @@ export async function agentRemoveDuplicates(
         rows_to_remove: r.duplicateRows, rows_left: r.rowsChecked - r.duplicateRows,
         ...(r.blockedBy ? { blocked_by_run: r.blockedBy.message } : {}),
         note: r.duplicateRows === 0 ? 'No duplicates: nothing to remove.'
-          : 'Nothing was removed. Call again with dry_run: false to remove these rows; removed rows are deleted '
-            + 'for good, with their AI and HTTP results.',
+          : 'Nothing was removed. Call again with dry_run: false to remove these rows; removed rows go to the '
+            + 'trash as one batch (restorable for the days set in Settings), and their AI and HTTP results go.',
       },
     };
   }
   const out = await removeDuplicates(userId, sheetId, a);
   if ('fail' in out) return out;
   const r = out.ok;
-  return { ok: { dry_run: false, ...reportJson(r), rows_removed: r.removed, rows_left: r.rowsLeft } };
+  return {
+    ok: {
+      dry_run: false, ...reportJson(r), rows_removed: r.removed, rows_left: r.rowsLeft,
+      ...(r.removed > 0 ? { trash: trashAnswer(userId, r.trashId, surface) } : {}),
+    },
+  };
 }

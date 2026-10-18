@@ -10,6 +10,7 @@ import { cleanDescription } from '../lib/description-text';
 import { writeColumnDescription } from '../lib/column-descriptions';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { bumpDataVersion } from './data-plane-shared';
+import { logSheetChange } from '../lib/change-log';
 
 export type DescribeOutcome =
   | { ok: { description: string | null } }
@@ -35,6 +36,9 @@ export function describeColumn(sheetId: string, userId: string, column: string, 
     }
     writeColumnDescription(sheetId, userId, column, cleaned.text);
     bumpDataVersion(sheetId, userId);
+    logSheetChange(sheetId, userId, 'description',
+      cleaned.text ? `Described the column "${column}"` : `Removed the description of "${column}"`,
+      { column, detail: { description: cleaned.text } });
   }).immediate();
   return outcome;
 }
@@ -46,5 +50,9 @@ export function describeSheet(sheetId: string, userId: string, raw: unknown): De
   if (!verifySheetOwnership(sheetId, userId)) return gone;
   const changed = db.prepare(`UPDATE sheets SET description = ?, updated_at = datetime('now'),
       data_version = data_version + 1 WHERE id = ? AND user_id = ?`).run(cleaned.text, sheetId, userId).changes;
+  if (changed) {
+    const what = cleaned.text ? 'Described the sheet' : "Removed the sheet's description";
+    logSheetChange(sheetId, userId, 'description', what, { detail: { description: cleaned.text } });
+  }
   return changed ? { ok: { description: cleaned.text } } : gone;
 }

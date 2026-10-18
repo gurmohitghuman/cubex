@@ -12,9 +12,9 @@ interface Props {
 const names = (list: string[]) =>
   list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`
 
-// Deleting a sheet tab. Results its enrichments bought that aren't rows in
-// another sheet yet (being added, waiting for room or for fields) go with it,
-// so the confirm says how many and where.
+// Deleting a sheet tab: it goes to the trash whole. Results its enrichments
+// bought that aren't rows in another sheet yet (being added, waiting for room
+// or for fields) are dropped, so the confirm says how many and where.
 export const DeleteSheetConfirm: React.FC<Props> = ({ sheet, onConfirm, onCancel }) => {
   const [note, setNote] = useState('')
   useEffect(() => {
@@ -26,7 +26,7 @@ export const DeleteSheetConfirm: React.FC<Props> = ({ sheet, onConfirm, onCancel
         if (!alive || !r) return
         const verb = r.results === 1 ? "hasn't" : "haven't"
         setNote(` ${plural(r.results, 'result')} from it ${verb} been added to ${names(r.sheets)} yet. `
-          + 'Deleting the sheet drops them.')
+          + "They're dropped, and restoring the sheet doesn't bring them back.")
       })
       .catch(() => { /* the plain confirm still stands */ })
     return () => { alive = false }
@@ -36,7 +36,8 @@ export const DeleteSheetConfirm: React.FC<Props> = ({ sheet, onConfirm, onCancel
     <ConfirmDialog
       isOpen={!!sheet}
       title="Delete Sheet"
-      message={`Delete "${sheet?.name}" and all its data? This cannot be undone.${note}`}
+      message={`Delete "${sheet?.name}" with all its rows? It goes to the trash, where you can restore it `
+        + `as it was.${note}`}
       confirmText="Delete Sheet"
       onConfirm={() => { if (sheet) onConfirm(sheet) }}
       onCancel={onCancel}

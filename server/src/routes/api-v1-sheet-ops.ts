@@ -15,7 +15,7 @@ import { stopSheetRuns } from '../services/sheet-runs-stop';
 const router = express.Router();
 
 function ownsSheet(sheetId: string, userId: string): boolean {
-  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ?').get(sheetId, userId);
+  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 }
 
 // POST /v1/sheets/:id/sort {column, direction} — one-time PHYSICAL reorder
@@ -60,7 +60,7 @@ router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthR
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return res.status(400).json({ error: 'Send a JSON object.' });
     }
-    const out = await agentRemoveDuplicates(req.userId!, req.params.id, body);
+    const out = await agentRemoveDuplicates(req.userId!, req.params.id, body, 'rest');
     if ('fail' in out) {
       return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
     }

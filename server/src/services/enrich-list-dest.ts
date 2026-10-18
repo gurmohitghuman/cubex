@@ -78,7 +78,7 @@ export function planListDest(
   let sheetId: string | null = null, newName: string | null = null, name: string;
   let have: string[] = [], types: Record<string, string> = {};
   if ('sheetId' in input.dest) {
-    const dest = db.prepare('SELECT id, name, table_id FROM sheets WHERE id = ? AND user_id = ?')
+    const dest = db.prepare('SELECT id, name, table_id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
       .get(input.dest.sheetId, userId) as { id: string; name: string; table_id: string } | undefined;
     if (!dest) return bad('The sheet for the results was deleted. Pick another sheet.');
     if (dest.id === sourceSheetId) return bad('Pick another sheet for the results: rows here would run again.');
