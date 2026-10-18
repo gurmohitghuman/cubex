@@ -108,7 +108,11 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
   await openMenu(page, 'Industry')
   await expect(page.getByRole('menuitem', { name: /Rows with errors/ })).toHaveCount(0)
   await page.getByLabel('Filter condition').selectOption('any_of')
-  await page.getByPlaceholder('One value per line').fill('saas\nretail')
+  // Typed values (the picker also lists the column's values with counts).
+  for (const value of ['saas', 'retail']) {
+    await page.getByPlaceholder('Search or type a value…').fill(value)
+    await page.getByPlaceholder('Search or type a value…').press('Enter')
+  }
   await page.getByRole('button', { name: 'Apply' }).click()
   await expect.poll(() => shownVals(page)).toEqual(['v0', 'v2', 'v3'])
   await page.keyboard.press('Escape')

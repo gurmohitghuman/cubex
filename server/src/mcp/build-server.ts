@@ -66,7 +66,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
         'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
         'with include_status. Saved views (get_sheet lists them) are named filters plus hidden columns: pass ' +
-        'view to read_rows, export_csv or create_download_link to read through one. ' +
+        'view to read_rows, export_csv or create_download_link to read through one. To profile or sum up a ' +
+        'sheet without reading rows, read_rows group_by and aggregates count, sum and average per value. ' +
         'set_auto_run keeps a column filling new rows. Discover AI models with list_models and set account/' +
         'sheet defaults with set_default_model. When transfer_rows is available, ' +
         'prefer it over reading cell data into the model and re-appending it. ' +

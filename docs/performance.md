@@ -34,8 +34,15 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | A lookup by "contains", company names in both sheets (the text index built in 51 s, then the fill) | 60 s | 0.11 s | 770 MB |
 | Check for duplicates, 300,000 rows repeating an email (by email 2.6 s, as plain text 2.1 to 2.5 s, by domain 3.3 to 3.5 s, by phone 5.6 to 7.7 s, three columns 5.2 to 6.9 s, keeping the most filled-in row 6.3 to 12.9 s) | 2 to 13 s | 0.04 to 0.14 s | 950 MB |
 | Remove those 300,000 duplicate rows (two runs) | 18 to 30 s | 0.4 to 0.5 s | 970 MB |
+| An agent counting rows per value (`group_by` Industry, 30 values; while a big job holds the sheet it answers busy at once) | 1.0 s | 0.01 s | 470 MB |
+| `group_by` two columns (900 groups) with sum, average, min, max and a count | 2.5 s | 0.02 s | 480 MB |
+| The sum of a column over every row | 0.8 s | 0.01 s | 480 MB |
+| `group_by` a column of a million different emails (stops past 100,000 groups) | 0.2 s | 0.01 s | 550 MB |
+| "Is any of" listing a column's values with counts (0.7 s in a filtered view) | 1.0 s | 0.01 s | 560 MB |
 
 The database for this sheet is 600 MB on disk. The filter rows were measured on a sheet like it with an AI column and an enrichment (a status column and two outputs), each with 20,000 runs.
+
+Counts per value and the "Is any of" list were measured on a sheet of 1,000,000 rows and 11 columns (a 670 MB database) with an AI column and an enrichment status column.
 
 A filter has to check every row to count the matches, so a filtered read takes about half a second at a million rows. It checks them a slice at a time, about 25 ms each, so other requests keep being answered meanwhile.
 

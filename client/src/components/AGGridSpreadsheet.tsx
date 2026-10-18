@@ -183,7 +183,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
         onEmptyFilterChange={onEmptyFilterChange}
         onColumnFilterChange={onColumnFilterChange}
         onDeleteColumn={onDeleteColumn} onDeleteRows={onDeleteRows}
-        runActions={runActions}
+        runActions={runActions} sheetId={sheetId}
       />
 
       <RenameColumnPopover state={renaming} setState={setRenaming} onRenameColumn={onRenameColumn} />

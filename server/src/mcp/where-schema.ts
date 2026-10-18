@@ -8,8 +8,9 @@ import { MAX_FILTER_LIST_VALUES, MAX_WHERE_CONDITIONS } from '../lib/constants-f
 
 export const WHERE_LANGUAGE = 'Rows must pass every item. An item is a condition {column, operator, value} or an OR '
   + 'group {"or":[conditions]} that passes when any of its conditions does. Text operators ignore case and outer '
-  + 'spaces: eq, neq, contains, not_contains, empty and not_empty (no value); any_of and not_any_of take '
-  + '"values":["a","b"]. gt, gte, lt and lte need a number in the cell ("1,000" counts, "1,5" doesn\'t); '
+  + 'spaces: eq, neq, contains, not_contains, starts_with, ends_with, empty and not_empty (no value); any_of and '
+  + 'not_any_of take "values":["a","b"]. gt, gte, lt and lte need a number in the cell ("1,000" counts, '
+  + '"1,5" doesn\'t); '
   + 'other cells never pass. '
   + 'Run-state operators read the words AI, HTTP API and enrichment runs write into cells, so you never parse them: '
   + 'has_error (the run failed, ❌), has_result (a real value), not_run (never run), condition_not_met (kept out by '
