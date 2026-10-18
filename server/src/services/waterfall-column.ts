@@ -8,6 +8,7 @@ import { inputSourcesOf } from '../lib/waterfall/inputs';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import type { StepInput } from '../lib/waterfall/input-steps';
 import { entryFor } from './autorun-entry';
+import { lookedInSheet } from './waterfall-build-lookup';
 import type { RunFail } from './run-shared';
 
 export interface ColumnRun {
@@ -52,6 +53,7 @@ export interface WaterfallSetup {
   activeRunId: string | null;
   autoRun: boolean;
   toolNames: Record<string, string>;   // an enrichment step's tool, by step id, as the run froze it
+  sheetNames: Record<string, string | null>;   // a lookup step's sheet, by step id, as it's named now (null: gone)
 }
 
 export function waterfallSetup(sheetId: string, userId: string, column: string): { ok: WaterfallSetup } | RunFail {
@@ -65,6 +67,11 @@ export function waterfallSetup(sheetId: string, userId: string, column: string):
       activeRunId: run.active ? run.id : null, autoRun: !!entry?.enabled,
       toolNames: Object.fromEntries(run.config.waterfall.steps
         .flatMap(s => (s.built.kind === 'enrichment' ? [[s.id, s.built.toolName]] : []))),
+      sheetNames: Object.fromEntries(run.config.waterfall.steps.flatMap(s => {
+        if (s.choices.kind !== 'lookup') return [];
+        const sheet = lookedInSheet(s.choices.sheetId, userId);
+        return [[s.id, 'name' in sheet ? sheet.name : null]];
+      })),
     },
   };
 }

@@ -1,13 +1,15 @@
 // Column details of waterfall columns, from each result column's newest run
 // (one query per result column). The result column carries the steps in order
 // (an enrichment's tool, an AI step's model and prompt, an HTTP step's request
-// with keys masked and header names only), the run's caps, the input columns,
+// with keys masked and header names only, a formula, a lookup step's sheet and
+// columns), the run's caps, the input columns,
 // auto-run and the rule; "answered by" and each step's column name it.
 import { db } from '../lib/db';
 import { maskUrlSecrets, type ColumnDetail } from '../lib/column-details';
 import { waterfallColumns, waterfallConfigOf, type WaterfallStep } from '../lib/waterfall/config';
 import { inputSourcesOf } from '../lib/waterfall/inputs';
 import { autoRunPart, nextRunRule, type DetailContext } from './column-details-context';
+import { lookedInSheet } from './waterfall-build-lookup';
 
 interface RunRow { id: string; status: string; config: string | null }
 
@@ -32,6 +34,15 @@ function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<
     };
   }
   if (c.kind === 'formula') return { ...base, formula: ctx.cut(column, c.formula) };
+  if (c.kind === 'lookup') {
+    // The sheet's name now; null with why when it's deleted or in the trash (the step pauses its run).
+    const other = lookedInSheet(c.sheetId, ctx.userId);
+    return {
+      ...base, other_sheet: 'name' in other ? other.name : null, ...('gone' in other ? { broken: other.gone } : {}),
+      other_sheet_id: c.sheetId, match_column: c.matchColumn, match: c.mode, input: c.inputKey,
+      return_column: c.returnColumn,
+    };
+  }
   return base;
 }
 

@@ -8,6 +8,7 @@
 // (services/lookup-purge.ts).
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/sql-rows';
+import { waterfallNeed } from './waterfall-lookup-sweep';
 
 export interface LookupSource {
   id: number; user_id: string; sheet_id: string; column_name: string; path: string; with_text: number;
@@ -36,8 +37,10 @@ export function ensureLookupSource(userId: string, sheetId: string, column: stri
     .get(userId, sheetId, column, jsonPath(column), withText ? 1 : 0) as LookupSource;
 }
 
-// After an edit moved a lookup off a column: its source goes if no lookup reads it.
+// After an edit moved a lookup off a column: its source goes if no lookup reads it
+// (a waterfall lookup step reading it keeps it: services/waterfall-lookup-sweep.ts).
 export function releaseLookupSource(userId: string, sheetId: string, column: string): void {
+  if (waterfallNeed({ user_id: userId, sheet_id: sheetId, column_name: column }, true)) return;
   db.prepare(`DELETE FROM lookup_sources WHERE sheet_id = ? AND user_id = ? AND column_name = ?
     AND NOT EXISTS (SELECT 1 FROM lookup_columns WHERE other_sheet_id = ? AND match_column = ?)`)
     .run(sheetId, userId, column, sheetId, column);

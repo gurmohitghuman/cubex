@@ -23,6 +23,7 @@ import { rowFilterSql } from './enrich-rows-filter';
 import { resolveRowIdsToIndexes, type RunFail } from './run-shared';
 import { prepareWaterfallStart, type PreparedWaterfall } from './waterfall-run-prepare';
 import { keysProblem } from './waterfall-run-start';
+import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
 
 export interface DryRunStarted { runId: string; rowIndexes: number[] }
 
@@ -107,6 +108,8 @@ export async function startWaterfallDryRun(
   const config = dryConfig(walk, picked.rows.length, input.spendLimitUsd);
   const keys = keysProblem(userId, { config }, opts.hasSecretsScope);
   if ('fail' in keys) return keys;
+  // Nothing awaited between this check and the insert: a rename there can't land in between.
+  if (lookupStepsMoved(config, userId)) return { fail: 'conflict', message: LOOKUP_MOVED };
   const runId = uuidv4();
   db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
       target_rows, allow_secrets) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?, ?)`)

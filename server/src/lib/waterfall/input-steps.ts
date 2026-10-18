@@ -157,7 +157,31 @@ function formula(c: Json, where: string): Parsed<StepChoices> {
   return 'error' in text ? text : { ok: { kind: 'formula', formula: text.ok } };
 }
 
-const KINDS: Record<string, (c: Json, where: string) => Parsed<StepChoices>> = { enrichment, ai, http, formula };
+// Another sheet's column matched against one input; the value is the return column of the first match.
+function lookup(c: Json, where: string): Parsed<StepChoices> {
+  const stray = strayKey(c, ['kind', 'sheetId', 'matchColumn', 'mode', 'inputKey', 'returnColumn'], where);
+  if (stray) return bad(stray);
+  const name = (v: unknown) => typeof v === 'string' && !!v.trim() && v.length <= 200;
+  if (!name(c.sheetId)) return bad(`${where}: sheetId is the sheet to look in.`);
+  if (!name(c.matchColumn) || !name(c.returnColumn)) {
+    return bad(`${where}: matchColumn and returnColumn name columns of the sheet it looks in.`);
+  }
+  const mode = c.mode ?? 'equals';
+  if (mode !== 'equals' && mode !== 'contains') return bad(`${where}: mode is equals or contains.`);
+  if (typeof c.inputKey !== 'string' || !INPUT_KEY_PATTERN.test(c.inputKey)) {
+    return bad(`${where}: inputKey is the input whose value it looks for.`);
+  }
+  return {
+    ok: {
+      kind: 'lookup', sheetId: (c.sheetId as string).trim(), matchColumn: c.matchColumn as string, mode,
+      inputKey: c.inputKey, returnColumn: c.returnColumn as string,
+    },
+  };
+}
+
+const KINDS: Record<string, (c: Json, where: string) => Parsed<StepChoices>> = {
+  enrichment, ai, http, formula, lookup,
+};
 
 export function parseStep(v: unknown, i: number): Parsed<StepInput> {
   const where = `Step ${i + 1}`;
@@ -177,7 +201,7 @@ export function parseStep(v: unknown, i: number): Parsed<StepInput> {
   const c = v.choices;
   if (!isObj(c) || typeof c.kind !== 'string') return bad(`${where}: choices.kind is required.`);
   const kind = KINDS[c.kind];
-  if (!kind) return bad(`${where}: a step is an enrichment, ai, http or formula step.`);
+  if (!kind) return bad(`${where}: a step is an enrichment, ai, http, formula or lookup step.`);
   const choices = kind(c, where);
   if ('error' in choices) return choices;
   const check = parseCheck(v.check, where);

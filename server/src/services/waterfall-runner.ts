@@ -30,6 +30,7 @@ import { stopAutorunRun } from './autorun-stop';
 import { processWaterfallRow, type WaterfallRowCtx } from './waterfall-row';
 import { pruneKeptAnswers } from './waterfall-journal';
 import { RunFormulas } from './waterfall-formulas';
+import { RunLookups } from './waterfall-step-lookup';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
 
@@ -155,10 +156,11 @@ export async function processWaterfallRun(
   const formulas = new RunFormulas(message => {
     if (own.halt === null) { own.halt = { reason: 'too_slow', message }; wake.abort(); }
   });
+  const lookups = new RunLookups(run.id, run.user_id, stopped, !!run.autorun_id);
   const ctx: WaterfallRowCtx = {
     run, config, generation, enrich, ai, signal: wake.signal, stopped,
     halt: (message, reason = 'ai_key') => { if (own.halt === null) { own.halt = { reason, message }; wake.abort(); } },
-    formulas,
+    formulas, lookups,
     allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns,
   };
   const paid = steps.some(isPaidStep);
@@ -218,6 +220,7 @@ export async function processWaterfallRun(
     await Promise.allSettled([...out]);
     clearInterval(poll);
     formulas.dispose();
+    lookups.dispose();
     if (paid) dropHold(run.id, generation);
     try { pruneKeptAnswers(run.user_id); } catch (error) {
       console.error('Pruning waterfall answers failed:', redactError(error));

@@ -22,6 +22,7 @@ import type { StepInput } from '../lib/waterfall/input-steps';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { buildEnrichmentStep } from './waterfall-build-enrich';
 import { buildCheck, compileStepFormula } from './waterfall-build-check';
+import { buildLookupStep } from './waterfall-build-lookup';
 import { priceAiStep, type AiStepPrice } from './waterfall-ai-price';
 import type { RunFail } from './run-shared';
 
@@ -51,9 +52,8 @@ function enrichLabel(tool: EnrichTool): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-function defaultLabel(s: StepInput, toolName: string | null): string {
+function defaultLabel(s: StepInput): string {
   const c = s.choices;
-  if (c.kind === 'enrichment') return toolName ?? c.toolId;
   if (c.kind === 'ai') return 'AI';
   if (c.kind === 'http') {
     try { return new URL(c.url.replace(/\{\{[^{}]*\}\}/g, 'x')).hostname || 'HTTP API'; } catch { return 'HTTP API'; }
@@ -130,7 +130,7 @@ export async function buildWaterfall(
       ai.set(id, price.ok);
       const p = price.ok;
       step = {
-        id, label: uniqueLabel(s.label ?? defaultLabel(s, null), usedLabels), on: s.on, requires: [],
+        id, label: uniqueLabel(s.label ?? defaultLabel(s), usedLabels), on: s.on, requires: [],
         choices: { ...c, model }, built: {
           kind: 'ai', model, search: p.search, capUsd: p.capUsd, lowUsd: p.lowUsd, highUsd: p.highUsd,
         },
@@ -143,7 +143,7 @@ export async function buildWaterfall(
       const path = validateHttpJsonPath(c.valuePath);
       if (!path.ok) return bad(`${where}: valuePath ${path.reason}`);
       step = {
-        id, label: uniqueLabel(s.label ?? defaultLabel(s, null), usedLabels), on: s.on, requires: [],
+        id, label: uniqueLabel(s.label ?? defaultLabel(s), usedLabels), on: s.on, requires: [],
         choices: c, built: { kind: 'http', retries: c.retries },
       };
     } else if (c.kind === 'formula') {
@@ -154,7 +154,12 @@ export async function buildWaterfall(
         built: { kind: 'formula', compiled: compiled.ok },
       };
     } else {
-      return bad(`${where}: ${c.kind} steps aren't available yet.`);
+      const b = buildLookupStep(where, c, ctx, inputKeys);
+      if ('fail' in b) return b;
+      step = {
+        id, label: uniqueLabel(s.label ?? b.ok.sheetName, usedLabels), on: s.on, requires: [], choices: b.ok.choices,
+        built: { kind: 'lookup' },
+      };
     }
     const check = await buildCheck(where, s.check, input.resultType, inputKeys);
     if ('fail' in check) return check;

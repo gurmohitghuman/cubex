@@ -37,7 +37,7 @@ export function toolLine(c: EnrichToolCard): string {
 }
 
 export const KIND_LABEL: Record<StepKind, string> = {
-  enrichment: 'Enrichment', ai: 'AI', http: 'HTTP API', formula: 'Formula',
+  enrichment: 'Enrichment', ai: 'AI', http: 'HTTP API', formula: 'Formula', lookup: 'Lookup',
 }
 
 export function stepSummary(s: DraftStep): string {
@@ -45,8 +45,18 @@ export function stepSummary(s: DraftStep): string {
   if (c.kind === 'enrichment') return s.toolName ?? (c.toolId || 'Pick a tool')
   if (c.kind === 'ai') return c.prompt.trim() ? c.prompt.trim().slice(0, 80) : 'Write a prompt'
   if (c.kind === 'formula') return c.formula.trim() ? c.formula.trim().slice(0, 80) : 'Write a formula'
+  if (c.kind === 'lookup') {
+    if (!c.sheetId) return 'Pick a sheet'
+    const where = s.sheetName === null ? 'a deleted sheet' : s.sheetName ?? 'another sheet'
+    return c.returnColumn ? `${c.returnColumn} from ${where}` : `In ${where}`
+  }
   return c.url.trim() ? `${c.method} ${c.url.trim()}`.slice(0, 80) : 'Give it a URL'
 }
+
+// What "answered by" shows when the label is left empty (the server's default
+// for a lookup is its sheet's name; for the others, close to the summary).
+export const labelHint = (s: DraftStep): string =>
+  (s.choices.kind === 'lookup' ? s.sheetName || 'Lookup' : stepSummary(s))
 
 // The inputs a step reads when it says nothing else: /key in a prompt,
 // {{key}} in a request or a formula, the same names for a tool.
@@ -54,6 +64,7 @@ export function defaultNeeds(s: DraftStep, inputs: DraftInput[]): string {
   const c = s.choices
   const label = (k: string) => inputs.find(i => i.key === k)?.label ?? k
   if (c.kind === 'enrichment') return "what its tool needs (treg's rule)"
+  if (c.kind === 'lookup') return c.inputKey ? label(c.inputKey) : 'the input it looks for'
   const text = c.kind === 'ai' ? c.prompt : c.kind === 'formula' ? c.formula
     : [c.url, c.body ?? '', ...Object.values(c.headers)].join(' ')
   const keys = inputs.map(i => i.key).filter(k => (c.kind === 'ai'
@@ -68,7 +79,7 @@ export const OUTCOME_TEXT: Record<StepOutcome, string> = {
 
 export const FROM_TEXT = {
   journal: 'kept from before a pause', dry_run: 'from the dry run', reused: 'an earlier answer, reused at $0',
-  same_lookup: 'the same lookup as another row',
+  same_lookup: 'the same request as another row',
   last_run: 'kept from its last run, not asked again',
 } as const
 

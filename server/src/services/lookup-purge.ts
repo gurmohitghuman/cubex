@@ -5,7 +5,9 @@
 // - looked-up sheets are kept up to date (services/lookup-maintain.ts), so a
 //   lookup rarely finds much to read again before it matches;
 // - a text index no lookup needs any more (its last contains lookup went) is
-//   dropped: the column is indexed again without it.
+//   dropped: the column is indexed again without it;
+// - waterfall lookup steps' indexes are kept while their newest runs read them
+//   (services/waterfall-lookup-sweep.ts), and go once none does.
 // At boot, a few keys of each source are checked against their rows: keys
 // point at rowids, and a VACUUM could renumber them; a source whose sample
 // doesn't match is built again from scratch.
@@ -15,6 +17,7 @@ import { lookupKey, lookupValue } from '../lib/lookup/normalize';
 import { lookupStep, maintainLookupSheet, settleWal } from './lookup-maintain';
 import { lookupSourceState, type LookupSource } from './lookup-source';
 import { removeText } from './lookup-text';
+import { noWaterfallNeeds, PAST_GRACE, releaseWaterfallSources } from './waterfall-lookup-sweep';
 
 const BACKGROUND_MS = 200;
 
@@ -51,6 +54,7 @@ export async function lookupBackgroundRound(): Promise<void> {
   const until = Date.now() + BACKGROUND_MS;
   while (Date.now() < until && purgeStep()) await settleWal();
   dropUnneededText();
+  releaseWaterfallSources();
   const sheets = db.prepare('SELECT DISTINCT sheet_id, user_id FROM lookup_sources').all() as
     Array<{ sheet_id: string; user_id: string }>;
   for (const s of sheets) {
@@ -60,11 +64,14 @@ export async function lookupBackgroundRound(): Promise<void> {
   }
 }
 
+// A waterfall's contains step keeps the text index; an equals step, the index without it.
 function dropUnneededText(): void {
-  const unneeded = db.prepare(`SELECT * FROM lookup_sources s WHERE s.with_text = 1 AND NOT EXISTS
-    (SELECT 1 FROM lookup_columns c WHERE c.other_sheet_id = s.sheet_id AND c.match_column = s.column_name
-      AND c.match_mode = 'contains')`).all() as LookupSource[];
+  const unneeded = db.prepare(`SELECT * FROM lookup_sources s WHERE s.with_text = 1 AND s.${PAST_GRACE}
+    AND NOT EXISTS (SELECT 1 FROM lookup_columns c WHERE c.other_sheet_id = s.sheet_id
+      AND c.match_column = s.column_name AND c.match_mode = 'contains')`).all() as LookupSource[];
   for (const src of unneeded) {
+    if (!noWaterfallNeeds(src, n => n === 'text')) continue;
+    const plain = noWaterfallNeeds(src, n => n !== null) ? 0 : 1;
     db.transaction(() => {
       // Again inside the write lock: a contains lookup may have come since.
       const gone = db.prepare(`DELETE FROM lookup_sources WHERE id = ? AND NOT EXISTS (SELECT 1 FROM lookup_columns c
@@ -72,8 +79,9 @@ function dropUnneededText(): void {
         .run(src.id, src.sheet_id, src.column_name).changes;
       if (gone === 0) return;
       db.prepare(`INSERT INTO lookup_sources (user_id, sheet_id, column_name, path, with_text)
-        SELECT ?, ?, ?, ?, 0 WHERE EXISTS (SELECT 1 FROM lookup_columns WHERE other_sheet_id = ? AND match_column = ?)`)
-        .run(src.user_id, src.sheet_id, src.column_name, src.path, src.sheet_id, src.column_name);
+        SELECT ?, ?, ?, ?, 0 WHERE ? = 1
+          OR EXISTS (SELECT 1 FROM lookup_columns WHERE other_sheet_id = ? AND match_column = ?)`)
+        .run(src.user_id, src.sheet_id, src.column_name, src.path, plain, src.sheet_id, src.column_name);
     }).immediate();
   }
 }

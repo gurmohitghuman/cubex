@@ -1,3 +1,4 @@
+// Over 200 lines: one start transaction re-checking everything a tick read, which only holds together.
 // Starting an auto-run run: the column's newest run again, on the rows the
 // pick chose (services/autorun-pick.ts). An enrichment is rebuilt from its
 // recalled setup against treg's catalog as it is now (a retired tool pauses
@@ -36,6 +37,7 @@ import type { Picked } from './autorun-pick';
 import { enqueueHTTPRerun } from '../queue';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { prepareWaterfallAutorun } from './waterfall-autorun';
+import { lookupStepsMoved } from './waterfall-build-lookup';
 
 // dest: a list job's destination sheet and the columns it still needs there.
 export interface PreparedRun {
@@ -116,6 +118,8 @@ export async function startAutorunRun(
         || cur.row_generation_seen !== e.row_generation_seen || cur.rescan
         || cur.watermark_row_index !== e.watermark_row_index) return;
       if (columnRunActive(e.sheet_id, e.user_id, e.status_column)) return;
+      // A column a waterfall lookup step reads, renamed since the prep: the next tick builds from the new names.
+      if (isWaterfallConfig(prep.config) && lookupStepsMoved(prep.config, e.user_id)) return;
       // Its outputs are in the column registry (a CSV replace can drop them).
       const listed = new Set(getSheetColumns(e.sheet_id, e.user_id, false));
       if (!listed.has(e.status_column)) return;

@@ -20,6 +20,7 @@ import { renameCleanColumnRefs } from '../lib/clean-columns';
 import { derivedRenameLoop } from '../lib/derived-loops';
 import { renameFormulaColumnRefs } from '../lib/formula-columns';
 import { renameLookupColumnRefs } from '../lib/lookup-columns';
+import { renameWaterfallLookupRefs } from '../lib/waterfall/lookup-refs';
 import { renameColumnDescriptionRefs } from '../lib/column-descriptions';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
@@ -228,6 +229,8 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   // Lookup columns: the column itself and the one it reads; lookups in other
   // sheets looking in this one (the column they match, the columns they return).
   renameLookupColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Waterfall lookup steps in other sheets looking in this one.
+  renameWaterfallLookupRefs(sheetId, userId, columnName, trimmedNew);
   // Its description goes with it.
   renameColumnDescriptionRefs(sheetId, userId, columnName, trimmedNew);
 }
