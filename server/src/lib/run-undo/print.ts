@@ -12,8 +12,10 @@ export const PRINT_NOT_MET = 2;
 const RESERVED = 3;
 
 export const isEmptyCell = (v: unknown): boolean => v === undefined || v === null || v === '';
-// Text as SQLite keeps it: a lone surrogate half is stored as U+FFFD.
-const wellFormed = (s: string): string => (s as string & { toWellFormed?: () => string }).toWellFormed?.() ?? s;
+// Text as SQLite keeps it: a lone surrogate half reads back as U+FFFD, one of them on newer Node and
+// three (one per byte Node 22 writes) on Node 22, so any run of U+FFFD counts as one.
+const wellFormed = (s: string): string =>
+  ((s as string & { toWellFormed?: () => string }).toWellFormed?.() ?? s).replace(/\uFFFD+/g, '\uFFFD');
 
 // A cell's print: its value as a run writes it (text) or as a row holds it.
 export function cellPrint(v: unknown): number {
