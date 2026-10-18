@@ -7,6 +7,8 @@ import { isEnrichmentConfig, type EnrichCondition } from '../lib/enrich-run-conf
 import { ruleFromConditions } from '../lib/run-condition';
 import { columnOutputs, newestRunOf, sheetEntries, usageToday, whereOf } from './autorun-entry';
 import type { AutorunKind } from '../lib/autorun-rules';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { waterfallIsPaid, waterfallUnpriced } from './waterfall-autorun';
 
 export interface AutorunColumnView {
   column: string;
@@ -38,7 +40,7 @@ export function sheetAutorunView(sheetId: string, userId: string): SheetAutorunV
       // Older condition lists read as one rule (the dialog saves it back as one).
       runIf: e.run_if ?? ruleFromConditions(whereOf(e)),
       dailyCapUsd: e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6, dailyRowCap: e.daily_row_cap,
-      usedTodayUsd: used.spentMicro / 1e6, rowsToday: used.rows,
+      usedTodayUsd: used.spentMicro / 1e6 + used.aiUsd, rowsToday: used.rows,
     };
   }
   const hasWebhook = !!db.prepare('SELECT 1 FROM webhook_sources WHERE sheet_id = ? AND user_id = ? LIMIT 1')
@@ -52,14 +54,17 @@ export function sheetAutorunView(sheetId: string, userId: string): SheetAutorunV
 // the newest run's "Only run if" (a first turn-on starts from it).
 export function autorunTargetView(
   sheetId: string, userId: string, column: string,
-): { outputs: string[]; ownKey: boolean; runIf: string | null } {
+): { outputs: string[]; ownKey: boolean; runIf: string | null; rowCap: boolean } {
   let config: unknown = null;
   try { config = JSON.parse(newestRunOf(sheetId, userId, column)?.config ?? 'null'); } catch { /* none */ }
   const enrichment = isEnrichmentConfig(config) ? config.enrichment : null;
-  const ownKey = !!enrichment && enrichment.maxCostPerRowUsd === null;
+  const ownKey = (!!enrichment && enrichment.maxCostPerRowUsd === null)
+    || (isWaterfallConfig(config) && waterfallUnpriced(config));
   const rule = (config as { runIf?: unknown } | null)?.runIf;
   const runIf = typeof rule === 'string' ? rule : enrichment ? ruleFromConditions(enrichment.rows.where) : null;
-  return { outputs: columnOutputs(sheetId, userId, column), ownKey, runIf };
+  // A daily row cap (HTTP API columns, a waterfall with only free steps) or a dollar cap.
+  const rowCap = isWaterfallConfig(config) ? !waterfallIsPaid(config) : !enrichment;
+  return { outputs: columnOutputs(sheetId, userId, column), ownKey, runIf, rowCap };
 }
 
 // What each enrichment column has spent over all its runs, and on how many

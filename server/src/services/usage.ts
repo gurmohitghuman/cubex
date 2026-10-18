@@ -7,6 +7,7 @@
 // Each run counts on the day it started (UTC).
 import { db } from '../lib/db';
 import { nowDate } from '../lib/clock';
+import { isResultType, RESULT_INFO } from '../lib/waterfall/result-type';
 import { parseUsageQuery, rangeBounds, type UsageGroupBy, type UsageQuery, type UsageRange } from '../lib/usage-query';
 
 export interface UsageFigures {
@@ -14,7 +15,7 @@ export interface UsageFigures {
   ai_cost_usd: number; provider_cost_usd: number; enrichment_cost_usd: number; total_cost_usd: number;
   cost_per_cell_usd: number | null;
 }
-type Kind = 'ai' | 'enrichment' | 'http' | 'mixed';
+type Kind = 'ai' | 'enrichment' | 'http' | 'waterfall' | 'mixed';
 // sheet_deleted: the sheet is gone (what its runs spent stays in the history).
 export interface UsageColumnRow extends UsageFigures {
   sheet_id: string; sheet_name: string | null; sheet_deleted: boolean; column: string | null; column_deleted: boolean;
@@ -66,13 +67,21 @@ function sheetNames(userId: string): Map<string, string> {
   return new Map(rows.map(r => [r.id, r.name]));
 }
 
-// The model of an AI run, the tool of an enrichment (a page of runs, by id).
-function whatRan(runId: string, kind: string): string | null {
+// The model of an AI run, the tool of an enrichment, what a waterfall finds
+// (a page of runs, by id).
+function whatRan(runId: string, kind: string, userId: string): string | null {
   let v: unknown = null;
-  if (kind === 'ai') v = db.prepare('SELECT model FROM ai_runs WHERE id = ?').pluck().get(runId);
-  else if (kind === 'enrichment') {
-    v = db.prepare(`SELECT json_extract(config, '$.enrichment.toolName') FROM http_runs WHERE id = ?`)
-      .pluck().get(runId);
+  if (kind === 'ai') {
+    v = db.prepare('SELECT model FROM ai_runs WHERE id = ? AND user_id = ?').pluck().get(runId, userId);
+  } else if (kind === 'enrichment') {
+    v = db.prepare(`SELECT json_extract(config, '$.enrichment.toolName') FROM http_runs WHERE id = ? AND user_id = ?`)
+      .pluck().get(runId, userId);
+  } else if (kind === 'waterfall') {
+    const r = db.prepare(`SELECT json_extract(config, '$.waterfall.resultType') AS t,
+        json_type(config, '$.waterfall.dry') IS NOT NULL AS dry FROM http_runs WHERE id = ? AND user_id = ?`)
+      .get(runId, userId) as { t: string | null; dry: number } | undefined;
+    const label = r?.t && isResultType(r.t) ? RESULT_INFO[r.t].label : null;
+    v = label ? `${label}${r?.dry ? ' (dry run)' : ''}` : null;
   }
   return typeof v === 'string' ? v : null;
 }
@@ -95,7 +104,7 @@ function totalsOf(s: UsageScope): UsageFigures {
 function columnRows(s: UsageScope, limit: number): UsageColumnRow[] {
   const w = scopeWhere(s);
   const rows = db.prepare(`SELECT u.sheet_id, u.column_name AS col, u.column_deleted AS deleted,
-      GROUP_CONCAT(DISTINCT u.kind) AS kinds, MAX(u.started_at) AS last_at, COUNT(*) AS runs,
+      GROUP_CONCAT(DISTINCT COALESCE(u.mode, u.kind)) AS kinds, MAX(u.started_at) AS last_at, COUNT(*) AS runs,
       IFNULL(SUM(u.cells), 0) AS cells, IFNULL(SUM(u.reused_cells), 0) AS reused, IFNULL(SUM(u.ai_cost_usd), 0) AS ai,
       IFNULL(SUM(u.provider_cost_usd), 0) AS provider, IFNULL(SUM(u.enrich_micro), 0) AS enrich
     FROM run_usage u WHERE ${w.sql}
@@ -138,16 +147,17 @@ function groupCount(s: UsageScope, groupBy: Exclude<UsageGroupBy, 'run'>): numbe
 // Runs newest first, after (started_at, run_id) `after` (null: from the newest).
 export function runPage(s: UsageScope, after: [string, string] | null, limit: number): UsageRunRow[] {
   const w = scopeWhere(s);
-  const rows = db.prepare(`SELECT u.run_id, u.sheet_id, u.column_name AS col, u.column_deleted AS deleted, u.kind,
-      u.status, u.started_at, 1 AS runs, u.cells, u.reused_cells AS reused, u.ai_cost_usd AS ai,
-      u.provider_cost_usd AS provider, u.enrich_micro AS enrich
+  const rows = db.prepare(`SELECT u.run_id, u.sheet_id, u.column_name AS col, u.column_deleted AS deleted,
+      COALESCE(u.mode, u.kind) AS kind, u.status, u.started_at, 1 AS runs, u.cells, u.reused_cells AS reused,
+      u.ai_cost_usd AS ai, u.provider_cost_usd AS provider, u.enrich_micro AS enrich
     FROM run_usage u
     WHERE ${w.sql} AND (u.started_at, u.run_id) < (?, ?) ORDER BY u.started_at DESC, u.run_id DESC LIMIT ?`)
     .all(...w.params, ...(after ?? ['9999', '']), limit) as RunSql[];
   const names = sheetNames(s.userId);
   return rows.map(r => ({
     run_id: r.run_id, sheet_id: r.sheet_id, sheet_name: names.get(r.sheet_id) ?? null,
-    sheet_deleted: !names.has(r.sheet_id), column: r.col, column_deleted: r.deleted === 1, kind: kindOf(r.kind), what: whatRan(r.run_id, r.kind), status: r.status,
+    sheet_deleted: !names.has(r.sheet_id), column: r.col, column_deleted: r.deleted === 1, kind: kindOf(r.kind),
+    what: whatRan(r.run_id, r.kind, s.userId), status: r.status,
     started_at: r.started_at, ...figures(r),
   }));
 }

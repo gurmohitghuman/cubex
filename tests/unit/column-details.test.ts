@@ -2,9 +2,10 @@
 // counts, the size rules and the named-column reads, each check reading the same fixture.
 // get_sheet's column_details on a migrated throwaway DB: every kind (plain, AI
 // with its outputs and sources, HTTP with a field, enrichment with an output,
-// webhook, clean, formula, lookup), what fills each, what it reads, auto-run,
-// the rule; credentials in a URL masked and header values never shown; counts
-// that agree with the run-state filters; the size budget and named columns.
+// waterfall with its answered-by and step columns, webhook, clean, formula,
+// lookup), what fills each, what it reads, auto-run, the rule; credentials in
+// a URL masked and header values never shown; counts that agree with the
+// run-state filters; the size budget and named columns.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -33,7 +34,8 @@ async function check(label: string, fn: () => void | Promise<void>) {
 runMigrations()
 const uid = uuid(), tid = uuid(), sid = uuid(), other = uuid()
 const COLUMNS = ['Company', 'Domain', 'Fit (Output)', 'Profile (Status)', 'Industry', 'Profile (Data)', 'Lookup',
-  'Title', 'Work email', 'Email', 'Webhook', 'Lead', 'Company (clean)', 'Shout', 'Region', 'Size']
+  'Title', 'Work email', 'Email', 'Webhook', 'Lead', 'Company (clean)', 'Shout', 'Region', 'Size', 'Phone',
+  'Phone (Answered by)', 'Phone (Own API)']
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
 const sheet = db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,?,?)')
@@ -78,6 +80,29 @@ db.prepare(`INSERT INTO http_column_associations (id,sheet_id,user_id,master_col
 db.prepare(`INSERT INTO autorun_columns (id,user_id,sheet_id,status_column,kind,enabled,run_if,daily_cap_micro)
   VALUES (?,?,?,'Work email','enrichment',1,'{{Title}} contains "VP"',5000000)`).run(uuid(), uid, sid)
 
+const waterfallConfig = {
+  requestConfig: { method: 'POST', url: '', body: JSON.stringify({ company: '{{Company}}', domain: '{{Domain}}' }) },
+  responseMapping: [{ jsonPath: '$.answered_by', columnName: 'Phone (Answered by)' },
+    { jsonPath: '$.steps.sapi001', columnName: 'Phone (Own API)' }], previewSize: 5,
+  waterfall: { v: 1, resultType: 'phone', inputs: [{ key: 'company', label: 'Company name' },
+    { key: 'domain', label: 'Company domain' }], hideStepColumns: true, maxCostPerRowUsd: 0.04,
+  tregCapPerRowUsd: 0.04, spendLimitUsd: 2, rows: { mode: 'all', status: 'any', test: null }, fresh: false, steps: [
+    { id: 'streg01', label: 'treg (3 providers)', on: true, requires: [],
+      built: { kind: 'enrichment', toolName: 'Phone' },
+      choices: { kind: 'enrichment', toolId: 'mobile_phone', inputs: {}, providerOrder: [], skipProviders: [],
+        stopAtFirst: false, valuePath: null, maxCostUsd: null } },
+    { id: 'sapi001', label: 'Own API', on: false, requires: [['domain']], built: { kind: 'http', retries: null },
+      choices: { kind: 'http', method: 'GET', url: 'https://api.example.com/p?api_key=abc123def456ghi789&d={{domain}}',
+        headers: { 'X-Key': 'sk-live-secret' }, body: null, valuePath: '$.phone', retries: null } },
+  ] },
+}
+db.prepare(`INSERT INTO http_runs (id,sheet_id,user_id,config,status,master_column_name)
+  VALUES ('w1',?,?,?,'completed','Phone')`).run(sid, uid, JSON.stringify(waterfallConfig))
+for (const col of ['Phone (Answered by)', 'Phone (Own API)']) {
+  db.prepare(`INSERT INTO http_column_associations (id,sheet_id,user_id,master_column_name,extracted_column_name,run_id)
+    VALUES (?,?,?,'Phone',?,'w1')`).run(uuid(), sid, uid, col)
+}
+
 const src = uuid()
 db.prepare(`INSERT INTO webhook_sources (id,user_id,sheet_id,token_hash,name,raw_column_name)
   VALUES (?,?,?,?,'Signups','Webhook')`).run(src, uid, sid, uuid())
@@ -108,7 +133,7 @@ await check('every column gets its kind, in the sheet\'s order', () => {
   const list = sheetColumnDetails(sid, uid, COLUMNS)
   assert.deepEqual(list.map(d => d.name), COLUMNS)
   assert.deepEqual(list.map(d => d.kind), ['plain', 'plain', 'ai', 'ai', 'ai', 'ai', 'http', 'http', 'enrichment',
-    'enrichment', 'webhook', 'webhook', 'clean', 'formula', 'lookup', 'ai'])
+    'enrichment', 'webhook', 'webhook', 'clean', 'formula', 'lookup', 'ai', 'waterfall', 'waterfall', 'waterfall'])
 })
 
 await check('an AI column shows its newest run: model, prompt, the columns it reads, its rule, no auto-run', () => {
@@ -161,6 +186,26 @@ await check('an enrichment: tool, caps, auto-run with its daily cap and auto-run
   assert.deepEqual(status.reads, ['Domain'])
   assert.equal(d.get('Email')!.role, 'output')
   assert.equal(d.get('Email')!.kind, 'enrichment')
+})
+
+await check('a waterfall: its steps in order (keys masked, header names only), inputs, its other columns', () => {
+  const d = details()
+  const phone = d.get('Phone')!
+  assert.equal(phone.role, 'answer')
+  assert.equal(phone.fill!.result_type, 'phone')
+  assert.equal(phone.fill!.max_cost_per_row_usd, 0.04)
+  assert.deepEqual(phone.fill!.steps, [
+    { id: 'streg01', label: 'treg (3 providers)', kind: 'enrichment', on: true, tool_id: 'mobile_phone',
+      tool_name: 'Phone' },
+    { id: 'sapi001', label: 'Own API', kind: 'http', on: false, method: 'GET',
+      url: 'https://api.example.com/p?api_key=…&d={{domain}}', header_names: ['X-Key'], value_path: '$.phone' },
+  ])
+  assert.ok(!JSON.stringify(phone).includes('sk-live-secret'))
+  assert.deepEqual(phone.reads, ['Company', 'Domain'])
+  assert.deepEqual(d.get('Phone (Answered by)'), { name: 'Phone (Answered by)', kind: 'waterfall',
+    role: 'answered_by', filled_by: 'Phone' })
+  assert.deepEqual(d.get('Phone (Own API)'), { name: 'Phone (Own API)', kind: 'waterfall', role: 'step',
+    filled_by: 'Phone', fill: { step_id: 'sapi001', step_label: 'Own API' } })
 })
 
 await check('webhook, clean, formula and lookup columns say what fills them', () => {

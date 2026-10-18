@@ -10,6 +10,7 @@ import { aiRunDataColumn } from '../lib/ai-data-column';
 import { parseSearchQueries } from '../lib/ai-data-cell';
 import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-outcomes';
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
+import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
 
 export interface RunSummary {
   id: string;
@@ -39,6 +40,9 @@ export interface RunSummary {
   provider_cost_usd?: number;
   searches?: number | null;
   enrichment?: Record<string, unknown>;
+  // A waterfall run: its result type, spend (treg and AI) against its limit,
+  // and per step the rows that reached it, it answered, failed or skipped.
+  waterfall?: Record<string, unknown>;
   daily_limit?: Record<string, unknown>;
   // AI runs with web search: the engine sent, the engine the searches run on,
   // the billed mode and the per-row cap. engine null: a run from before
@@ -113,7 +117,8 @@ export function getHttpRunSummary(runId: string, userId: string): RunSummary | n
   const r = db.prepare(`
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
            error_message, target_rows, created_at, updated_at,
-           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows
+           config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows,
+           ai_cost_usd, placeholder_work, autorun_id
     FROM http_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
   return r ? httpRunSummaryFromRow(r, userId, true) : null;
@@ -127,7 +132,8 @@ export function httpRunSummaryFromRow(r: any, userId: string, full: boolean): Ru
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...rowOutcomes('http_results', r.id),
-    ...enrichSummaryPart(r, userId, full), ...rulePart(runIfOf(r.config), r.condition_skipped_rows),
+    ...enrichSummaryPart(r, userId, full), ...waterfallSummaryPart(r, userId),
+    ...rulePart(runIfOf(r.config), r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -146,6 +152,8 @@ export interface RunResultsPage {
     cost_usd?: number | null;
     provider_cost_usd?: number;                  // AI on the user's own provider key: what it charged
     found_by?: string | null;
+    answered_by?: string | null;                 // a waterfall row: the step that answered
+    trace?: unknown;                             // a waterfall row: what each step did
     answer?: unknown;
     answer_cut?: string[];
     searches?: number;
@@ -210,6 +218,7 @@ export function getHttpRunResults(
     .get(runId, userId) as { sheet_id: string; config: string | null } | undefined;
   if (!run) return null;
   const enrichment = enrichConfigOf(run.config) !== null;
+  const waterfall = !enrichment;
   const f = statusClause(filter);
   const rows = db.prepare(`
     SELECT res.row_index, res.status, res.extracted_fields, res.error_message, r.id AS row_id
@@ -220,6 +229,7 @@ export function getHttpRunResults(
   `).all(run.sheet_id, runId, userId, after, ...f.params, limit) as any[];
   const extras = enrichment || answers
     ? enrichResultExtras(runId, userId, rows.map(r => r.row_index), answers) : null;
+  const traces = waterfall ? waterfallResultExtras(run.config, runId, userId, rows.map(r => r.row_index)) : null;
   return {
     results: rows.map(r => {
       let extracted: Record<string, unknown> = {};
@@ -233,6 +243,7 @@ export function getHttpRunResults(
           ...(x?.reused_answer_from ? { reused_answer_from: x.reused_answer_from } : {}),
         } : {}),
         ...(answers ? { answer: x?.answer ?? null, ...(x?.answer_cut ? { answer_cut: x.answer_cut } : {}) } : {}),
+        ...(traces?.get(r.row_index) ?? {}),
       };
     }),
     next_cursor: rows.length === limit ? rows[rows.length - 1].row_index : null,

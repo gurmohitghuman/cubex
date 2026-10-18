@@ -24,7 +24,11 @@ import { EnrichRerunConfirm } from './EnrichRerunConfirm'
 import { useColumnRunDialogs } from './ColumnRunDialogs'
 import { AnswerPanel } from '@/components/answer-panel/AnswerPanel'
 import { useAnswerPanel } from '@/hooks/sheet/useAnswerPanel'
-import { opensAnswer } from '@/components/answer-panel/answer-click'
+import { opensAnswer, opensTrace } from '@/components/answer-panel/answer-click'
+import { useWaterfallColumn } from '@/hooks/sheet/useWaterfallColumn'
+import { WaterfallRerunConfirm } from '@/components/waterfall/WaterfallRerunConfirm'
+import { TracePanel } from '@/components/waterfall/TracePanel'
+import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 
 export interface SheetGridProps {
   activeSheet: Sheet | null
@@ -84,6 +88,8 @@ export interface SheetGridProps {
   registerViewport?: (get: (() => number | null) | null) => void
   // Opens the enrichment drawer on a column's setup or a run (Enrichment Actions).
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
+  // Opens the Waterfall drawer on a column's setup or a run (Waterfall Actions).
+  onOpenWaterfall?: (target: WaterfallOpenTarget) => void
   // Save as setup, from a filled column's menu.
   onSaveSetup?: (column: string) => void
   // The view showing: its hidden columns, and "Hide column" in the column menu.
@@ -114,6 +120,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, lookupColumns, onOpenLookup,
     columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
+    onOpenWaterfall,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -124,6 +131,10 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   const enrich = useEnrichColumnActions({
     activeSheet, activeHTTPRuns, setupSSEConnection, fetchActiveHTTPRuns, reloadSheetData, rowGenerationRef,
     onOpenEnrichment,
+  })
+  const waterfall = useWaterfallColumn({
+    activeSheet, activeHTTPRuns, setupSSEConnection, fetchActiveHTTPRuns, reloadSheetData, rowGenerationRef,
+    onOpenWaterfall,
   })
   const clean = useCleanColumnActions({ activeSheet, cleanColumns, reloadSheetData, onOpenClean })
   const formula = useFormulaColumnActions({ activeSheet, formulaColumns, reloadSheetData, onOpenFormula })
@@ -136,6 +147,13 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onRerunRow: (column, row, generation) => enrich.onEnrichAction('selected', column, [row], generation, true),
   })
   const handleCellClick = (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => {
+    if (opensTrace(columnTypes[columnName], value)) {
+      answers.cancelPending()
+      waterfall.traceClicked({ column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 },
+        info?.clicks ?? 1)
+      return
+    }
+    waterfall.cancelPendingTrace()
     if (opensAnswer(columnTypes[columnName], value)) {
       answers.clicked({ column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 },
         info?.clicks ?? 1)
@@ -159,6 +177,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,
+    onWaterfallAction: waterfall.onWaterfallAction,
     onAutorunAction,
     onCleanAction: clean.onCleanAction,
     onFormulaAction: formula.onFormulaAction,
@@ -173,6 +192,8 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       {runDialogs.dialogs}
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
       <AnswerPanel {...answers.panel} />
+      <WaterfallRerunConfirm pending={waterfall.pending} onConfirm={waterfall.confirm} onCancel={waterfall.cancel} />
+      <TracePanel {...waterfall.tracePanel} />
       <div className="flex-1 min-h-0">
         <AGGridSpreadsheet
           key={`${activeSheet?.id}_${forceUpdate}`}

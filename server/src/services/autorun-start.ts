@@ -34,6 +34,8 @@ import { autorunListDest } from './autorun-list';
 import { destMoved } from './enrich-list-dest';
 import type { Picked } from './autorun-pick';
 import { enqueueHTTPRerun } from '../queue';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { prepareWaterfallAutorun } from './waterfall-autorun';
 
 // dest: a list job's destination sheet and the columns it still needs there.
 export interface PreparedRun {
@@ -52,6 +54,12 @@ export async function prepareAutorunRun(
   e: AutorunEntry, newest: ColumnRunRow, config: HTTPAPIConfig, plan: CandidatePlan,
   rows: number, runLimitUsd: number | null,
 ): Promise<Prepared> {
+  // A waterfall batch is rebuilt from the column's choices, its saved-key policy copied.
+  if (isWaterfallConfig(config)) {
+    const w = await prepareWaterfallAutorun(e, config, rows, runLimitUsd);
+    if ('pause' in w) return w;
+    return { ok: { config: w.ok.config, allowSecrets: newest.allow_secrets ?? 0, outputs: w.ok.outputs, dest: null } };
+  }
   if (!isEnrichmentConfig(config)) {
     const outputs = columnOutputs(e.sheet_id, e.user_id, e.status_column);
     // Its run keeps auto-run's rule, so the column's newest run says how rows were picked.

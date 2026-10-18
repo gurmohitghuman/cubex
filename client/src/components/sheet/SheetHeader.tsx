@@ -43,6 +43,7 @@ interface SheetHeaderProps {
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
+  onAddWaterfall: () => void
   onOpenWebhook: () => void
   // Auto-run's chip, shown while any column has auto-run on (components/autorun/AutorunChip).
   autorunChip?: React.ReactNode
@@ -76,6 +77,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
+  onAddWaterfall,
   onOpenWebhook,
   autorunChip,
   sheetId,
@@ -196,7 +198,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             <div className="w-px h-5 bg-gray-200" aria-hidden="true" />
 
             <SheetEnrichActions hasRows={hasRows} onAddAIColumn={onAddAIColumn} onAddEnrichment={onAddEnrichment}
-              onAddHTTPColumn={onAddHTTPColumn} onOpenWebhook={onOpenWebhook} />
+              onAddHTTPColumn={onAddHTTPColumn} onAddWaterfall={onAddWaterfall} onOpenWebhook={onOpenWebhook} />
           </div>
         </div>
       </div>

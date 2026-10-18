@@ -10,7 +10,7 @@ export const RANGE_LABELS: Record<UsageRangeName, string> = {
 }
 
 export const KIND_LABELS: Record<UsageKind, string> = {
-  ai: 'AI', enrichment: 'Enrichment', http: 'HTTP API', mixed: 'Several kinds',
+  ai: 'AI', enrichment: 'Enrichment', http: 'HTTP API', waterfall: 'Waterfall', mixed: 'Several kinds',
 }
 
 export const money = (v: number): string => (v === 0 ? '$0.00' : formatCost(v))

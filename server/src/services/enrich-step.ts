@@ -53,6 +53,9 @@ export interface StepCall {
   // 429 retries left, shared by a row's steps (a verified email's finds and
   // checks) so a rate-limited row waits minutes, not one budget per step.
   rateRetries?: { left: number };
+  // Shared only with calls of the same step: a waterfall's steps may ask the
+  // same tool with other caps, so one step never gets another's answer or refusal.
+  sameKey?: string;
 }
 
 // Whose keys a call uses. An auto-run keys by its entry and the row's id, so a
@@ -247,7 +250,7 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
 // row's answer and reuse it at $0 ("same lookup as row N"), a refused request
 // included. A run-level stop is never shared: that row stays ⏳ for the resume.
 export function runStep(ctx: RunCtx, s: StepCall): Promise<StepResult> {
-  const fp = `${s.toolId}:${requestFingerprint(s.parts)}`;
+  const fp = `${s.toolId}:${s.sameKey ?? ''}:${requestFingerprint(s.parts)}`;
   const seen = ctx.sameLookup.get(fp);
   if (seen && seen.rowIndex !== s.rowIndex) {
     return seen.result.then((r): StepResult => {

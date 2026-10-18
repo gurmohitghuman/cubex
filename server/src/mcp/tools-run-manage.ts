@@ -1,3 +1,4 @@
+// Over 200 lines: control_run is one tool for every run kind's pause, resume, cancel and rerun.
 // Run control: control_run, the same services as POST
 // /v1/{ai,http}-runs/:id/{pause,resume,cancel,rerun} and, for cancel_all, POST
 // /v1/sheets/:id/runs/stop. It needs 'run' (and its rerun action shares the
@@ -15,13 +16,17 @@ import { tooManyMessage } from '../lib/rate-window';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
+import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../services/waterfall-agent-control';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
-// An enrichment is an HTTP run: run_type 'enrichment' reads and controls the
-// same run, and refuses a plain HTTP run so the caller isn't misled.
-export function kindOf(runType: 'ai' | 'http' | 'enrichment', runId: string, userId: string): 'ai' | 'http' | null {
-  if (runType !== 'enrichment') return runType;
-  return isEnrichmentRun(runId, userId) ? 'http' : null;
+// An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
+// 'waterfall' reads and controls the same run, and refuses another kind so the
+// caller isn't misled.
+export type RunTypeArg = 'ai' | 'http' | 'enrichment' | 'waterfall';
+export function kindOf(runType: RunTypeArg, runId: string, userId: string): 'ai' | 'http' | null {
+  if (runType === 'enrichment') return isEnrichmentRun(runId, userId) ? 'http' : null;
+  if (runType === 'waterfall') return isWaterfallRun(runId, userId) ? 'http' : null;
+  return runType;
 }
 
 // cancel_all: every run and setup on a sheet, at once (services/sheet-runs-stop.ts).
@@ -62,7 +67,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'start runs (set_auto_run with paused true and no column pauses them all). Calls already sent finish '
         + 'and are billed; free clean and formula fills finish too (still_filling).',
       inputSchema: {
-        run_type: z.enum(['ai', 'http', 'enrichment']).optional()
+        run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional()
           .describe('Every action but cancel_all.'),
         run_id: z.string().optional().describe('Every action but cancel_all.'),
         action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'cancel_all']),
@@ -99,16 +104,21 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return err('Pass run_type and run_id, or action cancel_all with sheet_id to stop every run on a sheet.');
       }
       const run_type = kindOf(asked, run_id, ctx.userId);
-      if (!run_type) return err('Enrichment run not found');
+      if (!run_type) return err(`${asked === 'waterfall' ? 'Waterfall' : 'Enrichment'} run not found`);
       const enrichment = run_type === 'http' && isEnrichmentRun(run_id, ctx.userId);
-      if (spend_limit_usd !== undefined && !(enrichment && (action === 'resume' || action === 'rerun'))) {
-        return err('spend_limit_usd applies to resuming or rerunning an enrichment run only.');
+      const waterfall = run_type === 'http' && !enrichment && isWaterfallRun(run_id, ctx.userId);
+      if (
+        spend_limit_usd !== undefined
+        && !((enrichment || waterfall) && (action === 'resume' || action === 'rerun'))
+      ) {
+        return err('spend_limit_usd applies to resuming or rerunning an enrichment or waterfall run only.');
       }
       if (concurrency !== undefined
         && !((action === 'rerun' && (run_type === 'ai' || enrichment)) || (action === 'resume' && enrichment))) {
         return err('concurrency applies only to rerunning an AI or enrichment run, or resuming an enrichment run.');
       }
-      if (first_rows !== undefined && (action !== 'rerun' || enrichment)) {
+      if (concurrency !== undefined && waterfall) return err("concurrency doesn't apply to a waterfall run.");
+      if (first_rows !== undefined && (action !== 'rerun' || enrichment || waterfall)) {
         return err('first_rows applies only to rerunning an AI or HTTP API run.');
       }
       if (first_rows !== undefined && row_ids) return err('Pass first_rows or row_ids, not both.');
@@ -135,6 +145,23 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
           ...hooked('http_runs', out.ok.runId),
         });
+      }
+      if (waterfall && action === 'rerun') {
+        const slot = runStartWindow(ctx.tokenId);
+        if (!slot.allowed) return err(tooManyMessage('run starts', slot));
+        const out = await rerunWaterfallRunById(ctx.userId, run_id, {
+          rowIds: row_ids, mode, spendLimitUsd: spend_limit_usd, hasSecretsScope: ctx.scopes.has('secrets'),
+        });
+        if ('fail' in out) return err(out.message);
+        return ok({
+          run_id: out.ok.runId, run_type: 'waterfall', rows_in_scope: out.ok.rowsInScope,
+          ...hooked('http_runs', out.ok.runId),
+        });
+      }
+      if (waterfall && action === 'resume') {
+        const resumed = await resumeWaterfallRun(run_id, ctx.userId, spend_limit_usd, ctx.scopes.has('secrets'));
+        if ('fail' in resumed) return err(resumed.message);
+        return ok(getHttpRunSummary(run_id, ctx.userId));
       }
       if (enrichment && action === 'resume') {
         const resumed = await resumeEnrichmentRun(run_id, ctx.userId, spend_limit_usd, concurrency);

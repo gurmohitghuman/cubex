@@ -9,6 +9,8 @@ import { processHTTPRow } from './http-row';
 import { finalizeHTTPRun, failHTTPRun } from './http-runner-finalize';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { processEnrichmentRun } from './enrich-runner';
+import { isWaterfallConfig } from '../lib/waterfall/config';
+import { processWaterfallRun } from './waterfall-runner';
 
 export type { HTTPRunRow };
 
@@ -63,6 +65,12 @@ export async function processHTTPRun(
     if (claim.changes === 0) return;
 
     const config: HTTPAPIConfig = JSON.parse(run.config);
+    // A waterfall (config.waterfall) walks its steps per row (services/waterfall-runner.ts).
+    if (isWaterfallConfig(config)) {
+      await processWaterfallRun(run, config, myGeneration, Array.isArray(targetRowIndices) ? targetRowIndices : null);
+      await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
+      return;
+    }
     // An enrichment (config.enrichment) calls treg with its own loop: spend
     // limits, the ledger, idempotent resume (services/enrich-runner.ts).
     if (isEnrichmentConfig(config)) {

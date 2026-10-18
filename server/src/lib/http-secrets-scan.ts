@@ -17,6 +17,7 @@ import {
   extractTemplateTokenNames, type HTTPRequestConfig, type HTTPAPIConfig,
 } from './http-request-template';
 import { goneColumnFor, goneColumnsOf } from './template-token-match';
+import { requestConfigsOfRun } from './waterfall/config';
 
 // Names of saved api_keys the authored config references, deduped. Empty array
 // = no secret involvement, safe for a run-scope-only token.
@@ -49,6 +50,14 @@ export function savedKeyRefsInConfig(userId: string, config: HTTPRequestConfig):
   return [...matched];
 }
 
+// Names of saved api_keys any request of a run reads: its own and, for a
+// waterfall, every HTTP step's (lib/waterfall/config.ts requestConfigsOfRun).
+export function savedKeyRefsInRun(userId: string, config: unknown): string[] {
+  const all = new Set<string>();
+  for (const rc of requestConfigsOfRun(config)) for (const k of savedKeyRefsInConfig(userId, rc)) all.add(k);
+  return [...all];
+}
+
 // True if a stored HTTP-run config contains ANY template token in its url,
 // header keys/values, or body. Used by the resume path: a no-'secrets' caller
 // resuming a permissive run can't be refused on currently-existing keys alone
@@ -59,15 +68,14 @@ export function savedKeyRefsInConfig(userId: string, config: HTTPRequestConfig):
 // falls through to the key lookup anyway).
 export function httpConfigHasKeyShapedToken(configJson: string | null): boolean {
   if (!configJson) return false;
-  let requestConfig: HTTPRequestConfig | undefined;
-  try {
-    requestConfig = (JSON.parse(configJson) as HTTPAPIConfig).requestConfig;
-  } catch { return false; }
-  if (!requestConfig) return false;
-  const parts: string[] = [requestConfig.url ?? ''];
-  for (const [k, v] of Object.entries(requestConfig.headers ?? {})) parts.push(k, v);
-  if (requestConfig.body) parts.push(requestConfig.body);
-  return parts.some(p => extractTemplateTokenNames(p).length > 0);
+  let config: unknown;
+  try { config = JSON.parse(configJson) as HTTPAPIConfig; } catch { return false; }
+  return requestConfigsOfRun(config).some(requestConfig => {
+    const parts: string[] = [requestConfig.url ?? ''];
+    for (const [k, v] of Object.entries(requestConfig.headers ?? {})) parts.push(k, v);
+    if (requestConfig.body) parts.push(requestConfig.body);
+    return parts.some(p => extractTemplateTokenNames(p).length > 0);
+  });
 }
 
 // The OPERATING-side companion to the authoring-time scan. A run-scope PAT can
@@ -88,10 +96,7 @@ export function httpRunSecretRefsRequiringScope(
   if (hasSecretsScope) return [];               // caller is allowed to resolve keys
   if (storedRun.allow_secrets === 0) return []; // policy already forbids resolution
   if (!storedRun.config) return [];
-  let requestConfig: HTTPRequestConfig | undefined;
-  try {
-    requestConfig = (JSON.parse(storedRun.config) as HTTPAPIConfig).requestConfig;
-  } catch { return []; }                         // unparseable config can't resolve a key
-  if (!requestConfig) return [];
-  return savedKeyRefsInConfig(userId, requestConfig);
+  let config: unknown;
+  try { config = JSON.parse(storedRun.config); } catch { return []; }   // unparseable config can't resolve a key
+  return savedKeyRefsInRun(userId, config);
 }

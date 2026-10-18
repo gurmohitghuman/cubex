@@ -42,6 +42,8 @@ export interface RunMenuActions {
   canEditAIColumn?: (columnName: string) => boolean
   onStopRunForColumn?: (type: 'http' | 'ai', columnName: string) => void
   onEnrichAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
+  // A waterfall's result column: the same items, through the waterfall's own reruns and drawer.
+  onWaterfallAction?: (action: EnrichMenuAction, columnName: string, rowIndices?: number[]) => void
   // ⚡ Turn On Auto-run / Auto-run Settings ('open', the dialog) and ⚡ Turn Off Auto-run.
   onAutorunAction?: (columnName: string, action: 'open' | 'off') => void
   onCleanAction?: (action: CleanMenuAction, columnName: string) => void

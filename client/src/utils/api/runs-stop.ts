@@ -3,7 +3,7 @@ import { api } from './client'
 // Stopping every run on a sheet at once (server routes/sheets-runs-stop.ts,
 // services/sheet-runs-stop.ts). The same answer /api/v1 and MCP give.
 export interface StoppedRun {
-  run_type: 'ai' | 'http' | 'enrichment'; run_id: string; column: string; auto_run: boolean
+  run_type: 'ai' | 'http' | 'enrichment' | 'waterfall'; run_id: string; column: string; auto_run: boolean
 }
 export interface SheetStopResult {
   stopped_runs: StoppedRun[]

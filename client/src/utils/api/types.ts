@@ -49,7 +49,7 @@ export interface Sheet {
 // from cell contents). Columns absent from columnTypes are plain. Keep the union
 // in sync with server lib/column-types.ts.
 export type ColumnType =
-  | 'ai-output' | 'ai-data' | 'http-master' | 'http-extracted' | 'enrich-status'
+  | 'ai-output' | 'ai-data' | 'http-master' | 'http-extracted' | 'enrich-status' | 'waterfall' | 'waterfall-step'
   | 'webhook-source' | 'webhook-mapped' | 'clean' | 'formula' | 'lookup'
 
 export interface SheetData {

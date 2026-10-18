@@ -19,6 +19,7 @@ import type { HTTPAPIConfig } from '../lib/http-request-template';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import { stepColumns, type AiStep, type AutoRunSpec, type SetupStep, type StepKind } from '../lib/setups/spec';
 import { entryFor, newestRunOf, whereOf } from './autorun-entry';
+import { isWaterfallConfig } from '../lib/waterfall/config';
 
 export interface Candidate {
   kind: StepKind;
@@ -82,6 +83,7 @@ function httpCandidate(sheetId: string, userId: string, master: string, listed: 
   const fail = (kind: StepKind, problem: string): Candidate => ({ kind, columns, step: null, problem, renames: [] });
   const gone = goneColumnsOf(config.requestConfig);
   const autoRun = autoRunOf(sheetId, userId, master);
+  if (isWaterfallConfig(config)) return fail('http', "It's a waterfall column, which a setup can't hold yet.");
   if (isEnrichmentConfig(config)) {
     if (listOf(config)) return fail('enrichment', 'It adds rows to another sheet, which a setup can\'t do yet.');
     const { columnName: _c, list: _l, ...choices } = recallChoices(config, master);
@@ -118,7 +120,7 @@ export function sheetCandidates(sheetId: string, userId: string): Candidate[] {
     .all(sheetId, userId) as AiRunRow[];
   for (const run of aiRuns) if (listed.has(run.column_name)) out.push(aiCandidate(run, listed));
   for (const [column, type] of Object.entries(types)) {
-    if ((type !== 'http-master' && type !== 'enrich-status') || !listed.has(column)) continue;
+    if ((type !== 'http-master' && type !== 'enrich-status' && type !== 'waterfall') || !listed.has(column)) continue;
     const c = httpCandidate(sheetId, userId, column, listed);
     if (c) out.push(c);
   }

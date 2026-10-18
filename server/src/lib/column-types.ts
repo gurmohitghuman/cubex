@@ -17,6 +17,8 @@ export type ColumnType =
   | 'ai-data'        // its web-search companion ("X (Data)")
   | 'http-master'    // HTTP run master/status column
   | 'enrich-status'  // an enrichment's status column (an HTTP run with an enrichment block)
+  | 'waterfall'      // a waterfall's result column (an HTTP run with a waterfall block)
+  | 'waterfall-step' // its "answered by" and step columns
   | 'http-extracted' // JSONPath-extracted HTTP response column
   | 'webhook-source' // the read-only "Webhook" marker column (row provenance)
   | 'webhook-mapped' // a column a webhook mapping writes into
@@ -66,6 +68,17 @@ export function sheetColumnKinds(sheetId: string, userId: string): SheetColumnKi
   ).all(sheetId, userId) as Array<{ name: string }>;
   for (const { name } of enrichMasters) types[name] = 'enrich-status';
 
+  // Waterfall result columns, the same way (lib/waterfall/config.ts). Its
+  // "answered by" and step columns are 'waterfall-step', with it as their state.
+  const waterfallMasters = db.prepare(
+    `SELECT master_column_name AS name FROM http_runs
+       WHERE rowid IN (SELECT MAX(rowid) FROM http_runs WHERE sheet_id = ? AND user_id = ?
+                         AND master_column_name IS NOT NULL GROUP BY master_column_name)
+         AND json_valid(config) AND json_extract(config, '$.waterfall.v') = 1`,
+  ).all(sheetId, userId) as Array<{ name: string }>;
+  for (const { name } of waterfallMasters) types[name] = 'waterfall';
+  const waterfalls = new Set(waterfallMasters.map(m => m.name));
+
   // HTTP extracted columns (response-mapping outputs).
   const httpExtracted = db.prepare(
     `SELECT DISTINCT extracted_column_name AS name, master_column_name AS master FROM http_column_associations
@@ -73,8 +86,8 @@ export function sheetColumnKinds(sheetId: string, userId: string): SheetColumnKi
   ).all(sheetId, userId) as Array<{ name: string; master: string | null }>;
   for (const { name, master } of httpExtracted) {
     // Don't downgrade a master that also appears as an extracted name.
-    if (types[name] === 'http-master' || types[name] === 'enrich-status') continue;
-    types[name] = 'http-extracted';
+    if (types[name] === 'http-master' || types[name] === 'enrich-status' || types[name] === 'waterfall') continue;
+    types[name] = master !== null && waterfalls.has(master) ? 'waterfall-step' : 'http-extracted';
     runState.set(name, master ?? name);
   }
 

@@ -27,6 +27,7 @@ export interface AutorunEntry {
 export const CAPACITY_PAUSES = new Set(['column_cap', 'row_cap', 'daily_limit']);
 export const RETRY_PAUSES = new Set([
   'unreachable', 'balance', 'treg_cap', 'provider_busy', 'unconfirmed', 'team_rule', 'queue',
+  'over_cap',   // a waterfall's rows now cost more than what's left of today's cap (its prices rose)
 ]);
 export const KEY_PAUSES = new Set(['auth', 'no_key']);
 
@@ -69,10 +70,12 @@ export function sheetEntries(sheetId: string, userId: string): AutorunEntry[] {
 
 // What today's auto-runs of an entry used: dollars (enrichments) and rows
 // (an HTTP column's row cap), from the runs it started today.
-export function usageToday(entryId: string, day = utcDay()): { spentMicro: number; rows: number } {
-  const r = db.prepare(`SELECT IFNULL(SUM(spent_micro), 0) AS s, IFNULL(SUM(total_rows), 0) AS n FROM http_runs
-    WHERE autorun_id = ? AND autorun_day = ?`).get(entryId, day) as { s: number; n: number };
-  return { spentMicro: r.s, rows: r.n };
+// aiUsd: a waterfall's AI steps (0 for every other column).
+export function usageToday(entryId: string, day = utcDay()): { spentMicro: number; aiUsd: number; rows: number } {
+  const r = db.prepare(`SELECT IFNULL(SUM(spent_micro), 0) AS s, IFNULL(SUM(ai_cost_usd), 0) AS a,
+      IFNULL(SUM(total_rows), 0) AS n FROM http_runs
+    WHERE autorun_id = ? AND autorun_day = ?`).get(entryId, day) as { s: number; a: number; n: number };
+  return { spentMicro: r.s, aiUsd: r.a, rows: r.n };
 }
 
 // Never replaces a pause the person chose. Its words can carry treg's or a

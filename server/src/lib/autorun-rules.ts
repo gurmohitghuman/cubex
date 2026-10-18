@@ -10,8 +10,11 @@ import { buildRequest } from './enrich-request';
 import { passesRunConditions, holdsRunMarker, trimBlank, FAILED_MARK } from './enrich-seed';
 import { isConditionNotMet } from './run-markers';
 import { ruleColumns, type RuleNode } from './run-condition';
+import { isWaterfallConfig } from './waterfall/config';
+import { waterfallRowCanRun } from './waterfall/rows';
+import { resolveColumn } from './waterfall/inputs';
 
-export type AutorunKind = 'enrichment' | 'http' | 'clean' | 'formula' | 'lookup';
+export type AutorunKind = 'enrichment' | 'http' | 'waterfall' | 'clean' | 'formula' | 'lookup';
 
 const COLUMN_REF = /^\{\{(.+)\}\}$/;
 
@@ -29,13 +32,24 @@ function requestParts(config: HTTPAPIConfig): string[] {
 const columnFor = (name: string, columns: string[]): string | undefined =>
   columns.find(c => templateTokenIs(name, c));
 
-// The sheet columns a request reads. An enrichment's inputs name their column
-// exactly ({{Website}}), kept even when the column is gone so auto-run can say
-// so. An HTTP request's tokens resolve as the run resolves them (exact, any
+// The sheet columns a request reads. An enrichment's inputs (a waterfall's
+// too) name their column exactly ({{Website}}), kept even when the column is
+// gone so auto-run can say so. An HTTP request's tokens resolve as the run resolves them (exact, any
 // case, or normalized); a token matching no column is a saved key or a URL
 // path, not an input.
 export function requestColumns(config: HTTPAPIConfig, columns: string[]): string[] {
   const out = new Set<string>();
+  if (isWaterfallConfig(config)) {
+    // A waterfall reads its inputs' columns as its run does (lib/waterfall/inputs.ts);
+    // one whose column is gone reads empty, so it's not one auto-run waits for.
+    const gone = goneColumnsOf(config.requestConfig);
+    for (const t of Object.values(inputTemplates(config))) {
+      const ref = COLUMN_REF.exec(t);
+      const col = ref && !gone.includes(ref[1]) ? resolveColumn(ref[1], columns) : null;
+      if (col) out.add(col);
+    }
+    return [...out];
+  }
   if (isEnrichmentConfig(config)) {
     for (const t of Object.values(inputTemplates(config))) {
       const ref = COLUMN_REF.exec(t);
@@ -62,6 +76,9 @@ export function requestColumns(config: HTTPAPIConfig, columns: string[]): string
 export function missingRequestRead(
   config: HTTPAPIConfig, columns: string[], before: string[], keys: Set<string>,
 ): string | null {
+  // A waterfall's input whose column is gone reads empty: its rows run the
+  // steps they still have inputs for (lib/waterfall/inputs.ts).
+  if (isWaterfallConfig(config)) return null;
   const was = [...before, ...goneColumnsOf(config.requestConfig)];
   const gone = requestColumns(config, [...columns, ...was]).find(c => !columns.includes(c));
   if (gone || isEnrichmentConfig(config)) return gone ?? null;
@@ -114,6 +131,8 @@ export function candidateVerdict(
   if (status !== '' && !isConditionNotMet(status) && !(failedCounts && status.startsWith(FAILED_MARK))) return 'done';
   const live = settled(data);
   if (!passesRunConditions(live, p.where, p.rule)) return 'waiting';
+  // A waterfall takes a row once some step has its inputs.
+  if (isWaterfallConfig(p.config)) return waterfallRowCanRun(p.config, live, p.columns) ? 'take' : 'waiting';
   if (!isEnrichmentConfig(p.config)) {
     return p.requestCols.every(c => trimBlank(live[c] ?? '') !== '') ? 'take' : 'waiting';
   }
@@ -130,8 +149,8 @@ const rowsText = (n: number) => `${n.toLocaleString('en-US')} row${n === 1 ? '' 
 // The 409 a sort, row delete, transfer or column change gets while an auto-run
 // run is on the sheet (the sheet then yields: lib/sheet-yield.ts).
 export function autorunBusyMessage(kind: AutorunKind, column: string, rows: number): string {
-  const doing = kind === 'enrichment'
-    ? `Auto-run is enriching ${rowsText(rows)} in ${column}.`
+  const doing = kind === 'enrichment' || kind === 'waterfall'
+    ? `Auto-run is ${kind === 'waterfall' ? 'filling' : 'enriching'} ${rowsText(rows)} in ${column}.`
     : `Auto-run is running ${column} on ${rowsText(rows)}.`;
   return `${doing} Try again in a moment, or pause auto-run.`;
 }

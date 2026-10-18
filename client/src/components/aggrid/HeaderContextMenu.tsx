@@ -101,9 +101,9 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
           <HTTPColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}
             activeHTTPRunsByColumn={activeHTTPRunsByColumn} />
         )}
-        {columnType === 'enrich-status' && (
+        {(columnType === 'enrich-status' || columnType === 'waterfall') && (
           <EnrichColumnActions {...runProps} selectedRowIndices={menu.selectedRowIndices}
-            activeHTTPRunsByColumn={activeHTTPRunsByColumn} />
+            activeHTTPRunsByColumn={activeHTTPRunsByColumn} waterfall={columnType === 'waterfall'} />
         )}
         <AIColumnActions {...runProps} columnType={columnType} activeAIRunsByColumn={activeAIRunsByColumn} />
         {runActions.onSaveSetup && SAVABLE.has(columnType) && (

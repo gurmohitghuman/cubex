@@ -11,7 +11,7 @@ import {
 } from '@/lib/constants'
 import { capFix, pauseLabel, pauseSentence, webhookWarning } from './autorun-copy'
 
-export interface AutorunTarget { column: string; kind: 'enrichment' | 'http' }
+export interface AutorunTarget { column: string; kind: 'enrichment' | 'http' | 'waterfall' }
 
 // Mounted per open (the parent keys it), so its fields start from `current`.
 interface Props {
@@ -54,7 +54,8 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWe
     return () => { alive = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const http = target.kind === 'http'
+  // A waterfall with only free steps is capped in rows a day, as an HTTP API column.
+  const http = target.kind === 'http' || (target.kind === 'waterfall' && !!info?.rowCap)
   const rows = Number(rowsText)
   const rowsProblem = http && !(Number.isInteger(rows) && rows >= 1 && rows <= AUTORUN_HTTP_MAX_DAILY_ROWS)
     ? `Rows a day must be a whole number from 1 to ${AUTORUN_HTTP_MAX_DAILY_ROWS.toLocaleString()}.` : null

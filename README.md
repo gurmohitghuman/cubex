@@ -51,6 +51,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **AI columns.** A prompt for each row that uses other columns, on any of 300+ models through your own [OpenRouter](https://openrouter.ai) key.
 - **HTTP API columns.** Call any JSON API once per row and turn fields of the answer into columns.
 - **Enrichments.** Work emails, phone numbers, and person and company data through [treg.to](https://treg.to), within limits you set.
+- **Waterfalls.** One value per row from several sources in turn (treg tools, AI prompts, your own APIs), paying only for the steps a row reaches.
 - **Clean data, free.** Fix names, split first and last names, drop Inc and LLC from company names, check emails, turn websites into domains and format phone numbers, with no AI and no credits.
 - **Formulas, free.** Work a column out from each row with a JavaScript formula: pick the work email out of an API response, join names, do math. Describe it and AI writes the formula once; every row after that costs nothing.
 - **Lookups, free.** Bring values from another sheet: a company's industry onto its people, whether a lead is already in another list, how many orders match. Match whole values or text inside them.
@@ -154,6 +155,18 @@ Click **Enrichment** to look things up for each row through [treg.to](https://tr
 
 The [enrichments guide](docs/enrichments.md) has the details.
 
+### Waterfall
+
+Click **Waterfall** to fill one value per row, such as a work email or a phone number, by trying steps in order until one finds it. A step can be a treg tool, an AI prompt or a call to your own API, so the cheapest source goes first and the next one runs only on the rows it missed.
+
+- Pick what it finds (work email, phone, company domain, LinkedIn URL, URL or any text), then match its inputs to your columns once. Every step reads those same inputs.
+- Add the steps and put them in order. A step runs only on rows that have what it needs, say a name and a domain, or a LinkedIn URL; other rows skip it for free. Switch a step off to skip it.
+- An answer counts only when it reads as what you asked for: "N/A" or a broken email isn't one, so the next step runs.
+- Before you run, you see what a row costs on average and at most, and how far down the steps rows get. Run it on 5 rows first, then on the rest, within a run limit you set.
+- A column says which step answered each row, and a click on a result shows every step that row tried and what it cost.
+
+Agents use `waterfall_column`; the [MCP guide](docs/mcp.md#waterfalls) has the details.
+
 ### Clean data
 
 Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.
@@ -243,7 +256,7 @@ Open a sheet and click **Webhook**, or let it create a table of its own. Send on
 
 ### Run webhooks
 
-In **Settings, Run webhooks**, add a URL and Cubex sends it a signed POST whenever an AI, HTTP, enrichment or setup run finishes, so a script or an automation can carry on without checking again and again. Agents pass a webhook's id when they start a run to hear about that run only. See the [run webhooks guide](docs/run-webhooks.md).
+In **Settings, Run webhooks**, add a URL and Cubex sends it a signed POST whenever an AI, HTTP, enrichment, waterfall or setup run finishes, so a script or an automation can carry on without checking again and again. Agents pass a webhook's id when they start a run to hear about that run only. See the [run webhooks guide](docs/run-webhooks.md).
 
 ### Agents (MCP)
 

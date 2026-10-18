@@ -17,6 +17,7 @@ import { scanFiltered } from '../lib/filtered-scan';
 import { listViews } from '../services/view-store';
 import { sheetColumnDescriptions } from '../lib/column-descriptions';
 import { type SheetRow, normalizeColumnName } from './sheets-shared';
+import { waterfallColumnSpend } from '../services/waterfall-status';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -94,8 +95,10 @@ router.get('/:id', async (req: AuthRequest, res) => {
     // Auto-run per column and what each enrichment column spent: the headers' ⚡
     // and tooltips, and the sheet header's auto-run chip.
     const autorun = sheetAutorunView(id, req.userId!);
-    const columnSpend = enrichColumnSpend(id, req.userId!,
-      Object.keys(columnTypes).filter(c => columnTypes[c] === 'enrich-status'));
+    const columnSpend = {
+      ...enrichColumnSpend(id, req.userId!, Object.keys(columnTypes).filter(c => columnTypes[c] === 'enrich-status')),
+      ...waterfallColumnSpend(id, req.userId!, Object.keys(columnTypes).filter(c => columnTypes[c] === 'waterfall')),
+    };
     // Clean data columns' setups: the column menu and the Edit cleaning dialog.
     const cleanColumns = sheetCleanView(id, req.userId!, columns);
     // Formula columns' setups: the header tip, the column menu and the Edit formula dialog.

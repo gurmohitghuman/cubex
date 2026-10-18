@@ -84,7 +84,7 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
     // column was which). HTTP columns keep their type prefix.
     let headerName = column
     if (columnType === 'http-master') headerName = `🔗 ${column}`
-    else if (columnType === 'http-extracted') headerName = `📎 ${column}`
+    else if (columnType === 'http-extracted' || columnType === 'waterfall-step') headerName = `📎 ${column}`
     else if (columnType === 'webhook-source') headerName = `📥 ${column}`
 
     // The webhook marker column is READ-ONLY row provenance — it shows the

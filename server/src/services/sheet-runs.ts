@@ -1,15 +1,12 @@
-// The runs working on a sheet now: the AI, HTTP API and enrichment runs, and
-// the setups being used on it. get_sheet and GET /v1/sheets/:id list them;
+// The runs working on a sheet now: the AI, HTTP API, enrichment and waterfall
+// runs (a waterfall's dry runs too), and the setups being used on it. get_sheet and GET /v1/sheets/:id list them;
 // services/sheet-runs-stop.ts stops them all at once.
 import { db } from '../lib/db';
-import { isEnrichmentConfig } from '../lib/enrich-run-config';
-
-const isEnrichment = (config: string | null): boolean => {
-  try { return isEnrichmentConfig(JSON.parse(config ?? 'null')); } catch { return false; }
-};
+import { httpRunModeOf } from '../lib/http-run-mode';
+import { waterfallConfigOf } from '../lib/waterfall/config';
 
 export interface SheetRun {
-  run_type: 'ai' | 'http' | 'enrichment';
+  run_type: 'ai' | 'http' | 'enrichment' | 'waterfall';
   run_id: string;
   status: 'pending' | 'running' | 'paused';
   column: string;    // the column it fills: an AI run's column, a structured one's (Status), an HTTP run's main column
@@ -46,8 +43,10 @@ export function activeSheetRuns(sheetId: string, userId: string): SheetRun[] {
       run_type: 'ai' as const, run_id: r.id, status: r.status, column: r.column_name, auto_run: false,
     })),
     ...http.map(r => ({
-      run_type: isEnrichment(r.config) ? 'enrichment' as const : 'http' as const, run_id: r.id, status: r.status,
-      column: r.master_column_name ?? (firstOutput.get(r.id, userId) as string | undefined) ?? '',
+      run_type: httpRunModeOf(r.config), run_id: r.id, status: r.status,
+      // A dry run has no column of its own: the one it was started for.
+      column: r.master_column_name ?? (firstOutput.get(r.id, userId) as string | undefined)
+        ?? waterfallConfigOf(r.config)?.waterfall.dry?.column ?? '',
       auto_run: !!r.autorun_id,
     })),
   ];

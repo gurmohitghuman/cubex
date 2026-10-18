@@ -6,10 +6,12 @@
 import { findKeys, type KeyFinding } from './curl/key-detect';
 
 export type ColumnKind =
-  | 'plain' | 'ai' | 'http' | 'enrichment' | 'webhook' | 'clean' | 'formula' | 'lookup';
+  | 'plain' | 'ai' | 'http' | 'enrichment' | 'waterfall' | 'webhook' | 'clean' | 'formula' | 'lookup';
 
 export type ColumnRole =
-  | 'answer'    // an AI column's one answer column ("Score (Output)")
+  | 'answer'    // an AI column's one answer column ("Score (Output)"), or a waterfall's result column
+  | 'answered_by'  // a waterfall's "answered by" column: the step that answered each row
+  | 'step'      // the column of one waterfall step: that step's own value
   | 'status'    // the per-row state column of an AI run with output columns, or of an enrichment
   | 'output'    // a value column of one of those runs
   | 'sources'   // an AI run's "(Data)" column: the web sources it used

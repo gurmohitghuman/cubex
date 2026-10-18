@@ -12,6 +12,8 @@ import { rulePasses, type RuleNode } from './run-condition';
 import {
   inputTemplates, type EnrichCondition, type EnrichRowsStatus, type EnrichRunConfig,
 } from './enrich-run-config';
+import { isWaterfallConfig, type WaterfallRunConfig } from './waterfall/config';
+import { waterfallRowCanRun } from './waterfall/rows';
 
 // skip: not one of the rows asked for (another status). condition: asked
 // for, but "Only run if" keeps it out (a full run marks it ⏭️ Condition not met).
@@ -46,18 +48,21 @@ export function statusMatches(cell: string | undefined, status: EnrichRowsStatus
   return true;
 }
 
-export interface SeedPlan {
+export interface SeedPlan<C extends EnrichRunConfig | WaterfallRunConfig = EnrichRunConfig> {
   statusColumn: string | null;     // the column a run already made (null: a new one)
   status: EnrichRowsStatus;        // which of its rows, by their status cell
   where: EnrichCondition[];
   rule: RuleNode | null;           // the run's "Only run if" rule
-  config: EnrichRunConfig;
+  config: C;                       // a waterfall takes a row when some step can run
   columns: string[];               // the sheet's column registry
 }
 
-export function seedVerdict(data: Record<string, string>, p: SeedPlan): SeedVerdict {
+export function seedVerdict(
+  data: Record<string, string>, p: SeedPlan<EnrichRunConfig | WaterfallRunConfig>,
+): SeedVerdict {
   if (p.statusColumn !== null && !statusMatches(data[p.statusColumn], p.status)) return 'skip';
   if (!passesRunConditions(data, p.where, p.rule)) return 'condition';
+  if (isWaterfallConfig(p.config)) return waterfallRowCanRun(p.config, data, p.columns) ? 'run' : 'missing';
   const e = p.config.enrichment;
   const built = buildRequest(e.toolSnapshot, inputTemplates(p.config), data, {
     cleanDomains: e.cleanDomains, columns: p.columns,

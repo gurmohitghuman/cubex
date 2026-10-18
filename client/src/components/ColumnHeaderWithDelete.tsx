@@ -1,6 +1,6 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare, Link2, Info } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare, Link2, Info, Layers } from 'lucide-react'
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn, ColumnSpend } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
@@ -80,12 +80,17 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
         className="truncate flex-1 cursor-pointer select-none flex items-center gap-1"
         onClick={handleHeaderClick}
       >
-        {(columnType === 'enrich-status' || cleanTip || formulaTip || lookupTip || autorun?.enabled) && (
+        {(columnType === 'enrich-status' || columnType === 'waterfall' || cleanTip || formulaTip || lookupTip
+          || autorun?.enabled) && (
           <HeaderTip text={tipText}
             amber={tip?.paused ?? cleanTip?.problem ?? formulaTip?.problem ?? lookupTip?.problem}>
             {columnType === 'enrich-status' && (
               <DatabaseZap size={12} className="opacity-70 flex-shrink-0" aria-label="Enrichment column"
                 data-testid="enrich-status-icon" />
+            )}
+            {columnType === 'waterfall' && (
+              <Layers size={12} className="opacity-70 flex-shrink-0" aria-label="Waterfall column"
+                data-testid="waterfall-icon" />
             )}
             {cleanTip && (
               <Brush size={12} className="opacity-70 flex-shrink-0" aria-label={cleanTip.label}

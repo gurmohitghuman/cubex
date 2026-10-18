@@ -14,7 +14,7 @@ import { decrypt } from '../lib/crypto';
 import { redactSecrets } from '../lib/redact';
 import { OutboundBlockedError } from '../lib/http-errors';
 import { postGuarded } from '../lib/outbound-post';
-import { noticeBody, signRunHookBody, SIGNATURE_HEADER } from '../lib/run-hook-sign';
+import { noticeBody, signRunHookBody, SIGNATURE_HEADER, type RunFinishedNotice } from '../lib/run-hook-sign';
 import { answerProblem, isDelivered, runHookRetryWait } from '../lib/run-hook-retry';
 import {
   RUN_HOOK_CONCURRENCY, RUN_HOOK_ERROR_MAX_CHARS, RUN_HOOK_EVENTS_PER_SWEEP, RUN_HOOK_LOG_KEEP,
@@ -44,15 +44,23 @@ export function fanOutRunEvents(now = Date.now()): number {
     const insert = db.prepare(`INSERT INTO run_webhook_deliveries (id, user_id, webhook_id, event, run_id, kind,
       run_status, body, state, next_try_at, error, finished_at)
       VALUES (?, ?, ?, 'run.finished', ?, ?, ?, ?, ?, ?, ?, ?)`);
+    // An HTTP run's events say 'http'; a waterfall's is told here (its dry runs send none).
+    const modeOf = db.prepare(`SELECT json_type(config, '$.waterfall') = 'object' AS waterfall,
+        json_type(config, '$.waterfall.dry') IS NOT NULL AS dry
+      FROM http_runs WHERE id = ? AND user_id = ? AND json_valid(config)`);
     const full = new Set<string>();
     for (const e of events) {
+      const mode = e.kind === 'http'
+        ? modeOf.get(e.run_id, e.user_id) as { waterfall: number; dry: number } | undefined : undefined;
+      if (mode?.dry) continue;
+      const kind: RunFinishedNotice['kind'] = mode?.waterfall ? 'waterfall' : e.kind;
       const body = noticeBody({
-        event: 'run.finished', run_id: e.run_id, kind: e.kind, sheet_id: e.sheet_id, status: e.status,
+        event: 'run.finished', run_id: e.run_id, kind, sheet_id: e.sheet_id, status: e.status,
         finished_at: e.finished_at,
       });
       for (const hook of hooksOf.all(e.user_id, e.named_only, e.webhook_id) as string[]) {
         const over = (waiting.get(hook) as number) >= RUN_HOOK_MAX_WAITING;
-        insert.run(uuidv4(), e.user_id, hook, e.run_id, e.kind, e.status, body, over ? 'failed' : 'pending', now,
+        insert.run(uuidv4(), e.user_id, hook, e.run_id, kind, e.status, body, over ? 'failed' : 'pending', now,
           over ? `Not sent: ${RUN_HOOK_MAX_WAITING} notices were already waiting for this URL.` : null,
           over ? nowIso() : null);
         if (over) full.add(hook);

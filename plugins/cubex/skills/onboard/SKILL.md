@@ -5,7 +5,7 @@ description: "Check the Cubex connection and explain what is in the Cubex worksp
 
 # Connect to Cubex and look around
 
-Cubex is a self-hosted spreadsheet where columns fill themselves: AI, HTTP API, enrichment, clean, formula and lookup columns. You work in it through its MCP server, with tools such as `list_tables`, `get_sheet` and `read_rows`.
+Cubex is a self-hosted spreadsheet where columns fill themselves: AI, HTTP API, enrichment, waterfall, clean, formula and lookup columns. You work in it through its MCP server, with tools such as `list_tables`, `get_sheet` and `read_rows`.
 
 ## 1. Check the connection
 
@@ -33,7 +33,7 @@ If the variables are fine but the Cubex tools are missing, the plugin or the MCP
 ## 2. Look around
 
 1. `list_tables`: every table with its sheets and row counts.
-2. `get_sheet` on the sheet the user cares about. Its `column_details` says, for every column, its `kind` (plain, ai, http, enrichment, webhook, clean, formula, lookup), what fills it (`fill`, with the newest `run_id`), the columns it `reads`, whether `auto_run` is on, its "Only run if" rule (`run_if`) and its `description`. `include_counts: true` adds how many rows of each column are filled, empty or errors; it reads every row, so on a big sheet name the columns you want in `columns`.
+2. `get_sheet` on the sheet the user cares about. Its `column_details` says, for every column, its `kind` (plain, ai, http, enrichment, waterfall, webhook, clean, formula, lookup), what fills it (`fill`, with the newest `run_id`), the columns it `reads`, whether `auto_run` is on, its "Only run if" rule (`run_if`) and its `description`. `include_counts: true` adds how many rows of each column are filled, empty or errors; it reads every row, so on a big sheet name the columns you want in `columns`.
 3. `limits` in the same answer says how many rows and columns are left.
 
 Summarize in a few lines: the tables, the main sheet's columns grouped by kind, and anything that needs attention (columns with errors, a paused auto-run, runs still going in `active_runs`). Then ask what they want to do.

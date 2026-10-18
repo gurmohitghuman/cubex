@@ -26,7 +26,7 @@ export function verifyRunHookSignature(secret: string, body: string, header: str
 export interface RunFinishedNotice {
   event: 'run.finished' | 'test';
   run_id: string | null;
-  kind: 'ai' | 'http' | 'enrichment' | 'setup' | null;
+  kind: 'ai' | 'http' | 'enrichment' | 'waterfall' | 'setup' | null;
   sheet_id: string | null;
   status: 'completed' | 'failed' | 'cancelled' | null;
   finished_at: string;
