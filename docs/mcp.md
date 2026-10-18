@@ -20,7 +20,9 @@ Choose the token's scopes:
 
 ## Setup
 
-The **Agent access** page shows these commands with your Cubex address and token filled in.
+The quickest way for Claude Code, Codex and Cursor is the [Cubex plugin](agent-plugin.md): it adds the connection (in Claude Code and Codex, your address and token come from environment variables) and skills for the common jobs. Paste "Set up Cubex by following https://raw.githubusercontent.com/gurmohitghuman/cubex/main/docs/agent-plugin.md" into your agent.
+
+To connect by hand, the **Agent access** page shows these commands with your Cubex address and token filled in.
 
 **Claude Code**
 
