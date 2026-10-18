@@ -1,5 +1,5 @@
 import { db } from '../lib/db';
-import { runRows, countRunRows, type RunRow } from '../lib/run-rows';
+import { runRows, countRunRows } from '../lib/run-rows';
 import { HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY } from '../lib/constants';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { redactError } from '../lib/redact';
@@ -25,7 +25,8 @@ const shouldStop = (runId: string, capturedGeneration: number): boolean => {
 };
 
 // Background worker for an HTTP API run. Streams the unfinished rows a page at a
-// time, dispatches them in batches, polls DB status between batches for pause/cancel.
+// time, keeps up to batchSize of them out at once, checks DB status for
+// pause/cancel before each row starts.
 //
 // targetRowIndices (a rerun) restricts the candidate set to exactly those rows —
 // mirrors ai-runner.processAIRerun. A first-time run omits it and processes the
@@ -114,52 +115,62 @@ export async function processHTTPRun(
       "UPDATE http_runs SET processed_rows = ?, updated_at = datetime('now') WHERE id = ?",
     );
 
-    // Batches of batchSize drawn from the row stream.
+    // Rolling: a row starts as soon as one settles, up to batchSize at once, so a
+    // row waiting to retry (lib/http-retry.ts, up to a minute on a Retry-After)
+    // holds only its own slot. Batches that waited for their slowest row left
+    // every other slot idle meanwhile. A stop is checked before each row starts;
+    // rows already out finish (their writes are dropped once the run isn't ours,
+    // and a wait to retry ends early), and a resume picks up the rows still ⏳.
+    //
+    // Progress counts rows PROCESSED, not rows that succeeded: processHTTPRow
+    // catches its own errors and writes a ❌ cell, so failures count too. This is
+    // intentional and matches the AI runner: the bar reaching 100% with some ❌
+    // cells means "all rows attempted". It's written only while the run is still
+    // ours: a pause/cancel/resume meanwhile means a newer worker (or none) owns
+    // processed_rows, and rows our writes dropped (STOP_SENTINEL) don't count.
     const source = runRows(run.sheet_id, run.user_id, masterCol, targets)[Symbol.asyncIterator]();
-    for (let first = true; ; first = false) {
-      const batch: RunRow[] = [];
-      while (batch.length < batchSize) {
+    const out = new Set<Promise<void>>();
+    // A full pool waits for one row to settle. One fresh promise per wait, never
+    // Promise.race(out): each race hangs a reaction on every row still out, and
+    // rows waiting minutes to retry kept hundreds of MB of them alive.
+    let slotFreed: (() => void) | null = null;
+    const aSlotFrees = () => new Promise<void>(resolve => { slotFreed = resolve; });
+    // The sheet's columns, read at most once a second: a cell with no key is an
+    // empty value, not an unresolved {{column}} (withSheetColumns).
+    let columns: string[] = [];
+    let columnsReadAt = 0;
+    const sheetColumns = () => {
+      if (Date.now() - columnsReadAt >= 1000) {
+        columns = getSheetColumns(run.sheet_id, run.user_id, false);
+        columnsReadAt = Date.now();
+      }
+      return columns;
+    };
+    try {
+      for (;;) {
+        if (out.size >= batchSize) { await aSlotFrees(); continue; }
+        if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
         const next = await source.next();
         if (next.done) break;
-        batch.push(next.value);
+        const done: Promise<void> = processHTTPRow(
+          runId, next.value, run, config, controller.signal, myGeneration, sheetColumns(),
+        )
+          .catch(error => { console.error(`HTTP run ${runId} row error:`, redactError(error)); })
+          .finally(() => {
+            out.delete(done);
+            const wake = slotFreed;
+            slotFreed = null;
+            wake?.();
+            // Never rejects: nothing may be waiting on this row yet (a worker
+            // thread dies on an unhandled rejection); a resume recounts anyway.
+            try {
+              if (!shouldStop(runId, myGeneration)) updateProgress.run(++completed, runId);
+            } catch (error) { console.error(`HTTP run ${runId} progress error:`, redactError(error)); }
+          });
+        out.add(done);
       }
-      if (batch.length === 0) break;
-      // Tiny gap between batches so we don't hammer the target API.
-      if (!first) await new Promise(resolve => setTimeout(resolve, 100));
-      if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
-
-      // The sheet's columns, read once per batch: a cell with no key is an
-      // empty value, not an unresolved {{column}} (withSheetColumns).
-      const columns = getSheetColumns(run.sheet_id, run.user_id, false);
-      const promises = batch.map(row =>
-        processHTTPRow(runId, row, run, config, controller.signal, myGeneration, columns),
-      );
-
-      try {
-        // The batch's rows have already written their results by the time
-        // allSettled resolves, so count them BEFORE the stop check — otherwise a
-        // pause landing here discards a fully-processed batch's progress (and,
-        // pre-placeholder-resume, would re-bill it).
-        //
-        // Progress counts rows PROCESSED, not rows that succeeded: processHTTPRow
-        // catches its own errors, writes a ❌ cell, and resolves, so allSettled sees
-        // every row as fulfilled and `+= batch.length` counts failures too. This is
-        // intentional and matches the AI runner (a failed AI row likewise counts).
-        // The bar reaching 100% with some ❌ cells means "all rows attempted," which
-        // is correct — don't switch this to a success-only count or the bar stalls
-        // below 100% on any run with failures and reads as hung.
-        await Promise.allSettled(promises);
-        // Check ownership BEFORE writing progress: a pause/cancel/resume during
-        // the batch means we no longer own the run. Writing processed_rows then
-        // would clobber a resumed (newer-generation) worker's progress, and would
-        // count rows our row-writes intentionally dropped (STOP_SENTINEL). Stop
-        // without persisting progress that isn't ours.
-        if (shouldStop(runId, myGeneration)) break;
-        completed += batch.length;
-        updateProgress.run(completed, runId);
-      } catch (error) {
-        console.error(`Batch processing error for HTTP run ${runId}:`, redactError(error));
-      }
+    } finally {
+      await Promise.allSettled([...out]);
     }
 
     await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);

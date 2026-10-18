@@ -1,6 +1,7 @@
 import toast from 'react-hot-toast'
 import { httpAPI } from '@/utils/api'
 import { HTTPAPIConfig } from './types'
+import { HTTP_RETRY_DEFAULT } from '@/lib/constants'
 
 // Blank/default HTTPAPIConfig used when the modal opens fresh or resets.
 // Lives here so HTTPAPIColumnModal stays under the 200-line cap.
@@ -13,8 +14,9 @@ export const blankHTTPConfig: HTTPAPIConfig = {
   responseMapping: [{ jsonPath: '$', columnName: '' }],
   previewSize: 5,
   concurrency: 5,
-  retries: 3,
-  skipMissingFields: false,
+  retries: HTTP_RETRY_DEFAULT,
+  retryPost: false,
+  skipEmpty: false,
 }
 
 // Coerce a saved-template's possibly-stringified config back into the modal's
@@ -31,9 +33,10 @@ export function templateToConfig(template: { config: any }): HTTPAPIConfig {
     responseMapping: tc.responseMapping?.length ? tc.responseMapping : [{ jsonPath: '$', columnName: '' }],
     previewSize: tc.previewSize || 5,
     concurrency: tc.concurrency || 5,
-    rateLimit: tc.rateLimit,
-    retries: tc.retries || 3,
-    skipMissingFields: tc.skipMissingFields || false,
+    // 0 is a real choice (no retries): only a missing value takes the default.
+    retries: typeof tc.retries === 'number' ? tc.retries : HTTP_RETRY_DEFAULT,
+    retryPost: tc.retryPost === true,
+    skipEmpty: tc.skipEmpty === true,
   }
 }
 

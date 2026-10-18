@@ -51,7 +51,8 @@ router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthReq
 
 // POST /v1/sheets/:id/http-runs
 // Body: { url, method?, headers?, body?, response_mapping: [{ json_path,
-//         column_name }], master_column_name?, batch_size?, timeout_ms?,
+//         column_name }], master_column_name?, batch_size?, timeout_ms?, retries?,
+//         retry_post?, skip_empty_values?, status_code_column?,
 //         target_row_ids?, run_if?, estimate_only?, idempotency_key? } (the MCP
 //         tool's fields; `curl` + `save_keys` can stand in for url/method/headers/
 //         body), or the earlier shape { config: { requestConfig (timeout = ms),
@@ -67,13 +68,16 @@ router.post('/sheets/:id/http-runs', requireScope('run'), async (req: TokenAuthR
         ? cfg.responseMapping.map((m: any) => ({ json_path: m?.jsonPath, column_name: m?.columnName }))
         : cfg.responseMapping,
       batch_size: cfg.batchSize, timeout_ms: rc?.timeout, run_if: b.run_if ?? cfg.runIf,
+      retries: cfg.retries, retry_post: cfg.retryPost, skip_empty_values: rc?.skipEmpty,
     } : {
       url: b.url, method: b.method, headers: b.headers, body: b.body, response_mapping: b.response_mapping,
       batch_size: b.batch_size, timeout_ms: b.timeout_ms, run_if: b.run_if, curl: b.curl, save_keys: b.save_keys,
+      retries: b.retries, retry_post: b.retry_post, skip_empty_values: b.skip_empty_values,
     };
     send(res, await tokenStartHttpRun(caller(req), {
       ...args, sheet_id: req.params.id, master_column_name: b.master_column_name,
       target_row_ids: b.target_row_ids, estimate_only: b.estimate_only, idempotency_key: idempotencyKey(req, b),
+      status_code_column: b.status_code_column,
     }));
   } catch (error) {
     console.error('POST /v1/sheets/:id/http-runs error:', error);

@@ -17,12 +17,14 @@ import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
 import { curlForToken, curlStartProblem, type TokenCurl } from './curl-token';
 import { commitCurlKeys } from './curl-import';
+import { HTTP_RETRY_MAX, HTTP_STATUS_PATH } from '../lib/constants-http-retry';
 
 export interface TokenHttpRunArgs {
   sheet_id: unknown; url?: unknown; method?: unknown; headers?: unknown; body?: unknown;
   response_mapping?: unknown; master_column_name?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; idempotency_key?: unknown; batch_size?: unknown; timeout_ms?: unknown;
   run_if?: unknown; curl?: unknown; save_keys?: unknown;
+  retries?: unknown; retry_post?: unknown; skip_empty_values?: unknown; status_code_column?: unknown;
 }
 
 const wholeIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
@@ -64,15 +66,24 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   }
   const runIf = parseRuleField(a.run_if, 'run_if');
   if ('error' in runIf) return bad(runIf.error);
+  const extras = httpRunExtras(a);
+  if (typeof extras === 'string') return bad(extras);
   const config: HTTPAPIConfig = {
     requestConfig: {
       method: method as 'GET', url: a.url, headers: (a.headers as Record<string, string>) ?? {}, body: a.body as string | undefined,
       ...(a.timeout_ms === undefined ? {} : { timeout: a.timeout_ms as number }),
+      ...(extras.skipEmpty ? { skipEmpty: true } : {}),
     },
-    responseMapping: mapping.map((m: { json_path: string; column_name: string }) => ({ jsonPath: m.json_path, columnName: m.column_name })),
+    responseMapping: [
+      ...mapping.map((m: { json_path: string; column_name: string }) =>
+        ({ jsonPath: m.json_path, columnName: m.column_name })),
+      ...(extras.statusColumn ? [{ jsonPath: HTTP_STATUS_PATH, columnName: extras.statusColumn }] : []),
+    ],
     previewSize: 3,
     ...(a.batch_size === undefined ? {} : { batchSize: a.batch_size as number }),
     ...(runIf.ok ? { runIf: runIf.ok } : {}),
+    ...(extras.retries === undefined ? {} : { retries: extras.retries }),
+    ...(extras.retryPost ? { retryPost: true } : {}),
   };
   const hasSecretsScope = c.scopes.has('secrets');
   const keyRefs = savedKeyRefsInConfig(c.userId, config.requestConfig);
@@ -103,6 +114,11 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
     response_mapping: a.response_mapping, master_column_name: a.master_column_name, target_row_ids: a.target_row_ids,
     batch_size: a.batch_size, timeout_ms: a.timeout_ms, ...(runIf.ok ? { run_if: runIf.ok } : {}),
     ...(curl ? { curl: a.curl, save_keys: a.save_keys } : {}),
+    // Only when given, so a retry that spans the release still replays.
+    ...(extras.retries === undefined ? {} : { retries: extras.retries }),
+    ...(extras.retryPost ? { retry_post: true } : {}),
+    ...(extras.skipEmpty ? { skip_empty_values: true } : {}),
+    ...(extras.statusColumn ? { status_code_column: extras.statusColumn } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -129,4 +145,25 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
   return { ok: payload, started: true };
+}
+
+// Retries, empty values and the response code column, checked; a string is why not.
+type Extras = { retries?: number; retryPost: boolean; skipEmpty: boolean; statusColumn: string | null };
+function httpRunExtras(a: TokenHttpRunArgs): Extras | string {
+  if (a.retries !== undefined && !wholeIn(a.retries, 0, HTTP_RETRY_MAX)) {
+    return `retries must be a whole number from 0 to ${HTTP_RETRY_MAX}`;
+  }
+  const retryPost = parseBooleanOption(a.retry_post);
+  if (retryPost === 'invalid') return 'retry_post must be true or false';
+  const skipEmpty = parseBooleanOption(a.skip_empty_values);
+  if (skipEmpty === 'invalid') return 'skip_empty_values must be true or false';
+  const col = a.status_code_column;
+  if (col !== undefined && col !== null && (typeof col !== 'string' || !col.trim())) {
+    return 'status_code_column must be the name of the column to create';
+  }
+  return {
+    ...(a.retries === undefined ? {} : { retries: a.retries as number }),
+    retryPost: retryPost === true, skipEmpty: skipEmpty === true,
+    statusColumn: typeof col === 'string' ? col.trim() : null,
+  };
 }

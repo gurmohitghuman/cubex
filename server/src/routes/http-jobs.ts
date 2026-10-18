@@ -4,6 +4,7 @@ import { authenticateUser } from '../lib/auth';
 import { writeSSEHeaders } from '../lib/sse';
 import { acquireSSESlot, SSE_MAX_PER_USER } from '../lib/sse-limits';
 import { httpResultCellValues } from '../lib/http-cell-values';
+import { statusColumnsOf } from '../lib/http-extract-fields';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 
@@ -36,10 +37,12 @@ router.get('/jobs/:id/stream', (req, res) => {
   // for the live 'result' events (empty/failed rows write per-mapping markers, not
   // field values). Parsed ONCE at stream open; config is immutable for a run.
   let mappingColumns: string[] = [];
+  let statusColumns: string[] = [];
   let enrichment = false;
   try {
     const cfg = run.config ? (JSON.parse(run.config) as HTTPAPIConfig) : null;
     mappingColumns = cfg?.responseMapping?.map(m => m.columnName) ?? [];
+    statusColumns = statusColumnsOf(cfg?.responseMapping);
     enrichment = isEnrichmentConfig(cfg);
   } catch { mappingColumns = []; }
   const masterColumn = run.master_column_name;
@@ -103,7 +106,7 @@ router.get('/jobs/:id/stream', (req, res) => {
         let extractedFields: Record<string, unknown> = {};
         try { extractedFields = row.extracted_fields ? JSON.parse(row.extracted_fields) : {}; } catch { /* {} */ }
         const cellValues = httpResultCellValues({
-          status: row.status, extractedFields, mappingColumns, masterColumn, enrichment,
+          status: row.status, extractedFields, mappingColumns, statusColumns, masterColumn, enrichment,
         });
         res.write(`data: ${JSON.stringify({
           type: 'result', rowIndex: row.row_index, status: row.status,

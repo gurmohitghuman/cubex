@@ -44,7 +44,8 @@ function settingsOf(s: SetupStep): Record<string, unknown> {
       'web tools': [s.webSearch, s.webFetch],
     };
     case 'http': return {
-      request: [s.request.method, s.request.url.trim(), s.request.headers, (s.request.body ?? '').trim()],
+      request: [s.request.method, s.request.url.trim(), s.request.headers, (s.request.body ?? '').trim(),
+        s.request.skipEmpty === true],
       fields: s.mappings.map(m => [m.jsonPath, m.columnName]),
     };
     case 'enrichment': return {

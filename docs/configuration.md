@@ -14,7 +14,7 @@ Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` 
 | `MAX_ROWS_PER_SHEET` | `1000000` | Rows per sheet. |
 | `MAX_COLUMNS_PER_SHEET` | `200` | Columns per sheet. |
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |
-| `HTTP_MAX_CONCURRENCY` | `20` | Most concurrent requests one HTTP run makes. |
+| `HTTP_MAX_CONCURRENCY` | `100` | Most concurrent requests one HTTP run makes. |
 | `SIDEQUEST_MAX_CONCURRENT_JOBS` | `4` | AI and HTTP runs that execute at once; more wait in line. |
 | `ENRICH_DEFAULT_CONCURRENCY` | `5` | Requests one enrichment run sends to treg at once. |
 | `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **+ Column**. |

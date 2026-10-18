@@ -7,9 +7,12 @@ export interface HTTPAPIConfig {
   responseMapping: Array<{ jsonPath: string; columnName: string }>
   previewSize: number
   concurrency: number
-  rateLimit?: number
+  // More tries for a request that failed in a way a retry can fix (0-5).
   retries: number
-  skipMissingFields: boolean
+  // Also retry POST on a 5xx or no answer (429/503 always retry).
+  retryPost: boolean
+  // Leave out a query parameter or body field whose {{column}} is empty.
+  skipEmpty: boolean
   // "Only run if" rule ('' or absent: every row).
   runIf?: string
 }

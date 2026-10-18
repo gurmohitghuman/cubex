@@ -4,6 +4,8 @@ import {
 } from './column-names';
 import { type ResponseMapping } from './http-request-template';
 import { validateHttpJsonPath } from './jsonpath-extract';
+import { isStatusMapping } from './http-extract-fields';
+import { HTTP_STATUS_PATH } from './constants-http-retry';
 
 // Shared column-name validation for HTTP run / preview start. Centralizes the
 // rules that were previously partial and inconsistent between /run and /preview
@@ -60,7 +62,12 @@ export function validateHttpRunColumns(
   // eval-required filter/script constructs + over-length are rejected as a fixable
   // config error. Genuinely malformed paths still surface as a per-row error at
   // extraction time (the runner uses extractOutcome) instead of a silent no-match.
+  // @status (HTTP_STATUS_PATH) stands for the response code instead: one column of it is enough.
+  if (mappings.filter(isStatusMapping).length > 1) {
+    return { ok: false, error: `Only one column can hold the response code (${HTTP_STATUS_PATH}).` };
+  }
   for (let i = 0; i < mappings.length; i++) {
+    if (isStatusMapping(mappings[i])) continue;
     const pathCheck = validateHttpJsonPath(mappings[i]?.jsonPath);
     if (!pathCheck.ok) {
       return {

@@ -1,4 +1,5 @@
-import { HTTPAPIConfig } from './types'
+import { HTTPAPIConfig, HTTPPreview } from './types'
+import { HTTP_STATUS_PATH } from '@/lib/constants'
 
 // Coerce any JSON value to a cell-safe string. The cell-write API rejects
 // non-strings with "value must be a string"; numbers (IDs), booleans, arrays,
@@ -53,4 +54,13 @@ export function extractByJsonPath(raw: unknown, path: string): unknown {
     cursor = cursor[t]
   }
   return cursor
+}
+
+// One preview row's cell for a mapping, as "Add columns" writes it: re-read from
+// the raw response, except the response code, which isn't in the body (the
+// preview already worked it out).
+export function previewCellValue(r: HTTPPreview, m: { jsonPath: string; columnName: string }): string {
+  return m.jsonPath === HTTP_STATUS_PATH
+    ? cellValueToString(r.extractedFields?.[m.columnName])
+    : cellValueToString(extractByJsonPath(r.rawResponse, m.jsonPath))
 }

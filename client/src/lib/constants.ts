@@ -37,6 +37,11 @@ export const MAX_AI_CONCURRENCY = 100;
 export const FREE_MODEL_CONCURRENCY_WARN = 10;
 // HTTP column requests at once: the most a column may set (mirrors server HTTP_MAX_CONCURRENCY).
 export const HTTP_MAX_CONCURRENCY = 100;
+// HTTP column retries (mirror server HTTP_RETRY_DEFAULT / HTTP_RETRY_MAX) and the
+// response mapping path that writes the HTTP status code (HTTP_STATUS_PATH).
+export const HTTP_RETRY_DEFAULT = 3;
+export const HTTP_RETRY_MAX = 5;
+export const HTTP_STATUS_PATH = '@status';
 // Highest per-row web search limit (mirrors server MAX_SEARCHES_PER_ROW).
 export const MAX_SEARCHES_PER_ROW = 10;
 

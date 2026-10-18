@@ -15,8 +15,9 @@
 #   scripts/e2e-harness.sh -g "H3"         # pass-through Playwright args (grep, --headed, ...)
 #
 # Env overrides: E2E_PORT (default 3099), E2E_TREG_PORT (the mock treg, default
-# 3098), E2E_SPEC (default the data-consistency specs; a Playwright path filter
-# or a concrete .spec.ts path).
+# 3098), E2E_RECEIVER_PORT (the local receiver specs start, default 3097),
+# E2E_SPEC (default the data-consistency specs; a Playwright path filter or a
+# concrete .spec.ts path).
 #
 # NOTE: written for macOS's stock bash 3.2 (empty-array expansion is guarded).
 set -euo pipefail
@@ -26,6 +27,7 @@ cd "$ROOT"
 
 PORT="${E2E_PORT:-3099}"
 TREG_PORT="${E2E_TREG_PORT:-3098}"
+RECEIVER_PORT="${E2E_RECEIVER_PORT:-3097}"
 SPEC="${E2E_SPEC:-data-consistency}"
 TEST_DIR="$ROOT/server/data/e2e"
 TEST_DB="$TEST_DIR/cubex-e2e.db"
@@ -127,6 +129,11 @@ export ANSWER_PRUNE_SWEEP_MS="${ANSWER_PRUNE_SWEEP_MS:-500}"
 # and cancel specs need rows still waiting when they act on a run of a few rows.
 export ENRICH_DEFAULT_CONCURRENCY="${ENRICH_DEFAULT_CONCURRENCY:-5}"
 export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
+# HTTP column retries wait less here (the first wait is 1 s in production).
+export HTTP_RETRY_BASE_MS="${HTTP_RETRY_BASE_MS:-100}"
+# Specs reach a receiver they start on 127.0.0.1 through the real outbound path
+# (SSRF guard included) via names under .cubex-e2e.invalid (tests/e2e/net-shim.cjs).
+export E2E_RECEIVER_PORT="$RECEIVER_PORT"
 
 if [ "$LIVE" -eq 0 ]; then
 echo "[boot] mock treg on :$TREG_PORT ..."
@@ -144,7 +151,8 @@ else
 fi
 
 echo "[boot] prod server on :$PORT (data: server/data/e2e) ..."
-NODE_ENV=production PORT="$PORT" node server/dist/index.js >/tmp/cubex-e2e-server.log 2>&1 &
+NODE_ENV=production PORT="$PORT" NODE_OPTIONS="--require $ROOT/tests/e2e/net-shim.cjs" \
+  node server/dist/index.js >/tmp/cubex-e2e-server.log 2>&1 &
 SERVER_PID=$!
 
 echo -n "[wait] server"

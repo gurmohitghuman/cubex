@@ -36,9 +36,12 @@ export interface HttpStep {
   request: {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE'; url: string; headers: Record<string, string>;
     body: string | null; timeout: number | null;
+    skipEmpty?: boolean; // leave out a field whose {{column}} is empty (absent: off)
   };
-  mappings: Array<{ jsonPath: string; columnName: string }>;
+  mappings: Array<{ jsonPath: string; columnName: string }>; // jsonPath "@status": the response code
   batchSize: number | null;
+  retries?: number | null; // null/absent: the default
+  retryPost?: boolean;
   runIf: string | null;
   autoRun: AutoRunSpec | null;
 }

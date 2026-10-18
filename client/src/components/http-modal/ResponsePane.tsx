@@ -1,9 +1,12 @@
 import React from 'react'
-import { Filter, Minus, Plus } from 'lucide-react'
+import { Minus, Plus } from 'lucide-react'
 import { HTTPAPIConfig } from './types'
+import { HTTP_STATUS_PATH } from '@/lib/constants'
 
 interface Props {
   config: HTTPAPIConfig
+  // The status column's name, for the response code column's default name.
+  masterColumnName: string
   errors: Record<string, string>
   updateConfig: (updates: Partial<HTTPAPIConfig>) => void
   addResponseMapping: () => void
@@ -11,8 +14,46 @@ interface Props {
   updateResponseMapping: (i: number, field: 'jsonPath' | 'columnName', value: string) => void
 }
 
+const isCode = (m: { jsonPath: string }) => m.jsonPath === HTTP_STATUS_PATH
+
+// The response code column is a mapping of HTTP_STATUS_PATH: it's switched on and
+// named here, and stays out of the JSONPath list (whose indexes are kept).
+const ResponseCodeField: React.FC<Pick<Props, 'config' | 'masterColumnName' | 'updateConfig'>> = (
+  { config, masterColumnName, updateConfig },
+) => {
+  const code = config.responseMapping.find(isCode)
+  const others = config.responseMapping.filter(m => !isCode(m))
+  const toggle = (on: boolean) => updateConfig({
+    responseMapping: on
+      ? [...others, { jsonPath: HTTP_STATUS_PATH, columnName: `${masterColumnName.trim() || 'HTTP'} (Code)` }]
+      : others,
+  })
+  const rename = (columnName: string) => updateConfig({
+    responseMapping: config.responseMapping.map(m => (isCode(m) ? { ...m, columnName } : m)),
+  })
+  return (
+    <div>
+      <label className="flex items-center space-x-2">
+        <input type="checkbox" checked={!!code} data-testid="http-status-code-toggle"
+          onChange={(e) => toggle(e.target.checked)}
+          className="border-gray-300 text-cube-black focus:ring-cube-black/20" />
+        <span className="text-sm text-gray-700">Add a column with the response code</span>
+      </label>
+      <p className="text-xs text-gray-500 mt-1 ml-6">
+        The HTTP status code of each row&apos;s answer, like 200 or 404, kept for failed rows too.
+      </p>
+      {code && (
+        <input type="text" className="input w-full mt-2 ml-6 max-w-[calc(100%-1.5rem)]"
+          data-testid="http-status-code-name" value={code.columnName} placeholder="Response code"
+          onChange={(e) => rename(e.target.value)} />
+      )}
+    </div>
+  )
+}
+
 export const ResponsePane: React.FC<Props> = ({
-  config, errors, updateConfig, addResponseMapping, removeResponseMapping, updateResponseMapping,
+  config, masterColumnName, errors, updateConfig,
+  addResponseMapping, removeResponseMapping, updateResponseMapping,
 }) => (
   <div className="space-y-4">
     <div className="bg-white border border-cube-black p-3">
@@ -35,7 +76,7 @@ export const ResponsePane: React.FC<Props> = ({
       </div>
 
       <div className="space-y-3">
-        {config.responseMapping.map((mapping, index) => (
+        {config.responseMapping.map((mapping, index) => isCode(mapping) ? null : (
           <div key={index} className="border border-gray-200 p-3">
             <div className="grid grid-cols-1 gap-3">
               <div>
@@ -65,17 +106,6 @@ export const ResponsePane: React.FC<Props> = ({
       {errors.duplicateColumns && <p className="text-xs text-cube-black mt-2">{errors.duplicateColumns}</p>}
     </div>
 
-    <div>
-      <label className="flex items-center space-x-2">
-        <input type="checkbox" checked={config.skipMissingFields}
-          onChange={(e) => updateConfig({ skipMissingFields: e.target.checked })}
-          className=" border-gray-300 text-cube-black focus:ring-cube-black/20" />
-        <span className="text-sm text-gray-700">Skip rows where mapped fields are missing</span>
-        <Filter className="h-4 w-4 text-gray-400" />
-      </label>
-      <p className="text-xs text-gray-500 mt-1 ml-6">
-        When enabled, rows that don&apos;t have values for the specified JSONPath will be skipped
-      </p>
-    </div>
+    <ResponseCodeField config={config} masterColumnName={masterColumnName} updateConfig={updateConfig} />
   </div>
 )

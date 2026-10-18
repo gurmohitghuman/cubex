@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { httpAPI, sheetsAPI, HTTPResult, HTTPRun } from '@/utils/api'
 import { HTTPAPIConfig, HTTPPreview, Step } from './types'
 import { toServerConfig } from './toServerConfig'
-import { cellValueToString, derivedMasterName as buildMasterName, extractByJsonPath } from './cell-helpers'
+import { derivedMasterName as buildMasterName, previewCellValue } from './cell-helpers'
 import { validateHTTPConfig, normalizeHttpUrl } from './validateHTTPConfig'
 
 interface Args {
@@ -103,8 +103,7 @@ export const useHTTPRunHandlers = (a: Args) => {
       const updates = previewResults
         .filter(r => r.status === 'success' && r.rawResponse !== undefined)
         .flatMap(r => filteredMapping.map(m => ({
-          rowIndex: r.rowIndex, columnName: m.columnName,
-          value: cellValueToString(extractByJsonPath(r.rawResponse, m.jsonPath)),
+          rowIndex: r.rowIndex, columnName: m.columnName, value: previewCellValue(r, m),
         })))
       // mode stays 'upsert' (the default) — preview-commit CREATES the selected
       // columns, which 'update' mode would silently skip. rowGeneration is the

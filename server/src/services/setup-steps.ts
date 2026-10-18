@@ -95,9 +95,11 @@ function httpCandidate(sheetId: string, userId: string, master: string, listed: 
     step: {
       kind: 'http', name: master,
       request: { method: rc.method, url: rc.url, headers: { ...(rc.headers ?? {}) }, body: rc.body ?? null,
-        timeout: rc.timeout ?? null },
+        timeout: rc.timeout ?? null, ...(rc.skipEmpty ? { skipEmpty: true } : {}) },
       mappings: config.responseMapping.map(m => ({ jsonPath: m.jsonPath, columnName: m.columnName })),
       batchSize: config.batchSize ?? null, runIf: config.runIf ?? null, autoRun,
+      ...(typeof config.retries === 'number' ? { retries: config.retries } : {}),
+      ...(config.retryPost ? { retryPost: true } : {}),
     },
   };
 }
