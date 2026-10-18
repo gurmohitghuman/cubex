@@ -14,6 +14,12 @@ import cfgMod from '../../server/src/lib/waterfall/caps'
 import checkMod from '../../server/src/lib/waterfall/input-check'
 import stepsMod from '../../server/src/lib/waterfall/input-steps'
 import formulasMod from '../../server/src/services/waterfall-formulas'
+import tplMod from '../../server/src/lib/waterfall/templates'
+import refsMod from '../../server/src/lib/formula/refs'
+import fcellsMod from '../../server/src/lib/formula/cells'
+import sandboxMod from '../../server/src/lib/formula/sandbox'
+import agentMod from '../../server/src/lib/waterfall/agent-args'
+import constMod from '../../server/src/lib/constants'
 const { normalizeResult, defaultValuePath, cleanLinkedinUrl } =
   rtMod as typeof import('../../server/src/lib/waterfall/result-type')
 const { inputValues, requiresMet, fixedValueProblem, templateColumn } =
@@ -29,6 +35,13 @@ const { tregPart, rowCaps } = cfgMod as typeof import('../../server/src/lib/wate
 const { parseCheck } = checkMod as typeof import('../../server/src/lib/waterfall/input-check')
 const { parseStep } = stepsMod as typeof import('../../server/src/lib/waterfall/input-steps')
 const { formulaPasses } = formulasMod as typeof import('../../server/src/services/waterfall-formulas')
+const { WATERFALL_TEMPLATES, NAME_GUESS, templateOf } =
+  tplMod as typeof import('../../server/src/lib/waterfall/templates')
+const { compileFormula } = refsMod as typeof import('../../server/src/lib/formula/refs')
+const { formulaRow } = fcellsMod as typeof import('../../server/src/lib/formula/cells')
+const { FormulaSandbox } = sandboxMod as typeof import('../../server/src/lib/formula/sandbox')
+const { agentWaterfallBody } = agentMod as typeof import('../../server/src/lib/waterfall/agent-args')
+const { FORMULA_MAX_CHARS } = constMod as typeof import('../../server/src/lib/constants')
 type WaterfallStep = import('../../server/src/lib/waterfall/config').WaterfallStep
 type TraceStep = import('../../server/src/lib/waterfall/trace').TraceStep
 
@@ -223,6 +236,73 @@ check('a check\'s key changes with the value',
 eq('no check, no key', checkKey({ ...withVerify, check: null }, 'a@x.io', {}), null)
 eq('a formula\'s yes and no', ['true', 'yes', 'x', 'false', '0', '', 'null', 'NaN'].map(formulaPasses),
   [true, true, true, false, false, false, false, false])
+
+// Starter waterfalls: each step as a start request sends it, and the name guess on a few rows.
+for (const t of WATERFALL_TEMPLATES) {
+  check(`template ${t.id}: its steps parse as a start request sends them`,
+    t.steps.every((st, i) => 'ok' in parseStep(JSON.parse(JSON.stringify(st)), i)))
+  check(`template ${t.id}: every input a step requires is one of its inputs`, t.steps.every(st =>
+    (st.requires ?? []).flat().every(k => t.inputs.some(i => i.key === k))))
+}
+eq('an unknown template is none', templateOf('crm'), undefined)
+{
+  const none = { rowIndexes: null, generation: null }
+  const agent = (a: Record<string, unknown>) => agentWaterfallBody({ sheet_id: 's', column_name: 'Email', ...a },
+    null, null, none)
+  const out = agent({ template: 'work_email', inputs: { full_name: 'Name', domain: 'Website' }, test_step: 'Name guess',
+    dry_run: true })
+  const body = 'ok' in out ? out.ok as { resultType: string; inputs: Array<{ key: string; source: unknown }>;
+    steps: Array<{ id?: string; label: string | null }>; dry: { only: string } } : null
+  eq('agents: a template gives its result type and steps', [body?.resultType, body?.steps.length], ['email', 2])
+  eq('agents: their mapping laid over its inputs, the rest unmapped',
+    body?.inputs.map(i => [i.key, i.source !== null]), [['first_name', false], ['last_name', false],
+      ['full_name', true], ['domain', true], ['company', false], ['linkedin_url', false]])
+  check('agents: test_step names a template step without touching the template',
+    body?.dry.only === body?.steps[1].id && WATERFALL_TEMPLATES[0].steps[1].id === null)
+  const refused = (a: Record<string, unknown>) => ('error' in agent(a) ? (agent(a) as { error: string }).error : '')
+  check('agents: a template needs inputs', /full_name/.test(refused({ template: 'work_email' })))
+  check('agents: test_step names a template\'s treg step by its label', 'ok' in agent({ template: 'work_email',
+    inputs: { full_name: 'Name', domain: 'Website' }, test_step: 'treg email finder', dry_run: true }))
+  check('agents: a key the template doesn\'t read is a misspelling',
+    /"fullname" isn't one of the work_email template's inputs/.test(refused({ template: 'work_email',
+      inputs: { fullname: 'Name', domain: 'Website' } })))
+  check('agents: an unknown template, or another result type, is refused',
+    /work_email or mobile_phone/.test(refused({ template: 'crm', inputs: {} }))
+      && /result_type email/.test(refused({ template: 'work_email', result_type: 'phone', inputs: {} })))
+}
+{
+  const keys = WATERFALL_TEMPLATES[0].inputs.map(i => i.key)
+  const sb = await FormulaSandbox.open(compileFormula(NAME_GUESS, keys))
+  const guess = (row: Record<string, string>) => {
+    const out = sb.runRows([formulaRow(sb.compiled.inputs.map(k => row[k] ?? ''))], 1_000).outcomes[0]
+    return out.ok ? out.value : `ERR ${out.error}`
+  }
+  try {
+    eq('the guess: first.last at the bare domain', guess({ first_name: 'Maya', last_name: 'Chen',
+      domain: 'https://www.Stripe.com/about' }), 'maya.chen@stripe.com')
+    eq('the guess: a full name, accents dropped', guess({ full_name: ' José  María García ', domain: 'acme.io' }),
+      'jose.garcia@acme.io')
+    eq('the guess: one name, or no domain, is none', [guess({ full_name: 'Cher', domain: 'x.io' }),
+      guess({ full_name: 'Ada Byron' })], ['', ''])
+    eq('the guess: titles, suffixes and what follows a comma or bracket go',
+      ['Dr. Maya Chen', 'Maya Chen, MBA', 'John Smith Jr.', 'Maya Chen (she/her)', "Mary-Jane O'Brien"]
+        .map(n => guess({ full_name: n, domain: 'acme.io' })),
+      ['maya.chen@acme.io', 'maya.chen@acme.io', 'john.smith@acme.io', 'maya.chen@acme.io',
+        'maryjane.obrien@acme.io'])
+    eq('the guess: none when a letter outside a-z is left',
+      ['Michał Nowak', 'Hans Strauß', 'Işık Yılmaz', '李 雷'].map(n => guess({ full_name: n, domain: 'acme.io' })),
+      ['', '', '', ''])
+    eq('the guess: the bare domain of an address or a site with a port', [
+      guess({ full_name: 'Ada Byron', domain: 'ada@Analytical.io' }),
+      guess({ full_name: 'Ada Byron', domain: 'analytical.io:8080/x?y=1' })],
+    ['ada.byron@analytical.io', 'ada.byron@analytical.io'])
+    eq('the guess: none at free mail or a shared site, or on a bare word', ['gmail.com', 'maya@gmail.com',
+      'https://www.linkedin.com/in/maya', 'acme'].map(d => guess({ full_name: 'Maya Chen', domain: d })),
+    ['', '', '', ''])
+    eq('the guess: none from a cell that holds JSON', guess({ full_name: '{"a":1}', domain: 'acme.io' }), '')
+    check('the guess fits a formula', NAME_GUESS.length <= FORMULA_MAX_CHARS)
+  } finally { sb.dispose() }
+}
 
 if (failures) { console.log(`\n${failures} failed`); process.exit(1) }
 console.log('\nall waterfall pure checks passed')

@@ -13,6 +13,7 @@ import { INPUT_KEY_PATTERN } from './inputs';
 import type { WaterfallRunInput } from './input';
 import { newStepId, type HttpChoices, type WaterfallRunConfig } from './config';
 import { restoreMaskedStep } from './agent-mask';
+import { TEMPLATE_IDS, templateOf, type WaterfallTemplate } from './templates';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -20,7 +21,7 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 export const AGENT_TOP = ['sheet_id', 'column_name', 'add_to_column', 'result_type', 'phone', 'inputs', 'steps',
   'answered_by_column', 'hide_step_columns', 'rows', 'test', 'use_sheet_filter', 'target_row_ids', 'run_if',
   'spend_limit_usd', 'concurrency', 'fresh', 'estimate_only', 'idempotency_key', 'webhook_id', 'auto_run',
-  'action', 'dry_run', 'test_step'];
+  'action', 'dry_run', 'test_step', 'template'];
 const STEP_KEYS: Record<string, string[]> = {
   enrichment: ['tool_id', 'inputs', 'value_path', 'provider_order', 'skip_providers', 'stop_at_first',
     'max_cost_usd'],
@@ -99,6 +100,36 @@ function dryOf(a: Json, steps: unknown): { ok: Json | null } | { error: string }
   return { ok: { rowIds: null, only: hit.id } };
 }
 
+// A starter waterfall (lib/waterfall/templates.ts) for a new column: its
+// result type and steps (copies: a test_step names one by giving it an id),
+// the inputs the agent mapped laid over its own (unmapped ones stay, for the
+// steps that require them).
+function templateFor(a: Json, cont: boolean): { ok: WaterfallTemplate | null } | { error: string } {
+  if (a.template === undefined) return { ok: null };
+  const t = templateOf(a.template);
+  if (!t) return { error: `template is ${TEMPLATE_IDS.join(' or ')}.` };
+  if (cont) return { error: 'A template starts a new column: leave out add_to_column.' };
+  if (a.result_type !== undefined && a.result_type !== t.resultType) {
+    return { error: `The ${t.id} template finds result_type ${t.resultType}.` };
+  }
+  const keys = t.inputs.map(i => i.key);
+  if (a.inputs === undefined) {
+    return {
+      error: `Map the template's inputs to your columns, such as {"full_name": "Name", "domain": "Website"} `
+        + `(it reads ${keys.join(', ')}).`,
+    };
+  }
+  // Its own steps read only its own inputs: another key is a misspelling, not an extra input.
+  const other = isObj(a.inputs) && a.steps === undefined ? Object.keys(a.inputs).find(k => !keys.includes(k)) : null;
+  if (other) return { error: `"${other}" isn't one of the ${t.id} template's inputs (${keys.join(', ')}).` };
+  return { ok: { ...t, steps: structuredClone(t.steps) } };
+}
+
+const withTemplateInputs = (t: WaterfallTemplate, given: unknown[]): unknown[] => [
+  ...t.inputs.map(i => given.find(g => (g as { key?: unknown }).key === i.key) ?? { ...i, source: null }),
+  ...given.filter(g => !t.inputs.some(i => i.key === (g as { key?: unknown }).key)),
+];
+
 export function agentWaterfallBody(
   a: Json, prior: WaterfallRunConfig | null, recalled: WaterfallRunInput | null,
   target: { rowIndexes: number[] | null; generation: number | null },
@@ -107,14 +138,17 @@ export function agentWaterfallBody(
   if (stray) return { error: `${stray} Nothing was started.` };
   const cont = a.add_to_column === true;
   if (cont && !recalled) return { error: `"${String(a.column_name)}" isn't a waterfall column to add to.` };
-  const resultType = a.result_type ?? recalled?.resultType;
+  const template = templateFor(a, cont);
+  if ('error' in template) return template;
+  const tpl = template.ok;
+  const resultType = a.result_type ?? recalled?.resultType ?? tpl?.resultType;
   let inputs: unknown = recalled?.inputs;
   if (a.inputs !== undefined) {
     const got = inputsOf(a.inputs, resultType);
     if (typeof got === 'string') return { error: got };
-    inputs = got;
+    inputs = tpl ? withTemplateInputs(tpl, got) : got;
   }
-  let steps: unknown = recalled?.steps;
+  let steps: unknown = recalled?.steps ?? tpl?.steps;
   if (a.steps !== undefined) {
     if (!Array.isArray(a.steps)) return { error: 'steps must be a list.' };
     const out: Json[] = [];

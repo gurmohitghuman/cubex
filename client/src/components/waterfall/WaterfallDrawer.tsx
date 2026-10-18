@@ -4,10 +4,10 @@ import { Drawer, DrawerHeader } from '@/components/Drawer'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ENRICH_TEST_ROWS, WATERFALL_DRY_MAX_ROWS, WATERFALL_DRY_ROWS } from '@/lib/constants'
-import { waterfallAPI, type ResultType } from '@/utils/api/waterfall'
-import {
-  RESULT_OPTIONS, draftProblem, fromSetup, newDraft, resultLabel, toInput, type WaterfallDraft,
-} from './draft'
+import { waterfallAPI } from '@/utils/api/waterfall'
+import { draftProblem, fromSetup, resultLabel, toInput, type WaterfallDraft } from './draft'
+import { StartPicker } from './StartPicker'
+import { stepInputKeys } from './step-copy'
 import { InputsSection } from './InputsSection'
 import { StepsSection } from './StepsSection'
 import { OptionsSection } from './OptionsSection'
@@ -41,7 +41,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 )
 
 // "Waterfall": one value per row (a work email, a phone…) from ordered steps,
-// stopping at the first answer. Pick what it finds, map the inputs once, add
+// stopping at the first answer. Pick what it finds (or a starter), map the inputs once, add
 // the steps, see the average and the most a row costs, then run on a few rows
 // or all of them. Edit opens a column's own setup; a run shows its progress.
 export const WaterfallDrawer: React.FC<Props> = (p) => {
@@ -133,17 +133,7 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
             <RunProgress status={status} onChanged={p.onRunChanged}
               onDone={() => { setRunId(null); if (!draft) p.onClose() }} />
           ) : !draft ? (
-            <div className="p-4 space-y-2" data-testid="waterfall-result-types">
-              <p className="text-sm text-gray-700">What should it find?</p>
-              {RESULT_OPTIONS.map(o => (
-                <button key={o.type} type="button" onClick={() => setDraft(newDraft(o.type as ResultType, columns))}
-                  className="w-full text-left border border-gray-200 px-3 py-2 hover:border-gray-400">
-                  <span className="text-sm text-gray-900">{o.label}</span>
-                  <span className="block text-xs text-gray-500">{o.hint}</span>
-                </button>
-              ))}
-              {error && <p className="text-xs text-red-600">{error}</p>}
-            </div>
+            <StartPicker columns={columns} error={error} onPick={setDraft} />
           ) : (
             <div className="p-4 space-y-5">
               <Section title="Result">
@@ -162,7 +152,8 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
                 )}
               </Section>
               <Section title="Inputs">
-                <InputsSection inputs={draft.inputs} columns={columns} onChange={inputs => update({ inputs })} />
+                <InputsSection inputs={draft.inputs} columns={columns} onChange={inputs => update({ inputs })}
+                  inUse={new Set(draft.steps.flatMap(s => stepInputKeys(s, draft.inputs.map(i => i.key))))} />
               </Section>
               <Section title="Steps">
                 <StepsSection sheetId={sheetId} steps={draft.steps} inputs={draft.inputs} resultType={draft.resultType}

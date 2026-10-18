@@ -11,6 +11,7 @@ import {
 } from '../lib/constants';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { RESULT_TYPES } from '../lib/waterfall/result-type';
+import { TEMPLATE_IDS } from '../lib/waterfall/templates';
 import { tokenWaterfall } from '../services/waterfall-token-run';
 import { DAILY_LIMIT_NOTE, STATUS_WORDS } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
@@ -95,6 +96,11 @@ export const WATERFALL_DESCRIPTION =
   + 'call again with estimate_only:false. A treg answer any run found in the last days set in Settings is reused at '
   + '$0 (fresh:true calls every step again). spend_limit_usd caps the run (treg and AI; default rows x max per '
   + `row). ${DAILY_LIMIT_NOTE} `
+  + 'TEMPLATES: template "work_email" (treg\'s email finder, then a first.last@domain guess that counts only '
+  + 'when treg\'s email verify says it\'s valid) or "mobile_phone" (treg\'s phone finder: a mobile or direct '
+  + 'number) gives result_type and '
+  + 'steps for a new column; you still map inputs (its other input keys stay unmapped), and steps you pass replace '
+  + 'its own. '
   + 'Rows: all by default; add_to_column:true runs an existing waterfall column again (its own inputs and steps '
   + 'unless you pass new ones; a step keeps its column by id or label) on rows not_enriched (default), no_result, '
   + `failed or any; test:true runs the first ${ENRICH_TEST_ROWS} rows; use_sheet_filter, target_row_ids, run_if. `
@@ -121,7 +127,10 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       sheet_id: z.string(),
       column_name: z.string().max(200).describe('The result column (new, or an existing one with add_to_column)'),
       add_to_column: lenientBoolean().optional().describe('Run an existing waterfall column again'),
-      result_type: z.enum(RESULT_TYPES).optional().describe('What it finds (required for a new column)'),
+      result_type: z.enum(RESULT_TYPES).optional()
+        .describe('What it finds (required for a new column, unless a template gives it)'),
+      template: z.enum(TEMPLATE_IDS).optional()
+        .describe('A starter waterfall for a new column: its result_type and steps; you map inputs'),
       phone: z.object({
         format: z.enum(['national', 'international', 'e164']).optional(), country: z.string().max(2).optional(),
       }).strict().optional().describe('result_type phone: how numbers are written; country for numbers without one'),

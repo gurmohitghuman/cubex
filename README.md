@@ -159,7 +159,7 @@ The [enrichments guide](docs/enrichments.md) has the details.
 
 Click **Waterfall** to fill one value per row, such as a work email or a phone number, by trying steps in order until one finds it. A step can be a treg tool, an AI prompt, a call to your own API, a free formula or a free lookup in another sheet, so the cheapest source goes first and the next one runs only on the rows it missed.
 
-- Pick what it finds (work email, phone, company domain, LinkedIn URL, URL or any text), then match its inputs to your columns once. Every step reads those same inputs.
+- Start from a template (a work email from a name and a domain, or a mobile or direct phone), or pick what it finds (work email, phone, company domain, LinkedIn URL, URL or any text), then match its inputs to your columns once. Every step reads those same inputs.
 - Add the steps and put them in order. A step runs only on rows that have what it needs, say a name and a domain, or a LinkedIn URL; other rows skip it for free. Switch a step off to skip it.
 - An answer counts only when it reads as what you asked for: "N/A" or a broken email isn't one, so the next step runs.
 - A lookup step takes the answer from a list you already have, such as a CRM export in another sheet: the first row whose domain (or any column) matches. Put it first, and only the rows it can't answer reach the paid steps.

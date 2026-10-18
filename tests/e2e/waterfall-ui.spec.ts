@@ -34,7 +34,7 @@ test('build a waterfall, estimate it, run it, read a trace, edit it again', asyn
 
   await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
   await expect(drawer(page).getByTestId('waterfall-result-types')).toBeVisible()
-  await drawer(page).getByRole('button', { name: /Work email/ }).click()
+  await drawer(page).getByTestId('waterfall-type-email').click()
   await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveValue('c:Name')
   await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveValue('c:Website')
 
@@ -119,7 +119,7 @@ test('a formula step with an email check, tested alone from its card', async ({ 
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
-  await drawer(page).getByRole('button', { name: /Work email/ }).click()
+  await drawer(page).getByTestId('waterfall-type-email').click()
   await drawer(page).getByRole('button', { name: 'Formula' }).click()
   await drawer(page).getByLabel('Step formula').fill("{{full_name}}.toLowerCase().replace(' ', '.') + '@' + {{domain}}")
   await drawer(page).getByLabel('Check', { exact: true }).selectOption('verify')
