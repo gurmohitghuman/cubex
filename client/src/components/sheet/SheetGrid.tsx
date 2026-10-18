@@ -89,6 +89,9 @@ export interface SheetGridProps {
   // The view showing: its hidden columns, and "Hide column" in the column menu.
   hiddenColumns?: ReadonlySet<string>
   onHideColumn?: (column: string) => void
+  // Column descriptions (the header's note) and the column menu's Edit description.
+  columnDescriptions?: Record<string, string>
+  onEditDescription?: (column: string) => void
   // The view has a filter no column header shows (the bar above lists it).
   rowFilterActive?: boolean
   // Search: the held rows' place in the view, the rows above a deep window,
@@ -110,7 +113,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, lookupColumns, onOpenLookup,
-    windowStart, onLoadEarlier, onOpenSearch, registerSearch,
+    columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
   } = props
 
   const actions = useSheetGridRunActions({
@@ -162,6 +165,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onLookupAction: lookup.onLookupAction,
     onSaveSetup,
     onHideColumn,
+    onEditDescription,
   }
 
   return (
@@ -192,7 +196,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       onDeleteRows={onDeleteRows}
       runActions={runActions}
       columnTypes={columnTypes} autorun={autorun} columnSpend={columnSpend} cleanColumns={cleanColumns}
-      formulaColumns={formulaColumns} lookupColumns={lookupColumns}
+      formulaColumns={formulaColumns} lookupColumns={lookupColumns} columnDescriptions={columnDescriptions}
       activeHTTPRunsByColumn={activeHTTPRunsByColumn}
       activeAIRunsByColumn={activeAIRunsByColumn}
       onColumnReorder={onColumnReorder}

@@ -2,7 +2,7 @@
 // the UI route and /api/v1 share one implementation. The cascade set is
 // load-bearing: rows.data key, column_order, empty_filter,
 // column_filters, http_column_associations, stored HTTP run configs, webhook
-// refs, auto-run and clean column settings — miss one and a rename orphans state.
+// refs, auto-run and clean column settings, descriptions — miss one and a rename orphans state.
 // Over 200 lines: one rename with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -20,6 +20,7 @@ import { renameCleanColumnRefs } from '../lib/clean-columns';
 import { derivedRenameLoop } from '../lib/derived-loops';
 import { renameFormulaColumnRefs } from '../lib/formula-columns';
 import { renameLookupColumnRefs } from '../lib/lookup-columns';
+import { renameColumnDescriptionRefs } from '../lib/column-descriptions';
 import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
@@ -227,4 +228,6 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   // Lookup columns: the column itself and the one it reads; lookups in other
   // sheets looking in this one (the column they match, the columns they return).
   renameLookupColumnRefs(sheetId, userId, columnName, trimmedNew);
+  // Its description goes with it.
+  renameColumnDescriptionRefs(sheetId, userId, columnName, trimmedNew);
 }

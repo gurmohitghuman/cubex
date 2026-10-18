@@ -4,6 +4,8 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { createSheet, renameSheet, deleteSheet, reorderSheets, SheetCrudOutcome } from '../services/sheet-crud';
 import { tableFailHttpStatus } from '../services/table-crud';
+import { describeSheet, descriptionProblem } from '../services/descriptions';
+import { listSheets, verifySheetInTable } from '../lib/sheet-crud-helpers';
 
 const router = express.Router();
 
@@ -39,10 +41,26 @@ router.patch('/tables/:tableId/sheets/order', requireScope('write'), (req: Token
   }
 });
 
-// PATCH /v1/tables/:tableId/sheets/:sheetId {name} — rename.
+// PATCH /v1/tables/:tableId/sheets/:sheetId {name?, description?} — rename
+// and/or describe ("" or null clears; checked before the rename).
 router.patch('/tables/:tableId/sheets/:sheetId', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
-    send(res, renameSheet(req.userId!, req.params.tableId, req.params.sheetId, (req.body ?? {}).name));
+    const body = (req.body ?? {}) as { name?: unknown; description?: unknown };
+    const { tableId, sheetId } = req.params;
+    if (!('description' in body)) return send(res, renameSheet(req.userId!, tableId, sheetId, body.name));
+    const problem = descriptionProblem(body.description, 'sheet');
+    if (problem) return res.status(400).json({ error: problem });
+    if (body.name !== undefined) {
+      const renamed = renameSheet(req.userId!, tableId, sheetId, body.name);
+      if ('fail' in renamed) return send(res, renamed);
+    } else if (!verifySheetInTable(sheetId, tableId, req.userId!)) {
+      return res.status(404).json({ error: 'Sheet not found' });
+    }
+    const described = describeSheet(sheetId, req.userId!, body.description);
+    if ('fail' in described) return res.status(404).json({ error: described.message });
+    const sheets = listSheets(tableId, req.userId!) as Array<{ id: string; name: string }>;
+    const sheet = sheets.find(s => s.id === sheetId);
+    res.json({ sheet: { id: sheetId, name: sheet?.name, description: described.ok.description }, sheets });
   } catch (error) {
     console.error('PATCH /v1/tables/:tableId/sheets/:sheetId error:', error);
     res.status(500).json({ error: 'Failed to rename sheet' });

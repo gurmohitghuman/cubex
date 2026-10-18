@@ -181,7 +181,8 @@ export function mintAccessTokenInDb(scopes: string[], name: string): string {
 
     // Free this name, then keep the newest few so the 10-cap is never reached.
     // (mcp-runs legitimately holds two live tokens at once — hence "newest 5",
-    // not a blanket revoke.)
+    // not a blanket revoke.) created_at counts whole seconds, so tokens minted in
+    // the same second go by insertion order: never the one a test just minted.
     db.prepare(
       `UPDATE access_tokens SET revoked_at = datetime('now')
        WHERE revoked_at IS NULL AND user_id = ? AND LOWER(name) = LOWER(?)`,
@@ -190,7 +191,7 @@ export function mintAccessTokenInDb(scopes: string[], name: string): string {
       UPDATE access_tokens SET revoked_at = datetime('now')
       WHERE revoked_at IS NULL AND user_id = ? AND id IN (
         SELECT id FROM access_tokens WHERE user_id = ? AND revoked_at IS NULL
-        ORDER BY created_at DESC LIMIT -1 OFFSET 5
+        ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 5
       )
     `).run(userId, userId)
 

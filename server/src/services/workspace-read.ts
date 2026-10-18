@@ -10,6 +10,8 @@ import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { sheetRunColumns } from './row-filter';
 import { activeSetupRuns, activeSheetRuns, type SheetRun, type SheetSetupRun } from './sheet-runs';
 import { listViews, type ViewInfo } from './view-store';
+import { sheetColumnDetails } from './column-details';
+import type { ColumnDetail } from '../lib/column-details';
 
 export interface SheetSummary { id: string; name: string; position: number; row_count: number }
 export interface TableSummary {
@@ -37,6 +39,7 @@ export function listTablesWithSheets(userId: string): TableSummary[] {
 
 export interface SheetMeta {
   id: string; table_id: string; name: string;
+  description: string | null;  // what the sheet is for, in its owner's words
   columns: string[]; row_count: number; data_version: number;
   default_ai_model: string | null; // sheet override; account default applies when null
   row_generation: number;
@@ -56,14 +59,19 @@ export interface SheetMeta {
   views: ViewInfo[];
   // Lookup columns: what each matches in which other sheet, what it returns, auto-run (services/lookup-view.ts).
   lookup_columns: Array<Record<string, unknown>>;
+  // Every column in order: its kind, what fills it, what it reads, auto-run,
+  // its rule and its description (services/column-details.ts).
+  column_details: ColumnDetail[];
 }
 
-export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null {
-  const sheet = db.prepare(
-    'SELECT id, table_id, name, data_version, row_generation, default_ai_model FROM sheets WHERE id = ? AND user_id = ?'
-  ).get(sheetId, userId) as {
-    id: string; table_id: string; name: string; data_version: number; row_generation: number;
-    default_ai_model: string | null;
+// named: columns whose details show their prompt, formula or URL in full.
+export function getSheetMeta(
+  sheetId: string, userId: string, named: ReadonlySet<string> = new Set(),
+): SheetMeta | null {
+  const sheet = db.prepare(`SELECT id, table_id, name, description, data_version, row_generation, default_ai_model
+    FROM sheets WHERE id = ? AND user_id = ?`).get(sheetId, userId) as {
+    id: string; table_id: string; name: string; description: string | null; data_version: number;
+    row_generation: number; default_ai_model: string | null;
   } | undefined;
   if (!sheet) return null;
   const columns = getSheetColumns(sheetId, userId);
@@ -71,6 +79,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     id: sheet.id,
     table_id: sheet.table_id,
     name: sheet.name,
+    description: sheet.description,
     columns,
     row_count: countRows(sheetId, userId),
     data_version: sheet.data_version,
@@ -83,6 +92,7 @@ export function getSheetMeta(sheetId: string, userId: string): SheetMeta | null 
     formula_columns: Object.values(sheetFormulaView(sheetId, userId, columns)).map(formulaColumnJson),
     views: listViews(sheetId, userId, columns) ?? [],
     lookup_columns: Object.values(sheetLookupView(sheetId, userId, columns)).map(lookupColumnJson),
+    column_details: sheetColumnDetails(sheetId, userId, columns, named),
   };
 }
 

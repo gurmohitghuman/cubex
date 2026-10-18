@@ -15,12 +15,23 @@ export interface CompiledFilter { sql: string; params: unknown[] }
 const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const BLANK_SQL = `char(${[...BLANK_CHARS].map(c => c.codePointAt(0)).join(', ')})`;
 const TRIMMED = `TRIM(COALESCE(json_extract(data, ?), ''), ${BLANK_SQL})`;
+// A cell as the run-state rules read it (its path bound as the one parameter):
+// a reader that reads each cell once (services/column-counts.ts) selects this
+// and hands compileWhere the alias (`cells`).
+export const TRIMMED_CELL_SQL = TRIMMED;
 const FOLDED = 'cubex_fold(json_extract(data, ?))';
 
-// Builds SQL left to right, binding each cell's path where it appears.
+// Builds SQL left to right, binding each cell's path where it appears. cells:
+// columns already read as TRIMMED_CELL_SQL, by the SQL naming them.
 class Sql {
   readonly params: unknown[] = [];
-  cell(column: string): string { this.params.push(jsonPath(column)); return TRIMMED; }
+  constructor(private readonly cells?: ReadonlyMap<string, string>) {}
+  cell(column: string): string {
+    const read = this.cells?.get(column);
+    if (read) return read;
+    this.params.push(jsonPath(column));
+    return TRIMMED;
+  }
   bind(value: unknown): string { this.params.push(value); return '?'; }
   // The cell starts with one of `marks` (code points, as JS startsWith does
   // for these one-unit characters).
@@ -110,10 +121,13 @@ function conditionSql(q: Sql, c: FilterCondition, runColumns: ReadonlyMap<string
 
 // runColumns: the sheet's run columns → the column holding their run's state
 // (services/row-filter.ts sheetRunColumns: a state column is a run column
-// mapped to itself). An empty `where` passes every row.
-export function compileWhere(where: readonly WhereItem[], runColumns: ReadonlyMap<string, string>): CompiledFilter {
+// mapped to itself). An empty `where` passes every row. cells: run-state
+// conditions read these columns from the given SQL instead (see TRIMMED_CELL_SQL).
+export function compileWhere(
+  where: readonly WhereItem[], runColumns: ReadonlyMap<string, string>, cells?: ReadonlyMap<string, string>,
+): CompiledFilter {
   if (where.length === 0) return { sql: '1', params: [] };
-  const q = new Sql();
+  const q = new Sql(cells);
   const parts = where.map(item => {
     if (!isOrGroup(item)) return `(${conditionSql(q, item, runColumns)})`;
     return `(${item.or.map(c => `(${conditionSql(q, c, runColumns)})`).join(' OR ')})`;

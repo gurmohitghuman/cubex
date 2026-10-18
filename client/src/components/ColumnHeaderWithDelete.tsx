@@ -1,6 +1,6 @@
 import React from 'react'
 import { IHeaderParams } from 'ag-grid-community'
-import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare, Link2 } from 'lucide-react'
+import { X, Sparkles, Filter, DatabaseZap, Zap, Brush, FunctionSquare, Link2, Info } from 'lucide-react'
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn, ColumnSpend } from '@/utils/api/types-autorun'
 import type { CleanColumnView } from '@/utils/api/clean'
@@ -28,11 +28,14 @@ interface ColumnHeaderWithDeleteProps extends IHeaderParams {
   formula?: FormulaColumnView
   // A lookup column's setup: the lookup icon's note ("Looks up Domain in Companies › Website").
   lookup?: LookupColumnView
+  // The column's description: the name's hover note and the ⓘ icon's.
+  description?: string
 }
 
 export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (params) => {
   const {
     displayName, column, onDeleteColumn, onHeaderClick, isFiltered, columnType, autorun, spend, clean, formula, lookup,
+    description,
   } = params
   const tip = headerTip(spend, autorun)
   // A clean, formula or lookup column's note comes first, then its auto-run's.
@@ -111,7 +114,15 @@ export const ColumnHeaderWithDelete: React.FC<ColumnHeaderWithDeleteProps> = (pa
             aria-label="AI-generated column"
           />
         )}
-        <span className="truncate" title={displayName}>{displayName}</span>
+        <span className="truncate" title={description ? `${displayName}\n\n${description}` : displayName}>
+          {displayName}
+        </span>
+        {description && (
+          <HeaderTip text={description}>
+            <Info size={12} className="opacity-60 flex-shrink-0" aria-label="Column description"
+              data-testid="description-icon" />
+          </HeaderTip>
+        )}
         {isFiltered && (
           <Filter size={12} className="flex-shrink-0 text-cube-black" aria-label="Filtered">
             <title>Filtered: some rows are hidden</title>

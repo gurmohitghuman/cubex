@@ -33,7 +33,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     emptyFilter, onEmptyFilterChange, columnFilters, onColumnFilterChange,
     onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
     columnTypes = NO_COLUMN_TYPES, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns,
-    activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
+    columnDescriptions, activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
     onColumnReorder, sheetId,
     lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
     windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch,
@@ -103,8 +103,8 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
 
   const columnDefs = useColumnDefs({
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
-    formulaColumns, lookupColumns, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor, handleHeaderColumnDelete,
-    openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
+    formulaColumns, lookupColumns, columnDescriptions, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor,
+    handleHeaderColumnDelete, openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
   })
 
   const {

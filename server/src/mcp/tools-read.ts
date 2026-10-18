@@ -5,7 +5,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
 import { MCP_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { listTablesWithSheets, getSheetMeta, readRowsPage } from '../services/workspace-read';
+import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
+import { readSheetDetails } from '../services/sheet-details';
+import { COLUMN_COUNTS_MAX_COLUMNS } from '../lib/constants-columns';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
@@ -32,9 +34,18 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'get_sheet',
     {
       description:
-        'Sheet metadata: ordered column names, row count, data_version, row_generation, and the '
-        + 'remaining row/column budget (limits). Check limits before a large append or import — '
-        + 'otherwise you discover the cap by having a write rejected. filling_columns lists columns still '
+        'Sheet metadata: ordered column names, row count, data_version, row_generation, the sheet\'s '
+        + 'description, and the remaining row/column budget (limits). Check limits before a large append or '
+        + 'import: otherwise you discover the cap by having a write rejected. '
+        + 'column_details says, for every column in order, its kind (plain, ai, http, enrichment, webhook, clean, '
+        + 'formula, lookup), what fills it (fill: its newest run with run_id and run_status, or its setup; a '
+        + 'column another column\'s run fills names that column in filled_by and its role), the columns it reads, '
+        + 'auto_run, run_if (the "Only run if" rule its next run checks) and its description. Prompts, formulas and '
+        + 'URLs are cut short unless you name the column in columns; credentials in a URL read "…". '
+        + 'include_counts adds each column\'s counts: filled (a value), errors (a failed run or ❌) and empty '
+        + `(the rest: not run, skipped, running), counting every row: up to ${COLUMN_COUNTS_MAX_COLUMNS} columns, `
+        + 'the ones in columns or else the first. Read it before choosing what to run or fix. '
+        + 'filling_columns lists columns still '
         + 'filling (add_enrichment_field, clean_column, formula_column, lookup_column): their cells read '
         + '"⏳ Processing..." until done. clean_columns, formula_columns and lookup_columns give each such '
         + 'column\'s setup and auto-run (a lookup column\'s broken says why it stopped). '
@@ -43,13 +54,23 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'being used on it; control_run with action cancel_all stops them all. views lists the saved views (name, '
         + 'description, filters as a where, hidden_columns; active is the one the app shows): pass view to '
         + 'read_rows or export_csv to read through one.',
-      inputSchema: { sheet_id: z.string() },
+      inputSchema: {
+        sheet_id: z.string(),
+        columns: z.array(z.string()).optional()
+          .describe('Columns to show in full (prompts, formulas, URLs) and to count first'),
+        include_counts: lenientBoolean().optional()
+          .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets)'),
+      },
     },
-    async ({ sheet_id }) => {
+    async ({ sheet_id, columns, include_counts }, extra) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
-      const meta = getSheetMeta(sheet_id, ctx.userId);
-      if (!meta) return err('Sheet not found');
+      // Counting stops when the client cancels or goes away.
+      const read = await readSheetDetails(sheet_id, ctx.userId,
+        { columns, counts: include_counts === true, stop: () => extra.signal.aborted });
+      if (!read) return err('Sheet not found');
+      if ('error' in read) return err(read.error);
+      const meta = read.ok;
       // Report REMAINING budget, not just the ceilings: "you can add 47 more
       // rows" needs no arithmetic, and the caps live in one place server-side
       // so an agent never has to hardcode them.

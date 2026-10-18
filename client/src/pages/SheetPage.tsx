@@ -11,6 +11,8 @@ import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
+import { DescriptionDialog } from '@/components/sheet/DescriptionDialog'
+import { useDescriptions } from '@/hooks/sheet/useDescriptions'
 import { useSheetOps } from '@/hooks/sheet/useSheetOps'
 import { SheetModals } from '@/components/sheet/SheetModals'
 import { SheetWebhookOverlays } from '@/components/webhook/SheetWebhookOverlays'
@@ -75,6 +77,7 @@ export const SheetPage: React.FC = () => {
   const grid = useGridHandles()
   const runs = useActiveRuns()
   const modals = useSheetModals()
+  const descriptions = useDescriptions({ activeSheet, sheetData, setSheetData, setTable })
 
   // Per-sheet row_generation last loaded (sheetId → generation). Sent with writes
   // so the server fences stale-index writes after a sort/replace elsewhere (021).
@@ -291,6 +294,7 @@ export const SheetPage: React.FC = () => {
         autorun={autorun} sse={sse} rowGenerationRef={rowGenerationRef}
         silentReload={(id) => silentReloadRef.current(id)}
         webhookColumn={webhookColumn} onWebhookCell={setWebhookPayloadRow}
+        onEditDescription={descriptions.openColumn}
       />
       {/* Bottom tab bar (Excel/Google-Sheets placement): sits below the grid. */}
       <SheetTabsBar
@@ -299,10 +303,13 @@ export const SheetPage: React.FC = () => {
         onSelectSheet={sheetOps.selectSheet}
         onAddSheet={sheetOps.createSheet}
         onRenameSheet={sheetOps.renameSheet}
+        onDescribeSheet={descriptions.openSheet}
         onDeleteSheet={setConfirmDeleteSheet}
         onReorderSheets={sheetOps.reorderSheets}
         onAddRows={cellOps.handleAddRows}
       />
+      <DescriptionDialog target={descriptions.target} initial={descriptions.initial} onClose={descriptions.close}
+        onSave={descriptions.save} />
       <DeleteSheetConfirm sheet={confirmDeleteSheet}
         onConfirm={s => { void sheetOps.deleteSheet(s.id); setConfirmDeleteSheet(null) }}
         onCancel={() => setConfirmDeleteSheet(null)} />
