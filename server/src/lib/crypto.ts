@@ -50,13 +50,15 @@ function refuseNewKeyOverEncryptedData(file: string): void {
     holds(() => db.prepare('SELECT 1 FROM settings WHERE openrouter_api_key_encrypted IS NOT NULL LIMIT 1').get())
     || holds(() => db.prepare('SELECT 1 FROM settings WHERE treg_token_encrypted IS NOT NULL LIMIT 1').get())
     || holds(() => db.prepare('SELECT 1 FROM api_keys LIMIT 1').get())
-    || holds(() => db.prepare('SELECT 1 FROM webhook_sources WHERE token_ciphertext IS NOT NULL LIMIT 1').get());
+    || holds(() => db.prepare('SELECT 1 FROM webhook_sources WHERE token_ciphertext IS NOT NULL LIMIT 1').get())
+    || holds(() => db.prepare('SELECT 1 FROM run_webhooks LIMIT 1').get());
   if (!hasEncrypted) return;
   throw new Error(
     `${file} is missing, but the database already holds keys encrypted with it.\n` +
     `  Restore ${path.basename(file)} from your backup into ${path.dirname(file)} (or set APP_ENCRYPTION_KEY).\n` +
     `  If it's lost for good: openssl rand -hex 32 > ${file}\n` +
-    '  then re-enter your OpenRouter key, treg key and saved API keys in Settings, and rotate your webhook URLs.',
+    '  then re-enter your OpenRouter key, treg key and saved API keys in Settings, rotate your webhook URLs\n' +
+    '  and make new secrets for your run webhooks.',
   );
 }
 

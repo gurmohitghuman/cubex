@@ -16,6 +16,7 @@ import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 import { parseFirstRows } from './ai-run-rerun';
+import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 
 const router = express.Router();
 
@@ -102,7 +103,19 @@ function parseRowIds(raw: unknown): { rowIds?: string[] } | { error: string } {
   return { rowIds: raw as string[] };
 }
 
-// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode?, concurrency?, first_rows? }. row_ids
+// A rerun is a new run: webhook_id (optional) names a run webhook told when it finishes.
+function refuseBadWebhook(req: TokenAuthRequest, res: express.Response, b: { webhook_id?: unknown }): boolean {
+  const problem = webhookIdProblem(req.userId!, b.webhook_id);
+  if (problem) res.status(400).json({ error: problem });
+  return problem !== null;
+}
+function hooked(req: TokenAuthRequest, b: { webhook_id?: unknown }, table: 'ai_runs' | 'http_runs', runId: string) {
+  if (typeof b.webhook_id !== 'string') return {};
+  attachRunWebhook(table, runId, req.userId!, b.webhook_id);
+  return { webhook_id: b.webhook_id };
+}
+
+// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode?, concurrency?, first_rows?, webhook_id? }. row_ids
 // wins; mode is one of errored|empty|missing|all and REQUIRED without row_ids, as on MCP: a
 // default of 'missing' re-billed every empty row of the column (MCP dropped it
 // after a 10-row retry became a 9,675-row run). first_rows narrows to the
@@ -112,7 +125,9 @@ function parseRowIds(raw: unknown): { rowIds?: string[] } | { error: string } {
 // repeated run's own.
 router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
-    const body = (req.body ?? {}) as { row_ids?: unknown; mode?: unknown; concurrency?: unknown; first_rows?: unknown };
+    const body = (req.body ?? {}) as {
+      row_ids?: unknown; mode?: unknown; concurrency?: unknown; first_rows?: unknown; webhook_id?: unknown;
+    };
     const p = parseRowIds(body.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
     const first = parseFirstRows(body.first_rows, 'first_rows', p.rowIds !== undefined);
@@ -131,6 +146,7 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if (c !== undefined && (typeof c !== 'number' || !Number.isInteger(c) || c < 1 || c > MAX_AI_CONCURRENCY)) {
       return res.status(400).json({ error: `concurrency must be a whole number from 1 to ${MAX_AI_CONCURRENCY}.` });
     }
+    if (refuseBadWebhook(req, res, body)) return;
     // A rerun is a run start: same per-token window as MCP's control_run.
     if (refuseRunStart(req, res)) return;
     const result = await rerunAiRunById(req.userId!, req.params.id, {
@@ -138,7 +154,9 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
       concurrency: c, firstRows: first.firstRows,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
-    res.status(202).json({ run_id: result.ok.runId, target_rows: result.ok.targetCount });
+    res.status(202).json({
+      run_id: result.ok.runId, target_rows: result.ok.targetCount, ...hooked(req, body, 'ai_runs', result.ok.runId),
+    });
   } catch (error) {
     console.error('POST /v1/ai-runs/:id/rerun error:', error);
     res.status(500).json({ error: 'Failed to start AI re-run' });
@@ -162,6 +180,7 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
     return res.status(400).json({ error: 'spend_limit_usd must be more than $0.' });
   }
   if (concurrencyOf(b.concurrency) === undefined) return res.status(400).json({ error: CONCURRENCY_ERROR });
+  if (refuseBadWebhook(req, res, b)) return;
   if (refuseRunStart(req, res)) return;
   const out = await rerunEnrichmentRunById(req.userId!, req.params.id, {
     rowIds: p.rowIds, mode: b.mode as string | undefined, spendLimitUsd: limit as number | undefined,
@@ -171,6 +190,7 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
   res.status(202).json({
     run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
     ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
+    ...hooked(req, b, 'http_runs', out.ok.runId),
   });
 }
 
@@ -190,13 +210,16 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     }
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
+    if (refuseBadWebhook(req, res, b)) return;
     if (refuseRunStart(req, res)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as 'missing' | 'all' | undefined, firstRows: first.firstRows,
       hasSecretsScope: req.tokenScopes?.has('secrets') === true,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
-    res.status(202).json({ run_id: result.ok.runId, target_rows: result.ok.targetCount });
+    res.status(202).json({
+      run_id: result.ok.runId, target_rows: result.ok.targetCount, ...hooked(req, b, 'http_runs', result.ok.runId),
+    });
   } catch (error) {
     console.error('POST /v1/http-runs/:id/rerun error:', error);
     res.status(500).json({ error: 'Failed to start HTTP re-run' });

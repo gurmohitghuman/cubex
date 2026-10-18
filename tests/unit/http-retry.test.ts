@@ -1,18 +1,25 @@
-// HTTP API column retries (lib/http-retry.ts), pure: which failures are tried
-// again for which methods, how Retry-After is read and capped, how the wait
-// grows, and that a wait ends early when the run stops.
+// HTTP API column retries (lib/http-retry.ts) and "run finished" notice
+// retries (lib/run-hook-retry.ts), pure: which failures are tried again for
+// which methods, how Retry-After is read and capped, how the wait grows, and
+// that a wait ends early when the run stops.
 import retryMod from '../../server/src/lib/http-retry'
+import hookRetryMod from '../../server/src/lib/run-hook-retry'
 import errMod from '../../server/src/lib/http-errors'
 import constMod from '../../server/src/lib/constants-http-retry'
+import hookConstMod from '../../server/src/lib/constants-run-hooks'
 const {
   retryPolicyOf, isRetryable, parseRetryAfter, retryWaitMs, nextRetryWait, tryFailureOf, waitUnlessStopped,
 } = retryMod as typeof import('../../server/src/lib/http-retry')
+const { runHookRetryWait, isDelivered, answerProblem } =
+  hookRetryMod as typeof import('../../server/src/lib/run-hook-retry')
 const {
   UpstreamStatusError, NetworkError, OutboundBlockedError, withResponseStatus, responseStatusOf, isTransportFailure,
 } =
   errMod as typeof import('../../server/src/lib/http-errors')
 const { HTTP_RETRY_BASE_MS, HTTP_RETRY_MAX_WAIT_MS, HTTP_RETRY_DEFAULT } =
   constMod as typeof import('../../server/src/lib/constants-http-retry')
+const { RUN_HOOK_RETRY_BASE_MS, RUN_HOOK_TRIES } =
+  hookConstMod as typeof import('../../server/src/lib/constants-run-hooks')
 
 let failures = 0
 function check(label: string, cond: boolean, detail?: unknown) {
@@ -110,6 +117,22 @@ check('second failure: a wait', typeof nextRetryWait(status(503), 'GET', 2, poli
 check('third failure: no more tries (2 retries = 3 tries)', nextRetryWait(status(503), 'GET', 3, policy, now) === null)
 check('retries 0: never', nextRetryWait(status(503), 'GET', 1, { retries: 0, retryPost: false }, now) === null)
 check('not retryable: never', nextRetryWait(status(404), 'GET', 1, policy, now) === null)
+
+// --- Run webhook notices ---
+check('a notice gets 3 tries', RUN_HOOK_TRIES === 3)
+const w1 = runHookRetryWait(1, null, now, fixed(0.5)), w2 = runHookRetryWait(2, null, now, fixed(0.5))
+check('the second try waits the base', w1 === RUN_HOOK_RETRY_BASE_MS, w1)
+check('the third waits six times the base', w2 === RUN_HOOK_RETRY_BASE_MS * 6, w2)
+check('±20% jitter', runHookRetryWait(1, null, now, fixed(0)) === Math.round(RUN_HOOK_RETRY_BASE_MS * 0.8)
+  && runHookRetryWait(1, null, now, fixed(1)) === Math.round(RUN_HOOK_RETRY_BASE_MS * 1.2))
+check('after the third try: none left', runHookRetryWait(3, null, now) === null)
+check('a longer Retry-After wins',
+  runHookRetryWait(1, '45', now, fixed(0.5)) === Math.max(RUN_HOOK_RETRY_BASE_MS, 45_000))
+check('Retry-After is capped at a minute', runHookRetryWait(1, '600', now, fixed(0.5))
+  === Math.max(RUN_HOOK_RETRY_BASE_MS, 60_000))
+check('2xx is delivered', isDelivered(200) && isDelivered(204) && !isDelivered(199) && !isDelivered(301))
+check('a 3xx says redirects aren\'t followed', /Redirects aren't followed/.test(answerProblem(302)))
+check('a 500 says so', answerProblem(500) === 'The URL answered 500.')
 
 async function main() {
   // --- A wait ends early when the run stops ---

@@ -2,6 +2,8 @@
 
 Give a sheet a secret URL, and every JSON event POSTed to it becomes a new row. Use it to collect form submissions, CRM events, or anything a tool like Zapier, Make or n8n can send, then enrich the new rows with AI, HTTP API or [enrichment](enrichments.md) columns.
 
+This page is about events coming in. For Cubex telling your URL when a run finishes, see [Run webhooks](run-webhooks.md).
+
 ## Set it up
 
 1. Open a sheet and click **Webhook**.

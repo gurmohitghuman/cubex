@@ -20,10 +20,11 @@ import { dailyLimitOf } from './enrich-agent-shared';
 import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
+import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
-  auto_run?: unknown;
+  auto_run?: unknown; webhook_id?: unknown;
 }
 
 type AutoRun = { enabled: boolean; dailyCapUsd: number | null } | null;
@@ -70,6 +71,8 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
+  const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
+  if (hookProblem) return bad(hookProblem);
 
   if (parseBooleanOption(a.estimate_only) === true) {
     const est = await agentEnrichEstimate(c.userId, sheetId, parsed.ok);
@@ -81,6 +84,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   const hash = runRequestHash('enrichment_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun,
+    ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
@@ -88,6 +92,8 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   if (limited) return limited;
   const out = await startEnrichmentRun(c.userId, sheetId, parsed.ok);
   if ('fail' in out) return out;
+  const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
+  if (hook) attachRunWebhook('http_runs', out.ok.runId, c.userId, hook);
   const run = db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
     .get(out.ok.runId, c.userId) as string;
   const stored = JSON.parse(run) as {
@@ -125,6 +131,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
     daily_limit: dailyLimitOf(c.userId), ...(stored.runIf ? runIfReply(stored.runIf) : {}), ...autoRunPart,
     ...(destNotice.auto_run ? { destination_auto_run: destNotice.auto_run } : {}),
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}),
+    ...(hook ? { webhook_id: hook } : {}),
   };
   if (typeof a.idempotency_key === 'string') {
     writeRunLedger(c.userId, a.idempotency_key, hash, 'enrichment_run', payload);

@@ -26,6 +26,7 @@ export interface SetupRunRow {
   id: string; user_id: string; sheet_id: string; setup_id: string | null; setup_name: string;
   plan: string; steps: string; target_row_ids: string | null; allow_secrets: number; auto_run: number;
   layer: number; status: SetupRunStatus; error_message: string | null; created_at: string; updated_at: string;
+  webhook_id?: string | null;
 }
 // modes: whether each step makes its columns or carries the sheet's on (none
 // recorded: every one new). choices: what it was used with, so using it again
@@ -41,6 +42,7 @@ export interface SetupRunView {
   layer: number; layers: number;
   test_rows: number | null; error_message: string | null; created_at: string; updated_at: string;
   choices: SetupRunChoices | null;
+  webhook_id: string | null;
   steps: Array<{
     column: string; kind: StepKind; layer: number; mode: StepMode; state: StepState; run_id: string | null;
     note: string | null;
@@ -69,15 +71,16 @@ export function setStatus(id: string, status: SetupRunStatus, message: string | 
 
 export function insertSetupRun(p: {
   userId: string; sheetId: string; setupId: string; setupName: string; plan: SetupRunPlan;
-  targetRowIds: string[] | null; allowSecrets: boolean; autoRun: boolean;
+  targetRowIds: string[] | null; allowSecrets: boolean; autoRun: boolean; webhookId?: string | null;
 }): string {
   const id = uuidv4();
   const steps: StepRecord[] = p.plan.spec.steps.map(() => ({ state: 'waiting' }));
   db.transaction(() => {
     db.prepare(`INSERT INTO setup_runs (id, user_id, sheet_id, setup_id, setup_name, plan, steps, target_row_ids,
-      allow_secrets, auto_run) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+      allow_secrets, auto_run, webhook_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
       id, p.userId, p.sheetId, p.setupId, p.setupName, JSON.stringify(p.plan), JSON.stringify(steps),
-      p.targetRowIds ? JSON.stringify(p.targetRowIds) : null, p.allowSecrets ? 1 : 0, p.autoRun ? 1 : 0);
+      p.targetRowIds ? JSON.stringify(p.targetRowIds) : null, p.allowSecrets ? 1 : 0, p.autoRun ? 1 : 0,
+      p.webhookId ?? null);
     db.prepare(`UPDATE setups SET use_count = use_count + 1, last_used_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(p.setupId, p.userId);
   })();
@@ -92,7 +95,7 @@ export function setupRunView(r: SetupRunRow): SetupRunView {
     layer: Math.min(r.layer + 1, layers), layers,
     test_rows: r.target_row_ids ? (JSON.parse(r.target_row_ids) as string[]).length : null,
     error_message: r.error_message, created_at: r.created_at, updated_at: r.updated_at,
-    choices: plan.choices ?? null,
+    choices: plan.choices ?? null, webhook_id: r.webhook_id ?? null,
     steps: plan.spec.steps.map((s, i) => ({
       column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: modes[i], state: steps[i].state,
       run_id: steps[i].runId ?? null, note: steps[i].note ?? null,

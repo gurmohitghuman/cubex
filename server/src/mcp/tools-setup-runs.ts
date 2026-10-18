@@ -38,6 +38,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       models: names.optional().describe('{ "<AI step main column>": "<OpenRouter model id>" }'),
       first_rows: z.number().int().min(1).max(MAX_SETUP_TEST_ROWS).optional(),
       estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
+      webhook_id: z.string().optional().describe(
+        'A run webhook (list_run_webhooks) to notify when the setup finishes, signed; poll get_setup_run anyway'),
     }).strict(),
   }, async ({ sheet_id, setup_id, ...a }) => {
     const denied = missingScope(ctx, 'run');

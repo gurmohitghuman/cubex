@@ -88,4 +88,5 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   apply_setup: write('Use a setup on a sheet', true, false, true),
   get_setup_run: read('Get a setup run'),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
+  list_run_webhooks: read('List run webhooks'),
 };

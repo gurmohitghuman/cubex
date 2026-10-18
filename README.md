@@ -235,6 +235,10 @@ Open a sheet and click **Webhook**, or let it create a table of its own. Send on
 
 ![Creating a webhook table, picking fields from a test event, then new events arriving as rows](docs/media/cubex-webhook.gif)
 
+### Run webhooks
+
+In **Settings, Run webhooks**, add a URL and Cubex sends it a signed POST whenever an AI, HTTP, enrichment or setup run finishes, so a script or an automation can carry on without checking again and again. Agents pass a webhook's id when they start a run to hear about that run only. See the [run webhooks guide](docs/run-webhooks.md).
+
 ### Agents (MCP)
 
 Create an access token in **Settings → Agent access**. The page shows the setup command for your agent, with your address and token filled in. For Claude Code it's one line:
@@ -269,6 +273,7 @@ Setup for Cursor, Codex, VS Code and Claude Desktop, the REST API and the full l
 | [Performance](docs/performance.md) | Measured times and memory on a sheet with a million rows |
 | [Enrichments](docs/enrichments.md) | treg keys, jobs, costs and limits, auto-run, stored answers |
 | [Webhooks](docs/webhooks.md) | Setting one up, reaching it from outside, what it accepts, keeping it safe |
+| [Run webhooks](docs/run-webhooks.md) | A signed notice when a run finishes: setting one up, checking the signature, delivery and retries |
 | [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, and the contributor agreement |
 

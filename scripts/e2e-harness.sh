@@ -129,8 +129,11 @@ export ANSWER_PRUNE_SWEEP_MS="${ANSWER_PRUNE_SWEEP_MS:-500}"
 # and cancel specs need rows still waiting when they act on a run of a few rows.
 export ENRICH_DEFAULT_CONCURRENCY="${ENRICH_DEFAULT_CONCURRENCY:-5}"
 export CUBEX_TEST_CLOCK_FILE="$TEST_DIR/test-clock"
-# HTTP column retries wait less here (the first wait is 1 s in production).
+# HTTP column retries and run webhook notices wait less here (1 s and 10 s first
+# waits in production), and run webhooks are sent on a faster beat.
 export HTTP_RETRY_BASE_MS="${HTTP_RETRY_BASE_MS:-100}"
+export RUN_HOOK_RETRY_BASE_MS="${RUN_HOOK_RETRY_BASE_MS:-300}"
+export RUN_HOOK_SWEEP_MS="${RUN_HOOK_SWEEP_MS:-200}"
 # Specs reach a receiver they start on 127.0.0.1 through the real outbound path
 # (SSRF guard included) via names under .cubex-e2e.invalid (tests/e2e/net-shim.cjs).
 export E2E_RECEIVER_PORT="$RECEIVER_PORT"
