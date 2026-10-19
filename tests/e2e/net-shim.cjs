@@ -1,4 +1,4 @@
-// Loaded into the e2e server only (scripts/e2e-harness.sh sets NODE_OPTIONS
+// Loaded into the e2e server only (scripts/e2e-harness.mjs sets NODE_OPTIONS
 // --require for it), never in a real install. It lets specs reach a receiver
 // they run on 127.0.0.1 (tests/e2e/helpers-receiver.ts) through Cubex's real
 // outbound path, SSRF guard included:

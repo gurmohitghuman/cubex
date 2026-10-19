@@ -13,9 +13,16 @@
 //
 // Usage:
 //   NPM_RUN_DB_RESET_CONFIRM=1 npm run db:reset
+//   (PowerShell: $env:NPM_RUN_DB_RESET_CONFIRM='1'; npm run db:reset; Remove-Item Env:NPM_RUN_DB_RESET_CONFIRM)
 
 const fs = require('node:fs');
 const path = require('node:path');
+
+const IS_WINDOWS = process.platform === 'win32';
+const CONFIRM_CMD = IS_WINDOWS
+  ? "$env:NPM_RUN_DB_RESET_CONFIRM='1'; npm run db:reset; Remove-Item Env:NPM_RUN_DB_RESET_CONFIRM\n" +
+    '   (Git Bash: NPM_RUN_DB_RESET_CONFIRM=1 npm run db:reset)'
+  : 'NPM_RUN_DB_RESET_CONFIRM=1 npm run db:reset';
 
 const projectRoot = path.resolve(__dirname, '..');
 const defaultDb = path.join(projectRoot, 'server/data/cubex.db');
@@ -33,7 +40,7 @@ if (process.env.NODE_ENV === 'production') {
 if (process.env.NPM_RUN_DB_RESET_CONFIRM !== '1') {
   die(
     'safety guard. To proceed, run:\n' +
-    '   NPM_RUN_DB_RESET_CONFIRM=1 npm run db:reset\n' +
+    '   ' + CONFIRM_CMD + '\n' +
     '   (this wipes ' + dbPath + ' and its WAL/SHM files)'
   );
 }
@@ -49,7 +56,15 @@ const files = [dbPath, dbPath + '-wal', dbPath + '-shm'];
 let removed = 0;
 for (const f of files) {
   if (fs.existsSync(f)) {
-    fs.unlinkSync(f);
+    try {
+      fs.unlinkSync(f);
+    } catch (err) {
+      // Windows won't delete a database a running Cubex still has open.
+      if (IS_WINDOWS && (err.code === 'EBUSY' || err.code === 'EPERM')) {
+        die(`${f} is in use: stop Cubex first, then run this again.`);
+      }
+      throw err;
+    }
     removed++;
     console.log('  rm ' + f);
   }

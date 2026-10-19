@@ -1,4 +1,4 @@
-// A stand-in for treg.to: scripts/e2e-harness.sh starts it and points the
+// A stand-in for treg.to: scripts/e2e-harness.mjs starts it and points the
 // server at it through TREG_BASE_URL, so no spec ever reaches the real treg.
 // It answers the account reads, the public catalog and /access from fixtures
 // captured live on 2026-10-07 (anonymized, see README.md). Tool calls
