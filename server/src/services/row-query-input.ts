@@ -26,6 +26,9 @@ export interface RowQuery {
   view?: string;
   // Paging through a view: the view_version the previous page answered.
   expectedViewVersion?: string;
+  // Set by view-read.ts withView, never parsed from a request: the view's own
+  // filter inside `where` (row-filter.ts prepareWhere's `saved`).
+  viewWhere?: WhereItem[];
 }
 
 export function parseRowQueryBody(

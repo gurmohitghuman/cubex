@@ -2,7 +2,7 @@ import { test, expect, request as pwRequest } from '@playwright/test'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
-import { TEST_PASSWORD } from './helpers'
+import { TEST_PASSWORD, assertTestDb } from './helpers'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -21,9 +21,7 @@ const BASE = process.env.E2E_BASE || 'http://localhost:3099'
 
 // Reach the same throwaway DB the harness booted the server on (separate process,
 // shared on-disk SQLite in WAL mode).
-const DB_PATH = process.env.DB_PATH
-if (!DB_PATH) throw new Error('DB_PATH not set — run via npm run e2e')
-if (/(^|[\\/])cubex\.db$/i.test(DB_PATH)) throw new Error('refusing to touch the real cubex.db')
+const DB_PATH = assertTestDb(process.env.DB_PATH)
 
 const Database = require(path.resolve(__dirname, '../../node_modules/better-sqlite3'))
 

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 
 // Regression: POST /api/ai/runs/:id/commit must REFUSE a superseded run.
 //
@@ -18,9 +18,7 @@ import { authedApi, seedSheet } from './helpers'
 // HTTP commit endpoint. The DB is opened read/write only after refusing the real
 // cubex.db.
 function openTestDb(): Database.Database {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
-  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db

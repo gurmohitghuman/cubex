@@ -1,7 +1,7 @@
 // Pruning stored answers: a treg answer's `raw` part (the provider's own
 // Over 200 lines: the prune write, and the pass that finds what to prune with its column cache.
 // data, up to ENRICH_STORED_RAW_MAX_BYTES) is removed and `$prunedAt` notes
-// when; `output` and `_treg` stay, so cells, the answer panel and "+ Column"
+// when; `output` and `_treg` stay, so cells, the answer panel and "Add as column"
 // keep working (lib/answer-paths.ts refuses paths into `raw` after a prune).
 // Only answers shaped like treg's routed answers ({output, _treg, raw}) are
 // touched: a single tool's answer is the provider's whole answer, kept as is.
@@ -10,7 +10,7 @@
 // ended (migration 018's answers_pruned = 0 marks the pass still to do, so a
 // restart finishes it), the API process walks the run's answered rows and
 // prunes the answers older runs of the same column hold at those rows. The
-// newest answer is the one the panel and "+ Column" read.
+// newest answer is the one the panel and "Add as column" read.
 import { db } from '../lib/db';
 import { ANSWER_PRUNE_SWEEP_MS } from '../lib/constants';
 import { yieldToRequests } from '../lib/slices';

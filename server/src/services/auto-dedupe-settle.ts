@@ -72,6 +72,13 @@ export function settleRows(
   }
 }
 
+// A CSV replace is under way (services/csv-import.ts): the rows it replaces
+// go to the trash a slice at a time, so a row arriving meanwhile would be
+// judged against rows about to go. Its check waits for the replace's own
+// checks (or goes with the setting, when the new file has no key column).
+const beingReplaced = (sheetId: string, userId: string): boolean =>
+  !!db.prepare('SELECT 1 FROM import_jobs WHERE sheet_id = ? AND user_id = ? AND is_replace = 1').get(sheetId, userId);
+
 function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited'): AutoDedupeOutcome {
   const sheetId = s.sheet_id;
   const out: AutoDedupeOutcome = {
@@ -84,8 +91,9 @@ function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited
     return !!k && k.now !== null && (how === 'arrived' || k.now !== k.was);
   });
   if (toCheck.length === 0) return out;
-  // Every other row's key must be current before any match is trusted.
-  if (s.build_cursor !== null || !drainWithin(s, AUTO_DEDUPE_INLINE_MS, sorted)) {
+  // Every other row's key must be current before any match is trusted, and
+  // the rows a CSV replace is sending to the trash are no match: they wait.
+  if (s.build_cursor !== null || beingReplaced(sheetId, s.user_id) || !drainWithin(s, AUTO_DEDUPE_INLINE_MS, sorted)) {
     queueCheckRows(s.id, toCheck);
     out.waiting = toCheck.length;
     return out;

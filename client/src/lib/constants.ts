@@ -154,8 +154,13 @@ export const GRID_DELETE_CALL_ROWS = 2_000;
 
 // Try with sample data (server services/sample-table.ts): making it fills its
 // free columns before it answers. The guide names the AI column it set up and
-// the duplicate check it shows (server lib/sample/setup.ts).
+// the duplicate check it shows (server lib/sample/setup.ts). It checks again on
+// a data change only up to SAMPLE_GUIDE_CHECK_MAX_ROWS rows (25 made-up ones plus
+// a few the person adds). A failed make looks for a new SAMPLE_TABLE_NAME table
+// (or "Sample leads 2"…) before saying so: the server may have finished anyway.
 export const SAMPLE_CREATE_TIMEOUT_MS = 90_000;
+export const SAMPLE_GUIDE_CHECK_MAX_ROWS = 1_000;
+export const SAMPLE_TABLE_NAME = 'Sample leads';
 export const SAMPLE_AI_COLUMN = 'Good fit (Output)';
 export const SAMPLE_DEDUPE_COLUMNS = [{ column: 'Email', match: 'email' as const }];
 
@@ -164,3 +169,28 @@ export const UNDO_KEEP_DAYS = 7;
 // How often "Undo last run" reads how far a big undo got, and failed reads in a row before it gives up.
 export const UNDO_POLL_MS = 1_500;
 export const UNDO_POLL_MISSES = 5;
+
+// The JSON tree (components/json-mapping): what it renders at once, so a big
+// reply (an HTTP API column keeps up to 5 MB) never goes into the page whole.
+// A container shows this many children a page; it opens by itself down to this
+// depth while the visible rows stay under the budget ("Expand all" goes further);
+// a string shows this many characters, then "show more" adds a step at a time.
+export const JSON_TREE_PAGE_ITEMS = 100;
+// A list longer than this many pages also gets a "Go to item" box.
+export const JSON_TREE_GOTO_PAGES = 5;
+export const JSON_TREE_AUTO_OPEN_DEPTH = 3;
+export const JSON_TREE_AUTO_OPEN_ROWS = 300;
+export const JSON_TREE_EXPAND_ALL_DEPTH = 20;
+export const JSON_TREE_EXPAND_ALL_ROWS = 2_000;
+export const JSON_TREE_STRING_PREVIEW = 160;
+export const JSON_TREE_STRING_STEP = 4_000;
+export const JSON_TREE_KEY_PREVIEW = 80;
+// The longest column name "Add as column" suggests from a key (the server takes 200).
+export const JSON_TREE_NAME_MAX = 100;
+// A path longer than this can't become a column (server WEBHOOK_MAX_JSONPATH_LEN).
+export const JSON_PATH_MAX_CHARS = 500;
+
+// "N failed, retry" (hooks/sheet/useGridRunControls.ts): rows arriving re-read the
+// failed counts (a walk over the sheet) at most this often, for an auto-run batch
+// that started and ended between two looks at the sheet's runs.
+export const FAILED_COUNTS_ARRIVAL_MS = 60_000;

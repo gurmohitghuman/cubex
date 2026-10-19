@@ -4,8 +4,9 @@
 // ones filled (a clean column, a formula column) and a duplicate check of the
 // one duplicate the rows hold, while the AI column is only set up: an empty
 // "Good fit (Output)" column and the AI Column drawer's saved draft (prompt and
-// name; the model only when the account has a default). Nothing that costs
-// money runs: that takes the person's click, or an agent's run_ai_column.
+// name, never a model: the drawer takes the defaults as they are when it opens).
+// Nothing that costs money runs: that takes the person's click, or an agent's run_ai_column.
+// A sheet cap set lower than the sample needs is refused up front (sampleCapProblem).
 // The table, its rows, descriptions and draft go in one transaction, then the
 // free columns through their own services, one at a time (each holds the
 // sheet busy while it fills). It is an ordinary table: deleting it puts it in
@@ -18,7 +19,9 @@ import { logSheetChange, withoutChangeLog } from '../lib/change-log';
 import { writeColumnDescription } from '../lib/column-descriptions';
 import { upsertDraftConfig } from '../lib/ai-drafts';
 import { resolveAiModel } from '../lib/ai-model-resolve';
-import { DEFAULT_AI_CONCURRENCY, SAMPLE_STEP_POLL_MS, SAMPLE_STEP_WAIT_MS } from '../lib/constants';
+import {
+  DEFAULT_AI_CONCURRENCY, MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET, SAMPLE_STEP_POLL_MS, SAMPLE_STEP_WAIT_MS,
+} from '../lib/constants';
 import { SAMPLE_COLUMNS, SAMPLE_ROWS } from '../lib/sample/leads';
 import {
   SAMPLE_AI_COLUMN, SAMPLE_AI_NAME, SAMPLE_AI_PROMPT, SAMPLE_AI_TRY_ROWS, SAMPLE_CLEAN, SAMPLE_COLUMN_DESCRIPTIONS,
@@ -99,7 +102,25 @@ function describe(sheetId: string, userId: string, column: string): void {
   }).immediate();
 }
 
+// Why the sample can't be made under these sheet caps (MAX_COLUMNS_PER_SHEET,
+// MAX_ROWS_PER_SHEET), or null. Checked before anything is made: the columns
+// go in through appendColumnsToOrder, which has no cap check of its own.
+export function sampleCapProblem(maxColumns = MAX_COLUMNS_PER_SHEET, maxRows = MAX_ROWS_PER_SHEET): string | null {
+  const columns = SAMPLE_COLUMN_ORDER.length;
+  if (maxColumns < columns) {
+    return `The sample sheet needs ${columns} columns, but this Cubex allows ${maxColumns} per sheet `
+      + '(MAX_COLUMNS_PER_SHEET).';
+  }
+  if (maxRows < SAMPLE_ROWS.length) {
+    return `The sample sheet needs ${SAMPLE_ROWS.length} rows, but this Cubex allows ${maxRows} per sheet `
+      + '(MAX_ROWS_PER_SHEET).';
+  }
+  return null;
+}
+
 export async function createSampleTable(userId: string): Promise<SampleOutcome> {
+  const capped = sampleCapProblem();
+  if (capped) return { fail: 'bad_request', message: capped };
   const made = makeTable(userId);
   if ('fail' in made) return made;
   const { sheetId } = made;

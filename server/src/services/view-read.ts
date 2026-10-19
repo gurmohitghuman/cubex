@@ -33,15 +33,20 @@ export function viewForRead(sheetId: string, userId: string, ref: string): ViewR
 }
 
 // A read's columns and `where` with a view applied (no view: as given).
+// `saved`: the view's own filter, for row-filter.ts prepareWhere (a saved
+// run-state rule whose column lost its run reads its cells, never refused).
 export function applyView(
   sheetId: string, userId: string, view: string | undefined,
   query: { columns?: string[]; where?: WhereItem[] },
-): { columns?: string[]; where?: WhereItem[]; version?: string } | { error: string } | null {
+): { columns?: string[]; where?: WhereItem[]; version?: string; saved?: WhereItem[] } | { error: string } | null {
   if (view === undefined) return query;
   const read = viewForRead(sheetId, userId, view);
   if (!read || 'error' in read) return read;
   const where = [...read.where, ...(query.where ?? [])];
-  return { columns: query.columns ?? read.columns, where: where.length ? where : undefined, version: read.version };
+  return {
+    columns: query.columns ?? read.columns, where: where.length ? where : undefined, version: read.version,
+    saved: read.where,
+  };
 }
 
 type QueryFail = { fail: 'invalid' | 'version_conflict'; error: string };
@@ -62,5 +67,5 @@ export function withView(
     return { fail: 'version_conflict', error: 'The view changed (switched or its filters edited); restart paging.' };
   }
   const columns = q.returnMode === 'count' || q.aggregate ? q.columns : viewed.columns;
-  return { query: { ...q, where: viewed.where, columns }, version: viewed.version };
+  return { query: { ...q, where: viewed.where, columns, viewWhere: viewed.saved }, version: viewed.version };
 }

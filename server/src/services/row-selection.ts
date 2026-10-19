@@ -60,7 +60,7 @@ function prepareQuery(
   const invalid = validateQuery(columns, q);
   if (invalid) return { fail: { fail: 'invalid', error: invalid } };
   if (!filtered) return { columns, filter: null, runColumns: null };
-  const prepared = prepareWhere(sheetId, userId, q.where!, columns);
+  const prepared = prepareWhere(sheetId, userId, q.where!, columns, q.viewWhere);
   if ('error' in prepared) return { fail: { fail: 'invalid', error: prepared.error } };
   const runs = prepared.ok.runColumns;
   return { columns, filter: prepared.ok.filter, runColumns: runs.size > 0 ? runs : null };
