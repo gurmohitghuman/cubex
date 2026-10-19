@@ -29,8 +29,9 @@ export const capReached = (capUsd: number | null, spentUsd: number): boolean =>
 export const LIFETIME_NOTE = "The cap is for the token's whole life, not a month: raise it in Settings → "
   + 'Agent access, or make a new token.';
 
-// A revoked token's cap can't be raised (Settings lists live tokens only).
-const REVOKED_NOTE = "The token was revoked, so its cap can't be raised: run the column again from the app.";
+// A revoked token's cap can't be raised (Settings lists live tokens only): the app takes its runs over.
+const REVOKED_NOTE = "The token was revoked, so its cap can't be raised: resume the run from the app, which takes "
+  + 'it over (what it spends from then on counts against no token), or run the column again there.';
 export interface CapOf { name: string; capUsd: number; spentUsd: number; revoked: boolean }
 
 export const capReachedMessage = (t: CapOf): string => `The access token "${t.name}" reached its `

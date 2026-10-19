@@ -75,7 +75,9 @@ export const SetupRunChip: React.FC<{
   const paused = live.status === 'paused'
   return (
     <div className="flex items-center gap-1.5 ml-2 border border-gray-300 px-2 py-1 text-xs text-gray-700"
-      data-testid="setup-run-chip" title={live.steps.map(s => `${s.layer}. ${s.column}: ${s.state}`).join('\n')}>
+      data-testid="setup-run-chip"
+      title={[...(paused && live.error_message ? [live.error_message] : []),
+        ...live.steps.map(s => `${s.layer}. ${s.column}: ${s.state}`)].join('\n')}>
       <Bookmark className="h-3 w-3" />
       <span className="max-w-[16rem] truncate">
         {live.setup_name}: step {live.layer} of {live.layers}{paused ? ' (paused)' : ''}

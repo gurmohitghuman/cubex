@@ -14,7 +14,7 @@ import { type HTTPRunRow } from './http-runner';
 import { enqueueAIRun, enqueueAIRerun, enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
 import { autorunStoppedByUser } from './autorun-stop';
 import { logRunControl } from '../lib/change-log';
-import { actorSpendRefusal, rowCostOf, spendCapRefusal } from './token-spend';
+import { resumeTokenFor, rowCostOf, spendCapRefusal } from './token-spend';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -35,14 +35,18 @@ const getRun = (kind: RunKind, runId: string, userId: string) =>
 const columnOf = (kind: RunKind, run: AIRunRow & HTTPRunRow): string | null =>
   (kind === 'ai' ? run.column_name : run.master_column_name) ?? null;
 
-// Why resuming a paused run would spend past a cap: its own token's, or the
-// caller's (a token at its own cap restarts no spending, a run of the app's or
-// another's). null: it may, or the run isn't paused. A setup checks all of its
-// runs before resuming any; a resume that changes a run's settings, first.
-const capOf = (kind: RunKind, run: AIRunRow & HTTPRunRow, userId: string): string | null => {
-  const cost = rowCostOf(kind, kind === 'http' ? run.config : null);
-  return spendCapRefusal(userId, run.access_token_id, cost) ?? actorSpendRefusal(userId, cost);
-};
+// Why resuming a paused run would spend past a cap: the cap of the token it
+// would spend for from then on (resumeTokenFor). An access token that resumes
+// a run makes it its own (the resume below), so only that token's cap counts:
+// one at its cap restarts no spending, a run of the app's or another token's
+// either; one with room may go on with another token's run, which then spends
+// for it. The app resuming keeps the run's token, so a live token's cap
+// counts; a revoked token's run the app takes over (no cap). null: it may, or
+// the run isn't paused. A setup checks all of its runs before resuming any; a
+// resume that changes a run's settings, first.
+const capOf = (kind: RunKind, run: AIRunRow & HTTPRunRow, userId: string): string | null =>
+  spendCapRefusal(userId, resumeTokenFor(userId, run.access_token_id),
+    rowCostOf(kind, kind === 'http' ? run.config : null));
 export function resumeCapRefusal(kind: RunKind, runId: string, userId: string): string | null {
   const run = getRun(kind, runId, userId);
   return run && run.status === 'paused' ? capOf(kind, run, userId) : null;
@@ -77,7 +81,7 @@ export async function resumeRun(
   const run = getRun(kind, runId, userId);
   if (!run) return { fail: 'not_found', message: 'Run not found' };
   if (run.status !== 'paused') return { fail: 'not_paused', message: `Run is not paused (status: ${run.status})` };
-  // The run spends for the token it was started for, whoever resumes it.
+  // The run spends for the token that resumes it, or (the app resuming) the one it spent for until now.
   const capped = capOf(kind, run, userId);
   if (capped) return { fail: 'spend_cap', message: capped };
 
@@ -111,15 +115,19 @@ export async function resumeRun(
   // bumped generation at startup. Compare-and-set on status='paused': between
   // the SELECT above and here the user can cancel — a bare UPDATE would
   // clobber 'cancelled' back to 'pending' and re-enqueue a killed run.
-  // A run's pause reason (migrations 011 and 042) ends with the pause.
+  // A run's pause reason (migrations 011 and 042) ends with the pause. An
+  // access token resuming it makes it its own (the app, a revoked token's):
+  // what it spends from now on counts against that token, and so do the calls
+  // still out from before when they come back (its usage record follows,
+  // migration 045).
   const resumed = db.prepare(kind === 'http'
     ? `UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
-         pause_reason = NULL, error_message = NULL
+         pause_reason = NULL, error_message = NULL, access_token_id = ?
        WHERE id = ? AND user_id = ? AND status = 'paused'`
     : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
-         pause_reason = NULL
+         pause_reason = NULL, access_token_id = ?
        WHERE id = ? AND user_id = ? AND status = 'paused'`,
-  ).run(runId, userId);
+  ).run(resumeTokenFor(userId, run.access_token_id), runId, userId);
   if (resumed.changes === 0) return { fail: 'conflict', message: 'Run is no longer paused' };
 
   // A rerun targets a row SUBSET (persisted in target_rows, migrations 019/024).

@@ -66,6 +66,17 @@ export function spendCapRefusal(userId: string, tokenId: string | null | undefin
   return cost !== null && !capReached(t.capUsd, t.spentUsd) ? capNoRoomMessage(t, cost) : capReachedMessage(t);
 }
 
+// Whom a paused run (or setup) spends for once resumed (services/run-lifecycle.ts):
+// an access token resuming it makes it its own; the app resuming keeps its
+// token, unless that token was revoked (its cap can never be raised again):
+// then the app takes it over and it spends for no token (null).
+export function resumeTokenFor(userId: string, runToken: string | null | undefined): string | null {
+  const actor = actorTokenId();
+  if (actor) return actor;
+  if (!runToken) return null;
+  return readTokenSpend(userId, runToken)?.revoked ? null : runToken;
+}
+
 // The same for the token of the request being served (lib/actor.ts).
 export const actorSpendRefusal = (userId: string, cost: RowCost = null): string | null =>
   spendCapRefusal(userId, actorTokenId(), cost);

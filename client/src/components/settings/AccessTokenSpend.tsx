@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AccessToken, settingsAPI } from '@/utils/api'
@@ -18,20 +18,34 @@ export const parseCapInput = (raw: string): number | null | 'bad' => {
   return Number.isFinite(n) && n >= 0 ? n : 'bad'
 }
 
-// The create dialog's field: empty is no cap.
-export const SpendCapField: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="token-spend-cap">Spend cap ($)</label>
-    <input
-      id="token-spend-cap" type="number" min="0" step="0.01" className="input w-full" placeholder="No cap"
-      value={value} onChange={(e) => onChange(e.target.value)}
-    />
-    <p className="text-xs text-gray-500 mt-1">
-      The most its AI runs, enrichments, previews and AI helpers may spend. At the cap, new runs are refused and
-      running ones pause. {LIFETIME_HINT}
-    </p>
-  </div>
-)
+export const CAP_HELP = 'Type a dollar amount, or leave it empty for no cap'
+// A number field holding something it can't read as a number ("1..2", "-") gives '' as its value, which would
+// read as no cap: such a field is refused instead (validity.badInput), never saved as no cap.
+export const capUnreadable = (input: HTMLInputElement | null): boolean => input?.validity.badInput === true
+
+// The create dialog's field: empty is no cap. inputRef: the dialog checks it can read the field before creating.
+export const SpendCapField: React.FC<{
+  value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement>
+}> = ({ value, onChange, inputRef }) => {
+  const [unreadable, setUnreadable] = useState(false)
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="token-spend-cap">Spend cap ($)</label>
+      <input
+        id="token-spend-cap" type="number" min="0" step="0.01" className="input w-full" placeholder="No cap"
+        ref={inputRef} value={value} onChange={(e) => onChange(e.target.value)}
+        onInput={(e) => setUnreadable(capUnreadable(e.currentTarget))}
+      />
+      {(unreadable || parseCapInput(value) === 'bad') && (
+        <p className="text-xs text-red-600 mt-1" role="alert">{CAP_HELP}.</p>
+      )}
+      <p className="text-xs text-gray-500 mt-1">
+        The most its AI runs, enrichments, previews and AI helpers may spend. At the cap, new runs are refused and
+        running ones pause. {LIFETIME_HINT}
+      </p>
+    </div>
+  )
+}
 
 interface Props { token: AccessToken; onSaved: () => Promise<void> }
 
@@ -40,12 +54,13 @@ export const AccessTokenSpend: React.FC<Props> = ({ token, onSaved }) => {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
   const atCap = s.spend_cap_usd !== null && (s.left_usd ?? 0) <= 0
 
   const open = () => { setValue(s.spend_cap_usd === null ? '' : String(s.spend_cap_usd)); setEditing(true) }
   const save = async () => {
     const cap = parseCapInput(value)
-    if (cap === 'bad') { toast.error('Type a dollar amount, or leave it empty for no cap'); return }
+    if (cap === 'bad' || capUnreadable(input.current)) { toast.error(CAP_HELP); return }
     setBusy(true)
     try {
       await settingsAPI.setAccessTokenSpendCap(token.id, cap)
@@ -64,7 +79,7 @@ export const AccessTokenSpend: React.FC<Props> = ({ token, onSaved }) => {
         <div className="flex items-center space-x-2">
           <span className="text-xs text-gray-600">Spend cap $</span>
           <input
-            type="number" min="0" step="0.01" autoFocus
+            type="number" min="0" step="0.01" autoFocus ref={input}
             className="input text-sm w-28 py-1" placeholder="No cap" aria-label={`Spend cap for ${token.name}`}
             value={value} onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {

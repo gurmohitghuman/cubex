@@ -193,6 +193,14 @@ await ok('spend never goes down: undo, deleted rows, column and sheet, the trash
   assert.equal(spentOf(t), before, 'usage records gone')
 })
 
+// The one exception: restoring a column's setup from a version (services/setup-version-write.ts,
+// migration 043) makes a run record that ran nothing (setup_only, cost 0) and deletes its usage
+// record, so the usage history lists only what ran. That record cost nothing and token_spend has
+// no delete trigger, so no spend moves. Exactly that statement, in that file, beside setup_only.
+const USAGE_EXCEPTION = {
+  file: 'setup-version-write.ts', statement: /^DELETE\s+FROM\s+run_usage\s+WHERE\s+run_id\s*=\s*\?$/i,
+}
+
 await ok('nothing but migration 042\'s triggers writes token_spend, and no code deletes or edits run_usage', () => {
   const root = path.resolve('server/src')
   const files: string[] = []
@@ -202,10 +210,28 @@ await ok('nothing but migration 042\'s triggers writes token_spend, and no code 
   })
   walk(root)
   const writes = /\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+token_spend\b/i
-  const usage = /\b(UPDATE|DELETE\s+FROM)\s+run_usage\b/i
-  const bad = files.filter(f => writes.test(fs.readFileSync(f, 'utf8')) || usage.test(fs.readFileSync(f, 'utf8')))
+  // Each UPDATE or DELETE of run_usage, up to the end of its SQL string.
+  const usage = /\b(UPDATE|DELETE\s+FROM)\s+run_usage\b[^'"`]*/gi
+  const excused = (f: string, src: string, statement: string) => path.basename(f) === USAGE_EXCEPTION.file
+    && USAGE_EXCEPTION.statement.test(statement.trim()) && /\bsetup_only\b/.test(src)
+  const bad = files.filter(f => {
+    const src = fs.readFileSync(f, 'utf8')
+    return writes.test(src) || [...src.matchAll(usage)].some(m => !excused(f, src, m[0]))
+  })
   assert.deepEqual(bad, [])
   assert.ok(files.length > 100)
+  // ... and it holds that statement once, its only UPDATE or DELETE of run_usage (when the file is here).
+  for (const f of files.filter(x => path.basename(x) === USAGE_EXCEPTION.file)) {
+    assert.equal([...fs.readFileSync(f, 'utf8').matchAll(usage)].length, 1, f)
+  }
+  // The exception is that one statement only: any other UPDATE or DELETE there still fails.
+  const there = path.join(root, 'services', USAGE_EXCEPTION.file)
+  const src = "db.prepare('DELETE FROM run_usage WHERE run_id = ?') // setup_only"
+  assert.ok([...src.matchAll(usage)].every(m => excused(there, src, m[0])))
+  for (const other of ["'DELETE FROM run_usage WHERE user_id = ?'", "'UPDATE run_usage SET ai_cost_usd = 0'"]) {
+    assert.ok([...`${other} setup_only`.matchAll(usage)].some(m => !excused(there, src, m[0])), other)
+  }
+  assert.ok(!excused(path.join(root, 'services', 'usage.ts'), src, 'DELETE FROM run_usage WHERE run_id = ?'))
 })
 
 done()

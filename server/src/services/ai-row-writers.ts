@@ -5,6 +5,7 @@ import { shouldStop } from './ai-runner-status';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import type { RowStamp } from '../lib/run-inputs/stamp';
 import { writeRunCells } from '../lib/run-cells-write';
+import { redactError } from '../lib/redact';
 
 // Thrown inside the success-path write transaction when a re-check finds the run
 // is no longer ours (cancel/resume raced us). Rolls the txn back; processRow's
@@ -60,6 +61,23 @@ export const usageColumns = (u?: RowTokenUsage) => [
   u?.webSearches ?? null, u?.searchQueries ?? null, u?.providerCostUsd ?? null,
 ];
 
+// A call that came back (billed) for a row a pause, cancel or resume then
+// dropped: the row writes nothing, but what the call cost still counts on the
+// run's usage record and so on its access token's spend cap (migration 045's
+// trigger). Call it once per dropped call, on every stop path after the call
+// came back. Never throws: inside a writer's transaction it's part of that
+// transaction; outside one, a record that fails is logged.
+export function recordDroppedCall(ctx: { runId: string; userId: string }, usage?: RowTokenUsage): void {
+  if (!usage || (!usage.costUsd && !usage.providerCostUsd)) return;
+  try {
+    db.prepare(`INSERT INTO ai_dropped_calls (id, run_id, user_id, cost_usd, provider_cost_usd)
+      VALUES (?, ?, ?, ?, ?)`)
+      .run(uuidv4(), ctx.runId, ctx.userId, usage.costUsd ?? null, usage.providerCostUsd ?? null);
+  } catch (error) {
+    console.error(`Recording what a dropped row's call cost (run ${ctx.runId}) failed:`, redactError(error));
+  }
+}
+
 // Persist a successful row result: ai_results row + the output cell (and the
 // (Data) cell for web-search runs) in one .immediate() write transaction.
 //
@@ -108,14 +126,15 @@ export function writeSuccess(
 // into a stopped or superseded run's cells. .immediate() takes the write lock so
 // the in-txn shouldStop is atomic vs the main-process status UPDATE; if it fires
 // we SKIP the writes (return from the txn fn — no throw, since the caller is
-// already in its catch and a sentinel would escape processRow).
+// already in its catch and a sentinel would escape processRow), keeping only
+// what a call that came back cost (recordDroppedCall).
 // usage: set when the call came back and the answer was unusable (a refusal,
 // the token limit): what that billed call cost and searched.
 export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTokenUsage): void {
   const resultId = uuidv4();
   const dataColName = dataColumnName(ctx.columnName);
   db.transaction(() => {
-    if (shouldStop(ctx.runId, ctx.myGeneration)) return;
+    if (shouldStop(ctx.runId, ctx.myGeneration)) { recordDroppedCall(ctx, usage); return; }
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
         prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)

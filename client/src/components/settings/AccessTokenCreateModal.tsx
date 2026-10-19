@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Check, Copy, KeyRound, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AccessTokenScope, CreatedAccessToken, settingsAPI } from '@/utils/api'
-import { parseCapInput, SpendCapField } from './AccessTokenSpend'
+import { capUnreadable, parseCapInput, SpendCapField } from './AccessTokenSpend'
 
 interface Props {
   isOpen: boolean
@@ -32,6 +32,7 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
   const [scopes, setScopes] = useState<Set<AccessTokenScope>>(new Set(['read', 'write', 'run']))
   const [expiryDays, setExpiryDays] = useState<number | null>(null)
   const [cap, setCap] = useState('')
+  const capInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState<CreatedAccessToken | null>(null)
   const [copied, setCopied] = useState(false)
@@ -59,7 +60,7 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
   const capUsd = parseCapInput(cap)
   const canSubmit = !!name.trim() && scopes.size > 0 && capUsd !== 'bad'
   const handleCreate = async () => {
-    if (!canSubmit) return
+    if (!canSubmit || capUnreadable(capInput.current)) return // the field says why (SpendCapField)
     setBusy(true)
     try {
       const token = await settingsAPI.createAccessToken({
@@ -173,7 +174,7 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
               </select>
             </div>
 
-            <SpendCapField value={cap} onChange={setCap} />
+            <SpendCapField value={cap} onChange={setCap} inputRef={capInput} />
           </div>
         )}
 
