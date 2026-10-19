@@ -12,7 +12,9 @@ import {
   AUTO_DEDUPE_CHECK_MS, AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_LOOK_ROWS,
   AUTO_DEDUPE_RETRY_MS, AUTO_DEDUPE_ROUND_MS, AUTO_DEDUPE_TICK_MS,
 } from '../lib/constants-dedupe';
-import { autoDedupeOf, queueCheckRows, queueChecks, storedKey, type AutoDedupe } from '../lib/auto-dedupe/store';
+import {
+  autoDedupeOf, queueCheckRows, queueChecks, sheetInTrash, storedKey, type AutoDedupe,
+} from '../lib/auto-dedupe/store';
 import { drainWithin, keysCurrent } from './auto-dedupe-index';
 import { checkAutoDedupeKeys } from './auto-dedupe-purge';
 import { AutoDedupeRemoval } from './auto-dedupe-remove';
@@ -21,7 +23,8 @@ import { maintainAutoDedupeInBackground } from './lookup-host';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
 
 // done: nothing due; later: only checks waiting for a retry; more: go on;
-// keys: the keys aren't current; held: another job holds the sheet.
+// keys: the keys aren't current; held: another job holds the sheet, or it is
+// in the trash (its checks stay queued until it is restored).
 type SliceState = 'done' | 'later' | 'more' | 'keys' | 'held';
 // retry_at 0: never tried yet (auto-run waits for those: lib/auto-dedupe/store.ts).
 interface Range { lo: number; hi: number; retry_at: number }
@@ -32,6 +35,7 @@ function checkSlice(sheetId: string, userId: string, ownBusy: boolean): Slice {
   db.transaction(() => {
     const s = autoDedupeOf(sheetId, userId);
     if (!s) return;
+    if (sheetInTrash(sheetId)) { out.state = 'held'; return; }
     if (s.build_cursor !== null) { out.state = 'keys'; return; }
     if (!ownBusy && sheetBusyWith(sheetId)) { out.state = 'held'; return; }
     const now = Date.now();
@@ -143,11 +147,14 @@ export function driveAutoDedupe(sheetId: string, userId: string): void {
 }
 
 // At boot (API process): keys checked against their rows, builds a restart
-// cut short go on, then the waiting checks every AUTO_DEDUPE_TICK_MS.
+// cut short go on, then the waiting checks every AUTO_DEDUPE_TICK_MS. Sheets
+// in the trash wait: once restored, the rounds (this one, and the lookup
+// worker's for keys) pick them up again.
 let rounding = false;
 export function startAutoDedupeLoop(): void {
   try { checkAutoDedupeKeys(); } catch (err) { console.error('Checking auto-dedupe keys failed:', err); }
-  for (const s of db.prepare('SELECT sheet_id, user_id FROM auto_dedupe WHERE build_cursor IS NOT NULL').all() as
+  for (const s of db.prepare(`SELECT a.sheet_id, a.user_id FROM auto_dedupe a JOIN sheets s ON s.id = a.sheet_id
+    WHERE a.build_cursor IS NOT NULL AND s.trash_id IS NULL`).all() as
     Array<{ sheet_id: string; user_id: string }>) driveAutoDedupe(s.sheet_id, s.user_id);
   setInterval(() => {
     if (rounding) return;

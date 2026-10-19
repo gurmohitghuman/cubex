@@ -65,6 +65,9 @@ export function useAutoDedupeForm(a: Args) {
     setMatch(guessDedupeMatch(c, cleanColumns[c]?.cleaner, people))
   }
   const changed = !current || current.column !== column || current.match !== match || current.keep !== keep
+  // How bare phone numbers are read (set over the API or MCP): kept while the column and match stay.
+  const country = current && current.column === column && current.match === 'phone' && match === 'phone'
+    ? current.phone_country : null
 
   const run = async (work: () => Promise<AutoDedupeView | null>, done: string) => {
     setSaving(true)
@@ -81,8 +84,9 @@ export function useAutoDedupeForm(a: Args) {
     }
   }
   return {
-    eligible, column, match, keep, setColumn, setMatch, setKeep, saving, error, changed, trashDays,
-    save: () => run(() => autoDedupeAPI.set(sheetId, { column, match, keep }),
+    eligible, column, match, keep, country, setColumn, setMatch, setKeep, saving, error, changed, trashDays,
+    save: () => run(() => autoDedupeAPI.set(sheetId,
+      { column, match, keep, ...(country ? { phone_country: country } : {}) }),
       current ? 'Auto-dedupe saved' : 'Auto-dedupe is on'),
     turnOff: () => run(() => autoDedupeAPI.off(sheetId), 'Auto-dedupe is off'),
   }
