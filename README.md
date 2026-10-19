@@ -16,7 +16,7 @@
 <p align="center">
   <a href="https://github.com/gurmohitghuman/cubex/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/gurmohitghuman/cubex?label=release&color=3a3a3a"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
-  <a href="#install"><img alt="Self-hosted on macOS, Linux or Docker" src="https://img.shields.io/badge/self--hosted-macOS%20%7C%20Linux%20%7C%20Docker-555"></a>
+  <a href="#install"><img alt="Self-hosted on macOS, Linux, Windows or Docker" src="https://img.shields.io/badge/self--hosted-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Docker-555"></a>
   <a href="docs/configuration.md#your-data-and-backups"><img alt="Your data in one SQLite file" src="https://img.shields.io/badge/data-one%20SQLite%20file-003B57?logo=sqlite&logoColor=white"></a>
 </p>
 
@@ -66,19 +66,29 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 
 ## Install
 
-On macOS or Linux (on Windows, inside WSL2):
+On macOS or Linux:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.sh | bash
 ```
 
-It takes a minute or two and needs about 1.5 GB of free memory while it builds. Everything goes into `~/.cubex`, including a private copy of Node.js, so your own Node, if you have one, is never used or changed.
+On Windows 10 or 11, in PowerShell (no administrator rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1 | iex
+```
+
+It takes a few minutes and needs about 1.5 GB of free memory while it builds. Everything goes into `~/.cubex` (on Windows, `%LOCALAPPDATA%\cubex`), including a private copy of Node.js, so your own Node, if you have one, is never used or changed.
 
 Only this computer can open Cubex until you change that. To open it from other devices on your network, add `--public`. The installer then generates your password and prints it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.sh \
   | bash -s -- --public
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1))) --public
 ```
 
 - **On a server reachable from the internet,** keep the default and put HTTPS in front. [Run Cubex on your own server](docs/self-hosting.md) walks through it step by step.
@@ -95,7 +105,7 @@ Want to look around first? Click **Try with sample data** on the empty dashboard
 
 There's one account and no email, so there's no reset link. If you forget the password, run `cubex reset-password` on the computer Cubex runs on. Changing or resetting the password signs out every browser.
 
-Cubex keeps running in the background and starts again after a restart: on macOS when you log in, on Linux when the computer starts. If the installer can't set that up, it tells you the one command that does. The `cubex` command does the rest:
+Cubex keeps running in the background and starts again after a restart: on macOS and Windows when you log in, on Linux when the computer starts. If the installer can't set that up, it tells you the one command that does. The `cubex` command does the rest:
 
 | Command | What it does |
 |---|---|
@@ -104,7 +114,7 @@ Cubex keeps running in the background and starts again after a restart: on macOS
 | `cubex stop`, `cubex start`, `cubex restart` | Stop, start or restart it |
 | `cubex logs` | Follow the server log |
 | `cubex update` | Update to the latest release; your data and settings are kept |
-| `cubex config` | Show the settings file, `~/.cubex/config.env` ([every setting](docs/configuration.md)) |
+| `cubex config` | Show the settings file, `config.env` in the Cubex folder ([every setting](docs/configuration.md)) |
 | `cubex reset-password` | Choose a new password |
 | `cubex uninstall` | Remove Cubex but keep your data (`--delete-data` removes that too) |
 
