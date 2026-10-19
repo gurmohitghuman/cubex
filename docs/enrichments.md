@@ -93,7 +93,7 @@ You have a list of companies with a **Domain** column.
 3. Under **Outputs**, pick the fields you want as columns (size, industry, location and whatever else the job returns).
 4. **Run on 5 rows**, check the results, then run the rest.
 
-Later, if you want a field you didn't pick, click a cell and use **+ Column** in the answer panel. It fills from the answers you already have, for free. See [The answer panel and adding fields](#the-answer-panel-and-adding-fields).
+Later, if you want a field you didn't pick, click a cell and use **Add as column** in the answer panel. It fills from the answers you already have, for free. See [The answer panel and adding fields](#the-answer-panel-and-adding-fields).
 
 ### People at companies into a new sheet
 
@@ -214,17 +214,19 @@ Click a filled cell of an enrichment column (its status column or an output) to 
 - **Found by**: the provider that found it, and whether it ran on treg's key, your own key or a free route.
 - Each step Cubex took (for Verified work email: the guess, each find and each check) and the providers treg tried, with what each one said and cost.
 - **Result**: the row's cells.
-- **Full answer**: everything treg returned that Cubex kept.
+- **Full answer**: everything treg returned that Cubex kept, as a tree you open and close.
 
-Next to any value in the full answer, **+ Column** adds a new column filled from the answers you already have, for every row. It's free: no new calls to treg. Its cells show ⏳ until every row is filled, rows whose answer lacks that value stay empty, and later runs of the column fill it too.
+Next to any value in the full answer, **Add as column** adds a new column filled from the answers you already have, for every row. It's free: no new calls to treg. Its cells show ⏳ until every row is filled, rows whose answer lacks that value stay empty, and later runs of the column fill it too.
 
 **Rerun this row** calls treg again for that row, and it costs again. **Copy diagnostics** copies the run, the row and each treg call id with its status and cost. treg's call ids are what treg's Activity page and treg's support use to look a call up.
 
-HTTP API columns have the same panel (minus cost and providers), and **+ Column** works there too.
+HTTP API columns have the same panel (minus cost and providers): click a filled cell of the column to see the response it stored, and **Add as column** works there too.
+
+The tree shows big answers a part at a time, so even a reply of several MB opens at once: a list or an object shows 100 entries, with **Previous** and **Next** for the rest, and its count (`5,000 items`, `12 fields`) next to its bracket. Long text shows its start, and **show more** adds more. Characters you couldn't otherwise see, or that would turn the text around them right to left, show the way JSON writes them (`\n`, `\u202E`). Click a key or a value to copy its JSONPath (like `$.results[3].email`), to use in an HTTP API column's fields or a webhook mapping. A key that isn't a plain word is written in brackets (`$["@odata.nextLink"]`, `$.data["first name"]`), with any character you couldn't see written the way JSON escapes it, and Cubex reads it back as exactly that key. Typing a path by hand, write a quote in a key as `\"` and a backslash as `\\`. On a plain-HTTP install, where the browser can't copy, the path shows in a box to copy by hand.
 
 ## Stored answers and disk space
 
-To make the answer panel and **+ Column** work, Cubex keeps each row's answer in its database:
+To make the answer panel and **Add as column** work, Cubex keeps each row's answer in its database:
 
 - treg's result fields and its notes about the call, whole.
 - The provider's own raw data, trimmed to 16 KB per answer (the largest parts go first; the panel says what was left out). Operators can change the size with `ENRICH_STORED_RAW_MAX_BYTES`.

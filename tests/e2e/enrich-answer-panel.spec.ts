@@ -6,7 +6,7 @@ import { expectBilledOnce, freshTreg, mockBilling, rowsOf, runIdsOf, seedLeadRow
 
 // The answer panel and "add a field" (plan U7, Features D; Verification 8 and
 // 24): a click on an enrichment cell shows who found it, what it cost, each
-// step with its call id and the whole answer; "+ Column" fills a new column
+// step with its call id and the whole answer; "Add as column" fills a new column
 // from the answers already stored, with no call to treg; a path into a part
 // too big to keep is refused; later runs fill the new column too; and after a
 // sort, a row delete and a CSV replace, each row's steps are still its own.
@@ -56,7 +56,7 @@ test('the answer panel, then a column added from stored answers: no calls, no co
   await expect(page.getByTestId('answer-rerun')).toBeVisible()
   await expect(panel).not.toContainText(String.fromCharCode(0x2014))
 
-  // "+ Column" on a value: free, from the answers already kept.
+  // "Add as column" on a value: free, from the answers already kept.
   const before = await calls()
   const billed = (await mockBilling()).length
   const leaf = page.getByTestId('answer-tree').locator('[data-json-path="$.raw.data.first_name"]')
