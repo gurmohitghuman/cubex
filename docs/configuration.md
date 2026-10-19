@@ -2,7 +2,7 @@
 
 ## Settings
 
-Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` per line; after a change, run `cubex restart`. (With Docker, Coolify or a source checkout, they live elsewhere: see [Other ways to run Cubex](other-ways-to-run.md).)
+Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LOCALAPPDATA%\cubex\config.env`), one `KEY=value` per line; after a change, run `cubex restart`. (With Docker, Coolify or a source checkout, they live elsewhere: see [Other ways to run Cubex](other-ways-to-run.md).)
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -27,7 +27,7 @@ There are no limits on tables or sheets. A million rows per sheet runs comfortab
 
 ## Your data and backups
 
-Everything Cubex keeps lives in one directory, `~/.cubex/data`:
+Everything Cubex keeps lives in one directory, `~/.cubex/data` (on Windows, `%LOCALAPPDATA%\cubex\data`):
 
 | File | What it is |
 |---|---|
@@ -37,7 +37,7 @@ Everything Cubex keeps lives in one directory, `~/.cubex/data`:
 | `.encryption-key` | Encrypts your OpenRouter key, treg key, saved API keys, webhook URLs and run webhook secrets. |
 | `uploads/` | CSV files while they import. Emptied when Cubex starts; no need to back it up. |
 
-Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](self-hosting.md#6-back-up-every-night).
+Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](self-hosting.md#6-back-up-every-night). The script needs bash, so on Windows run `cubex stop`, copy the `data` folder, then `cubex start`.
 
 ## What Cubex connects to
 

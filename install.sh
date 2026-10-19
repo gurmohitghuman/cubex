@@ -7,7 +7,7 @@
 # yours), the app, your data and config.env. The only thing put elsewhere is
 # the `cubex` command in ~/.local/bin, plus one line in your shell's startup file
 # if that folder isn't on your PATH yet. Running it again updates Cubex and keeps
-# your data and settings. macOS and Linux; on Windows use WSL2.
+# your data and settings. macOS and Linux; on Windows, install.ps1 does the same.
 set -euo pipefail
 
 CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
@@ -101,7 +101,8 @@ detect_platform() {
   case "$(uname -s)" in
     Darwin) OS=darwin ;;
     Linux) OS=linux ;;
-    *) die "This installer supports macOS and Linux. On Windows, use WSL2 or Docker (see docs/other-ways-to-run.md)." ;;
+    *) die "This installer supports macOS and Linux. On Windows, run this in PowerShell:
+  irm https://raw.githubusercontent.com/$CUBEX_REPO/main/install.ps1 | iex" ;;
   esac
   case "$(uname -m)" in
     x86_64|amd64) ARCH=x64 ;;

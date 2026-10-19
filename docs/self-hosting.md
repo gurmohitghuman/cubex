@@ -297,3 +297,23 @@ ssh -N -L 3002:127.0.0.1:3002 cubex@203.0.113.10
 ```
 
 While that runs, open `http://localhost:3002`. A private network such as Tailscale works too.
+
+### A Windows PC or server
+
+The one-line install works on Windows 10 (version 1809 or newer) and Windows 11 with an Intel or AMD (x64) processor; Windows on ARM follows in a later release. Run it in PowerShell, without administrator rights:
+
+```powershell
+irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1 | iex
+```
+
+Everything goes into `%LOCALAPPDATA%\cubex`: settings in `config.env`, your data in `data`, the app and a private copy of Node.js. Only the `cubex` command is added to your PATH, and every `cubex` command above works the same way. Cubex starts when you log in, through a scheduled task named Cubex, with no window. It stops when you sign out, so a Windows server that must keep running with nobody signed in is better served by [Docker](other-ways-to-run.md).
+
+To reach it from other devices, install with `--public`, which also sets the password:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1))) --public
+```
+
+The first time Cubex starts this way, Windows may ask whether Node.js can accept connections from your network; allowing that needs an administrator. Put HTTPS in front before it's reachable from the internet: Caddy runs on Windows too, with the same Caddyfile as step 4. The backup script in step 6 needs bash, so on Windows back up by running `cubex stop`, copying the `data` folder somewhere safe, then `cubex start`.
+
+If PowerShell says `cubex` isn't recognized right after the install, open a new terminal window.

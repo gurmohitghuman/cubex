@@ -2,7 +2,7 @@ name: Release
 
 # Publishes a draft release made by scripts/release.sh (see docs/releasing.md).
 # It tests the exact commit the draft points at (CI, plus a real install with
-# the one-line installer), and only then publishes the draft. Publishing is
+# the one-line installers on Linux and Windows), and only then publishes the draft. Publishing is
 # what creates the vX.Y.Z tag, so a failed run leaves no tag behind, and
 # `cubex update` only ever sees versions that passed.
 
@@ -85,9 +85,16 @@ jobs:
           "$CUBEX_BIN_DIR/cubex" status
           "$CUBEX_BIN_DIR/cubex" stop
 
+  install-windows:
+    name: One-line install on Windows
+    needs: resolve
+    uses: ./.github/workflows/install-windows.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+
   publish:
     name: Publish
-    needs: [resolve, ci, install]
+    needs: [resolve, ci, install, install-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
