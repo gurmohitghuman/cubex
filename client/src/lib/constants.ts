@@ -194,3 +194,7 @@ export const JSON_PATH_MAX_CHARS = 500;
 // failed counts (a walk over the sheet) at most this often, for an auto-run batch
 // that started and ended between two looks at the sheet's runs.
 export const FAILED_COUNTS_ARRIVAL_MS = 60_000;
+
+// A tab opened before an update reloads once when the table page's file is gone
+// (lib/chunk-reload.ts); a second failure inside this window shows the error page.
+export const CHUNK_RELOAD_WINDOW_MS = 10_000;
