@@ -57,6 +57,14 @@ export function serveClientInProduction(app: express.Express) {
   app.get('*', (req, res, next) => {
     // Case-insensitive like Express's routing: /API/v1/x is an API path too.
     if (/^\/(api|mcp)(\/|$)/i.test(req.path)) return next();
+    // A hashed file this build doesn't have (a tab opened before an update asks
+    // for the old names) is a 404: index.html with a 200 fails as a module script
+    // with a MIME error that hides the cause. no-store, so a rollback that brings
+    // the file back isn't masked by a remembered 404.
+    if (/^\/assets\//i.test(req.path)) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.sendStatus(404);
+    }
     sendIndex(req, res);
   });
   console.log(`📦 Serving client from ${clientDist}`);

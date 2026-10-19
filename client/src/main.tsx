@@ -11,11 +11,13 @@ import { DashboardPage } from './pages/DashboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TrashPage } from './pages/TrashPage'
 import { RouteErrorPage } from './pages/RouteErrorPage'
+import { reloadOnChunkError } from './lib/chunk-reload'
 
 // SheetPage is the only page that pulls in AG Grid (~300KB gzip, >half the JS
 // payload). Lazy-load it so login/dashboard/settings don't download that chunk
-// on first paint — it arrives only when the user opens a table.
-const SheetPage = lazy(() => import('./pages/SheetPage').then(m => ({ default: m.SheetPage })))
+// on first paint — it arrives only when the user opens a table. A tab opened
+// before an update reloads once instead of failing on the old file name.
+const SheetPage = lazy(reloadOnChunkError(() => import('./pages/SheetPage').then(m => ({ default: m.SheetPage }))))
 
 const router = createBrowserRouter([
   {
