@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { test, expect, APIRequestContext } from '@playwright/test'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 import { JSON_URL, makeToken, bearer, waitForTerminal } from './api-v1-run-helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
 
@@ -21,7 +21,7 @@ const require = createRequire(import.meta.url)
 // The run's stored setup, read from the throwaway test DB (no route returns it).
 function storedConfig(runId: string): string {
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
-  const db = new Database(process.env.DB_PATH, { readonly: true })
+  const db = new Database(assertTestDb(process.env.DB_PATH), { readonly: true })
   try {
     return (db.prepare('SELECT config FROM http_runs WHERE id = ?').get(runId) as { config: string }).config
   } finally {

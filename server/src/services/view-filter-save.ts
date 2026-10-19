@@ -6,13 +6,19 @@
 // it is the sheet's view setting, not a setup change: no change-log entry.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
+import { viewWhere } from '../lib/views/filters';
 import { checkViewWhere, isFail, notFound } from './view-input';
 import { sheetViewState, type ViewFail } from './view-store';
 
 // raw: a `where`, or null / [] for no filter.
+// The panel sends the whole filter on every change, so a rule saved before is
+// checked against the saved one (a run-state rule on a column that lost its
+// run since must not block every other change; view-input.ts checkViewWhere).
 export function saveSheetFilters(sheetId: string, userId: string, raw: unknown): { ok: true } | ViewFail {
-  if (!sheetViewState(sheetId, userId)) return notFound('Sheet');
-  const filters = checkViewWhere(sheetId, userId, raw ?? null, getSheetColumns(sheetId, userId, false));
+  const state = sheetViewState(sheetId, userId);
+  if (!state) return notFound('Sheet');
+  const filters = checkViewWhere(sheetId, userId, raw ?? null, getSheetColumns(sheetId, userId, false),
+    viewWhere(state));
   if (isFail(filters)) return filters;
   db.prepare(`UPDATE sheets SET empty_filter = ?, column_filters = ?, row_filter = ?, updated_at = datetime('now')
     WHERE id = ? AND user_id = ?`)

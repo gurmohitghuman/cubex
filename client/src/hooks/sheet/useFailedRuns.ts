@@ -1,9 +1,9 @@
 // The header's "N failed, retry": failed rows per run column of the sheet
 // (GET /api/run-controls/sheets/:id/failed, a walk over the whole sheet). Read a
 // moment after the sheet opens and after `trigger` changes (a run starts or
-// ends, rows come or go, a column is renamed), once however many changes come
-// together (but at least every MAX_WAIT_MS while they keep coming, say webhook
-// rows a second apart); a newer read aborts the older one, whose walk the
+// ends, rows go, a column is renamed), once however many changes come
+// together (but at least every MAX_WAIT_MS while they keep coming, say auto-run
+// batches a second apart); a newer read aborts the older one, whose walk the
 // server then stops.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { runControlsAPI } from '@/utils/api/run-controls'

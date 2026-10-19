@@ -2,7 +2,7 @@
 // filters (a `where`, split into the parts the grid shows) and hidden columns.
 import { containsInvisibleNameChar, normalizeNameSpacing } from '../lib/name-safety';
 import { MAX_VIEW_DESCRIPTION_CHARS, MAX_VIEW_NAME_CHARS } from '../lib/constants-filters';
-import { checkWhere, parseWhere } from '../lib/row-filter/where';
+import { checkWhere, parseWhere, type WhereItem } from '../lib/row-filter/where';
 import { readsRunState, splitWhere, type ViewFilters } from '../lib/views/filters';
 import { sheetRunColumns } from './row-filter';
 import type { ViewFail } from './view-store';
@@ -34,14 +34,16 @@ function viewDescription(raw: unknown): string | null | ViewFail {
 }
 
 // A view's filters from a `where` (null or [] = none), checked against the sheet.
+// `saved`: the view's filter before this change; a run-state rule kept from it
+// isn't refused when its column lost its run (lib/row-filter/where.ts checkWhere).
 export function checkViewWhere(
-  sheetId: string, userId: string, raw: unknown, columns: readonly string[],
+  sheetId: string, userId: string, raw: unknown, columns: readonly string[], saved?: readonly WhereItem[],
 ): ViewFilters | ViewFail {
   if (raw === null || (Array.isArray(raw) && raw.length === 0)) return splitWhere([]);
   const parsed = parseWhere(raw);
   if ('error' in parsed) return bad(parsed.error);
   const runColumns = readsRunState(parsed.where) ? sheetRunColumns(sheetId, userId, columns) : new Map();
-  const invalid = checkWhere(parsed.where, { columns, runColumns });
+  const invalid = checkWhere(parsed.where, { columns, runColumns, saved });
   return invalid ? bad(invalid) : splitWhere(parsed.where);
 }
 
@@ -63,8 +65,9 @@ export interface ViewInput {
 
 export interface Checked { name?: string; description?: string | null; filters?: ViewFilters; hidden?: string | null }
 
+// `saved`: the view's filter before this change (checkViewWhere).
 export function checkInput(
-  sheetId: string, userId: string, input: ViewInput, columns: readonly string[],
+  sheetId: string, userId: string, input: ViewInput, columns: readonly string[], saved?: readonly WhereItem[],
 ): Checked | ViewFail {
   const out: Checked = {};
   if (input.name !== undefined) {
@@ -78,7 +81,7 @@ export function checkInput(
     out.description = description;
   }
   if (input.where !== undefined) {
-    const filters = checkViewWhere(sheetId, userId, input.where, columns);
+    const filters = checkViewWhere(sheetId, userId, input.where, columns, saved);
     if (isFail(filters)) return filters;
     out.filters = filters;
   }

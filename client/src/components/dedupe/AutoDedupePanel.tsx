@@ -84,6 +84,11 @@ export const AutoDedupePanel: React.FC<Props> = ({ form: f, view, sheetId, onRem
           </select>
         </div>
         <p className="text-xs text-gray-500 mt-1">{DEDUPE_MATCHES.find(m => m.id === f.match)?.help}</p>
+        {f.country && (
+          <p className="text-xs text-gray-500 mt-1" data-testid="auto-dedupe-country">
+            Numbers without a country code are read as {f.country} numbers.
+          </p>
+        )}
       </div>
       <fieldset>
         <legend className={LABEL}>When rows share a key, keep the</legend>

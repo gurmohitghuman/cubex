@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
 import path from 'path'
 import { createRequire } from 'module'
-import { authedApi, BASE, seedSheet } from './helpers'
+import { authedApi, BASE, seedSheet, assertTestDb } from './helpers'
 import { makeToken, bearer, httpConfig, waitForTerminal } from './api-v1-run-helpers'
 
 // HTTP API columns get the answer panel too (plan U7; Verification 22): the
@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url)
 
 function storedResults(sheetId: string): Array<{ id: string; updated_at: string }> {
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
-  const db = new Database(process.env.DB_PATH, { readonly: true })
+  const db = new Database(assertTestDb(process.env.DB_PATH), { readonly: true })
   try {
     return db.prepare(`SELECT r.id, r.updated_at FROM http_results r JOIN http_runs h ON h.id = r.run_id
       WHERE h.sheet_id = ? ORDER BY r.id`).all(sheetId)

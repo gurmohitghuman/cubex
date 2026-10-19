@@ -8,8 +8,8 @@
 //   link: the new column is linked to each of the column's older runs (the
 //     newest got it when the column was added), a batch per transaction;
 //   fill: the runs newest first, each one's results read once in row order;
-//     a row takes the first run that answered it (completed or failed), later
-//     (older) runs skip it.
+//     a row takes the first run that answered it (completed or failed, and
+//     not taken back by an undo: migration 044), later (older) runs skip it.
 // So the work follows the results, never runs x rows: auto-run leaves a run
 // per batch, and a column can hold tens of thousands of them. Each slice
 // works out its cells outside the write lock, then writes them and moves the
@@ -89,22 +89,23 @@ async function link(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
     updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`).run(job.id, job.user_id);
 }
 
-const readSlice = (runId: string, userId: string, after: number) => db.prepare(`SELECT row_index, status,
+const readSlice = (runId: string, userId: string, after: number) => db.prepare(`SELECT row_index, status, undone,
     response_data FROM http_results WHERE run_id = ? AND row_index > ? AND +user_id = ? ORDER BY row_index LIMIT ?`)
-  .all(runId, after, userId, HEAVY_SLICE_ROWS) as Array<StoredResult & { row_index: number }>;
+  .all(runId, after, userId, HEAVY_SLICE_ROWS) as Array<StoredResult & { row_index: number; undone: number }>;
 
-const answered = (r: { status: string }) => r.status === 'completed' || r.status === 'failed';
+const answered = (r: { status: string; undone: number }) =>
+  (r.status === 'completed' || r.status === 'failed') && r.undone === 0;
 
 // After a restart: the rows the runs before the cursor answered (and, for the
 // run at the cursor, the rows before its row cursor) are taken already.
 async function rebuildTaken(job: FieldJob, runs: ColumnRunRef[], taken: RowSet): Promise<void> {
-  const read = db.prepare(`SELECT row_index, status FROM http_results WHERE run_id = ? AND row_index > ?
+  const read = db.prepare(`SELECT row_index, status, undone FROM http_results WHERE run_id = ? AND row_index > ?
     AND row_index <= ? AND +user_id = ? ORDER BY row_index LIMIT ?`);
   for (let p = 0; p <= Math.min(job.run_pos, runs.length - 1); p++) {
     const upTo = p < job.run_pos ? Number.MAX_SAFE_INTEGER : job.row_cursor;
     for (let after = -1; ;) {
       const rows = read.all(runs[p].id, after, upTo, job.user_id, HEAVY_SLICE_ROWS) as
-        Array<{ row_index: number; status: string }>;
+        Array<{ row_index: number; status: string; undone: number }>;
       for (const r of rows) if (answered(r)) taken.add(r.row_index);
       if (rows.length < HEAVY_SLICE_ROWS) break;
       after = rows[rows.length - 1].row_index;

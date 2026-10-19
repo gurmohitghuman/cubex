@@ -41,6 +41,8 @@ export interface FoundAnswer { body: unknown; from: ReusedFrom; notes: AnswerNot
 
 // An answer from a sheet in the trash isn't reused (NOT EXISTS below): deleting
 // a sheet took its answers with it before the trash, and does once it's gone.
+// Nor is an answer an undo took back: the undo clears its reuse_key
+// (lib/run-undo/restore.ts, migration 044), so running again bills again.
 // The newest found answer to this lookup since `since` from another run, as
 // treg gave it (plus the earlier row's _cubex notes; a pruned answer has lost
 // its raw part only). A run's own rows share a lookup through runStep instead

@@ -21,6 +21,11 @@ export function autoDedupeById(id: number): AutoDedupe | undefined {
   return db.prepare('SELECT * FROM auto_dedupe WHERE id = ?').get(id) as AutoDedupe | undefined;
 }
 
+// A sheet in the trash: nothing auto-dedupe does in the background goes on
+// there (keys, checks) until it is restored; its waiting checks stay queued.
+export const sheetInTrash = (sheetId: string, userId: string): boolean =>
+  !!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NOT NULL').get(sheetId, userId);
+
 // The key stored for one row, or null.
 export function storedKey(dedupeId: number, rid: number): string | null {
   return (db.prepare('SELECT key FROM auto_dedupe_keys WHERE dedupe_id = ? AND rid = ?').pluck()

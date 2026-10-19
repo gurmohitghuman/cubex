@@ -6,7 +6,8 @@ import { seedLeads } from './helpers-dedupe'
 // opens on the Email column matched as an email, turns it on and says how many
 // rows already share a key; the toolbar shows it's on. A row added in the grid
 // and given a key already there goes to the trash (the toast restores just it);
-// the dialog counts what went and links to the trash, narrowed to them.
+// the dialog counts what went and links to the trash, narrowed to them. A
+// setting with phone_country keeps it when the dialog saves another keep.
 
 // Nth data cell of a row, in rendered column order (val, Email, Website, Name).
 const dataCell = (row: number, n: number) => `.ag-row[row-index="${row}"] [col-id^="col_"] >> nth=${n}`
@@ -65,4 +66,27 @@ test('auto-dedupe from the Remove duplicates dialog, a key typed into a new row'
   await expect(page).toHaveURL(new RegExp(`/trash\\?sheet=${sheetId}&how=auto_dedupe`))
   await expect(page.getByTestId('trash-scope')).toContainText('Removed by auto-dedupe')
   await expect(page.getByText('Removed by auto-dedupe').last()).toBeVisible()
+})
+
+// A setting made over the API with phone_country: the dialog says how bare
+// numbers are read, and saving another keep sends the country back.
+test('auto-dedupe keeps phone_country when the dialog saves another keep', async ({ page, context }) => {
+  const api = await authedApi()
+  const { tableId, sheetId } = await seedLeads(api)
+  expect((await api.post(`/api/sheets/${sheetId}/columns`, { data: { columnName: 'Phone' } })).ok()).toBeTruthy()
+  expect((await api.put(`/api/sheets/${sheetId}/auto-dedupe`,
+    { data: { column: 'Phone', match: 'phone', phone_country: 'GB', keep: 'oldest' } })).ok()).toBeTruthy()
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${tableId}`)
+  await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('remove-duplicates').click()
+  await page.getByTestId('dedupe-tab-auto').click()
+  await expect(page.getByTestId('auto-dedupe-column')).toHaveValue('Phone')
+  await expect(page.getByTestId('auto-dedupe-country')).toContainText('read as GB numbers')
+  await page.getByLabel('Newest row').check()
+  await page.getByTestId('auto-dedupe-save').click()
+  await expect(page.getByText('Auto-dedupe saved')).toBeVisible()
+  const view = (await (await api.get(`/api/sheets/${sheetId}/auto-dedupe`)).json()).autoDedupe
+  expect(view).toMatchObject({ column: 'Phone', match: 'phone', phone_country: 'GB', keep: 'newest' })
 })

@@ -288,8 +288,8 @@ export const SheetPage: React.FC = () => {
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
       <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
-      <SheetSampleGuide sheetData={sheetData} onOpenAI={() => modals.setShowAddColumnModal(true)}
-        onOpenDedupe={() => modals.setShowDedupeModal(true)} />
+      <SheetSampleGuide sheetData={sheetData} dedupeOpen={modals.showDedupeModal}
+        onOpenAI={() => modals.setShowAddColumnModal(true)} onOpenDedupe={() => modals.setShowDedupeModal(true)} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}

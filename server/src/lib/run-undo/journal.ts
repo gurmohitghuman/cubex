@@ -18,21 +18,34 @@ const parseColumns = (raw: string): Array<string | null> => {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; }
 };
 
+// A run started before runs could be undone (migration 041 applied after it
+// began) has written cells nothing kept: a journal begun now would keep its
+// own ⏳ as their old values, and its undo would empty cells that held data.
+// Such a run keeps nothing (it can't be undone) and writes as usual.
+const BEGAN_BEFORE_UNDO: Record<RunRef['kind'], string> = {
+  ai: `SELECT 1 FROM ai_runs r, _migrations m WHERE r.id = ? AND r.user_id = ? AND m.name = '041_run_undo.sql'
+    AND r.created_at < m.applied_at`,
+  http: `SELECT 1 FROM http_runs r, _migrations m WHERE r.id = ? AND r.user_id = ? AND m.name = '041_run_undo.sql'
+    AND r.created_at < m.applied_at`,
+};
+
 // The run's journal (made by its first write) with a slot for each of
-// `names`, or null when it takes no more (undone, or going).
+// `names`; 'closed' when it takes no more (undone, or going); 'unkept' for a
+// run that began before runs could be undone (it keeps nothing).
 function journalFor(
   run: RunRef, sheetId: string, userId: string, names: string[], stampPath: string | null = null,
-): Journal | null {
+): Journal | 'closed' | 'unkept' {
   const read = () => db.prepare(`SELECT id, columns, stamp_path, state FROM run_undos
     WHERE run_kind = ? AND run_id = ? AND user_id = ?`).get(run.kind, run.id, userId) as
     { id: number; columns: string; stamp_path: string | null; state: string } | undefined;
   let j = read();
   if (!j) {
+    if (db.prepare(BEGAN_BEFORE_UNDO[run.kind]).get(run.id, userId)) return 'unkept';
     db.prepare('INSERT INTO run_undos (user_id, sheet_id, run_kind, run_id) VALUES (?, ?, ?, ?)')
       .run(userId, sheetId, run.kind, run.id);
     j = read()!;
   }
-  if (j.state !== 'kept') return null;
+  if (j.state !== 'kept') return 'closed';
   const columns = parseColumns(j.columns);
   const before = columns.length;
   const slots = names.map(name => {
@@ -56,7 +69,7 @@ export function journalSeed(
 ): void {
   if (cells.length === 0) return;
   const j = journalFor(run, sheetId, userId, cells.map(c => c[0]));
-  if (!j) return;
+  if (typeof j === 'string') return;
   const which = 'rowids' in rows ? 'rowid' : 'id';
   const info = db.prepare(`INSERT INTO run_undo_rows (undo_id, row_id, ref, cells)
     SELECT ?, rowid, substr(id, 1, 8), json_array(${cells.map(() => 'json_array(?, data -> ?, ?)').join(', ')})
@@ -79,12 +92,14 @@ interface RowNow {
 // first time, their prints follow every write, and the row's run_inputs entry
 // under `stampPath` is kept before the run's first stamp replaces it. False:
 // the run was undone (or its undo has begun), and it writes nothing again.
+// True without keeping anything for a run that began before runs could be undone.
 export function journalRowWrite(
   run: RunRef, sheetId: string, userId: string, rowIndex: number, cells: Array<[string, string]>,
   stampPath: string | null,
 ): boolean {
   const j = journalFor(run, sheetId, userId, cells.map(c => c[0]), stampPath);
-  if (!j) return false;
+  if (j === 'closed') return false;
+  if (j === 'unkept') return true;
   const row = db.prepare(`SELECT r.rowid AS rid, r.id, r.data, r.run_inputs -> ? AS stamp_now,
       u.ref, u.cells, u.stamp
     FROM rows r LEFT JOIN run_undo_rows u ON u.undo_id = ? AND u.row_id = r.rowid

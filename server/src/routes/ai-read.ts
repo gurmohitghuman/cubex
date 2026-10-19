@@ -46,7 +46,8 @@ router.get('/runs', (req: AuthRequest, res) => {
 // cost: at this row, the newest result with any of them from the runs whose
 // "(Data)" column this is (aiRunDataColumn, the rule locks and column types
 // use). Looked up per click through (run_id, row_index), so the grid loads
-// nothing about results up front: a sheet can hold a million.
+// nothing about results up front: a sheet can hold a million. A result whose
+// cell an undo put back (migration 044) falls through to the run before.
 router.get('/sheets/:sheetId/sources', (req: AuthRequest, res) => {
   try {
     const { sheetId } = req.params;
@@ -61,7 +62,7 @@ router.get('/sheets/:sheetId/sources', (req: AuthRequest, res) => {
     `).all(sheetId, req.userId!) as Array<AiRunDataColumnFields & { id: string }>;
     const sourced = db.prepare(`
       SELECT scraped_data, web_searches, web_search_queries, cost_usd FROM ai_results
-      WHERE run_id = ? AND row_index = ? AND user_id = ?
+      WHERE run_id = ? AND row_index = ? AND user_id = ? AND undone = 0
         AND (scraped_data IS NOT NULL OR web_search_queries IS NOT NULL OR cost_usd IS NOT NULL)
       ORDER BY created_at DESC, rowid DESC LIMIT 1
     `);

@@ -5,17 +5,34 @@ import toast from 'react-hot-toast'
 import type { SheetData } from '@/utils/api'
 import type { WhereItem } from '@/utils/api/views'
 import { isRunColumn } from '@/lib/filters'
-import { onConditions, sheetWhere, whereWords } from '@/lib/views'
+import { activeViewOf, onConditions, sheetWhere, whereWords } from '@/lib/views'
+import { VIEW_MOVED } from '@/hooks/sheet/useSheetViews'
 import { FilterPanel } from './FilterPanel'
 
 // "Filter" above the grid: the active view's filter in words (header filters
 // included), the panel that edits all of it, and ✕ to clear it. The panel
-// opens on the filter as saved; its draft lives only while it's open.
+// opens on the filter as saved; its draft lives only while it's open, and
+// only for the view it was opened on: another view showing (switched here,
+// in another tab or by an agent, or a save refused for it) starts the panel
+// again on that view's filter, so a draft never lands on another view.
 export const FilterButton: React.FC<{
   sheetData: SheetData
   columns: string[]
-  save: (where: WhereItem[] | null) => Promise<string | null>
+  save: (where: WhereItem[] | null, viewId?: string | null) => Promise<string | null>
 }> = ({ sheetData, columns, save }) => {
+  const viewId = activeViewOf(sheetData)?.id ?? null
+  const [restarts, setRestarts] = React.useState(0)
+  const panelKey = `${sheetData.sheet.id}:${viewId}:${restarts}`
+  // The panel now open: a refusal for an older one (queued saves) leaves it be.
+  const openPanel = React.useRef(panelKey)
+  openPanel.current = panelKey
+  const saveInView = React.useCallback((next: WhereItem[] | null) => {
+    const madeIn = openPanel.current
+    return save(next, viewId).then(problem => {
+      if (problem === VIEW_MOVED && openPanel.current === madeIn) setRestarts(n => n + 1)
+      return problem
+    })
+  }, [save, viewId])
   const where = sheetWhere(sheetData)
   const on = onConditions(where).length
   const words = whereWords(where)
@@ -38,7 +55,7 @@ export const FilterButton: React.FC<{
         </PopoverButton>
         <PopoverPanel anchor={{ to: 'bottom start', gap: 4 }} transition
           className="z-50 bg-white border border-gray-200 rounded-lg shadow-lg">
-          <FilterPanel where={where} ctx={ctx} save={save} />
+          <FilterPanel key={panelKey} where={where} ctx={ctx} save={saveInView} />
         </PopoverPanel>
       </Popover>
       {where.length > 0 && (

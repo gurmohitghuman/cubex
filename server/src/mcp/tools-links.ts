@@ -103,7 +103,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in plan) return err(plan.fail === 'not_found' ? 'Sheet not found' : plan.error);
       const link = createFileLink({
         userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download',
-        options: { columns: selection.columns, where: selection.where },
+        options: { columns: selection.columns, where: selection.where, saved: selection.saved },
       });
       const url = fileLinkUrl(base, 'download', link.token);
       return ok({

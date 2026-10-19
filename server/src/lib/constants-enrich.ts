@@ -177,3 +177,9 @@ export const ENRICH_PROVIDER_COOLDOWN_MS = envInt('ENRICH_PROVIDER_COOLDOWN_MS',
 // than this, never later than the other.
 export const ENRICH_SHARE_BUSY_MIN_MS = 1_000;
 export const ENRICH_SHARE_BUSY_MAX_MS = 60_000;
+
+// "+ Column" on an answer (services/answer-field-add.ts) checks the path against a
+// sample answer: each of the column's newest SAMPLE_ANSWER_PROBE_RUNS runs is read
+// at most SAMPLE_ANSWER_PROBE_ROWS results deep for one not taken back by an undo.
+export const SAMPLE_ANSWER_PROBE_RUNS = 5;
+export const SAMPLE_ANSWER_PROBE_ROWS = 1_000;

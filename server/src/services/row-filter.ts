@@ -56,15 +56,18 @@ export interface PreparedWhere { filter: CompiledFilter; runColumns: Map<string,
 // changes nothing). A column still filling from stored answers is half
 // filled, so a filter on it would match some rows only by timing: refused
 // until the fill is done (an off condition reads nothing, so it never is).
+// `saved`: a saved view's filter in `raw` (reads through a view): its run-state
+// rules on a column that lost its run read that column's cells, never refused.
 export function prepareWhere(
   sheetId: string, userId: string, raw: readonly WhereItem[], columns?: readonly string[],
+  saved?: readonly WhereItem[],
 ): { ok: PreparedWhere } | { error: string } {
   const parsed = raw.length === 0 ? { where: [] } : parseWhere(raw);
   if ('error' in parsed) return { error: parsed.error };
   const where = parsed.where;
   const sheetColumns = columns ?? getSheetColumns(sheetId, userId, false);
   const runColumns = readsRunState(where) ? sheetRunColumns(sheetId, userId, sheetColumns) : new Map<string, string>();
-  const invalid = checkWhere(where, { columns: sheetColumns, runColumns });
+  const invalid = checkWhere(where, { columns: sheetColumns, runColumns, saved });
   if (invalid) return { error: invalid };
   const read = new Set(whereConditions(activeWhere(where)).flatMap(c =>
     c.column !== undefined ? [c.column] : isStateOp(c.operator) ? [...runColumns.keys()] : []));

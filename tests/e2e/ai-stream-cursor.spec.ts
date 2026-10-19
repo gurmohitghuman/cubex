@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 
 // Regression: the AI SSE stream (server/src/routes/ai-stream.ts) must deliver
 // EVERY ai_results row exactly once — including a row INSERTED MID-STREAM into a
@@ -22,9 +22,7 @@ import { authedApi, seedSheet } from './helpers'
 // second and flip the run to completed. The old cursor skips the low-uuid row;
 // rowid delivers it. We assert BOTH row indices arrive over SSE.
 function openTestDb(): Database.Database {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
-  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db

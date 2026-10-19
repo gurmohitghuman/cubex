@@ -112,7 +112,7 @@ router.get('/download/:token', async (req, res) => {
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
     const plan = planSheetExport(
-      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: WhereItem[] }>(link),
+      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[] }>(link),
     );
     if ('fail' in plan) {
       return plan.fail === 'not_found' ? notFound(res)

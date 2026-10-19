@@ -22,7 +22,7 @@ interface Args {
   rowGenerationRef?: React.MutableRefObject<Map<string, number>>
   // Changes whenever a run starts or ends on the sheet (its active runs' columns).
   runsKey: string
-  // Changes when the failed counts may have: runs, rows coming or going, a renamed column.
+  // Changes when the failed counts may have: a run starting or ending, rows going, a renamed column.
   failedKey: string
 }
 

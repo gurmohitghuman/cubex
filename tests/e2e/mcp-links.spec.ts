@@ -2,7 +2,7 @@ import { test, expect, request as pwRequest } from '@playwright/test'
 import crypto from 'crypto'
 import { createRequire } from 'module'
 import path from 'path'
-import { authedApi, seedSheet, makeAccessToken, BASE } from './helpers'
+import { authedApi, seedSheet, makeAccessToken, BASE, assertTestDb } from './helpers'
 import { mcpClient, parseResult } from './helpers-run-results'
 
 // One-time upload and download links (create_upload_link, create_download_link):
@@ -17,7 +17,7 @@ import { mcpClient, parseResult } from './helpers-run-results'
 const require = createRequire(import.meta.url)
 function inTestDb(sql: string, ...args: unknown[]) {
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
-  const db = new Database(process.env.DB_PATH)
+  const db = new Database(assertTestDb(process.env.DB_PATH))
   try { db.pragma('busy_timeout = 5000'); db.prepare(sql).run(...args) } finally { db.close() }
 }
 const tokenOf = (url: string) => url.split('/').pop()!

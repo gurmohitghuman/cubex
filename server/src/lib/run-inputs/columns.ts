@@ -18,14 +18,23 @@ import { aiRunDataColumn, type AiRunDataColumnFields } from '../ai-data-column';
 // A column a run reads, or null for an input whose column isn't there.
 export type RunInputList = Array<string | null>;
 
-// Distinct inputs in order; a run's own columns are not inputs.
+// Distinct inputs in order; a run's own columns are not inputs. A column read
+// through two token forms ({{Company Name}} and /company_name, as a rename
+// writes them) is one input; only a token naming no column is told apart by
+// its own text (token), so two gone columns stay two inputs.
 class Inputs {
-  private seen = new Set<string>();
+  private seenColumns = new Set<string>();
+  private seenTokens = new Set<string>();
   readonly list: RunInputList = [];
   constructor(private readonly own: readonly string[]) {}
-  add(column: string | null, key = column ?? ''): void {
-    if ((column !== null && this.own.includes(column)) || this.seen.has(key)) return;
-    this.seen.add(key);
+  add(column: string | null, token: string): void {
+    if (column !== null) {
+      if (this.own.includes(column) || this.seenColumns.has(column)) return;
+      this.seenColumns.add(column);
+    } else {
+      if (this.seenTokens.has(token)) return;
+      this.seenTokens.add(token);
+    }
     this.list.push(column);
   }
 }
@@ -80,8 +89,9 @@ export function requestRunInputColumns(config: HTTPAPIConfig, master: string, co
       const ref = COLUMN_REF.exec(t);
       if (!ref) continue;
       const name = ref[1];
-      // An enrichment names its column exactly (a gone one reads empty); a waterfall resolves it as its run does.
-      const col = isEnrichmentConfig(config) ? name : gone.includes(name) ? null : resolveColumn(name, columns);
+      // Each resolves the name as its run does: an enrichment's fillTemplate any case or the normalized
+      // name (a rename to a name holding "}" writes that form), a waterfall the same unless the column is gone.
+      const col = !isEnrichmentConfig(config) && gone.includes(name) ? null : resolveColumn(name, columns);
       out.add(col, `{{${name}}}`);
     }
     return out.list;

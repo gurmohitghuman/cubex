@@ -7,7 +7,9 @@ import { call, callError, mcpClient } from './helpers-mcp'
 // (the duplicate found, the AI column not run), the AI drawer pre-filled from
 // it and Remove duplicates finding the planted duplicate. Nothing runs. It goes
 // to the trash like any table. Agents make it over REST and MCP, told it's
-// fictional and how to run the AI column.
+// fictional and how to run the AI column. The guide doesn't re-check a big
+// sheet and moves on when an AI column of any name has run; a make the browser
+// timed out on opens the table the server made instead of inviting a second.
 
 const shots = process.env.E2E_SHOTS
 const shot = async (page: Page, name: string) => { if (shots) await page.screenshot({ path: `${shots}/${name}.png` }) }
@@ -105,4 +107,56 @@ test('agents make the sample over REST and MCP', async () => {
   } finally {
     await client.close()
   }
+})
+
+// Makes a sample table over the app's own route and opens it.
+async function openSample(page: Page) {
+  const api = await authedApi()
+  await page.context().addCookies((await api.storageState()).cookies)
+  const made = await (await api.post('/api/tables/sample', { data: {} })).json()
+  return { api, tableId: made.id as string, sheetId: made.sheetId as string }
+}
+
+test('the guide: no re-check of a big sheet, and an AI column under any name counts as run', async ({ page }) => {
+  test.setTimeout(60_000)
+  const { api, tableId, sheetId } = await openSample(page)
+  const checks: string[] = []
+  page.on('request', r => { if (r.url().includes('/duplicates/check')) checks.push(r.url()) })
+  // The sheet as a big one (an import grew it) with an AI column the person named "Fit".
+  await page.route(u => u.pathname === `/api/sheets/${sheetId}`, async route => {
+    const res = await route.fetch()
+    const body = await res.json()
+    body.data.totalRows = 5_000
+    body.data.columns = [...body.data.columns, 'Fit (Output)']
+    body.data.columnTypes = { ...(body.data.columnTypes ?? {}), 'Fit (Output)': 'ai-output' }
+    await route.fulfill({ response: res, json: body })
+  })
+  await page.goto(`${BASE}/table/${tableId}/${sheetId}`)
+  const guide = page.getByTestId('sample-guide')
+  await expect(guide).toContainText('Priya Raman is in the list twice')
+  await expect(guide).toContainText('You ran Fit (Output).')
+  await expect(page.getByTestId('sample-try-ai')).toHaveCount(0)
+  await page.waitForTimeout(1_000)
+  expect(checks).toEqual([])
+  await api.delete(`/api/tables/${tableId}`)
+})
+
+test('a make the browser gave up on opens the table the server made, never a second', async ({ page }) => {
+  test.setTimeout(90_000)
+  const api = await authedApi()
+  await page.context().addCookies((await api.storageState()).cookies)
+  const samples = async () => ((await (await api.get('/api/tables')).json()) as Array<{ id: string; name: string }>)
+    .filter(t => /^Sample leads( \d+)?$/.test(t.name)).map(t => t.id)
+  const before = await samples()
+  // The server makes it; the browser sees a timeout.
+  await page.route('**/api/tables/sample', async route => { await route.fetch(); await route.abort('timedout') })
+  await page.goto(`${BASE}/dashboard`)
+  await page.getByRole('button', { name: 'New Table' }).click()
+  await page.getByRole('dialog').getByTestId('try-sample').click()
+  await expect(page).toHaveURL(/\/table\/[0-9a-f-]+\/[0-9a-f-]+$/, { timeout: 30_000 })
+  const made = (await samples()).filter(id => !before.includes(id))
+  expect(made).toHaveLength(1)
+  expect(page.url()).toContain(`/table/${made[0]}/`)
+  await expect(page.getByText('Could not make the sample table.')).toHaveCount(0)
+  await api.delete(`/api/tables/${made[0]}`)
 })

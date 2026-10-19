@@ -39,12 +39,15 @@ export interface CsvExportOptions {
   // A saved view (id, name, or "active"): its filters ANDed with `where`, its
   // visible columns unless `columns` is given (services/view-read.ts).
   view?: string;
+  // The part of `where` a saved view gave (a download link keeps it): its
+  // run-state rules aren't refused (services/row-filter.ts prepareWhere).
+  saved?: WhereItem[];
   // Stop (never at half a row) once the CSV would pass this many characters.
   // Default: no limit.
   maxChars?: number;
 }
 
-export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view'>;
+export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view' | 'saved'>;
 
 // What an export writes: the columns (the same verified list the grid shows,
 // column_order, or the caller's subset in the caller's order) and the filter.
@@ -72,7 +75,7 @@ export function planSheetExport(
     columns = opts.columns;
   }
   if (!opts.where?.length) return { sheetName: sheet.name, columns };
-  const prepared = prepareWhere(sheetId, userId, opts.where, allColumns);
+  const prepared = prepareWhere(sheetId, userId, opts.where, allColumns, opts.saved);
   if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
   return { sheetName: sheet.name, columns, filter: prepared.ok.filter };
 }

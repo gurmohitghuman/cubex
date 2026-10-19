@@ -17,8 +17,26 @@ export interface AutoDedupeAnswer {
   not_kept: string[]; not_kept_count: number;
   replaced: string[]; replaced_count: number;
   checking_later?: number;
-  trash?: { trash_id: number; seqs: number[]; restorable_until?: string; how_to_restore: string };
+  // seqs: at most AUTO_DEDUPE_LIST_IDS (seqs_count is whole); when cut,
+  // seq_ranges ([first, last] each, every seq between) names them all.
+  trash?: {
+    trash_id: number; seqs: number[]; seqs_count: number; seq_ranges?: Array<[number, number]>;
+    restorable_until?: string; how_to_restore: string;
+  };
   note?: string;
+}
+
+// Sorted seqs as [first, last] runs: one transaction's rows get consecutive
+// seqs, so usually one (at most AUTO_DEDUPE_LIST_IDS are listed).
+function seqRanges(seqs: readonly number[]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const q of seqs) {
+    const last = out[out.length - 1];
+    if (last && q === last[1] + 1) last[1] = q;
+    else if (out.length < AUTO_DEDUPE_LIST_IDS) out.push([q, q]);
+    else break;
+  }
+  return out;
 }
 
 // `mine`: the ids of the rows this call added or edited.
@@ -41,8 +59,10 @@ export function autoDedupeAnswer(
   }
   const at = db.prepare('SELECT deleted_at FROM trash_items WHERE id = ? AND user_id = ?').pluck()
     .get(d.trashId, userId) as string | undefined;
+  const cut = d.seqs.length > AUTO_DEDUPE_LIST_IDS;
   out.trash = {
-    trash_id: d.trashId, seqs: d.seqs,
+    trash_id: d.trashId, seqs: d.seqs.slice(0, AUTO_DEDUPE_LIST_IDS), seqs_count: d.seqs.length,
+    ...(cut ? { seq_ranges: seqRanges(d.seqs) } : {}),
     restorable_until: at ? trashExpiry(at, getTrashDays(userId)) : undefined,
     how_to_restore: howToRestore(d.trashId, d.seqs, surface),
   };
@@ -71,8 +91,10 @@ export function importDedupeAnswer(
 
 // Just these rows back: a restore takes at most TRASH_RESTORE_PICK_MAX seqs a call.
 function howToRestore(trashId: number, seqs: number[], surface: Surface): string {
-  const list = seqs.length > TRASH_RESTORE_PICK_MAX
-    ? `these seqs, ${TRASH_RESTORE_PICK_MAX.toLocaleString('en-US')} a call`
+  const perCall = seqs.length > TRASH_RESTORE_PICK_MAX
+    ? `, ${TRASH_RESTORE_PICK_MAX.toLocaleString('en-US')} a call` : '';
+  const list = seqs.length > AUTO_DEDUPE_LIST_IDS
+    ? `the ${seqs.length.toLocaleString('en-US')} seqs in seq_ranges (each from its first to its last)${perCall}`
     : JSON.stringify(seqs);
   return surface === 'mcp'
     ? `restore_from_trash with trash_id ${trashId} and seqs ${list} puts just these rows back.`
