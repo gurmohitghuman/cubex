@@ -4,18 +4,21 @@ Thanks for helping. Bug reports and ideas are welcome as GitHub issues. For anyt
 
 ## Development
 
-Needs Node.js 22.6 or newer.
+Needs Node.js 22.6 or newer. Everything below works the same on Windows, macOS and Linux.
 
 ```bash
 npm install
 npm run dev          # client on :3000, server on :3002, both hot-reload
 npm run typecheck    # server + client
-npm run test:unit    # fast tests, no server
-E2E_SPEC=lookup scripts/e2e-harness.sh      # the end-to-end specs for one area (a name or a spec path)
-scripts/e2e-parallel.sh                     # the full browser + API suite, in 3 parts at once
+npm run test:unit    # fast tests, no server (npm run test:unit -- lookup: only those test files)
+E2E_SPEC=lookup npm run e2e    # the end-to-end specs for one area (a name or a spec path)
+npm run e2e:all                # the full browser + API suite, in 3 parts at once
 ```
 
-The end-to-end suite needs Playwright: `npm install --no-save @playwright/test && npx playwright install chromium`.
+In PowerShell, set the variable first and clear it after (it stays set for the whole window, and a leftover
+`E2E_SPEC` would quietly shrink `npm run e2e:all`): `$env:E2E_SPEC='lookup'; npm run e2e; Remove-Item Env:E2E_SPEC`.
+
+The end-to-end suite needs Playwright: run `npm install --no-save @playwright/test`, then `npx playwright install chromium`.
 
 Stack: Express and SQLite (better-sqlite3) on the server, React, Vite and AG Grid in the browser, Sidequest for background runs. Runs, autosave and column handling rely on rules that the comments at the top of those files explain; read them before changing anything there. How a release is cut: [docs/releasing.md](docs/releasing.md).
 

@@ -1,3 +1,9 @@
+# LF line endings in every checkout, Windows included: Git for Windows otherwise
+# turns text files into CRLF on checkout, which breaks the bash scripts
+# (install.sh, bin/cubex) and makes whole-file phantom diffs. Binary files
+# (images, GIFs) are detected and left alone.
+* text=auto eol=lf
+
 # Keep the README screenshots and demo GIFs out of GitHub's source tarballs,
 # which is what install.sh and `cubex update` download.
 docs/media export-ignore

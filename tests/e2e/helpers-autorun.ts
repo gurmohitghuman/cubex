@@ -89,7 +89,7 @@ export async function waitNoActiveRun(sheetId: string, timeoutMs = 30_000) {
 // Moves the server's "today" (daily limits, auto-run caps): ms from now.
 export function moveClock(ms: number) {
   const file = process.env.E2E_CLOCK_FILE
-  if (!file) throw new Error('E2E_CLOCK_FILE not set: run via scripts/e2e-harness.sh')
+  if (!file) throw new Error('E2E_CLOCK_FILE not set: run via npm run e2e')
   if (ms === 0) fs.rmSync(file, { force: true })
   else fs.writeFileSync(file, String(ms))
 }

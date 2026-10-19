@@ -1,7 +1,7 @@
 # Mock treg
 
 A stand-in for [treg.to](https://treg.to), so enrichment specs never reach the real treg or spend
-money. `scripts/e2e-harness.sh` starts it on port 3098 (`E2E_TREG_PORT`), points the server at it
+money. `scripts/e2e-harness.mjs` starts it on port 3098 (`E2E_TREG_PORT`), points the server at it
 with `TREG_BASE_URL`, and gives specs its address as `E2E_TREG` (see `tests/e2e/helpers-treg.ts`).
 
 Run it by hand to point a preview at it:

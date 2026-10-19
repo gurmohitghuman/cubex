@@ -108,7 +108,7 @@ export async function mockState(): Promise<Record<string, unknown>> {
 
 export function readDb<T>(fn: (db: any) => T): T {
   const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set: run via scripts/e2e-harness.sh')
+  if (!dbPath) throw new Error('DB_PATH not set: run via npm run e2e')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath, { readonly: true })
   try { db.pragma('busy_timeout = 5000'); return fn(db) } finally { db.close() }

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import os from 'node:os'
 import { authedApi, BASE, getSheet, seedSheet } from './helpers'
 
 // The trash in the app: rows deleted in the grid come back from the toast's
@@ -6,7 +7,7 @@ import { authedApi, BASE, getSheet, seedSheet } from './helpers'
 // batch, finds rows inside a batch and restores the picked one, restores the
 // sheet, and deletes a batch for good; the sheet's History panel lists it all
 // with who did it; Settings sets the days. Screenshots go to SHOT_DIR.
-const SHOT_DIR = process.env.SHOT_DIR || '/tmp'
+const SHOT_DIR = process.env.SHOT_DIR || os.tmpdir()
 const DATA_CELL = (row: number) => `.ag-row[row-index="${row}"] [col-id^="col_"]`
 const SEL_CHECKBOX = (row: number) => `.ag-row[row-index="${row}"] [col-id="ag-Grid-SelectionColumn"] input`
 const values = async (api: Awaited<ReturnType<typeof authedApi>>, sheetId: string) =>

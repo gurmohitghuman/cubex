@@ -7,12 +7,12 @@ import { ledger, rowsOf, seedLeadRows, startRun, verifiedEmailRun, waitRun } fro
 // the real treg with the team key in CUBEX_SMOKE_TREG_TOKEN. It spends cents
 // of that team's balance (each row capped at $0.03, the run at $0.06), so the
 // harness runs it alone:
-//   CUBEX_SMOKE_TREG_TOKEN=$(cat <key file>) E2E_SPEC=tests/e2e/enrich-live-smoke.spec.ts scripts/e2e-harness.sh
+//   CUBEX_SMOKE_TREG_TOKEN=$(cat <key file>) E2E_SPEC=tests/e2e/enrich-live-smoke.spec.ts npm run e2e
 // What Cubex's ledger recorded must equal the drop in treg's balance, to the
 // micro-dollar. Skipped without the token. Never log the token.
 
 const TOKEN = process.env.CUBEX_SMOKE_TREG_TOKEN
-test.skip(!TOKEN, 'live smoke: set CUBEX_SMOKE_TREG_TOKEN (see scripts/e2e-harness.sh)')
+test.skip(!TOKEN, 'live smoke: set CUBEX_SMOKE_TREG_TOKEN (see scripts/e2e-harness.mjs)')
 
 // Fictional people at real company domains.
 const LEADS = [{ Name: 'Maya Chen', Website: 'stripe.com' }, { Name: 'Leo Martins', Website: 'notion.so' }]

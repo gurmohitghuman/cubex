@@ -1,9 +1,9 @@
 name: CI
 
 # Runs on every push to main and every pull request: typecheck, unit tests,
-# build. The Release workflow calls it too, on the commit being released.
-# The Playwright e2e suite needs a browser and a booted server, so it runs
-# locally (scripts/e2e-harness.sh), not here.
+# build, on Linux and on native Windows. The Release workflow calls it too, on
+# the commit being released. The Playwright e2e suite needs a browser and a
+# booted server, so it runs locally (npm run e2e:all), not here.
 
 on:
   push:
@@ -25,9 +25,23 @@ concurrency:
 
 jobs:
   build:
-    name: Typecheck + Unit tests + Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The Linux name is the required status check on main: keep it as is.
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # Both report, so a Windows-only failure is never hidden behind a Linux one.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Typecheck + Unit tests + Build
+            timeout: 10
+          # Native Windows (no WSL): npm runs scripts through cmd.exe there, and
+          # installs and test processes start slower.
+          - os: windows-latest
+            name: Typecheck + Unit tests + Build (Windows)
+            timeout: 25
 
     steps:
       - name: Check out code
@@ -57,7 +71,7 @@ jobs:
 
       - name: Unit tests
         # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
-        # No server, no network; each DB-touching test gets its own temp DB_PATH.
+        # No server, no network; each test gets its own temp DB_PATH (scripts/unit-tests.mjs).
         run: npm run test:unit
 
       - name: Build (server + client)
@@ -68,7 +82,8 @@ jobs:
       - name: Verify build outputs exist
         # Belt and braces: confirm the artifacts that production needs
         # actually got produced. If the build "succeeds" but produces no
-        # dist/, the deploy will fail mysteriously.
+        # dist/, the deploy will fail mysteriously. Bash on Windows too (Git Bash).
+        shell: bash
         run: |
           set -e
           test -f server/dist/index.js

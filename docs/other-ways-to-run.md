@@ -34,4 +34,8 @@ npm run build
 NODE_ENV=production npm start
 ```
 
+On Windows, in PowerShell, the last line is `$env:NODE_ENV='production'; npm start`. That setting lasts until you close the window, so run `npm install` or `npm run dev` in a new one (with it set, npm skips the build tools).
+
 Open http://localhost:3002. Settings go in `server/.env` (copy [server/.env.example](../server/.env.example)), your data lives in `server/data/`, and `npm run reset-password` resets the password. Unless you set `HOST`, Cubex listens on every network interface here.
+
+On Windows, keep the `cubex` folder (or `DB_PATH`) inside your own user folder, such as `C:\Users\<you>\`. On macOS and Linux Cubex makes its data folder and secret files readable by you alone; Windows ignores those file modes, and your user folder is what keeps them private there.

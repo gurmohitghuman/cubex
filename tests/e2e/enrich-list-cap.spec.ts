@@ -8,7 +8,7 @@ import { companiesCsv, destRows, runRest, testAndPick } from './helpers-list'
 // for room (their row says so), Resume is refused while the sheet is still
 // full, and deleting rows there lets the waiting rows in. The default limit is
 // a million rows, so this runs on its own with a small one:
-//   MAX_ROWS_PER_SHEET=60 E2E_SPEC=tests/e2e/enrich-list-cap.spec.ts scripts/e2e-harness.sh
+//   MAX_ROWS_PER_SHEET=60 E2E_SPEC=tests/e2e/enrich-list-cap.spec.ts npm run e2e
 const CAP = Number(process.env.MAX_ROWS_PER_SHEET ?? 1_000_000)
 const COMPANIES: Array<[string, string]> = Array.from({ length: 12 }, (_, i) => [`Co ${i + 1}`, `co${i + 1}.example`])
 

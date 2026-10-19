@@ -26,7 +26,7 @@ const require = createRequire(import.meta.url)
 
 function openDb() {
   const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via scripts/e2e-harness.sh')
+  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')

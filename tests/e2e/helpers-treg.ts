@@ -1,7 +1,7 @@
 import { request as pwRequest, APIRequestContext, expect } from '@playwright/test'
 import { importCsv } from './helpers'
 
-// The mock treg (tests/mock-treg) that scripts/e2e-harness.sh starts and points
+// The mock treg (tests/mock-treg) that scripts/e2e-harness.mjs starts and points
 // the server at (TREG_BASE_URL). Specs set its state (balance, the team's own
 // provider keys) and read which requests Cubex made.
 export const TREG = process.env.E2E_TREG || 'http://127.0.0.1:3098'

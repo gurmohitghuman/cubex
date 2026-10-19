@@ -4,7 +4,7 @@ import { test, expect, request as pwRequest, APIRequestContext } from '@playwrig
 // server:3002), where React StrictMode double-invokes effects and surfaces races
 // the production build can hide.
 //
-// This spec does NOT run under scripts/e2e-harness.sh: the harness boots a
+// This spec does NOT run under scripts/e2e-harness.mjs: the harness boots a
 // production build on :3099 against a throwaway DB, and nothing is listening on
 // 3000/3002. Previously it just failed there (looking like a product bug); now
 // it SKIPS unless a dev server is actually up. To run it:

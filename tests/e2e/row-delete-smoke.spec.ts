@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import os from 'node:os'
 import { authedApi, seedSheet, getSheet, BASE } from './helpers'
 
 // MANUAL SMOKE (not part of the data-consistency suite): verifies the row-delete
@@ -6,7 +7,7 @@ import { authedApi, seedSheet, getSheet, BASE } from './helpers'
 // (rows un-highlight, topbar count gone), and a fire-and-forget delete on sheet A
 // doesn't corrupt sheet B after a tab switch. Screenshots are written to
 // SHOT_DIR for human inspection.
-const SHOT_DIR = process.env.SHOT_DIR || '/tmp'
+const SHOT_DIR = process.env.SHOT_DIR || os.tmpdir()
 const DATA_CELL = (row: number) => `.ag-row[row-index="${row}"] [col-id^="col_"]`
 const SEL_CHECKBOX = (row: number) =>
   `.ag-row[row-index="${row}"] [col-id="ag-Grid-SelectionColumn"] input`
