@@ -2,8 +2,9 @@
 // the preview. In memory: a restart (or POST /__mock/reset) starts over.
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures')
+const FIXTURES = fileURLToPath(new URL('fixtures', import.meta.url))
 export const fixture = (rel) => JSON.parse(fs.readFileSync(path.join(FIXTURES, rel), 'utf8'))
 export const hasFixture = (rel) => fs.existsSync(path.join(FIXTURES, rel))
 export const listFixtures = (dir) => fs.readdirSync(path.join(FIXTURES, dir)).filter(f => f.endsWith('.json'))

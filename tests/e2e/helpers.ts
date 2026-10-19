@@ -8,7 +8,7 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
 // Shared E2E helpers. Cookie-based auth (HttpOnly cubex_session). Cubex has a
-// single account; the harness (scripts/e2e-harness.sh) sets its password to
+// single account; the harness (scripts/e2e-harness.mjs) sets its password to
 // TEST_PASSWORD through POST /api/auth/setup before any spec runs. API base +
 // client base are the same prod origin (the server serves client/dist).
 export const BASE = process.env.E2E_BASE || 'http://localhost:3099'
@@ -169,7 +169,7 @@ const ACCESS_TOKEN_DISPLAY_PREFIX_CHARS = 12
 
 export function mintAccessTokenInDb(scopes: string[], name: string): string {
   const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via scripts/e2e-harness.sh')
+  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
   const crypto = require('node:crypto')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
@@ -225,7 +225,7 @@ export async function makeAccessToken(
 // busy_timeout.
 export function setSheetName(sheetId: string, name: string) {
   const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via scripts/e2e-harness.sh')
+  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
   try {

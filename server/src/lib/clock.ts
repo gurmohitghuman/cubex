@@ -1,6 +1,6 @@
 // The clock enrichments count days by (UTC): the daily limit, an auto-run's
 // daily cap and the day an auto-run started. End-to-end tests move it to the
-// next day: CUBEX_TEST_CLOCK_FILE (set only by scripts/e2e-harness.sh, never in
+// next day: CUBEX_TEST_CLOCK_FILE (set only by scripts/e2e-harness.mjs, never in
 // production) names a file holding an offset in milliseconds, added to the real
 // time. It is re-read at most every half second, so the API process and the
 // run workers (each with its own copy of this module) agree on the time.

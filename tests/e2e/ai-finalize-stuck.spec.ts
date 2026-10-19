@@ -38,8 +38,8 @@ const { hasUnfinishedRow } = require(
 // (like ai-commit-superseded.spec.ts).
 function openTestDb(): Database.Database {
   const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via scripts/e2e-harness.sh')
-  if (/(^|\/)cubex\.db$/.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
+  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db
