@@ -27,6 +27,7 @@ router.post('/runs/:id/resume', async (req: AuthRequest, res) => {
     const result = await resumeRun('ai', req.params.id, req.userId!, true);
     if ('fail' in result) {
       if (result.fail === 'conflict') return res.status(409).json({ error: 'Run is no longer paused' });
+      if (result.fail === 'spend_cap') return res.status(403).json({ error: result.message });
       return res.status(400).json({ error: 'Run is not paused' });
     }
     res.json({ message: 'AI run resumed' });

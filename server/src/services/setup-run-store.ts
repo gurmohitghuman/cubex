@@ -3,6 +3,7 @@
 // and MCP show. The runner (setup-runner.ts) moves them along.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
+import { actorTokenId } from '../lib/actor';
 import { mainColumn, type SetupSpec, type StepKind } from '../lib/setups/spec';
 import type { StepMode } from '../lib/setups/again';
 import type { ApplyChoices } from '../lib/setups/apply-plan';
@@ -27,6 +28,7 @@ export interface SetupRunRow {
   plan: string; steps: string; target_row_ids: string | null; allow_secrets: number; auto_run: number;
   layer: number; status: SetupRunStatus; error_message: string | null; created_at: string; updated_at: string;
   webhook_id?: string | null;
+  access_token_id?: string | null; // the token that applied it: its steps spend for it (migration 042)
 }
 // modes: whether each step makes its columns or carries the sheet's on (none
 // recorded: every one new). choices: what it was used with, so using it again
@@ -77,10 +79,10 @@ export function insertSetupRun(p: {
   const steps: StepRecord[] = p.plan.spec.steps.map(() => ({ state: 'waiting' }));
   db.transaction(() => {
     db.prepare(`INSERT INTO setup_runs (id, user_id, sheet_id, setup_id, setup_name, plan, steps, target_row_ids,
-      allow_secrets, auto_run, webhook_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      allow_secrets, auto_run, webhook_id, access_token_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       id, p.userId, p.sheetId, p.setupId, p.setupName, JSON.stringify(p.plan), JSON.stringify(steps),
       p.targetRowIds ? JSON.stringify(p.targetRowIds) : null, p.allowSecrets ? 1 : 0, p.autoRun ? 1 : 0,
-      p.webhookId ?? null);
+      p.webhookId ?? null, actorTokenId());
     db.prepare(`UPDATE setups SET use_count = use_count + 1, last_used_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(p.setupId, p.userId);
   })();

@@ -23,6 +23,7 @@ import {
   loadSetupRun, modesOf, planOf, saveSteps, setStatus, stepsOf, type SetupRunRow, type StepRecord,
 } from './setup-run-store';
 import { withoutChangeLog } from '../lib/change-log';
+import { currentActor, runAs } from '../lib/actor';
 
 async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
   const plan = planOf(r), modes = modesOf(plan);
@@ -99,8 +100,11 @@ export async function advanceSetupRun(id: string): Promise<void> {
   running.add(id);
   try {
     // Its steps (columns, runs, auto-run) log nothing of their own: the
-    // sheet's change log has "Used the setup" (setup-apply.ts).
-    await withoutChangeLog(() => advance(id));
+    // sheet's change log has "Used the setup" (setup-apply.ts). They spend for
+    // the token that applied it, also when the sweep goes on with it.
+    const tokenId = db.prepare('SELECT access_token_id FROM setup_runs WHERE id = ?').pluck().get(id) as
+      string | null | undefined;
+    await runAs({ ...currentActor(), tokenId: tokenId ?? null }, () => withoutChangeLog(() => advance(id)));
   } finally {
     running.delete(id);
   }

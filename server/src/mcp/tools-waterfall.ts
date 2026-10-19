@@ -16,6 +16,7 @@ import { tokenWaterfall } from '../services/waterfall-token-run';
 import { DAILY_LIMIT_NOTE, STATUS_WORDS } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 const money = () => z.number().positive();
 const common = {
@@ -121,7 +122,7 @@ export const WATERFALL_DESCRIPTION =
 
 export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'waterfall_column', {
-    description: WATERFALL_DESCRIPTION,
+    description: WATERFALL_DESCRIPTION + capToolNote(ctx.spend ?? null, true),
     // Strict at every level: a misspelled argument is refused, never dropped.
     inputSchema: z.object({
       action: z.enum(['run', 'describe']).optional().describe('Default run. describe: read a column\'s setup'),

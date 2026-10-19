@@ -6,6 +6,8 @@ import { getOpenRouterClient } from '../services/openrouter';
 import { HTTP_CONFIG_SYSTEM_PROMPT, buildUserMessage } from '../lib/http-config-prompt';
 import { hostFromUrl, safeParseJSON, toModalConfig } from '../lib/http-config-shape';
 import { getSheetColumns } from '../lib/sql-helpers';
+import { usageOf } from '../lib/responses-adapter';
+import { recordOneCall } from '../services/usage-calls';
 
 const router = express.Router();
 
@@ -102,7 +104,10 @@ router.post('/generate-config', authenticateToken, async (req: AuthRequest, res)
       temperature: 0.2,
       max_tokens: 2000,
       ...(tools.length > 0 ? { tools } : {}),
+      // OpenRouter says what the call cost: it goes in the usage history (services/usage-calls.ts).
+      ...({ usage: { include: true } } as object),
     });
+    recordOneCall(req.userId!, sheetId, usageOf(completion as never));
 
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = safeParseJSON(raw);

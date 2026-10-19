@@ -2,7 +2,8 @@
 // and the surfaces that call them (UI routes, /api/v1, MCP tools).
 import { db } from '../lib/db';
 import { MCP_RUN_STARTS_PER_MIN } from '../lib/api-v1-constants';
-import { makeRateWindow } from '../lib/rate-window';
+import { makeRateWindow, tooManyMessage, type RateDecision } from '../lib/rate-window';
+import { spendCapRefusal } from './token-spend';
 
 // Structured failures the start/rerun/control services return instead of
 // throwing (expected outcomes keep their message + HTTP mapping identical on
@@ -53,3 +54,16 @@ export function resolveRowIdsToIndexes(
 // credits, so starts get this guard on top of the per-token request limit
 // (lib/limits.ts apiV1Limiter). Each call takes a slot when one is free.
 export const runStartWindow = makeRateWindow(MCP_RUN_STARTS_PER_MIN);
+
+// A token starting a run, a rerun or a preview: refused while it is at its
+// spend cap (services/token-spend.ts, no slot taken), else it takes a slot. A
+// plain HTTP API run (paid false) costs nothing here: only the slot.
+export type StartRefusal = { capped: string } | { limited: RateDecision };
+export function takeRunStart(userId: string, tokenId: string, paid = true): StartRefusal | null {
+  const capped = spendCapRefusal(userId, tokenId, paid ? null : 'free');
+  if (capped) return { capped };
+  const slot = runStartWindow(tokenId);
+  return slot.allowed ? null : { limited: slot };
+}
+export const startRefusalMessage = (r: StartRefusal): string =>
+  ('capped' in r ? r.capped : tooManyMessage('run starts', r.limited));

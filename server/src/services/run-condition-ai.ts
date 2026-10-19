@@ -18,6 +18,8 @@ import { askWriterModel } from './ai-writer-call';
 import { scanRule } from './run-condition-rows';
 import type { RunFail } from './run-shared';
 import { redactSecrets } from '../lib/redact';
+import { actorSpendRefusal } from './token-spend';
+import { addCall, noSpend, recordCallUsage } from './usage-calls';
 
 export interface RuleCheckResult {
   rule: string; columns: string[];
@@ -89,6 +91,8 @@ export async function generateRule(
   userId: string, sheetId: string, words: string, explicitModel?: string | null,
 ): Promise<{ ok: GeneratedRule } | RunFail | { fail: 'no_model'; message: string }> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+  const capped = actorSpendRefusal(userId);
+  if (capped) return { fail: 'forbidden', message: capped };
   const asked = words.trim();
   if (!asked) return bad('Say which rows should run, for example: industry is SaaS and more than 50 employees.');
   if (asked.length > RULE_WORDS_MAX_CHARS) return bad(`Keep it under ${RULE_WORDS_MAX_CHARS} characters.`);
@@ -103,12 +107,30 @@ export async function generateRule(
     .pluck().all(sheetId, userId, RULE_GENERATE_SAMPLE_ROWS) as string[]).map(parseRowData);
   const samples = { ...columnSamples(columns, rows, holdsRunMarker), ...fixedWords(sheetId, userId) };
 
+  // Every call it makes goes in the usage history as an AI helper's (services/usage-calls.ts).
+  const spent = noSpend();
+  try {
+    return await ruleAttempts(userId, sheetId, picked, async (refused) => {
+      const answer = await askWriterModel(openai, picked.model, RULE_SYSTEM_PROMPT,
+        ruleUserMessage(asked, samples, refused), 400);
+      addCall(spent, { costUsd: answer.cost, providerCostUsd: answer.providerCost });
+      return answer;
+    });
+  } finally {
+    recordCallUsage(userId, sheetId, null, 'assist', spent);
+  }
+}
+
+// The model's tries (two at most): each reply is checked on the sheet; a refusal is told back once.
+async function ruleAttempts(
+  userId: string, sheetId: string, picked: NonNullable<ReturnType<typeof ruleModel>>,
+  ask: (refused: string | undefined) => Promise<{ text: string; cost: number | null }>,
+): Promise<{ ok: GeneratedRule } | RunFail> {
   let cost: number | null = null, refused: string | undefined;
   for (let attempt = 0; attempt < 2; attempt++) {
     let answer: { text: string; cost: number | null };
     try {
-      const user = ruleUserMessage(asked, samples, refused);
-      answer = await askWriterModel(openai, picked.model, RULE_SYSTEM_PROMPT, user, 400);
+      answer = await ask(refused);
     } catch (error) {
       const why = error instanceof Error ? redactSecrets(error.message).slice(0, 200) : 'no answer';
       const message = `${picked.model} didn't answer (${why}). Try again, or write the rule yourself.`;

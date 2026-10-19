@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Check, Copy, KeyRound, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AccessTokenScope, CreatedAccessToken, settingsAPI } from '@/utils/api'
+import { parseCapInput, SpendCapField } from './AccessTokenSpend'
 
 interface Props {
   isOpen: boolean
@@ -30,13 +31,14 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
   // Design default: read+write+run on, secrets off (the key-exfiltration gate).
   const [scopes, setScopes] = useState<Set<AccessTokenScope>>(new Set(['read', 'write', 'run']))
   const [expiryDays, setExpiryDays] = useState<number | null>(null)
+  const [cap, setCap] = useState('')
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState<CreatedAccessToken | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
-      setName(''); setScopes(new Set(['read', 'write', 'run'])); setExpiryDays(null)
+      setName(''); setScopes(new Set(['read', 'write', 'run'])); setExpiryDays(null); setCap('')
       setCreated(null); setCopied(false)
     }
   }, [isOpen])
@@ -54,7 +56,8 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
     setScopes(next)
   }
 
-  const canSubmit = !!name.trim() && scopes.size > 0
+  const capUsd = parseCapInput(cap)
+  const canSubmit = !!name.trim() && scopes.size > 0 && capUsd !== 'bad'
   const handleCreate = async () => {
     if (!canSubmit) return
     setBusy(true)
@@ -63,6 +66,7 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
         name: name.trim(),
         scopes: [...scopes],
         expires_in_days: expiryDays,
+        spend_cap_usd: capUsd,
       })
       setCreated(token)
       await onCreated()
@@ -168,6 +172,8 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
                 ))}
               </select>
             </div>
+
+            <SpendCapField value={cap} onChange={setCap} />
           </div>
         )}
 

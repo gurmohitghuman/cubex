@@ -2,7 +2,7 @@ import { db } from '../lib/db';
 import { redactError } from '../lib/redact';
 import { runRows, countRunRows } from '../lib/run-rows';
 import { shouldNotStartRun, type AIRunRow } from './ai-runner-status';
-import { dispatchRows, finalizeStatus, markFailed } from './ai-runner-lifecycle';
+import { dispatchRows, finalizeStatus, markFailed, pauseAtTokenCap } from './ai-runner-lifecycle';
 import { fetchModels } from '../lib/openrouter';
 import { aiRunStamper } from '../lib/run-inputs/stampers';
 
@@ -92,7 +92,10 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
 
     // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, null, aiRunStamper(run));
-    await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    if (await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller)) {
+      pauseAtTokenCap(runId, myGeneration);
+      return;
+    }
     await finalizeStatus(runId, run, myGeneration);
   } catch (error) {
     console.error(`AI run ${runId} error:`, redactError(error));
@@ -141,7 +144,10 @@ export async function processAIRerun(runId: string, targetRows: number[], expect
     if (run.use_openrouter_web_search) await fetchModels(Date.now()); // see processAIRun
 
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, targetRows, aiRunStamper(run));
-    await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    if (await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller)) {
+      pauseAtTokenCap(runId, myGeneration);
+      return;
+    }
     // Scope the stuck-row check to the rerun's targets (subset) — see finalizeStatus.
     await finalizeStatus(runId, run, myGeneration, targetRows);
   } catch (error) {

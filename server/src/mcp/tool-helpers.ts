@@ -9,6 +9,7 @@ import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
+import type { SpendView } from '../lib/token-spend';
 
 // Option types that also take their value as text. An MCP client whose tool
 // list was loaded before an option existed sends it as a string ("true", "2"),
@@ -30,6 +31,9 @@ export interface McpAuthCtx {
   abortSignal?: AbortSignal;
   // Where one-time file links for this caller point (lib/file-links.ts linkBase).
   linkBase?: string;
+  // The token's spend cap and spend when the request came in (null: no cap),
+  // for the tools that spend to say (lib/token-spend.ts capToolNote).
+  spend?: SpendView | null;
 }
 
 export interface ToolResult {

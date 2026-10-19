@@ -14,6 +14,7 @@ import { tokenStartEnrichmentRun, type TokenEnrichArgs } from '../services/enric
 import { DAILY_LIMIT_NOTE, STATUS_WORDS } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 const condition = z.object({
   column: z.string(),
@@ -105,7 +106,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
   });
 
   registerTool(server, 'run_enrichment', {
-    description: RUN_ENRICHMENT_DESCRIPTION,
+    description: RUN_ENRICHMENT_DESCRIPTION + capToolNote(ctx.spend ?? null, true),
     // Strict: an argument it doesn't know (estimateOnly, test_rows) is refused,
     // never dropped, so a misspelled estimate can't start a paid run.
     inputSchema: z.object({

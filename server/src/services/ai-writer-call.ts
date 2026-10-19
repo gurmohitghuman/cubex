@@ -1,7 +1,8 @@
 // One short call to the person's model for something Cubex writes once from
 // plain words (an "Only run if" rule, a formula): temperature 0 where the
 // model takes one (a 400 naming it sends the call again without it, as a
-// run's rows do). Returns the reply's text and what the call cost.
+// run's rows do). Returns the reply's text and what the call cost (OpenRouter's
+// charge, and on the user's own provider key what that provider billed).
 import { getOpenRouterClient } from './openrouter';
 import { refusesTemperature } from './ai-model-call';
 import { modelTakesTemperature } from '../lib/openrouter';
@@ -11,7 +12,7 @@ export type WriterClient = Awaited<ReturnType<typeof getOpenRouterClient>>;
 
 export async function askWriterModel(
   openai: WriterClient, model: string, system: string, user: string, maxTokens: number,
-): Promise<{ text: string; cost: number | null }> {
+): Promise<{ text: string; cost: number | null; providerCost: number | null }> {
   const body: Record<string, unknown> = {
     model, max_tokens: maxTokens, usage: { include: true },
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
@@ -25,5 +26,7 @@ export async function askWriterModel(
     delete body.temperature;
     completion = await openai.chat.completions.create(body as never);
   }
-  return { text: completion?.choices?.[0]?.message?.content ?? '', cost: usageOf(completion).costUsd };
+  const usage = usageOf(completion);
+  const text = completion?.choices?.[0]?.message?.content ?? '';
+  return { text, cost: usage.costUsd, providerCost: usage.providerCostUsd };
 }

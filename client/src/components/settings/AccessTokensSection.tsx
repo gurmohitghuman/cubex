@@ -3,6 +3,7 @@ import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AccessToken, settingsAPI } from '@/utils/api'
 import { AccessTokenCreateModal } from './AccessTokenCreateModal'
+import { AccessTokenSpend } from './AccessTokenSpend'
 import { ConfirmDialog } from '../ConfirmDialog'
 
 interface Props {
@@ -93,6 +94,7 @@ export const AccessTokensSection: React.FC<Props> = ({ tokens, reloadTokens }) =
                       {token.last_used_at ? ` · Last used ${fmtDate(token.last_used_at)}` : ' · Never used'}
                       {token.expires_at ? ` · Expires ${fmtDate(token.expires_at)}` : ''}
                     </p>
+                    <AccessTokenSpend token={token} onSaved={reloadTokens} />
                   </div>
                   <button
                     onClick={() => setConfirmRevoke(token)}

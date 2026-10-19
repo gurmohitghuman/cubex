@@ -17,6 +17,8 @@ import { askWriterModel, type WriterClient } from './ai-writer-call';
 import { ruleModel } from './run-condition-ai';
 import { previewFormulaColumn, type FormulaPreview } from './formula-preview';
 import type { RunFail } from './run-shared';
+import { actorSpendRefusal } from './token-spend';
+import { addCall, noSpend, recordCallUsage } from './usage-calls';
 
 export interface WrittenFormula {
   model: string; model_source: 'picked' | 'sheet' | 'account'; cost_usd: number | null;
@@ -39,6 +41,8 @@ export async function writeFormula(
   userId: string, sheetId: string, words: string, explicitModel?: string | null,
 ): Promise<{ ok: WrittenFormula } | RunFail> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+  const capped = actorSpendRefusal(userId);
+  if (capped) return { fail: 'forbidden', message: capped };
   const asked = words.trim();
   if (!asked) return bad('Say what the column should hold, for example: the work email from Response.');
   if (asked.length > FORMULA_WORDS_MAX_CHARS) return bad(`Keep it under ${FORMULA_WORDS_MAX_CHARS} characters.`);
@@ -52,9 +56,18 @@ export async function writeFormula(
   const rows = (db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index LIMIT ?')
     .pluck().all(sheetId, userId, FORMULA_SAMPLE_ROWS) as string[]).map(parseRowData);
   const samples = formulaSamples(columns, rows, holdsRunMarker);
-  const ask = (user: string) => askWriterModel(openai, picked.model, FORMULA_SYSTEM_PROMPT, user, 600);
+  // Every call it makes goes in the usage history as an AI helper's (services/usage-calls.ts).
+  const spent = noSpend();
+  const ask = async (user: string) => {
+    const answer = await askWriterModel(openai, picked.model, FORMULA_SYSTEM_PROMPT, user, 600);
+    addCall(spent, { costUsd: answer.cost, providerCostUsd: answer.providerCost });
+    return answer;
+  };
   const message = (retry?: string) => formulaUserMessage(asked, samples, retry);
-  const out = await formulaAttempts(userId, sheetId, ask, message);
+  let out: Awaited<ReturnType<typeof formulaAttempts>>;
+  try { out = await formulaAttempts(userId, sheetId, ask, message); } finally {
+    recordCallUsage(userId, sheetId, null, 'assist', spent);
+  }
   if ('upstream' in out) {
     const why = `${picked.model} didn't answer (${out.upstream}).`;
     return { fail: 'upstream', message: `${why} Try again, or write the formula yourself.` };

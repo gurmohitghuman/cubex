@@ -27,6 +27,7 @@ import { clearCooldowns } from './enrich-providers';
 import { getOpenRouterClient } from './openrouter';
 import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
+import { tokenRowsThatFit } from './token-spend';
 import { processWaterfallRow, type WaterfallRowCtx } from './waterfall-row';
 import { pruneKeptAnswers } from './waterfall-journal';
 import { RunFormulas } from './waterfall-formulas';
@@ -57,24 +58,30 @@ export function runSpentWaterfallUsd(runId: string, userId: string): number {
   return r?.s ?? 0;
 }
 
-type Allowed = { n: number; tregMicro: number } | { reason: string; message: string } | { wait: true };
+type Allowed = { n: number; tregMicro: number; aiMicro: number } | { reason: string; message: string } | { wait: true };
 
 // How many more rows may start now, or why none can (see enrich-runner.ts
 // holdRows: one IMMEDIATE transaction reads what is spent and held, and holds
-// the room for the rows it lets start). Only treg's part of a row is held in
-// enrich_holds, which every run's daily room reads; the AI part of this run's
-// rows still out is counted here, for its own limit. A paid run whose steps
-// have no known price (cap 0) stops on what it really spent; so does today's
-// limit when a treg step has none.
+// the room for the rows it lets start). treg's part of a row is held in
+// enrich_holds' hold_micro, which every run's daily room reads; its AI part in
+// ai_hold_micro, which only the run's access token's spend cap reads (with what
+// the token's other runs spent and hold); this run's own limit counts the AI
+// part of its rows still out here. A paid run whose steps have no known price
+// (cap 0) stops on what it really spent; so does today's limit when a treg
+// step has none.
 function holdRows(run: HTTPRunRow, config: WaterfallRunConfig, generation: number, free: number, out: number)
   : Allowed {
   const w = config.waterfall;
   const treg = tregPart(config);
   const tregMicro = Math.max(0, Math.round(w.tregCapPerRowUsd * 1e6));
   const aiCap = Math.max(0, w.maxCostPerRowUsd - w.tregCapPerRowUsd);
+  const aiMicro = Math.max(0, Math.round(aiCap * 1e6));
   const rowCap = w.maxCostPerRowUsd > 0 ? w.maxCostPerRowUsd : null;
+  const hold = (rows: number) => {
+    if (tregMicro || aiMicro) setRunHold(run.id, run.user_id, generation, rows * tregMicro, rows * aiMicro);
+  };
   return db.transaction((): Allowed => {
-    if (tregMicro) setRunHold(run.id, run.user_id, generation, out * tregMicro);
+    hold(out);
     const spent = runSpentWaterfallUsd(run.id, run.user_id);
     if (limitReached(w.spendLimitUsd, spent, rowCap)) {
       return {
@@ -96,10 +103,12 @@ function holdRows(run: HTTPRunRow, config: WaterfallRunConfig, generation: numbe
     }
     const byDay = limit === null ? Infinity
       : rowsThatFit(limit / 1e6, today + heldMicro(run.user_id) / 1e6, w.tregCapPerRowUsd);
-    if (byRun < 1 || byDay < 1) return { wait: true };
-    const n = Math.min(free, byRun, byDay);
-    if (tregMicro) setRunHold(run.id, run.user_id, generation, (out + n) * tregMicro);
-    return { n, tregMicro };
+    const byToken = tokenRowsThatFit(run.user_id, run.access_token_id, rowCap);
+    if ('reason' in byToken) return byToken;
+    if (byRun < 1 || byDay < 1 || byToken.rows < 1) return { wait: true };
+    const n = Math.min(free, byRun, byDay, byToken.rows);
+    hold(out + n);
+    return { n, tregMicro, aiMicro };
   }).immediate();
 }
 
@@ -186,28 +195,29 @@ export async function processWaterfallRun(
       const first = await source.next();
       if (first.done) break;
       let allowed: Allowed = paid ? holdRows(run, config, generation, concurrency - out.size, out.size)
-        : { n: concurrency - out.size, tregMicro: 0 };
+        : { n: concurrency - out.size, tregMicro: 0, aiMicro: 0 };
       while ('wait' in allowed) {
         await (out.size > 0 ? rowSettled() : new Promise(resolve => setTimeout(resolve, STOP_POLL_MS)));
         if (stopped()) break rows;
         allowed = holdRows(run, config, generation, concurrency - out.size, out.size);
       }
       if ('reason' in allowed) { ended = allowed; break; }
-      const { n, tregMicro } = allowed;
+      const { n, tregMicro, aiMicro } = allowed;
       const batch: RunRow[] = [first.value];
       while (batch.length < n) {
         const next = await source.next();
         if (next.done) break;
         batch.push(next.value);
       }
-      if (batch.length < n && tregMicro) releaseRow(run.id, generation, (n - batch.length) * tregMicro);
+      const unused = n - batch.length;
+      if (unused > 0) releaseRow(run.id, generation, unused * tregMicro, unused * aiMicro);
       for (const row of batch) {
         // A row that threw keeps its ⏳ and no result: the finalize fails the run
         // with "Some rows could not be processed" (a rerun retries them).
         const done: Promise<void> = processWaterfallRow(ctx, row)
           .then(() => {}, error => { console.error(`Waterfall run ${run.id} row error:`, redactError(error)); })
           .finally(() => {
-            if (tregMicro) releaseRow(run.id, generation, tregMicro);
+            releaseRow(run.id, generation, tregMicro, aiMicro);
             out.delete(done);
             const freed = slotFreed;
             slotFreed = null;

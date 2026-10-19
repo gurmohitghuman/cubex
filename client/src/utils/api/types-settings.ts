@@ -73,6 +73,14 @@ export interface APIKeySuggestion {
 // Distinct from APIKey above (third-party keys for HTTP enrichment templates).
 export type AccessTokenScope = 'read' | 'write' | 'run' | 'secrets'
 
+// What a token's runs, previews and AI helpers spent (AI + enrichments), and
+// its lifetime cap (null: none). left_usd is null without a cap.
+export interface TokenSpend {
+  spend_cap_usd: number | null
+  spent_usd: number
+  left_usd: number | null
+}
+
 export interface AccessToken {
   id: string
   name: string
@@ -81,6 +89,7 @@ export interface AccessToken {
   expires_at: string | null
   created_at: string
   last_used_at: string | null
+  spend: TokenSpend
 }
 
 // POST response — carries the full token EXACTLY ONCE; never retrievable again.

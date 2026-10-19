@@ -14,12 +14,14 @@ export interface AutorunEntry {
   daily_cap_micro: number | null; daily_row_cap: number | null;
   watermark_row_index: number; rescan: number; row_generation_seen: number; data_version_seen: number;
   paused_reason: string | null; paused_message: string | null; paused_at: string | null;
+  access_token_id: string | null;   // whose spend cap its batches count against (migration 042)
 }
 
 // Why an auto-run stopped. Some clear on their own: the capacity ones once
 // today's caps allow a row again (midnight UTC, or a raise); the treg ones are
 // retried a few minutes on; a missing column once it is back; a key problem
-// when a key is saved; 'loop' (a list auto-run whose rows would come back and
+// when a key is saved; 'token_cap' once the access token that turned it on
+// has room under its spend cap again (a raise); 'loop' (a list auto-run whose rows would come back and
 // set it off again) once nothing adds rows back. 'user', 'retired', 'setup',
 // 'priced' (treg prices a tool the team's own key billed: it needs a daily
 // cap) and 'failed' wait for the person (saving auto-run again, or a new run

@@ -22,6 +22,8 @@ import { planIfSearching } from './web-search-catalog';
 import { checkRunRule } from './run-rule';
 import { rowsByIndex, scanRule } from './run-condition-rows';
 import { previewCosts } from './run-preview-cost';
+import { addCall, noSpend, recordCallUsage } from './usage-calls';
+import { acquirePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER, releasePreviewSlot } from '../lib/ai-preview-concurrency';
 
 export interface PreviewInput {
   sheetId: string;
@@ -37,6 +39,7 @@ export interface PreviewInput {
   search?: SearchOptions | null;
   runIf?: string | null;
   concurrency: number;            // the full run's, resolved (explicit, else the sheet's default)
+  columnName?: string;            // the column it previews, for its usage record
 }
 
 export type PreviewOutcome =
@@ -67,10 +70,22 @@ function sampleRows(
   return { count, sample };
 }
 
-export async function previewAiRun(userId: string, input: PreviewInput): Promise<PreviewOutcome> {
+export async function previewAiRun(userId: string, input: PreviewInput, slotKey = userId): Promise<PreviewOutcome> {
   if (!verifySheetOwnership(input.sheetId, userId)) {
     return { fail: 'not_found', message: 'Sheet not found' };
   }
+  // At most MAX_ACTIVE_PREVIEWS_PER_USER at once for each access token (slotKey;
+  // the app's own previews count apart): a token's spend cap counts a preview
+  // when it ends, so this bounds how far previews started together can pass it
+  // (lib/token-spend.ts OVERSHOOT_NOTE).
+  if (!acquirePreviewSlot(slotKey)) {
+    return { fail: 'bad_request', message: `${MAX_ACTIVE_PREVIEWS_PER_USER} previews are already running. `
+      + 'Wait for one to finish.' };
+  }
+  try { return await previewRows(userId, input); } finally { releasePreviewSlot(slotKey); }
+}
+
+async function previewRows(userId: string, input: PreviewInput): Promise<PreviewOutcome> {
   const refsError = unknownPromptRefsError(input.sheetId, userId, input.prompt);
   if (refsError) return { fail: 'bad_request', message: refsError };
   const model = resolveAiModel(input.model, input.sheetId, userId);
@@ -142,6 +157,11 @@ export async function previewAiRun(userId: string, input: PreviewInput): Promise
     }
     return { row_index: r.rowIndex, output: r.value, ...extra };
   });
+
+  // What the rows cost goes in the usage history (and the token's spend cap) as a preview.
+  const spent = noSpend();
+  for (const r of results) addCall(spent, r, true);
+  recordCallUsage(userId, input.sheetId, input.columnName ?? null, 'preview', spent);
 
   const costs = await previewCosts(userId, results, model, count, {
     maxChars: input.maxChars, concurrency: input.concurrency, web: web.search || web.fetch,

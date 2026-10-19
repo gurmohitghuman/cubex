@@ -36,6 +36,7 @@ import { autorunFillingColumn } from './autorun-block';
 import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 import { resolveRerunTargets, type RerunMode } from './ai-rerun-modes';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 // rowIndices: an explicit subset, which wins over mode; firstRows / withinRows
 // narrow the rows mode picks from (rerun-targets.ts).
@@ -156,11 +157,13 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
         : (latestRun.allow_secrets ?? 1);
       db.prepare(`
         INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name, target_rows,
-          allow_secrets, placeholder_work)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 'seeding')
+          allow_secrets, placeholder_work, access_token_id)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 'seeding', ?)
       `).run(
         newRunId, p.sheetId, userId, JSON.stringify(config), targets.length,
         cleanMaster, JSON.stringify(targets), cloneAllowSecrets,
+        // A rerun is done for whoever asks for it (lib/actor.ts), not the run it repeats.
+        actorTokenId(),
       );
 
       // Re-insert associations under the NEW run_id so the cancel/fail clear

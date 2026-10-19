@@ -3,16 +3,21 @@
 // /api/v1 or /mcp, or Cubex itself (auto-run, a restart finishing a job).
 // Set once per request by the auth middleware (or the MCP route) and carried
 // through every await by AsyncLocalStorage, so services don't pass it along.
-// Anything outside a request reads as Cubex.
+// Anything outside a request reads as Cubex. tokenId: the token whose spend
+// cap what is started here counts against (services/token-spend.ts); a sweep
+// starting a setup's step runs as Cubex with the token that applied the setup.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Request, Response, NextFunction } from 'express';
 
 export type Via = 'app' | 'api' | 'mcp' | 'cubex';
-export interface Actor { via: Via; tokenName: string | null }
+export interface Actor { via: Via; tokenName: string | null; tokenId: string | null }
 
 const store = new AsyncLocalStorage<Actor>();
-const CUBEX: Actor = { via: 'cubex', tokenName: null };
-export const APP: Actor = { via: 'app', tokenName: null };
+export const CUBEX: Actor = { via: 'cubex', tokenName: null, tokenId: null };
+export const APP: Actor = { via: 'app', tokenName: null, tokenId: null };
+
+// The token what is started now is done for (null: the app, or Cubex on its own).
+export const actorTokenId = (): string | null => currentActor().tokenId;
 
 export const currentActor = (): Actor => store.getStore() ?? CUBEX;
 

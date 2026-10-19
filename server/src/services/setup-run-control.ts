@@ -9,12 +9,13 @@
 // record stops allowing saved keys, as resuming a run does.
 import { db } from '../lib/db';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
-import { pauseRun, resumeRun, cancelRun } from './run-lifecycle';
+import { pauseRun, resumeCapRefusal, resumeRun, cancelRun } from './run-lifecycle';
 import { advanceSetupRun } from './setup-runner';
 import {
   getSetupRun, loadSetupRun, planOf, setStatus, stepsOf, type SetupRunRow, type SetupRunView, type StepRecord,
 } from './setup-run-store';
 import type { RunFail } from './run-shared';
+import { actorSpendRefusal, spendCapRefusal } from './token-spend';
 
 export type SetupRunAction = 'pause' | 'resume' | 'cancel';
 
@@ -44,6 +45,11 @@ export async function controlSetupRun(
     for (const x of runs) pauseRun(x.kind, x.runId, userId);
   } else if (action === 'resume') {
     if (r.status !== 'paused') return { fail: 'conflict', message: `It isn't paused (it's ${r.status}).` };
+    // Its steps spend for the token that applied it; a token at its own cap restarts none of them.
+    // Every paused run is checked before any resumes, so a refusal leaves the setup as it was.
+    const capped = spendCapRefusal(userId, r.access_token_id) ?? actorSpendRefusal(userId)
+      ?? runs.map(x => resumeCapRefusal(x.kind, x.runId, userId)).find(m => m !== null) ?? null;
+    if (capped) return { fail: 'forbidden', message: capped };
     if (!hasSecretsScope && r.allow_secrets) {
       const keys = [...new Set(keysAhead(r))];
       if (keys.length) {
@@ -55,7 +61,9 @@ export async function controlSetupRun(
     // A token without 'secrets' resumes nothing that reads a saved key (run-lifecycle.ts says which).
     for (const x of runs) {
       const out = await resumeRun(x.kind, x.runId, userId, hasSecretsScope && !!r.allow_secrets);
-      if ('fail' in out && out.fail === 'secrets_required') return { fail: 'forbidden', message: out.message };
+      if ('fail' in out && (out.fail === 'secrets_required' || out.fail === 'spend_cap')) {
+        return { fail: 'forbidden', message: out.message };
+      }
     }
     setStatus(id, 'running');
     void advanceSetupRun(id);

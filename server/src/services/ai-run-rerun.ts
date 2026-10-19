@@ -28,6 +28,7 @@ import { NO_TARGET_ROWS, type RerunScope } from './rerun-targets';
 import { rerunAiMultiColumn, structuredRunByBase } from './ai-run-rerun-multi';
 import { structuredRunOwning } from '../lib/structured-run-owner';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 import { dataColumnName } from './ai-row-writers';
 
 export type { AiRerunMode } from './ai-rerun-modes';
@@ -175,8 +176,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
           status, total_rows, processed_rows, target_rows, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?)
       `).run(
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
@@ -186,6 +187,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         // The same search engine, mode and cap as the run it repeats.
         latestRun.web_search_engine ?? null, latestRun.web_search_engine_used ?? null,
         latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
+        // A rerun is done for whoever asks for it (lib/actor.ts), not the run it repeats.
+        actorTokenId(),
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 

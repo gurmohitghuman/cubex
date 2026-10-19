@@ -21,7 +21,7 @@ export interface AIRunRow {
   total_rows: number;
   processed_rows: number;
   target_rows: string | null;        // JSON array of row indices for reruns; NULL = full run
-  output_columns: string | null;     // JSON [{columnName,type,description}] for structured runs; NULL = single-column (migration 042)
+  output_columns: string | null;     // JSON [{columnName,type,description}] for structured runs; NULL = single-column
   status_column: string | null;      // per-row ✅/❌ column for structured runs; NULL for single-column
   data_column?: string | null;       // structured runs with a web tool: their "(Data)" citations column (migration 006)
   // Web search settings (migration 008, lib/web-search-plan.ts): the engine sent,
@@ -35,6 +35,8 @@ export interface AIRunRow {
   run_if?: string | null;
   condition_skipped_rows?: number | null;
   worker_generation: number;         // bumped on each resume; old workers exit on mismatch
+  access_token_id?: string | null;   // whose spend cap it counts against (migration 042); null: the app's own
+  pause_reason?: string | null;      // 'token_cap' when it paused itself at that cap; null for a person's pause
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   created_at: string;
   updated_at: string;

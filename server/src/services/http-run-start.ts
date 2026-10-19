@@ -24,6 +24,7 @@ import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { checkRunRule, ruleSeed } from './run-rule';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 export interface HttpRunStartParams {
   sheetId: string;
@@ -123,12 +124,13 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
 
       appendColumnsToOrder(p.sheetId, userId, allColumns);
       db.prepare(`
-        INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name, target_rows, allow_secrets, placeholder_work)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 'seeding')
+        INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name, target_rows,
+          allow_secrets, placeholder_work, access_token_id)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 'seeding', ?)
       `).run(
         runId, p.sheetId, userId, JSON.stringify(config), targetCount,
         finalMasterColumnName, targets ? JSON.stringify(targets) : null,
-        p.allowSecrets ? 1 : 0,
+        p.allowSecrets ? 1 : 0, actorTokenId(),
       );
 
       const insertAssoc = db.prepare(`

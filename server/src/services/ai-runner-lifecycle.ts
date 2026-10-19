@@ -7,6 +7,7 @@ import {
   type AIRunRow, type SheetRow,
 } from './ai-runner-status';
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
+import { spendCapRefusal } from './token-spend';
 
 // Lifecycle + dispatch helpers shared by processAIRun / processAIRerun
 // (ai-runner.ts). Split out so the orchestration entry points stay readable and
@@ -17,6 +18,10 @@ import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders'
 // per-row pattern (semaphore + shouldStop checks + progress update + .finally
 // cleanup). `rows` streams the unfinished rows a page at a time (lib/run-rows),
 // so the worker never holds the whole sheet.
+// A run done for an access token with a spend cap reads what the token spent
+// before each row: at the cap it starts no more rows but lets the ones out
+// finish and write (their cost is billed: aborted, it would be lost and billed
+// again on resume), and answers 'token_cap' so the runner pauses it.
 export const dispatchRows = async (
   runId: string,
   run: AIRunRow,
@@ -24,7 +29,7 @@ export const dispatchRows = async (
   rows: AsyncIterable<SheetRow>,
   startCompleted: number,
   controller: AbortController,
-) => {
+): Promise<'token_cap' | null> => {
   const { default: OpenAI } = await import('openai'); void OpenAI; // satisfy ts when we only need the openai instance
   const openai = await getOpenRouterClient(run.user_id);
   const concurrency = run.concurrency || 5;
@@ -35,6 +40,7 @@ export const dispatchRows = async (
   );
 
   let i = 0;
+  let capped = false;
   // A throw from the row stream still waits for the rows already out: the run
   // is marked failed only once none of them can write (an undo checks for that).
   try {
@@ -42,6 +48,7 @@ export const dispatchRows = async (
     while (semaphore.size >= concurrency) await Promise.race(semaphore.values());
 
     if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
+    if (run.access_token_id && spendCapRefusal(run.user_id, run.access_token_id)) { capped = true; break; }
 
     const key = i++;
     const promise = processRow(runId, row, run, openai, controller.signal, myGeneration)
@@ -65,6 +72,15 @@ export const dispatchRows = async (
   } finally {
     await Promise.allSettled(semaphore.values());
   }
+  return capped ? 'token_cap' : null;
+};
+
+// The run's token reached its spend cap: paused (CAS on running + our
+// generation, so a person's pause, cancel or resume wins), rows still ⏳. A
+// resume is refused until the cap is raised (run-lifecycle.ts).
+export const pauseAtTokenCap = (runId: string, myGeneration: number): void => {
+  db.prepare(`UPDATE ai_runs SET status = 'paused', pause_reason = 'token_cap', updated_at = datetime('now')
+    WHERE id = ? AND status = 'running' AND worker_generation = ?`).run(runId, myGeneration);
 };
 
 export const finalizeStatus = async (

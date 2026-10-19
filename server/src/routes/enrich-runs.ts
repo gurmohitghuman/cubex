@@ -144,7 +144,8 @@ router.post('/runs/:id/resume', async (req: AuthRequest, res) => {
   try {
     const out = await resumeEnrichmentRun(req.params.id, req.userId!, req.body?.spendLimitUsd, req.body?.concurrency);
     if ('fail' in out) {
-      const status = out.fail === 'not_found' ? 404 : out.fail === 'conflict' ? 409 : 400;
+      const status = out.fail === 'not_found' ? 404 : out.fail === 'conflict' ? 409
+        : out.fail === 'spend_cap' ? 403 : 400;
       return res.status(status).json({ error: out.message });
     }
     res.json({ ok: true });

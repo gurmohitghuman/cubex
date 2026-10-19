@@ -31,6 +31,7 @@ import { derivedFollowTick } from './derived-follow';
 import { isFollowKind } from '../lib/autorun-kick';
 import { isWaterfallConfig, onSteps } from '../lib/waterfall/config';
 import { getOpenRouterApiKey } from './openrouter';
+import { rowCostOf, spendCapRefusal } from './token-spend';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -68,6 +69,10 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
   if (steps.some(s => s.built.kind === 'ai') && !getOpenRouterApiKey(e.user_id)) {
     return { reason: 'no_key', message: 'No OpenRouter key. Add one in Settings and auto-run goes on.' };
   }
+  // Turned on by an access token: its batches spend for that token, and stop at its spend cap
+  // once one more row doesn't fit (as the run's row holds would: no batch started only to stop).
+  const capped = spendCapRefusal(e.user_id, e.access_token_id, rowCostOf('http', newest.config));
+  if (capped) return { reason: 'token_cap', message: `${capped} Auto-run goes on by itself once it is raised.` };
   return { config, newest, columns };
 }
 
@@ -78,7 +83,9 @@ function pauseLifted(e: AutorunEntry): boolean {
   const reason = e.paused_reason!;
   let lifted = false;
   if (RETRY_PAUSES.has(reason)) lifted = pausedMs(e.paused_at) >= AUTORUN_RETRY_MS;
-  else if (reason === 'missing_input' || reason === 'no_key') lifted = !('reason' in setupOf(e));
+  else if (reason === 'missing_input' || reason === 'no_key' || reason === 'token_cap') {
+    lifted = !('reason' in setupOf(e));
+  }
   else if (reason === 'dest_full') lifted = destHasRoom(e);
   else if (reason === 'loop') lifted = autorunLoopProblem(e) === null;
   else if (CAPACITY_PAUSES.has(reason)) {

@@ -24,6 +24,7 @@ import { advanceSetupRun } from './setup-runner';
 import { keyProblem, liveSetupClash, withModels, type ApplyFail } from './setup-apply-checks';
 import { webhookIdProblem } from './run-hooks-attach';
 import { countOf, logSheetChange } from '../lib/change-log';
+import { actorSpendRefusal } from './token-spend';
 
 export type { ApplyFail } from './setup-apply-checks';
 
@@ -83,6 +84,9 @@ export async function applySetup(
     const carries = spec.steps.filter((_, i) => modes[i] === 'again').map(mainColumn);
     return { ok: { estimate, inputs: plan.ok.inputs, makes, carries_on: carries } };
   }
+  // Its steps spend for the access token applying it (setup-runner.ts).
+  const capped = actorSpendRefusal(userId);
+  if (capped) return { fail: 'forbidden', message: capped };
   const busy = sheetBusyWith(sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
   const choices = { inputs: plan.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };

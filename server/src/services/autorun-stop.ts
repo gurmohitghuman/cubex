@@ -37,6 +37,8 @@ function entryReason(
     const limit = getDailyLimitMicro(run.user_id) ?? 0;
     return { reason, message: `Today's ${money(limit / 1e6)} enrichment limit is reached.${billed}` };
   }
+  // Lifted by the tick once the token that turned auto-run on has room again (autorun-loop.ts).
+  if (reason === 'token_cap') return { reason, message: `${message} Auto-run goes on by itself once it is raised.` };
   return { reason, message };
 }
 

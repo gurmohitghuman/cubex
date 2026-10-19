@@ -15,7 +15,8 @@ export interface UsageFigures {
   ai_cost_usd: number; provider_cost_usd: number; enrichment_cost_usd: number; total_cost_usd: number;
   cost_per_cell_usd: number | null;
 }
-type Kind = 'ai' | 'enrichment' | 'http' | 'waterfall' | 'mixed';
+// preview, assist: an AI preview's rows and an AI helper's calls (services/usage-calls.ts), no run behind them.
+type Kind = 'ai' | 'enrichment' | 'http' | 'waterfall' | 'preview' | 'assist' | 'mixed';
 // sheet_deleted: the sheet is gone (what its runs spent stays in the history).
 export interface UsageColumnRow extends UsageFigures {
   sheet_id: string; sheet_name: string | null; sheet_deleted: boolean; column: string | null; column_deleted: boolean;

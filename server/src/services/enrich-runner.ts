@@ -28,6 +28,7 @@ import { processEnrichmentRow } from './enrich-row';
 import { clearCooldowns } from './enrich-providers';
 import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
+import { tokenRowsThatFit } from './token-spend';
 import { destFullMessage, destRoom } from './enrich-list-room';
 import type { RunCtx } from './enrich-step';
 import type { HTTPRunRow } from './http-runner-status';
@@ -35,7 +36,7 @@ import { requestRunStamper } from '../lib/run-inputs/stampers';
 
 const STOP_POLL_MS = 1000;
 // Stops a row that costs nothing (a found answer to reuse, an input missing) still runs past.
-const FREE_THROUGH = new Set<PauseReason>(['daily_limit', 'spend_limit']);
+const FREE_THROUGH = new Set<PauseReason>(['daily_limit', 'spend_limit', 'token_cap']);
 const NO_KEY = 'No treg key. Add one in Settings, then Resume.';
 const money = (usd: number) => `$${usd >= 0.01 || usd === 0 ? usd.toFixed(2) : usd.toFixed(4)}`;
 
@@ -57,7 +58,8 @@ type Allowed = { n: number; rowMicro: number } | { reason: PauseReason; message:
 // back what they didn't spend), not paused on. A run with no per-row cap
 // (null: the team's own provider key should bill it) or a $0 cap holds
 // nothing; the null one still stops once what treg really billed reaches a
-// limit (lib/enrich-estimate.ts limitReached).
+// limit (lib/enrich-estimate.ts limitReached). The run's access token's spend
+// cap counts the same way, with what the token's other runs spent and hold.
 function holdRows(run: HTTPRunRow, config: EnrichRunConfig, generation: number, free: number, out: number): Allowed {
   const e = config.enrichment;
   const cap = e.maxCostPerRowUsd ?? 0;
@@ -88,7 +90,9 @@ function holdRows(run: HTTPRunRow, config: EnrichRunConfig, generation: number, 
       };
     }
     const byDay = limit === null ? Infinity : rowsThatFit(limit / 1e6, today + heldMicro(run.user_id) / 1e6, cap);
-    if (byRun < 1 || byDay < 1) return { wait: true };
+    const byToken = tokenRowsThatFit(run.user_id, run.access_token_id, e.maxCostPerRowUsd);
+    if ('reason' in byToken) return byToken;
+    if (byRun < 1 || byDay < 1 || byToken.rows < 1) return { wait: true };
     // A list job stops before buying results its destination has no room for,
     // and buys at most the rows whose results fit.
     const dest = e.list ? destRoom(e.list.destSheetId, run.user_id) : null;
@@ -96,7 +100,7 @@ function holdRows(run: HTTPRunRow, config: EnrichRunConfig, generation: number, 
     // Results of this run's rows still out aren't waiting for room yet: they count too.
     const byRoom = dest && e.list ? Math.max(1, Math.floor(dest.room / e.list.maxItems)) - out : Infinity;
     if (byRoom < 1) return { wait: true };
-    const n = Math.min(free, byRun, byDay, byRoom);
+    const n = Math.min(free, byRun, byDay, byToken.rows, byRoom);
     setRunHold(run.id, run.user_id, generation, (out + n) * rowMicro);
     return { n, rowMicro };
   }).immediate();

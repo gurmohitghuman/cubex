@@ -43,6 +43,12 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults, spend }) => (
             </span>
             <span>Model: {currentRun.model}</span>
           </div>
+          {currentRun.status === 'paused' && currentRun.pause_reason === 'token_cap' && (
+            <p className="mt-1 text-xs text-amber-800" data-testid="run-token-cap">
+              The access token that started this run reached its spend cap. Raise the cap in Settings, Agent
+              access, then Resume. The cap is for the token&apos;s whole life, not a month.
+            </p>
+          )}
           {spend && (spend.cost_usd !== null || spend.searches !== null) && (
             <p className="mt-1 text-xs text-cube-black" data-testid="run-spend">
               Spent so far: {spend.cost_usd !== null ? formatCost(spend.cost_usd) : 'not reported yet'}

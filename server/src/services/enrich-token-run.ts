@@ -21,6 +21,7 @@ import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
+import { spendPart } from './token-spend';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
@@ -136,5 +137,5 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   if (typeof a.idempotency_key === 'string') {
     writeRunLedger(c.userId, a.idempotency_key, hash, 'enrichment_run', payload);
   }
-  return { ok: payload, started: true };
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
 }

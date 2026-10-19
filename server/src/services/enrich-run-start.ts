@@ -21,6 +21,7 @@ import type { RunFail } from './run-shared';
 import { applyListStart, listRowsBeingAdded } from './enrich-list-start';
 import { activeRunOn, prepareEnrichmentStart, seedPlanFor } from './enrich-run-prepare';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 // destSheetId: where a list job's rows go (a new sheet is made by the start).
 // rowsInScope: the most rows the run can take (seeding skips rows missing an input).
@@ -77,9 +78,9 @@ export async function startEnrichmentRun(
         appendColumnsToOrder(sheetId, userId, runColumns);
         // allow_secrets 0: an enrichment never reads saved API keys.
         db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-            target_rows, allow_secrets, placeholder_work, dest_sheet_id)
-          VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, 0, 'seeding', ?)`)
-          .run(runId, sheetId, userId, JSON.stringify(config), statusColumn, destSheetId);
+            target_rows, allow_secrets, placeholder_work, dest_sheet_id, access_token_id)
+          VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, 0, 'seeding', ?, ?)`)
+          .run(runId, sheetId, userId, JSON.stringify(config), statusColumn, destSheetId, actorTokenId());
         // Every output is linked to THIS run, also on a column a run already made:
         // clearing a stopped run's ⏳ and the column delete/rename guards find a
         // run's columns through its own associations (as http-run-rerun.ts does).

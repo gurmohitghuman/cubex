@@ -132,7 +132,8 @@ export const useAIRunHandlers = (a: Args) => {
   const handleResumeRun = async () => {
     if (!currentRun) return
     try { await aiAPI.resumeRun(currentRun.id) }
-    catch { toast.error('Failed to resume run') }
+    // Refused while its access token is still at its spend cap: the server says so.
+    catch (error: any) { toast.error(error?.response?.data?.error || 'Failed to resume run') }
   }
   const handleCancelRun = async () => {
     if (!currentRun) return

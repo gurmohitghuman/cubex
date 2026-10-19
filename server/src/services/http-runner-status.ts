@@ -17,6 +17,7 @@ export interface HTTPRunRow {
   target_rows: string | null;        // JSON row-index array for reruns (migration 024); NULL for full runs
   allow_secrets: number;             // run-level saved-key policy (migration 034); 0 = fallback disabled
   autorun_id?: string | null;        // the auto-run that started it (migration 013); null for a run a person started
+  access_token_id?: string | null;   // whose spend cap it counts against (migration 042); null: the app's own
   autorun_day?: string | null;       // the UTC day it started (an auto-run's daily cap counts it there)
   dest_sheet_id?: string | null;     // a list job's destination sheet (migration 010)
   created_at: string;

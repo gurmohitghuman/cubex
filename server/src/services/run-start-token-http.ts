@@ -127,7 +127,7 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
-  const limited = startWindow(c);
+  const limited = startWindow(c, false);
   if (limited) return limited;
   const saved = curl ? commitCurlKeys(c.userId, curl.plan, curl.prepared.keys) : { ok: [] as string[] };
   if ('fail' in saved) return saved;

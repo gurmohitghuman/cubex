@@ -11,6 +11,7 @@ import { parseSearchQueries } from '../lib/ai-data-cell';
 import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-outcomes';
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
+import { spendCapRefusal } from './token-spend';
 
 export interface RunSummary {
   id: string;
@@ -82,6 +83,18 @@ function outputColumnNames(json: string | null): string[] | null {
   try { return (JSON.parse(json) as Array<{ columnName: string }>).map(s => s.columnName); } catch { return null; }
 }
 
+// An AI run that paused itself at its access token's spend cap says why, and
+// whether the cap leaves room to resume it now (services/token-spend.ts).
+type CapPaused = { user_id?: string; status: string; pause_reason?: string | null; access_token_id?: string | null };
+function capPausePart(r: CapPaused) {
+  if (r.status !== 'paused' || r.pause_reason !== 'token_cap' || !r.user_id) return {};
+  return {
+    pause_reason: 'token_cap',
+    pause_message: spendCapRefusal(r.user_id, r.access_token_id)
+      ?? "Its access token's spend cap was raised: resume the run to go on.",
+  };
+}
+
 // One ai_runs row as a summary (the SELECTs here and in run-list.ts list the
 // columns it reads, written out so the SQL schema test checks them). Says which
 // columns the run fills, so a caller reading a structured run knows where its
@@ -97,7 +110,8 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...aiRowOutcomes(r.id), ...rulePart(r.run_if, r.condition_skipped_rows),
+    error_message: r.error_message, ...capPausePart(r), ...aiRowOutcomes(r.id),
+    ...rulePart(r.run_if, r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -107,7 +121,7 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
     SELECT id, sheet_id, column_name, model, concurrency, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
-           run_if, condition_skipped_rows
+           run_if, condition_skipped_rows, pause_reason, access_token_id, user_id
     FROM ai_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId);
   return r ? aiRunSummaryFromRow(r) : null;

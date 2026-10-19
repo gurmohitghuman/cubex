@@ -117,6 +117,14 @@ export const PausedNotice: React.FC<Props> = ({ status, run }) => {
         </div>
       )
       break
+    case 'token_cap':
+      // The access token that started it reached its spend cap: raised in Settings, it resumes.
+      fix = (
+        <div className="flex flex-wrap gap-2">
+          <Link to="/settings/agents" className={btn}>Open Agent access</Link>{resume}
+        </div>
+      )
+      break
     case 'treg_cap':
     case 'team_rule':
       fix = <div className="flex flex-wrap gap-2">{external(TREG_APP_URL, 'Open treg')}{resume}</div>

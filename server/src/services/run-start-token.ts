@@ -21,12 +21,13 @@ import { parseRunRequest } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
 import { estimateAiRun } from './run-estimate';
 import { previewAiRun } from './run-preview';
-import { runStartWindow, resolveRowIdsToIndexes, type RunFailKind } from './run-shared';
-import { tooManyMessage, type RateDecision } from '../lib/rate-window';
+import { resolveRowIdsToIndexes, startRefusalMessage, takeRunStart, type RunFailKind } from './run-shared';
+import { type RateDecision } from '../lib/rate-window';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { runIfReply } from './run-rule';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
+import { spendPart } from './token-spend';
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
@@ -63,10 +64,13 @@ export function preamble(c: TokenCaller, a: { sheet_id: unknown; target_row_ids?
 
 // The per-token run-start window, charged only for work that spends (a start
 // or a preview), after validation and after an idempotent replay: fixing a
-// typo, or retrying with the same key after a 429, doesn't use up a slot.
-export function startWindow(c: TokenCaller): Fail | null {
-  const slot = runStartWindow(c.tokenId);
-  return slot.allowed ? null : { fail: 'rate_limited', message: tooManyMessage('run starts', slot), rate: slot };
+// typo, or retrying with the same key after a 429, doesn't use up a slot. A
+// token at its spend cap is refused first (services/token-spend.ts).
+export function startWindow(c: TokenCaller, paid = true): Fail | null {
+  const refused = takeRunStart(c.userId, c.tokenId, paid);
+  if (!refused) return null;
+  return 'capped' in refused ? { fail: 'forbidden', message: refused.capped }
+    : { fail: 'rate_limited', message: startRefusalMessage(refused), rate: refused.limited };
 }
 
 // Replay or refuse a repeated idempotency key; null when the start should go ahead.
@@ -139,7 +143,8 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
       runIf: parsed.runIf, concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
-    });
+      columnName: parsed.cleanColumnName,
+    }, `token:${c.tokenId}`);
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
   const hash = runRequestHash('ai_run', {
@@ -185,5 +190,5 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     ...webSearch,
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'ai_run', payload);
-  return { ok: payload, started: true };
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
 }
