@@ -22,7 +22,7 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'auto-dedupe, a CSV import that replaced the rows, transfer_rows moving rows out, or the app), whole '
       + 'sheets and whole tables. '
       + 'Each item has its trash_id, what it was (table_name, sheet_name, rows), how and by whom it was deleted, '
-      + 'and expires_at (kept for kept_days, set in Settings; then gone for good). Without trash_id: the list, '
+      + 'and expires_at (kept for kept_days, set in Settings; then deleted). Without trash_id: the list, '
       + 'newest first (q finds words in a table or sheet name or the token that deleted it; kind, how and '
       + 'sheet_id narrow it: how auto_dedupe with a sheet_id lists the rows auto-dedupe removed there, one '
       + 'batch a day; before pages on). With trash_id: that item, and for a batch its rows (cells as they were, seq, '

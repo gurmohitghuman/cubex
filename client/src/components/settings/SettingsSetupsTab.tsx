@@ -117,7 +117,7 @@ export const SettingsSetupsTab: React.FC = () => {
       <ConfirmDialog
         isOpen={!!deleting}
         title="Delete this setup?"
-        message={`"${deleting?.name ?? ''}" will be deleted for good. Sheets you used it on keep their columns and `
+        message={`"${deleting?.name ?? ''}" will be deleted. Sheets you used it on keep their columns and `
           + 'values.'}
         confirmText="Delete setup"
         isDestructive

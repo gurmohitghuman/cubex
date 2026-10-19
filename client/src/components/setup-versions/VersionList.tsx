@@ -85,7 +85,7 @@ export const VersionList: React.FC<Props> = ({ versions, busy, onSave, onCompare
                 </div>
               ) : deleting === v.id ? (
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-gray-700">Delete for good?</span>
+                  <span className="text-xs text-gray-700">Delete?</span>
                   <button type="button" className="btn-secondary text-red-600" disabled={busy}
                     onClick={() => { setDeleting(null); onDelete(v) }} data-testid="setup-version-delete-yes">
                     Delete

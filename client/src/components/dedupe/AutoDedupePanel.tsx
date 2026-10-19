@@ -103,7 +103,7 @@ export const AutoDedupePanel: React.FC<Props> = ({ form: f, view, sheetId, onRem
         <p className="text-xs text-gray-500 mt-1">{KEEPS.find(k => k.id === f.keep)?.help}</p>
         {f.trashDays === 0 && (
           <p className="text-xs text-amber-800 mt-1" data-testid="auto-dedupe-no-trash">
-            Settings keeps deleted items 0 days, so the rows auto-dedupe removes are deleted for good, not kept in
+            Settings keeps deleted items 0 days, so the rows auto-dedupe removes are deleted, not kept in
             the trash.
           </p>
         )}

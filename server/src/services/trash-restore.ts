@@ -91,7 +91,7 @@ export async function restoreRows(
         .run(start, itemId);
       plan = planColumns(sheetId, userId, item);
     }).immediate();
-    if (!plan) return { fail: 'conflict', message: 'This batch is already being restored or deleted for good.' };
+    if (!plan) return { fail: 'conflict', message: 'This batch is already being restored or deleted.' };
     const columns = plan as ColumnPlan;
     reserve(through + 1);
     const answer = (state: RowsRestored['state']): { ok: RowsRestored } => ({ ok: {
@@ -131,7 +131,7 @@ export async function restoreRows(
 function stateProblem(item: TrashItem): RestoreFail | null {
   if (item.state === 'kept') return null;
   const message = item.state === 'restoring' ? 'This is already being restored.'
-    : item.state === 'purging' ? 'This is being deleted for good.'
+    : item.state === 'purging' ? 'This is being deleted.'
     : 'These rows are still being deleted. Try again in a moment.';
   return { fail: 'conflict', message };
 }

@@ -48,7 +48,7 @@ export const TrashList: React.FC<Props> = ({
                   .toLocaleString()}
               </p>
             )}
-            {e.state === 'purging' && <p className="text-xs text-gray-700 mt-1">Being deleted for good…</p>}
+            {e.state === 'purging' && <p className="text-xs text-gray-700 mt-1">Deleting…</p>}
             {e.state === 'moving' && <p className="text-xs text-gray-700 mt-1">Still being deleted…</p>}
             {e.blocked && <p className="text-xs text-amber-700 mt-1">{e.blocked}</p>}
             {e.note && <p className="text-xs text-gray-600 mt-1">{e.note}</p>}
@@ -78,7 +78,7 @@ export const TrashList: React.FC<Props> = ({
               )}
               <DropdownMenuItem onClick={() => onDelete(e)} disabled={working} className="text-red-600"
                 data-testid="trash-delete">
-                <Trash2 className="h-3.5 w-3.5 mr-2" />Delete for good
+                <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

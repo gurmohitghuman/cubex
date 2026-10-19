@@ -8,7 +8,7 @@ This page is about events coming in. For Cubex telling your URL when a run finis
 
 1. Open a sheet, click **Data** in the toolbar, then **Webhook**.
 2. Choose **Create webhook on this sheet**, or **Create a new table for the webhook** to keep events separate from existing data.
-3. Copy the URL. It's shown until the first event arrives, then hidden for good. If you lose it before then, rotate it (see below).
+3. Copy the URL. It's shown until the first event arrives, then hidden. If you lose it before then, rotate it (see below).
 4. Send a test event:
 
    ```bash

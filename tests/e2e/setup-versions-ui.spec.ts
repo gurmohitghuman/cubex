@@ -77,7 +77,7 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await page.getByTestId('setup-version-rename-input').press('Enter')
   await expect(page.getByTestId('setup-version-row').nth(1)).toContainText('Clean start')
   await page.getByTestId('setup-version-delete').first().click()
-  await expect(dialog).toContainText('Delete for good?')
+  await expect(dialog).toContainText('Delete?')
   await page.waitForTimeout(200)
   await shot(page, 'setup-versions-delete')
   await page.getByTestId('setup-version-delete-yes').click()

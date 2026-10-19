@@ -68,8 +68,8 @@ export const TrashCard: React.FC = () => {
       </div>
       <ConfirmDialog isOpen={confirming} isDestructive title="Keep deleted items less long"
         message={parsed === 0
-          ? 'Everything in the trash now is deleted for good, and later deletes skip the trash. Go on?'
-          : `Items in the trash for more than ${plural(parsed, 'day')} are deleted for good now. Go on?`}
+          ? 'Everything in the trash now is deleted, and later deletes skip the trash. Go on?'
+          : `Items in the trash for more than ${plural(parsed, 'day')} are deleted now. Go on?`}
         confirmText="Save" onConfirm={() => void save()} onCancel={() => setConfirming(false)} />
     </div>
   )
