@@ -37,7 +37,7 @@ const activeMessage = (col: string) =>
 function sampleAnswer(runs: ColumnRunRef[], userId: string, row: number | null): unknown {
   if (row !== null) return parseStored(resultAtRow(runs, userId, row)?.response_data ?? null);
   const raw = db.prepare(`SELECT response_data FROM http_results WHERE run_id = ? AND user_id = ?
-    AND response_data IS NOT NULL ORDER BY row_index DESC LIMIT 1`).pluck().get(runs[0].id, userId) as
+    AND response_data IS NOT NULL AND undone = 0 ORDER BY row_index DESC LIMIT 1`).pluck().get(runs[0].id, userId) as
     string | undefined;
   return parseStored(raw ?? null);
 }

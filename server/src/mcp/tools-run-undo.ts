@@ -33,14 +33,15 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
       + 'wrote it (edited by a person or an agent, or written by a newer run) and leaves it as it is; cells in '
       + 'rows or columns deleted since (restored from the trash too) are counted as gone. The answer says how '
       + 'many cells were restored, skipped and gone. Nothing runs again and nothing is billed: what the run cost '
-      + 'stays spent, and running it again bills again; clean, formula and lookup columns reading a restored '
-      + 'cell work it out again (free), and no auto-run starts. Rows a list enrichment added to another sheet '
-      + 'stay (delete_rows removes them), and so does a column added later from its stored answers. A run still '
-      + 'going (pending, running or paused) can\'t be undone: control_run cancel first. Newest first: while a '
-      + 'newer run that wrote one of its columns can still be undone, an older run is refused (undo that one '
-      + `first). Each run is undone once, for ${UNDO_KEEP_DAYS} days after it started. Pass run_type and run_id `
-      + '(list_runs, get_sheet\'s column details), or sheet_id and column for that column\'s newest run that '
-      + 'can still be undone. '
+      + 'stays spent, and running it again bills again (a restored row\'s stored answer is no longer that cell\'s '
+      + 'answer and is never reused; a skipped cell keeps its answer); clean, formula and lookup columns reading '
+      + 'a restored cell work it out again (free), and no auto-run starts. Rows a list enrichment added to '
+      + 'another sheet stay (delete_rows removes them), and so does a column added later from its stored '
+      + 'answers. A run still going (pending, running or paused) can\'t be undone: control_run cancel first. '
+      + 'Newest first: while a newer run that wrote one of its columns can still be undone, an older run is '
+      + `refused (undo that one first). Each run is undone once, for ${UNDO_KEEP_DAYS} days after it started. `
+      + 'Pass run_type and run_id (list_runs, get_sheet\'s column details), or sheet_id and column for that '
+      + 'column\'s newest run that can still be undone. '
       + 'dry_run true changes nothing: it says whether the run can be undone (can_undo, reason), how many rows '
       + 'it wrote, and for an undo under way or done its state and counts. A big undo answers state undoing '
       + 'and goes on in the background; while it runs the sheet is busy (other changes wait).',
