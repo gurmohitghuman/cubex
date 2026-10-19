@@ -306,7 +306,15 @@ The one-line install works on Windows 10 (version 1809 or newer) and Windows 11 
 irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1 | iex
 ```
 
-Everything goes into `%LOCALAPPDATA%\cubex`: settings in `config.env`, your data in `data`, the app and a private copy of Node.js. Only the `cubex` command is added to your PATH, and every `cubex` command above works the same way. Cubex starts when you log in, through a scheduled task named Cubex, with no window. It stops when you sign out, so a Windows server that must keep running with nobody signed in is better served by [Docker](other-ways-to-run.md).
+Everything goes into `%LOCALAPPDATA%\cubex`, which the installer makes private to you: settings in `config.env`, your data in `data`, the app and a private copy of Node.js. Only the `cubex` command is added to your PATH, and every `cubex` command above works the same way. Cubex starts when you log in, through a scheduled task named `Cubex-<your user name>` (`CUBEX_SERVICE_TASK` in `config.env` renames it), with no window. It stops when you sign out, so a Windows server that must keep running with nobody signed in is better served by [Docker](other-ways-to-run.md).
+
+What runs in the background is Cubex's own `node.exe` from that folder, on `app\bin\cubex-run.mjs`, which keeps the server running, restarts it after a crash and writes `logs\cubex.log`. The task starts it through `conhost.exe --headless`, the Windows console host without a window, so security software that watches for hidden programs at login may ask about it once. No PowerShell keeps running.
+
+A few things stop the install with a message instead of half working:
+
+- **A PowerShell window opened with "Run as administrator"**, when Cubex would run as a plain background process (`--no-service`, or where there's no desktop session): a normal window couldn't stop a Cubex started there. Use a normal window. The scheduled task always runs Cubex without administrator rights, wherever you installed from.
+- **Group Policy that only allows signed PowerShell scripts** (`AllSigned` or `Restricted`), or a locked-down PowerShell (AppLocker or WDAC): the `cubex` command is a PowerShell script, so it couldn't run. Use [Docker](other-ways-to-run.md) or WSL2 instead.
+- **A folder whose path has `&` or `^` in it**: npm, which builds Cubex, can't run there. Choose another folder with `--dir`.
 
 To reach it from other devices, install with `--public`, which also sets the password:
 

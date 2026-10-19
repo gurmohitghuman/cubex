@@ -1,10 +1,11 @@
 # The `cubex` command on Windows, for a Cubex installed with install.ps1. Run `cubex help`.
-# The cubex.cmd launcher install.ps1 puts on PATH runs it with Windows PowerShell, whatever the execution policy.
+# The cubex.cmd launcher install.ps1 puts on PATH runs it with Windows PowerShell, whatever the execution policy
+# (unless Group Policy sets one, which install.ps1 checks for).
 #
 # Over 200 lines: bin/cubex's twin, command for command, so the two are easy to compare.
 $ErrorActionPreference = 'Stop'
 
-# The launcher passes CUBEX_HOME; the service runs this file straight from <home>\app\bin.
+# The launcher passes CUBEX_HOME; without it, the Cubex folder is two up from this file (<home>\app\bin).
 $CubexHome = [IO.Path]::GetFullPath($(if ($env:CUBEX_HOME) { $env:CUBEX_HOME } else { "$PSScriptRoot\..\.." }))
 $env:CUBEX_HOME = $CubexHome
 $App = Join-Path $CubexHome 'app'
@@ -13,25 +14,27 @@ $Config = Join-Path $CubexHome 'config.env'
 $Log = Join-Path $CubexHome 'logs\cubex.log'
 $Cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
 $Quiet = $false
-$InRun = $false
 . (Join-Path $PSScriptRoot 'cubex-service.ps1')
 
 function Say([string]$Text) { if (-not $Quiet) { Write-Output $Text } }
-function Die([string]$Text) {
-  # The service has no console: what stopped it goes to the log, where `cubex start` shows it.
-  if ($InRun) { try { [IO.File]::AppendAllText($Log, "Error: $Text`r`n") } catch { } }
-  [Console]::Error.WriteLine("Error: $Text")
-  exit 1
-}
+function Die([string]$Text) { [Console]::Error.WriteLine("Error: $Text"); exit 1 }
 
 # Runs a cmd.exe line exactly as written (PowerShell's own quoting of native arguments differs between versions), in
-# $In: a started process gets Windows' working folder, which Set-Location doesn't change.
-function Invoke-Cmd([string]$Line, [string]$In = $env:SystemRoot) {
-  $psi = New-Object Diagnostics.ProcessStartInfo $Cmd, "/d /s /c `"$Line`""
+# $In: a started process gets Windows' working folder, which Set-Location doesn't change. Paths go in as $Vars, read
+# in the line as %NAME%: cmd expands those once, so a % in a folder name stays text.
+function Invoke-Cmd([string]$Line, [string]$In = $env:SystemRoot, [hashtable]$Vars = @{}) {
+  $psi = New-Object Diagnostics.ProcessStartInfo $Cmd, "/d /v:off /s /c `"$Line`""
   $psi.WorkingDirectory = $In
   $psi.UseShellExecute = $false
-  $p = [Diagnostics.Process]::Start($psi)
-  $p.WaitForExit()
+  $saved = @{}
+  foreach ($name in $Vars.Keys) {
+    $saved[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, $Vars[$name])
+  }
+  try {
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+  } finally { foreach ($name in $Vars.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) } }
   $p.ExitCode
 }
 
@@ -41,7 +44,7 @@ function Remove-Tree([string]$Path) {
   for ($i = 0; $i -lt 20 -and (Test-Path -LiteralPath $Path); $i++) {
     if ($i) { Start-Sleep -Milliseconds 500 }
     if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force -ErrorAction Ignore }
-    else { [void](Invoke-Cmd "rd /s /q `"$Path`" >nul 2>&1") }
+    else { [void](Invoke-Cmd 'rd /s /q "%CUBEX_RD%" >nul 2>&1' -Vars @{ CUBEX_RD = $Path }) }
   }
   if (Test-Path -LiteralPath $Path) { Die "Couldn't delete $Path, a program still has a file in it open." }
 }
@@ -108,18 +111,12 @@ function Test-PortInUse { # anything answering on the port, Cubex or not
 }
 function Test-Running { (Test-ServiceRunning) -and (Test-Healthy) }
 
-# What the service starts: the server, its output appended to the log, started again 5 s after a crash.
+# What the service starts, here in the foreground: bin\cubex-run.mjs runs the server, appends its output to the log
+# (rotated past 10 MB) and starts it again after a crash, waiting longer each time.
 function Invoke-Run {
-  $script:InRun = $true
   Import-Config
-  $env:NODE_ENV = 'production'
-  if (-not $env:DB_PATH) { $env:DB_PATH = Join-Path $CubexHome 'data\cubex.db' }
-  while ($true) {
-    $code = Invoke-Cmd "`"$Node`" server\dist\index.js >> `"$Log`" 2>&1" $App
-    if ($code -eq 0) { break }
-    [IO.File]::AppendAllText($Log, "Cubex stopped (exit code $code); starting it again in 5 seconds.`r`n")
-    Start-Sleep -Seconds 5
-  }
+  & $Node $Runner
+  exit $LASTEXITCODE
 }
 
 function Invoke-Start {
@@ -130,9 +127,6 @@ function Invoke-Start {
     Die "Port $env:PORT is in use by another program. Set another PORT in $Config, then run: cubex start"
   }
   New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
-  if (-not $serviceRunning -and (Test-Path -LiteralPath $Log) -and (Get-Item -LiteralPath $Log).Length -gt 10MB) {
-    Move-Item -LiteralPath $Log -Destination "$Log.1" -Force -ErrorAction SilentlyContinue
-  }
   Start-CubexService
   for ($i = 1; -not (Test-Healthy); $i++) {
     if ($i -gt 120) {
@@ -221,7 +215,8 @@ function Invoke-ResetPassword {
 }
 
 # Removes only Cubex's own entries, by name. The folder itself goes only with --delete-data, and only if nothing
-# else is left in it.
+# else is left in it. The folders go first and the cubex command last, so if a folder can't be deleted (a program
+# still has a file in it open), cubex uninstall is still there to run again.
 function Invoke-Uninstall([string[]]$Rest) {
   $purge = $Rest -contains '--delete-data'
   $notAlone = @($env:SystemDrive, $env:SystemRoot, $env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA) |
@@ -229,35 +224,39 @@ function Invoke-Uninstall([string[]]$Rest) {
   if ($notAlone -contains $CubexHome.TrimEnd('\')) { Die "Refusing to remove $CubexHome." }
   if (-not (Test-Path -LiteralPath "$CubexHome\.cubex-home")) { Die "$CubexHome doesn't look like a Cubex install." }
   $ownBin = Join-Path $CubexHome 'bin'
-  $binDir = (Read-KeyValues "$CubexHome\install.env")['CUBEX_BIN_DIR']
+  $install = Read-KeyValues "$CubexHome\install.env"
+  $binDir = $install['CUBEX_BIN_DIR']
   if (-not $binDir) { $binDir = $ownBin }
+  # The PATH entries the installer added, exactly. Before install.env kept that list, only its own bin was added.
+  $added = if ($install.Contains('CUBEX_PATH_ADDED')) { $install['CUBEX_PATH_ADDED'] }
+  elseif ($binDir.TrimEnd('\') -eq $ownBin) { $ownBin } else { '' }
   if ($purge) {
     Write-Output "This permanently deletes every table, sheet and setting in $CubexHome."
     if ((Read-Host 'Type delete to confirm') -ne 'delete') { Die 'Nothing was removed.' }
   }
   Import-Config
   Remove-CubexService
+  Set-Location -LiteralPath $env:SystemRoot # out of the folders about to go
+  $entries = 'app', 'app.next', 'app.previous', 'app.failed', 'node', 'node.next', 'node.previous', 'node.failed',
+    'logs', '.install-lock'
+  if ($purge) { $entries += 'data', 'config.env' }
+  foreach ($entry in $entries) { Remove-Tree (Join-Path $CubexHome $entry) }
+  Remove-Tree "$CubexHome\install.env" # what uninstall needs to run again, so after the folders
   $shim = Join-Path $binDir 'cubex.cmd'
   if ((Test-Path -LiteralPath $shim) -and (Select-String -LiteralPath $shim -SimpleMatch 'Cubex launcher' -Quiet)) {
     Remove-Item -LiteralPath $shim -Force
   }
-  # The folder and its PATH entry only when they're Cubex's own: a CUBEX_BIN_DIR of yours may have been there before.
-  if ($binDir.TrimEnd('\') -eq $ownBin) {
-    if ((Test-Path -LiteralPath $binDir) -and -not (Get-ChildItem -LiteralPath $binDir -Force)) {
-      Remove-Item -LiteralPath $binDir -Force
-    }
-    Remove-UserPath $binDir
+  # The folder only when it's Cubex's own and empty: a CUBEX_BIN_DIR of yours may have been there before.
+  if ($binDir.TrimEnd('\') -eq $ownBin -and (Test-Path -LiteralPath $binDir) -and
+    -not (Get-ChildItem -LiteralPath $binDir -Force)) {
+    Remove-Item -LiteralPath $binDir -Force
   }
-  Set-Location -LiteralPath $env:SystemRoot # out of the folders about to go
-  foreach ($entry in 'app', 'app.next', 'app.previous', 'app.failed', 'node', 'node.next', 'node.previous', 'logs',
-    'install.env', '.install-lock') {
-    Remove-Tree (Join-Path $CubexHome $entry)
-  }
+  foreach ($dir in $added.Split(';')) { if ($dir) { Remove-UserPath $dir } }
   if (-not $purge) {
     Say "Cubex is uninstalled. Your data and settings are still in $CubexHome; delete that folder to remove them too."
     return
   }
-  foreach ($entry in 'data', 'config.env', '.cubex-home') { Remove-Tree (Join-Path $CubexHome $entry) }
+  Remove-Tree (Join-Path $CubexHome '.cubex-home')
   if (-not (Get-ChildItem -LiteralPath $CubexHome -Force)) {
     Remove-Item -LiteralPath $CubexHome -Force
     Say 'Cubex and all its data are removed.'
