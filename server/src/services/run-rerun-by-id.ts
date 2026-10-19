@@ -35,6 +35,11 @@ export async function rerunAiRunById(
     'SELECT id, sheet_id, column_name, output_columns FROM ai_runs WHERE id = ? AND user_id = ?',
   ).get(runId, userId) as { id: string; sheet_id: string; column_name: string; output_columns: string | null } | undefined;
   if (!run) return { fail: 'not_found', message: 'AI run not found' };
+  // A deleted column's runs keep a " deleted:<name>" tombstone (lib/ai-columns.ts):
+  // rerunning by its exact name would bring the column back under that name.
+  if (run.column_name.startsWith(' deleted:')) {
+    return { fail: 'not_found', message: "This run's column was deleted, so it cannot be re-run." };
+  }
 
   // Tie-break on rowid (true insert order) so two runs sharing a created_at
   // second can't both consider themselves latest — matches the AI clone query
@@ -56,11 +61,13 @@ export async function rerunAiRunById(
       concurrency: opts.concurrency, firstRows: opts.firstRows,
     }, run.column_name);
   }
-  // The rerun service keys on the BASE column name and re-appends " (Output)".
+  // The run's exact column wins (one renamed without its " (Output)" ends,
+  // "Summary (Output)" to "Summary", has no base to guess it from); the base
+  // name is what the service canonicalizes and names a recreated "(Data)" by.
   const baseColumnName = run.column_name.replace(/ \(Output\)$/, '');
   return rerunAiColumn(userId, {
-    sheetId: run.sheet_id, baseColumnName, rowIndices: t.indexes, mode: opts.mode, concurrency: opts.concurrency,
-    firstRows: opts.firstRows,
+    sheetId: run.sheet_id, baseColumnName, columnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
+    concurrency: opts.concurrency, firstRows: opts.firstRows,
   });
 }
 
