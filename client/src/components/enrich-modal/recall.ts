@@ -3,7 +3,7 @@
 // built for the tool (setup-defaults.ts), so the outputs keep the tool's labels
 // and any provider treg added since shows up switched on. A recalled output the
 // tool no longer returns is left out: the run would refuse it. Fields added
-// from an answer ("+ Column") stay, after the tool's own, read by their path.
+// from an answer ("Add as column") stay, after the tool's own, read by their path.
 import type { EnrichRecalledChoices } from '@/utils/api'
 import type { Condition, EnrichDraft, InputBinding, OutputPick } from './draft'
 import type { ListDraft } from './list-draft'

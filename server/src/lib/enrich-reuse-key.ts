@@ -71,7 +71,7 @@ export const wholeFor = (paths: string[], n: AnswerNotes): boolean =>
 export const readsRaw = (paths: string[]): boolean =>
   paths.some(p => /^\$(\.raw\b|\[['"]raw['"]\]|\.\.|\.\*|\[\*\])/.test(p));
 
-// The reused copy keeps the notes, so the answer panel and "+ Column" know
+// The reused copy keeps the notes, so the answer panel and "Add as column" know
 // what it lacks.
 export function withNotes(stored: unknown, n: AnswerNotes): unknown {
   if (!isObj(stored) || (!n.prunedAt && n.trimmedPaths.length === 0)) return stored;

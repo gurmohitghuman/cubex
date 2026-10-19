@@ -37,7 +37,7 @@ router.get('/sheets/:id/answer', (req: AuthRequest, res) => {
   }
 });
 
-// "+ Column": a new column filled from the answers already stored (free).
+// "Add as column": a new column filled from the answers already stored (free).
 router.post('/sheets/:id/fields', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;

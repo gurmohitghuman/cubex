@@ -26,7 +26,7 @@ export interface EnrichRunRequest {
   skipProviders: string[]
   stopAtFirst: boolean
   email: { accept: 'safest' | 'balanced' | 'wide'; guess: boolean; pattern: string } | null
-  // fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
+  // fromAnswer: a field added with "Add as column" from a stored answer, kept by its path.
   outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   rows: { mode: EnrichRowsScope; status: EnrichRowsStatus; test: boolean; rowIndexes?: number[] }
   conditions: Array<{ column: string; op: string; value: string }>
@@ -130,7 +130,7 @@ export interface EnrichRecalledChoices {
   skipProviders: string[]
   stopAtFirst: boolean
   email: { accept: 'safest' | 'balanced' | 'wide'; guess: boolean; pattern: string } | null
-  // fromAnswer: a field added with "+ Column" from a stored answer, kept by its path.
+  // fromAnswer: a field added with "Add as column" from a stored answer, kept by its path.
   outputs: Array<{ key: string; path: string | null; columnName: string; fromAnswer?: boolean }>
   conditions: Array<{ column: string; op: string; value: string }>
   // The column's "Only run if" as one rule (older condition lists come back as one).

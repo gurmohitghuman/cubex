@@ -62,7 +62,7 @@ export interface EnrichmentBlock {
   spendLimitUsd: number | null;
   rows: { mode: EnrichRowsMode; status?: EnrichRowsStatus; test: number | null; where: EnrichCondition[] };
   email: EnrichEmailLoop | null;
-  // Output paths added with "+ Column" from a stored answer (answer-field-add.ts):
+  // Output paths added with "Add as column" from a stored answer (answer-field-add.ts):
   // read from answers, not the tool's listed outputs, so a rerun keeps them
   // without checking them against the catalog.
   answerFields?: string[];

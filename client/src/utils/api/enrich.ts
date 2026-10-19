@@ -74,7 +74,7 @@ export const enrichAPI = {
   answer: (sheetId: string, column: string, row: number): Promise<AnswerView> =>
     api.get(`/enrich/sheets/${sheetId}/answer`, { ...noServerToast, params: { column, row } }).then(res => res.data),
 
-  // "+ Column": a new column filled from the stored answers (free).
+  // "Add as column": a new column filled from the stored answers (free).
   addField: (
     sheetId: string, body: { column: string; jsonPath: string; name: string; row: number },
   ): Promise<AnswerFieldAdded> =>

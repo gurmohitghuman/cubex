@@ -28,9 +28,10 @@ interface Props {
 }
 
 const FREE_HINT = {
-  enrichment: '+ Column adds a column filled from the answers you already have. Free: no new calls to treg.',
-  http: '+ Column adds a column filled from the responses you already have. Free: no new requests.',
+  enrichment: 'Add as column fills a new column from the answers you already have. Free: no new calls to treg.',
+  http: 'Add as column fills a new column from the responses you already have. Free: no new requests.',
 }
+const COPY_HINT = ' Click a key or a value to copy its path.'
 // A list job's answer: its results become rows elsewhere (once fields are
 // picked, once that sheet has room, or once a paused run there goes on or
 // stops), as the row's status cell says.
@@ -55,7 +56,8 @@ function listHint(dest: string | null, statusCell: string): string {
 
 // A cell's answer (its details): who found it and what it cost, the
 // row's result, each step, and the whole answer as text, where any value can
-// become a column. HTTP API columns get the result and the full response.
+// become a column or have its path copied. HTTP API columns get the result and
+// the full response.
 export const AnswerPanel: React.FC<Props> = (p) => {
   const v = p.view
   const mapped = useMemo(() => new Map((v?.mapping ?? []).map(m => [m.jsonPath, m.columnName])), [v])
@@ -121,6 +123,7 @@ export const AnswerPanel: React.FC<Props> = (p) => {
               <Section title={enrich ? 'Full answer' : 'Full response'} testId="answer-full">
                 <p className="text-xs text-gray-600 mb-2" data-testid="answer-hint">
                   {v.addsRowsTo ? listHint(v.addsRowsTo.name, v.result[0]?.value ?? '') : FREE_HINT[v.kind]}
+                  {COPY_HINT}
                 </p>
                 {notice && <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 p-2 mb-2"
                   data-testid="answer-kept-notice">{notice}</p>}
@@ -137,8 +140,9 @@ export const AnswerPanel: React.FC<Props> = (p) => {
                   : (
                     <div className={`text-xs font-mono overflow-x-auto border border-gray-200 p-2${
                       p.adding ? ' opacity-60 pointer-events-none' : ''}`} data-testid="answer-tree">
-                      <JsonTree value={v.answer} path="$" mappingByPath={mapped}
-                        onPick={v.addsRowsTo ? undefined : p.onAddField} pickLabel="Column" />
+                      <JsonTree key={p.target ? `${p.target.column}:${p.target.row}` : ''} value={v.answer} path="$"
+                        mappingByPath={mapped} onPick={v.addsRowsTo ? undefined : p.onAddField}
+                        pickLabel="Add as column" />
                     </div>
                   )}
               </Section>

@@ -1,4 +1,4 @@
-// The "+ Column" fill (services/answer-field-fill.ts) against a migrated
+// The "Add as column" fill (services/answer-field-fill.ts) against a migrated
 // throwaway DB: the new column is linked to every run of the status column,
 // each row takes the newest run that answered it (completed or failed; a
 // pending result leaves it to an older run), rows no run answered stay empty,

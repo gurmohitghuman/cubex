@@ -1,5 +1,6 @@
 import { JSONPath } from 'jsonpath-plus';
 import { WEBHOOK_MAX_JSONPATH_LEN } from './constants';
+import { literalSteps, readLiteral } from './jsonpath-literal';
 
 // Allowlist matching EXACTLY the grammar the client path-builder
 // (json-mapping/jsonPath.ts) emits: a leading `$`, then zero or more segments,
@@ -92,6 +93,16 @@ export interface ExtractOutcome {
 }
 
 export function extractOutcome(payload: any, jsonPath: string): ExtractOutcome {
+  // `.name`, `["key"]` and `[n]` steps (what the click-to-map builder makes) are read
+  // literally first (jsonpath-literal.ts). Only when that finds nothing does jsonpath-plus
+  // read the path, as it always did: where the key is there it reads the same value, so a
+  // saved path keeps its meaning (a wildcard, list or range in quotes where no such key
+  // exists, a key saved with a raw backslash), and only what it misread changes.
+  const steps = typeof jsonPath === 'string' ? literalSteps(jsonPath) : null;
+  if (steps) {
+    const got = readLiteral(payload, steps);
+    if (got.matched) return got;
+  }
   try {
     // eval:false disables filter `[?(...)]` and script `[(...)]` expression
     // evaluation (which jsonpath-plus runs via the JS engine). Neither the HTTP
@@ -102,6 +113,8 @@ export function extractOutcome(payload: any, jsonPath: string): ExtractOutcome {
     if (Array.isArray(result) && result.length > 0) return { matched: true, value: result[0] };
     return { matched: false, value: null };
   } catch (error) {
+    // A literal path jsonpath-plus can't parse (a top-level `@type`) simply isn't there in this reply.
+    if (steps) return { matched: false, value: null };
     return { matched: false, value: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -111,7 +124,8 @@ export function extractOutcome(payload: any, jsonPath: string): ExtractOutcome {
 // only cares about the value. Webhook ingestion uses extractOutcome directly so a
 // malformed mapping path can mark the delivery 'partial'.
 //
-// Path dialect is jsonpath-plus. Callers MUST build paths that bracket-quote keys
+// Path dialect: the builder's steps read literally (jsonpath-literal.ts), anything
+// else by jsonpath-plus. Callers MUST build paths that bracket-quote keys
 // containing dots/spaces/hyphens/quotes (e.g. $["event.type"], $.data["first name"]);
 // a naive `${path}.${key}` for a key like "event.type" would wrongly read a nested
 // `event.type` object. The client builder (json-mapping/jsonPath.ts) and the server
