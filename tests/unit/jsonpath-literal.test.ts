@@ -138,6 +138,39 @@ check(`${compared} random ordinary paths (${hits} found something) read exactly 
   + 'on the server and in the browser',
   differ === 0 && hits > compared / 10)
 
+// --- Saved paths keep the meaning jsonpath-plus gave them -----------------------------
+// What jsonpath-plus read before (its first match), or 'throw'.
+const before = (path: string, json: unknown) => {
+  try {
+    const r = JSONPath({ path, json: json as any, eval: false }) as unknown[] | undefined
+    return r?.length ? { matched: true, value: r[0] } : { matched: false, value: null }
+  } catch { return 'throw' }
+}
+const saved: Record<string, unknown> = {
+  a: { x: 1, y: 2 }, b: { x: 3 }, items: [10, 20, 30], name: 'Ada', email: 'ada@acme.example',
+  nested: { list: [{ id: 'p1' }, { id: 'p2' }] }, ['C:' + ch(92) + 'temp']: 'win',
+}
+const keptPaths = [
+  '$.a[*]', '$.a["*"]', '$["a","b"]', '$..x', '$.items["0:2"]', '$.items["1:"]', '$["name,email"]', '$.*',
+  '$.items[*]', '$..id', '$.nested.list[*].id', '$.nested["list"][1]["id"]', '$["C:' + ch(92) + 'temp"]', '$.a["x"]',
+]
+const changedFromBefore = keptPaths.filter(p => !same(extractOutcome(saved, p), before(p, saved)))
+check('wildcards, lists, ranges and raw backslashes in saved paths read as before', changedFromBefore.length === 0)
+if (changedFromBefore.length) console.log('     changed:', changedFromBefore.join(' '))
+check('...and they really are wildcards, lists and ranges', extractOutcome(saved, '$.a["*"]').value === 1
+  && extractOutcome(saved, '$["name,email"]').value === 'Ada' && same(extractOutcome(saved, '$.items["0:2"]').value, 10)
+  && extractOutcome(saved, '$..x').value === 1)
+const reply = JSON.parse('{"@odata.nextLink": "next", "@type": "Person", "user\'s name": "Ada", "x": {"@type": "Org"}}')
+check('the keys jsonpath-plus misread now read as themselves',
+  extractOutcome(reply, '$["@odata.nextLink"]').value === 'next'
+  && extractOutcome(reply, '$["@type"]').value === 'Person'
+  && extractOutcome(reply, `$["user's name"]`).value === 'Ada' && extractOutcome(reply, '$.x["@type"]').value === 'Org')
+check('...where jsonpath-plus read nothing or failed', !same(before('$["@odata.nextLink"]', reply), { matched: true,
+  value: 'next' }) && before('$["@type"]', reply) === 'throw' && !same(before(`$["user's name"]`, reply),
+  { matched: true, value: 'Ada' }))
+check('a top-level @type missing from a reply is a plain miss, not an error',
+  same(extractOutcome({ x: 1 }, '$["@type"]'), { matched: false, value: null }))
+
 // --- Everything else still goes to jsonpath-plus --------------------------------------
 const list = { results: [{ title: 'one' }, { title: 'two' }], deep: { title: 'three' } }
 check('wildcards and recursive descent still work', extractOutcome(list, '$.results[*].title').value === 'one'

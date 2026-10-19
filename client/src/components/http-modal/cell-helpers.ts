@@ -34,8 +34,10 @@ export function derivedMasterName(masterColumnName: string, endpointUrl: string)
 export type { HTTPAPIConfig }
 
 // Read a JSONPath against a JS value. A path the click-tree builds (`.key`,
-// `["key"]`, `[n]`) reads exactly as the server will (json-mapping/readPath.ts);
-// anything else typed by hand falls back to a rough walk of its `.key`/`[n]`
+// `["key"]`, `[n]`) reads as the server reads it first (json-mapping/readPath.ts),
+// and a miss is an empty cell (the server then also tries jsonpath-plus, which
+// matters only for a wildcard, list or range typed inside quotes). Anything else
+// typed by hand falls back to a rough walk of its `.key`/`[n]`
 // parts (no wildcards, filters, slices or recursive descent). Returns
 // undefined for any segment that doesn't resolve. Used by the commit path
 // so the user's tree-clicked fields can be re-extracted from the row's

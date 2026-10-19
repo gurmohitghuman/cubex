@@ -2,9 +2,10 @@
 // literally: `$`, then `.name`, `["key"]` and `[n]` steps, each an own property
 // of the value before it. jsonpath-plus parses a bracketed key's text as path
 // syntax again (`@`, `,`, `*`, `'`, `^`, `$`, `..`) and never undoes its escapes,
-// so it read keys common in API replies (`@odata.nextLink`, `@type`, "user's name",
-// `$ref`) as something else or as nothing. Paths with `*` or `..` still go to
-// jsonpath-plus (jsonpath-extract.ts). Each step reads like jsonpath-plus did for
+// so it read keys common in API replies (`@odata.nextLink`, a top-level `@type`,
+// "user's name") as nothing or as an error. extractOutcome (jsonpath-extract.ts) reads
+// these paths literally first and falls back to jsonpath-plus when that finds nothing;
+// paths with `*` or `..` go straight to jsonpath-plus. Each step reads like jsonpath-plus did for
 // ordinary keys: an own property of a truthy value (`.length` of a list or a
 // non-empty string, a string's `[0]`), the digits of `[n]` as written (`[01]`
 // matches nothing). The client reads them the same way (json-mapping/readPath.ts).

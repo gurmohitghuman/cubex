@@ -1,8 +1,8 @@
-// Reading a path in the browser exactly as the server does (server
+// Reading a path in the browser as the server reads it first (server
 // lib/jsonpath-literal.ts; tests/unit/jsonpath-literal.test.ts holds the two
 // together): `$`, then `.name`, `["key"]` (unescaped like jsonPath.ts writes it)
 // and `[n]` steps, each an own property of a truthy value. Any other path (`*`,
-// `..`) isn't read here: null steps.
+// `..`) isn't read here: null steps. On a miss the server also asks jsonpath-plus.
 import { unescapeKey } from './jsonPath'
 
 const STEP = /\.([A-Za-z_$][A-Za-z0-9_$]*)|\["((?:[^"\\]|\\.)*)"\]|\[(\d+)\]/y
