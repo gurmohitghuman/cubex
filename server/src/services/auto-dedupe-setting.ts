@@ -99,7 +99,8 @@ const MATCH_WORDS: Record<DedupeMatch, string> = {
 };
 
 // Turns it on, or changes it. A field left out keeps what the setting has
-// (a new setting: match text, keep oldest).
+// (a new setting: match text, keep oldest): phone_country too, while the
+// column and the match stay the same (null clears it).
 export function setAutoDedupe(
   userId: string, sheetId: string, args: AutoDedupeArgs,
 ): { ok: AutoDedupeView } | AutoDedupeFail {
@@ -111,7 +112,9 @@ export function setAutoDedupe(
   }
   const sameColumn = have?.column_name === column;
   const item: Record<string, unknown> = { column, match: args.match ?? (sameColumn ? have!.match : undefined) };
-  const country = args.phone_country ?? (sameColumn && args.match === undefined ? have!.phone_country : undefined);
+  const sameMatch = sameColumn && item.match === have!.match;
+  const country = args.phone_country !== undefined ? args.phone_country
+    : sameMatch ? have!.phone_country : undefined;
   if (country !== undefined && country !== null) item.phone_country = country;
   const key = parseDedupeKey(item, getSheetColumns(sheetId, userId, false));
   if ('fail' in key) return key;

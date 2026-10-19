@@ -1,7 +1,7 @@
 import { APIRequestContext, expect, request as pwRequest, test } from '@playwright/test'
 import path from 'path'
 import { createRequire } from 'module'
-import { authedApi, importCsv } from './helpers'
+import { authedApi, importCsv, assertTestDb } from './helpers'
 import { TREG, MOCK_TEAM_KEY, mockTreg, setTregKey } from './helpers-treg'
 
 // Enrichment run helpers: a lead sheet, run starts through the API (the same
@@ -107,8 +107,7 @@ export async function mockState(): Promise<Record<string, unknown>> {
 }
 
 export function readDb<T>(fn: (db: any) => T): T {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set: run via npm run e2e')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath, { readonly: true })
   try { db.pragma('busy_timeout = 5000'); return fn(db) } finally { db.close() }

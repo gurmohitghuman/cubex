@@ -80,11 +80,12 @@ export function columnRuns(sheetId: string, userId: string, column: string): Col
 }
 
 // The newest result at the row among `runs` (a rerun of other rows leaves
-// this row's answer in the run that made it). One index probe per run until
-// a hit; rows a recent run answered stop at once.
+// this row's answer in the run that made it; an undone run's result at a row
+// whose cell the undo put back isn't its answer, migration 044). One index
+// probe per run until a hit; rows a recent run answered stop at once.
 export function resultAtRow(runs: ColumnRunRef[], userId: string, rowIndex: number): RowResult | null {
   const probe = db.prepare(`SELECT status, response_data, error_message, cost_usd FROM http_results
-    WHERE run_id = ? AND row_index = ? AND +user_id = ?`);
+    WHERE run_id = ? AND row_index = ? AND +user_id = ? AND undone = 0`);
   for (const ref of runs) {
     const hit = probe.get(ref.id, rowIndex, userId) as Omit<RowResult, 'run'> | undefined;
     if (!hit || (hit.status !== 'completed' && hit.status !== 'failed')) continue;

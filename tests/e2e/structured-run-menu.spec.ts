@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
-import { authedApi, seedSheet, BASE } from './helpers'
+import { authedApi, seedSheet, BASE, assertTestDb } from './helpers'
 
 // The column menu on a structured AI run (several typed columns from one call
 // per row): "Force run all rows" on any of its columns reruns that run on every row
@@ -10,9 +10,7 @@ import { authedApi, seedSheet, BASE } from './helpers'
 // seeded into the test DB (no OpenRouter key here), as in
 // run-missing-empty-filter-crash.spec.ts.
 function openTestDb(): Database.Database {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
-  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db

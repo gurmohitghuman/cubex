@@ -154,8 +154,13 @@ export const GRID_DELETE_CALL_ROWS = 2_000;
 
 // Try with sample data (server services/sample-table.ts): making it fills its
 // free columns before it answers. The guide names the AI column it set up and
-// the duplicate check it shows (server lib/sample/setup.ts).
+// the duplicate check it shows (server lib/sample/setup.ts). It checks again on
+// a data change only up to SAMPLE_GUIDE_CHECK_MAX_ROWS rows (25 made-up ones plus
+// a few the person adds). A failed make looks for a new SAMPLE_TABLE_NAME table
+// (or "Sample leads 2"…) before saying so: the server may have finished anyway.
 export const SAMPLE_CREATE_TIMEOUT_MS = 90_000;
+export const SAMPLE_GUIDE_CHECK_MAX_ROWS = 1_000;
+export const SAMPLE_TABLE_NAME = 'Sample leads';
 export const SAMPLE_AI_COLUMN = 'Good fit (Output)';
 export const SAMPLE_DEDUPE_COLUMNS = [{ column: 'Email', match: 'email' as const }];
 
@@ -164,3 +169,8 @@ export const UNDO_KEEP_DAYS = 7;
 // How often "Undo last run" reads how far a big undo got, and failed reads in a row before it gives up.
 export const UNDO_POLL_MS = 1_500;
 export const UNDO_POLL_MISSES = 5;
+
+// "N failed, retry" (hooks/sheet/useGridRunControls.ts): rows arriving re-read the
+// failed counts (a walk over the sheet) at most this often, for an auto-run batch
+// that started and ended between two looks at the sheet's runs.
+export const FAILED_COUNTS_ARRIVAL_MS = 60_000;

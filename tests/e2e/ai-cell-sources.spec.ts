@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 import Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
 
@@ -10,9 +10,7 @@ import { randomUUID } from 'crypto'
 // "(Output)" sibling. The newest run with sources at that row wins.
 
 function openTestDb(): Database.Database {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
-  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db

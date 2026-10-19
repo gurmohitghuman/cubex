@@ -12,7 +12,7 @@
 import { db } from '../lib/db';
 import { AUTO_DEDUPE_STEP_MS, AUTO_DEDUPE_STEP_ROWS } from '../lib/constants-dedupe';
 import { autoDedupeKey } from '../lib/auto-dedupe/key';
-import { autoDedupeById, autoDedupeOf, type AutoDedupe } from '../lib/auto-dedupe/store';
+import { autoDedupeById, autoDedupeOf, sheetInTrash, type AutoDedupe } from '../lib/auto-dedupe/store';
 import { firstAbove, lookupStep, settleWal } from './lookup-maintain';
 
 const CHUNK = 250;
@@ -60,12 +60,19 @@ export function writeKeys(
 
 const keysFor = (s: AutoDedupe, rids: number[]): void => { writeKeys(s, rids, readKeyCells(s, rids)); };
 
+// Inside a step's transaction: the setting went, or its key column was
+// renamed since `s` was read (a rename's first slices may have moved the rows'
+// cells already: read under the old name they would have no key, and lose it
+// for good). The step stops; the next one reads the setting again.
+const changedSince = (s: AutoDedupe): boolean => autoDedupeById(s.id)?.path !== s.path;
+
 // Rows built per setting: the rowids the sheet had when its build started
 // (in memory while it builds; a restart reads them again). One statement
 // reads them, so rows moving meanwhile can't be seen twice or missed.
 const buildRows = new Map<number, Float64Array>();
 
-function buildStep(s: AutoDedupe): boolean {
+// One step of a build (exported for tests): true while rows are left.
+export function buildStep(s: AutoDedupe): boolean {
   let ids = buildRows.get(s.id);
   if (!ids) {
     const all = db.prepare('SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
@@ -76,11 +83,13 @@ function buildStep(s: AutoDedupe): boolean {
   const rows = ids;
   let finished = false;
   let done = false;
+  let moved = false;
   try {
     lookupStep(() => {
       const cursor = db.prepare('SELECT build_cursor FROM auto_dedupe WHERE id = ?').pluck().get(s.id) as
         number | null | undefined;
       if (cursor === null || cursor === undefined) { done = true; return; }
+      if (changedSince(s)) { moved = true; return; }
       let at = firstAbove(rows, cursor);
       const until = Date.now() + AUTO_DEDUPE_STEP_MS;
       for (let n = 0; at < rows.length && n < AUTO_DEDUPE_STEP_ROWS && Date.now() < until; n += CHUNK) {
@@ -97,6 +106,7 @@ function buildStep(s: AutoDedupe): boolean {
     throw err;
   }
   if (done) { buildRows.delete(s.id); return false; }
+  if (moved) return true;
   if (finished) {
     buildRows.delete(s.id);
     countShared(s.id);
@@ -117,9 +127,11 @@ function countShared(id: number): void {
 const takeDirty = () => db.prepare('SELECT rid FROM auto_dedupe_dirty WHERE dedupe_id = ? ORDER BY rid LIMIT ?')
   .pluck();
 
-function drainStep(s: AutoDedupe): boolean {
+// One step of a drain (exported for tests): true while rows are left.
+export function drainStep(s: AutoDedupe): boolean {
   let more = false;
   lookupStep(() => {
+    if (changedSince(s)) { more = true; return; }
     const take = takeDirty();
     const until = Date.now() + AUTO_DEDUPE_STEP_MS;
     for (let n = 0; n < AUTO_DEDUPE_STEP_ROWS && Date.now() < until; n += CHUNK) {
@@ -139,13 +151,14 @@ export function keysCurrent(s: AutoDedupe): boolean {
 }
 
 // Brings one sheet's keys up to date, a step at a time, until `deadline` (ms
-// since epoch): 'ready' when nothing is left (or the setting is gone).
+// since epoch): 'ready' when nothing is left (or the setting is gone, or the
+// sheet is in the trash: its keys are brought up to date once it is restored).
 export async function maintainAutoDedupeSheet(
   sheetId: string, userId: string, deadline: number,
 ): Promise<'ready' | 'later'> {
   for (;;) {
     const s = autoDedupeOf(sheetId, userId);
-    if (!s) return 'ready';
+    if (!s || sheetInTrash(sheetId, userId)) return 'ready';
     const more = s.build_cursor !== null ? buildStep(s) || drainStep(s) : drainStep(s);
     await settleWal();
     const now = autoDedupeById(s.id);

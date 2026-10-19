@@ -1,3 +1,4 @@
+// Over 200 lines: the shared e2e toolkit (login, seeding, tokens, test-DB writes) every spec imports.
 import { request as pwRequest, APIRequestContext, expect } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
@@ -13,6 +14,16 @@ const require = createRequire(import.meta.url)
 // client base are the same prod origin (the server serves client/dist).
 export const BASE = process.env.E2E_BASE || 'http://localhost:3099'
 export const TEST_PASSWORD = 'password123'
+
+// The throwaway test DB a helper or spec may open, or a throw: DB_PATH must be
+// set (the harness, scripts/e2e-env.mjs, points it at cubex-e2e.db) and must not
+// be a real cubex.db. Call it before every better-sqlite3 open of DB_PATH, so
+// `npx playwright test` run by hand against a real database writes nothing.
+export function assertTestDb(dbPath: string | undefined): string {
+  if (!dbPath) throw new Error('DB_PATH not set: run via npm run e2e')
+  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error(`refusing to open the real cubex.db (${dbPath})`)
+  return dbPath
+}
 
 // One logged-in APIRequestContext, reused while its session stays valid. Every
 // spec shares the one account serially (workers: 1); seedSheet clears its
@@ -168,8 +179,7 @@ const ACCESS_TOKEN_RAW_BYTES = 32
 const ACCESS_TOKEN_DISPLAY_PREFIX_CHARS = 12
 
 export function mintAccessTokenInDb(scopes: string[], name: string): string {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const crypto = require('node:crypto')
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
@@ -224,8 +234,7 @@ export async function makeAccessToken(
 // against. A second better-sqlite3 connection against DB_PATH, WAL-safe with a
 // busy_timeout.
 export function setSheetName(sheetId: string, name: string) {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
   try {
