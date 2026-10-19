@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { authedApi, seedSheet, importCsv, BASE } from './helpers'
 import { makeToken } from './api-v1-run-helpers'
 import { mcpClient, call } from './helpers-mcp'
+import { openMoreMenu } from './helpers-ui'
 
 // Setup versions in the app at 1280px: a sheet tab's menu opens them; a
 // version saved, then the sheet changed over the API (a formula column
@@ -58,7 +59,7 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await page.getByTestId('setup-versions-close').click()
   await expect(page.locator('.ag-header-cell').filter({ hasText: 'Domain' })).toBeVisible({ timeout: 10_000 })
 
-  await page.getByTestId('sheet-history').click()
+  await openMoreMenu(page, 'History')
   await expect(page.getByText('Restored the setup version "Before the cleanup"')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText('Saved the setup version "Before the cleanup"')).toBeVisible()
   await page.waitForTimeout(300)
@@ -66,7 +67,7 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await page.keyboard.press('Escape')
 
   // The Setups menu opens them too: the restore kept the setup it replaced.
-  await page.getByTestId('setups-menu').click()
+  await page.getByTestId('more-menu').click()
   await page.getByTestId('setups-menu-versions').click()
   await expect(page.getByTestId('setup-version-row')).toHaveCount(2)
   await expect(page.getByTestId('setup-version-row').first()).toContainText('Automatic')
@@ -76,7 +77,7 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await page.getByTestId('setup-version-rename-input').press('Enter')
   await expect(page.getByTestId('setup-version-row').nth(1)).toContainText('Clean start')
   await page.getByTestId('setup-version-delete').first().click()
-  await expect(dialog).toContainText('Delete for good?')
+  await expect(dialog).toContainText('Delete?')
   await page.waitForTimeout(200)
   await shot(page, 'setup-versions-delete')
   await page.getByTestId('setup-version-delete-yes').click()
@@ -92,7 +93,7 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   // A version deleted elsewhere: comparing it says so, and the list shows what's there.
   const gone = await call(client, 'manage_setup_version', { sheet_id: sheetId, action: 'save', name: 'Gone soon' })
   await page.getByTestId('setup-versions-close').click()
-  await page.getByTestId('setups-menu').click()
+  await page.getByTestId('more-menu').click()
   await page.getByTestId('setups-menu-versions').click()
   await expect(page.getByTestId('setup-version-row')).toHaveCount(2)
   await call(client, 'manage_setup_version', { sheet_id: sheetId, action: 'delete', version_id: gone.version.id })

@@ -5,6 +5,7 @@ import path from 'node:path'
 import { test, expect, request as pwRequest, type Page } from '@playwright/test'
 import { authedApi, seedSheet, makeAccessToken, BASE } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { choose } from './helpers-ui'
 
 // Saved views through every surface: REST create/list/update/delete and reads
 // through a view (rows/query, export), MCP get_sheet/read_rows/export_csv with
@@ -141,7 +142,7 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
 
   // A filter changed here belongs to this view only.
   await openMenu(page, 'Industry')
-  await page.getByLabel('Filter condition').selectOption('any_of')
+  await choose(page.getByLabel('Filter condition'), 'any_of')
   // Typed values (the picker also lists the column's values with counts).
   for (const value of ['saas', 'retail']) {
     await page.getByPlaceholder('Search or type a value…').fill(value)
@@ -160,18 +161,19 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   await shot(page, '05-rows-with-errors')
 
   // Export: this view (its rows and visible columns) or the whole sheet.
-  await page.getByTestId('export-button').click()
+  await page.getByTestId('data-menu').click()
   await shot(page, '06-export-choice')
   const download = page.waitForEvent('download')
-  await page.getByRole('menuitem', { name: /This view/ }).click()
+  await page.getByRole('menuitem', { name: /^Export this view/ }).click()
   const file = await download
   expect(file.suggestedFilename()).toMatch(/ - Rows with errors\.csv$/)
   const exported = fs.readFileSync((await file.path())!, 'utf8').trim().split(/\r?\n/)
   expect(exported[0]).toBe('"val","Industry","Notes","Fit (Output)"')
   expect(exported).toHaveLength(4)
-  await page.getByTestId('export-button').click()
+  await expect(page.getByTestId('data-menu')).not.toHaveAttribute('aria-busy', 'true') // that export is done
+  await page.getByTestId('data-menu').click()
   const whole = page.waitForEvent('download')
-  await page.getByRole('menuitem', { name: /Whole sheet/ }).click()
+  await page.getByRole('menuitem', { name: /^Export whole sheet/ }).click()
   expect(fs.readFileSync((await (await whole).path())!, 'utf8').trim().split(/\r?\n/)).toHaveLength(7)
 
   // Clearing the view's filter shows every row in this view.

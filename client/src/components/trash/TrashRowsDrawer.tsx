@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import toast from 'react-hot-toast'
 import { ArchiveRestore, Download, Loader2, Rows, Search } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
@@ -75,11 +76,9 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
         description="The rows as they were deleted. Restore the ones you pick, or the whole batch from the list." />
       <DrawerBody>
         <div className="flex flex-wrap items-center gap-2">
-          <select className="input w-auto py-1 text-sm" value={column} onChange={e => setColumn(e.target.value)}
-            aria-label="Column to search" data-testid="trash-rows-column">
-            <option value="">Any column</option>
-            {columns.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select className="w-auto py-1 text-sm" value={column} onChange={setColumn}
+            label="Column to search" testId="trash-rows-column"
+            options={[{ value: '', label: 'Any column' }, ...columns.map(c => ({ value: c, label: c }))]} />
           <div className="relative flex-1 min-w-[12rem]">
             <Search className="h-3.5 w-3.5 absolute left-2 top-2.5 text-gray-400" />
             <input className="input pl-7 py-1 text-sm" placeholder="Find rows holding…" value={text}

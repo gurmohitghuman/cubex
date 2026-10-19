@@ -6,6 +6,7 @@ import { SavedKeysPicker } from './SavedKeysPicker'
 import { OpenRouterCreditNotice } from '../OpenRouterCreditNotice'
 import { NoModelNotice } from '../NoModelNotice'
 import { HTTPAPIConfig } from './types'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   sheetId: string
@@ -144,10 +145,8 @@ export const AIAssistBar: React.FC<Props> = ({ sheetId, sheetDefaultModel, onAut
           <label className="block text-xs font-medium text-gray-700 mb-1">
             Which column? <span className="text-gray-400 font-normal">(optional)</span>
           </label>
-          <select className="input w-full text-sm" value={keyedColumn} onChange={(e) => setKeyedColumn(e.target.value)}>
-            <option value="">Pick a column</option>
-            {columns.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select className="w-full text-sm" value={keyedColumn} onChange={setKeyedColumn} label="Which column?"
+            options={[{ value: '', label: 'Pick a column' }, ...columns.map(c => ({ value: c, label: c }))]} />
         </div>
       </div>
 

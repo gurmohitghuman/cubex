@@ -35,7 +35,7 @@ function claim(item: TrashItem): boolean {
 export function restoreSheetItem(userId: string, itemId: number): { ok: SheetRestored } | RestoreFail {
   const item = getTrashItem(itemId, userId);
   if (!item || item.kind === 'rows') return { fail: 'not_found', message: 'Nothing in the trash with that id.' };
-  if (item.state !== 'kept') return { fail: 'conflict', message: 'This is being deleted for good.' };
+  if (item.state !== 'kept') return { fail: 'conflict', message: 'This is being deleted.' };
   return item.kind === 'sheet' ? restoreSheet(userId, item) : restoreTable(userId, item);
 }
 
@@ -67,7 +67,7 @@ function restoreSheet(userId: string, item: TrashItem): { ok: SheetRestored } | 
       renamed: name !== sheet.name, state: 'restored' };
   }).immediate();
   if (out) refillLookups(userId, [sheetId]);
-  return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted for good.' };
+  return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted.' };
 }
 
 // Lookups whose fill stopped while the sheet was in the trash look up again,
@@ -105,5 +105,5 @@ function restoreTable(userId: string, item: TrashItem): { ok: SheetRestored } | 
       renamed: name !== table.name, state: 'restored' };
   }).immediate();
   if (out) refillLookups(userId, sheets);
-  return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted for good.' };
+  return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted.' };
 }

@@ -3,6 +3,7 @@ import {
   aiAPI, DEFAULT_SEARCH_MODE, SEARCH_MODES,
   type SearchEngine, type SearchPlanResponse, type WebSearchSettings,
 } from '@/utils/api'
+import { Select } from '../ui/Select'
 import { MAX_SEARCHES_PER_ROW } from '@/lib/constants'
 
 // Under "Web search": which engine the searches run on, its mode, and a limit
@@ -60,35 +61,32 @@ export const WebSearchOptions: React.FC<Props> = ({ model, value, onChange, onBl
     <div className="mt-2 ml-6 space-y-2">
       <label className="block">
         <span className="block text-xs text-gray-600 mb-1">Search engine</span>
-        <select className="input w-full" value={engine} aria-label="Search engine"
-          onChange={(e) => set({ engine: e.target.value as SearchEngine, mode: '' })}>
-          <option value="auto">Auto</option>
-          <option value="native">{native?.available ? `${native.provider}'s own search` : "Model's own search"}</option>
-          <option value="exa">Exa</option>
-          <option value="parallel">Parallel</option>
-          <option value="perplexity">{info?.prices.perplexity != null ? `Perplexity, ${usd(info.prices.perplexity)}` : 'Perplexity'}</option>
-        </select>
+        <Select<SearchEngine> className="w-full" value={engine} label="Search engine"
+          onChange={e => set({ engine: e, mode: '' })}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'native', label: native?.available ? `${native.provider}'s own search` : "Model's own search" },
+            { value: 'exa', label: 'Exa' },
+            { value: 'parallel', label: 'Parallel' },
+            { value: 'perplexity',
+              label: info?.prices.perplexity != null ? `Perplexity, ${usd(info.prices.perplexity)}` : 'Perplexity' },
+          ]} />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="block min-w-0">
           <span className="block text-xs text-gray-600 mb-1">Mode</span>
-          <select className="input w-full !pl-2" value={value.mode} disabled={!hasModes(engine)} aria-label="Mode"
-            onChange={(e) => set({ mode: e.target.value })}>
-            {hasModes(engine) ? (
-              <>
-                <option value="">Default ({modeLabel(DEFAULT_SEARCH_MODE[engine])})</option>
-                {SEARCH_MODES[engine].map(m => <option key={m} value={m}>{modeLabel(m)}</option>)}
-              </>
-            ) : <option value="">Not used</option>}
-          </select>
+          <Select<string> className="w-full" value={value.mode} disabled={!hasModes(engine)} label="Mode"
+            onChange={mode => set({ mode })}
+            options={hasModes(engine) ? [
+              { value: '', label: `Default (${modeLabel(DEFAULT_SEARCH_MODE[engine])})` },
+              ...SEARCH_MODES[engine].map(m => ({ value: m as string, label: modeLabel(m) })),
+            ] : [{ value: '', label: 'Not used' }]} />
         </label>
         <label className="block min-w-0">
           <span className="block text-xs text-gray-600 mb-1">Searches per row</span>
-          <select className="input w-full !pl-2" value={value.maxPerRow ?? ''} aria-label="Searches per row"
-            onChange={(e) => set({ maxPerRow: e.target.value ? Number(e.target.value) : null })}>
-            <option value="">No limit</option>
-            {CAPS.map(n => <option key={n} value={n}>Up to {n}</option>)}
-          </select>
+          <Select<string | number> className="w-full" value={value.maxPerRow ?? ''} label="Searches per row"
+            onChange={v => set({ maxPerRow: v ? Number(v) : null })}
+            options={[{ value: '', label: 'No limit' }, ...CAPS.map(n => ({ value: n, label: `Up to ${n}` }))]} />
         </label>
       </div>
       {info?.error && <p className="text-xs text-red-600" role="alert">{info.error}</p>}

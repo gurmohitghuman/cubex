@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import { Layers } from 'lucide-react'
 import { Drawer, DrawerHeader } from '@/components/Drawer'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
@@ -143,12 +144,12 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
                     disabled={draft.continueColumn} onChange={ev => update({ columnName: ev.target.value })} />
                 </label>
                 {draft.resultType === 'phone' && (
-                  <select className="input w-full" value={draft.phoneFormat} aria-label="Phone format"
-                    onChange={ev => update({ phoneFormat: ev.target.value as WaterfallDraft['phoneFormat'] })}>
-                    <option value="international">+1 415 555 2671</option>
-                    <option value="e164">+14155552671</option>
-                    <option value="national">(415) 555-2671 in its own country</option>
-                  </select>
+                  <Select<string> className="w-full" value={draft.phoneFormat} label="Phone format"
+                    onChange={v => update({ phoneFormat: v as WaterfallDraft['phoneFormat'] })} options={[
+                      { value: 'international', label: '+1 415 555 2671' },
+                      { value: 'e164', label: '+14155552671' },
+                      { value: 'national', label: '(415) 555-2671 in its own country' },
+                    ]} />
                 )}
               </Section>
               <Section title="Inputs">

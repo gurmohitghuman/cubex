@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
+import { choose } from './helpers-ui'
 
 // Web search cost controls: search_engine, search_mode and max_searches_per_row
 // on run_ai_column (MCP and REST) and in the AI column drawer. No OpenRouter key
@@ -106,27 +107,27 @@ test('AI column drawer: engine, mode and limit, with the price of what will run'
   const engine = page.getByLabel('Search engine')
   const mode = page.getByLabel('Mode', { exact: true })
   const cap = page.getByLabel('Searches per row')
-  await expect(engine).toHaveValue('auto')
+  await expect(engine).toHaveAttribute('data-value', 'auto')
   await expect(mode).toBeDisabled()
   const plan = page.getByTestId('web-search-plan')
   await expect(plan).toContainText("OpenAI's own search at OpenAI's list price of $0.01 a search")
 
-  await engine.selectOption('parallel')
+  await choose(engine, 'parallel')
   await expect(mode).toBeEnabled()
-  await mode.selectOption('fast')
-  await cap.selectOption('1')
+  await choose(mode, 'fast')
+  await choose(cap, '1')
   await expect(plan).toContainText('Parallel (fast mode) at $0.001 a search')
   await expect(plan).toContainText('Up to 1 search a row, so at most $0.001 a row in search fees.')
 
   // A limit OpenAI's own search can't keep: refused, and the preview button says why.
   await page.getByPlaceholder('e.g., Industry Analysis, Sentiment Score').fill('Lookup')
   await page.locator('#prompt').fill('Find /val')
-  await engine.selectOption('native')
+  await choose(engine, 'native')
   await expect(page.getByRole('alert')).toContainText("can't be limited per row")
   await expect(page.getByRole('button', { name: /Try on/ })).toBeDisabled()
   await expect(page.getByText('Change the web search settings to continue.')).toBeVisible()
   // Auto with the same limit runs on Exa instead, and says so.
-  await engine.selectOption('auto')
+  await choose(engine, 'auto')
   await expect(plan).toContainText('this run uses Exa instead')
   await expect(page.getByRole('button', { name: /Try on/ })).toBeEnabled()
   await api.dispose()

@@ -1,6 +1,7 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test'
 import { authedApi, seedSheet, makeAccessToken, BASE } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { choose } from './helpers-ui'
 
 // Date conditions, nested AND/OR groups and rules turned off: REST rows/query,
 // MCP read_rows and check_run_condition ("Only run if" date words), and the
@@ -74,8 +75,8 @@ test('date filters, nested groups and rules turned off: REST, MCP, rules and the
   await page.getByTestId('filter-button').click()
   const panel = page.getByTestId('filter-panel')
   await panel.getByRole('button', { name: 'Add rule' }).first().click()
-  await rules(page).nth(0).getByLabel('Column').selectOption('Signed')
-  await rules(page).nth(0).getByLabel('Condition').selectOption('date_gte')
+  await choose(rules(page).nth(0).getByLabel('Column'), 'Signed')
+  await choose(rules(page).nth(0).getByLabel('Condition'), 'date_gte')
   await rules(page).nth(0).getByLabel('Date').fill('2024-02-01')
   await rules(page).nth(0).getByLabel('Date').press('Enter')
   await expect.poll(() => shownVals(page)).toEqual(['v2', 'v3'])
@@ -87,8 +88,8 @@ test('date filters, nested groups and rules turned off: REST, MCP, rules and the
   for (const [i, value] of [[0, 'free'], [1, 'pro']] as const) {
     if (i === 1) await group.getByRole('button', { name: 'Add rule' }).click()
     const rule = group.getByTestId('filter-rule').nth(i)
-    await rule.getByLabel('Column').selectOption('Plan')
-    await rule.getByLabel('Condition').selectOption('eq')
+    await choose(rule.getByLabel('Column'), 'Plan')
+    await choose(rule.getByLabel('Condition'), 'eq')
     await rule.getByLabel('Value').fill(value)
     await rule.getByLabel('Value').press('Enter')
   }
@@ -121,7 +122,7 @@ test('date filters, nested groups and rules turned off: REST, MCP, rules and the
     .toBe(JSON.stringify({ Signed: { type: 'date_gte', value: '2024-02-01' } }))
   await page.keyboard.press('Escape')
   await page.locator('.ag-header-cell').filter({ hasText: 'Signed' }).first().locator('.ag-header-cell-text').click()
-  await expect(page.getByLabel('Filter condition')).toHaveValue('date_gte')
+  await expect(page.getByLabel('Filter condition')).toHaveAttribute('data-value', 'date_gte')
   await expect(page.getByLabel('Date')).toHaveValue('2024-02-01')
   await page.keyboard.press('Escape')
 
@@ -130,11 +131,11 @@ test('date filters, nested groups and rules turned off: REST, MCP, rules and the
   await page.getByTestId('filter-button').click()
   await panel.getByRole('button', { name: 'Add rule' }).last().click()
   const plan = rules(page).last()
-  await plan.getByLabel('Column').selectOption('Plan')
+  await choose(plan.getByLabel('Column'), 'Plan')
   await plan.getByLabel('Value').fill('pro')
   await plan.getByLabel('Value').press('Enter')
   await expect.poll(() => shownVals(page)).toEqual(['v2'])
-  await plan.getByLabel('Condition').selectOption('any_of')
+  await choose(plan.getByLabel('Condition'), 'any_of')
   await expect(plan.getByRole('button', { name: 'pro' })).toBeVisible()
   await plan.getByRole('button', { name: 'pro' }).click()
   await plan.getByRole('checkbox').nth(0).waitFor()

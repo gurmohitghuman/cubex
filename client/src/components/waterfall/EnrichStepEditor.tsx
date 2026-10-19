@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import { Loader2, Search } from 'lucide-react'
 import { enrichAPI, type EnrichToolCard, type EnrichToolDetail } from '@/utils/api'
 import type { EnrichmentChoices, ResultType } from '@/utils/api/waterfall'
@@ -105,12 +106,12 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
                 <div key={i.name} className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-2 items-center">
                   <span className="text-xs text-gray-600 font-mono break-words">{i.name}</span>
                   <div className="space-y-1">
-                    <select className="input w-full" value={v} aria-label={`Tool input ${i.name}`}
-                      onChange={e => setInput(i.name, e.target.value)}>
-                      <option value="">Not used</option>
-                      {inputs.map(x => <option key={x.key} value={`k:${x.key}`}>{x.label}</option>)}
-                      <option value="fixed">A fixed value…</option>
-                    </select>
+                    <Select className="w-full" value={v} label={`Tool input ${i.name}`}
+                      onChange={val => setInput(i.name, val)} options={[
+                        { value: '', label: 'Not used' },
+                        ...inputs.map(x => ({ value: `k:${x.key}`, label: x.label })),
+                        { value: 'fixed', label: 'A fixed value…' },
+                      ]} />
                     {v === 'fixed' && typeof fixed === 'object' && (
                       <input className="input w-full" value={fixed.value} aria-label={`${i.name} value`}
                         onChange={e => setInput(i.name, 'fixed', e.target.value)} />
@@ -122,11 +123,11 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
           </div>
           <label className="block space-y-1">
             <span className="meta-label">Answer field</span>
-            <select className="input w-full" value={choices.valuePath ?? ''} aria-label="Answer field"
-              onChange={e => onChange({ ...choices, valuePath: e.target.value || null })}>
-              <option value="">{`Default (${defaultPath(resultType, tool.outputs) ?? 'none fits: pick one'})`}</option>
-              {tool.outputs.map(o => <option key={o.path} value={o.path}>{o.field}</option>)}
-            </select>
+            <Select className="w-full" value={choices.valuePath ?? ''} label="Answer field"
+              onChange={val => onChange({ ...choices, valuePath: val || null })} options={[
+                { value: '', label: `Default (${defaultPath(resultType, tool.outputs) ?? 'none fits: pick one'})` },
+                ...tool.outputs.map(o => ({ value: o.path, label: o.field })),
+              ]} />
           </label>
           <label className="block space-y-1">
             <span className="meta-label">Most a row may cost here (optional)</span>

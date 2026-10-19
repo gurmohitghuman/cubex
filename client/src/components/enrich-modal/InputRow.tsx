@@ -1,6 +1,7 @@
 import React from 'react'
 import type { EnrichToolInput } from '@/utils/api'
 import type { InputBinding } from './draft'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   input: EnrichToolInput
@@ -32,21 +33,16 @@ export const InputRow: React.FC<Props> = ({ input, label, binding, columns, onCh
         {label}{input.required && <span className="text-gray-400"> *</span>}
       </label>
       <div className="space-y-1 min-w-0">
-        <select className="input w-full" value={value} onChange={e => pick(e.target.value)} aria-label={label}>
-          <option value="">Not used</option>
-          {lostColumn && <option value={value}>{(binding as { column: string }).column} (not in the sheet)</option>}
-          {columns.length > 0 && (
-            <optgroup label="Columns">
-              {columns.map(c => <option key={c} value={`c:${c}`}>{c}</option>)}
-            </optgroup>
-          )}
-          <option value="fixed">Type a fixed value…</option>
-        </select>
+        <Select className="w-full" value={value} onChange={pick} label={label}
+          groups={[
+            { label: '', options: [{ value: '', label: 'Not used' }, ...(lostColumn
+              ? [{ value, label: `${(binding as { column: string }).column} (not in the sheet)` }] : [])] },
+            { label: 'Columns', options: columns.map(c => ({ value: `c:${c}`, label: c })) },
+            { label: '', options: [{ value: 'fixed', label: 'Type a fixed value…' }] },
+          ]} />
         {binding?.kind === 'fixed' && (choices.length ? (
-          <select className="input w-full" value={binding.value} onChange={e => onChange({ kind: 'fixed', value: e.target.value })}
-            aria-label={`${label} value`}>
-            {choices.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select className="w-full" value={binding.value} onChange={v => onChange({ kind: 'fixed', value: v })}
+            label={`${label} value`} options={choices.map(c => ({ value: c, label: c }))} />
         ) : (
           <input className="input w-full" value={binding.value} placeholder={exampleText(input.example) || 'Same value for every row'}
             onChange={e => onChange({ kind: 'fixed', value: e.target.value })} aria-label={`${label} value`} />

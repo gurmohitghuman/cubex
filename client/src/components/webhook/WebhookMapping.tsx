@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { JsonTree } from '../json-mapping/JsonTree'
 import type { WebhookMapping as Mapping, WebhookDelivery } from '@/utils/api/webhooks'
+import { Select } from '@/components/ui/Select'
 
 // Mapping section: pick a sample delivery, click fields in the JsonTree to map
 // them into columns, see existing mappings. The tree builds bracket-safe paths
@@ -49,17 +50,16 @@ export function WebhookMapping({
             {samples.length > 1 && (
               <>
                 <label className="text-xs text-gray-500">Sample</label>
-                <select
+                <Select
+                  variant="tiny"
+                  label="Sample"
                   value={sample?.id ?? ''}
-                  onChange={(e) => setPinnedId(e.target.value)}
-                  className="input text-xs py-1"
-                >
-                  {samples.map((d, i) => (
-                    <option key={d.id} value={d.id}>
-                      {new Date(d.receivedAt + 'Z').toLocaleString()} {i === 0 ? '(newest)' : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setPinnedId}
+                  options={samples.map((d, i) => ({
+                    value: d.id,
+                    label: `${new Date(d.receivedAt + 'Z').toLocaleString()} ${i === 0 ? '(newest)' : ''}`,
+                  }))}
+                />
               </>
             )}
             {newerAvailable && (

@@ -5,6 +5,7 @@ import { makeToken } from './api-v1-run-helpers'
 import { call, mcpClient } from './helpers-mcp'
 import { rowsOf, seedCsv } from './helpers-enrich'
 import { Receiver } from './helpers-receiver'
+import { choose, openColumnType } from './helpers-ui'
 
 // Lookup steps: a free first step that takes a work email from another sheet
 // (a CRM list) where the lead's domain matches, so only the rows it can't
@@ -107,14 +108,14 @@ test('the drawer: a lookup step set up from its pickers, then run', async ({ pag
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
+  await openColumnType(page, 'Waterfall')
   await drawer(page).getByTestId('waterfall-type-email').click()
   await drawer(page).getByRole('button', { name: 'Lookup' }).click()
   const step = drawer(page).getByTestId('waterfall-lookup-step')
-  await step.getByTestId('wf-lookup-sheet').selectOption({ label: 'Contacts' })
-  await step.getByTestId('wf-lookup-match-column').selectOption('Domain')
-  await step.getByTestId('wf-lookup-input').selectOption('domain')
-  await step.getByTestId('wf-lookup-return-column').selectOption('Email')
+  await choose(step.getByTestId('wf-lookup-sheet'), { label: 'Contacts' })
+  await choose(step.getByTestId('wf-lookup-match-column'), 'Domain')
+  await choose(step.getByTestId('wf-lookup-input'), 'domain')
+  await choose(step.getByTestId('wf-lookup-return-column'), 'Email')
   await expect(drawer(page).getByTestId('waterfall-step').first()).toContainText('Email from Contacts')
   await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('3 rows', { timeout: 15_000 })
   await page.screenshot({ path: 'test-results/shots/waterfall-lookup-step.png', fullPage: true })

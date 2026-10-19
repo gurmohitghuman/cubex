@@ -2,6 +2,7 @@ import React from 'react'
 import type { LookupReturns } from '@/utils/api'
 import { LOOKUP_LIST_MAX } from '@/lib/constants'
 import { RETURNS_LABEL } from './lookup-copy'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   // The other sheet's columns (empty until a sheet is picked).
@@ -25,23 +26,20 @@ export const LookupReturnsFields: React.FC<Props> = p => (
   <div className="space-y-3">
     <div>
       <label htmlFor="lookup-returns" className={LABEL}>Write</label>
-      <select id="lookup-returns" className="input w-full" value={p.returns}
-        onChange={e => p.onReturns(e.target.value as LookupReturns)} data-testid="lookup-returns">
-        {(Object.keys(RETURNS_LABEL) as LookupReturns[])
-          .map(r => <option key={r} value={r}>{RETURNS_LABEL[r]}</option>)}
-      </select>
+      <Select id="lookup-returns" className="w-full" value={p.returns} label="Write"
+        onChange={v => p.onReturns(v as LookupReturns)} testId="lookup-returns"
+        options={(Object.keys(RETURNS_LABEL) as LookupReturns[]).map(r => ({ value: r, label: RETURNS_LABEL[r] }))} />
     </div>
     {p.returns === 'value' && (
       <div>
         <label htmlFor="lookup-return-column" className={LABEL}>Column to write</label>
-        <select id="lookup-return-column" className="input w-full" value={p.returnColumn}
-          onChange={e => p.onReturnColumn(e.target.value)} data-testid="lookup-return-column">
-          {!p.returnColumn && <option value="" disabled>Pick a column</option>}
-          {p.returnColumn && !p.columns.includes(p.returnColumn) && (
-            <option value={p.returnColumn} disabled>{p.returnColumn} (deleted)</option>
-          )}
-          {p.columns.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <Select id="lookup-return-column" className="w-full" value={p.returnColumn} label="Column to write"
+          onChange={p.onReturnColumn} testId="lookup-return-column" placeholder="Pick a column"
+          options={[
+            ...(p.returnColumn && !p.columns.includes(p.returnColumn)
+              ? [{ value: p.returnColumn, label: `${p.returnColumn} (deleted)`, disabled: true }] : []),
+            ...p.columns.map(c => ({ value: c, label: c })),
+          ]} />
         <p className="text-xs text-gray-500 mt-1">From the first matching row, top of the sheet first.</p>
       </div>
     )}

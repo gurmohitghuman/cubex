@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import toast from 'react-hot-toast'
 import { BarChart3, Download, Loader2 } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
@@ -60,11 +61,10 @@ export const UsageDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId, sheetNa
         description="What this sheet's runs ran and cost, by column, day or run." />
       <DrawerBody>
         <div className="flex flex-wrap items-center gap-2">
-          <select className="input w-auto py-1 text-sm" value={range} aria-label="Range"
-            onChange={e => pickRange(e.target.value as UsageRangeName)} data-testid="usage-range">
-            {(Object.keys(RANGE_LABELS) as UsageRangeName[])
-              .map(r => <option key={r} value={r}>{RANGE_LABELS[r]}</option>)}
-          </select>
+          <Select<UsageRangeName> className="w-auto py-1 text-sm" value={range} label="Range"
+            onChange={pickRange} testId="usage-range"
+            options={(Object.keys(RANGE_LABELS) as UsageRangeName[])
+              .map(r => ({ value: r, label: RANGE_LABELS[r] }))} />
           {range === 'custom' && (
             <>
               <input type="date" className="input w-auto py-1 text-sm" value={from} aria-label="From"

@@ -1,5 +1,6 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet, getSheet, BASE } from './helpers'
+import { choose } from './helpers-ui'
 
 // The app's Clean data flow: "+ Add Column" offers Clean data, the preview
 // shows before and after, the new column gets its icon and values, its menu
@@ -37,8 +38,8 @@ test('Clean data from the Add Column dialog and the column menu', async ({ page,
   await page.getByRole('button', { name: /add new column/i }).click()
   await page.getByTestId('new-column-clean').click()
   const form = page.getByTestId('clean-column-form')
-  await form.locator('#clean-source').selectOption('Name')
-  await form.locator('#clean-cleaner').selectOption('person_name')
+  await choose(form.locator('#clean-source'), 'Name')
+  await choose(form.locator('#clean-cleaner'), 'person_name')
   await expect(page.getByTestId('clean-cleaner-help')).toContainText('ALL CAPS')
   await expect(form).toContainText('John Smith', { timeout: 10_000 })
   await expect(form.locator('#clean-name')).toHaveAttribute('placeholder', 'Name (clean)')
@@ -58,7 +59,7 @@ test('Clean data from the Add Column dialog and the column menu', async ({ page,
   }
   await page.getByRole('menuitem', { name: /Edit cleaning/ }).click()
   await expect(page.getByRole('dialog')).toContainText('Edit cleaning')
-  await page.locator('#clean-cleaner').selectOption('lowercase')
+  await choose(page.locator('#clean-cleaner'), 'lowercase')
   await expect(page.getByTestId('clean-column-form')).toContainText('smith, john', { timeout: 10_000 })
   await page.getByTestId('clean-submit').click()
   await expect.poll(() => cleanValues(api, sheetId), { timeout: 15_000 })
@@ -80,6 +81,6 @@ test('Clean data from the Add Column dialog and the column menu', async ({ page,
   // Any column's menu opens Clean data with that column picked.
   await openMenu(page, 'val')
   await page.getByRole('menuitem', { name: 'Clean data…' }).click()
-  await expect(page.getByTestId('clean-column-form').locator('#clean-source')).toHaveValue('val')
+  await expect(page.getByTestId('clean-column-form').locator('#clean-source')).toHaveAttribute('data-value', 'val')
   await page.getByRole('button', { name: 'Cancel' }).click()
 })

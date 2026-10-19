@@ -1,6 +1,7 @@
 import { test, expect, request as pwRequest, type Page } from '@playwright/test'
 import { authedApi, seedSheet, makeAccessToken, BASE } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { choose } from './helpers-ui'
 
 // Row filters on run state, lists and OR groups, through every surface: REST
 // rows/query and rows, MCP read_rows and export_csv, and the grid's column
@@ -107,7 +108,7 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
 
   await openMenu(page, 'Industry')
   await expect(page.getByRole('menuitem', { name: /Rows with errors/ })).toHaveCount(0)
-  await page.getByLabel('Filter condition').selectOption('any_of')
+  await choose(page.getByLabel('Filter condition'), 'any_of')
   // Typed values (the picker also lists the column's values with counts).
   for (const value of ['saas', 'retail']) {
     await page.getByPlaceholder('Search or type a value…').fill(value)

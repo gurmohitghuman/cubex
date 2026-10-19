@@ -2,6 +2,7 @@ import { test, expect, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { callEveryRow, freshTreg, rowsOf, seedCsv } from './helpers-enrich'
 import { Receiver } from './helpers-receiver'
+import { choose, openColumnType } from './helpers-ui'
 
 // The Waterfall drawer in the browser: the toolbar button, the result types,
 // inputs matched to the columns by name, a treg step found by search and an
@@ -32,11 +33,11 @@ test('build a waterfall, estimate it, run it, read a trace, edit it again', asyn
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
+  await openColumnType(page, 'Waterfall')
   await expect(drawer(page).getByTestId('waterfall-result-types')).toBeVisible()
   await drawer(page).getByTestId('waterfall-type-email').click()
-  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveValue('c:Name')
-  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveValue('c:Website')
+  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveAttribute('data-value', 'c:Name')
+  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveAttribute('data-value', 'c:Website')
 
   // A treg step found by search, then an HTTP step on the local receiver.
   await drawer(page).getByRole('button', { name: 'Enrichment tool' }).click()
@@ -118,12 +119,12 @@ test('a formula step with an email check, tested alone from its card', async ({ 
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
+  await openColumnType(page, 'Waterfall')
   await drawer(page).getByTestId('waterfall-type-email').click()
   await drawer(page).getByRole('button', { name: 'Formula' }).click()
   await drawer(page).getByLabel('Step formula').fill("{{full_name}}.toLowerCase().replace(' ', '.') + '@' + {{domain}}")
-  await drawer(page).getByLabel('Check', { exact: true }).selectOption('verify')
-  await expect(drawer(page).getByLabel('Accept')).toHaveValue('safest')
+  await choose(drawer(page).getByLabel('Check', { exact: true }), 'verify')
+  await expect(drawer(page).getByLabel('Accept')).toHaveAttribute('data-value', 'safest')
   await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('a row on average', { timeout: 15_000 })
   await shot(page, 'waterfall-formula-check')
 

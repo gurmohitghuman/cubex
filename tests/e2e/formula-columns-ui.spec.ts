@@ -1,5 +1,6 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet, getSheet, BASE } from './helpers'
+import { choose } from './helpers-ui'
 
 // The app's Formula flow: "+ Add Column" offers Formula; "Insert a column"
 // writes {{Name}} at the cursor; the preview shows what the formula gives;
@@ -47,7 +48,7 @@ test('Formula from the Add Column dialog and the column menu', async ({ page, co
   await form.locator('#formula-name').fill('Work email')
   // "Insert a column" puts {{Response}} where the cursor is.
   const box = page.getByTestId('formula-text')
-  await page.getByTestId('formula-insert').selectOption('Response')
+  await choose(page.getByTestId('formula-insert'), 'Response')
   await expect(box).toHaveValue('{{Response}}')
   await box.press('End')
   await box.pressSequentially('?.emails?.find(e => e.type == "work")?.value')

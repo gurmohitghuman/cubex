@@ -3,6 +3,7 @@ import { authedApi, BASE, importCsv } from './helpers'
 import { freshTreg, rowsOf, seedCsv, waitRun } from './helpers-enrich'
 import { mockTreg } from './helpers-treg'
 import { companiesCsv, destRows, runRest, testAndPick, waitAdded } from './helpers-list'
+import { choose, openColumnType } from './helpers-ui'
 
 // List results into rows (plan Verification #10, UI U8): "People at a
 // company" asks one provider for each row's people and adds them as rows in
@@ -26,7 +27,7 @@ test('People at a company: test, pick the fields, add the rows, run the rest', a
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+  await openColumnType(page, 'Enrichment')
   await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'People at a company' }).click()
   // Set up: "Add results as rows" in place of outputs; fields come after a test.
   const pane = drawer(page).getByTestId('enrich-list-rows')
@@ -53,7 +54,7 @@ test('People at a company: test, pick the fields, add the rows, run the rest', a
     await picker.locator('li').filter({ hasText: label }).getByRole('checkbox').check()
   }
   await drawer(page).getByTestId('enrich-list-dedupe').check()
-  await drawer(page).getByLabel('Field to match on').selectOption({ label: 'Employee LinkedIn' })
+  await choose(drawer(page).getByLabel('Field to match on'), { label: 'Employee LinkedIn' })
   await drawer(page).getByTestId('enrich-list-add').click()
   await expect(drawer(page).getByTestId('enrich-list-progress')).toContainText('20 rows added to People',
     { timeout: 20_000 })

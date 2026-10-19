@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { plural } from '@/lib/utils'
+import { Select } from '@/components/ui/Select'
 import type { ListFieldPick } from './list-draft'
 
 interface Props {
@@ -80,11 +81,10 @@ export const ListFieldsPicker: React.FC<Props> = ({ fields, onChange, dedupePath
             className="border-gray-300 text-cube-black focus:ring-black" data-testid="enrich-list-dedupe" />
           <span>Skip results already added, matched on</span>
         </label>
-        <select className="input py-1 min-w-0 flex-1" value={dedupePath ?? ''} disabled={dedupePath === null}
-          onChange={e => onDedupe(e.target.value)} aria-label="Field to match on">
-          <option value="">Pick a field</option>
-          {on.map(x => <option key={x.path} value={x.path}>{x.columnName || x.label}</option>)}
-        </select>
+        <Select className="py-1 min-w-0 flex-1" value={dedupePath ?? ''} disabled={dedupePath === null}
+          onChange={onDedupe} label="Field to match on"
+          options={[{ value: '', label: 'Pick a field' },
+            ...on.map(x => ({ value: x.path, label: x.columnName || x.label }))]} />
       </div>
       <p className="text-xs text-gray-500">
         A result that doesn&apos;t have a field leaves that cell empty. Skipping matches results added while this

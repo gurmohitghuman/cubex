@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { settingsAPI } from '@/utils/api'
 import { SETUP_KIND_LABEL } from '@/utils/api/setups'
 import type { UseSetupForm } from './useUseSetupForm'
+import { Select } from '@/components/ui/Select'
 
 const LABEL = 'block text-xs font-medium text-gray-700 mb-1'
 const MODELS_LIST = 'setup-models'
@@ -32,12 +33,10 @@ export const SetupFitForm: React.FC<{ form: UseSetupForm; columns: string[] }> =
             {setup.inputs.map(input => (
               <label key={input} className="flex items-center gap-3 text-sm">
                 <span className="w-40 shrink-0 truncate text-gray-800" title={input}>{input}</span>
-                <select className={`input flex-1 min-w-0 ${f.estimate.missing.includes(input) ? 'border-red-400' : ''}`}
-                  value={f.inputs[input] ?? ''} aria-label={`Column for ${input}`} data-testid="setup-input"
-                  onChange={e => f.setInputs({ ...f.inputs, [input]: e.target.value })}>
-                  <option value="">Pick a column…</option>
-                  {columns.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <Select className={`flex-1 min-w-0 ${f.estimate.missing.includes(input) ? 'border-red-400' : ''}`}
+                  value={f.inputs[input] ?? ''} label={`Column for ${input}`} testId="setup-input"
+                  onChange={v => f.setInputs({ ...f.inputs, [input]: v })}
+                  options={[{ value: '', label: 'Pick a column…' }, ...columns.map(c => ({ value: c, label: c }))]} />
               </label>
             ))}
           </div>

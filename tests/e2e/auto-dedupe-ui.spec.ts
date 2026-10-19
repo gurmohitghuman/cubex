@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { seedLeads } from './helpers-dedupe'
+import { openDataMenu } from './helpers-ui'
 
 // Auto-dedupe in the app: the Remove duplicates dialog's "As rows arrive" tab
 // opens on the Email column matched as an email, turns it on and says how many
@@ -20,10 +21,10 @@ test('auto-dedupe from the Remove duplicates dialog, a key typed into a new row'
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByTestId('remove-duplicates').click()
+  await openDataMenu(page, 'Remove duplicates')
   await page.getByTestId('dedupe-tab-auto').click()
-  await expect(page.getByTestId('auto-dedupe-column')).toHaveValue('Email')
-  await expect(page.getByTestId('auto-dedupe-match')).toHaveValue('email')
+  await expect(page.getByTestId('auto-dedupe-column')).toHaveAttribute('data-value', 'Email')
+  await expect(page.getByTestId('auto-dedupe-match')).toHaveAttribute('data-value', 'email')
   await expect(page.getByLabel('Oldest row')).toBeChecked()
   await page.getByTestId('auto-dedupe-save').click()
   await expect(page.getByText('Auto-dedupe is on')).toBeVisible()
@@ -59,7 +60,7 @@ test('auto-dedupe from the Remove duplicates dialog, a key typed into a new row'
   await addRow(11)
   await type(10, 'jo@acme.com')
   await expect(page.getByText('10 rows')).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId('remove-duplicates').click()
+  await openDataMenu(page, 'Remove duplicates')
   await page.getByTestId('dedupe-tab-auto').click()
   await expect(page.getByTestId('auto-dedupe-status')).toContainText('2 rows removed so far')
   await page.getByTestId('auto-dedupe-trash-link').click()
@@ -80,9 +81,9 @@ test('auto-dedupe keeps phone_country when the dialog saves another keep', async
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByTestId('remove-duplicates').click()
+  await openDataMenu(page, 'Remove duplicates')
   await page.getByTestId('dedupe-tab-auto').click()
-  await expect(page.getByTestId('auto-dedupe-column')).toHaveValue('Phone')
+  await expect(page.getByTestId('auto-dedupe-column')).toHaveAttribute('data-value', 'Phone')
   await expect(page.getByTestId('auto-dedupe-country')).toContainText('read as GB numbers')
   await page.getByLabel('Newest row').check()
   await page.getByTestId('auto-dedupe-save').click()

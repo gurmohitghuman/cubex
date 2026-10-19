@@ -278,6 +278,9 @@ export const SheetPage: React.FC = () => {
         onAddEnrichment={() => modals.setShowEnrichmentDrawer(true)}
         onAddHTTPColumn={() => modals.setShowHTTPAPIColumnModal(true)}
         onAddWaterfall={() => modals.openWaterfall({ kind: 'new' })}
+        onAddClean={() => modals.openClean({ mode: 'create' })}
+        onAddFormula={() => modals.openFormula({ mode: 'formula-new' })}
+        onAddLookup={() => modals.openLookup({ mode: 'lookup-new' })}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.openDedupe('now')} autoDedupeOn={!!sheetData?.data.autoDedupe}
         onSaveSetup={() => modals.openSaveSetup(null)}

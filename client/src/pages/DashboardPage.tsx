@@ -175,7 +175,7 @@ export const DashboardPage: React.FC = () => {
         isOpen={!!deleteConfirm}
         title="Delete Table"
         message={`Delete "${deleteConfirm?.name}" with all its sheets? It goes to the trash, where you can `
-          + "restore it as it was until it's deleted for good."}
+          + "restore it as it was until it's deleted."}
         confirmText="Delete Table"
         onConfirm={handleDeleteTable}
         onCancel={() => setDeleteConfirm(null)}

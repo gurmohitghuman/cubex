@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { expectBilledOnce, freshTreg, rowsOf, runIdsOf, seedLeadRows } from './helpers-enrich'
+import { openColumnType } from './helpers-ui'
 
 // The drawer runs an enrichment (plan Verification #2): Run on 5 rows makes a
 // real run on the first rows and shows them in the Test step with their cost
@@ -25,7 +26,7 @@ test('Run on 5 rows, check them, then the rest', async ({ page, context }) => {
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+  await openColumnType(page, 'Enrichment')
   await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'Verified work email' }).click()
   await expect(drawer(page).getByTestId('enrich-run-reason'))
     .toHaveText('Try it on a few rows first, then run the rest.', { timeout: 15_000 })
@@ -83,7 +84,7 @@ test('Run on 5 rows, check them, then the rest', async ({ page, context }) => {
   await expectBilledOnce(runs)
 
   // The next open starts over at Find.
-  await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+  await openColumnType(page, 'Enrichment')
   await expect(page.getByText('Pick what you want to find')).toBeVisible()
   await api.dispose()
 })

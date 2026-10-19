@@ -6,7 +6,7 @@ You pick a job, match its inputs to your columns, try it on 5 rows, then run the
 
 ## What enrichments do
 
-Click **Enrichment** in the sheet header (next to **AI Column**). The drawer opens on the popular jobs:
+In the sheet header, click the arrow next to **AI Column**, then **Enrichment**. The drawer opens on the popular jobs:
 
 | Job | What it does |
 |---|---|
@@ -47,7 +47,7 @@ The key is stored encrypted and only ever sent to treg. It isn't shown again; to
 
 Say you have a sheet of leads with **Name** and **Website** columns and you want a work email for each.
 
-1. Open the sheet and click **Enrichment**.
+1. Open the sheet, click the arrow next to **AI Column** and choose **Enrichment**.
 2. Under **Popular**, pick **Verified work email**.
 3. **Inputs.** Cubex matches inputs to columns by name. Check that the person's name points at **Name** and the company domain at **Website**. **Clean up to a domain** turns `https://www.acme.com/about` into `acme.com`. Each extra input you map lets more providers try.
 4. **Providers.** The waterfall's providers, in the order they're asked. Drag them (or use the arrows) to change the order, and switch off any you don't want. Providers on your own keys and free sources always go first. **Only the first provider that can answer runs** is cheaper but finds less.
@@ -117,7 +117,7 @@ New sign-ups arrive by webhook. You want each one to get a verified work email a
 1. **The webhook.** Set up a [webhook](webhooks.md) on a sheet, send a test event with a person's name, company and website, and pick those fields as columns (say **Name**, **Company** and **Website**). Then send a second test event, so the sheet has a row with those fields filled. Use your own name and company, so the lead that reaches Smartlead in step 4 is you.
 2. **Find the email.** Click **Enrichment**, pick **Verified work email**, map **Name** and **Website**, and set **Email checks** to **Valid only (safest)**. Under **Rows and limits**, check **Auto-run** and set its cap (for example $5 a day). Run it on the test row. Auto-run turns on with that run.
 3. **Save your Smartlead key.** In **Settings → Enrichment**, under saved API keys, save your Smartlead API key as `smartlead_key`.
-4. **Push to Smartlead.** Click **HTTP API** and set up the request that adds a lead to your campaign:
+4. **Push to Smartlead.** Click the arrow next to **AI Column**, then **HTTP API**, and set up the request that adds a lead to your campaign:
    - Method `POST`, URL `https://server.smartlead.ai/api/v1/campaigns/<campaign id>/leads?api_key={{smartlead_key}}`
    - Body:
 
@@ -181,7 +181,7 @@ Other things that affect cost:
 - **Always call again** calls treg for every row: no answer from an earlier run is reused, and treg is asked not to answer from its own store of earlier lookups. Without it, treg can also answer a repeat lookup from that store, which can be cheaper.
 - Providers on your team's own keys at treg bill your team directly. Cubex can't estimate those calls, and no Cubex limit covers them. If treg does charge for one (for example, it starts pricing the tool), that charge counts toward your daily limit, and the run pauses once the day's charges reach it.
 
-To see what you spent: the run screen shows each row's cost, the status column's header shows what the column spent when you hover it, and **Settings → Enrichment → Spending on enrichments** shows the last 7, 30 or 90 days by column. A sheet's **Usage** button shows what its runs ran and cost (AI, HTTP API and enrichment columns, deleted ones too) by column, day or run, for this week, this month, last week, last month or days you pick, and downloads it as CSV.
+To see what you spent: the run screen shows each row's cost, the status column's header shows what the column spent when you hover it, and **Settings → Enrichment → Spending on enrichments** shows the last 7, 30 or 90 days by column. A sheet's **Usage** (in the **⋯** menu of its toolbar) shows what its runs ran and cost (AI, HTTP API and enrichment columns, deleted ones too) by column, day or run, for this week, this month, last week, last month or days you pick, and downloads it as CSV.
 
 ## Auto-run
 

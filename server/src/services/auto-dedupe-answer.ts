@@ -54,7 +54,7 @@ export function autoDedupeAnswer(
   if (d.waiting > 0) out.checking_later = d.waiting;
   if (d.removed.length === 0) return out;
   if (d.trashId === null) {
-    out.note = 'Deleted for good: Settings keeps deleted items 0 days, so nothing went to the trash.';
+    out.note = 'Deleted: Settings keeps deleted items 0 days, so nothing went to the trash.';
     return out;
   }
   const at = db.prepare('SELECT deleted_at FROM trash_items WHERE id = ? AND user_id = ?').pluck()

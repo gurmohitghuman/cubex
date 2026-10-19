@@ -1,5 +1,6 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet, BASE } from './helpers'
+import { choose } from './helpers-ui'
 
 // The app's setups: "Save as setup…" on a filled column ticks it and the
 // filled columns it reads, shows the order and what a sheet needs, and saves;
@@ -55,7 +56,7 @@ test('Save as setup from a column, then manage it in Settings', async ({ page, c
   await expect(form).toBeHidden()
 
   // The header's Setups menu leads to Settings → Setups.
-  await page.getByTestId('setups-menu').click()
+  await page.getByTestId('more-menu').click()
   await page.getByRole('menuitem', { name: 'Manage setups' }).click()
   await expect(page).toHaveURL(/\/settings\/setups$/)
   const card = page.getByTestId('setup-card')
@@ -104,12 +105,12 @@ test('Use a setup on another sheet from the Setups menu', async ({ page, context
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}/${other}`)
   await expect(header(page, 'Site')).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId('setups-menu').click()
+  await page.getByTestId('more-menu').click()
   await page.getByRole('menuitem', { name: 'Use a setup…' }).click()
   await page.getByTestId('use-setup-option').filter({ hasText: 'Domain label' }).click()
   // Website has no column of its name here: picked by hand, then priced.
   await expect(page.getByTestId('setup-estimate-error')).toContainText('Website')
-  await page.getByRole('combobox', { name: 'Column for Website' }).selectOption('Site')
+  await choose(page.getByRole('button', { name: 'Column for Website' }), 'Site')
   const estimate = page.getByTestId('setup-estimate')
   await expect(estimate).toContainText('Free')
   await expect(page.getByTestId('setup-estimate-total')).toHaveText('$0.00')
@@ -126,11 +127,11 @@ test('Use a setup on another sheet from the Setups menu', async ({ page, context
   await api.post(`/api/sheets/${other}/rows`, { data: { count: 1 } })
   await api.put(`/api/sheets/${other}/data`, { data: { updates: [{ rowIndex: 3, columnName: 'Site',
     value: 'linear.app' }] } })
-  await page.getByTestId('setups-menu').click()
+  await page.getByTestId('more-menu').click()
   await page.getByRole('menuitem', { name: 'Use a setup…' }).click()
   await page.getByTestId('use-setup-option').filter({ hasText: 'Domain label' }).click()
   await expect(page.getByTestId('setup-used-before')).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Column for Website' })).toHaveValue('Site')
+  await expect(page.getByRole('button', { name: 'Column for Website' })).toHaveAttribute('data-value', 'Site')
   await expect(page.getByTestId('setup-carries-on')).toHaveCount(2)
   await expect(page.getByTestId('setup-estimate')).toContainText('Follows its columns')
   await page.getByTestId('use-setup-start').click()

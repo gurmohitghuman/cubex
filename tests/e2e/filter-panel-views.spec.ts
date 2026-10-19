@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 import { authedApi, seedSheet, importCsv, BASE } from './helpers'
 import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
 import { Receiver } from './helpers-receiver'
+import { choose } from './helpers-ui'
 
 // The filter panel and saved views: a draft made on one view never lands on
 // another (switched in another tab while the panel is open), and a run-state
@@ -48,8 +49,8 @@ test('a draft made on one view is never saved over another view', async ({ page 
   await expect.poll(() => shownVals(page), { timeout: 15_000 }).toEqual(['v0', 'v1', 'v2', 'v3', 'v4', 'v5'])
   await page.getByTestId('filter-button').click()
   await page.getByTestId('filter-panel').getByRole('button', { name: 'Add rule' }).first().click()
-  await rules(page).nth(0).getByLabel('Column').selectOption('Plan')
-  await rules(page).nth(0).getByLabel('Condition').selectOption('eq')
+  await choose(rules(page).nth(0).getByLabel('Column'), 'Plan')
+  await choose(rules(page).nth(0).getByLabel('Condition'), 'eq')
   await rules(page).nth(0).getByLabel('Value').fill('pro')
   await rules(page).nth(0).getByLabel('Value').press('Enter')
   await expect.poll(() => shownVals(page)).toEqual(['v0', 'v2', 'v5'])
@@ -98,8 +99,8 @@ test('a run-state rule on a column that lost its run blocks no change', async ({
   await page.getByTestId('filter-button').click()
   await page.getByTestId('filter-panel').getByRole('button', { name: 'Add rule' }).first().click()
   const name = rules(page).nth(1)
-  await name.getByLabel('Column').selectOption('Name')
-  await name.getByLabel('Condition').selectOption('eq')
+  await choose(name.getByLabel('Column'), 'Name')
+  await choose(name.getByLabel('Condition'), 'eq')
   await name.getByLabel('Value').fill('bob')
   await name.getByLabel('Value').press('Enter')
   await expect.poll(() => shownVals(page)).toEqual(['v1'])

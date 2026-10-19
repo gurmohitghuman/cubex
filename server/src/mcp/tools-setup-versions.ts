@@ -45,7 +45,7 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
     description: WHAT + 'action save keeps the sheet\'s setup as it is now under name (unique in the sheet, '
       + `ignoring case; a sheet keeps at most ${MAX_SETUP_VERSIONS_PER_SHEET}): do it before changing prompts, `
       + 'requests or formulas, so they can be put back. rename changes a version\'s name or description '
-      + '(version_id). delete removes a version for good (version_id): it can\'t be undone, and the sheet doesn\'t '
+      + '(version_id). delete deletes a version (version_id): it can\'t be undone, and the sheet doesn\'t '
       + 'change. Saving only reads the sheet. The sheet\'s History lists each save.',
     inputSchema: z.object({
       sheet_id: z.string(),

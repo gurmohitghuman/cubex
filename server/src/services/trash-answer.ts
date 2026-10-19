@@ -17,7 +17,7 @@ export interface TrashAnswer {
 export function trashAnswer(userId: string, trashId: number | null, surface: Surface): TrashAnswer {
   if (trashId === null) {
     return {
-      trash_id: null, note: 'Deleted for good: Settings keeps deleted items 0 days, so nothing went to the trash.',
+      trash_id: null, note: 'Deleted: Settings keeps deleted items 0 days, so nothing went to the trash.',
     };
   }
   const days = getTrashDays(userId);

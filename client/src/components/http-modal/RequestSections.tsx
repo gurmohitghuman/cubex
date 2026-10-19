@@ -1,6 +1,7 @@
 import React from 'react'
 import { Key, Minus, Plus } from 'lucide-react'
 import { HTTPAPIConfig } from './types'
+import { Select } from '@/components/ui/Select'
 
 // The request field groups, restacked to a single column for the narrow
 // accordion drawer (~512px). Each export is the BODY of one AccordionSection; the
@@ -58,13 +59,9 @@ export function MethodEndpointFields({
     <>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Method *</label>
-        <select className="input w-full" value={config.method}
-          onChange={(e) => updateConfig({ method: e.target.value as any })}>
-          <option value="GET">GET</option>
-          <option value="POST">POST</option>
-          <option value="PUT">PUT</option>
-          <option value="DELETE">DELETE</option>
-        </select>
+        <Select className="w-full" value={config.method} label="Method"
+          onChange={(v) => updateConfig({ method: v as HTTPAPIConfig['method'] })}
+          options={['GET', 'POST', 'PUT', 'DELETE'].map(m => ({ value: m, label: m }))} />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Endpoint URL *</label>

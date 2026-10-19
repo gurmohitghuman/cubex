@@ -2,6 +2,7 @@
 import { test, expect, request as pwRequest, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, importCsv, makeAccessToken, BASE } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { choose } from './helpers-ui'
 
 // Search in the grid ("/", Enter, Shift+Enter, "N of M", a match outside the
 // loaded rows moving the grid there, the view's filter and hidden column), the
@@ -129,7 +130,7 @@ test('"is any of" offers the column\'s values with counts, narrows them, and tak
   await page.goto(`${BASE}/table/${tableId}/${sheetId}`)
   await page.locator('.ag-center-cols-container .ag-row').first().waitFor()
   await page.locator('.ag-header-cell').filter({ hasText: 'Industry' }).first().locator('.ag-header-cell-text').click()
-  await page.getByLabel('Filter condition').selectOption('any_of')
+  await choose(page.getByLabel('Filter condition'), 'any_of')
   const picker = page.getByTestId('value-picker')
   await expect(picker.locator('label')).toHaveCount(5)
   const row = (label: string) => picker.locator('label').filter({ hasText: label })

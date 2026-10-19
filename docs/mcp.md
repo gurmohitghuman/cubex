@@ -346,14 +346,14 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 
 ## The trash
 
-Deleted rows, sheets and tables aren't gone at once: they wait in the trash for the days set in Settings (30 by default, up to 90; 0 deletes at once), then are deleted for good. The app has a Trash page; agents use `list_trash` and `restore_from_trash`.
+Deleted rows, sheets and tables aren't gone at once: they wait in the trash for the days set in Settings (30 by default, up to 90; 0 deletes at once), then are deleted. The app has a Trash page; agents use `list_trash` and `restore_from_trash`.
 
 - **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; rows [auto-dedupe](#auto-dedupe) didn't keep, one batch per sheet a day; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
 - **The answer:** each of those deletes answers with `trash`: `trash_id`, `kept_days`, `restorable_until` and `how_to_restore`.
 - **Restoring rows:** a batch goes back to its old places when the sheet hasn't been sorted, replaced or deduplicated since and those places are free; otherwise to the end of the sheet, in the order the rows had. Rows keep their ids. Columns they need that the sheet lost come back (`columns_added`); when the sheet has no room for them, the restore is refused rather than leaving cells out. Rows moved out with `transfer_rows` are still in their new sheet, so restoring them keeps both. Auto-run doesn't run restored rows. A run active on the sheet refuses a restore. A batch over 20,000 rows answers `"state": "restoring"` and finishes in the background.
 - **Finding rows:** `list_trash` with a batch's `trash_id` reads its rows (`seq`, `row_id`, `old_row_index`, `cells`); `column` and `contains` search them. Pass the `seq`s you want to `restore_from_trash` with that `trash_id`.
 - **Restoring a sheet or table:** it comes back as it was, renamed "(restored)" if its name was taken meanwhile. A sheet whose table is in the trash waits for the table, and rows wait for their sheet.
-- **Deleting for good** is only in the app.
+- **Deleting from the trash** is only in the app.
 
 `get_sheet_history` reads a sheet's change log (kept 90 days): what changed and who did it, the app or an access token by name. A line about rows still in the trash has `in_trash: true` and their `trash_id`.
 
@@ -380,7 +380,7 @@ A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API
 - The answer lists the steps in the order they run, the `inputs` (columns the setup reads that none of its steps make: a sheet it's used on needs them) and the saved `keys` its requests name. A saved key is kept by name, never its value.
 - `preview: true` shows what would be saved and saves nothing (`read` scope). Saving needs `write`. Names are unique, ignoring upper/lower case.
 - A column that adds rows to another sheet (a list enrichment) can't be saved yet.
-- `list_setups` lists them; pass `setup_id` for one in full. `delete_setup` deletes one for good; sheets it was used on keep their columns. A setup is a copy, never a link.
+- `list_setups` lists them; pass `setup_id` for one in full. `delete_setup` deletes one; sheets it was used on keep their columns. A setup is a copy, never a link.
 - A column with a key typed straight into its request can't be saved: save the key in Settings and write `{{its name}}` instead.
 
 `apply_setup` builds a setup's columns on another sheet and fills them. It's an estimate unless you pass `estimate_only: false`, so a first call only prices it:
@@ -445,7 +445,7 @@ Enrichments look things up per row through [treg.to](https://treg.to) with the t
 
 ## Waterfalls
 
-A waterfall column fills one value per row by trying steps in order and stopping at the first answer. For a work email: a treg tool first, then your own API, then an AI prompt. A row pays only for the steps it reaches. In the app it's **Waterfall** in the sheet's toolbar; agents use `waterfall_column`.
+A waterfall column fills one value per row by trying steps in order and stopping at the first answer. For a work email: a treg tool first, then your own API, then an AI prompt. A row pays only for the steps it reaches. In the app it's **Waterfall**, under the arrow next to **AI Column** in the sheet's toolbar; agents use `waterfall_column`.
 
 ```json
 {
@@ -514,7 +514,7 @@ Everything an assistant sends or receives passes through its context, so a CSV p
 - **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns. Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
 - **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser.
 
-This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and click **Import**.
+This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and choose **Data**, then **Import CSV**.
 
 What keeps the links safe:
 
