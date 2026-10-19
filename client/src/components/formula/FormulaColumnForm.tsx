@@ -71,8 +71,9 @@ export const FormulaColumnForm: React.FC<Props> = ({ sheetId, columns, editing, 
       <div>
         <div className="flex items-center justify-between mb-1">
           <label htmlFor="formula-text" className="block text-xs font-medium text-gray-700">Formula</label>
-          <select className="text-xs border border-gray-200 bg-white px-1 py-0.5" value="" aria-label="Insert a column"
-            onChange={e => { if (e.target.value) insert(e.target.value) }} data-testid="formula-insert">
+          <select className="select-compact text-xs border border-gray-200 bg-white px-1 py-0.5" value=""
+            aria-label="Insert a column" data-testid="formula-insert"
+            onChange={e => { if (e.target.value) insert(e.target.value) }}>
             <option value="">Insert a column…</option>
             {readable.map(c => <option key={c} value={c}>{c}</option>)}
           </select>

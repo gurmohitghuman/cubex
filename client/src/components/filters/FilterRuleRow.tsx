@@ -78,13 +78,13 @@ export const FilterRuleRow: React.FC<{
         </button>
         <div className={`flex items-center gap-1.5 flex-1 min-w-0 ${rule.enabled ? '' : 'opacity-50'}`}>
           <select value={rule.column} onChange={e => pickColumn(e.target.value)} aria-label="Column"
-            className={`${FIELD} w-36 shrink`}>
+            className={`select-compact ${FIELD} w-36 shrink`}>
             {ctx.hasRunColumns && <option value="">Any run column</option>}
             {!rule.column && !ctx.hasRunColumns && <option value="">Pick a column</option>}
             {ctx.columns.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select value={rule.op} onChange={e => pickOp(e.target.value as FilterOp)} aria-label="Condition"
-            className={`${FIELD} w-40 shrink`}>
+            className={`select-compact ${FIELD} w-40 shrink`}>
             {opsFor(rule.column, ctx).map(([label, ops]) => (
               <optgroup key={label} label={label}>
                 {ops.map(([op, text]) => <option key={op} value={op}>{text}</option>)}

@@ -13,7 +13,7 @@ export interface GroupEdit {
   rules: number
 }
 
-const JOIN_FIELD = 'text-xs border border-gray-300 rounded py-0.5 px-1 bg-white focus:outline-none '
+const JOIN_FIELD = 'select-compact text-xs border border-gray-300 rounded py-0.5 px-1 bg-white focus:outline-none '
   + 'focus:border-cube-black'
 
 // The word before each item: "Where", then the group's join (a pick on the
