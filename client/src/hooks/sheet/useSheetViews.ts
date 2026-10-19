@@ -14,7 +14,7 @@ interface Args {
 }
 
 // A change made in a view that is no longer showing: the sheet reloads, no toast.
-const VIEW_MOVED = 'Another view is showing now.'
+export const VIEW_MOVED = 'Another view is showing now.'
 
 const errorText = (e: unknown, fallback: string): string =>
   (e as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback
@@ -77,8 +77,11 @@ export function useSheetViews({ activeSheet, sheetData, setSheetData, reloadActi
     queue('Could not add the view. Please try again.', id => viewsAPI.starter(id, kind)), [queue])
   const activeId = active?.id ?? null
   // The filter panel's whole filter; the panel shows what went wrong itself.
-  const saveFilters = useCallback((where: WhereItem[] | null) =>
-    run('Could not apply the filter. Please try again.', id => viewsAPI.saveFilters(id, activeId, where)),
+  // viewId: the view the filter was built on (the panel's, fixed while it is
+  // open), so a draft made on one view is refused once another shows, never
+  // saved over that one's filter. Left out: the view showing now.
+  const saveFilters = useCallback((where: WhereItem[] | null, viewId: string | null = activeId) =>
+    run('Could not apply the filter. Please try again.', id => viewsAPI.saveFilters(id, viewId, where)),
   [run, activeId])
 
   const setHidden = useCallback((next: string[]) => {
