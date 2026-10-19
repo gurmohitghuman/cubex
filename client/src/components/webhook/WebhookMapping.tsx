@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Trash2, ChevronDown } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { JsonTree } from '../json-mapping/JsonTree'
 import type { WebhookMapping as Mapping, WebhookDelivery } from '@/utils/api/webhooks'
 
@@ -49,20 +49,17 @@ export function WebhookMapping({
             {samples.length > 1 && (
               <>
                 <label className="text-xs text-gray-500">Sample</label>
-                <div className="relative">
-                  <select
-                    value={sample?.id ?? ''}
-                    onChange={(e) => setPinnedId(e.target.value)}
-                    className="input text-xs pr-6 py-1 appearance-none"
-                  >
-                    {samples.map((d, i) => (
-                      <option key={d.id} value={d.id}>
-                        {new Date(d.receivedAt + 'Z').toLocaleString()} {i === 0 ? '(newest)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="h-3 w-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                </div>
+                <select
+                  value={sample?.id ?? ''}
+                  onChange={(e) => setPinnedId(e.target.value)}
+                  className="input text-xs py-1"
+                >
+                  {samples.map((d, i) => (
+                    <option key={d.id} value={d.id}>
+                      {new Date(d.receivedAt + 'Z').toLocaleString()} {i === 0 ? '(newest)' : ''}
+                    </option>
+                  ))}
+                </select>
               </>
             )}
             {newerAvailable && (

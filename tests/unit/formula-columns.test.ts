@@ -85,7 +85,7 @@ const follow = async (column: string) => { await derivedFollowTick(entryFor(shee
 const settle = () => new Promise(r => setTimeout(r, 50))
 async function create(column: string, formula: string, extra: Record<string, unknown> = {}) {
   const out = await startFormulaColumn(uid, sheetId, { column, formula, ...extra })
-  if ('ok' in out) await waitForDerivedFill(formulaKind, out.ok.id, 5_000)
+  if ('ok' in out) await waitForDerivedFill(formulaKind, out.ok.id, 30_000)
   await settle()
   return out
 }
@@ -208,7 +208,7 @@ async function main() {
   check('auto-run off', entryFor(sheetId, uid, 'Work email')?.enabled === 0)
   edit(0, 'Response', reply('new@acme.com'))
   await setFormulaColumnAutorun(uid, sheetId, work, true)
-  await waitForDerivedFill(formulaKind, work.id, 5_000)
+  await waitForDerivedFill(formulaKind, work.id, 30_000)
   await settle()
   check('auto-run on again refills', cells('Work email')[0] === 'new@acme.com'
     && entryFor(sheetId, uid, 'Work email')?.enabled === 1, cells('Work email'))

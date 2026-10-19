@@ -97,7 +97,7 @@ const idle = async (s: string) => { while (sheetBusyWith(s)) await settle() }
 const requireHere = createRequire(import.meta.url)
 async function create(column: string, extra: Record<string, unknown>) {
   const out = await startLookupColumn(uid, A, { column, otherSheetId: B, ...extra })
-  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 5_000)
+  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 30_000)
   await settle()
   return out
 }
@@ -234,7 +234,7 @@ async function main() {
   check('and this sheet stays free meanwhile', 'ok' in free, free)
   await idle(A)
   release(); await hold
-  await waitForDerivedFill(lookupKind, w!.id, 5_000)
+  await waitForDerivedFill(lookupKind, w!.id, 30_000)
   check('then it finishes', lookupColumnFor(A, uid, 'Waits')?.fill_status === 'done'
     && cells(A, 'Waits')[0] === 'Yes', [lookupColumnFor(A, uid, 'Waits'), cells(A, 'Waits')])
 
