@@ -88,7 +88,7 @@ test('Run empty or out-of-date rows with an active empty-filter does not crash t
     // and the app stays interactive (header still present) over the reload that
     // follows the rerun (which is what flips the grid to its zero-row branch).
     await expect(sawCrash).toBeHidden({ timeout: 10_000 })
-    await expect(page.getByRole('button', { name: /import/i }).first()).toBeVisible()
+    await expect(page.getByTestId('data-menu')).toBeVisible()
     // A short settle to let the silent reload + column-state effect run.
     await page.waitForTimeout(1500)
     await expect(sawCrash).toBeHidden()

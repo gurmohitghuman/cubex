@@ -3,6 +3,7 @@ import { authedApi, BASE } from './helpers'
 import { mockTreg } from './helpers-treg'
 import { freshTreg, startRun, verifiedEmailRun, waitRun } from './helpers-enrich'
 import { autorunOf, seedViaWebhook } from './helpers-autorun'
+import { openDataMenu } from './helpers-ui'
 
 // Auto-run in the grid (plan U6, U10; Verification 33): the column menu turns
 // it on through its dialog (with the webhook warning), the header shows ⚡ and
@@ -57,7 +58,7 @@ test('turn on auto-run from the column menu; ⚡, tooltip, chip and the import n
   await expect(page.getByTestId('autorun-chip')).toHaveText('Auto-run on', { timeout: 15_000 })
 
   // The CSV import says what new rows set off, with the pause toggle.
-  await page.getByRole('button', { name: 'Import' }).click()
+  await openDataMenu(page, 'Import CSV')
   await page.locator('input[type="file"]').setInputFiles({
     name: 'more.csv', mimeType: 'text/csv',
     buffer: Buffer.from('Name,Website\nAda Lovelace,figma.com\nGrace Hopper,notion.so\n'),

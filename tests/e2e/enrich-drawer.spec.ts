@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { mockTreg, seedLeads, setTregKey } from './helpers-treg'
+import { choose, openColumnType } from './helpers-ui'
 
 // The Add enrichment drawer against the mock treg's catalog: the Enrichment
 // button, Find (Popular jobs, search groups, no results), Set up (inputs
@@ -11,7 +12,7 @@ import { mockTreg, seedLeads, setTregKey } from './helpers-treg'
 const drawer = (page: Page) => page.getByTestId('enrich-drawer')
 
 async function openDrawer(page: Page) {
-  await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+  await openColumnType(page, 'Enrichment')
   await expect(page.getByText('Add enrichment')).toBeVisible()
 }
 
@@ -24,11 +25,12 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled until a key 
 
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  const button = page.getByRole('button', { name: 'Enrichment', exact: true })
-  await expect(button).toBeEnabled()
-  // It sits right after AI Column, the one filled button.
-  const order = await page.locator('header button').allInnerTexts()
-  expect(order.map(t => t.trim()).indexOf('Enrichment')).toBe(order.map(t => t.trim()).indexOf('AI Column') + 1)
+  // In the column types beside AI Column (the one filled button), right after AI Column.
+  await page.getByTestId('column-types-menu').click()
+  await expect(page.getByRole('menuitem', { name: /^Enrichment/ })).toBeEnabled()
+  const order = (await page.getByRole('menuitem').allInnerTexts()).map(t => t.split('\n')[0].trim())
+  expect(order.indexOf('Enrichment')).toBe(order.indexOf('AI Column') + 1)
+  await page.keyboard.press('Escape')
 
   // Find: the Popular jobs, and the banner while no key is saved.
   await openDrawer(page)
@@ -48,8 +50,8 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled until a key 
   // Set up: inputs matched by column name, Run waits for a key.
   await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'Verified work email' }).click()
   await expect(page.getByText('Set up Verified work email')).toBeVisible()
-  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveValue('c:Name')
-  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveValue('c:Website')
+  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveAttribute('data-value', 'c:Name')
+  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveAttribute('data-value', 'c:Website')
   const reason = drawer(page).getByTestId('enrich-run-reason')
   const runSome = drawer(page).getByRole('button', { name: /^Run on/ })
   const runAll = drawer(page).getByRole('button', { name: /^Run all/ })
@@ -59,9 +61,9 @@ test('Enrichment drawer: button, Find, search, Set up, Run disabled until a key 
   await expect(runAll).toHaveText('Run all 3')
 
   // Unmap the name: the reason says what's missing.
-  await drawer(page).getByLabel('Full name', { exact: true }).selectOption('')
+  await choose(drawer(page).getByLabel('Full name', { exact: true }), '')
   await expect(reason).toContainText('Pick columns for')
-  await drawer(page).getByLabel('Full name', { exact: true }).selectOption('c:Name')
+  await choose(drawer(page).getByLabel('Full name', { exact: true }), 'c:Name')
   await expect(reason).toHaveText('Add your treg key in Settings first.')
 
   // With a key, a Hunter key and a free source at treg, and a small balance.

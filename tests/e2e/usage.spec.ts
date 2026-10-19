@@ -2,6 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi, BASE, makeAccessToken } from './helpers'
 import { freshTreg, seedLeadRows } from './helpers-enrich'
 import { call, mcpClient } from './helpers-mcp'
+import { choose, openMoreMenu } from './helpers-ui'
 
 // The Usage view: what a sheet's runs ran and cost, by column, day or run,
 // over a range, with every row as a CSV; a deleted column is still listed with
@@ -79,7 +80,7 @@ test('usage by column, day and run; a deleted column stays; the app, REST, MCP a
     await context.addCookies((await api.storageState()).cookies)
     await page.goto(`${BASE}/table/${tableId}`)
     await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-    await page.getByTestId('sheet-usage').click()
+    await openMoreMenu(page, 'Usage')
     const totals = page.getByTestId('usage-totals')
     await expect(totals).toContainText('1 run · 3 cells run', { timeout: 15_000 })
     const table = page.getByTestId('usage-table')
@@ -92,7 +93,7 @@ test('usage by column, day and run; a deleted column stays; the app, REST, MCP a
     const download = page.waitForEvent('download')
     await page.getByTestId('usage-csv').click()
     expect((await download).suggestedFilename()).toMatch(/^Sheet1 usage .* by run\.csv$/)
-    await page.getByTestId('usage-range').selectOption('custom')
+    await choose(page.getByTestId('usage-range'), 'custom')
     await page.getByTestId('usage-from').fill('2020-01-01')
     await page.getByTestId('usage-to').fill('2020-01-31')
     await expect(page.getByTestId('usage-empty')).toHaveText('No runs in this range.')

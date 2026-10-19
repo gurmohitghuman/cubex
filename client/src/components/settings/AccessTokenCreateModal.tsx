@@ -3,6 +3,7 @@ import { Check, Copy, KeyRound, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AccessTokenScope, CreatedAccessToken, settingsAPI } from '@/utils/api'
 import { capUnreadable, parseCapInput, SpendCapField } from './AccessTokenSpend'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   isOpen: boolean
@@ -163,15 +164,12 @@ export const AccessTokenCreateModal: React.FC<Props> = ({ isOpen, onClose, onCre
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Expiration</label>
-              <select
-                className="input w-full"
-                value={expiryDays === null ? 'never' : String(expiryDays)}
-                onChange={(e) => setExpiryDays(e.target.value === 'never' ? null : Number(e.target.value))}
-              >
-                {EXPIRY_OPTIONS.map(({ label, days }) => (
-                  <option key={label} value={days === null ? 'never' : String(days)}>{label}</option>
-                ))}
-              </select>
+              <Select className="w-full" label="Expiration" value={expiryDays === null ? 'never' : String(expiryDays)}
+                onChange={(v) => setExpiryDays(v === 'never' ? null : Number(v))}
+                options={EXPIRY_OPTIONS.map(({ label, days }) => ({
+                  value: days === null ? 'never' : String(days), label,
+                }))}
+              />
             </div>
 
             <SpendCapField value={cap} onChange={setCap} inputRef={capInput} />

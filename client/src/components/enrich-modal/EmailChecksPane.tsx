@@ -1,5 +1,6 @@
 import React from 'react'
 import { EMAIL_PATTERNS, type AcceptLevel, type EmailChecks } from './draft'
+import { Select } from '@/components/ui/Select'
 
 const LEVELS: Array<{ value: AcceptLevel; label: string; hint: string }> = [
   { value: 'safest', label: 'Valid only (safest)', hint: 'The checker confirmed the mailbox.' },
@@ -29,10 +30,9 @@ export const EmailChecksPane: React.FC<{ value: EmailChecks; onChange: (v: Email
           className="border-gray-300 text-cube-black focus:ring-black" />
         Try a guess first
       </label>
-      <select className="input py-1" value={value.pattern} disabled={!value.guess} aria-label="Guess pattern"
-        onChange={e => onChange({ ...value, pattern: e.target.value })}>
-        {EMAIL_PATTERNS.map(p => <option key={p} value={p}>{p}@domain</option>)}
-      </select>
+      <Select className="py-1" value={value.pattern} disabled={!value.guess} label="Guess pattern"
+        onChange={pattern => onChange({ ...value, pattern })}
+        options={EMAIL_PATTERNS.map(p => ({ value: p, label: `${p}@domain` }))} />
     </div>
     <p className="text-xs text-gray-500">
       A guess costs only the check, which is free with some checkers. If a found address doesn&apos;t pass,

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Plus, X } from 'lucide-react'
 import { MAX_OUTPUT_COLUMNS_PER_RUN } from '@/lib/constants'
+import { Select } from '../ui/Select'
 import { OUTPUT_TYPE_LABELS, type OutputColumnDraft, type OutputColumnType } from '@/lib/output-columns'
 
 interface Props {
@@ -43,12 +44,11 @@ export const OutputColumnsField: React.FC<Props> = ({ value, onChange, columnNam
           <div className="flex items-center gap-1">
             <input className="input flex-1 min-w-0 text-sm" placeholder="Column name" value={o.columnName}
               aria-label={`Output column ${i + 1} name`} onChange={e => set(i, { columnName: e.target.value })} />
-            <select className="input w-28 text-sm" value={o.type} aria-label={`Output column ${i + 1} type`}
-              onChange={e => set(i, { type: e.target.value as OutputColumnType })}>
-              {(Object.keys(OUTPUT_TYPE_LABELS) as OutputColumnType[]).map(t => (
-                <option key={t} value={t}>{OUTPUT_TYPE_LABELS[t]}</option>
-              ))}
-            </select>
+            <Select<OutputColumnType> className="w-28 text-sm" value={o.type} label={`Output column ${i + 1} type`}
+              onChange={type => set(i, { type })}
+              options={(Object.keys(OUTPUT_TYPE_LABELS) as OutputColumnType[]).map(t => (
+                { value: t, label: OUTPUT_TYPE_LABELS[t] }
+              ))} />
             <button type="button" onClick={() => onChange(value.filter((_, j) => j !== i))}
               className="p-1 text-gray-400 hover:text-gray-800" aria-label={`Remove output column ${i + 1}`}>
               <X className="h-3.5 w-3.5" />

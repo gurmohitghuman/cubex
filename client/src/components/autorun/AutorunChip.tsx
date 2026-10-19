@@ -29,12 +29,14 @@ export const AutorunChip: React.FC<{ autorun: AutorunControls }> = ({ autorun })
   const on = Object.values(autorun.view?.columns ?? {}).filter(c => c.enabled)
   const anyGoing = on.some(c => c.pausedReason !== 'user')
   return (
-    <div className="relative ml-2" ref={ref}
+    <div className="relative shrink-0" ref={ref}
       onBlur={e => { if (e.relatedTarget && !ref.current?.contains(e.relatedTarget as Node)) setOpen(false) }}>
       <button type="button" ref={button} onClick={() => setOpen(o => !o)} data-testid="autorun-chip"
-        data-tone={state.tone} aria-expanded={open} aria-haspopup="dialog"
-        className={`inline-flex items-center gap-1 border px-2 py-1 text-xs ${TONE[state.tone]}`}>
-        <Zap className="h-3 w-3" />{state.label}
+        data-tone={state.tone} aria-expanded={open} aria-haspopup="dialog" aria-label={state.label}
+        title={state.label}
+        className={`inline-flex items-center gap-1 whitespace-nowrap border px-2 py-1 text-xs ${TONE[state.tone]}`}>
+        {/* Narrow screens: the icon and its colour; the words from lg up (one line either way). */}
+        <Zap className="h-3 w-3" aria-hidden="true" /><span className="hidden lg:inline">{state.label}</span>
       </button>
       {open && (
         <div className="absolute left-0 top-full mt-1 z-40 w-80 bg-white border border-gray-200 shadow-md"

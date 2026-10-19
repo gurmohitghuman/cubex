@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import os from 'node:os'
 import { authedApi, BASE, getSheet, seedSheet } from './helpers'
+import { choose, openMoreMenu } from './helpers-ui'
 
 // The trash in the app: rows deleted in the grid come back from the toast's
 // Restore at their old places; the Trash page lists a deleted sheet and a
@@ -62,7 +63,7 @@ test('grid delete → Restore in the toast; Trash page restores picked rows and 
     // Inside the batch: find v5, restore only it.
     await batch.getByTestId('trash-more').click()
     await page.getByTestId('trash-look').click()
-    await page.getByTestId('trash-rows-column').selectOption('val')
+    await choose(page.getByTestId('trash-rows-column'), 'val')
     await page.getByTestId('trash-rows-search').fill('v5')
     const found = page.getByTestId('trash-rows').locator('tbody tr')
     await expect(found).toHaveCount(1)
@@ -88,7 +89,7 @@ test('grid delete → Restore in the toast; Trash page restores picked rows and 
 
     // History.
     await page.goto(`${BASE}/table/${tableId}/${sheetId}`)
-    await page.getByTestId('sheet-history').click()
+    await openMoreMenu(page, 'History')
     const lines = page.getByTestId('history-line')
     await expect(lines.first()).toContainText('Restored 1 row to their old places')
     await expect(page.getByTestId('history-list')).toContainText('Deleted 2 rows')

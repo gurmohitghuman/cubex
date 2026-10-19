@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { MAX_FILTER_PANEL_DEPTH, MAX_WHERE_CONDITIONS } from '@/lib/constants'
 import { newGroup, newRule, type DraftGroup, type DraftNode } from '@/lib/filter-draft'
 import { FilterRuleRow, type RuleContext } from './FilterRuleRow'
+import { Select } from '../ui/Select'
 
 export interface GroupEdit {
   ctx: RuleContext
@@ -13,20 +14,14 @@ export interface GroupEdit {
   rules: number
 }
 
-const JOIN_FIELD = 'select-compact text-xs border border-gray-300 rounded py-0.5 px-1 bg-white focus:outline-none '
-  + 'focus:border-cube-black'
-
 // The word before each item: "Where", then the group's join (a pick on the
 // second item, as text after it).
 const Lead: React.FC<{ index: number; group: DraftGroup; edit: GroupEdit }> = ({ index, group, edit }) => (
   <div className="w-14 flex-shrink-0 pt-1.5 text-xs text-gray-500 text-right pr-1">
     {index === 0 ? 'Where' : index === 1 ? (
-      <select value={group.join} aria-label="Match all or any"
-        onChange={e => edit.change(group.id, { ...group, join: e.target.value as 'and' | 'or' }, true)}
-        className={JOIN_FIELD}>
-        <option value="and">and</option>
-        <option value="or">or</option>
-      </select>
+      <Select<'and' | 'or'> value={group.join} label="Match all or any" variant="tiny" className="w-full"
+        onChange={join => edit.change(group.id, { ...group, join }, true)}
+        options={[{ value: 'and', label: 'and' }, { value: 'or', label: 'or' }]} />
     ) : group.join}
   </div>
 )

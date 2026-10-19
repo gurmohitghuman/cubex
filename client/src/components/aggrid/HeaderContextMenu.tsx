@@ -6,6 +6,7 @@ import {
 import type { ColumnType } from '@/utils/api/types'
 import type { AutorunColumn } from '@/utils/api/types-autorun'
 import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
+import { isSelectOptions } from '@/components/ui/Select'
 import { ColumnFilterMenu } from './ColumnFilterMenu'
 import { AIColumnActions, HTTPColumnActions } from './ColumnRunActions'
 import { EnrichColumnActions } from './EnrichColumnActions'
@@ -70,6 +71,8 @@ export const HeaderContextMenu: React.FC<HeaderContextMenuProps> = (props) => {
       </DropdownMenuTrigger>
       {/* Scrolls inside the room below the header: a run column's menu is taller than a short window. */}
       <DropdownMenuContent align="start" side="bottom" alignOffset={0} sideOffset={4}
+        onInteractOutside={e => { if (isSelectOptions(e.target)) e.preventDefault() }}
+        onEscapeKeyDown={e => { if (isSelectOptions(e.target)) e.preventDefault() }}
         className="w-56 !overflow-y-auto max-h-[var(--radix-dropdown-menu-content-available-height)]">
         <DropdownMenuItem onClick={() => {
           setRenaming({ x: menu.x, y: menu.y, oldName: menu.columnId, value: menu.columnId })

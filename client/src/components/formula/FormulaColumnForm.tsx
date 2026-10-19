@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef } from 'react'
 import type { FormulaColumnView, FormulaStartResult } from '@/utils/api'
+import { Select } from '../ui/Select'
 import { useFormulaForm } from './useFormulaForm'
 import { FormulaWriter } from './FormulaWriter'
 import { FormulaPreview } from './FormulaPreview'
@@ -71,12 +72,9 @@ export const FormulaColumnForm: React.FC<Props> = ({ sheetId, columns, editing, 
       <div>
         <div className="flex items-center justify-between mb-1">
           <label htmlFor="formula-text" className="block text-xs font-medium text-gray-700">Formula</label>
-          <select className="select-compact text-xs border border-gray-200 bg-white px-1 py-0.5" value=""
-            aria-label="Insert a column" data-testid="formula-insert"
-            onChange={e => { if (e.target.value) insert(e.target.value) }}>
-            <option value="">Insert a column…</option>
-            {readable.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select<string> variant="tiny" value="" label="Insert a column" testId="formula-insert" action
+            placeholder="Insert a column…" onChange={v => { if (v) insert(v) }}
+            options={readable.map(c => ({ value: c, label: c }))} />
         </div>
         {/* No ligatures: "=>" and "==" stay the characters that were typed. */}
         <textarea id="formula-text" ref={box} className="input w-full font-mono text-xs" rows={3} spellCheck={false}

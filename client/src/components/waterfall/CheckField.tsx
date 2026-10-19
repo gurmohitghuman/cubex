@@ -2,6 +2,7 @@ import React from 'react'
 import type { CheckChoices, EmailAccept, ResultType } from '@/utils/api/waterfall'
 import type { DraftInput } from './draft'
 import { FormulaField } from './FormulaField'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   check: CheckChoices | null
@@ -26,17 +27,16 @@ export const CheckField: React.FC<Props> = ({ check, resultType, inputs, onChang
     <div className="space-y-1.5" data-testid="waterfall-check">
       <label className="block space-y-1">
         <span className="meta-label">Check the answer (optional)</span>
-        <select className="input w-full" value={kind} aria-label="Check" onChange={e => pick(e.target.value)}>
-          <option value="">No check</option>
-          {resultType === 'email' && <option value="verify">Verify the email (treg, paid per check)</option>}
-          <option value="formula">A formula</option>
-        </select>
+        <Select className="w-full" value={kind} label="Check" onChange={pick} options={[
+          { value: '', label: 'No check' },
+          ...(resultType === 'email' ? [{ value: 'verify', label: 'Verify the email (treg, paid per check)' }] : []),
+          { value: 'formula', label: 'A formula' },
+        ]} />
       </label>
       {check?.kind === 'verify' && (
-        <select className="input w-full" value={check.accept} aria-label="Accept"
-          onChange={e => onChange({ kind: 'verify', accept: e.target.value as EmailAccept })}>
-          {ACCEPT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        <Select<string> className="w-full" value={check.accept} label="Accept"
+          onChange={v => onChange({ kind: 'verify', accept: v as EmailAccept })}
+          options={ACCEPT.map(([v, l]) => ({ value: v, label: l }))} />
       )}
       {check?.kind === 'formula' && (
         <FormulaField formula={check.formula} names={['value', ...inputs.map(i => i.key)]} label="Check formula"

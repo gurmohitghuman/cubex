@@ -1,4 +1,5 @@
 "use client"
+// Over 200 lines: the Radix menu parts, one wrapper per export, plus keepField.
 
 import * as React from "react"
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
@@ -18,6 +19,18 @@ const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 
+// A field inside a menu (the column header's filter) keeps focus while it's being typed in:
+// an item under a resting mouse (where a dropdown's option just was) doesn't take it by
+// hover. Clicks and the keyboard work as before.
+const fieldHasFocus = () => {
+  const a = document.activeElement
+  return a instanceof HTMLElement && !!a.closest("[data-menu-field]")
+}
+const keepField = <E extends React.SyntheticEvent>(own?: (e: E) => void) => (e: E) => {
+  own?.(e)
+  if (fieldHasFocus()) e.preventDefault()
+}
+
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
@@ -32,6 +45,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
       className
     )}
     {...props}
+    onPointerMove={keepField(props.onPointerMove)}
+    onPointerLeave={keepField(props.onPointerLeave)}
   >
     {children}
     <ChevronRight className="ml-auto h-4 w-4" />
@@ -88,6 +103,8 @@ const DropdownMenuItem = React.forwardRef<
       className
     )}
     {...props}
+    onPointerMove={keepField(props.onPointerMove)}
+    onPointerLeave={keepField(props.onPointerLeave)}
   />
 ))
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName

@@ -3,6 +3,7 @@ import { Eye, EyeOff, Key, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { settingsAPI } from '@/utils/api'
 import type { APIKey } from '@/utils/api/types'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   // Currently selected saved-key name (the user picks from existing keys) OR
@@ -67,16 +68,16 @@ export const SavedKeysPicker: React.FC<Props> = ({
       <label className="block text-sm font-medium text-gray-700">Got an API key from that tool? <span className="text-gray-400 font-normal">(optional)</span></label>
 
       {keys.length > 0 && (
-        <select
-          className="input w-full"
+        <Select
+          className="w-full"
           value={selectedKeyName}
-          onChange={(e) => setSelectedKeyName(e.target.value)}
-        >
-          <option value="">Pick a saved key or paste one below</option>
-          {keys.map(k => (
-            <option key={k.id} value={k.name}>{k.name}</option>
-          ))}
-        </select>
+          onChange={setSelectedKeyName}
+          label="Saved key"
+          options={[
+            { value: '', label: 'Pick a saved key or paste one below' },
+            ...keys.map(k => ({ value: k.name, label: k.name })),
+          ]}
+        />
       )}
 
       {!selectedKeyName && (

@@ -3,6 +3,7 @@ import { lookupAPI, type LookupTarget } from '@/utils/api'
 import type { LookupChoices } from '@/utils/api/waterfall'
 import { LOOKUP_CONTAINS_MIN_CHARS } from '@/lib/constants'
 import type { DraftInput } from './draft'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   sheetId: string
@@ -32,12 +33,12 @@ export const LookupStepEditor: React.FC<Props> = ({ sheetId, choices: c, inputs,
   const tables = [...new Set((targets ?? []).map(t => t.tableName))]
   const columns = other?.columns ?? []
   const column = (value: string, label: string, testId: string, set: (v: string) => void) => (
-    <select className="input w-full" value={value} disabled={!other} aria-label={label} data-testid={testId}
-      onChange={e => set(e.target.value)}>
-      {!value && <option value="" disabled>Its column</option>}
-      {value && other && !columns.includes(value) && <option value={value} disabled>{value} (deleted)</option>}
-      {columns.map(col => <option key={col} value={col}>{col}</option>)}
-    </select>
+    <Select className="w-full" value={value} disabled={!other} label={label} testId={testId}
+      onChange={set} placeholder="Its column" options={[
+        ...(value && other && !columns.includes(value)
+          ? [{ value, label: `${value} (deleted)`, disabled: true }] : []),
+        ...columns.map(col => ({ value: col, label: col })),
+      ]} />
   )
   if (targets && targets.length === 0) {
     return <p className="text-xs text-gray-600">A lookup reads another sheet. Add a sheet with the values first.</p>
@@ -46,21 +47,20 @@ export const LookupStepEditor: React.FC<Props> = ({ sheetId, choices: c, inputs,
     <div className="space-y-2" data-testid="waterfall-lookup-step">
       <div>
         <label htmlFor="wf-lookup-sheet" className={LABEL}>Look in</label>
-        <select id="wf-lookup-sheet" className="input w-full" value={c.sheetId} data-testid="wf-lookup-sheet"
-          onChange={e => onChange({ ...c, sheetId: e.target.value, matchColumn: '', returnColumn: '' },
-            targets?.find(t => t.sheetId === e.target.value)?.sheetName)}>
-          {(!c.sheetId || (targets && !other)) && (
-            <option value={c.sheetId} disabled>
-              {!targets ? 'Loading the sheets…' : c.sheetId ? 'A deleted sheet' : 'Pick a sheet'}
-            </option>
-          )}
-          {tables.map(t => (
-            <optgroup key={t} label={t}>
-              {targets!.filter(s => s.tableName === t)
-                .map(s => <option key={s.sheetId} value={s.sheetId}>{s.sheetName}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <Select id="wf-lookup-sheet" className="w-full" value={c.sheetId} testId="wf-lookup-sheet"
+          label="Look in" placeholder={!targets ? 'Loading the sheets…' : 'Pick a sheet'}
+          onChange={v => onChange({ ...c, sheetId: v, matchColumn: '', returnColumn: '' },
+            targets?.find(t => t.sheetId === v)?.sheetName)}
+          groups={[
+            ...((c.sheetId && (!targets || !other))
+              ? [{ label: '', options: [{
+                value: c.sheetId, disabled: true, label: !targets ? 'Loading the sheets…' : 'A deleted sheet',
+              }] }] : []),
+            ...tables.map(t => ({
+              label: t,
+              options: targets!.filter(s => s.tableName === t).map(s => ({ value: s.sheetId, label: s.sheetName })),
+            })),
+          ]} />
         {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-end">
@@ -69,21 +69,17 @@ export const LookupStepEditor: React.FC<Props> = ({ sheetId, choices: c, inputs,
           {column(c.matchColumn, 'Column it matches', 'wf-lookup-match-column',
             v => onChange({ ...c, matchColumn: v }))}
         </div>
-        <select className="input" value={c.mode} aria-label="How it matches"
-          onChange={e => onChange({ ...c, mode: e.target.value as LookupChoices['mode'] })}>
-          <option value="equals">is exactly</option>
-          <option value="contains">contains</option>
-        </select>
+        <Select<string> value={c.mode} label="How it matches"
+          onChange={v => onChange({ ...c, mode: v as LookupChoices['mode'] })}
+          options={[{ value: 'equals', label: 'is exactly' }, { value: 'contains', label: 'contains' }]} />
         <div>
           <span className={LABEL}>the input</span>
-          <select className="input w-full" value={c.inputKey} aria-label="Input it looks for"
-            data-testid="wf-lookup-input" onChange={e => onChange({ ...c, inputKey: e.target.value })}>
-            {!c.inputKey && <option value="" disabled>Input</option>}
-            {c.inputKey && !inputs.some(i => i.key === c.inputKey) && (
-              <option value={c.inputKey} disabled>{c.inputKey} (not an input)</option>
-            )}
-            {inputs.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
-          </select>
+          <Select className="w-full" value={c.inputKey} label="Input it looks for" testId="wf-lookup-input"
+            placeholder="Input" onChange={v => onChange({ ...c, inputKey: v })} options={[
+              ...(c.inputKey && !inputs.some(i => i.key === c.inputKey)
+                ? [{ value: c.inputKey, label: `${c.inputKey} (not an input)`, disabled: true }] : []),
+              ...inputs.map(i => ({ value: i.key, label: i.label })),
+            ]} />
         </div>
       </div>
       <div>

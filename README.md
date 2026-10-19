@@ -142,7 +142,7 @@ Click **AI Column**, name it, and write what you want. Type `/` to use another c
 
 ### HTTP API column
 
-Click **HTTP API** and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Preview a few rows, then click the response fields you want as columns.
+Click the arrow next to **AI Column**, then **HTTP API**, and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Preview a few rows, then click the response fields you want as columns.
 
 - Or click **Paste a cURL command** and paste one from the API's docs, or from your browser (right-click a request in DevTools, then **Copy as cURL**). Cubex fills in the method, URL, query, headers and body. It looks for keys in the command (sign-in headers and `-u`, headers and fields named like keys, and well-known key formats) and never keeps one it finds in the column: it asks to save each as a saved key, or to use one you already saved, and puts `{{name}}` in its place.
 
@@ -159,7 +159,7 @@ Click **HTTP API** and describe the request: method, URL, headers and body. `{{c
 
 ### Enrichment
 
-Click **Enrichment** to look things up for each row through [treg.to](https://treg.to) with your own treg key. treg can ask one provider after another until one finds the answer, and bills your own treg balance.
+Click the arrow next to **AI Column**, then **Enrichment**, to look things up for each row through [treg.to](https://treg.to) with your own treg key. treg can ask one provider after another until one finds the answer, and bills your own treg balance.
 
 - Find verified work emails, phone numbers, and person and company data. Lists, such as the people at a company, become rows in another sheet.
 - Pick a job, match its inputs to your columns, run it on 5 rows, then on the rest.
@@ -170,7 +170,7 @@ The [enrichments guide](docs/enrichments.md) has the details.
 
 ### Waterfall
 
-Click **Waterfall** to fill one value per row, such as a work email or a phone number, by trying steps in order until one finds it. A step can be a treg tool, an AI prompt, a call to your own API, a free formula or a free lookup in another sheet, so the cheapest source goes first and the next one runs only on the rows it missed.
+Click the arrow next to **AI Column**, then **Waterfall**, to fill one value per row, such as a work email or a phone number, by trying steps in order until one finds it. A step can be a treg tool, an AI prompt, a call to your own API, a free formula or a free lookup in another sheet, so the cheapest source goes first and the next one runs only on the rows it missed.
 
 - Start from a template (a work email from a name and a domain, or a mobile or direct phone), or pick what it finds (work email, phone, company domain, LinkedIn URL, URL or any text), then match its inputs to your columns once. Every step reads those same inputs.
 - Add the steps and put them in order. A step runs only on rows that have what it needs, say a name and a domain, or a LinkedIn URL; other rows skip it for free. Switch a step off to skip it.
@@ -229,7 +229,7 @@ Lookups stay fast on big sheets: Cubex keeps an index of each column other sheet
 
 ### Remove duplicates
 
-Click **Remove duplicates** in the toolbar and pick the columns rows must match on. Upper/lower case and extra spaces never matter, and each column can match as:
+Open **Data** in the toolbar, choose **Remove duplicates** and pick the columns rows must match on. Upper/lower case and extra spaces never matter, and each column can match as:
 
 - **Text.** "Acme Corp" matches "ACME  corp".
 - **Email.** "Jo@Acme.com" matches "jo@acme.com".
@@ -275,13 +275,13 @@ The **Is any of** filter lists a column's most common values with how many rows 
 
 When a chain of columns works on one sheet (say a formula pulls the domain, an HTTP API column looks the company up, and an AI column scores the fit), save it: open a filled column's menu and choose **Save as setup…**, or use **Setups** in the toolbar. The columns it reads come along, and you see the order the steps run in and which columns a sheet needs for it. Only how each column is filled is saved, never your rows, and saved API keys are kept by name only.
 
-On another sheet, choose **Setups**, then **Use a setup…**. Match each column the setup reads to a column of this sheet, rename any column the sheet already has, and see what it would cost before you start: AI steps priced on your rows, enrichments at treg's prices, clean and formula steps free. Test it on the first few rows, or run it on every row. The steps run in order, each once the columns it reads are filled, and a chip in the toolbar shows where it is, with pause and stop. After a run on every row, the auto-runs saved with the setup are turned on.
+On another sheet, open **⋯** in the toolbar, then **Use a setup…**. Match each column the setup reads to a column of this sheet, rename any column the sheet already has, and see what it would cost before you start: AI steps priced on your rows, enrichments at treg's prices, clean and formula steps free. Test it on the first few rows, or run it on every row. The steps run in order, each once the columns it reads are filled, and a chip in the toolbar shows where it is, with pause and stop. After a run on every row, the auto-runs saved with the setup are turned on.
 
 New rows on a sheet you used a setup on? Use it again there. The steps whose columns the sheet has already, set up the same way, show **Carries on**: each fills only the rows it hasn't done, with the column's own model and settings, and you see what that costs first. AI columns fill their empty rows, HTTP API columns their empty or failed rows, enrichments the rows not enriched yet, and clean and formula columns follow their columns as they always do. It's also how a setup that failed or was stopped picks up where it left off: the dialog starts from the choices you made last time on that sheet.
 
 Setups live in **Settings, Setups**, where you can rename, export one as a file for another Cubex, import one, or delete it. A setup is a copy: changing or deleting it never changes a sheet you used it on.
 
-About to change a prompt, a request or a formula? Open the sheet tab's menu and choose **Setup versions…** (or **Setups**, **This sheet's setup versions…** in the toolbar), then **Save version**. A version keeps how every column of the sheet is set up: prompts, models, requests, enrichments, formulas, cleaners, lookups, "Only run if" rules, auto-run, descriptions and the column order, never the values in the cells. **Compare and restore** shows what changed since, setting by setting. Restoring puts the version's setup back and adds back columns deleted since, empty. It runs nothing and bills nothing, and it first saves the setup the sheet has now as a version of its own, so you can go back. Each column then runs or works out the restored way the next time you run it.
+About to change a prompt, a request or a formula? Open the sheet tab's menu and choose **Setup versions…** (or **⋯**, **This sheet's setup versions…** in the toolbar), then **Save version**. A version keeps how every column of the sheet is set up: prompts, models, requests, enrichments, formulas, cleaners, lookups, "Only run if" rules, auto-run, descriptions and the column order, never the values in the cells. **Compare and restore** shows what changed since, setting by setting. Restoring puts the version's setup back and adds back columns deleted since, empty. It runs nothing and bills nothing, and it first saves the setup the sheet has now as a version of its own, so you can go back. Each column then runs or works out the restored way the next time you run it.
 
 ### Trash and history
 
@@ -289,11 +289,11 @@ Deleted rows, sheets and tables go to the trash (the trash can at the top of the
 
 In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
 
-**History** in a sheet's toolbar lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet_history`, and use `list_trash` and `restore_from_trash`.
+**History**, in the **⋯** menu of a sheet's toolbar, lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet_history`, and use `list_trash` and `restore_from_trash`.
 
 ### Webhook
 
-Open a sheet and click **Webhook**, or let it create a table of its own. Send one test event and click the fields you want as columns. Every event after that becomes a row with those fields filled in. See the [webhooks guide](docs/webhooks.md).
+Open a sheet and choose **Data**, then **Webhook**, or let it create a table of its own. Send one test event and click the fields you want as columns. Every event after that becomes a row with those fields filled in. See the [webhooks guide](docs/webhooks.md).
 
 ![Creating a webhook table, picking fields from a test event, then new events arriving as rows](docs/media/cubex-webhook.gif)
 

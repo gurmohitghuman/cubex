@@ -4,6 +4,7 @@ import { authedApi, BASE } from './helpers'
 import { makeToken } from './api-v1-run-helpers'
 import { call, mcpClient } from './helpers-mcp'
 import { callEveryRow, freshTreg, rowsOf, seedCsv } from './helpers-enrich'
+import { openColumnType } from './helpers-ui'
 
 // Starter waterfalls. In the drawer, "Work email from name + domain" sets up
 // treg's finder then a first.last@domain guess checked by treg's verify, with
@@ -31,13 +32,13 @@ test('the drawer: work email from name + domain, from its template', async ({ pa
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Waterfall', exact: true }).click()
+  await openColumnType(page, 'Waterfall')
   await expect(drawer(page).getByTestId('waterfall-templates')).toBeVisible({ timeout: 10_000 })
   await page.waitForTimeout(400)   // the drawer's slide-in, for the screenshot
   await page.screenshot({ path: 'test-results/shots/waterfall-templates.png', fullPage: true })
   await drawer(page).getByTestId('waterfall-template-work_email').click()
-  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveValue('c:Name')
-  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveValue('c:Website')
+  await expect(drawer(page).getByLabel('Full name', { exact: true })).toHaveAttribute('data-value', 'c:Name')
+  await expect(drawer(page).getByLabel('Company domain', { exact: true })).toHaveAttribute('data-value', 'c:Website')
   const steps = drawer(page).getByTestId('waterfall-step')
   await expect(steps).toHaveCount(2)
   await expect(steps.nth(1)).toContainText('Name guess')

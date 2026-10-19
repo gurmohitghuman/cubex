@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, seedSheet, BASE } from './helpers'
 import { JSON_URL } from './api-v1-run-helpers'
+import { openColumnType } from './helpers-ui'
 
 // "Paste a cURL command" in the HTTP API column dialog: a command with a key
 // asks what to do with it (a masked hint, never the key), saves it as a saved
@@ -14,7 +15,7 @@ const drawer = (page: Page) => page.locator('[role="dialog"]').filter({ hasText:
 async function openHttpDrawer(page: Page, tableId: string) {
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'HTTP API', exact: true }).click()
+  await openColumnType(page, 'HTTP API')
   await expect(drawer(page).getByText('Paste a cURL command')).toBeVisible()
 }
 
@@ -88,9 +89,9 @@ test('a curl pasted into the URL field, a key already saved, and a refused comma
   await expect(d.getByTestId('curl-keys-panel')).toBeVisible()
   const row = d.getByTestId('curl-key-header:0')
   await expect(row).toContainText('Already saved as typicode')
-  await expect(row.getByLabel('Saved key', { exact: true })).toHaveValue('typicode')
+  await expect(row.getByLabel('Saved key', { exact: true })).toHaveAttribute('data-value', 'typicode')
   await d.getByTestId('curl-keys-confirm').click()
-  await expect(d.locator('select').filter({ has: page.locator('option[value="DELETE"]') })).toHaveValue('POST')
+  await expect(d.getByLabel('Method', { exact: true })).toHaveAttribute('data-value', 'POST')
   await expect(d.locator('input[placeholder="Header-Name"]').nth(0)).toHaveValue('X-API-Key')
   await expect(d.getByText('Request Body', { exact: true })).toBeVisible()
   await expect(d.locator('textarea[placeholder^=\'{"key"\']')).toHaveValue('title=hi&userId=1')

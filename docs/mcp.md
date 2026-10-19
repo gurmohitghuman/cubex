@@ -445,7 +445,7 @@ Enrichments look things up per row through [treg.to](https://treg.to) with the t
 
 ## Waterfalls
 
-A waterfall column fills one value per row by trying steps in order and stopping at the first answer. For a work email: a treg tool first, then your own API, then an AI prompt. A row pays only for the steps it reaches. In the app it's **Waterfall** in the sheet's toolbar; agents use `waterfall_column`.
+A waterfall column fills one value per row by trying steps in order and stopping at the first answer. For a work email: a treg tool first, then your own API, then an AI prompt. A row pays only for the steps it reaches. In the app it's **Waterfall**, under the arrow next to **AI Column** in the sheet's toolbar; agents use `waterfall_column`.
 
 ```json
 {
@@ -514,7 +514,7 @@ Everything an assistant sends or receives passes through its context, so a CSV p
 - **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns. Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
 - **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser.
 
-This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and click **Import**.
+This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and choose **Data**, then **Import CSV**.
 
 What keeps the links safe:
 
