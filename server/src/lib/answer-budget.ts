@@ -13,7 +13,19 @@ const MAX_LISTED = 10;
 // Parts nested deeper than this are left out whole (each level is sized again).
 const MAX_DEPTH = 32;
 
-const sizeOf = (v: unknown): number => JSON.stringify(v)?.length ?? 4;
+// The size of a part too deeply nested to serialize on this stack (JSON.stringify recurses per level, and Windows'
+// 1 MB main-thread stack runs out a few thousand levels down on Node 22): over any budget, so fit() goes in and cuts
+// it at MAX_DEPTH, yet small enough that totals stay exact integers.
+const UNMEASURABLE = 2 ** 40;
+
+const sizeOf = (v: unknown): number => {
+  try {
+    return JSON.stringify(v)?.length ?? 4;
+  } catch (err) {
+    if (err instanceof RangeError) return UNMEASURABLE;
+    throw err;
+  }
+};
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // The value within `max` characters of JSON (budgets count characters, as an
