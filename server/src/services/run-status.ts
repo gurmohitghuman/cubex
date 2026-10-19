@@ -110,7 +110,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...capPausePart(r), ...aiRowOutcomes(r.id),
+    error_message: r.error_message, ...capPausePart(r), ...aiRowOutcomes(r.id, r.user_id),
     ...rulePart(r.run_if, r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };

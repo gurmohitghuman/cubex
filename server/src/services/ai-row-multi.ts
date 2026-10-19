@@ -11,7 +11,7 @@ import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from 
 import { citationsFromCompletion, withSourceUrls } from '../lib/ai-citations';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
-import { STOP_SENTINEL } from './ai-row-writers';
+import { recordDroppedCall, STOP_SENTINEL } from './ai-row-writers';
 import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-row-writers-multi';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
@@ -67,7 +67,8 @@ export async function processMultiRow(
     // corruption on rows that do parse). Error detection above still applies.
     const rawText = extractCompletionText(call.completion, { cleanMarkdown: false });
 
-    if (shouldStop(runId, myGeneration)) return;
+    // Stopped meanwhile: the row writes nothing, but the billed call counts.
+    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, usage); return; }
 
     const parsed = parseMultiOutput(rawText, specs);
     if ('error' in parsed) {
@@ -96,12 +97,13 @@ export async function processMultiRow(
     }
     writeMultiSuccess(ctx, values, clampCellChars(rawText, CELL_MAX_ENRICHMENT), usage, sources);
   } catch (error) {
-    if (error === STOP_SENTINEL) return;
+    // A stop drops the row; what a call that came back cost still counts.
+    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
     const aborted =
       (error as { name?: string })?.name === 'AbortError' ||
       (error as { name?: string })?.name === 'APIUserAbortError' ||
       signal?.aborted === true;
-    if (aborted || shouldStop(runId, myGeneration)) return;
+    if (aborted || shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
     const causeCode = errorCauseCode(error);
     const rawMsg = (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     const errorMessage = redactSecrets(rawMsg);

@@ -15,7 +15,7 @@ import {
   getSetupRun, loadSetupRun, planOf, setStatus, stepsOf, type SetupRunRow, type SetupRunView, type StepRecord,
 } from './setup-run-store';
 import type { RunFail } from './run-shared';
-import { actorSpendRefusal, spendCapRefusal } from './token-spend';
+import { resumeTokenFor, spendCapRefusal } from './token-spend';
 
 export type SetupRunAction = 'pause' | 'resume' | 'cancel';
 
@@ -45,9 +45,11 @@ export async function controlSetupRun(
     for (const x of runs) pauseRun(x.kind, x.runId, userId);
   } else if (action === 'resume') {
     if (r.status !== 'paused') return { fail: 'conflict', message: `It isn't paused (it's ${r.status}).` };
-    // Its steps spend for the token that applied it; a token at its own cap restarts none of them.
-    // Every paused run is checked before any resumes, so a refusal leaves the setup as it was.
-    const capped = spendCapRefusal(userId, r.access_token_id) ?? actorSpendRefusal(userId)
+    // Its steps spend for the token that applied it, or for a token that resumes it (it becomes that
+    // token's, as each run it resumes does; the app takes a revoked token's over): that token's cap
+    // counts. Every paused run is checked before any resumes, so a refusal leaves the setup as it was.
+    const owner = resumeTokenFor(userId, r.access_token_id);
+    const capped = spendCapRefusal(userId, owner)
       ?? runs.map(x => resumeCapRefusal(x.kind, x.runId, userId)).find(m => m !== null) ?? null;
     if (capped) return { fail: 'forbidden', message: capped };
     if (!hasSecretsScope && r.allow_secrets) {
@@ -56,7 +58,7 @@ export async function controlSetupRun(
         return { fail: 'forbidden', message: `The rest of this setup reads saved keys (${keys.join(', ')}). `
           + 'The access token needs the \'secrets\' scope to resume it.' };
       }
-      db.prepare('UPDATE setup_runs SET allow_secrets = 0 WHERE id = ?').run(id);
+      db.prepare('UPDATE setup_runs SET allow_secrets = 0 WHERE id = ? AND user_id = ?').run(id, userId);
     }
     // A token without 'secrets' resumes nothing that reads a saved key (run-lifecycle.ts says which).
     for (const x of runs) {
@@ -65,6 +67,10 @@ export async function controlSetupRun(
         return { fail: 'forbidden', message: out.message };
       }
     }
+    // Its later steps spend for whom it was resumed for; a pause at the cap (setup-runner.ts) said why in
+    // error_message, and that ends with the pause.
+    db.prepare(`UPDATE setup_runs SET access_token_id = ?, error_message = NULL
+      WHERE id = ? AND user_id = ? AND status = 'paused'`).run(owner, id, userId);
     setStatus(id, 'running');
     void advanceSetupRun(id);
   } else {

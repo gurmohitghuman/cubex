@@ -20,7 +20,7 @@ router.get('/runs/:id', (req: AuthRequest, res) => {
       'SELECT * FROM ai_results WHERE run_id = ? AND user_id = ? ORDER BY row_index ASC',
     ).all(id, req.userId!);
     // What the run has cost and searched so far (an index-only count).
-    const { cost_usd, searches } = aiRowOutcomes(id);
+    const { cost_usd, searches } = aiRowOutcomes(id, req.userId!);
     res.json({ run, results, spend: { cost_usd, searches } });
   } catch (error) {
     console.error('Get AI run error:', error);

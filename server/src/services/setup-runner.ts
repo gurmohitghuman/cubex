@@ -12,7 +12,7 @@
 import { db } from '../lib/db';
 import { SETUP_SWEEP_MS } from '../lib/constants-setups';
 import { isBusyMessage, sheetHeld } from '../lib/sheet-busy';
-import { mainColumn } from '../lib/setups/spec';
+import { mainColumn, type SetupStep } from '../lib/setups/spec';
 import { startSetupStep } from './setup-step-start';
 import { startAgainStep } from './setup-step-again';
 import { saveAutorunSettings } from './autorun-settings';
@@ -24,6 +24,7 @@ import {
 } from './setup-run-store';
 import { withoutChangeLog } from '../lib/change-log';
 import { currentActor, runAs } from '../lib/actor';
+import { actorSpendRefusal } from './token-spend';
 
 async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
   const plan = planOf(r), modes = modesOf(plan);
@@ -46,13 +47,29 @@ async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
 const waitingAgain = (refill: boolean): StepRecord =>
   (refill ? { state: 'waiting', refill: true } : { state: 'waiting' });
 
+// A step that spends (AI, enrichment) spends for the setup's token, which
+// advanceSetupRun runs it as: at that token's spend cap it doesn't start (it
+// would write its placeholders across the sheet only to pause). Clean, formula
+// and plain HTTP API steps cost nothing here.
+const capRefusal = (r: SetupRunRow, step: SetupStep): string | null =>
+  (step.kind === 'ai' || step.kind === 'enrichment'
+    ? actorSpendRefusal(r.user_id, step.kind === 'enrichment' ? step.maxCostPerRowUsd : null) : null);
+
 // Starts step i (marked 'starting' first, so a restart adopts what it made).
 // 'waiting': not this round; 'running' or 'done': it moved on; 'ended': the
-// setup failed, or was paused or stopped meanwhile.
+// setup failed, or was paused or stopped meanwhile, or paused at its token's
+// spend cap (the step still waiting, its running runs paused; resumed once
+// the cap is raised, it goes on).
 async function startStep(
   r: SetupRunRow, i: number, steps: StepRecord[],
 ): Promise<'waiting' | 'running' | 'done' | 'ended'> {
   const plan = planOf(r), step = plan.spec.steps[i], main = mainColumn(step);
+  const capped = capRefusal(r, step);
+  if (capped) {
+    saveSteps(r.id, steps);
+    if (setStatus(r.id, 'paused', `"${main}" didn't start: ${capped}`)) holdPaused(loadSetupRun(r.id)!);
+    return 'ended';
+  }
   const refill = !!steps[i].refill;
   steps[i] = refill ? { state: 'starting', refill: true } : { state: 'starting' };
   saveSteps(r.id, steps);

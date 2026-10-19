@@ -9,7 +9,7 @@ import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from 
 import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
-import { STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
+import { recordDroppedCall, STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 
@@ -102,23 +102,25 @@ export async function processRow(
     });
 
     // If the run was cancelled OR a resume bumped past us while this row's API
-    // call was in flight, drop the result. Cheap early-out before opening a txn.
-    if (shouldStop(runId, myGeneration)) return;
+    // call was in flight, drop the result (keeping what the billed call cost).
+    // Cheap early-out before opening a txn.
+    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, rowUsage(call)); return; }
 
     // Tokens and cost for cost reporting + history-based estimates, best-effort
     // (null when the provider omits them), plus the row's searches.
     writeSuccess(ctx, result, scrapedDataJson, scrapedSummary, rowUsage(call));
   } catch (error) {
     // Our own in-txn stop sentinel: the run was cancelled/superseded, the write
-    // rolled back. Benign — drop without recording a failure.
-    if (error === STOP_SENTINEL) return;
+    // rolled back. Benign — drop without recording a failure (what the call that
+    // came back cost still counts: recordDroppedCall, here and below).
+    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
     // If the row failed because we aborted it (or the run was cancelled mid-flight),
     // don't record it as a failure — the user explicitly stopped this run.
     const aborted =
       (error as { name?: string })?.name === 'AbortError' ||
       (error as { name?: string })?.name === 'APIUserAbortError' ||
       signal?.aborted === true;
-    if (aborted || shouldStop(runId, myGeneration)) return;
+    if (aborted || shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a
     // user-reported cell tells us WHICH transport failure it was — the SDK's
