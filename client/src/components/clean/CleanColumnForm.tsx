@@ -1,6 +1,7 @@
 import React from 'react'
 import type { CleanColumnView, CleanStartResult } from '@/utils/api'
 import { CLEANERS, CLEANER_GROUPS, cleanerInfo, type CleanerId } from '@/lib/cleaners'
+import { Select } from '../ui/Select'
 import { useCleanForm } from './useCleanForm'
 import { CleanPhoneOptions } from './CleanPhoneOptions'
 import { CleanPreview } from './CleanPreview'
@@ -45,23 +46,21 @@ export const CleanColumnForm: React.FC<Props> = ({ sheetId, columns, editing, in
     <div className="space-y-4" data-testid="clean-column-form">
       <div>
         <label htmlFor="clean-source" className={LABEL}>Column to clean</label>
-        <select id="clean-source" className="input w-full" value={f.source} onChange={e => f.setSource(e.target.value)}>
-          {!f.source && <option value="" disabled>Pick a column</option>}
-          {lostSource && <option value={f.source}>{f.source} (not in the sheet)</option>}
-          {sources.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <Select<string> id="clean-source" className="w-full" value={f.source} onChange={f.setSource}
+          label="Column to clean" placeholder="Pick a column"
+          options={[
+            ...(lostSource ? [{ value: f.source, label: `${f.source} (not in the sheet)` }] : []),
+            ...sources.map(c => ({ value: c, label: c })),
+          ]} />
       </div>
       <div>
         <label htmlFor="clean-cleaner" className={LABEL}>Cleaner</label>
-        <select id="clean-cleaner" className="input w-full" value={f.cleaner}
-          onChange={e => f.setCleaner(e.target.value as CleanerId)}>
-          {!f.cleaner && <option value="" disabled>Pick what the column holds</option>}
-          {CLEANER_GROUPS.map(g => (
-            <optgroup key={g} label={g}>
-              {CLEANERS.filter(c => c.group === g).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <Select<string> id="clean-cleaner" className="w-full" value={f.cleaner} label="Cleaner"
+          onChange={v => f.setCleaner(v as CleanerId)} placeholder="Pick what the column holds"
+          groups={CLEANER_GROUPS.map(g => ({
+            label: g,
+            options: CLEANERS.filter(c => c.group === g).map(c => ({ value: c.id as string, label: c.label })),
+          }))} />
         {info && <p className="text-xs text-gray-500 mt-1" data-testid="clean-cleaner-help">{info.help}</p>}
       </div>
       {f.cleaner === 'phone' && (

@@ -6,6 +6,7 @@ import {
 import { MAX_FILTER_LIST_VALUES, MAX_FILTER_VALUE_CHARS } from '@/lib/constants'
 import { ValuePicker, keepFocus } from './ValuePicker'
 import { DateValueInput } from '../filters/DateValueInput'
+import { Select, isSelectOptions } from '../ui/Select'
 
 // A list filter from picked values (null: none picked), or a message.
 function listFilterFrom(op: ValueFilterOp, values: string[]): ColumnFilter | null | string {
@@ -75,21 +76,20 @@ export const ColumnFilterEditor: React.FC<{
   const built = build(op)
   const dirty = typeof built === 'string' || !sameFilter(built, saved)
   const filled = list ? picked.length > 0 : !!text.trim()
-  const leaving = (e: React.FocusEvent) => { if (!box.current?.contains(e.relatedTarget as Node)) apply() }
+  const leaving = (e: React.FocusEvent) => {
+    if (!box.current?.contains(e.relatedTarget as Node) && !isSelectOptions(e.relatedTarget)) apply()
+  }
   const frame = 'text-sm border border-gray-300 rounded py-1 focus:outline-none focus:border-cube-black'
   const hint = list ? (dirty && filled ? 'Pick values, then Apply' : 'Pick or type values')
     : dirty && text.trim() ? 'Press Enter to apply' : isDateFilter(op) ? 'Pick or type a date, then press Enter'
     : 'Type, then press Enter'
 
   return (
-    <div ref={box} className="px-2 py-1.5 space-y-1" onKeyDown={e => e.stopPropagation()}
+    <div ref={box} className="px-2 py-1.5 space-y-1" data-menu-field onKeyDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()} onBlur={list ? leaving : undefined}>
       <div className="flex items-center gap-1">
-        <select value={op} aria-label="Filter condition"
-          onChange={e => pickOp(e.target.value as ValueFilterOp)}
-          className={`select-compact flex-1 px-1 bg-white ${frame}`}>
-          {VALUE_FILTERS.map(f => <option key={f.op} value={f.op}>{f.label}</option>)}
-        </select>
+        <Select<ValueFilterOp> value={op} onChange={pickOp} label="Filter condition" variant="compact" inline
+          className="flex-1 min-w-0" options={VALUE_FILTERS.map(f => ({ value: f.op, label: f.label }))} />
         {saved && (
           <button onClick={() => { setText(''); setPicked([]); setError(null); onApply(null) }}
             className="text-gray-400 hover:text-gray-700 text-sm px-1" title="Clear filter" aria-label="Clear filter">

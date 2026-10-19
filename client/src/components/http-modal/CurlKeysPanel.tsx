@@ -2,6 +2,7 @@ import React from 'react'
 import { KeyRound, Loader2 } from 'lucide-react'
 import type { CurlKeyFinding } from '@/utils/api'
 import type { KeyDraft, useCurlImport } from './useCurlImport'
+import { Select } from '@/components/ui/Select'
 
 type CurlImport = ReturnType<typeof useCurlImport>
 
@@ -81,11 +82,8 @@ function KeyRow({ k, d, savedKeyNames, set }: {
         </>
       ))}
       {choices.length > 0 && option('use', 'Use a saved key', (
-        <select className="input w-full" value={d.useName} aria-label="Saved key"
-          onChange={e => set({ useName: e.target.value })}>
-          <option value="">Pick a saved key</option>
-          {choices.map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
+        <Select className="w-full" value={d.useName} label="Saved key" onChange={v => set({ useName: v })}
+          options={[{ value: '', label: 'Pick a saved key' }, ...choices.map(n => ({ value: n, label: n }))]} />
       ))}
       {k.canDrop && option('drop', k.cookie ? "Leave it out (a browser's sign-in cookie rarely works for an API)"
         : 'Leave it out')}

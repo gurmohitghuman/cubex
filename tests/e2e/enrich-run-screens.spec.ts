@@ -4,6 +4,7 @@ import { mockTreg } from './helpers-treg'
 import {
   expectBilledOnce, expectSettledBilledOnce, freshTreg, rowsOf, runStatus, seedLeadRows, startRun, waitRun,
 } from './helpers-enrich'
+import { openColumnType } from './helpers-ui'
 
 // A run that pauses itself says why in the drawer, with the fix in place
 // (plan U5, Verification 4, 5, 14, 15): raise the run's limit and resume, raise
@@ -99,7 +100,7 @@ test('the balance: a toast with Show, then top up and resume in the drawer', asy
   await waitRun(api, await startRun(api, sheetId, findRun({ rows: { mode: 'all', test: true } })), ['completed'])
   await openSheet(page, context, api, tableId)
   // A Set up in progress, which watching a run must not overwrite.
-  await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+  await openColumnType(page, 'Enrichment')
   await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'Verified work email' }).click()
   await expect(page.getByText('Set up Verified work email')).toBeVisible()
   await page.keyboard.press('Escape')

@@ -5,6 +5,7 @@ import { plural } from '@/lib/utils'
 import { ENRICH_SPEND_WINDOWS } from '@/lib/constants'
 import { TREG_APP_URL, spent } from '@/lib/enrich-format'
 import { StoredAnswersLine } from './StoredAnswersLine'
+import { Select } from '@/components/ui/Select'
 
 // "Spending on enrichments": what this Cubex's enrichments cost at treg over
 // the last 7, 30 or 90 days, in total and per enrichment column, from Cubex's
@@ -38,10 +39,8 @@ export const EnrichmentSpendCard: React.FC = () => {
             <p className="text-sm text-gray-600">What enrichments in this Cubex cost at treg, by column.</p>
           </div>
         </div>
-        <select className="input w-auto py-1 text-sm" value={days} aria-label="Period"
-          onChange={e => setDays(Number(e.target.value))}>
-          {ENRICH_SPEND_WINDOWS.map(d => <option key={d} value={d}>Last {d} days</option>)}
-        </select>
+        <Select className="w-auto py-1 text-sm" value={days} label="Period" onChange={setDays}
+          options={ENRICH_SPEND_WINDOWS.map(d => ({ value: d, label: `Last ${d} days` }))} />
       </div>
       <div className="p-6 space-y-3">
         {error ? <p className="text-sm text-red-600">{error}</p> : !spend || spend.days !== days ? (

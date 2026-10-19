@@ -1,6 +1,7 @@
 import React from 'react'
 import { X } from 'lucide-react'
 import { DEDUPE_KEEPS, DEDUPE_MATCHES, type DedupeMatch } from '@/lib/dedupe'
+import { Select } from '../ui/Select'
 import type { DedupeForm } from './useDedupeForm'
 
 const LABEL = 'block text-xs font-medium text-gray-700 mb-1'
@@ -13,15 +14,13 @@ export const DedupeColumnsPicker: React.FC<{ form: DedupeForm }> = ({ form: f })
       {f.keys.map((k, i) => (
         <div key={i} data-testid="dedupe-key">
           <div className="flex items-center gap-2">
-            <select className="input flex-1 min-w-0" aria-label="Column to match on" value={k.column}
-              onChange={e => f.setColumn(i, e.target.value)}>
-              {[k.column, ...f.unused].map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <Select<string> className="flex-1 min-w-0" label="Column to match on" value={k.column}
+              onChange={c => f.setColumn(i, c)}
+              options={[k.column, ...f.unused].map(c => ({ value: c, label: c }))} />
             <span className="text-xs text-gray-500">as</span>
-            <select className="input w-44" aria-label={`How ${k.column} matches`} value={k.match}
-              onChange={e => f.setMatch(i, e.target.value as DedupeMatch)}>
-              {DEDUPE_MATCHES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
+            <Select<DedupeMatch> className="w-44" label={`How ${k.column} matches`} value={k.match}
+              onChange={m => f.setMatch(i, m)}
+              options={DEDUPE_MATCHES.map(m => ({ value: m.id, label: m.label }))} />
             {f.keys.length > 1 && (
               <button type="button" className="p-1.5 text-gray-400 hover:text-gray-700"
                 aria-label={`Stop matching on ${k.column}`} onClick={() => f.removeColumn(i)}>

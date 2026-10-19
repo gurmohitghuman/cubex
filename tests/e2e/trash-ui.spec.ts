@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test'
 import os from 'node:os'
 import { authedApi, BASE, getSheet, seedSheet } from './helpers'
+import { choose, openMoreMenu } from './helpers-ui'
 
 // The trash in the app: rows deleted in the grid come back from the toast's
 // Restore at their old places; the Trash page lists a deleted sheet and a
 // batch, finds rows inside a batch and restores the picked one, restores the
-// sheet, and deletes a batch for good; the sheet's History panel lists it all
+// sheet, and deletes a batch; the sheet's History panel lists it all
 // with who did it; Settings sets the days. Screenshots go to SHOT_DIR.
 const SHOT_DIR = process.env.SHOT_DIR || os.tmpdir()
 const DATA_CELL = (row: number) => `.ag-row[row-index="${row}"] [col-id^="col_"]`
@@ -62,7 +63,7 @@ test('grid delete → Restore in the toast; Trash page restores picked rows and 
     // Inside the batch: find v5, restore only it.
     await batch.getByTestId('trash-more').click()
     await page.getByTestId('trash-look').click()
-    await page.getByTestId('trash-rows-column').selectOption('val')
+    await choose(page.getByTestId('trash-rows-column'), 'val')
     await page.getByTestId('trash-rows-search').fill('v5')
     const found = page.getByTestId('trash-rows').locator('tbody tr')
     await expect(found).toHaveCount(1)
@@ -79,16 +80,16 @@ test('grid delete → Restore in the toast; Trash page restores picked rows and 
     await expect(page.getByText('Restored the sheet "Leads Q3"')).toBeVisible()
     await expect(page.locator(`[data-trash-id="${gone.trash.id}"]`)).toHaveCount(0)
 
-    // Delete the rest of the batch for good.
+    // Delete the rest of the batch (from the trash: it can't be restored after this).
     await batch.getByTestId('trash-more').click()
     await page.getByTestId('trash-delete').click()
-    await page.getByRole('button', { name: 'Delete for good' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(batch).toHaveCount(0, { timeout: 15_000 })
     await page.screenshot({ path: `${SHOT_DIR}/trash-04-after.png` })
 
     // History.
     await page.goto(`${BASE}/table/${tableId}/${sheetId}`)
-    await page.getByTestId('sheet-history').click()
+    await openMoreMenu(page, 'History')
     const lines = page.getByTestId('history-line')
     await expect(lines.first()).toContainText('Restored 1 row to their old places')
     await expect(page.getByTestId('history-list')).toContainText('Deleted 2 rows')
@@ -110,7 +111,7 @@ test('Settings sets how long the trash keeps things; lowering it to 0 empties it
     await card.getByRole('button', { name: 'Change' }).click()
     await card.getByLabel('Days to keep deleted items').fill('0')
     await card.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText(/Everything in the trash now is deleted for good/)).toBeVisible()
+    await expect(page.getByText(/Everything in the trash now is deleted, and later deletes skip the trash/)).toBeVisible()
     await page.waitForTimeout(400)
     await page.screenshot({ path: `${SHOT_DIR}/trash-06-settings-confirm.png` })
     await page.getByRole('button', { name: 'Save' }).last().click()

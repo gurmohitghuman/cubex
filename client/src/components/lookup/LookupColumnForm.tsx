@@ -4,6 +4,7 @@ import { LOOKUP_CONTAINS_MIN_CHARS } from '@/lib/constants'
 import { useLookupForm } from './useLookupForm'
 import { LookupReturnsFields } from './LookupReturnsFields'
 import { LookupPreview } from './LookupPreview'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   sheetId: string
@@ -44,45 +45,38 @@ export const LookupColumnForm: React.FC<Props> = ({ sheetId, columns, editing, o
       {editing && <LookupStatus view={editing} />}
       <div>
         <label htmlFor="lookup-sheet" className={LABEL}>Look in</label>
-        <select id="lookup-sheet" className="input w-full" value={f.otherSheetId}
-          onChange={e => f.pickSheet(e.target.value)} data-testid="lookup-sheet">
-          {!f.otherSheetId && <option value="" disabled>{f.targets ? 'Pick a sheet' : 'Loading the sheets…'}</option>}
-          {tables.map(t => (
-            <optgroup key={t} label={t}>
-              {f.targets!.filter(s => s.tableName === t)
-                .map(s => <option key={s.sheetId} value={s.sheetId}>{s.sheetName}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <Select id="lookup-sheet" className="w-full" value={f.otherSheetId} label="Look in"
+          onChange={f.pickSheet} testId="lookup-sheet"
+          placeholder={f.targets ? 'Pick a sheet' : 'Loading the sheets…'}
+          groups={tables.map(t => ({
+            label: t,
+            options: f.targets!.filter(s => s.tableName === t).map(s => ({ value: s.sheetId, label: s.sheetName })),
+          }))} />
         {f.targetsError && <p className="text-xs text-red-600 mt-1">{f.targetsError}</p>}
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-end">
         <div>
           <label htmlFor="lookup-match-column" className={LABEL}>Find rows where</label>
-          <select id="lookup-match-column" className="input w-full" value={f.matchColumn} disabled={!f.other}
-            onChange={e => f.setMatchColumn(e.target.value)} data-testid="lookup-match-column">
-            {!f.matchColumn && <option value="" disabled>Its column</option>}
-            {f.matchColumn && f.other && !otherColumns.includes(f.matchColumn) && (
-              <option value={f.matchColumn} disabled>{f.matchColumn} (deleted)</option>
-            )}
-            {otherColumns.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select id="lookup-match-column" className="w-full" value={f.matchColumn} disabled={!f.other}
+            label="Find rows where" onChange={f.setMatchColumn} testId="lookup-match-column" placeholder="Its column"
+            options={[
+              ...(f.matchColumn && f.other && !otherColumns.includes(f.matchColumn)
+                ? [{ value: f.matchColumn, label: `${f.matchColumn} (deleted)`, disabled: true }] : []),
+              ...otherColumns.map(c => ({ value: c, label: c })),
+            ]} />
         </div>
-        <select className="input" value={f.match} aria-label="How it matches"
-          onChange={e => f.setMatch(e.target.value as LookupMatch)} data-testid="lookup-match">
-          <option value="equals">is exactly</option>
-          <option value="contains">contains</option>
-        </select>
+        <Select value={f.match} label="How it matches"
+          onChange={v => f.setMatch(v as LookupMatch)} testId="lookup-match"
+          options={[{ value: 'equals', label: 'is exactly' }, { value: 'contains', label: 'contains' }]} />
         <div>
           <label htmlFor="lookup-source" className={LABEL}>this row&apos;s</label>
-          <select id="lookup-source" className="input w-full" value={f.sourceColumn}
-            onChange={e => f.setSourceColumn(e.target.value)} data-testid="lookup-source">
-            {!f.sourceColumn && <option value="" disabled>Column</option>}
-            {f.sourceColumn && !sources.includes(f.sourceColumn) && (
-              <option value={f.sourceColumn} disabled>{f.sourceColumn} (not in this sheet)</option>
-            )}
-            {sources.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select id="lookup-source" className="w-full" value={f.sourceColumn} label="this row's"
+            onChange={f.setSourceColumn} testId="lookup-source" placeholder="Column"
+            options={[
+              ...(f.sourceColumn && !sources.includes(f.sourceColumn)
+                ? [{ value: f.sourceColumn, label: `${f.sourceColumn} (not in this sheet)`, disabled: true }] : []),
+              ...sources.map(c => ({ value: c, label: c })),
+            ]} />
         </div>
       </div>
       <p className="text-xs text-gray-500">

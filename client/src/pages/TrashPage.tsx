@@ -67,7 +67,7 @@ export const TrashPage: React.FC = () => {
     if (!deleting) return
     try {
       await trashAPI.deleteForGood(deleting.map(e => e.id))
-      toast.success(deleting.length === 1 ? 'Deleting it for good…' : `Deleting ${deleting.length} items for good…`)
+      toast.success(deleting.length === 1 ? 'Deleting…' : `Deleting ${deleting.length} items…`)
       setSelected(new Set())
       t.reload()
     } catch (err: any) {
@@ -103,8 +103,8 @@ export const TrashPage: React.FC = () => {
             <h1 className="text-title text-gray-900">Trash</h1>
             <p className="text-gray-600 text-sm">
               {t.days === null ? 'Deleted tables, sheets and rows.'
-                : t.days === 0 ? 'Deleted tables, sheets and rows are deleted for good at once.'
-                : `Deleted tables, sheets and rows stay here ${plural(t.days, 'day')}, then are deleted for good.`}
+                : t.days === 0 ? 'Deleted tables, sheets and rows aren\'t kept here.'
+                : `Deleted tables, sheets and rows stay here ${plural(t.days, 'day')}, then are deleted.`}
               {' '}<Link to="/settings/account" className="underline">Change it in Settings</Link>.
               {t.totalBytes > 0 && ` Deleted rows use ${sizeText(t.totalBytes)}.`}
             </p>
@@ -146,7 +146,7 @@ export const TrashPage: React.FC = () => {
               <ArchiveRestore className="h-3 w-3" /><span>Restore</span>
             </button>
             <button type="button" className="btn-danger flex items-center gap-1" onClick={() => setDeleting(chosen)}>
-              <Trash2 className="h-3 w-3" /><span>Delete for good</span>
+              <Trash2 className="h-3 w-3" /><span>Delete</span>
             </button>
           </div>
         )}
@@ -170,11 +170,11 @@ export const TrashPage: React.FC = () => {
 
       <TrashRowsDrawer entry={looking} onClose={() => setLooking(null)} onRestored={t.reload}
         onDownload={e => void download(e)} />
-      <ConfirmDialog isOpen={!!deleting} isDestructive title="Delete for good"
+      <ConfirmDialog isOpen={!!deleting} isDestructive title="Delete"
         message={deleting?.length === 1
-          ? `Delete ${titleOf(deleting[0])} for good? It can't be restored after this.`
-          : `Delete ${deleting?.length ?? 0} items for good? They can't be restored after this.`}
-        confirmText="Delete for good" onConfirm={() => void deleteForGood()} onCancel={() => setDeleting(null)} />
+          ? `Delete ${titleOf(deleting[0])}? It can't be restored after this.`
+          : `Delete ${deleting?.length ?? 0} items? They can't be restored after this.`}
+        confirmText="Delete" onConfirm={() => void deleteForGood()} onCancel={() => setDeleting(null)} />
     </div>
   )
 }

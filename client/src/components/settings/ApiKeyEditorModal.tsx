@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Eye, EyeOff, Loader2, Shield } from 'lucide-react'
 import { APIKey } from '@/utils/api'
+import { Select } from '@/components/ui/Select'
 
 interface Form {
   name: string
@@ -77,11 +78,13 @@ export const ApiKeyEditorModal: React.FC<Props> = ({ isOpen, editing, onCancel, 
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Key Type *</label>
-            <select className="input w-full" value={form.key_type} onChange={(e) => setForm({ ...form, key_type: e.target.value as Form['key_type'] })}>
-              <option value="bearer">Bearer Token</option>
-              <option value="api_key">API Key</option>
-              <option value="custom">Custom</option>
-            </select>
+            <Select className="w-full" value={form.key_type} label="Key Type"
+              onChange={(v) => setForm({ ...form, key_type: v as Form['key_type'] })}
+              options={[
+                { value: 'bearer', label: 'Bearer Token' },
+                { value: 'api_key', label: 'API Key' },
+                { value: 'custom', label: 'Custom' },
+              ]} />
             <p className="text-xs text-gray-500 mt-1">
               {form.key_type === 'bearer' && 'For Authorization: Bearer headers'}
               {form.key_type === 'api_key' && 'For X-API-Key or similar headers'}

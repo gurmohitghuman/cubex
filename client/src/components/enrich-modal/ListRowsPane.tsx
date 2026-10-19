@@ -8,6 +8,7 @@ import { uniqueName } from './outputs'
 import type { ProviderRow } from './providers'
 import { ListFieldsPicker } from './ListFieldsPicker'
 import { humanize } from './labels'
+import { Select } from '@/components/ui/Select'
 
 interface Props {
   tool: EnrichToolDetail
@@ -65,16 +66,16 @@ export const ListRowsPane: React.FC<Props> = (p) => {
   return (
     <div className="space-y-3" data-testid="enrich-list-rows">
       <Row label="Put each result in" htmlFor="enrich-list-dest">
-        <select id="enrich-list-dest" className="input w-full" value={destValue}
-          onChange={e => update({ dest: e.target.value === 'new'
+        <Select id="enrich-list-dest" className="w-full" value={destValue} label="Put each result in"
+          onChange={v => update({ dest: v === 'new'
             ? { kind: 'new', name: list.dest.kind === 'new' ? list.dest.name : newName }
-            : { kind: 'sheet', sheetId: e.target.value } })}>
-          <option value="new">A new sheet</option>
-          {list.dest.kind === 'sheet' && !sheets?.some(s => s.id === destValue) && (
-            <option value={destValue}>{sheets ? 'A deleted sheet' : 'Loading the sheets…'}</option>
-          )}
-          {(sheets ?? []).filter(s => !s.current).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+            : { kind: 'sheet', sheetId: v } })}
+          options={[
+            { value: 'new', label: 'A new sheet' },
+            ...(list.dest.kind === 'sheet' && !sheets?.some(s => s.id === destValue)
+              ? [{ value: destValue, label: sheets ? 'A deleted sheet' : 'Loading the sheets…' }] : []),
+            ...(sheets ?? []).filter(s => !s.current).map(s => ({ value: s.id, label: s.name })),
+          ]} />
         {list.dest.kind === 'new' && (
           <input className={`input w-full ${destProblem ? '!border-red-300' : ''}`} value={list.dest.name}
             onChange={e => update({ dest: { kind: 'new', name: e.target.value } })} aria-label="New sheet name"
@@ -100,18 +101,15 @@ export const ListRowsPane: React.FC<Props> = (p) => {
 
       {tool.kind === 'waterfall' ? (
         <Row label="Provider" htmlFor="enrich-list-provider">
-          <select id="enrich-list-provider" className="input w-full" value={list.provider ?? ''}
-            onChange={e => update({ provider: e.target.value || null })}>
-            {!list.provider && <option value="">Pick a provider</option>}
-            {lost && (
-              <option value={list.provider!}>{nameOf(list.provider!)} (can&apos;t search with these inputs)</option>
-            )}
-            {providers.map(r => (
-              <option key={r.provider} value={r.provider}>
-                {r.name} · {price(r)}
-              </option>
-            ))}
-          </select>
+          <Select id="enrich-list-provider" className="w-full" value={list.provider ?? ''} label="Provider"
+            onChange={v => update({ provider: v || null })}
+            options={[
+              ...(list.provider ? [] : [{ value: '', label: 'Pick a provider' }]),
+              ...(lost ? [{
+                value: list.provider!, label: `${nameOf(list.provider!)} (can't search with these inputs)`,
+              }] : []),
+              ...providers.map(r => ({ value: r.provider, label: `${r.name} · ${price(r)}` })),
+            ]} />
           <p className="text-xs text-gray-500">
             {chosen?.hitRate != null && `${chosen.name}: ${Math.round(chosen.hitRate * 100)}% found at treg. `}
             Prices are treg&apos;s catalog prices; the estimate below shows what a row can cost. This enrichment asks
@@ -136,11 +134,9 @@ export const ListRowsPane: React.FC<Props> = (p) => {
             </span>
           ))}
           {copyable.length > 0 && (
-            <select className="input py-0.5 text-xs w-auto" value="" aria-label="Copy another column"
-              onChange={e => { if (e.target.value) update({ copy: [...list.copy, e.target.value] }) }}>
-              <option value="">+ Add</option>
-              {copyable.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <Select variant="tiny" className="w-auto" value="" label="Copy another column" action placeholder="+ Add"
+              onChange={v => { if (v) update({ copy: [...list.copy, v] }) }}
+              options={copyable.map(c => ({ value: c, label: c }))} />
           )}
         </div>
         <p className="text-xs text-gray-500">So each new row says which row it came from.</p>

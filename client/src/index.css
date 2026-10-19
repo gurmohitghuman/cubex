@@ -136,8 +136,10 @@
 }
 
 @layer components {
+  /* Button text never wraps (whitespace-nowrap): squeezed, labels used to break over two lines.
+     Where room runs out, a toolbar folds its labels into icons instead. */
   .btn-primary {
-    @apply bg-cube-black hover:bg-gray-800 text-white px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+    @apply bg-cube-black hover:bg-gray-800 text-white px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap;
   }
 
   /* Larger primary — same look as .btn-primary at px-4 py-2. For the prominent
@@ -145,15 +147,15 @@
      Changes, run-header actions). Keeps the color/hover/disabled contract in
      ONE place instead of duplicating the tailwind string per button. */
   .btn-primary-lg {
-    @apply bg-cube-black hover:bg-gray-800 text-white px-4 py-2 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+    @apply bg-cube-black hover:bg-gray-800 text-white px-4 py-2 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap;
   }
 
   .btn-secondary {
-    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm;
+    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm whitespace-nowrap;
   }
 
   .btn-danger {
-    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm;
+    @apply bg-white hover:bg-gray-50 hover:border-cube-black text-cube-black px-3 py-1.5 font-medium rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-sm whitespace-nowrap;
   }
 
   .btn-success {
@@ -173,24 +175,6 @@
        a 15%-opacity ring on white was well under the 3:1 non-text contrast
        floor for a focus indicator (WCAG 2.4.11 / 1.4.11). */
     @apply border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-cube-black focus:ring-2 focus:ring-cube-black/40 transition-[border-color,box-shadow] duration-150 bg-white text-sm;
-  }
-
-  /* Selects draw their own chevron: the browser's sat ~8px from the right edge while the text
-     sits 12px in, so it looked off. This one's tip sits as far in as the text, in every browser. */
-  select.input, select.select-compact {
-    @apply appearance-none bg-no-repeat;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
-  }
-  select.input {
-    @apply pr-8;
-    background-position: right 0.5rem center;
-    background-size: 1rem 1rem;
-  }
-  /* The small px-1 selects (filter panel, formula insert): text ~5px in, so the tip is too. */
-  select.select-compact {
-    @apply pr-5;
-    background-position: right 0.125rem center;
-    background-size: 0.875rem 0.875rem;
   }
 
   .card {

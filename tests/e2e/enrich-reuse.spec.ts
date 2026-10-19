@@ -2,6 +2,7 @@ import { test, expect, Page, APIRequestContext } from '@playwright/test'
 import { authedApi, BASE, importCsv, makeAccessToken } from './helpers'
 import { mockTreg } from './helpers-treg'
 import { freshTreg, ledger, resultsOf, rowsOf, seedLeadRows } from './helpers-enrich'
+import { openColumnType } from './helpers-ui'
 
 // Found answers are reused across runs and sheets: a second sheet's rows whose
 // lookup the first sheet's run found fill from those answers with no call, no
@@ -114,7 +115,7 @@ test('the drawer counts reused rows before the run, the run says how many, the p
     await page.goto(`${BASE}/table/${tableId}`)
     await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
     const runAll = async (count: string) => {
-      await page.getByRole('button', { name: 'Enrichment', exact: true }).click()
+      await openColumnType(page, 'Enrichment')
       await drawer(page).getByTestId('enrich-tool-card').filter({ hasText: 'Verified work email' }).click()
       await expect(drawer(page).getByTestId('enrich-run-all')).toHaveText(`Run all ${count}`, { timeout: 15_000 })
     }

@@ -1,6 +1,7 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { authedApi, getSheet, BASE } from './helpers'
 import { seedLookupSheets } from './helpers-lookup'
+import { choose } from './helpers-ui'
 
 // The app's Lookup flow: "+ Add Column" offers Lookup; the sheet to look in
 // is picked from another table, then the columns; the preview shows the first
@@ -33,19 +34,19 @@ test('Lookup from the Add Column dialog and the column menu', async ({ page, con
   const form = page.getByTestId('lookup-column-form')
   await expect(form).toBeVisible()
   // The sheets of every other table are offered, grouped by table.
-  await form.getByTestId('lookup-sheet').selectOption({ label: 'Companies' })
-  await form.getByTestId('lookup-match-column').selectOption('Website')
-  await form.getByTestId('lookup-source').selectOption('Domain')
-  await form.getByTestId('lookup-return-column').selectOption('Industry')
+  await choose(form.getByTestId('lookup-sheet'), { label: 'Companies' })
+  await choose(form.getByTestId('lookup-match-column'), 'Website')
+  await choose(form.getByTestId('lookup-source'), 'Domain')
+  await choose(form.getByTestId('lookup-return-column'), 'Industry')
   await expect(form.getByTestId('lookup-name')).toHaveAttribute('placeholder', 'Industry (Companies)')
   await expect(page.getByTestId('lookup-preview')).toContainText('Robots', { timeout: 10_000 })
   await expect(page.getByTestId('lookup-preview')).toContainText('Energy')
   await expect(page.getByTestId('lookup-autorun')).toBeChecked()
   await page.screenshot({ path: `${SHOTS}/1-lookup-dialog.png` })
   // Contains says it can take minutes on very large sheets.
-  await form.getByTestId('lookup-match').selectOption('contains')
+  await choose(form.getByTestId('lookup-match'), 'contains')
   await expect(form).toContainText('can take a few minutes')
-  await form.getByTestId('lookup-match').selectOption('equals')
+  await choose(form.getByTestId('lookup-match'), 'equals')
   await page.getByTestId('lookup-submit').click()
 
   await expect(header(page, 'Industry (Companies)')).toBeVisible({ timeout: 15_000 })
@@ -79,7 +80,7 @@ test('Lookup from the Add Column dialog and the column menu', async ({ page, con
   await page.getByRole('menuitem', { name: /edit lookup/i }).click()
   await expect(page.getByTestId('lookup-status')).toContainText('"Industry" in "Companies" was deleted')
   // The deleted column shows as such (not as the first column there), and saving waits for another.
-  await expect(page.getByTestId('lookup-return-column').locator('option:checked')).toHaveText('Industry (deleted)')
+  await expect(page.getByTestId('lookup-return-column')).toHaveText('Industry (deleted)')
   await expect(page.getByTestId('lookup-missing')).toBeVisible()
   await expect(page.getByTestId('lookup-submit')).toBeDisabled()
   await page.waitForTimeout(300)

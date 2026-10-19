@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Select } from '@/components/ui/Select'
 import { Plus, X } from 'lucide-react'
 import type { DraftInput } from './draft'
 
@@ -40,20 +41,18 @@ export const InputsSection: React.FC<Props> = ({ inputs, columns, onChange, inUs
               {input.label}<span className="block text-[11px] text-gray-400 font-mono">{input.key}</span>
             </label>
             <div className="space-y-1 min-w-0">
-              <select className="input w-full" value={value} aria-label={input.label}
-                onChange={e => {
-                  const v = e.target.value
-                  set(i, { source: !v ? null : v === 'fixed' ? { value: '' } : { column: v.slice(2) } })
-                }}>
-                <option value="">Not mapped</option>
-                {lost && (
-                  <option value={value}>{(input.source as { column: string }).column} (not in the sheet)</option>
-                )}
-                {columns.length > 0 && (
-                  <optgroup label="Columns">{columns.map(c => <option key={c} value={`c:${c}`}>{c}</option>)}</optgroup>
-                )}
-                <option value="fixed">Type a fixed value…</option>
-              </select>
+              <Select className="w-full" value={value} label={input.label}
+                onChange={v => set(i, { source: !v ? null : v === 'fixed' ? { value: '' } : { column: v.slice(2) } })}
+                groups={[
+                  { label: '', options: [
+                    { value: '', label: 'Not mapped' },
+                    ...(lost
+                      ? [{ value, label: `${(input.source as { column: string }).column} (not in the sheet)` }] : []),
+                  ] },
+                  ...(columns.length > 0
+                    ? [{ label: 'Columns', options: columns.map(c => ({ value: `c:${c}`, label: c })) }] : []),
+                  { label: '', options: [{ value: 'fixed', label: 'Type a fixed value…' }] },
+                ]} />
               {input.source && 'value' in input.source && (
                 <input className="input w-full" value={input.source.value} placeholder="Same value for every row"
                   aria-label={`${input.label} value`} onChange={e => set(i, { source: { value: e.target.value } })} />

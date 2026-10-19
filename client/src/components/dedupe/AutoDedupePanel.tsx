@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { DEDUPE_MATCHES, type DedupeMatch } from '@/lib/dedupe'
 import { plural } from '@/lib/utils'
+import { Select } from '../ui/Select'
 import type { AutoDedupeKeep, AutoDedupeView } from '@/utils/api'
 import type { AutoDedupeForm } from './useAutoDedupeForm'
 
@@ -73,15 +74,13 @@ export const AutoDedupePanel: React.FC<Props> = ({ form: f, view, sheetId, onRem
       <div>
         <span className={LABEL}>Key column</span>
         <div className="flex items-center gap-2">
-          <select className="input flex-1 min-w-0" aria-label="Key column" value={f.column}
-            onChange={e => f.setColumn(e.target.value)} data-testid="auto-dedupe-column">
-            {f.eligible.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select<string> className="flex-1 min-w-0" label="Key column" value={f.column}
+            onChange={f.setColumn} testId="auto-dedupe-column"
+            options={f.eligible.map(c => ({ value: c, label: c }))} />
           <span className="text-xs text-gray-500">as</span>
-          <select className="input w-44" aria-label={`How ${f.column} matches`} value={f.match}
-            onChange={e => f.setMatch(e.target.value as DedupeMatch)} data-testid="auto-dedupe-match">
-            {DEDUPE_MATCHES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
+          <Select<DedupeMatch> className="w-44" label={`How ${f.column} matches`} value={f.match}
+            onChange={f.setMatch} testId="auto-dedupe-match"
+            options={DEDUPE_MATCHES.map(m => ({ value: m.id, label: m.label }))} />
         </div>
         <p className="text-xs text-gray-500 mt-1">{DEDUPE_MATCHES.find(m => m.id === f.match)?.help}</p>
         {f.country && (
@@ -104,7 +103,7 @@ export const AutoDedupePanel: React.FC<Props> = ({ form: f, view, sheetId, onRem
         <p className="text-xs text-gray-500 mt-1">{KEEPS.find(k => k.id === f.keep)?.help}</p>
         {f.trashDays === 0 && (
           <p className="text-xs text-amber-800 mt-1" data-testid="auto-dedupe-no-trash">
-            Settings keeps deleted items 0 days, so the rows auto-dedupe removes are deleted for good, not kept in
+            Settings keeps deleted items 0 days, so the rows auto-dedupe removes are deleted, not kept in
             the trash.
           </p>
         )}

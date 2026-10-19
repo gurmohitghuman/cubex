@@ -1,4 +1,5 @@
 import React from 'react'
+import { Select } from '@/components/ui/Select'
 import { Plus, X } from 'lucide-react'
 import type { HttpChoices } from '@/utils/api/waterfall'
 import type { DraftInput } from './draft'
@@ -20,10 +21,9 @@ export const HttpStepEditor: React.FC<Props> = ({ choices, inputs, onChange }) =
   return (
     <div className="space-y-2" data-testid="waterfall-http-step">
       <div className="flex gap-2">
-        <select className="input w-24" value={choices.method} aria-label="Method"
-          onChange={e => onChange({ ...choices, method: e.target.value })}>
-          {['GET', 'POST', 'PUT', 'DELETE'].map(m => <option key={m}>{m}</option>)}
-        </select>
+        <Select className="w-24" value={choices.method} label="Method"
+          onChange={method => onChange({ ...choices, method })}
+          options={['GET', 'POST', 'PUT', 'DELETE'].map(m => ({ value: m, label: m }))} />
         <input className="input flex-1 font-mono text-xs" value={choices.url} aria-label="URL"
           placeholder="https://api.example.com/find?domain={{domain}}"
           onChange={e => onChange({ ...choices, url: e.target.value })} />

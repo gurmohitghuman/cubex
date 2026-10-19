@@ -56,7 +56,7 @@ test('prompt starters fill the prompt from the sheet; the profile one runs into 
     const outputs = page.getByTestId('output-columns')
     await expect(outputs).toContainText('"Company profile (Status)" shows how each row went')
     await expect(page.getByLabel('Output column 1 name')).toHaveValue('Industry')
-    await expect(page.getByLabel('Output column 2 type')).toHaveValue('number')
+    await expect(page.getByLabel('Output column 2 type')).toHaveAttribute('data-value', 'number')
     await expect(page.getByLabel(/^Output column \d name$/)).toHaveCount(6)
     await shot(page, 'starters-profile')
 

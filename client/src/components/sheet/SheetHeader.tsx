@@ -1,16 +1,12 @@
 // Over 200 lines: the sheet's whole toolbar (runs, rows, data and enrich groups) in one bar.
 import React from 'react'
 import { Link } from 'react-router-dom'
-import {
-  ArrowLeft, CopyMinus, Import, Loader2, Pause, Play, Square, Trash2,
-} from 'lucide-react'
+import { ArrowLeft, Loader2, Pause, Play, Square, Trash2 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
-import { SheetSetupsMenu } from './SheetSetupsMenu'
-import { SheetUsageButton } from './SheetUsageButton'
-import { ExportButton, type ExportScope } from '@/components/views/ExportButton'
-import { SheetHistoryButton } from './SheetHistoryButton'
+import { SheetDataMenu, type ExportScope } from './toolbar/SheetDataMenu'
+import { SheetMoreMenu } from './toolbar/SheetMoreMenu'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -48,6 +44,9 @@ interface SheetHeaderProps {
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
   onAddWaterfall: () => void
+  onAddClean: () => void
+  onAddFormula: () => void
+  onAddLookup: () => void
   onOpenWebhook: () => void
   // Auto-run's chip, shown while any column has auto-run on (components/autorun/AutorunChip).
   autorunChip?: React.ReactNode
@@ -83,6 +82,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onAddEnrichment,
   onAddHTTPColumn,
   onAddWaterfall,
+  onAddClean, onAddFormula, onAddLookup,
   onOpenWebhook,
   autorunChip,
   sheetId,
@@ -91,8 +91,10 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   return (
     <header className="bg-white border-b border-gray-200 flex-shrink-0">
       <div className="px-6">
-        <div className="flex justify-between items-center h-14">
-          <div className="flex items-center space-x-3">
+        {/* One line at every width: the left side (the name, run controls) gives way and truncates,
+            the right side never wraps, and its labels fold into icons on narrow screens. */}
+        <div className="flex h-14 items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <Link
               to="/dashboard"
               className={
@@ -102,11 +104,11 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <CubeLogo size="md" className="hidden sm:block" />
-            {/* Kept whole on one line: squeezed, a two-word name wrapped and was cut off at 1280px. */}
-            <div className="min-w-0 sm:shrink-0">
+            <CubeLogo size="md" className="hidden shrink-0 sm:block" />
+            {/* One line, cut with an ellipsis when long: squeezed, a two-word name used to wrap. */}
+            <div className="min-w-0">
               <h1 className="font-brand-semibold text-lg text-gray-900 tracking-tight whitespace-nowrap truncate
-                max-w-[50vw] sm:max-w-xs" title={tableName}>{tableName}</h1>
+                max-w-[28rem]" title={tableName}>{tableName}</h1>
               <p className="meta-label whitespace-nowrap">
                 {totalRows.toLocaleString()} row{totalRows === 1 ? '' : 's'}
                 {' • '}
@@ -115,28 +117,28 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             </div>
 
             {canStopAll && (
-              <div className="flex items-center space-x-1 ml-2">
+              <div className="flex shrink-0 items-center gap-1">
                 {anyActiveRuns && (anyRunning ? (
                   <button
                     onClick={onPauseAll}
-                    className="btn-secondary flex items-center space-x-1"
-                    title="Pause all runs"
+                    className="btn-secondary flex h-8 items-center gap-1"
+                    title="Pause all runs" aria-label="Pause"
                   >
-                    <Pause className="h-3 w-3" />
-                    <span>Pause</span>
+                    <Pause className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden lg:inline">Pause</span>
                   </button>
                 ) : (
                   <button
                     onClick={onResumeAll}
-                    className="btn-secondary flex items-center space-x-1"
-                    title="Resume all runs"
+                    className="btn-secondary flex h-8 items-center gap-1"
+                    title="Resume all runs" aria-label="Resume"
                   >
-                    <Play className="h-3 w-3" />
-                    <span>Resume</span>
+                    <Play className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden lg:inline">Resume</span>
                   </button>
                 ))}
                 <button onClick={onStopAll} disabled={stoppingAll}
-                  className={'btn-danger flex items-center space-x-1 whitespace-nowrap '
+                  className={'btn-danger flex items-center gap-1 '
                     + 'disabled:opacity-50 disabled:cursor-not-allowed'}
                   title="Stop every run and setup on this sheet">
                   {stoppingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
@@ -147,7 +149,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             {autorunChip}
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex shrink-0 items-center gap-2">
             <SaveStatus status={saveStatus} onRetry={retrySave} />
             {selectedRowCount > 0 && (() => {
               // Honest selection: AG Grid Community's "select all" only selects the
@@ -163,58 +165,40 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               return (
                 <button
                   onClick={onDeleteSelectedRows}
-                  className="btn-danger flex items-center space-x-1"
+                  className="btn-danger flex items-center gap-1"
+                  aria-label={`Delete (${selectedRowCount.toLocaleString()}${
+                    onlyWindowSelected ? ` of ${totalRows.toLocaleString()}` : ''})`}
                   title={onlyWindowSelected
                     ? `Delete the ${selectedRowCount.toLocaleString()} loaded rows. ` +
                       `${(totalRows - loadedRowsCount).toLocaleString()} more rows aren't loaded and ` +
                       `won't be deleted: scroll to load them first.`
                     : 'Delete selected rows'}
                 >
-                  <Trash2 className="h-3 w-3" />
-                  <span>
+                  <Trash2 className="h-3 w-3" aria-hidden="true" />
+                  <span className="hidden md:inline">
                     Delete (
                     {selectedRowCount.toLocaleString()}
                     {onlyWindowSelected ? ` of ${totalRows.toLocaleString()}` : ''}
                     )
                   </span>
+                  <span className="md:hidden">{selectedRowCount.toLocaleString()}</span>
                 </button>
               )
             })()}
 
-            <div className="flex items-center space-x-1">
-              <button onClick={onImport} className="btn-secondary flex items-center space-x-1">
-                <Import className="h-3 w-3" />
-                <span>Import</span>
-              </button>
+            <SheetDataMenu hasRows={hasRows} columnCount={columnCount} isExporting={isExporting}
+              viewNarrows={viewNarrows} viewName={viewName} autoDedupeOn={!!autoDedupeOn} onImport={onImport}
+              onExport={scope => onExport(scope, viewName)} onOpenWebhook={onOpenWebhook}
+              onRemoveDuplicates={onRemoveDuplicates} />
+            <SheetMoreMenu sheetId={sheetId ?? null} sheetName={sheetName ?? ''} onUseSetup={onUseSetup}
+              onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
 
-              <ExportButton isExporting={isExporting} disabled={!hasRows} viewNarrows={viewNarrows}
-                viewName={viewName} onExport={scope => onExport(scope, viewName)} />
+            {/* The data and setup menus apart from the one primary, AI Column and its column types. */}
+            <div className="h-5 w-px bg-gray-200" aria-hidden="true" />
 
-              <button onClick={onRemoveDuplicates} disabled={columnCount === 0} data-testid="remove-duplicates"
-                title={autoDedupeOn ? 'Auto-dedupe is on: new rows with a key already in the sheet go to the trash'
-                  : 'Find and remove duplicate rows'}
-                className={'btn-secondary relative flex items-center space-x-1 disabled:opacity-50 '
-                  + 'disabled:cursor-not-allowed'}>
-                <CopyMinus className="h-3 w-3" />
-                <span>Remove duplicates</span>
-                {/* Auto-dedupe on: a dot on the corner (the toolbar has no room for a label at 1280px). */}
-                {autoDedupeOn && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-cube-black ring-2 ring-white"
-                    data-testid="auto-dedupe-chip"><span className="sr-only">(auto-dedupe on)</span></span>
-                )}
-              </button>
-              <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
-              <SheetUsageButton sheetId={sheetId ?? null} sheetName={sheetName ?? ''} />
-              <SheetHistoryButton sheetId={sheetId ?? null} />
-            </div>
-
-            {/* Divider between data-management (Import/Export) and the enrich
-                group. Gives the enrich actions their own visual cluster so the
-                ONE primary (AI Column) reads as the point of the page. */}
-            <div className="w-px h-5 bg-gray-200" aria-hidden="true" />
-
-            <SheetEnrichActions hasRows={hasRows} onAddAIColumn={onAddAIColumn} onAddEnrichment={onAddEnrichment}
-              onAddHTTPColumn={onAddHTTPColumn} onAddWaterfall={onAddWaterfall} onOpenWebhook={onOpenWebhook} />
+            <SheetEnrichActions hasRows={hasRows} hasColumns={columnCount > 0} onAddAIColumn={onAddAIColumn}
+              onAddEnrichment={onAddEnrichment} onAddHTTPColumn={onAddHTTPColumn} onAddWaterfall={onAddWaterfall}
+              onAddClean={onAddClean} onAddFormula={onAddFormula} onAddLookup={onAddLookup} />
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, seedSheet, BASE } from './helpers'
 import { Receiver } from './helpers-receiver'
+import { openColumnType } from './helpers-ui'
 
 // The HTTP API column dialog: retries, "Leave out empty values" and a response
 // code column, run for real against a local receiver (tests/e2e/net-shim.cjs).
@@ -22,7 +23,7 @@ test('the HTTP API dialog: retries, leave out empty values, a response code colu
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'HTTP API', exact: true }).click()
+  await openColumnType(page, 'HTTP API')
   const d = page.locator('[role="dialog"]').filter({ hasText: 'HTTP API Column' })
 
   await d.locator('input[placeholder="e.g., Email Verification, Company Lookup"]').fill('Lookup')
