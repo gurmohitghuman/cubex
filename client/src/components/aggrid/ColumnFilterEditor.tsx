@@ -87,7 +87,7 @@ export const ColumnFilterEditor: React.FC<{
       <div className="flex items-center gap-1">
         <select value={op} aria-label="Filter condition"
           onChange={e => pickOp(e.target.value as ValueFilterOp)}
-          className={`flex-1 px-1 bg-white ${frame}`}>
+          className={`select-compact flex-1 px-1 bg-white ${frame}`}>
           {VALUE_FILTERS.map(f => <option key={f.op} value={f.op}>{f.label}</option>)}
         </select>
         {saved && (

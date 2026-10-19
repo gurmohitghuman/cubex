@@ -72,7 +72,7 @@ export const WebSearchOptions: React.FC<Props> = ({ model, value, onChange, onBl
       <div className="grid grid-cols-2 gap-2">
         <label className="block min-w-0">
           <span className="block text-xs text-gray-600 mb-1">Mode</span>
-          <select className="input w-full !px-2" value={value.mode} disabled={!hasModes(engine)} aria-label="Mode"
+          <select className="input w-full !pl-2" value={value.mode} disabled={!hasModes(engine)} aria-label="Mode"
             onChange={(e) => set({ mode: e.target.value })}>
             {hasModes(engine) ? (
               <>
@@ -84,7 +84,7 @@ export const WebSearchOptions: React.FC<Props> = ({ model, value, onChange, onBl
         </label>
         <label className="block min-w-0">
           <span className="block text-xs text-gray-600 mb-1">Searches per row</span>
-          <select className="input w-full !px-2" value={value.maxPerRow ?? ''} aria-label="Searches per row"
+          <select className="input w-full !pl-2" value={value.maxPerRow ?? ''} aria-label="Searches per row"
             onChange={(e) => set({ maxPerRow: e.target.value ? Number(e.target.value) : null })}>
             <option value="">No limit</option>
             {CAPS.map(n => <option key={n} value={n}>Up to {n}</option>)}

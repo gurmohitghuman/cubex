@@ -175,6 +175,24 @@
     @apply border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-cube-black focus:ring-2 focus:ring-cube-black/40 transition-[border-color,box-shadow] duration-150 bg-white text-sm;
   }
 
+  /* Selects draw their own chevron: the browser's sat ~8px from the right edge while the text
+     sits 12px in, so it looked off. This one's tip sits as far in as the text, in every browser. */
+  select.input, select.select-compact {
+    @apply appearance-none bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+  }
+  select.input {
+    @apply pr-8;
+    background-position: right 0.5rem center;
+    background-size: 1rem 1rem;
+  }
+  /* The small px-1 selects (filter panel, formula insert): text ~5px in, so the tip is too. */
+  select.select-compact {
+    @apply pr-5;
+    background-position: right 0.125rem center;
+    background-size: 0.875rem 0.875rem;
+  }
+
   .card {
     @apply bg-white rounded-lg border border-gray-200 transition-colors duration-150;
   }
