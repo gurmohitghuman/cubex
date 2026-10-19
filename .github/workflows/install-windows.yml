@@ -79,6 +79,7 @@ jobs:
           if ('${{ steps.before.outputs.refused }}' -ne 'true') { exit $code }
           if ($code -ne 1) { throw "The installer should refuse Windows on ARM here, but it exited with $code." }
           if (Test-Path "$env:LOCALAPPDATA\cubex") { throw 'The refused install left the cubex folder behind.' }
+          exit 0 # the refusal was expected; Actions would otherwise end the step with its exit code, 1
 
       - name: cubex status answers on /api/health
         if: steps.before.outputs.refused != 'true'
