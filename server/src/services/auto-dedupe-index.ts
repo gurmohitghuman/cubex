@@ -158,7 +158,7 @@ export async function maintainAutoDedupeSheet(
 ): Promise<'ready' | 'later'> {
   for (;;) {
     const s = autoDedupeOf(sheetId, userId);
-    if (!s || sheetInTrash(sheetId)) return 'ready';
+    if (!s || sheetInTrash(sheetId, userId)) return 'ready';
     const more = s.build_cursor !== null ? buildStep(s) || drainStep(s) : drainStep(s);
     await settleWal();
     const now = autoDedupeById(s.id);

@@ -23,9 +23,9 @@ const parseColumns = (raw: string): Array<string | null> => {
 // own ⏳ as their old values, and its undo would empty cells that held data.
 // Such a run keeps nothing (it can't be undone) and writes as usual.
 const BEGAN_BEFORE_UNDO: Record<RunRef['kind'], string> = {
-  ai: `SELECT 1 FROM ai_runs r, _migrations m WHERE r.id = ? AND m.name = '041_run_undo.sql'
+  ai: `SELECT 1 FROM ai_runs r, _migrations m WHERE r.id = ? AND r.user_id = ? AND m.name = '041_run_undo.sql'
     AND r.created_at < m.applied_at`,
-  http: `SELECT 1 FROM http_runs r, _migrations m WHERE r.id = ? AND m.name = '041_run_undo.sql'
+  http: `SELECT 1 FROM http_runs r, _migrations m WHERE r.id = ? AND r.user_id = ? AND m.name = '041_run_undo.sql'
     AND r.created_at < m.applied_at`,
 };
 
@@ -40,7 +40,7 @@ function journalFor(
     { id: number; columns: string; stamp_path: string | null; state: string } | undefined;
   let j = read();
   if (!j) {
-    if (db.prepare(BEGAN_BEFORE_UNDO[run.kind]).get(run.id)) return 'unkept';
+    if (db.prepare(BEGAN_BEFORE_UNDO[run.kind]).get(run.id, userId)) return 'unkept';
     db.prepare('INSERT INTO run_undos (user_id, sheet_id, run_kind, run_id) VALUES (?, ?, ?, ?)')
       .run(userId, sheetId, run.kind, run.id);
     j = read()!;

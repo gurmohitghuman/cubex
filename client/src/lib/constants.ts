@@ -169,3 +169,8 @@ export const UNDO_KEEP_DAYS = 7;
 // How often "Undo last run" reads how far a big undo got, and failed reads in a row before it gives up.
 export const UNDO_POLL_MS = 1_500;
 export const UNDO_POLL_MISSES = 5;
+
+// "N failed, retry" (hooks/sheet/useGridRunControls.ts): rows arriving re-read the
+// failed counts (a walk over the sheet) at most this often, for an auto-run batch
+// that started and ended between two looks at the sheet's runs.
+export const FAILED_COUNTS_ARRIVAL_MS = 60_000;

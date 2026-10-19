@@ -1,3 +1,4 @@
+// Over 200 lines: one scenario per issue edge, each needing its own sheet setup; split they'd share the setup.
 // Auto-dedupe's edges against a real database (services/auto-dedupe-*.ts).
 // Pins: saving the setting again keeps phone_country while the column and
 // match stay (null clears it); a sheet in the trash gets no background checks

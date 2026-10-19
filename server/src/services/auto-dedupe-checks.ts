@@ -35,7 +35,7 @@ function checkSlice(sheetId: string, userId: string, ownBusy: boolean): Slice {
   db.transaction(() => {
     const s = autoDedupeOf(sheetId, userId);
     if (!s) return;
-    if (sheetInTrash(sheetId)) { out.state = 'held'; return; }
+    if (sheetInTrash(sheetId, userId)) { out.state = 'held'; return; }
     if (s.build_cursor !== null) { out.state = 'keys'; return; }
     if (!ownBusy && sheetBusyWith(sheetId)) { out.state = 'held'; return; }
     const now = Date.now();
