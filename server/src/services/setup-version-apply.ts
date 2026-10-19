@@ -73,7 +73,8 @@ export function writePlan(
       else autoRunOff(sheetId, userId, column);
     } else if (!w.fills.has(column)) {
       // A written clean, formula or lookup setup set its auto-run already.
-      setDerivedAutorun(f.kind, sheetId, userId, column, derivedInputs(sheetId, userId, column, f), !!v.autoRun);
+      setDerivedAutorun(f.kind, sheetId, userId, column, derivedInputs(sheetId, userId, column, f), !!v.autoRun,
+        { keepFence: true });
     }
   }
   pauseAgain(sheetId, userId, opts.paused);

@@ -1,3 +1,4 @@
+// Over 200 lines: one tab strip (tabs, inline rename, drag reorder, each tab's menu) sharing one state.
 import React, { useState } from 'react'
 import { Plus, ChevronUp } from 'lucide-react'
 import { Sheet } from '@/utils/api'
@@ -26,7 +27,7 @@ type RenameState = { sheetId: string; value: string } | null
 
 // One consolidated bottom bar: the add-rows control on the left (its original position),
 // then the sheet tabs to its right. Always visible so tabs + the "+" stay reachable even
-// on an empty sheet. Each tab has an up-chevron (⌃) that opens a Rename / Delete menu;
+// on an empty sheet. Each tab has an up-chevron (⌃) that opens its menu (Rename, Delete…);
 // double-click a tab also starts an inline rename. Rename is inline (Enter commits, Escape
 // cancels). Delete opens the parent's ConfirmDialog; hidden for the last sheet (server
 // 400s it anyway). Tabs drag-reorder (native HTML5, useSheetTabDrag) — pointer-only,

@@ -4,7 +4,8 @@
 // its own ("Before restoring: …"), then adds the version's gone columns back
 // empty and writes back each setup that differs, the descriptions, auto-run
 // and the order. Nothing runs and nothing is billed; no cell is touched. It
-// waits for no run: one going on the sheet (or a setup filling it) refuses it.
+// waits for no run: one going on the sheet (or a setup filling it, or a clean,
+// formula or lookup column still filling) refuses it.
 // A paid column's auto-run goes back on through the auto-run settings' own
 // checks after the transaction; one they refuse stays off and says why. A dry
 // run answers what a restore would do, and `blocked`: why it can't now.
@@ -33,6 +34,12 @@ const RUNS_ACTIVE = `SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ?
     AND (status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)
   UNION ALL SELECT 1 FROM setup_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('running', 'paused')
   LIMIT 1`;
+// A clean, formula or lookup column being filled (a lookup's may wait, its sheet
+// free, for the other sheet): a restore writing its record back would end it.
+const FILLING = `SELECT column_name FROM clean_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
+  UNION ALL SELECT column_name FROM formula_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
+  UNION ALL SELECT column_name FROM lookup_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
+  LIMIT 1`;
 const KEYS = "A request it puts back reads saved API keys: restoring it needs the 'secrets' scope.";
 
 // Why the restore can't happen now (the restore refuses; a dry run says so).
@@ -42,6 +49,12 @@ function refusal(
   if (db.prepare(RUNS_ACTIVE).get(sheetId, userId, sheetId, userId, sheetId, userId)) {
     return { fail: 'conflict', message: 'A run is going on this sheet, or a saved setup is filling it. Stop it or '
       + 'let it finish, then restore.' };
+  }
+  const filling = db.prepare(FILLING).pluck().get(sheetId, userId, sheetId, userId, sheetId, userId) as
+    string | undefined;
+  if (filling) {
+    return { fail: 'conflict', message: `"${filling}" is still being filled (or waits for the sheet it looks in). `
+      + 'Let it finish, then restore.' };
   }
   if (plan.loop) return { fail: 'conflict', message: plan.loop };
   const columns = getSheetColumns(sheetId, userId, false).length;

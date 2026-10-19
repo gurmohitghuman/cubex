@@ -90,9 +90,13 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     expect(stale.status(), await stale.text()).toBe(400)
     expect(by.get('Name').fields).toEqual([{ field: 'Description', version: 'Who it is', now: 'Changed' }])
 
-    // Restoring needs 'run'; an MCP restore is a dry run unless told otherwise.
+    // Restoring needs 'run'; a REST or MCP restore is a dry run unless told otherwise.
     const writer = await bearer(await makeToken(api, ['read', 'write'], 'setup versions writer'))
-    const refused = await writer.post(`/api/v1/sheets/${sheetId}/setup-versions/${version.id}/restore`)
+    const restoreUrl = `/api/v1/sheets/${sheetId}/setup-versions/${version.id}/restore`
+    const restDry = await writer.post(restoreUrl)
+    expect(restDry.status(), await restDry.text()).toBe(200)
+    expect((await restDry.json()).dry_run).toBe(true)
+    const refused = await writer.post(restoreUrl, { data: { dry_run: false } })
     expect(refused.status()).toBe(403)
     expect((await refused.json()).error).toMatch(/'run' scope/)
     await writer.dispose()

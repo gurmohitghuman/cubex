@@ -3,7 +3,7 @@
 // Thin wrappers over the services the app and MCP use
 // (services/setup-version-*.ts). Restoring sets what runs and auto-run will
 // do, so it needs 'run' as well as 'write' ('secrets' when a request it puts
-// back reads saved keys); dry_run: true only reads. A request body never
+// back reads saved keys); a dry run (the default) only reads. A request body never
 // shows here: a comparison says it changed.
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
@@ -62,12 +62,13 @@ router.delete(`${BASE}/:versionId`, requireScope('write'), guarded(`DELETE /v1${
   return reply(res, 'ok' in out ? { ok: { ok: true } } : out);
 }));
 
-// Body: { dry_run? } (false by default here; true or "true" only says what it would do).
+// Body: { dry_run? }. A dry run by default, as MCP's restore_setup_version: only
+// dry_run false (or "false") restores. The app restores through its own route.
 router.post(`${BASE}/:versionId/restore`, requireScope('read'), guarded(`POST /v1${BASE}/:versionId/restore`,
   async (req, res) => {
     const flag = flagOf(body(req).dry_run);
     if (flag === 'invalid') return res.status(400).json({ error: 'dry_run must be true or false.' });
-    const dryRun = flag === true;
+    const dryRun = flag !== false;
     for (const scope of dryRun ? [] : ['write', 'run'] as const) {
       if (!req.tokenScopes?.has(scope)) {
         return res.status(403).json({ error: `This action requires the '${scope}' scope` });

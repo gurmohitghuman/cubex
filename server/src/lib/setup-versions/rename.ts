@@ -7,6 +7,7 @@
 // rename reaches the lookups looking in it, a waterfall's lookup steps and a
 // list enrichment adding rows to it. Both mutate the spec; true when anything changed.
 import { renamePromptColumnRefs } from '../column-ref-rename';
+import { normalizeColumnName } from '../prompt';
 import { renameRuleColumn } from '../run-condition';
 import { renameFormulaRefs } from '../formula/refs';
 import { renameHttpConfigColumn } from '../http-config-rename';
@@ -93,4 +94,21 @@ export function renameOtherSheetColumn(
     }
   }
   return changed;
+}
+
+// What a spec that names the column (in any way the rewrites above match:
+// exactly, in any case, or by its normalized name) must contain, so a rename
+// reads only those. Each way gives the same normalized name, and each a-z0-9
+// run of it is in the spec's text in some case (JSON never escapes those; LIKE
+// ignores ASCII case), or came from U+0130 (lower-cased: i) or U+212A (k):
+// `also` holds the ones the run needs; a run without i or k is picked first.
+// null: a name with no a-z0-9 (every spec is read).
+export function renameNeedle(oldName: string): { like: string; also: string[] } | null {
+  const runs = normalizeColumnName(oldName).split('_').filter(Boolean)
+    .sort((a, b) => Number(/[ik]/.test(a)) - Number(/[ik]/.test(b)) || b.length - a.length);
+  if (!runs.length) return null;
+  const run = runs[0];
+  const also = [run.includes('i') && String.fromCodePoint(0x130), run.includes('k') && String.fromCodePoint(0x212a)]
+    .filter((c): c is string => !!c);
+  return { like: `%${run}%`, also };
 }

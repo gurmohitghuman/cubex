@@ -87,20 +87,20 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       + '"restored", list_runs leaves it out). A clean, formula or lookup column keeps its cells until it is '
       + 'worked out again (clean_column, formula_column or lookup_column on its own column, free). Auto-run '
       + 'goes on or off as the version has it, starting from the rows there now (rows already there never run '
-      + 'because of a restore); one paused by hand stays paused. Refused while a run or a setup is going on the '
-      + 'sheet. Needs the write and run scopes (secrets too when a request it puts back reads saved keys); a dry '
-      + 'run needs read. The sheet\'s History lists each restore.',
+      + 'because of a restore; one already on goes on from where it was); one paused by hand stays paused. '
+      + 'Refused while a run or a setup is going on the sheet, or a clean, formula or lookup column is still '
+      + 'filling. Needs the write and run scopes (secrets too when a request it puts back reads saved keys); a '
+      + 'dry run needs read. The sheet\'s History lists each restore.',
     inputSchema: z.object({
       sheet_id: z.string(),
       version_id: z.string(),
       dry_run: lenientBoolean().optional().describe('Default true: only say what restoring would do'),
     }).strict(),
   }, async ({ sheet_id, version_id, dry_run }) => {
+    const denied = dry_run === false ? missingScope(ctx, 'write') ?? missingScope(ctx, 'run')
+      : missingScope(ctx, 'read');
+    if (denied) return denied;
     const dryRun = dry_run !== false;
-    for (const scope of dryRun ? ['read'] as const : ['write', 'run'] as const) {
-      const denied = missingScope(ctx, scope);
-      if (denied) return denied;
-    }
     const out = await restoreSetupVersion(sheet_id, ctx.userId, version_id,
       { dryRun, hasSecretsScope: ctx.scopes.has('secrets'), reveal: false });
     return 'ok' in out ? ok(out.ok) : err(out.message);

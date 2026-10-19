@@ -29,7 +29,7 @@ import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
-import { renameSetupVersionRefs } from './setup-version-store';
+import { renameSetupVersionRefs } from './setup-version-rename';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }

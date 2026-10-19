@@ -1,13 +1,10 @@
-// What restoring a setup version would do, column by column (dry run, and the
-// restore's own plan): columns the version names that are gone come back
-// empty, with their setup; columns set up differently get the version's
-// setup; columns the version doesn't have stay; a column filled another way
-// now is left as it is (a restore never turns one kind of column into
-// another), and so is a setup that would write into a column that isn't its
-// own now: an AI column is left, an HTTP API column comes back without that
-// field. Descriptions and the order follow the version, except on a column
-// left as it is. Checks and notes: setup-version-plan-words.ts. Reads
-// configs only, never a row.
+// What restoring a setup version would do, column by column (dry run, and the restore's own plan):
+// columns the version names that are gone come back empty, with their setup; columns set up
+// differently get the version's setup; columns the version doesn't have stay; a column filled another
+// way now is left as it is (a restore never turns one kind of column into another), and so is a setup
+// that would write into a column that isn't its own now: an AI column is left, an HTTP API column comes
+// back without that field. Descriptions and the order follow the version, except on a column left as
+// it is. Checks and notes: setup-version-plan-words.ts. Reads configs only, never a row.
 import { db } from '../lib/db';
 import { findColumnNameCollision, columnCollisionMessage } from '../lib/column-names';
 import { compileFormula } from '../lib/formula/refs';
@@ -80,7 +77,7 @@ export function planRestore(sheetId: string, userId: string, version: VersionSpe
   const mine = (owner: string, c: string) => back.has(c) || (nBy.has(c) && vk.get(c)?.kind === 'made'
     && vk.get(c)?.by === owner && (nk.get(c)!.kind === 'plain' || nk.get(c)!.by === owner));
   const why = (c: string) => notMineWhy(back.has(c), nBy.has(c), nk.get(c)?.kind, nk.get(c)?.by);
-  const unlinked = new Map<string, string>();   // column an HTTP setup won't fill anymore → that column
+  const unlinked = new Map<string, string>();   // column an AI or HTTP setup won't fill anymore → that column
   const dropped = new Map<string, string[]>();  // HTTP column → the columns its fields put in that aren't its now
   for (const v of version.columns) {
     if (!v.fill || left.has(v.name)) continue;
@@ -111,6 +108,10 @@ export function planRestore(sheetId: string, userId: string, version: VersionSpe
       writes.fills.set(v.name, fill);
       if (fill.kind === 'http' && n?.fill?.kind === 'http') {
         for (const c of n.fill.extracted) if (!mappedColumns(fill.config).includes(c)) unlinked.set(c, v.name);
+      }
+      if (fill.kind === 'ai' && n?.fill?.kind === 'ai') {
+        const still = fillMakes(fill, v.name);
+        for (const c of fillMakes(n.fill, v.name)) if (c !== v.name && !still.includes(c)) unlinked.set(c, v.name);
       }
     }
     if (n ? autoRunKey(v) !== autoRunKey(n) || writes.fills.has(v.name) : !!v.autoRun) writes.autoRuns.set(v.name, v);
@@ -152,14 +153,17 @@ export function planRestore(sheetId: string, userId: string, version: VersionSpe
     return writes.fills.has(c) || writes.autoRuns.has(c) || writes.descriptions.has(c) || unlinked.has(c)
       || (!!f && (f.kind === 'http' ? mappedColumns(f.config) : fillMakes(f, by!)).includes(c));
   };
+  const unlinkedNote = (c: string) => {
+    const owner = unlinked.get(c);
+    return owner && `"${owner}" won't fill it anymore: its restored setup doesn't `
+      + `${writes.fills.get(owner)?.kind === 'ai' ? 'write this column' : 'pick this field'}. It keeps its values.`;
+  };
   const columns: PlannedColumn[] = [];
   const listed = new Set<string>();
   const add = (p: PlannedColumn) => { columns.push(p); listed.add(p.column); };
   for (const c of diff.columns) {
     const base = { column: c.column, kind: c.kind, fields: c.fields, ...(c.nowKind ? { nowKind: c.nowKind } : {}) };
-    const extra = [notes.get(c.column), unlinked.has(c.column)
-      ? `"${unlinked.get(c.column)}" won't fill it anymore: its restored setup doesn't pick this field. It keeps `
-        + 'its values.' : undefined].filter(Boolean).join(' ') || null;
+    const extra = [notes.get(c.column), unlinkedNote(c.column)].filter(Boolean).join(' ') || null;
     if (left.has(c.column)) { add({ ...base, action: 'leave', note: left.get(c.column)! }); continue; }
     if (c.change === 'added') { add({ ...base, action: 'keep', note: extra }); continue; }
     if (c.change === 'missing') {
@@ -185,10 +189,9 @@ export function planRestore(sheetId: string, userId: string, version: VersionSpe
     add({ column: c, action: 'restore', kind: f.kind === 'http' ? f.mode : f.kind, fields: [],
       note: notes.get(c) ?? 'Set up again so it fills its columns again.' });
   }
-  for (const [c, owner] of unlinked) {
+  for (const c of unlinked.keys()) {
     if (listed.has(c) || !nBy.has(c)) continue;
-    add({ column: c, action: 'restore', kind: nk.get(c)!.kind, fields: [], note: `"${owner}" won't fill it `
-      + 'anymore: its restored setup doesn\'t pick this field. It keeps its values.' });
+    add({ column: c, action: 'restore', kind: nk.get(c)!.kind, fields: [], note: unlinkedNote(c) || null });
   }
   const nothing = !writes.addBack.length && !writes.fills.size && !writes.autoRuns.size && !writes.descriptions.size
     && !orderChanged;

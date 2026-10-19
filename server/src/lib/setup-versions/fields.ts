@@ -35,7 +35,7 @@ function aiRows(f: AiFill): Row[] {
 
 const cleanRows = (f: CleanFill): Row[] =>
   [['Reads', f.source], ['Cleaner', f.cleaner],
-    ['Options', Object.keys(f.options).length ? JSON.stringify(f.options) : null]];
+    ['Options', Object.keys(f.options).length ? canonical(f.options) : null]];
 const formulaRows = (f: FormulaFill): Row[] => [['Formula', f.formula], ['Described as', f.description]];
 const lookupRows = (f: LookupFill, ctx: FieldContext): Row[] => [
   ['Reads', f.source], ['Looks in', ctx.sheetName(f.otherSheetId) ?? 'a sheet deleted since'],

@@ -130,4 +130,4 @@ A setup version holds how a sheet's columns are set up, never a cell, so saving,
 | Restore it (an AI and a formula column set up again, the order back, the setup it replaced kept first) | 2 ms |
 | Rename a column, with 1 or with 100 versions naming it (the rename itself moves every row's cell) | 3.3 s either way |
 
-A sheet keeps up to 100 versions.
+A sheet keeps up to 100 versions, each at most 4 MB. At those limits (100 versions of 4 MB on the sheet and 100 more on another sheet, `SETUP_VERSIONS_PERF_MB=4 npm run test:unit -- setup-versions-fences`), listing them takes about 0.2 s (the counts are worked out in SQLite, no version is read whole into the server), and the versions' part of a column rename about 0.2 s when no version names the column (only the versions that can name it are read) and 0.9 s when all 100 do. Versions of a usual size take a millisecond or two.

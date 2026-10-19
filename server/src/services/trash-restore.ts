@@ -8,6 +8,9 @@
 // many rows are back, so a restart goes on (resumeTrashRestores); one that had
 // put none back yet goes back to the trash as it was. Auto-run leaves restored
 // rows alone (they come back as they were), and open tabs reload once they're in.
+// Each transaction reads, then writes: it takes the write lock first
+// (.immediate()), or a write landing between its read and its first write
+// (another connection: a worker, the lookup thread) fails it with SQLITE_BUSY.
 import { db } from '../lib/db';
 import {
   MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET, TRASH_RESTORE_PICK_MAX, TRASH_RESTORE_WAIT_ROWS, TRASH_SLICE_ROWS,
@@ -87,7 +90,7 @@ export async function restoreRows(
       db.prepare("UPDATE trash_items SET state = 'restoring', restore_at = ?, restored = 0 WHERE id = ?")
         .run(start, itemId);
       plan = planColumns(sheetId, userId, item);
-    })();
+    }).immediate();
     if (!plan) return { fail: 'conflict', message: 'This batch is already being restored or deleted for good.' };
     const columns = plan as ColumnPlan;
     reserve(through + 1);
@@ -103,12 +106,12 @@ export async function restoreRows(
         db.transaction(() => {
           restoreSlice(itemId, sheetId, userId, columns, TRASH_RESTORE_PICK_MAX, p);
           finishRestore(itemId, sheetId, userId);
-        })();
+        }).immediate();
         return answer('restored');
       }
     } catch (error) {
       // No row is back yet: the batch goes back to the trash as it was.
-      db.transaction(() => backToTrash(itemId, sheetId, userId))();
+      db.transaction(() => backToTrash(itemId, sheetId, userId)).immediate();
       throw error;
     }
     const rest = () => carryOn(itemId, sheetId, userId, columns);
@@ -146,7 +149,7 @@ async function carryOn(itemId: number, sheetId: string, userId: string, plan: Co
   try {
     await runInCheckpointedSlices(() =>
       restoreSlice(itemId, sheetId, userId, plan, TRASH_SLICE_ROWS, null) > 0);
-    db.transaction(() => finishRestore(itemId, sheetId, userId))();
+    db.transaction(() => finishRestore(itemId, sheetId, userId)).immediate();
   } catch (error) {
     stayBusyToFinish(sheetId, WHAT, () => carryOn(itemId, sheetId, userId, plan));
     throw error;
@@ -185,11 +188,11 @@ export function resumeTrashRestores(): void {
   for (const item of items) {
     const sheetId = item.sheet_id!;
     if (item.restored === 0) {
-      db.transaction(() => backToTrash(item.id, sheetId, item.user_id))();
+      db.transaction(() => backToTrash(item.id, sheetId, item.user_id)).immediate();
       continue;
     }
     whenSheetFree(sheetId, WHAT, async reserve => {
-      const plan = db.transaction(() => planColumns(sheetId, item.user_id, item))();
+      const plan = db.transaction(() => planColumns(sheetId, item.user_id, item)).immediate();
       reserve(item.restore_at === null ? (item.top_index ?? 0) + 1 : item.restore_at + item.restored + item.row_count);
       await carryOn(item.id, sheetId, item.user_id, plan);
     }).catch(err => console.error(`Restoring trash batch ${item.id} failed:`, err));

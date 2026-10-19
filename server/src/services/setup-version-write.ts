@@ -5,7 +5,8 @@
 //     its newest run (what its reruns, auto-run, edit dialogs and details read)
 //     is the version's. Its usage record goes: usage lists what ran.
 //   - a clean, formula or lookup column gets its record back as filled
-//     ('done'): its cells stay as they are until it's worked out again.
+//     ('done'): its cells stay as they are until it's worked out again. Its
+//     auto-run, already on, keeps its fence (KEEP).
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { compileFormula } from '../lib/formula/refs';
@@ -14,6 +15,10 @@ import { mappedColumns, type AiFill, type CleanFill, type FormulaFill, type Http
   from '../lib/setup-versions/spec';
 import { setDerivedAutorun } from './derived-autorun';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
+
+// Nothing fills it now: an auto-run already on keeps its fence (rows that came
+// meanwhile are still worked out); one turned on starts above the rows there.
+const KEEP = { keepFence: true };
 
 const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
 
@@ -66,7 +71,7 @@ export function writeCleanSetup(sheetId: string, userId: string, column: string,
       cleaner = excluded.cleaner, options = excluded.options, fill_status = 'done', fill_cursor = 0,
       error_message = NULL, updated_at = datetime('now')`)
     .run(uuidv4(), userId, sheetId, column, f.source, f.cleaner, JSON.stringify(f.options));
-  setDerivedAutorun('clean', sheetId, userId, column, [f.source], autoRun);
+  setDerivedAutorun('clean', sheetId, userId, column, [f.source], autoRun, KEEP);
 }
 
 // columns: the sheet's columns once the restore has added its own back.
@@ -80,7 +85,7 @@ export function writeFormulaSetup(
       description = excluded.description, fill_status = 'done', fill_cursor = 0, error_message = NULL,
       updated_at = datetime('now')`)
     .run(uuidv4(), userId, sheetId, column, compiled.formula, JSON.stringify(compiled.inputs), f.description);
-  setDerivedAutorun('formula', sheetId, userId, column, compiled.inputs, autoRun);
+  setDerivedAutorun('formula', sheetId, userId, column, compiled.inputs, autoRun, KEEP);
   return compiled.inputs;
 }
 
@@ -101,5 +106,5 @@ export function writeLookupSetup(sheetId: string, userId: string, column: string
   if (prior && (prior.other_sheet_id !== f.otherSheetId || prior.match_column !== f.matchColumn)) {
     releaseLookupSource(userId, prior.other_sheet_id, prior.match_column);
   }
-  setDerivedAutorun('lookup', sheetId, userId, column, [f.source], autoRun);
+  setDerivedAutorun('lookup', sheetId, userId, column, [f.source], autoRun, KEEP);
 }
