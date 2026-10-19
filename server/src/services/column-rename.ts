@@ -2,7 +2,7 @@
 // the UI route and /api/v1 share one implementation. The cascade set is
 // load-bearing: rows.data key, column_order, empty_filter,
 // column_filters, http_column_associations, stored HTTP run configs, webhook
-// refs, auto-run and clean column settings, descriptions — miss one and a rename orphans state.
+// refs, auto-run and clean column settings, descriptions, setup versions — miss one and a rename orphans state.
 // Over 200 lines: one rename with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -29,6 +29,7 @@ import { formulaRenameProblem } from './formula-rename';
 import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
+import { renameSetupVersionRefs } from './setup-version-store';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
@@ -245,6 +246,8 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameRunInputKey(sheetId, userId, columnName, trimmedNew);
   // Undo journals of runs that wrote it name it by its slot (lib/run-undo/columns.ts).
   renameUndoColumn(sheetId, userId, columnName, trimmedNew);
+  // Setup versions naming it, here and in sheets whose lookups look in this one.
+  renameSetupVersionRefs(sheetId, userId, columnName, trimmedNew);
   // The change log: its lines about the column follow its name (History by column).
   db.prepare('UPDATE sheet_changes SET column_name = ? WHERE sheet_id = ? AND user_id = ? AND column_name = ?')
     .run(trimmedNew, sheetId, userId, columnName);

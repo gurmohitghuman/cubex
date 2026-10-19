@@ -118,3 +118,16 @@ Before a run writes a cell, it keeps what the cell held, so the run can be undon
 
 What a run keeps takes about 50 bytes a cell when the old values are short, more when they're long: 97 MB for this run. It's kept 7 days after the run starts, then deleted a slice at a time; an undone run's is deleted right away.
 
+
+### Setup versions
+
+A setup version holds how a sheet's columns are set up, never a cell, so saving, comparing and restoring one read and write only the setup: their time doesn't grow with the rows. Measured with a script on the same laptop, on a sheet of 1,000,000 rows and 7 columns (an AI, an HTTP API, a formula and a clean column among them):
+
+| Action | Time |
+|---|---|
+| Save a version | 1 ms |
+| Compare a version with the sheet | 2 ms |
+| Restore it (an AI and a formula column set up again, the order back, the setup it replaced kept first) | 2 ms |
+| Rename a column, with 1 or with 100 versions naming it (the rename itself moves every row's cell) | 3.3 s either way |
+
+A sheet keeps up to 100 versions.

@@ -16,6 +16,8 @@ interface SheetTabsBarProps {
   // Edit description: the dialog opened on the sheet (hooks/sheet/useDescriptions.ts).
   onDescribeSheet: (s: Sheet) => void
   onDeleteSheet: (s: Sheet) => void
+  // Setup versions: the dialog opened on the sheet (components/setup-versions/).
+  onSetupVersions: (s: Sheet) => void
   onReorderSheets: (orderedSheetIds: string[]) => void
   onAddRows: (count: number) => void
 }
@@ -32,7 +34,7 @@ type RenameState = { sheetId: string; value: string } | null
 // reorder is a deliberate non-goal here (would be inconsistent with the rest of the app).
 export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
   sheets, activeSheet, onSelectSheet, onAddSheet, onRenameSheet, onDescribeSheet, onDeleteSheet,
-  onReorderSheets, onAddRows,
+  onSetupVersions, onReorderSheets, onAddRows,
 }) => {
   const [renaming, setRenaming] = useState<RenameState>(null)
   const drag = useSheetTabDrag({ orderedIds: sheets.map(s => s.id), onReorder: onReorderSheets })
@@ -150,12 +152,16 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                     menu's LEFT edge at the chevron and it opens rightward; the negative
                     alignOffset slides that left edge back under the sheet name so the menu
                     starts under the tab and extends right (not spilling far past it). */}
-                <DropdownMenuContent className="w-44" align="start" alignOffset={-72} side="top" sideOffset={6}>
+                <DropdownMenuContent className="w-44" align="start" alignOffset={-72} side="top" sideOffset={6}
+                  onCloseAutoFocus={e => e.preventDefault()}>
                   <DropdownMenuItem onClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}>
                     Rename
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onDescribeSheet(sheet)} data-testid="describe-sheet">
                     Edit description…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onSetupVersions(sheet)} data-testid="sheet-setup-versions">
+                    Setup versions…
                   </DropdownMenuItem>
                   {sheets.length > 1 && (
                     <>
