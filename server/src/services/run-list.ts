@@ -47,7 +47,7 @@ export function listRuns(
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
            run_if, condition_skipped_rows
-    FROM ai_runs WHERE user_id = ? ${sheetSql} ${p.sql}
+    FROM ai_runs WHERE user_id = ? AND setup_only = 0 ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
 
@@ -56,7 +56,7 @@ export function listRuns(
            error_message, target_rows, created_at, updated_at,
            config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows,
            ai_cost_usd, placeholder_work, autorun_id
-    FROM http_runs WHERE user_id = ? ${sheetSql} ${p.sql}
+    FROM http_runs WHERE user_id = ? AND setup_only = 0 ${sheetSql} ${p.sql}
     ORDER BY created_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...sheetParams, ...p.params, limit) as any[];
 

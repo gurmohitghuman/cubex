@@ -43,6 +43,7 @@ interface SheetHeaderProps {
   autoDedupeOn?: boolean
   onSaveSetup: () => void
   onUseSetup: () => void
+  onSetupVersions: () => void
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -77,6 +78,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onRemoveDuplicates, autoDedupeOn,
   onSaveSetup,
   onUseSetup,
+  onSetupVersions,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -201,7 +203,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                     data-testid="auto-dedupe-chip"><span className="sr-only">(auto-dedupe on)</span></span>
                 )}
               </button>
-              <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} />
+              <SheetSetupsMenu onUseSetup={onUseSetup} onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
               <SheetUsageButton sheetId={sheetId ?? null} sheetName={sheetName ?? ''} />
               <SheetHistoryButton sheetId={sheetId ?? null} />
             </div>

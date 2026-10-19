@@ -282,6 +282,7 @@ export const SheetPage: React.FC = () => {
         onRemoveDuplicates={() => modals.openDedupe('now')} autoDedupeOn={!!sheetData?.data.autoDedupe}
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
+        onSetupVersions={() => { if (activeSheet) modals.openVersions(activeSheet.id) }}
         sheetId={activeSheet?.id ?? null} sheetName={activeSheet?.name ?? ''}
         autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
@@ -309,6 +310,7 @@ export const SheetPage: React.FC = () => {
         onRenameSheet={sheetOps.renameSheet}
         onDescribeSheet={descriptions.openSheet}
         onDeleteSheet={setConfirmDeleteSheet}
+        onSetupVersions={s => { if (s.id !== activeSheet?.id) sheetOps.selectSheet(s); modals.openVersions(s.id) }}
         onReorderSheets={sheetOps.reorderSheets}
         onAddRows={cellOps.handleAddRows}
       />
@@ -333,7 +335,9 @@ export const SheetPage: React.FC = () => {
         dropAllPending={cellOps.dropAllPending}
       />
       <AutorunDialogHost autorun={autorun} />
-      <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals} />
+      <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals}
+        sheetName={table?.sheets?.find(s => s.id === modals.versionsFor)?.name ?? ''}
+        onRestored={id => { if (id === activeSheet?.id) void silentReloadRef.current(id) }} />
       <SheetWebhookOverlays
         autorunOn={autorun.anyOn}
         drawerOpen={modals.showWebhookDrawer}

@@ -5,13 +5,13 @@
 // A request URL is shown with any credential typed into it masked, and header
 // names only, never their values: any token that can read sees this.
 import { db } from '../lib/db';
-import { maskUrlSecrets, type ColumnDetail } from '../lib/column-details';
+import { maskUrlSecrets, runStatus, type ColumnDetail } from '../lib/column-details';
 import { isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { requestColumns } from '../lib/autorun-rules';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { autoRunPart, nextRunRule, parseJson, type DetailContext } from './column-details-context';
 
-interface RunRow { id: string; status: string; config: string | null; dest_sheet_id: string | null }
+interface RunRow { id: string; status: string; setup_only: number; config: string | null; dest_sheet_id: string | null }
 
 const isHttpConfig = (c: unknown): c is HTTPAPIConfig =>
   !!(c as HTTPAPIConfig | null)?.requestConfig && Array.isArray((c as HTTPAPIConfig).responseMapping);
@@ -22,7 +22,7 @@ function enrichmentFill(ctx: DetailContext, run: RunRow, config: EnrichRunConfig
     ? db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck().get(run.dest_sheet_id, ctx.userId)
     : undefined;
   return {
-    run_id: run.id, run_status: run.status, tool_id: e.toolId, tool_name: e.toolName,
+    run_id: run.id, run_status: runStatus(run), tool_id: e.toolId, tool_name: e.toolName,
     max_cost_per_row_usd: e.maxCostPerRowUsd, spend_limit_usd: e.spendLimitUsd,
     ...(e.list ? { adds_rows_to: dest ?? null } : {}),
   };
@@ -31,7 +31,7 @@ function enrichmentFill(ctx: DetailContext, run: RunRow, config: EnrichRunConfig
 function httpFill(ctx: DetailContext, column: string, run: RunRow, config: HTTPAPIConfig): Record<string, unknown> {
   const rc = config.requestConfig;
   return {
-    run_id: run.id, run_status: run.status, method: rc.method,
+    run_id: run.id, run_status: runStatus(run), method: rc.method,
     url: ctx.cut(column, maskUrlSecrets(String(rc.url ?? ''))),
     header_names: Object.keys(rc.headers ?? {}),
     output_columns: config.responseMapping.map(m => m.columnName),
@@ -40,7 +40,7 @@ function httpFill(ctx: DetailContext, column: string, run: RunRow, config: HTTPA
 
 export function describeHttpColumns(ctx: DetailContext): Map<string, ColumnDetail> {
   const out = new Map<string, ColumnDetail>();
-  const newest = db.prepare(`SELECT id, status, config, dest_sheet_id FROM http_runs
+  const newest = db.prepare(`SELECT id, status, setup_only, config, dest_sheet_id FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`);
   const configs = new Map<string, HTTPAPIConfig | null>();
   for (const column of ctx.columns) {

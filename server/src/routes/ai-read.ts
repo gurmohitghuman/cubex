@@ -34,7 +34,7 @@ router.get('/runs', (req: AuthRequest, res) => {
     if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
     res.json(db.prepare(`
       SELECT * FROM ai_runs WHERE sheet_id = ? AND user_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, rowid DESC
     `).all(sheetId, req.userId!));
   } catch (error) {
     console.error('Get AI runs error:', error);

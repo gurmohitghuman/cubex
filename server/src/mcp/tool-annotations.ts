@@ -99,6 +99,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   apply_setup: write('Use a setup on a sheet', true, false, true),
   get_setup_run: read('Get a setup run'),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
+  list_setup_versions: read("List or compare a sheet's setup versions"),
+  // Saves a version, renames one, or deletes one for good; the sheet itself never changes.
+  manage_setup_version: write('Save, rename or delete a setup version', true, false),
+  // Puts columns' setups back (and gone columns, empty); nothing runs, but later runs and auto-run use it.
+  restore_setup_version: write('Restore a setup version', true, true),
   list_run_webhooks: read('List run webhooks'),
   // Puts rows, sheets and tables back; repeating it finds nothing more to restore.
   restore_from_trash: write('Restore from the trash', false, true),

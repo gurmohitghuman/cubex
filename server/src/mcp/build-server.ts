@@ -34,6 +34,7 @@ import { registerLookupTool } from './tools-lookup';
 import { registerDedupeTool } from './tools-dedupe';
 import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
+import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
@@ -113,6 +114,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerDedupeTool(server, ctx);
   registerSetupTools(server, ctx);
   registerSetupRunTools(server, ctx);
+  registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);

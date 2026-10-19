@@ -25,6 +25,7 @@ import usageRoutes from './sheets-usage';
 import searchRoutes from './sheets-search';
 import descriptionRoutes from './sheets-descriptions';
 import historyRoutes from './sheets-history';
+import setupVersionRoutes from './sheets-setup-versions';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
@@ -48,6 +49,8 @@ router.use('/:id', refuseChangesWhileBusy([
   '/runs/stop',
   // Using a setup: its estimate only reads, and its start checks the sheet itself (services/setup-apply.ts).
   /^\/setups\/[^/]+\/apply$/,
+  // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
+  /^\/setup-versions\/[^/]+\/restore$/,
 ]));
 router.use(readRoutes);
 router.use(dataRoutes);
@@ -75,5 +78,6 @@ router.use(usageRoutes);
 router.use(searchRoutes);
 router.use(descriptionRoutes);
 router.use(historyRoutes);
+router.use(setupVersionRoutes);
 
 export default router;

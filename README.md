@@ -271,6 +271,8 @@ New rows on a sheet you used a setup on? Use it again there. The steps whose col
 
 Setups live in **Settings, Setups**, where you can rename, export one as a file for another Cubex, import one, or delete it. A setup is a copy: changing or deleting it never changes a sheet you used it on.
 
+About to change a prompt, a request or a formula? Open the sheet tab's menu and choose **Setup versions…** (or **Setups**, **This sheet's setup versions…** in the toolbar), then **Save version**. A version keeps how every column of the sheet is set up: prompts, models, requests, enrichments, formulas, cleaners, lookups, "Only run if" rules, auto-run, descriptions and the column order, never the values in the cells. **Compare and restore** shows what changed since, setting by setting. Restoring puts the version's setup back and adds back columns deleted since, empty. It runs nothing and bills nothing, and it first saves the setup the sheet has now as a version of its own, so you can go back. Each column then runs or works out the restored way the next time you run it.
+
 ### Trash and history
 
 Deleted rows, sheets and tables go to the trash (the trash can at the top of the dashboard), and so do rows a CSV import replaced, rows removed as duplicates and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted for good; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.

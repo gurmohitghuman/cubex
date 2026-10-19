@@ -74,3 +74,17 @@ export function derivedRenameLoop(sheetId: string, userId: string, oldName: stri
   }
   return null;
 }
+
+// Whether giving several columns their inputs at once (a setup version's
+// restore) closes a loop: the first column that would, with its chain, or null.
+export function derivedLoopWith(
+  sheetId: string, userId: string, inputs: ReadonlyMap<string, string[]>,
+): { column: string; chain: string } | null {
+  const graph = derivedGraph(sheetId, userId);
+  for (const [column, ins] of inputs) graph.set(column, ins);
+  for (const [column, ins] of inputs) {
+    const path = pathTo(graph, ins, column);
+    if (path) return { column, chain: path.join(' ← ') };
+  }
+  return null;
+}

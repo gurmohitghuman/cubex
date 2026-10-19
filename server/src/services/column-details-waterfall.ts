@@ -5,13 +5,13 @@
 // columns), the run's caps, the input columns,
 // auto-run and the rule; "answered by" and each step's column name it.
 import { db } from '../lib/db';
-import { maskUrlSecrets, type ColumnDetail } from '../lib/column-details';
+import { maskUrlSecrets, runStatus, type ColumnDetail } from '../lib/column-details';
 import { waterfallColumns, waterfallConfigOf, type WaterfallStep } from '../lib/waterfall/config';
 import { inputSourcesOf } from '../lib/waterfall/inputs';
 import { autoRunPart, nextRunRule, type DetailContext } from './column-details-context';
 import { lookedInSheet } from './waterfall-build-lookup';
 
-interface RunRow { id: string; status: string; config: string | null }
+interface RunRow { id: string; status: string; setup_only: number; config: string | null }
 
 function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<string, unknown> {
   const c = s.choices;
@@ -48,7 +48,7 @@ function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<
 
 export function describeWaterfallColumns(ctx: DetailContext): Map<string, ColumnDetail> {
   const out = new Map<string, ColumnDetail>();
-  const newest = db.prepare(`SELECT id, status, config FROM http_runs
+  const newest = db.prepare(`SELECT id, status, setup_only, config FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`);
   for (const column of ctx.columns) {
     if (ctx.types[column] !== 'waterfall') continue;
@@ -61,7 +61,7 @@ export function describeWaterfallColumns(ctx: DetailContext): Map<string, Column
     out.set(column, {
       name: column, kind: 'waterfall', role: 'answer',
       fill: {
-        run_id: run.id, run_status: run.status, result_type: w.resultType,
+        run_id: run.id, run_status: runStatus(run), result_type: w.resultType,
         steps: w.steps.map(s => stepFill(ctx, column, s)),
         max_cost_per_row_usd: w.maxCostPerRowUsd, spend_limit_usd: w.spendLimitUsd,
       },

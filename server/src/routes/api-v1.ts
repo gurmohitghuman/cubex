@@ -34,6 +34,7 @@ import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
 import viewsV1 from './api-v1-views';
+import setupVersionsV1 from './api-v1-setup-versions';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
@@ -61,6 +62,8 @@ router.use(actAs(req => ({ via: 'api', tokenName: (req as TokenAuthRequest).acce
 router.use('/sheets/:id', refuseChangesWhileBusy([
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
   '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
+  // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
+  /^\/setup-versions\/[^/]+\/restore$/,
 ]));
 router.use(tablesV1);
 router.use(tableSheetsV1);
@@ -78,6 +81,8 @@ router.use(lookupV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
 router.use(viewsV1);
+// Setup versions: a sheet's column setup kept by name, compared and restored (services/setup-version-*.ts).
+router.use(setupVersionsV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);
