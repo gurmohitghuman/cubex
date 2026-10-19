@@ -11,13 +11,13 @@ import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
-import { runStartWindow } from '../services/run-shared';
-import { tooManyMessage } from '../lib/rate-window';
+import { startRefusalMessage, takeRunStart } from '../services/run-shared';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../services/waterfall-agent-control';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 // An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
 // 'waterfall' reads and controls the same run, and refuses another kind so the
@@ -68,7 +68,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'turns no auto-run off: a column whose auto-run batch it stopped pauses, as cancelling that one run '
         + 'does (auto_run_paused; resume it to go on), and auto_run_on lists the columns where new rows still '
         + 'start runs (set_auto_run with paused true and no column pauses them all). Calls already sent finish '
-        + 'and are billed; free clean and formula fills finish too (still_filling).',
+        + 'and are billed; free clean and formula fills finish too (still_filling).'
+        + capToolNote(ctx.spend ?? null, true),
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional()
           .describe('Every action but cancel_all.'),
@@ -137,8 +138,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           return err("An enrichment rerun needs row_ids or mode: 'errored', 'empty' (not enriched yet), "
             + "'missing' (no result) or 'all' (buys every row again).");
         }
-        const slot = runStartWindow(ctx.tokenId);
-        if (!slot.allowed) return err(tooManyMessage('run starts', slot));
+        const refused = takeRunStart(ctx.userId, ctx.tokenId);
+        if (refused) return err(startRefusalMessage(refused));
         const out = await rerunEnrichmentRunById(
           ctx.userId, run_id, { rowIds: row_ids, mode, spendLimitUsd: spend_limit_usd, concurrency },
         );
@@ -150,8 +151,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         });
       }
       if (waterfall && action === 'rerun') {
-        const slot = runStartWindow(ctx.tokenId);
-        if (!slot.allowed) return err(tooManyMessage('run starts', slot));
+        const refused = takeRunStart(ctx.userId, ctx.tokenId);
+        if (refused) return err(startRefusalMessage(refused));
         const out = await rerunWaterfallRunById(ctx.userId, run_id, {
           rowIds: row_ids, mode, spendLimitUsd: spend_limit_usd, hasSecretsScope: ctx.scopes.has('secrets'),
         });
@@ -191,8 +192,9 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             + 're-bill EVERY row) or row_ids for a specific subset.',
           );
         }
-        const slot = runStartWindow(ctx.tokenId);
-        if (!slot.allowed) return err(tooManyMessage('run starts', slot));
+        // A plain HTTP rerun costs nothing here: only its run-start slot.
+        const refused = takeRunStart(ctx.userId, ctx.tokenId, run_type === 'ai');
+        if (refused) return err(startRefusalMessage(refused));
         const result = run_type === 'ai'
           ? await rerunAiRunById(ctx.userId, run_id, {
             rowIds: row_ids, mode: mode ?? (first_rows ? 'all' : undefined), concurrency, firstRows: first_rows,

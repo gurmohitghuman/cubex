@@ -75,7 +75,7 @@ async function receiveUpload(req: express.Request, res: express.Response) {
 
   const replace = linkOptions<{ mode: string }>(link).mode === 'replace';
   // The import is the link's token's doing, over MCP (lib/actor.ts: the change log and trash say so).
-  const result = await runAs({ via: 'mcp', tokenName: link.token_name },
+  const result = await runAs({ via: 'mcp', tokenName: link.token_name, tokenId: link.token_id },
     () => importUploadedCsv(req, link.sheet_id, link.user_id, replace));
   if (!('fail' in result)) {
     // The new rows' auto-runs (an agent made the link; it should know what they spend).

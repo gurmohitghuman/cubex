@@ -313,6 +313,8 @@ Give each token only the scopes it needs, so an agent can be read-only:
 - `run`: also start, pause and re-run runs, which spend your OpenRouter credits and treg balance.
 - `secrets`: also start HTTP runs that use your saved API keys.
 
+Give a token a **spend cap** to limit what an agent can spend on AI and enrichments in all (for the token's whole life, not per month). At the cap its new runs are refused and running ones pause until you raise it. The token list shows what each one spent.
+
 Setup for Cursor, Codex, VS Code and Claude Desktop, the REST API and the full list of tools are in the [agents and API guide](docs/mcp.md).
 
 **The Cubex plugin** for Claude Code, Codex and Cursor adds the connection (Claude Code and Codex read your address and token from environment variables, never from a config file) and skills for the common jobs: onboarding, cleaning and deduping a list, fixing failed rows, enriching with cost control, tracing where a value came from and checking limits. Paste this into your agent:

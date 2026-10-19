@@ -158,10 +158,10 @@ export async function startAutorunRun(
       if (unlisted.length) appendColumnsToOrder(e.sheet_id, e.user_id, unlisted);
       targets = keep.map(r => r.row_index).sort((a, b) => a - b);
       db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-          target_rows, allow_secrets, placeholder_work, autorun_id, autorun_day, dest_sheet_id)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?, ?)`)
+          target_rows, allow_secrets, placeholder_work, autorun_id, autorun_day, dest_sheet_id, access_token_id)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?, ?, ?)`)
         .run(runId, e.sheet_id, e.user_id, JSON.stringify(prep.config), keep.length, e.status_column,
-          JSON.stringify(targets), prep.allowSecrets, e.id, utcDay(), dest?.destSheetId ?? null);
+          JSON.stringify(targets), prep.allowSecrets, e.id, utcDay(), dest?.destSheetId ?? null, e.access_token_id);
       // Every output is linked to this run: clearing a stopped run's ⏳ finds its columns this way.
       const assoc = db.prepare(`INSERT INTO http_column_associations
           (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`);

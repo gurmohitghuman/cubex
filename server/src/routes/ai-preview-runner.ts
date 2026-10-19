@@ -5,7 +5,7 @@ import { aiMaxTokens } from '../lib/constants';
 import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig } from '../lib/ai-web-tools';
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { SearchQueryLog } from '../lib/responses-adapter';
-import { sendModelCall, type ModelCall } from '../services/ai-model-call';
+import { billedUsage, sendModelCall, type ModelCall } from '../services/ai-model-call';
 import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } from '../lib/ai-multi-output';
 
 interface PreviewArgs {
@@ -73,6 +73,7 @@ export const processOneRow = async (
   args: PreviewArgs,
   externalSignal?: AbortSignal,
 ): Promise<PreviewRowResult> => {
+  let billed: ModelCall | null = null;
   try {
     const filled = processPromptTemplate(args.prompt, row.data);
     const processedPrompt = args.promptSuffix ? `${filled}\n\n${args.promptSuffix}` : filled;
@@ -144,6 +145,7 @@ export const processOneRow = async (
       if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     }
 
+    billed = call;
     // Throws (→ caught below as a per-row error) if the model returned no usable
     // content — a reasoning model hitting the token limit, a refusal, etc. — so
     // the row shows an "Error" badge instead of a silent blank.
@@ -164,6 +166,13 @@ export const processOneRow = async (
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    return { rowIndex: row.rowIndex, value: '', error: `Failed to generate preview: ${msg}` };
+    // A call that came back was billed even when its row failed (as a run's row:
+    // services/ai-model-call.ts billedUsage), so the preview's usage record counts it.
+    const usage = billedUsage(billed, error);
+    return {
+      rowIndex: row.rowIndex, value: '', error: `Failed to generate preview: ${msg}`,
+      ...(usage?.costUsd != null ? { costUsd: usage.costUsd } : {}),
+      ...(usage?.providerCostUsd != null ? { providerCostUsd: usage.providerCostUsd } : {}),
+    };
   }
 };

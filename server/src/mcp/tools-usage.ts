@@ -16,7 +16,9 @@ export function registerUsageTools(server: McpServer, ctx: McpAuthCtx) {
       + 'earlier found answer at $0), ai_cost_usd (what OpenRouter charged), provider_cost_usd (billed to the '
       + 'user\'s own provider key), enrichment_cost_usd (treg), total_cost_usd and cost_per_cell_usd. range: '
       + 'this_week, this_month (default), last_week or last_month, or from and to (YYYY-MM-DD, both included). '
-      + 'Days are UTC and a run counts on the day it started; tries in the app\'s AI column dialog are not runs. '
+      + 'Days are UTC and a run counts on the day it started. AI previews (the app\'s tries, preview_rows) and AI '
+      + 'helpers (write_formula, write_run_condition, the app\'s HTTP request writer) count too, as kind preview '
+      + 'or assist: one record for each use, with no run behind it. '
       + `At most limit rows (default and most ${USAGE_MCP_MAX_ROWS}, the costliest columns or the newest days or `
       + 'runs); totals always cover the whole range and rows_total says how many there are (narrow the range, or '
       + 'GET /api/v1/usage with format=csv has every row). Rows of a deleted sheet have sheet_deleted true. '

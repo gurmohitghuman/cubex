@@ -17,6 +17,7 @@ import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
 import { buildMcpServer } from '../mcp/build-server';
 import { linkBase } from '../lib/file-links';
 import { runAs } from '../lib/actor';
+import { readTokenSpend } from '../services/token-spend';
 
 const router = express.Router();
 
@@ -65,6 +66,7 @@ router.post('/', async (req: TokenAuthRequest, res) => {
       tokenName: req.accessTokenName ?? '',
       abortSignal: abortController.signal,
       linkBase: linkBase(req),
+      spend: readTokenSpend(req.userId!, req.accessTokenId!)?.view ?? null,
     });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless — the Bearer token is the identity
@@ -73,7 +75,7 @@ router.post('/', async (req: TokenAuthRequest, res) => {
     res.on('close', () => { void transport.close(); void server.close(); });
     await server.connect(transport);
     // What the tools change is done by this token over MCP (lib/actor.ts).
-    await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null },
+    await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null, tokenId: req.accessTokenId ?? null },
       () => transport.handleRequest(req, res, req.body));
   } catch (error) {
     console.error('MCP request error:', error);

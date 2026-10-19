@@ -24,6 +24,7 @@ import { resolveRowIdsToIndexes, type RunFail } from './run-shared';
 import { prepareWaterfallStart, type PreparedWaterfall } from './waterfall-run-prepare';
 import { keysProblem } from './waterfall-run-start';
 import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
+import { actorTokenId } from '../lib/actor';
 
 export interface DryRunStarted { runId: string; rowIndexes: number[] }
 
@@ -112,9 +113,9 @@ export async function startWaterfallDryRun(
   if (lookupStepsMoved(config, userId)) return { fail: 'conflict', message: LOOKUP_MOVED };
   const runId = uuidv4();
   db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-      target_rows, allow_secrets) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?, ?)`)
+      target_rows, allow_secrets, access_token_id) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?, ?, ?)`)
     .run(runId, sheetId, userId, JSON.stringify(config), picked.rows.length, JSON.stringify(picked.rows),
-      keys.allowSecrets);
+      keys.allowSecrets, actorTokenId());
   await enqueueHTTPRerun(runId, picked.rows);
   return { ok: { runId, rowIndexes: picked.rows } };
 }

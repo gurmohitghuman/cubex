@@ -1,7 +1,8 @@
 import { api } from './client'
 import type {
   AccessToken, AccessTokenScope, APIKey, APIKeySuggestion, CreatedAccessToken,
-  EnrichDailyLimit, EnrichReuseSetting, OpenRouterKeyTestResult, OpenRouterModel, Settings, TregKeyTestResult,
+  EnrichDailyLimit, EnrichReuseSetting, OpenRouterKeyTestResult, OpenRouterModel, Settings, TokenSpend,
+  TregKeyTestResult,
 } from './types'
 
 export const settingsAPI = {
@@ -63,8 +64,14 @@ export const settingsAPI = {
   getAccessTokens: (): Promise<AccessToken[]> =>
     api.get('/settings/access-tokens').then(res => res.data),
 
-  createAccessToken: (body: { name: string; scopes: AccessTokenScope[]; expires_in_days?: number | null }): Promise<CreatedAccessToken> =>
+  createAccessToken: (body: {
+    name: string; scopes: AccessTokenScope[]; expires_in_days?: number | null; spend_cap_usd?: number | null
+  }): Promise<CreatedAccessToken> =>
     api.post('/settings/access-tokens', body).then(res => res.data),
+
+  // The token's lifetime spend cap in dollars; null removes it.
+  setAccessTokenSpendCap: (id: string, spendCapUsd: number | null): Promise<{ spend: TokenSpend }> =>
+    api.patch(`/settings/access-tokens/${id}`, { spend_cap_usd: spendCapUsd }).then(res => res.data),
 
   revokeAccessToken: (id: string): Promise<void> =>
     api.delete(`/settings/access-tokens/${id}`).then(() => {}),

@@ -115,8 +115,9 @@ export const UsageDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId, sheetNa
 
         <div className="flex items-start justify-between gap-3 pt-2 border-t border-gray-200">
           <p className="text-xs text-gray-500">
-            Each run counts on the day it started. Tries in the AI column dialog aren&apos;t runs, so they aren&apos;t
-            here. Cells reused from earlier answers cost nothing.
+            Each run counts on the day it started. Tries in the AI column dialog count as AI previews, and the AI
+            that writes a formula, a rule or an HTTP request as AI helpers. Cells reused from earlier answers cost
+            nothing.
           </p>
           <button type="button" onClick={download} disabled={!ask || downloading || !report?.rows.length}
             className="btn-secondary flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"

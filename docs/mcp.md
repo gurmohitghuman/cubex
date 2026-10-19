@@ -18,6 +18,8 @@ Choose the token's scopes:
 
 `write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password, and it can never read or change a saved key. With `secrets` it can add a new one, from a cURL command it passes to an HTTP run.
 
+**Spend cap.** Give a token a spend cap when you create it, or later from its row in **Settings → Agent access**, to limit what an agent can spend in dollars. It counts what the runs the token started spent on AI (OpenRouter's charge and your own provider key's) and on enrichments, and also its previews and AI helpers (`preview_rows`, `write_formula`, `write_run_condition`). Auto-runs it turned on and setups it applied count too. These are the same numbers as the usage history. The cap is for the token's whole life, not a month: to go on, raise it or make a new token. At the cap, new AI and enrichment runs, previews and AI helpers are refused with a message that says so, and so is resuming any run (yours from the app too) while the token is at its cap. Running runs pause, and you can resume them once the cap is raised (an auto-run goes on by itself). HTTP API runs cost nothing here and are never stopped by the cap. Calls already in flight finish and count, so spend can pass the cap by those calls alone: up to an AI run's concurrency (default 5, at most 100) for each run, with up to 4 runs at once, and a preview's rows (up to 20; an account runs at most 3 previews at once). An enrichment or waterfall run with a per-row cap holds room for its rows first, so it stops before the cap. The token list shows each token's spend, cap and what is left, and the agent sees the same in `get_balances`, `GET /api/v1/me` and the run tools' descriptions. Only the app can set a cap; a token never can. Spend counts from the update that added caps, so older runs don't count.
+
 ## Setup
 
 The quickest way for Claude Code, Codex and Cursor is the [Cubex plugin](agent-plugin.md): it adds the connection (in Claude Code and Codex, your address and token come from environment variables) and skills for the common jobs. Paste "Set up Cubex by following https://raw.githubusercontent.com/gurmohitghuman/cubex/main/docs/agent-plugin.md" into your agent.
@@ -105,7 +107,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, rows whose result is out of date, all, or only the sheet's first rows with `first_rows`). `cancel_all` with a `sheet_id` stops every run and setup on that sheet at once. |
 | `undo_run` | Undo what a finished run wrote: its cells go back to what they held before it, cells changed since stay as they are, and nothing runs again or is billed. See [Undo a run](#undo-a-run). |
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
-| `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, and what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit). Costs nothing. |
+| `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit), and this token's spend cap with what is left (`access_token`). Costs nothing. |
 | `get_usage` | What AI, HTTP API and enrichment runs ran and cost, by column (deleted ones too), day or run, for one sheet or the whole account, over this week, this month, last week, last month or two days you pick. Each row has runs, cells run, cells reused from earlier answers, the cost (OpenRouter, your own AI provider key, treg) and the cost per cell. Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
@@ -529,6 +531,7 @@ Agents can get stuck in loops, so each token has its own budget:
 
 - 120 requests a minute.
 - 30 run starts a minute (reruns and previews count; estimates don't).
+- Its spend cap, if you set one (see **Spend cap** above): what it may spend in all.
 - Through MCP: 5 CSV imports a minute. Each upload link counts as one.
 
 Row transfers are limited for the whole account: 10 a minute, one at a time.
@@ -537,7 +540,7 @@ Going over returns a clear error; the assistant can wait and retry.
 
 ## REST API
 
-The same data is available as a plain HTTP API under `/api/v1`, with the same tokens and scopes. Send `Authorization: Bearer cubex_pat_...` and JSON bodies (`Content-Type: application/json`). `GET /api/v1/me` checks a token and lists its scopes.
+The same data is available as a plain HTTP API under `/api/v1`, with the same tokens and scopes. Send `Authorization: Bearer cubex_pat_...` and JSON bodies (`Content-Type: application/json`). `GET /api/v1/me` checks a token and lists its scopes and its spend cap (`token.spend`: `spend_cap_usd`, `spent_usd`, `left_usd`).
 
 All paths below are relative to `/api/v1`.
 

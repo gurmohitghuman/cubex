@@ -6,6 +6,7 @@ import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun } from '../services/setup-run-control';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 const names = z.record(z.string(), z.string());
 
@@ -29,7 +30,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'that name the step can\'t carry on. models picks the model of a new AI step. '
       + `first_rows tests it on the top rows (1 to ${MAX_SETUP_TEST_ROWS}); auto-run is turned on only after a `
       + 'run on every row. Returns a setup_run with each step\'s run_id (get_run_status works on those); follow '
-      + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope.',
+      + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope.'
+      + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string(),
       setup_id: z.string(),

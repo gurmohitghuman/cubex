@@ -37,7 +37,7 @@ function handle(what: string, fn: (req: TokenAuthRequest, res: express.Response)
 // GET /v1/balances: the treg balance, the enrichment daily limit and what
 // OpenRouter reports for the saved key (get_balances).
 router.get('/balances', requireScope('read'), handle('read the balances', async (req, res) => {
-  res.json(await readBalances(req.userId!));
+  res.json(await readBalances(req.userId!, req.accessTokenId!));
 }));
 
 // GET /v1/enrichments?q= : treg's catalog (no q: the popular jobs).

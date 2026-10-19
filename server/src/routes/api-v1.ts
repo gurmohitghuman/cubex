@@ -40,6 +40,7 @@ import trashV1 from './api-v1-trash';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import { actAs } from '../lib/actor';
+import { tokenSpendFor } from '../services/token-spend';
 
 const router = express.Router();
 router.use(authenticateAccessToken);
@@ -54,7 +55,10 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
 });
 // What a call changes is done by its token (lib/actor.ts), set after the body
 // parser, whose stream events would otherwise drop it.
-router.use(actAs(req => ({ via: 'api', tokenName: (req as TokenAuthRequest).accessTokenName ?? null })));
+router.use(actAs(req => ({
+  via: 'api', tokenName: (req as TokenAuthRequest).accessTokenName ?? null,
+  tokenId: (req as TokenAuthRequest).accessTokenId ?? null,
+})));
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
 // Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
@@ -99,8 +103,9 @@ router.use(runWebhookRoutes('/run-webhooks', requireScope));
 router.use(usageV1);
 router.use(trashV1);
 
-// GET /api/v1/me — who am I, and what can this token do. Lets a script or MCP
-// client validate its configuration before touching data.
+// GET /api/v1/me — who am I, and what can this token do (its scopes, and its
+// spend cap with what is left). Lets a script or MCP client validate its
+// configuration before touching data.
 router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
     const user = db.prepare('SELECT id FROM users WHERE id = ?')
@@ -108,7 +113,10 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid or missing access token' });
     res.json({
       user_id: user.id,
-      token: { name: req.accessTokenName, scopes: [...(req.tokenScopes ?? [])] },
+      token: {
+        name: req.accessTokenName, scopes: [...(req.tokenScopes ?? [])],
+        spend: tokenSpendFor(req.userId!, req.accessTokenId!),
+      },
     });
   } catch (error) {
     console.error('GET /v1/me error:', error);

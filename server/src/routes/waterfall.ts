@@ -150,7 +150,8 @@ router.post('/runs/:runId/resume', async (req: AuthRequest, res) => {
     }
     const out = await resumeWaterfallRun(runId, req.userId!, limit as number | null | undefined, true);
     if ('fail' in out) {
-      const code = out.fail === 'not_found' ? 404 : out.fail === 'bad_request' ? 400 : 409;
+      const code = out.fail === 'not_found' ? 404 : out.fail === 'bad_request' ? 400
+        : out.fail === 'spend_cap' ? 403 : 409;
       return res.status(code).json({ error: out.message });
     }
     res.json(waterfallRunStatus(req.userId!, runId));

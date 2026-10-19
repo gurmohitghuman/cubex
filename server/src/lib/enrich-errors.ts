@@ -9,7 +9,8 @@ import {
 import { providerText, routeFailure } from './enrich-route-failure';
 export type PauseReason =
   | 'auth' | 'balance' | 'treg_cap' | 'team_rule' | 'provider_busy' | 'unreachable'
-  | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key' | 'unconfirmed';
+  | 'spend_limit' | 'daily_limit' | 'dest_full' | 'no_key' | 'unconfirmed'
+  | 'token_cap';   // the run's access token reached its spend cap (services/token-spend.ts)
 
 export type CallVerdict =
   | { kind: 'ok' }

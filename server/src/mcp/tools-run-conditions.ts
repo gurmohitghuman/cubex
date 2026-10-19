@@ -9,6 +9,7 @@ import { RULE_WORDS_MAX_CHARS } from '../lib/constants-ai';
 import { checkRuleOnSheet, generateRule } from '../services/run-condition-ai';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { RULE_LANGUAGE } from './run-if-schema';
+import { capToolNote } from '../lib/token-spend';
 
 export function registerRunConditionTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server,
@@ -42,7 +43,7 @@ export function registerRunConditionTools(server: McpServer, ctx: McpAuthCtx) {
         + 'rule, the model used, what the call cost, and the same check as check_run_condition. Nothing runs: '
         + 'pass check.rule as run_if to a run. You can also write a rule yourself (see check_run_condition). '
         + 'A request that needs judgment no column holds ("is a good fit") is refused: run an AI column that '
-        + 'answers it first, then write a rule on that column.',
+        + 'answers it first, then write a rule on that column.' + capToolNote(ctx.spend ?? null, false),
       inputSchema: {
         sheet_id: z.string(),
         text: z.string().max(RULE_WORDS_MAX_CHARS).describe('Which rows should run, in plain words'),

@@ -1,3 +1,4 @@
+// Over 200 lines: saving an auto-run checks everything its batches will read, in one place.
 // Turning auto-run on, off or pausing it, for an enrichment or HTTP API
 // column, or a clean data column (clean-column.ts) (the column menu's dialog, the drawer's checkbox, the sheet header's
 // chip; MCP set_auto_run and /api/v1 call it too). Auto-run repeats the
@@ -32,6 +33,7 @@ import { httpRunMode } from '../lib/http-run-mode';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { waterfallIsPaid, waterfallUnpriced } from './waterfall-autorun';
 import { logAutorunPaused, logAutorunSaved, withoutChangeLog } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 export interface AutorunSettingsInput {
   column: string;
@@ -166,22 +168,26 @@ async function applyAutorunSettings(
       .pluck().get(sheetId, userId) as number;
     if (prior && fresh) db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(prior.id);
     db.prepare(`INSERT INTO autorun_columns (id, user_id, sheet_id, status_column, kind, enabled, input_columns,
-        where_json, run_if, daily_cap_micro, daily_row_cap, watermark_row_index, rescan, row_generation_seen)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1, ?)
+        where_json, run_if, daily_cap_micro, daily_row_cap, watermark_row_index, rescan, row_generation_seen,
+        access_token_id)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(sheet_id, status_column) DO UPDATE SET enabled = 1, kind = excluded.kind,
         input_columns = excluded.input_columns, where_json = excluded.where_json, run_if = excluded.run_if,
         daily_cap_micro = excluded.daily_cap_micro, daily_row_cap = excluded.daily_row_cap,
+        access_token_id = excluded.access_token_id,
         watermark_row_index = CASE WHEN ? THEN excluded.watermark_row_index ELSE watermark_row_index END,
         row_generation_seen = CASE WHEN ? THEN excluded.row_generation_seen ELSE row_generation_seen END,
         rescan = 1, paused_reason = NULL, paused_message = NULL, paused_at = NULL, updated_at = datetime('now')`)
       .run(uuidv4(), userId, sheetId, input.column, kind, watched, JSON.stringify(where), runIf, caps.capMicro,
-        caps.rowCap, top, gen, fresh ? 1 : 0, fresh ? 1 : 0);
+        // Its batches are done for whoever saved it last (a token's spend cap counts them).
+        caps.rowCap, top, gen, actorTokenId(), fresh ? 1 : 0, fresh ? 1 : 0);
   }).immediate();
   return { ok: { column: input.column } };
 }
 
 // The sheet header's "Pause all" / "Resume all", or one column's Pause (the
-// dialog). A pause keeps its place: rows added meanwhile run on resume.
+// dialog). A pause keeps its place: rows added meanwhile run on resume. An
+// access token that resumes it makes its batches its own (its spend cap counts them).
 export function setSheetAutorunPaused(userId: string, sheetId: string, paused: boolean, column?: string): boolean {
   if (!verifySheetOwnership(sheetId, userId)) return false;
   const one = column === undefined ? '' : ' AND status_column = ?';
@@ -192,8 +198,8 @@ export function setSheetAutorunPaused(userId: string, sheetId: string, paused: b
       .run('Resume it to go on; rows added meanwhile run then.', ...params);
   } else {
     db.prepare(`UPDATE autorun_columns SET paused_reason = NULL, paused_message = NULL, paused_at = NULL,
-        rescan = 1, updated_at = datetime('now') WHERE sheet_id = ? AND user_id = ? AND enabled = 1${one}`)
-      .run(...params);
+        access_token_id = COALESCE(?, access_token_id), rescan = 1, updated_at = datetime('now')
+      WHERE sheet_id = ? AND user_id = ? AND enabled = 1${one}`).run(actorTokenId(), ...params);
   }
   logAutorunPaused(sheetId, userId, paused, column);
   return true;
