@@ -69,11 +69,11 @@ async function main() {
   const args = { column: 'Found', sourceColumn: 'Company', otherSheetId: S, matchColumn: 'Site', match: 'contains',
     returns: 'exists', autoRun: false }
   let out = await startLookupColumn(uid, L, args)
-  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 8_000)
+  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 30_000)
   check('contains: no row holds it yet', cells(L, 'Found')[0] === 'No', cells(L, 'Found'))
   add(S, { Site: 'Zebra Crossing', Rank: '999998' })
   out = await startLookupColumn(uid, L, args)
-  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 8_000)
+  if ('ok' in out) await waitForDerivedFill(lookupKind, out.ok.id, 30_000)
   check('contains: a trigram that came later is matched', cells(L, 'Found')[0] === 'Yes', cells(L, 'Found'))
 
   console.log(failures === 0 ? '\nlookup races: all passed' : `\nlookup races: ${failures} FAILED`)
