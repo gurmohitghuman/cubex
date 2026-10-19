@@ -24,6 +24,7 @@ import { runIfReply } from './run-rule';
 import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
 import { tokenDryRun } from './waterfall-token-dry';
+import { spendPart } from './token-spend';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -138,5 +139,5 @@ export async function tokenWaterfall(
   if (typeof a.idempotency_key === 'string') {
     writeRunLedger(c.userId, a.idempotency_key, hash, 'waterfall_run', payload);
   }
-  return { ok: payload, started: true };
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
 }

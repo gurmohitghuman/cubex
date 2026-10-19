@@ -30,6 +30,7 @@ import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planIfSearching } from './web-search-catalog';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 
 export async function startAiMultiRun(userId: string, p: AiRunStartParams): Promise<AiRunStartOutcome> {
@@ -118,8 +119,8 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?)
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?)
   `);
 
   // Cap check + run row + column_order append in ONE immediate txn (two
@@ -139,7 +140,7 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
         targetCount, targets ? JSON.stringify(targets) : null,
         JSON.stringify(specs), statusColumn, dataColumn,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
-        rule.ok?.rule ?? null,
+        rule.ok?.rule ?? null, actorTokenId(),
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();

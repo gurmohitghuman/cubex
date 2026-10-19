@@ -5,6 +5,8 @@ import { resolveAiModel } from '../lib/ai-model-resolve';
 import { getOpenRouterClient } from '../services/openrouter';
 import { redactSecrets } from '../lib/http-request';
 import { safeParseJSON, toModalConfig } from '../lib/http-config-shape';
+import { usageOf } from '../lib/responses-adapter';
+import { recordOneCall } from '../services/usage-calls';
 
 const router = express.Router();
 
@@ -73,7 +75,10 @@ router.post('/troubleshoot-config', authenticateToken, async (req: AuthRequest, 
       ],
       temperature: 0.2,
       max_tokens: 1500,
+      // OpenRouter says what the call cost: it goes in the usage history (services/usage-calls.ts).
+      ...({ usage: { include: true } } as object),
     });
+    recordOneCall(req.userId!, sheetId, usageOf(completion as never));
 
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = safeParseJSON(raw);

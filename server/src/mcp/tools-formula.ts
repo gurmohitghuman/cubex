@@ -4,6 +4,7 @@ import { FORMULA_MAX_CHARS, FORMULA_WORDS_MAX_CHARS } from '../lib/constants';
 import { writeFormula } from '../services/formula-ai';
 import { agentFormulaColumn } from '../services/formula-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 // formula_column: a column worked out for free from each row by a JavaScript
 // formula, run in Cubex's sandbox (services/formula-agent.ts); write_formula:
@@ -54,7 +55,7 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'first rows before it is returned. Returns the formula, the model used, what the call cost, and a '
       + 'preview (samples with their inputs and results). Nothing is saved: pass formula to formula_column. You '
       + 'can also write the formula yourself. A request that needs judgment or outside data is refused: use '
-      + 'run_ai_column or an enrichment for that.',
+      + 'run_ai_column or an enrichment for that.' + capToolNote(ctx.spend ?? null, false),
     inputSchema: z.object({
       sheet_id: z.string(),
       words: z.string().max(FORMULA_WORDS_MAX_CHARS).describe('What the column should hold, in plain words'),

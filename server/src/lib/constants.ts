@@ -209,6 +209,8 @@ export const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 365;
 // puts a DB write on every request's hot path (the single writer belongs to
 // UI autosave).
 export const ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
+// A token's spend cap (services/token-spend.ts): set in Settings, at most this many dollars.
+export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // /api/v1 body/rate/paging/batch caps live in api-v1-constants.ts.
 
 

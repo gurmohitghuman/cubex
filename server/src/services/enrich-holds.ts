@@ -30,28 +30,30 @@ export function heldMicro(userId: string, runId: string | null = null): number {
 
 // Sets the worker's hold. Call inside the transaction that checks the limits.
 // Also clears the user's holds that no longer count, so nothing stale piles up
-// between restarts.
-export function setRunHold(runId: string, userId: string, generation: number, micro: number): void {
+// between restarts. aiMicro: a waterfall's AI part, which only its token's
+// spend cap counts (services/token-spend.ts); `micro` is treg's.
+export function setRunHold(runId: string, userId: string, generation: number, micro: number, aiMicro = 0): void {
   db.prepare(`
     DELETE FROM enrich_holds WHERE user_id = ? AND NOT EXISTS (
       SELECT 1 FROM http_runs r WHERE r.id = enrich_holds.run_id AND r.user_id = enrich_holds.user_id
         AND ((r.status = 'running' AND r.worker_generation = enrich_holds.worker_generation)
           OR r.updated_at > datetime('now', ?)))
   `).run(userId, GRACE);
-  if (micro <= 0) { dropHold(runId, generation); return; }
+  if (micro <= 0 && aiMicro <= 0) { dropHold(runId, generation); return; }
   db.prepare(`
-    INSERT INTO enrich_holds (run_id, worker_generation, user_id, hold_micro) VALUES (?, ?, ?, ?)
-    ON CONFLICT(run_id, worker_generation) DO UPDATE SET hold_micro = excluded.hold_micro
-  `).run(runId, generation, userId, micro);
+    INSERT INTO enrich_holds (run_id, worker_generation, user_id, hold_micro, ai_hold_micro) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(run_id, worker_generation) DO UPDATE SET hold_micro = excluded.hold_micro,
+      ai_hold_micro = excluded.ai_hold_micro
+  `).run(runId, generation, userId, Math.max(0, micro), Math.max(0, aiMicro));
 }
 
 // One row settled, or held room no row took. Never throws: the run drops the
 // whole hold at its end anyway.
-export function releaseRow(runId: string, generation: number, micro: number): void {
-  if (micro <= 0) return;
+export function releaseRow(runId: string, generation: number, micro: number, aiMicro = 0): void {
+  if (micro <= 0 && aiMicro <= 0) return;
   try {
-    db.prepare(`UPDATE enrich_holds SET hold_micro = MAX(0, hold_micro - ?)
-      WHERE run_id = ? AND worker_generation = ?`).run(micro, runId, generation);
+    db.prepare(`UPDATE enrich_holds SET hold_micro = MAX(0, hold_micro - ?), ai_hold_micro = MAX(0, ai_hold_micro - ?)
+      WHERE run_id = ? AND worker_generation = ?`).run(Math.max(0, micro), Math.max(0, aiMicro), runId, generation);
   } catch (err) {
     console.error(`Enrichment run ${runId}: releasing a row's hold failed:`, (err as Error).message);
   }
@@ -59,4 +61,16 @@ export function releaseRow(runId: string, generation: number, micro: number): vo
 
 export function dropHold(runId: string, generation: number): void {
   db.prepare('DELETE FROM enrich_holds WHERE run_id = ? AND worker_generation = ?').run(runId, generation);
+}
+
+// What the runs done for one access token hold now in micro-USD, treg's part
+// and a waterfall's AI part (its spend cap's room, services/token-spend.ts).
+// The holds are few: one per run out.
+export function tokenHeldMicro(userId: string, tokenId: string): number {
+  return db.prepare(`
+    SELECT IFNULL(SUM(h.hold_micro + h.ai_hold_micro), 0) FROM enrich_holds h
+    JOIN http_runs r ON r.id = h.run_id AND r.user_id = h.user_id
+    WHERE h.user_id = ? AND r.access_token_id = ?
+      AND ((r.status = 'running' AND r.worker_generation = h.worker_generation) OR r.updated_at > datetime('now', ?))
+  `).pluck().get(userId, tokenId, GRACE) as number;
 }

@@ -8,7 +8,7 @@ import type { EnrichRowsStatus } from '../lib/enrich-run-config';
 import { waterfallConfigOf } from '../lib/waterfall/config';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { resolveRowIdsToIndexes, type RunFail } from './run-shared';
-import { resumeRun, type ControlOutcome } from './run-lifecycle';
+import { resumeCapRefusal, resumeRun, type ControlOutcome } from './run-lifecycle';
 import { rerunWaterfallColumn } from './waterfall-rerun';
 
 export const isWaterfallRun = (runId: string, userId: string): boolean => waterfallConfigOf(db.prepare(
@@ -78,6 +78,9 @@ export async function resumeWaterfallRun(
 ): Promise<ControlOutcome | { fail: 'bad_request'; message: string }> {
   const bad = limitProblem(spendLimitUsd);
   if (bad) return { fail: 'bad_request', message: bad };
+  // A resume refused at a spend cap changes nothing (run-lifecycle.ts).
+  const capped = resumeCapRefusal('http', runId, userId);
+  if (capped) return { fail: 'spend_cap', message: capped };
   if (spendLimitUsd !== undefined && spendLimitUsd !== null) {
     // The resume's own secrets check first: a caller it refuses changes nothing.
     const run = db.prepare('SELECT config, allow_secrets FROM http_runs WHERE id = ? AND user_id = ?')

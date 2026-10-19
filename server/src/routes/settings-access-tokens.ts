@@ -1,6 +1,7 @@
 // Personal-access-token management — session-cookie-authenticated (this is a
 // UI surface; tokens themselves cannot mint/revoke tokens, so a leaked PAT
-// can't escalate). The full token is returned exactly once, from POST.
+// can't escalate). The full token is returned exactly once, from POST. Each
+// token's spend cap is set here too, and only here (services/token-spend.ts).
 import express from 'express';
 import crypto from 'node:crypto';
 import { db } from '../lib/db';
@@ -11,6 +12,8 @@ import {
   MAX_ACCESS_TOKENS_PER_USER,
   MAX_ACCESS_TOKEN_EXPIRY_DAYS,
 } from '../lib/constants';
+import { parseSpendCap, spendView, type SpendView } from '../lib/token-spend';
+import { setTokenSpendCap, tokenSpendViews } from '../services/token-spend';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -18,12 +21,17 @@ router.use(authenticateToken);
 const LIST_COLUMNS =
   'id, name, token_prefix, scopes, expires_at, created_at, last_used_at';
 
+// Each token with its spend: cap, spent and left (lib/token-spend.ts).
+const withSpend = (rows: Array<{ id: string }>, views: Map<string, SpendView>) =>
+  rows.map(r => ({ ...r, spend: views.get(r.id) ?? spendView(null, 0) }));
+
 router.get('/access-tokens', (req: AuthRequest, res) => {
   try {
-    res.json(db.prepare(
+    const rows = db.prepare(
       `SELECT ${LIST_COLUMNS} FROM access_tokens
        WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC`,
-    ).all(req.userId!));
+    ).all(req.userId!) as Array<{ id: string }>;
+    res.json(withSpend(rows, tokenSpendViews(req.userId!)));
   } catch (error) {
     console.error('List access tokens error:', error);
     res.status(500).json({ error: 'Failed to fetch access tokens' });
@@ -32,8 +40,8 @@ router.get('/access-tokens', (req: AuthRequest, res) => {
 
 router.post('/access-tokens', (req: AuthRequest, res) => {
   try {
-    const { name, scopes, expires_in_days } = req.body as {
-      name?: unknown; scopes?: unknown; expires_in_days?: unknown;
+    const { name, scopes, expires_in_days, spend_cap_usd } = req.body as {
+      name?: unknown; scopes?: unknown; expires_in_days?: unknown; spend_cap_usd?: unknown;
     };
     if (typeof name !== 'string' || !ACCESS_TOKEN_NAME_PATTERN.test(name.trim())) {
       return res.status(400).json({
@@ -54,6 +62,8 @@ router.post('/access-tokens', (req: AuthRequest, res) => {
       }
       expiryDays = expires_in_days as number;
     }
+    const cap = parseSpendCap(spend_cap_usd);
+    if ('error' in cap) return res.status(400).json({ error: cap.error });
 
     const generated = generateAccessToken();
     const id = crypto.randomUUID();
@@ -75,9 +85,10 @@ router.post('/access-tokens', (req: AuthRequest, res) => {
       // datetime('now', '+' || NULL || ' days') is NULL, so one statement covers
       // both the expiring and never-expiring cases. expiryDays is a validated int.
       db.prepare(`
-        INSERT INTO access_tokens (id, user_id, name, token_hash, token_prefix, scopes, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+' || ? || ' days'))
-      `).run(id, req.userId!, trimmedName, generated.tokenHash, generated.tokenPrefix, v.scopes, expiryDays);
+        INSERT INTO access_tokens (id, user_id, name, token_hash, token_prefix, scopes, expires_at, spend_cap_micro)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+' || ? || ' days'), ?)
+      `).run(id, req.userId!, trimmedName, generated.tokenHash, generated.tokenPrefix, v.scopes, expiryDays,
+        cap.micro);
       return 'ok' as const;
     }).immediate();
     if (created === 'cap') {
@@ -89,9 +100,9 @@ router.post('/access-tokens', (req: AuthRequest, res) => {
       return res.status(409).json({ error: 'An access token with this name already exists' });
     }
 
-    const row = db.prepare(`SELECT ${LIST_COLUMNS} FROM access_tokens WHERE id = ?`).get(id);
+    const row = db.prepare(`SELECT ${LIST_COLUMNS} FROM access_tokens WHERE id = ?`).get(id) as { id: string };
     // token: shown ONCE. Not stored, not logged, never retrievable again.
-    res.status(201).json({ ...(row as object), token: generated.token });
+    res.status(201).json({ ...withSpend([row], tokenSpendViews(req.userId!))[0], token: generated.token });
   } catch (error) {
     // The partial UNIQUE index backstops the name check against races.
     if ((error as { code?: string }).code?.startsWith('SQLITE_CONSTRAINT')) {
@@ -99,6 +110,26 @@ router.post('/access-tokens', (req: AuthRequest, res) => {
     }
     console.error('Create access token error:', error);
     res.status(500).json({ error: 'Failed to create access token' });
+  }
+});
+
+// The token's lifetime spend cap: { spend_cap_usd: dollars, or null for none }.
+// Raising it lets the token's runs paused at the cap be resumed (its auto-runs
+// go on by themselves); lowering it below what was spent pauses them.
+router.patch('/access-tokens/:id', (req: AuthRequest, res) => {
+  try {
+    const body = req.body as { spend_cap_usd?: unknown } | undefined;
+    if (!body || !('spend_cap_usd' in body)) {
+      return res.status(400).json({ error: 'spend_cap_usd is required (a dollar amount, or null for no cap)' });
+    }
+    const cap = parseSpendCap(body.spend_cap_usd);
+    if ('error' in cap) return res.status(400).json({ error: cap.error });
+    const spend = setTokenSpendCap(req.userId!, req.params.id, cap.micro);
+    if (!spend) return res.status(404).json({ error: 'Access token not found' });
+    res.json({ spend });
+  } catch (error) {
+    console.error('Set access token spend cap error:', error);
+    res.status(500).json({ error: 'Failed to set the spend cap' });
   }
 });
 

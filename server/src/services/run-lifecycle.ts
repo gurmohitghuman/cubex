@@ -14,6 +14,7 @@ import { type HTTPRunRow } from './http-runner';
 import { enqueueAIRun, enqueueAIRerun, enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
 import { autorunStoppedByUser } from './autorun-stop';
 import { logRunControl } from '../lib/change-log';
+import { actorSpendRefusal, rowCostOf, spendCapRefusal } from './token-spend';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -24,7 +25,8 @@ export type ControlOutcome =
   | { fail: 'not_active'; message: string }   // pause/cancel target is terminal
   | { fail: 'not_paused'; message: string }   // resume target isn't paused
   | { fail: 'conflict'; message: string }     // resume CAS lost to a cancel
-  | { fail: 'secrets_required'; message: string }; // resume would resolve saved keys
+  | { fail: 'secrets_required'; message: string } // resume would resolve saved keys
+  | { fail: 'spend_cap'; message: string };       // resume of a run whose access token is at its spend cap
 
 const getRun = (kind: RunKind, runId: string, userId: string) =>
   db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ? AND user_id = ?`)
@@ -32,6 +34,19 @@ const getRun = (kind: RunKind, runId: string, userId: string) =>
 
 const columnOf = (kind: RunKind, run: AIRunRow & HTTPRunRow): string | null =>
   (kind === 'ai' ? run.column_name : run.master_column_name) ?? null;
+
+// Why resuming a paused run would spend past a cap: its own token's, or the
+// caller's (a token at its own cap restarts no spending, a run of the app's or
+// another's). null: it may, or the run isn't paused. A setup checks all of its
+// runs before resuming any; a resume that changes a run's settings, first.
+const capOf = (kind: RunKind, run: AIRunRow & HTTPRunRow, userId: string): string | null => {
+  const cost = rowCostOf(kind, kind === 'http' ? run.config : null);
+  return spendCapRefusal(userId, run.access_token_id, cost) ?? actorSpendRefusal(userId, cost);
+};
+export function resumeCapRefusal(kind: RunKind, runId: string, userId: string): string | null {
+  const run = getRun(kind, runId, userId);
+  return run && run.status === 'paused' ? capOf(kind, run, userId) : null;
+}
 
 export function pauseRun(kind: RunKind, runId: string, userId: string): ControlOutcome {
   const run = getRun(kind, runId, userId);
@@ -62,6 +77,9 @@ export async function resumeRun(
   const run = getRun(kind, runId, userId);
   if (!run) return { fail: 'not_found', message: 'Run not found' };
   if (run.status !== 'paused') return { fail: 'not_paused', message: `Run is not paused (status: ${run.status})` };
+  // The run spends for the token it was started for, whoever resumes it.
+  const capped = capOf(kind, run, userId);
+  if (capped) return { fail: 'spend_cap', message: capped };
 
   if (kind === 'http' && !hasSecretsScope && run.allow_secrets !== 0) {
     // A no-'secrets' caller resuming a permissive HTTP run. Two layers:
@@ -93,12 +111,13 @@ export async function resumeRun(
   // bumped generation at startup. Compare-and-set on status='paused': between
   // the SELECT above and here the user can cancel — a bare UPDATE would
   // clobber 'cancelled' back to 'pending' and re-enqueue a killed run.
-  // An enrichment run's pause reason (migration 011) ends with the pause.
+  // A run's pause reason (migrations 011 and 042) ends with the pause.
   const resumed = db.prepare(kind === 'http'
     ? `UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
          pause_reason = NULL, error_message = NULL
        WHERE id = ? AND user_id = ? AND status = 'paused'`
-    : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now')
+    : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
+         pause_reason = NULL
        WHERE id = ? AND user_id = ? AND status = 'paused'`,
   ).run(runId, userId);
   if (resumed.changes === 0) return { fail: 'conflict', message: 'Run is no longer paused' };

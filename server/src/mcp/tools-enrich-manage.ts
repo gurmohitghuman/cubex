@@ -10,6 +10,7 @@ import { AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '
 import { RULE_LANGUAGE } from './run-if-schema';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { capToolNote } from '../lib/token-spend';
 
 const condition = z.object({
   column: z.string(),
@@ -88,7 +89,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       + 'paused:true|false pauses or resumes one column, or every auto-run on the sheet without column. '
       + 'An enrichment auto-run SPENDS the treg balance on every new row; with a webhook on the sheet, anyone with '
       + 'its URL can add rows that spend. An HTTP API auto-run SENDS REAL REQUESTS (it can add leads to a sequencer '
-      + `or send messages), once per row. ${DAILY_LIMIT_NOTE} Returns every auto-run on the sheet.`,
+      + `or send messages), once per row. ${DAILY_LIMIT_NOTE} Returns every auto-run on the sheet.`
+      + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string(), column: z.string().optional(),
       enabled: lenientBoolean().optional(), paused: lenientBoolean().optional(),

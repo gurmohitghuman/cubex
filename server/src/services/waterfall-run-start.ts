@@ -27,6 +27,7 @@ import { activeRunOn, prepareWaterfallStart, seedPlanFor, type PreparedWaterfall
 import { hideInViews } from './waterfall-views';
 import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
 import { logRunStarted } from '../lib/change-log';
+import { actorTokenId } from '../lib/actor';
 
 export interface WaterfallStarted {
   runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number;
@@ -96,9 +97,9 @@ export async function startWaterfallRun(
       if (current.size + added.length > MAX_COLUMNS_PER_SHEET) { capNeeded = added.length; return; }
       appendColumnsToOrder(sheetId, userId, p.newColumns);
       db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
-          target_rows, allow_secrets, placeholder_work)
-        VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, ?, 'seeding')`)
-        .run(runId, sheetId, userId, JSON.stringify(p.config), p.resultColumn, keys.allowSecrets);
+          target_rows, allow_secrets, placeholder_work, access_token_id)
+        VALUES (?, ?, ?, ?, 'pending', 0, ?, NULL, ?, 'seeding', ?)`)
+        .run(runId, sheetId, userId, JSON.stringify(p.config), p.resultColumn, keys.allowSecrets, actorTokenId());
       // Every output is linked to THIS run: clearing a stopped run's ⏳ and the
       // column delete/rename guards find a run's columns through its associations.
       const assoc = db.prepare(`INSERT INTO http_column_associations

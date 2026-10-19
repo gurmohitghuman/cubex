@@ -18,6 +18,7 @@ import { processOneRow, structuredPreview } from './ai-preview-runner';
 import {
   acquirePreviewSlot, releasePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER,
 } from '../lib/ai-preview-concurrency';
+import { addCall, noSpend, recordCallUsage } from '../services/usage-calls';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -143,6 +144,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // draft — the inputHash is computed HERE from the exact row data the model saw,
     // so credit reuse can later refuse a row whose referenced cells changed.
     const collected: DraftPreviewRow[] = [];
+    const spent = noSpend();
     for (let i = 0; i < rows.length; i += AI_PREVIEW_CONCURRENCY) {
       const chunk = rows.slice(i, i + AI_PREVIEW_CONCURRENCY);
       await Promise.all(chunk.map((row, j) =>
@@ -150,6 +152,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
         // won't reject. No external abort signal: the loop runs to completion
         // even after a disconnect (see the clientGone comment above).
         processOneRow(row, openai!, args).then(answer => {
+          addCall(spent, answer, true);
           const result = structured ? structured.shape(answer) : answer;
           collected[i + j] = {
             rowIndex: result.rowIndex, value: result.value,
@@ -163,6 +166,9 @@ router.post('/preview', async (req: AuthRequest, res) => {
         }),
       ));
     }
+
+    // What the rows cost goes in the usage history as a preview (services/usage-calls.ts).
+    recordCallUsage(req.userId!, sheetId, parsed.cleanColumnName, 'preview', spent);
 
     // All-or-nothing: only a preview where EVERY row SUCCEEDED is hydrated/
     // reused. "Present" (filter(Boolean)) isn't enough — an errored row is a

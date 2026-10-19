@@ -15,11 +15,12 @@ export function registerBalanceTools(server: McpServer, ctx: McpAuthCtx) {
       + 'is not set up or can\'t be reached says so in error. Read-only: starts nothing and costs nothing. Use it '
       + 'before a large run, or when a run paused on balance. OpenRouter holds each running AI call\'s possible '
       + 'cost, so a high concurrency needs more free credit than the run will spend: run_ai_column\'s '
-      + 'estimate_only reports that as in_flight.',
+      + 'estimate_only reports that as in_flight. access_token {spend_cap_usd, spent_usd, left_usd} is this '
+      + 'token\'s own spend cap on AI and enrichments (null: no cap), for its whole life, not per month.',
     inputSchema: {},
   }, async () => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    return ok(await readBalances(ctx.userId));
+    return ok(await readBalances(ctx.userId, ctx.tokenId));
   });
 }

@@ -10,7 +10,7 @@ import { pauseRun, resumeRun, cancelRun, ControlOutcome, RunKind } from '../serv
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
 import { AI_RERUN_MODES, AiRerunMode, isRerunMode, RERUN_MODES, type RerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
-import { runStartWindow, runFailHttpStatus } from '../services/run-shared';
+import { runFailHttpStatus, takeRunStart } from '../services/run-shared';
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
 import { MAX_AI_CONCURRENCY, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
@@ -24,10 +24,13 @@ import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach
 
 const router = express.Router();
 
-// Takes a run-start slot, or answers the 429 (with Retry-After) and returns true.
-function refuseRunStart(req: TokenAuthRequest, res: express.Response): boolean {
-  const slot = runStartWindow(req.accessTokenId!);
-  if (slot.allowed) return false;
+// Takes a run-start slot, or answers the 403 (the token is at its spend cap;
+// never for a plain HTTP rerun, paid false) or the 429 (with Retry-After) and returns true.
+function refuseRunStart(req: TokenAuthRequest, res: express.Response, paid = true): boolean {
+  const refused = takeRunStart(req.userId!, req.accessTokenId!, paid);
+  if (!refused) return false;
+  if ('capped' in refused) { res.status(403).json({ error: refused.capped }); return true; }
+  const slot = refused.limited;
   setRateLimitedHeaders(res, slot);
   res.status(429).json({ error: tooManyMessage('run starts', slot), retry_after_seconds: slot.retryAfterSec });
   return true;
@@ -35,7 +38,7 @@ function refuseRunStart(req: TokenAuthRequest, res: express.Response): boolean {
 
 const controlStatus = (f: Exclude<ControlOutcome, { ok: true }>): number =>
   f.fail === 'not_found' ? 404
-  : f.fail === 'secrets_required' ? 403
+  : f.fail === 'secrets_required' || f.fail === 'spend_cap' ? 403
   : 409;
 
 // Registers pause/resume/cancel for one run kind; responses echo the fresh
@@ -254,7 +257,7 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
     if (refuseBadWebhook(req, res, b)) return;
-    if (refuseRunStart(req, res)) return;
+    if (refuseRunStart(req, res, false)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
       hasSecretsScope: req.tokenScopes?.has('secrets') === true,
