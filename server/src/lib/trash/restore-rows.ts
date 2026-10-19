@@ -102,7 +102,8 @@ function cellsBack(json: string, plan: ColumnPlan): string {
 interface TrashRow { seq: number; row_index: number; row_id: string; data: string }
 
 // One transaction: up to `limit` of the batch's rows (in order, or the picked
-// ones) go back, leave the batch, and count as restored. Returns how many.
+// ones) go back, leave the batch, and count as restored. Returns how many. It
+// reads first, so it takes the write lock first (.immediate(): SQLITE_BUSY).
 export function restoreSlice(
   itemId: number, sheetId: string, userId: string, plan: ColumnPlan, limit: number, picks: number[] | null,
 ): number {
@@ -144,6 +145,6 @@ export function restoreSlice(
     db.prepare(`UPDATE trash_items SET restored = restored + ?, row_count = row_count - ?,
       bytes = MAX(0, bytes - ?) WHERE id = ?`).run(rows.length, rows.length, bytes, itemId);
     n = rows.length;
-  })();
+  }).immediate();
   return n;
 }

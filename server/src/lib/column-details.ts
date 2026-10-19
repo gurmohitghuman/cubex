@@ -112,3 +112,8 @@ export function fitDetails(
   });
   return { details: out, shortened };
 }
+
+// A column's newest run as its details name it: 'restored' for a setup put
+// back from a setup version (a run record that ran nothing, migration 043).
+export const runStatus = (run: { status: string; setup_only: number }): string =>
+  (run.setup_only ? 'restored' : run.status);

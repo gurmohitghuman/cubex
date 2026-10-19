@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  ArchiveRestore, ArrowDownUp, Columns, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Undo2, Upload,
+  ArchiveRestore, ArrowDownUp, Bookmark, Columns, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Undo2, Upload,
   Webhook,
 } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
@@ -14,6 +14,7 @@ type Icon = React.FC<{ className?: string }>
 const ICONS: Array<[RegExp, Icon]> = [
   [/^column_|_column$|answer_field|list_fields/, Columns],
   [/run_undone/, Undo2],
+  [/^setup_version_/, Bookmark],
   [/^run|auto_run|setup_used|default_model/, Play],
   [/^view_/, Eye],
   [/^webhook/, Webhook],

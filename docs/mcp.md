@@ -113,6 +113,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
 | `set_auto_dedupe` | Keep one row per key as rows arrive (webhooks, appends, imports, transfers, edits), for free: the oldest or the newest row of a key stays, the others go to the trash. See [Auto-dedupe](#auto-dedupe). |
 | `list_setups`, `save_setup`, `delete_setup` | Save a sheet's filled columns, and every filled column they read, as a named setup; list and delete the saved ones. See [Setups](#setups). |
+| `list_setup_versions`, `manage_setup_version`, `restore_setup_version` | Keep a sheet's column setup by name (every column's prompt, request, formula, cleaner, lookup, "Only run if" rule, auto-run, description and the column order, never the values), compare one with the sheet now, and restore it without running anything. See [Setup versions](#setup-versions). |
 | `apply_setup`, `get_setup_run`, `control_setup_run` | Build a saved setup's columns on another sheet and fill them in order (an estimate unless `estimate_only: false`), follow it, and pause, resume or stop it. See [Setups](#setups). |
 | `transform_column` | Free, instant text transforms (upper/lower case, trim, number, regex extract, split, template) with no model call. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 | `transfer_rows` | Copy or move rows between sheets on the server. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
@@ -126,7 +127,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, sheets and tables. Look inside a batch and search its rows, then restore whole items or rows you pick. See [The trash](#the-trash). |
 | `get_sheet_history` | A sheet's change log: columns added, renamed and deleted, runs, auto-run, views, its webhook, rows deleted, restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
 
-Deleted rows, sheets and tables go to the trash for the days set in Settings (30 by default), and the delete's answer says how to restore them; deleting a column, sorting and deleting a setup are permanent. What a run wrote can be undone for 7 days with `undo_run`. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
+Deleted rows, sheets and tables go to the trash for the days set in Settings (30 by default), and the delete's answer says how to restore them; deleting a column, sorting and deleting a setup or a setup version are permanent. What a run wrote can be undone for 7 days with `undo_run`. Every tool tells your client whether it only reads, adds, or changes and deletes data, so clients can ask you before the risky ones.
 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
@@ -395,6 +396,18 @@ A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API
 - It needs the `run` scope, and `secrets` too when its requests read a saved key. Every saved key it names must exist in Settings.
 - The answer is a `setup_run` with each step's `run_id` (`get_run_status` works on those). `get_setup_run` follows the whole chain; `control_setup_run` pauses, resumes or stops it. Stopping keeps the columns and values made so far.
 
+## Setup versions
+
+A setup version keeps how one sheet's columns are set up, so you can put it back after changing a prompt, a request or a formula: every column in order, with its description, what fills it (an AI column's prompt, model and settings; an HTTP API, enrichment or waterfall column's request or choices; a clean, formula or lookup column's settings), its "Only run if" rule and its auto-run. Never the values in the cells.
+
+- `manage_setup_version` with `action: "save"` and a `name` keeps the setup as it is now (names are unique in a sheet, ignoring upper/lower case; a sheet keeps up to 100). `rename` and `delete` take a `version_id`; deleting one is permanent and changes nothing in the sheet. Saving needs `write`.
+- `list_setup_versions` lists a sheet's versions, newest first, with who saved each one. With `version_id` it compares that version with the sheet now, column by column: `add_back` (gone since: a restore adds it back, empty), `restore` (set up differently: `fields` lists each setting as the version and the sheet have it), `leave` (filled another way now, an AI column where the version had a formula: a restore leaves it, and the `note` says why) and `keep` (not in the version: it stays). Request URLs are masked, headers show by name, and a request body shows only as changed.
+- `restore_setup_version` is a dry run unless you pass `dry_run: false`; a dry run's `blocked` says why it can't be restored now (a run going on the sheet, say). A restore first keeps the setup it replaces as a version of its own (`auto: true`, named "Before restoring: …"), then adds the gone columns back empty with their setup, puts back every setup that differs, every column's description and the column order (columns the version doesn't have stay next to the column they follow), and turns auto-run on or off as the version has it (from the rows there now; one already on goes on from where it was; one you paused stays paused).
+- **Nothing runs and nothing is billed, and no cell changes.** An AI, HTTP API, enrichment or waterfall column runs the restored way the next time it runs: a rerun (`control_run`), its column menu, or auto-run on new rows. Until then its newest run is a record that ran nothing: `get_sheet` shows its `run_status` as `restored`, and `list_runs` and usage leave it out. A clean, formula or lookup column keeps its cells until it is worked out again (`clean_column`, `formula_column` or `lookup_column` on its own column, free). Each column's `note` says which.
+- A column filled another way now is left as it is, and so is an AI column whose output column is; an HTTP API column comes back without a field whose column is now filled another way. Each `note` says why.
+- A restore is refused while a run or a setup is going on the sheet, or while a clean, formula or lookup column is still filling (a lookup can wait for the sheet it looks in). It needs the `write` and `run` scopes, and `secrets` too when a request it puts back reads a saved key. A column renamed since keeps its new name: versions follow renames, in other sheets' lookups too.
+- The sheet's history lists each save and each restore.
+
 ## Enrichments
 
 Enrichments look things up per row through [treg.to](https://treg.to) with the treg key saved in Cubex (Settings, Enrichment; setup and examples in the [enrichments guide](enrichments.md)): verified work emails, phone numbers, person and company data, and lists (people at a company, similar companies) that become rows in another sheet. Every row is a paid call on your treg balance, so the assistant should estimate first and tell you what it found.
@@ -577,6 +590,17 @@ All paths below are relative to `/api/v1`.
 | `POST /sheets/:id/setups/:setupId/apply` | `{"inputs": {"Website": "Company URL"}, "names": {}, "models": {}, "first_rows": 10, "estimate_only": true}`. Same as `apply_setup`, but `estimate_only` defaults to `false` here. `200` with the estimate, `201` with the `setup_run`; a missing input or a name taken answers `missing` or `taken`. `run` scope (and `secrets` for saved keys). |
 | `GET /sheets/:id/setup-runs` · `GET /setup-runs/:id` | The setups working on a sheet (newest first, `?setup_id=` for one setup's), or one of them, with the `choices` each was used with. `read` scope. |
 | `POST /setup-runs/:id/control` | `{"action": "pause"}` (or `resume`, `cancel`). `run` scope. |
+
+### Setup versions
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /sheets/:id/setup-versions` | The sheet's versions, newest first: `{id, name, description, auto, by, saved_at, columns, filled}`. `read` scope. |
+| `POST /sheets/:id/setup-versions` | `{"name": "Before the new prompt", "description": "..."}`. Keeps the setup as it is now. `201`, `write` scope. |
+| `GET /sheets/:id/setup-versions/:versionId` | The version against the sheet now: the same answer as `restore_setup_version` with `dry_run`. `read` scope. |
+| `PATCH /sheets/:id/setup-versions/:versionId` | `{"name": "...", "description": "..."}`. `write` scope. |
+| `DELETE /sheets/:id/setup-versions/:versionId` | Permanent; the sheet doesn't change. `write` scope. |
+| `POST /sheets/:id/setup-versions/:versionId/restore` | A dry run unless the body says `{"dry_run": false}`, as `restore_setup_version`: it only says what restoring would do, and `blocked` why it can't now (`read` scope). `{"dry_run": false}` restores: `write` and `run` scopes (and `secrets` when a request it puts back reads a saved key). |
 
 ### Rows
 

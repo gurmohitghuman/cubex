@@ -11,12 +11,17 @@ interface ModalProps {
   // the HTTP template browser opens on top of the HTTP API drawer, so it passes
   // z-[20010]. Without this both share z-[20000] and the nested one can render behind.
   zClassName?: string
+  // The element that takes focus when it opens (Headless UI's own pick otherwise).
+  initialFocus?: React.MutableRefObject<HTMLElement | null>
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, panelClassName, zClassName }) => {
+export const Modal: React.FC<ModalProps> = ({
+  isOpen, onClose, children, panelClassName, zClassName, initialFocus,
+}) => {
   return (
     <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog as="div" className={`relative ${zClassName || 'z-[20000]'}`} onClose={onClose}>
+      <Dialog as="div" className={`relative ${zClassName || 'z-[20000]'}`} onClose={onClose}
+        initialFocus={initialFocus}>
         {/* Overlay */}
         <Transition.Child
           as={Fragment}
