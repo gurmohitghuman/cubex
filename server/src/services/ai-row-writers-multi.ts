@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
-import { STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
+import { recordDroppedCall, STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import type { RowStamp } from '../lib/run-inputs/stamp';
 import { writeRunCells } from '../lib/run-cells-write';
@@ -74,7 +74,7 @@ export function writeMultiSuccess(
 
 // Persist a failed structured row: ai_results 'failed' + status ❌ + every output
 // column blanked (so none is stranded on ⏳). No throw on stop (caller is already
-// in its catch) — matches writeFailure. usage: set when the call came back (an
+// in its catch; a billed call's cost is still kept) — matches writeFailure. usage: set when the call came back (an
 // unparseable answer), so the billed call's cost and searches are kept.
 export function writeMultiFailure(
   ctx: MultiWriteCtx,
@@ -84,7 +84,7 @@ export function writeMultiFailure(
 ): void {
   const resultId = uuidv4();
   db.transaction(() => {
-    if (shouldStop(ctx.runId, ctx.myGeneration)) return;
+    if (shouldStop(ctx.runId, ctx.myGeneration)) { recordDroppedCall(ctx, usage); return; }
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
         prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)

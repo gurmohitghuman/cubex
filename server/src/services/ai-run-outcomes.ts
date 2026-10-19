@@ -10,9 +10,19 @@ export interface RunSearchSettings {
   engine: string | null; runs_on: string | null; mode: string | null; max_searches_per_row: number | null;
 }
 
-// By run id alone: every caller has checked the run is the user's, and a
-// user_id filter would turn this index-only scan into a table read.
-export function aiRowOutcomes(runId: string) {
+// The results by run id alone: every caller has checked the run is the user's,
+// and a user_id filter would turn this index-only scan into a table read. The
+// cost also takes in the calls a pause, cancel or resume dropped after they
+// came back (ai_dropped_calls, migration 045: billed, so the usage history and
+// the token's spend count them too), an index-only sum of their few rows.
+type Dropped = { cost: number | null; priced: number; provider: number | null; byok: number };
+const droppedOf = (runId: string, userId: string): Dropped => db.prepare(`
+  SELECT SUM(cost_usd) AS cost, COUNT(cost_usd) AS priced, SUM(provider_cost_usd) AS provider,
+    COUNT(provider_cost_usd) AS byok
+  FROM ai_dropped_calls WHERE run_id = ? AND user_id = ?
+`).get(runId, userId) as Dropped;
+
+export function aiRowOutcomes(runId: string, userId: string) {
   const groups = db.prepare(`
     SELECT status, COUNT(*) AS n, SUM(cost_usd) AS cost, COUNT(cost_usd) AS priced, SUM(web_searches) AS searches,
       SUM(provider_cost_usd) AS provider, COUNT(provider_cost_usd) AS byok
@@ -22,16 +32,18 @@ export function aiRowOutcomes(runId: string) {
     provider: number | null; byok: number;
   }>;
   const n = (s: string) => groups.find(g => g.status === s)?.n ?? 0;
-  const priced = groups.reduce((sum, g) => sum + g.priced, 0);
+  const dropped = droppedOf(runId, userId);
+  const priced = groups.reduce((sum, g) => sum + g.priced, dropped.priced);
   const searched = groups.filter(g => g.searches !== null);
-  const byok = groups.reduce((sum, g) => sum + g.byok, 0);
+  const byok = groups.reduce((sum, g) => sum + g.byok, dropped.byok);
   const round = (v: number) => Math.round(v * 1e6) / 1e6;
   return {
     failed_rows: n('failed'), succeeded_rows: n('completed') + n('accepted'),
     // Rounded past float noise; a run's cost is fractions of a cent per row.
-    cost_usd: priced > 0 ? round(groups.reduce((sum, g) => sum + (g.cost ?? 0), 0)) : null,
+    cost_usd: priced > 0 ? round(groups.reduce((sum, g) => sum + (g.cost ?? 0), dropped.cost ?? 0)) : null,
     // Only when rows ran on the user's own provider key: what that provider billed it.
-    ...(byok > 0 ? { provider_cost_usd: round(groups.reduce((sum, g) => sum + (g.provider ?? 0), 0)) } : {}),
+    ...(byok > 0
+      ? { provider_cost_usd: round(groups.reduce((sum, g) => sum + (g.provider ?? 0), dropped.provider ?? 0)) } : {}),
     searches: searched.length > 0 ? searched.reduce((sum, g) => sum + (g.searches ?? 0), 0) : null,
   };
 }
