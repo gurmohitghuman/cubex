@@ -12,6 +12,14 @@
 # Over 200 lines: one file that runs on its own before anything else is downloaded; install.sh's twin, step by step.
 
 & { # one block, so nothing it defines stays behind in the window that ran it
+# First, before anything a locked-down PowerShell (AppLocker or WDAC) can't run.
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+  Write-Host ("Error: PowerShell is locked down on this PC ($($ExecutionContext.SessionState.LanguageMode)), so " +
+    'neither this installer nor the cubex command can run. Ask whoever manages this PC, or use WSL2 or Docker.')
+  if ({}.File) { exit 1 } # run as a file (cubex update); pasted text keeps the window open
+  $global:LASTEXITCODE = 1
+  return
+}
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # the progress bar makes downloads many times slower
 $RunAsFile = [bool]{}.File # pasted text (irm | iex) has no file, and there `exit` would close the window
@@ -74,14 +82,23 @@ function Read-Options([string[]]$Given) { # a hashtable of the options, or $null
   $o
 }
 
-# Runs a cmd.exe line exactly as written, output to $Log or nowhere; $true when it succeeds.
-function Invoke-Cmd([string]$Line, [string]$In = $env:SystemRoot, [string]$Log = '') {
-  $out = if ($Log) { "> `"$Log`" 2>&1" } else { '>nul 2>&1' }
-  $psi = New-Object Diagnostics.ProcessStartInfo $Cmd, "/d /s /c `"($Line) $out`""
+# Runs a cmd.exe line exactly as written, output to $Log or nowhere; $true when it succeeds. Paths go in as $Vars,
+# read in the line as %NAME%: cmd expands those once, so a % in a folder name stays text.
+function Invoke-Cmd([string]$Line, [string]$In = $env:SystemRoot, [string]$Log = '', [hashtable]$Vars = @{}) {
+  $out = '>nul 2>&1'
+  if ($Log) { $Vars['CUBEX_CMD_LOG'] = $Log; $out = '> "%CUBEX_CMD_LOG%" 2>&1' }
+  $psi = New-Object Diagnostics.ProcessStartInfo $Cmd, "/d /v:off /s /c `"($Line) $out`""
   $psi.WorkingDirectory = $In
   $psi.UseShellExecute = $false
-  $p = [Diagnostics.Process]::Start($psi)
-  $p.WaitForExit()
+  $saved = @{}
+  foreach ($name in $Vars.Keys) {
+    $saved[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, $Vars[$name])
+  }
+  try {
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.WaitForExit()
+  } finally { foreach ($name in $Vars.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) } }
   $p.ExitCode -eq 0
 }
 
@@ -90,7 +107,7 @@ function Remove-Tree([string]$Path) {
   for ($i = 0; $i -lt 20 -and (Test-Path -LiteralPath $Path); $i++) {
     if ($i) { Start-Sleep -Milliseconds 500 } # a file a program just let go of can stay locked for a moment
     if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force -ErrorAction Ignore }
-    else { [void](Invoke-Cmd "rd /s /q `"$Path`"") }
+    else { [void](Invoke-Cmd 'rd /s /q "%CUBEX_RD%"' -Vars @{ CUBEX_RD = $Path }) }
   }
   if (Test-Path -LiteralPath $Path) { Die "Couldn't delete $Path, a program still has a file in it open." }
 }
@@ -139,18 +156,47 @@ function Get-Arch { # the machine's processor, not this PowerShell's: an x64 Pow
   Die "Cubex runs on 64-bit Windows with an Intel or AMD (x64) or an ARM64 processor; this PC has $machine."
 }
 
+# The cubex command is a script Windows PowerShell runs with -ExecutionPolicy Bypass, which Group Policy outranks:
+# AllSigned or Restricted set there, or a locked-down PowerShell, and no cubex command could run. Asked of Windows
+# PowerShell itself, whichever PowerShell runs this (-Command isn't a script, so the policy doesn't stop the question).
+function Assert-ScriptsCanRun {
+  $ask = 'Get-ExecutionPolicy -Scope MachinePolicy; Get-ExecutionPolicy -Scope UserPolicy; ' +
+    '$ExecutionContext.SessionState.LanguageMode'
+  try { $answer = @(& $PowerShellExe -NoLogo -NoProfile -NonInteractive -Command $ask) } catch { return }
+  $answer = @($answer | ForEach-Object { "$_".Trim() })
+  $policy = @($answer | Select-Object -First 2 | Where-Object { 'AllSigned', 'Restricted' -contains $_ })
+  if ($policy) {
+    Die ("Group Policy sets PowerShell's execution policy on this PC to $($policy[0]), so the cubex command (a " +
+      'PowerShell script) can''t run. Ask whoever manages this PC, or use WSL2 or Docker.')
+  }
+  if ($answer.Count -ge 3 -and $answer[2] -ne 'FullLanguage') {
+    Die ("Windows PowerShell is locked down on this PC ($($answer[2])), so the cubex command can't run. Ask whoever " +
+      'manages this PC, or use WSL2 or Docker.')
+  }
+}
+
+# Elevated ("Run as administrator") while this user also has a normal, limited token. Off when UAC is, and for the
+# built-in Administrator without Admin Approval Mode: there every window is elevated alike. (bin/cubex-service.ps1
+# has the same check.)
+function Test-SplitElevated {
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $admin = [Security.Principal.WindowsBuiltInRole]::Administrator
+  if (-not (New-Object Security.Principal.WindowsPrincipal $id).IsInRole($admin)) { return $false }
+  $uac = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction Ignore
+  if ($uac -and $uac.EnableLUA -eq 0) { return $false }
+  -not ($id.User.Value -match '-500$' -and -not ($uac -and $uac.FilterAdministratorToken -eq 1))
+}
+
 function Install-Cubex($o) {
   Write-Host "Installing Cubex into $CubexHome" -ForegroundColor White
+  $adopt = -not (Test-Path -LiteralPath "$CubexHome\$Marker")
   if (-not (Test-Path -LiteralPath $CubexHome)) {
     New-Item -ItemType Directory -Path $CubexHome | Out-Null
     $S.NewHome = $true
-    # Yours alone (plus Windows itself and administrators), like chmod 700: a folder made with --dir somewhere
-    # like C:\cubex would otherwise let every user of this PC read the data and change the app.
-    $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    & icacls.exe $CubexHome /inheritance:r /grant:r "*${me}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' |
-      Out-Null
-    if ($LASTEXITCODE) { Die "Couldn't make $CubexHome private to you." }
   }
+  # Each time the marker goes into a folder (made just now, or an empty one that was there), and whenever
+  # everyone's access has crept back in.
+  if ($adopt -or (Test-OpenHome)) { Protect-Home }
   New-Item -ItemType Directory -Force -Path "$CubexHome\logs" | Out-Null
   [IO.File]::WriteAllText("$CubexHome\$Marker",
     "This folder is a Cubex install. `"cubex uninstall --delete-data`" removes it.`r`n")
@@ -161,16 +207,56 @@ function Install-Cubex($o) {
   Write-Config $o
   if (Get-Source $o.Source) { Build-App; $S.Built = $true }
   else { Ok "Already up to date ($(Get-Content -LiteralPath "$CubexHome\app\.cubex-version" -TotalCount 1))" }
-  # Before starting anything, so `cubex logs` and `cubex uninstall` work even if the start fails.
-  [IO.File]::WriteAllText("$CubexHome\install.env", "CUBEX_FORMAT=2`r`nCUBEX_REPO=$Repo`r`nCUBEX_REF=$Ref`r`n" +
-    "CUBEX_SOURCE=$($o.Source)`r`nCUBEX_BIN_DIR=$BinDir`r`n")
+  # Before starting anything, so `cubex logs` and `cubex uninstall` work even if the start fails; again once the
+  # launcher has added its PATH entry, which uninstall takes off again.
+  $S.PathAdded = Get-PathAdded
+  Save-InstallEnv $o
   Install-Launcher $o.NoPath
+  Save-InstallEnv $o
   if ($S.Built -or $S.NodeNext) { Enable-NewVersion $o.NoStart }
   elseif ($S.ConfigChanged -and (Invoke-Cli 'is-active')) {
     if (Invoke-Cli 'restart', '--quiet') { Ok 'Restarted Cubex with the new settings' }
   }
   Remove-Tree "$CubexHome\node.previous"
   Show-Finish $o.Public
+}
+
+# Yours alone (plus Windows itself and administrators), like chmod 700: a folder made with --dir somewhere like
+# C:\cubex, or an empty one that was there, would otherwise let every user of this PC read the data and change
+# the app.
+function Protect-Home {
+  $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  & icacls.exe $CubexHome /inheritance:r /grant:r "*${me}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' |
+    Out-Null
+  # Grants of its own, which /inheritance:r keeps, to everyone, all signed-in users, Users and Interactive.
+  if (-not $LASTEXITCODE) {
+    & icacls.exe $CubexHome /remove:g '*S-1-1-0' '*S-1-5-11' '*S-1-5-32-545' '*S-1-5-4' | Out-Null
+  }
+  if ($LASTEXITCODE) { Die "Couldn't make $CubexHome private to you." }
+}
+
+function Test-OpenHome { # does everyone, every signed-in user, Users or Interactive have any access to the folder?
+  $broad = 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4'
+  $sid = [Security.Principal.SecurityIdentifier]
+  try { $rules = @((Get-Acl -LiteralPath $CubexHome).GetAccessRules($true, $true, $sid)) } catch { return $false }
+  $open = @($rules | Where-Object { "$($_.AccessControlType)" -eq 'Allow' } |
+    Where-Object { $broad -contains "$($_.IdentityReference)" })
+  $open.Count -gt 0
+}
+
+# The PATH entries earlier installs added, as install.env keeps them (uninstall takes exactly those off).
+function Get-PathAdded {
+  $file = "$CubexHome\install.env"
+  if (-not (Test-Path -LiteralPath $file)) { return '' }
+  $line = @([IO.File]::ReadAllLines($file) | Where-Object { $_ -like 'CUBEX_PATH_ADDED=*' })
+  if ($line) { return $line[0].Substring('CUBEX_PATH_ADDED='.Length) }
+  if ($BinDir -eq "$CubexHome\bin") { return $BinDir } # written before it kept them: only its own bin was added
+  ''
+}
+
+function Save-InstallEnv($o) {
+  [IO.File]::WriteAllText("$CubexHome\install.env", "CUBEX_FORMAT=2`r`nCUBEX_REPO=$Repo`r`nCUBEX_REF=$Ref`r`n" +
+    "CUBEX_SOURCE=$($o.Source)`r`nCUBEX_BIN_DIR=$BinDir`r`nCUBEX_PATH_ADDED=$($S.PathAdded)`r`n")
 }
 
 # The latest Node.js $NodeMajor for this processor, checksum-verified, unpacked into node.next. It replaces node
@@ -226,13 +312,8 @@ function Write-Config($o) {
   }
   if ($o.Port) { Set-Config 'PORT' $o.Port }
   if ($o.NoService) { Set-Config 'CUBEX_SERVICE' 'none' }
-  # Saved once, so every later `cubex` command agrees on it. A logon task needs a desktop session (not session 0,
-  # where services and some CI runners live).
-  if (-not (Get-ConfigLine 'CUBEX_SERVICE')) {
-    $desktop = (Get-Process -Id $PID).SessionId -ne 0
-    $tasks = [bool](Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)
-    Set-Config 'CUBEX_SERVICE' $(if ($desktop -and $tasks) { 'task' } else { 'none' })
-  }
+  # Saved once, so every later `cubex` command agrees on it.
+  if (-not (Get-ConfigLine 'CUBEX_SERVICE')) { Set-Config 'CUBEX_SERVICE' (Get-ServiceMode $o) }
   if ($o.Public) {
     Set-Config 'HOST' '0.0.0.0'
     # Used only if Cubex has no account yet; Show-Finish checks which password is real.
@@ -243,6 +324,16 @@ function Write-Config($o) {
       Set-Config 'INITIAL_PASSWORD' $S.Password
     }
   }
+}
+
+# How Cubex will run: a logon task needs a desktop session (not session 0, where services and some CI runners live).
+function Get-ServiceMode($o) {
+  if ($o.NoService) { return 'none' }
+  $line = if (Test-Path -LiteralPath $Config) { Get-ConfigLine 'CUBEX_SERVICE' }
+  if ($line -and $line -ne 'CUBEX_SERVICE=auto') { return $line.Substring('CUBEX_SERVICE='.Length) }
+  $desktop = (Get-Process -Id $PID).SessionId -ne 0
+  $tasks = [bool](Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)
+  if ($desktop -and $tasks) { 'task' } else { 'none' }
 }
 
 function Get-ConfigLine([string]$Key) { # the KEY=value line with a value, if there is one
@@ -397,7 +488,12 @@ function Enable-NewVersion([bool]$NoStart) {
     Move-Folder "$CubexHome\app.previous" "$CubexHome\app"
     $failed = " The failed build is in $CubexHome\app.failed."
   }
-  if ($oldNode) { Remove-Tree "$CubexHome\node"; Move-Folder "$CubexHome\node.previous" "$CubexHome\node" }
+  if ($oldNode) {
+    Remove-Tree "$CubexHome\node.failed"
+    Move-Folder "$CubexHome\node" "$CubexHome\node.failed"
+    Move-Folder "$CubexHome\node.previous" "$CubexHome\node"
+    $failed += " The new Node.js is in $CubexHome\node.failed."
+  }
   [void](Invoke-Cli 'start', '--quiet')
   Die "The new version didn't start, so the previous one is back.$failed"
 }
@@ -423,7 +519,7 @@ function Install-Launcher([bool]$NoPath) {
   $text = @(
     '@echo off'
     'rem Cubex launcher, written by install.ps1: runs app\bin\cubex.ps1 with Windows PowerShell.'
-    'setlocal'
+    'setlocal DisableDelayedExpansion'
     "set `"CUBEX_HOME=$homeRef`""
     'set "CUBEX_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"'
     'rem One line, read once: uninstall deletes this file while it runs, and cmd reads a batch file as it goes.'
@@ -442,6 +538,7 @@ function Install-Launcher([bool]$NoPath) {
     # The user PATH is only ever edited on a first install, never by an update.
     if ($NoPath -or $hadShim) { $S.PathNote = "Add $BinDir to your PATH to use the cubex command."; return }
     Add-UserPath $BinDir
+    $S.PathAdded = (@($S.PathAdded.Split(';') | Where-Object { $_ }) + $BinDir) -join ';'
     if ($RunAsFile) { $S.PathNote = 'Open a new terminal window first, so it finds the cubex command.' }
   }
   # And this window, when it ran the script itself.
@@ -531,10 +628,19 @@ try {
   if ($notAlone -contains $CubexHome -or $CubexHome -match '^[A-Za-z]:$') {
     Die "Give Cubex a folder of its own (--dir), not $CubexHome."
   }
-  # Never take over a folder with other things in it: uninstall deletes inside it.
-  if ((Test-Path -LiteralPath $CubexHome) -and -not (Test-Path -LiteralPath "$CubexHome\$Marker") -and
-    (Get-ChildItem -LiteralPath $CubexHome -Force)) {
-    Die "$CubexHome already has other files in it. Choose a new or empty folder with --dir."
+  # npm's command shims (SET dp0=%~dp0, unquoted) break on these, so Cubex couldn't be built there.
+  if ($CubexHome -match '[&^]') {
+    Die "Cubex can't be built in a folder whose path has & or ^ in it ($CubexHome). Choose another with --dir."
+  }
+  # Never take over a folder with other things in it (uninstall deletes inside it), or someone else's.
+  if ((Test-Path -LiteralPath $CubexHome) -and -not (Test-Path -LiteralPath "$CubexHome\$Marker")) {
+    if (Get-ChildItem -LiteralPath $CubexHome -Force) {
+      Die "$CubexHome already has other files in it. Choose a new or empty folder with --dir."
+    }
+    $owner = (Get-Acl -LiteralPath $CubexHome).GetOwner([Security.Principal.SecurityIdentifier]).Value
+    if ($owner -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -and $owner -ne 'S-1-5-32-544') {
+      Die "$CubexHome belongs to another user. Choose a folder of your own with --dir."
+    }
   }
   if ($o.Source) {
     $o.Source = Get-LongPath $here.GetUnresolvedProviderPathFromPSPath($o.Source)
@@ -544,6 +650,14 @@ try {
   $Config = "$CubexHome\config.env"
   $S.Force = $o.Force
   $Arch = Get-Arch
+  Assert-ScriptsCanRun
+  # A server started from an elevated window runs elevated, and a normal window can't see or stop it. (The logon
+  # task always runs it unelevated.)
+  if (-not $o.NoStart -and $env:CUBEX_ALLOW_ELEVATED -ne '1' -and (Get-ServiceMode $o) -eq 'none' -and
+    (Test-SplitElevated)) {
+    Die ('This window runs as administrator, and Cubex would too, where a normal window couldn''t stop it. Run the ' +
+      'installer in a normal PowerShell window (or set CUBEX_ALLOW_ELEVATED=1 to run Cubex elevated anyway).')
+  }
   if (-not (Test-Path -LiteralPath $Tar)) { Die "Windows' tar.exe is missing ($Tar), and the installer needs it." }
   # Older Windows PowerShell may offer only TLS 1.0, which GitHub and nodejs.org refuse.
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072

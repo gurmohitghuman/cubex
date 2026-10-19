@@ -1,15 +1,19 @@
 name: Windows install
 
-# The real one-line installer (irm ... | iex) from this commit on Windows, in Windows PowerShell like most PCs:
-# install, `cubex status` answering on /api/health, an update that rebuilds and swaps, then an uninstall that leaves
-# nothing behind. On pull requests and pushes to main that touch the installer or the dependencies; the Release
-# workflow calls it for the commit being released.
+# The real one-line installer (irm ... | iex) from this commit on Windows: install, the service mode it chose, the
+# runner it left in the background (Node, never PowerShell), `cubex status` answering on /api/health, an update that
+# rebuilds and swaps, then an uninstall that leaves nothing behind. In Windows PowerShell like most PCs, and once in
+# PowerShell 7 with --no-service into an existing empty folder whose path has spaces, an apostrophe and accented
+# letters (plus the refusals: & in the path, and an elevated window for a background process). On pull requests and
+# pushes to main that touch the installer, the scripts or the dependencies; the Release workflow calls it for the
+# commit being released.
 
 on:
   pull_request:
     paths:
       - install.ps1
       - 'bin/**'
+      - 'scripts/**'
       - package.json
       - package-lock.json
       - .npmrc
@@ -19,6 +23,7 @@ on:
     paths:
       - install.ps1
       - 'bin/**'
+      - 'scripts/**'
       - package.json
       - package-lock.json
       - .npmrc
@@ -37,30 +42,43 @@ concurrency:
 
 jobs:
   install:
-    name: One-line install (Windows ${{ matrix.arch }})
+    name: One-line install (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
-      # Both report, so an ARM-only failure is never hidden behind an x64 one.
+      # All report, so a failure in one is never hidden behind another.
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: Windows x64, Windows PowerShell
+            os: windows-latest
             arch: x64
-          - os: windows-11-arm
+            shell: powershell
+            mode: default
+          - name: Windows ARM64, Windows PowerShell
+            os: windows-11-arm
             arch: arm64
+            shell: powershell
+            mode: default
+          - name: Windows x64, PowerShell 7, --no-service, odd folder
+            os: windows-latest
+            arch: x64
+            shell: pwsh
+            mode: no-service
     defaults:
       run:
-        shell: powershell
+        shell: ${{ matrix.shell }}
     env:
       ARCH: ${{ matrix.arch }}
+      MODE: ${{ matrix.mode }}
       # The commit under test, from the repository it lives in (a fork's, for a fork's pull request).
       CUBEX_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       CUBEX_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Note the user PATH, and whether this commit runs here
+      - name: Note the user PATH, the folder, the service mode to expect, and whether this commit runs here
         id: before
         run: |
+          "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
           $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
           $path = $key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
           [IO.File]::WriteAllText("$env:RUNNER_TEMP\user-path.txt", $path)
@@ -69,24 +87,100 @@ jobs:
           $raw = "https://raw.githubusercontent.com/$env:CUBEX_REPO/$env:CUBEX_REF"
           $lock = Invoke-WebRequest -UseBasicParsing "$raw/package-lock.json"
           $refused = $env:ARCH -eq 'arm64' -and $lock.Content.Contains('"node_modules/argon2"')
-          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "refused=$("$refused".ToLower())`n")
+          # The odd folder already exists (empty), so the installer must adopt it and make it private. Its accented
+          # letters are in the runner's ANSI code page (Windows' tar.exe reads its arguments in that code page).
+          $home_ = "$env:LOCALAPPDATA\cubex"
+          if ($env:MODE -eq 'no-service') {
+            $home_ = Join-Path $env:RUNNER_TEMP ("Cubex test's folder caf$([char]0xE9) $([char]0xFC)ber")
+            New-Item -ItemType Directory -Path $home_ | Out-Null
+            [IO.File]::AppendAllText($env:GITHUB_ENV, "CUBEX_HOME=$home_`n", (New-Object Text.UTF8Encoding $false))
+          }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "CUBEX_TEST_HOME=$home_`n", (New-Object Text.UTF8Encoding $false))
+          # The mode install.ps1 picks: a logon task where there's a desktop session, else a background process.
+          $session = (Get-Process -Id $PID).SessionId
+          $mode = if ($env:MODE -eq 'no-service' -or $session -eq 0) { 'none' } else { 'task' }
+          # As install.ps1's Test-SplitElevated: elevated, with a normal token to fall back on.
+          $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $elevated = (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+          $uac = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction Ignore
+          $split = $elevated -and -not ($uac -and $uac.EnableLUA -eq 0) -and
+            -not ($id.User.Value -match '-500$' -and -not ($uac -and $uac.FilterAdministratorToken -eq 1))
+          "User $($id.Name), session $session, elevated $elevated, UAC $($uac.EnableLUA), split token $split"
+          "Expected service mode: $mode; folder: $home_"
+          # A background process from an elevated window is refused; here, where every window is, that's allowed.
+          if ($split -and $mode -eq 'none') { [IO.File]::AppendAllText($env:GITHUB_ENV, "CUBEX_ALLOW_ELEVATED=1`n") }
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT,
+            "refused=$("$refused".ToLower())`nmode=$mode`nsplit=$("$split".ToLower())`n")
+
+      - name: Refusals (& in the path; an elevated window for a background process)
+        if: matrix.mode == 'no-service'
+        run: |
+          $url = "https://raw.githubusercontent.com/$env:CUBEX_REPO/$env:CUBEX_REF/install.ps1"
+          $amp = Join-Path $env:RUNNER_TEMP 'cubex a&b'
+          & ([scriptblock]::Create((irm $url))) --dir $amp --no-service
+          if ($LASTEXITCODE -ne 1) { throw "A folder with & should be refused; the installer exited $LASTEXITCODE." }
+          if (Test-Path -LiteralPath $amp) { throw 'The refused install left its folder behind.' }
+          if ('${{ steps.before.outputs.split }}' -eq 'true') {
+            $allow = $env:CUBEX_ALLOW_ELEVATED; Remove-Item Env:CUBEX_ALLOW_ELEVATED -ErrorAction Ignore
+            & ([scriptblock]::Create((irm $url))) --no-service
+            $code = $LASTEXITCODE; $env:CUBEX_ALLOW_ELEVATED = $allow
+            if ($code -ne 1) { throw "An elevated --no-service install should be refused, but it exited $code." }
+            if (Get-ChildItem -LiteralPath $env:CUBEX_TEST_HOME -Force) { throw 'The refused install left files.' }
+          } else { 'Not elevated with a split token here, so the elevation refusal is not checked.' }
+          exit 0 # the refusals were expected; Actions would otherwise end the step with the last exit code, 1
 
       # Each later step is a new process that hasn't seen the PATH change, so it runs the command by its full path.
       - name: Install with the one-liner
         run: |
-          irm "https://raw.githubusercontent.com/$env:CUBEX_REPO/$env:CUBEX_REF/install.ps1" | iex
+          $url = "https://raw.githubusercontent.com/$env:CUBEX_REPO/$env:CUBEX_REF/install.ps1"
+          if ($env:MODE -eq 'no-service') { & ([scriptblock]::Create((irm $url))) --no-service }
+          else { irm $url | iex }
           $code = $LASTEXITCODE
           if ('${{ steps.before.outputs.refused }}' -ne 'true') { exit $code }
           if ($code -ne 1) { throw "The installer should refuse Windows on ARM here, but it exited with $code." }
           if (Test-Path "$env:LOCALAPPDATA\cubex") { throw 'The refused install left the cubex folder behind.' }
           exit 0 # the refusal was expected; Actions would otherwise end the step with its exit code, 1
 
+      - name: The service mode, the background runner and the folder's permissions
+        if: steps.before.outputs.refused != 'true'
+        run: |
+          $home_ = $env:CUBEX_TEST_HOME
+          $line = @([IO.File]::ReadAllLines("$home_\config.env") | Where-Object { $_ -like 'CUBEX_SERVICE=*' })
+          "config.env says: $line (expected CUBEX_SERVICE=${{ steps.before.outputs.mode }})"
+          if ($line -cne 'CUBEX_SERVICE=${{ steps.before.outputs.mode }}') { throw "Wrong service mode: $line" }
+          $any = [StringComparison]::OrdinalIgnoreCase
+          $procs = @(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and
+            $_.CommandLine.IndexOf($home_, $any) -ge 0 })
+          $procs | ForEach-Object { "$($_.ProcessId) $($_.Name): $($_.CommandLine)" }
+          $runner = @($procs | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*cubex-run.mjs*' })
+          if ($runner.Count -ne 1) { throw "Expected one Node runner on cubex-run.mjs, found $($runner.Count)." }
+          $ps = @($procs | Where-Object { 'powershell.exe', 'pwsh.exe' -contains $_.Name })
+          if ($ps) { throw 'A PowerShell is still running from the Cubex folder.' }
+          $tasks = @(Get-ScheduledTask -TaskPath '\' -ErrorAction Ignore | Where-Object { $_.TaskName -like 'Cubex*' })
+          $tasks | ForEach-Object { "Task $($_.TaskName): $($_.Actions.Execute) $($_.Actions.Arguments)" }
+          if ('${{ steps.before.outputs.mode }}' -eq 'task') {
+            if ($tasks.Count -ne 1 -or $tasks[0].TaskName -ne "Cubex-$env:USERNAME") {
+              throw "Expected one task, Cubex-$env:USERNAME."
+            }
+            $action = $tasks[0].Actions[0]
+            if ($action.Execute -notlike '*\conhost.exe' -or $action.Arguments -notlike '*node.exe*cubex-run.mjs*' -or
+              $action.Arguments -like '*powershell*') { throw 'The task should run Node on cubex-run.mjs.' }
+          } elseif ($tasks) { throw 'A background-process install made a scheduled task.' }
+          $acl = Get-Acl -LiteralPath $home_
+          $acl.Access | ForEach-Object { "  $($_.IdentityReference) $($_.AccessControlType) $($_.FileSystemRights)" }
+          if (-not $acl.AreAccessRulesProtected) { throw 'The Cubex folder still inherits permissions.' }
+          $broad = 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4'
+          $open = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+            Where-Object { $broad -contains "$($_.IdentityReference)" })
+          if ($open) { throw 'The Cubex folder still lets other users in.' }
+
       - name: cubex status answers on /api/health
         if: steps.before.outputs.refused != 'true'
         run: |
-          & "$env:LOCALAPPDATA\cubex\bin\cubex.cmd" status
+          & "$env:CUBEX_TEST_HOME\bin\cubex.cmd" status
           if ($LASTEXITCODE) { exit 1 }
-          & "$env:LOCALAPPDATA\cubex\bin\cubex.cmd" status --quiet
+          & "$env:CUBEX_TEST_HOME\bin\cubex.cmd" status --quiet
           if ($LASTEXITCODE) { throw 'cubex status --quiet says Cubex is not running' }
           $health = Invoke-RestMethod -UseBasicParsing http://127.0.0.1:3002/api/health
           if ($health.status -ne 'ok') { throw "Unhealthy: $($health | ConvertTo-Json -Compress)" }
@@ -94,27 +188,32 @@ jobs:
       - name: Update (rebuild, swap, restart)
         if: steps.before.outputs.refused != 'true'
         run: |
-          & "$env:LOCALAPPDATA\cubex\bin\cubex.cmd" update --force
+          & "$env:CUBEX_TEST_HOME\bin\cubex.cmd" update --force
           if ($LASTEXITCODE) { exit 1 }
-          if (-not (Test-Path "$env:LOCALAPPDATA\cubex\app.previous")) { throw 'No app.previous: nothing was swapped' }
-          & "$env:LOCALAPPDATA\cubex\bin\cubex.cmd" status --quiet
+          if (-not (Test-Path -LiteralPath "$env:CUBEX_TEST_HOME\app.previous")) {
+            throw 'No app.previous: nothing was swapped'
+          }
+          & "$env:CUBEX_TEST_HOME\bin\cubex.cmd" status --quiet
           if ($LASTEXITCODE) { throw 'Cubex is not running after the update' }
 
       - name: Uninstall leaves nothing behind
         if: steps.before.outputs.refused != 'true'
         run: |
-          'delete' | & "$env:LOCALAPPDATA\cubex\bin\cubex.cmd" uninstall --delete-data
+          $home_ = $env:CUBEX_TEST_HOME
+          'delete' | & "$home_\bin\cubex.cmd" uninstall --delete-data
           if ($LASTEXITCODE) { exit 1 }
           $left = @()
-          if (Test-Path "$env:LOCALAPPDATA\cubex") { $left += 'the cubex folder' }
-          if (Get-ScheduledTask -TaskName Cubex -ErrorAction Ignore) { $left += 'the Cubex scheduled task' }
+          if (Test-Path -LiteralPath $home_) { $left += 'the Cubex folder' }
+          $tasks = @(Get-ScheduledTask -TaskPath '\' -ErrorAction Ignore | Where-Object { $_.TaskName -like 'Cubex*' })
+          if ($tasks) { $left += "scheduled tasks ($($tasks.TaskName -join ', '))" }
           $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
           $path = $key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
           if ($path -cne [IO.File]::ReadAllText("$env:RUNNER_TEMP\user-path.txt")) {
             $left += "a changed user PATH ($path)"
           }
+          $any = [StringComparison]::OrdinalIgnoreCase
           $mine = Get-CimInstance Win32_Process | Where-Object {
-            $_.ExecutablePath -like "$env:LOCALAPPDATA\cubex\*" -or $_.CommandLine -like '*\cubex\app\bin\cubex.ps1*'
+            "$($_.ExecutablePath)".StartsWith("$home_\", $any) -or "$($_.CommandLine)".IndexOf($home_, $any) -ge 0
           }
           if ($mine) { $left += "processes ($($mine.Name -join ', '))" }
           try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://127.0.0.1:3002/api/health | Out-Null
@@ -124,6 +223,6 @@ jobs:
       - name: Show the logs
         if: failure()
         run: |
-          Get-ChildItem "$env:LOCALAPPDATA\cubex\logs" -ErrorAction Ignore | ForEach-Object {
-            "===== $($_.FullName)"; Get-Content $_.FullName -Tail 80 -Encoding UTF8
+          Get-ChildItem -LiteralPath "$env:CUBEX_TEST_HOME\logs" -ErrorAction Ignore | ForEach-Object {
+            "===== $($_.FullName)"; Get-Content -LiteralPath $_.FullName -Tail 80 -Encoding UTF8
           }
