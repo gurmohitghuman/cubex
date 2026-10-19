@@ -2,7 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test'
 import path from 'path'
 import crypto from 'node:crypto'
 import { createRequire } from 'module'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 
 // Smoke for the streaming-preview changes shipped this session. Two server-
 // observable invariants from the bug-audit fixes:
@@ -25,8 +25,7 @@ import { authedApi, seedSheet } from './helpers'
 const require = createRequire(import.meta.url)
 
 function openDb() {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
