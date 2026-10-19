@@ -16,7 +16,7 @@ import { parseListInput, type ListInput } from './enrich-list-input';
 import { parseRuleField } from './run-condition';
 
 export type InputBinding = { column: string } | { value: string };
-// fromAnswer: a field added from a stored answer ("+ Column"), kept by its path.
+// fromAnswer: a field added from a stored answer ("Add as column"), kept by its path.
 export interface OutputInput { key: string; path: string | null; columnName: string; fromAnswer?: boolean }
 
 export interface EnrichRunInput {

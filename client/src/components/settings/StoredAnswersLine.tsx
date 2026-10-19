@@ -74,7 +74,7 @@ export const StoredAnswersLine: React.FC = () => {
       </div>
       {last && <p className="text-xs text-gray-700" data-testid="stored-answers-prune-status">{last}</p>}
       <p className="text-xs text-gray-600">
-        Each answer keeps the provider&apos;s raw data for the answer panel and + Column. When a row is enriched
+        Each answer keeps the provider&apos;s raw data for the answer panel and Add as column. When a row is enriched
         again, its older answers lose that raw data on their own. Pruning keeps the result fields. The space it
         frees is reused by new data; the enrichments guide says how to shrink the database file.
       </p>

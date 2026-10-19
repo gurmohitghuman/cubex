@@ -17,7 +17,7 @@ Everything is optional. Settings live in `~/.cubex/config.env`, one `KEY=value` 
 | `HTTP_MAX_CONCURRENCY` | `100` | Most concurrent requests one HTTP run makes. |
 | `SIDEQUEST_MAX_CONCURRENT_JOBS` | `4` | AI and HTTP runs that execute at once; more wait in line. |
 | `ENRICH_DEFAULT_CONCURRENCY` | `5` | Requests one enrichment run sends to treg at once. |
-| `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **+ Column**. |
+| `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **Add as column**. |
 | `TREG_BASE_URL` | `https://treg.to` | Where enrichment calls go. Only for testing or a self-hosted treg. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes, for the whole instance. |
 | `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |

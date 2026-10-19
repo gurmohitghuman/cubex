@@ -5,6 +5,8 @@
 // message instead of filling a column that stays empty (or, for a path
 // above it, shorter than a run would fill it). A wildcard or `..` that could
 // reach into the dropped part counts as reaching it.
+import { unescapeKey } from './jsonpath-literal';
+
 type Seg =
   | { t: 'key'; k: string } | { t: 'idx'; i: number } | { t: 'any' } | { t: 'from'; i: number }
   | { t: 'deep'; next: Seg };
@@ -36,7 +38,7 @@ export function parsePath(path: string): Seg[] | null {
     }
     const quoted = /^\["((?:[^"\\]|\\.)*)"\]/.exec(rest);
     if (quoted) {
-      segs.push({ t: 'key', k: quoted[1].replace(/\\(.)/g, '$1') });
+      segs.push({ t: 'key', k: unescapeKey(quoted[1]) });
       i += quoted[0].length;
       continue;
     }

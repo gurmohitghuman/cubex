@@ -1,5 +1,7 @@
 import { HTTPAPIConfig, HTTPPreview } from './types'
-import { HTTP_STATUS_PATH } from '@/lib/constants'
+// Relative, not '@/': tests/unit reads this file with tsx, which has no alias.
+import { HTTP_STATUS_PATH } from '../../lib/constants'
+import { literalSteps, readLiteral } from '../json-mapping/readPath'
 
 // Coerce any JSON value to a cell-safe string. The cell-write API rejects
 // non-strings with "value must be a string"; numbers (IDs), booleans, arrays,
@@ -31,9 +33,10 @@ export function derivedMasterName(masterColumnName: string, endpointUrl: string)
 // Re-export for callers that want both helpers + the type from one import.
 export type { HTTPAPIConfig }
 
-// Walk a simple JSONPath against a JS value. Only supports the subset the
-// click-tree generates: `$` root, `.key` for object members, `[n]` for array
-// indices. No wildcards, filters, slices, or recursive descent. Returns
+// Read a JSONPath against a JS value. A path the click-tree builds (`.key`,
+// `["key"]`, `[n]`) reads exactly as the server will (json-mapping/readPath.ts);
+// anything else typed by hand falls back to a rough walk of its `.key`/`[n]`
+// parts (no wildcards, filters, slices or recursive descent). Returns
 // undefined for any segment that doesn't resolve. Used by the commit path
 // so the user's tree-clicked fields can be re-extracted from the row's
 // rawResponse without a second server round-trip — server's stored
@@ -41,8 +44,12 @@ export type { HTTPAPIConfig }
 export function extractByJsonPath(raw: unknown, path: string): unknown {
   if (raw === null || raw === undefined) return undefined
   if (typeof path !== 'string' || path.length === 0) return raw
+  const steps = literalSteps(path)
+  if (steps) {
+    const got = readLiteral(raw, steps)
+    return got.matched ? got.value : undefined
+  }
   // Tokenize: split into ['key', '0', 'nested', ...] preserving array indices.
-  // The tree always emits paths like `$.foo.bar[0].baz` so this regex is enough.
   const trimmed = path.startsWith('$') ? path.slice(1) : path
   const tokens: string[] = []
   const re = /\.([^.\[\]]+)|\[(\d+)\]/g

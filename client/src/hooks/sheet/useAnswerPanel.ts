@@ -21,7 +21,7 @@ interface Args {
 }
 
 // The answer panel's state: the cell it shows, its answer (read per click),
-// and "+ Column", which adds a column filled from the stored answers.
+// and "Add as column", which adds a column filled from the stored answers.
 export function useAnswerPanel(a: Args) {
   const [target, setTarget] = useState<AnswerTarget | null>(null)
   const [view, setView] = useState<AnswerView | null>(null)

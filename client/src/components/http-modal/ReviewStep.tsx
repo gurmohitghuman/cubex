@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { CheckCircle, Loader2, Play, X } from 'lucide-react'
 import { HTTPAPIConfig, HTTPPreview } from './types'
 import { JsonTree } from '../json-mapping/JsonTree'
@@ -34,8 +34,8 @@ export const ReviewStep: React.FC<Props> = ({
   isCommittingPreview, onBack, onCommit, onStartRun, onApplyAIFix,
 }) => {
   const [view, setView] = useState<'tree' | 'list'>('tree')
-  // Bumping `expandSignal` forces every JsonTree node to snap to forceOpenState.
-  // Default-expand goes 3 levels (set in JsonTree.useState); deeper nesting
+  // Bumping `expandSignal` sets the JsonTree to forceOpenState. It opens by
+  // itself only near the top (tree-model.ts openPaths); deeper nesting
   // (e.g. EmailBison's response with workspace { 16 fields }) needs the toggle
   // to surface clickable leaves without manual chevron-clicking each one.
   const [expandSignal, setExpandSignal] = useState(0)
@@ -62,9 +62,10 @@ export const ReviewStep: React.FC<Props> = ({
     const next = new Set(selectedFields); next.add(columnName); setSelectedFields(next)
   }
 
-  // Index existing mappings by jsonPath for quick lookup in the tree.
-  const mappingByPath = new Map<string, string>()
-  for (const m of config.responseMapping) mappingByPath.set(m.jsonPath, m.columnName)
+  // Index existing mappings by jsonPath for quick lookup in the tree (kept
+  // between renders: a new map would redraw the whole tree).
+  const mappingByPath = useMemo(
+    () => new Map(config.responseMapping.map(m => [m.jsonPath, m.columnName])), [config.responseMapping])
 
   return (
     <div className="p-4 space-y-4">
@@ -76,7 +77,8 @@ export const ReviewStep: React.FC<Props> = ({
       />
 
       <div className="bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700">
-        Click any value below to save it as a column. We'll do the same lookup for every row when you Run All.
+        Use <strong>Save as column</strong> next to a value to keep it as a column. We&apos;ll do the same lookup for
+        every row when you Run All. Click a key or a value to copy its path.
       </div>
 
       <div className="flex items-center justify-between">

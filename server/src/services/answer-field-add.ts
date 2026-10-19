@@ -1,4 +1,4 @@
-// "+ Column" on an answer value (POST /api/enrich/sheets/:id/fields): a new
+// "Add as column" on an answer value (POST /api/enrich/sheets/:id/fields): a new
 // column filled from the answers the sheet already holds, free (no treg
 // calls, no requests). In ONE transaction inside the sheet's busy window: the
 // column joins the registry, the fill is journaled (enrichment_field_jobs),
@@ -14,6 +14,7 @@ import {
   columnCollisionMessage, findColumnNameCollision, sanitizeAndValidateColumnName,
 } from '../lib/column-names';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
+import { samePath } from '../lib/jsonpath-literal';
 import { busyMessage, continueInBackground, sheetBusyWith, withSheetBusy } from '../lib/sheet-busy';
 import { parseStored, readStored } from '../lib/answer-store';
 import { droppedLabel, droppedPartFor } from '../lib/answer-paths';
@@ -101,7 +102,7 @@ export async function addAnswerField(
     return { fail: 'conflict', message: activeMessage(owner.statusColumn) };
   }
   // One column per path: a second would read the same value, and later runs fill outputs by path.
-  const mapped = newest.config?.responseMapping.find(m => m.jsonPath === input.jsonPath);
+  const mapped = newest.config?.responseMapping.find(m => samePath(m.jsonPath, input.jsonPath));
   if (mapped) return bad(`That value is already a column: ${mapped.columnName}.`);
   if (newest.enrichment) {
     const dropped = droppedProblem(runs, userId, input);
