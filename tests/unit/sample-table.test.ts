@@ -1,9 +1,10 @@
 // The sample table against a migrated throwaway DB (services/sample-table.ts):
 // 25 made-up rows at .example addresses, the clean and formula columns filled,
-// the AI column empty with no run and a saved draft (the model only when the
-// account has a default), every column described, the duplicate found by a dry
-// run, one History line that marks it as the sample, a free name each time,
-// and into the trash like any table.
+// the AI column empty with no run and a saved draft (name and prompt, never a
+// model, even when the account has a default), every column described, the
+// duplicate found by a dry run, one History line that marks it as the sample, a
+// free name each time, into the trash like any table, and sheet caps too low
+// for it refused up front with the cap named.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -16,7 +17,8 @@ import setupMod from '../../server/src/lib/sample/setup'
 import leadsMod from '../../server/src/lib/sample/leads'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { createSampleTable, isSampleSheet } = sampleMod as typeof import('../../server/src/services/sample-table')
+const { createSampleTable, isSampleSheet, sampleCapProblem } =
+  sampleMod as typeof import('../../server/src/services/sample-table')
 const { sampleAnswer } = answerMod as typeof import('../../server/src/services/sample-answer')
 const { createTable, deleteTable } = tableMod as typeof import('../../server/src/services/table-crud')
 const { getDraft } = draftMod as typeof import('../../server/src/lib/ai-drafts')
@@ -47,6 +49,14 @@ async function main() {
     addresses.every(v => /\.example(\/[^\s]*)?$/i.test(v.trim())), addresses.filter(v => !/\.example/i.test(v)))
   check('one lead has no email', SAMPLE_ROWS.filter(r => !r.Email.trim()).length === 1)
   check('some values carry extra spaces', SAMPLE_ROWS.some(r => r.Name !== r.Name.trim()))
+
+  // Caps too low for the sample: refused before anything is made, naming the cap.
+  check('the default caps fit the sample', sampleCapProblem() === null)
+  const fewColumns = sampleCapProblem(4, 1_000)
+  check('too few columns: named', /needs 8 columns.*allows 4.*MAX_COLUMNS_PER_SHEET/.test(fewColumns ?? ''), fewColumns)
+  const fewRows = sampleCapProblem(200, 10)
+  check('too few rows: named', /needs 25 rows.*allows 10.*MAX_ROWS_PER_SHEET/.test(fewRows ?? ''), fewRows)
+  check('exactly enough fits', sampleCapProblem(8, 25) === null)
 
   const made = await createSampleTable(uid)
   if (!('ok' in made)) throw new Error(JSON.stringify(made))

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import path from 'path'
 import { createRequire } from 'module'
 import { v4 as uuid } from 'uuid'
-import { authedApi, BASE } from './helpers'
+import { authedApi, BASE, assertTestDb } from './helpers'
 import { freshTreg, readDb, rowsOf, seedCsv, startRun, waitRun } from './helpers-enrich'
 import { mockTreg } from './helpers-treg'
 import { companiesCsv, destRows, peopleRun, PEOPLE_FIELDS, runRest, testAndPick, waitAdded } from './helpers-list'
@@ -23,7 +23,7 @@ const COL = 'People'
 
 function writeDb(fn: (db: any) => void) {
   const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
-  const db = new Database(process.env.DB_PATH)
+  const db = new Database(assertTestDb(process.env.DB_PATH))
   try { db.pragma('busy_timeout = 5000'); fn(db) } finally { db.close() }
 }
 const provenance = (sourceRowId: string) => readDb(db => db.prepare(

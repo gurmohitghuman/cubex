@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { MAX_VIEWS_PER_SHEET } from '../lib/constants-filters';
-import type { ViewFilters } from '../lib/views/filters';
+import { viewWhere, type ViewFilters } from '../lib/views/filters';
 import { parseWhere, type WhereItem } from '../lib/row-filter/where';
 import { bad, checkInput, checkViewWhere, isFail, notFound, taken, type ViewInput } from './view-input';
 import {
@@ -99,7 +99,11 @@ export function updateView(sheetId: string, userId: string, ref: string, input: 
   const state = sheetViewState(sheetId, userId);
   if (!state) return notFound('Sheet');
   const columns = getSheetColumns(sheetId, userId, false);
-  const checked = checkInput(sheetId, userId, input, columns);
+  // Its filter as saved: rules kept from it are checked as kept (view-input.ts checkViewWhere).
+  const known = input.where !== undefined ? viewRows(sheetId, userId) : [];
+  const before = findView(known, ref);
+  const saved = before ? viewWhere(filtersOf(before, state, activeViewId(state, known))) : undefined;
+  const checked = checkInput(sheetId, userId, input, columns, saved);
   if (isFail(checked)) return checked;
   let fail: ViewFail | null = null;
   let id = '';
@@ -179,10 +183,11 @@ export function activateView(sheetId: string, userId: string, ref: string): View
 // The active view's row_filter alone (the app's "clear" on it): null, or a
 // `where` kept whole, checked against the sheet.
 export function saveRowFilter(sheetId: string, userId: string, raw: unknown): { ok: true } | ViewFail {
-  if (!sheetViewState(sheetId, userId)) return notFound('Sheet');
+  const state = sheetViewState(sheetId, userId);
+  if (!state) return notFound('Sheet');
   let stored: string | null = null;
   if (raw !== null && !(Array.isArray(raw) && raw.length === 0)) {
-    const checked = checkViewWhere(sheetId, userId, raw, getSheetColumns(sheetId, userId, false));
+    const checked = checkViewWhere(sheetId, userId, raw, getSheetColumns(sheetId, userId, false), viewWhere(state));
     if (isFail(checked)) return checked;
     stored = JSON.stringify((parseWhere(raw) as { where: WhereItem[] }).where);
   }

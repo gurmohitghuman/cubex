@@ -1,3 +1,4 @@
+// Over 200 lines: the one `where` grammar (shape, values, sheet checks) every surface reads.
 // A `where` (pure): which rows read_rows, REST rows/query, CSV export,
 // transfer_rows and transform_column take, and the grid's filters (a view's
 // three saved parts, lib/views/filters.ts). A list of items that must all
@@ -168,15 +169,23 @@ export interface WhereSheet {
   columns: readonly string[];
   // Run columns (AI, HTTP API, enrichment) → the column holding their run's state.
   runColumns: ReadonlyMap<string, string>;
+  // The filter as saved before (a view's): a run-state condition already in
+  // it, on or off, may name a column that lost its run since (its status
+  // column deleted). It still reads that column's cells (sql.ts), so it isn't
+  // refused; only a new one is.
+  saved?: readonly WhereItem[];
 }
 
 const RUN_KINDS = 'AI, HTTP API or enrichment column';
+const stateKey = (c: FilterCondition) => JSON.stringify([c.operator, c.column ?? null]);
 
 // The `where` against the sheet: its columns exist, its values fit their
-// operators, and run-state operators name run columns. Off conditions are
-// checked too: turning one on must not find it broken. null = fine.
+// operators, and run-state operators name run columns (unless already saved,
+// above). Off conditions are checked too: turning one on must not find it
+// broken. null = fine.
 export function checkWhere(where: readonly WhereItem[], sheet: WhereSheet): string | null {
   const conditions = whereConditions(where);
+  const kept = new Set(whereConditions(sheet.saved ?? []).filter(c => isStateOp(c.operator)).map(stateKey));
   // Every surface, MCP's schema-checked `where` included (parseWhere counts REST's).
   if (conditions.length > MAX_WHERE_CONDITIONS) return `where can hold at most ${MAX_WHERE_CONDITIONS} conditions.`;
   const known = new Set(sheet.columns);
@@ -185,7 +194,8 @@ export function checkWhere(where: readonly WhereItem[], sheet: WhereSheet): stri
   for (const c of conditions) {
     const invalid = conditionValueError(c);
     if (invalid) return invalid;
-    if (isStateOp(c.operator) && c.column !== undefined && !sheet.runColumns.has(c.column)) {
+    if (isStateOp(c.operator) && c.column !== undefined && !sheet.runColumns.has(c.column)
+      && !kept.has(stateKey(c))) {
       return `"${c.column}" isn't an ${RUN_KINDS}, so it has no run state. Use ${c.operator} on one of those, `
         + 'or leave column out to check every run column.';
     }

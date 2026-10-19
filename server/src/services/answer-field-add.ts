@@ -8,7 +8,7 @@
 // column to the older runs whose answers it reads, then fills the rows.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
+import { MAX_COLUMNS_PER_SHEET, SAMPLE_ANSWER_PROBE_ROWS, SAMPLE_ANSWER_PROBE_RUNS } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import {
   columnCollisionMessage, findColumnNameCollision, sanitizeAndValidateColumnName,
@@ -34,13 +34,20 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const activeMessage = (col: string) =>
   `A run on ${col} is still active. Wait for it to finish, or stop it, then add the column.`;
 
-// The answer the path was picked from (the row's), else the newest stored one.
+// The answer the path was picked from (the row's), else the newest stored one: the
+// newest run's last answered row, or (that run undone there) the run before it.
+// Each probe reads at most SAMPLE_ANSWER_PROBE_ROWS of a run's newest results, so a
+// run undone across a million rows isn't walked on the API thread.
 function sampleAnswer(runs: ColumnRunRef[], userId: string, row: number | null): unknown {
   if (row !== null) return parseStored(resultAtRow(runs, userId, row)?.response_data ?? null);
-  const raw = db.prepare(`SELECT response_data FROM http_results WHERE run_id = ? AND user_id = ?
-    AND response_data IS NOT NULL ORDER BY row_index DESC LIMIT 1`).pluck().get(runs[0].id, userId) as
-    string | undefined;
-  return parseStored(raw ?? null);
+  const probe = db.prepare(`SELECT response_data FROM (SELECT response_data, undone FROM http_results
+    WHERE run_id = ? AND user_id = ? AND response_data IS NOT NULL ORDER BY row_index DESC LIMIT ?)
+    WHERE undone = 0 LIMIT 1`).pluck();
+  for (const run of runs.slice(0, SAMPLE_ANSWER_PROBE_RUNS)) {
+    const raw = probe.get(run.id, userId, SAMPLE_ANSWER_PROBE_ROWS) as string | undefined;
+    if (raw !== undefined) return parseStored(raw);
+  }
+  return parseStored(null);
 }
 
 // A path into a part of the answer Cubex didn't keep would fill nothing.

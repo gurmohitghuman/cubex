@@ -55,7 +55,8 @@ function jobOf(j: Journal, run: RunInfo, userId: string): UndoJob {
   const live = key !== undefined && !!db.prepare(`SELECT 1 FROM run_input_keys
     WHERE id = ? AND sheet_id = ? AND user_id = ?`).get(Number(key), run.sheet_id, userId);
   return {
-    id: j.id, sheetId: run.sheet_id, userId, columns: journalColumns(j), main: run.column,
+    id: j.id, sheetId: run.sheet_id, userId, run: { kind: run.kind, id: run.id }, columns: journalColumns(j),
+    main: run.column,
     stampPath: live ? j.stamp_path : null,
   };
 }

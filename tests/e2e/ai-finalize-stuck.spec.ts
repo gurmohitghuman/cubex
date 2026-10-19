@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import Database from 'better-sqlite3'
-import { authedApi, seedSheet } from './helpers'
+import { authedApi, seedSheet, assertTestDb } from './helpers'
 
 // Import the REAL shipped hasUnfinishedRow from server/dist (built by the harness),
 // so this tests the actual function — not a re-implementation. It binds the
 // server's db module, which connects to DB_PATH (the same throwaway test DB).
 const require = createRequire(import.meta.url)
+assertTestDb(process.env.DB_PATH) // before the server's db module opens it
 const { hasUnfinishedRow } = require(
   path.join(process.cwd(), 'server/dist/lib/run-placeholders.js'),
 ) as {
@@ -37,9 +38,7 @@ const { hasUnfinishedRow } = require(
 // collision-proof, target-aware semantics. Seeds go into the DB the server reads
 // (like ai-commit-superseded.spec.ts).
 function openTestDb(): Database.Database {
-  const dbPath = process.env.DB_PATH
-  if (!dbPath) throw new Error('DB_PATH not set — run via npm run e2e')
-  if (/(^|[\\/])cubex\.db$/i.test(dbPath)) throw new Error('refusing to open the real cubex.db')
+  const dbPath = assertTestDb(process.env.DB_PATH)
   const db = new Database(dbPath)
   db.pragma('busy_timeout = 5000')
   return db
