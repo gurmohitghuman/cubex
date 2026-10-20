@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
 import { runInSlices } from './slices';
@@ -13,6 +12,7 @@ import { forgetUnlistedAutoDedupe } from './auto-dedupe/refs';
 import { forgetUnlistedRunInputKeys } from './run-inputs/keys';
 import { forgetUnlistedUndoColumns } from './run-undo/columns';
 import { movingBatch, trashRowRange } from '../services/trash-batch';
+import { orderedUuid } from './ordered-id';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
 // rows go in at first_row up to end_row, and appends from elsewhere land at
@@ -87,7 +87,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
       ).run(replaceColumnOrder(job), job.sheet_id, job.user_id);
       if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(job.sheet_id, job.user_id)) {
         db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
-          .run(uuidv4(), job.sheet_id, job.user_id);
+          .run(orderedUuid(), job.sheet_id, job.user_id);
       }
     }
     // The removed rows leave auto-run's fence exact (lib/autorun-mark.ts).

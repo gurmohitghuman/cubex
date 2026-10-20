@@ -50,7 +50,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
-  manage_sheet: write('Create, rename, delete or reorder sheets (to the trash)', true, false),
+  manage_sheet: write('Create, rename, copy, delete or reorder sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.

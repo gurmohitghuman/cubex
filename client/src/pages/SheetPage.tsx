@@ -313,6 +313,7 @@ export const SheetPage: React.FC = () => {
         onRenameSheet={sheetOps.renameSheet}
         onDescribeSheet={descriptions.openSheet}
         onDeleteSheet={setConfirmDeleteSheet}
+        onCopySheet={s => { void sheetOps.copySheet(s) }}
         onSetupVersions={s => { if (s.id !== activeSheet?.id) sheetOps.selectSheet(s); modals.openVersions(s.id) }}
         onReorderSheets={sheetOps.reorderSheets}
         onAddRows={cellOps.handleAddRows}

@@ -51,6 +51,10 @@ export const API_V1_MAX_PATCH_CELLS = 80;
 // of the per-token request budget.
 export const MCP_RUN_STARTS_PER_MIN = 30;
 
+// Sheet copies a token may start a minute, over MCP and /api/v1 (services/sheet-copy.ts):
+// each one writes as many rows as the sheet holds, and agents can loop.
+export const SHEET_COPIES_PER_MIN = 5;
+
 // export_csv (MCP) returns the CSV inline, in the agent's context, so it stops
 // adding rows at this many characters and says how many more matched. Claude
 // Code moves tool results over ~25k tokens out to a file, and ~50k characters

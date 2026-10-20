@@ -87,6 +87,10 @@ export const HEAVY_SLICE_ROWS = 5_000;
 // before the first retry and doubling up to the cap (lib/sheet-busy.ts).
 export const HEAVY_JOB_RETRY_MS = 2_000;
 export const HEAVY_JOB_RETRY_MAX_MS = 60_000;
+// Copying a sheet's values (services/sheet-copy-job.ts): a slice also ends at
+// this much row data read, and a slice failing this many times in a row ends the copy.
+export const SHEET_COPY_SLICE_CHARS = 8_000_000;
+export const SHEET_COPY_ATTEMPTS = 5;
 // A run's leftover ⏳ clear (lib/run-placeholders.ts) that failed leaves the run
 // marked 'clearing', which holds off sorts and renames. Every interval, clears
 // marked longer ago than the stale age are run again (a million-row clear

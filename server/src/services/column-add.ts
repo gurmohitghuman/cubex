@@ -2,7 +2,6 @@
 // tool. Invariants: sanitize + relaxed validation, exact/case/token collision
 // rejection, the column cap, a placeholder row 0 on an empty sheet,
 // appendColumnsToOrder in the SAME transaction.
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -10,6 +9,7 @@ import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import { logSheetChange } from '../lib/change-log';
+import { orderedUuid } from '../lib/ordered-id';
 
 export type ColumnAddOutcome =
   | { ok: true; name: string }
@@ -49,7 +49,7 @@ export function addSheetColumn(
     const hasRow = db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId);
     if (!hasRow && opts.seedEmptyRow !== false) {
       db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
-        .run(uuidv4(), sheetId, userId);
+        .run(orderedUuid(), sheetId, userId);
     }
     appendColumnsToOrder(sheetId, userId, [columnName]);
     if (opts.bumpDataVersion) {

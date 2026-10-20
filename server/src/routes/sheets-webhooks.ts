@@ -17,6 +17,7 @@ import {
 import { validateMappingPath } from '../lib/jsonpath-extract';
 import { dropWebhookBucket } from '../lib/webhook-bucket';
 import { logSheetChange } from '../lib/change-log';
+import { orderedUuid } from '../lib/ordered-id';
 
 // Authenticated webhook management for a sheet. Mounted under /api/sheets via the
 // sheets aggregator, so every route proves req.userId owns :id (the Cubex pattern).
@@ -130,7 +131,7 @@ router.post('/:id/webhook/mappings', (req: AuthRequest, res) => {
       for (const r of rowIds) setEmpty.run(path, r.id);
     } else {
       db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, ?)')
-        .run(uuidv4(), id, req.userId!, JSON.stringify({ [columnName]: '' }));
+        .run(orderedUuid(), id, req.userId!, JSON.stringify({ [columnName]: '' }));
     }
     appendColumnsToOrder(id, req.userId!, [columnName]);
     db.prepare(

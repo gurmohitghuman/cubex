@@ -7,7 +7,6 @@
 // before (a rerun replaces them; after the append, so their positions are
 // never reused), write the source row's status cell, drop the journal row,
 // and tell open tabs. All of it commits or none: a restart never adds twice.
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { ENRICH_LIST_RECOUNT_SLACK, MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, countRows, purgeResultsForRows } from '../lib/sql-helpers';
@@ -19,6 +18,7 @@ import { dedupeKey, itemCells, listCell, type EnrichListConfig } from '../lib/en
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { stopForRoom, writeSourceCell } from './enrich-list-source';
 import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-dest-run';
+import { orderedUuid } from '../lib/ordered-id';
 
 interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
@@ -157,7 +157,7 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     const rids: number[] = [];
     const ids = new Set<string>();
     for (const r of rows) {
-      const id = uuidv4();
+      const id = orderedUuid();
       for (const c of dropped) delete r.cells[c];
       rids.push(Number(insert.run(id, j.dest_sheet_id, j.user_id, next++, JSON.stringify(r.cells)).lastInsertRowid));
       ids.add(id);

@@ -1,6 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 import { appendColumnsToOrder } from './sql-helpers';
+import { orderedUuid } from './ordered-id';
 
 // The default column name a brand-new empty sheet ships with.
 export const SEED_COLUMN_NAME = 'Column 1';
@@ -26,7 +26,7 @@ export function seedEmptySheet(sheetId: string, userId: string): void {
      VALUES (?, ?, ?, ?, ?, datetime('now'))`,
   );
   for (let i = 0; i < SEED_ROW_COUNT; i++) {
-    insertRow.run(uuidv4(), sheetId, userId, i, blank);
+    insertRow.run(orderedUuid(), sheetId, userId, i, blank);
   }
   appendColumnsToOrder(sheetId, userId, [SEED_COLUMN_NAME]);
 }
