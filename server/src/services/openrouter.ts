@@ -39,7 +39,8 @@ export async function getOpenRouterClient(userId: string): Promise<OpenAI> {
     defaultHeaders: OPENROUTER_ATTRIBUTION_HEADERS,
     // Shared keep-alive HTTPS agent so AI run rows reuse TCP+TLS sessions
     // instead of paying a fresh ~80ms handshake per row. See openrouter-agent.ts.
-    httpAgent: openrouterAgent,
+    // A plain-http address (a test's stand-in) takes Node's own agent.
+    httpAgent: OPENROUTER_BASE_URL.startsWith('http:') ? undefined : openrouterAgent,
     // COST SAFETY: never auto-retry. The SDK default (maxRetries: 2) retries on
     // timeout/connection errors BEFORE distinguishing them — but with stream:false
     // the provider has already FULLY GENERATED (and billed) by the time a read
@@ -54,8 +55,9 @@ export async function getOpenRouterClient(userId: string): Promise<OpenAI> {
     // request died on the wire, so nothing was generated or billed. Timeouts and
     // everything else stay non-retried per the above.
     maxRetries: 0,
-    // Bound a single row's wall-clock (SDK default is 10 min) so a stuck/runaway row
-    // can't hold a worker slot — or generate to the token cap — for that long.
+    // The wait for the response to start (SDK default is 10 min). It stops
+    // counting once the headers arrive: a run row's whole call, body included,
+    // is bounded by its own deadline (services/ai-row-outcome.ts).
     timeout: AI_REQUEST_TIMEOUT_MS,
   });
 }

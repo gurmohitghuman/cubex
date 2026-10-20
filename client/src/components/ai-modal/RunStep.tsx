@@ -2,6 +2,7 @@ import React from 'react'
 import { Loader2 } from 'lucide-react'
 import { AIResult, AIRun } from './types'
 import { formatCost } from './format'
+import { selfPaused } from '@/lib/run-controls-copy'
 import type { RunSpend } from '@/utils/api'
 
 interface Props {
@@ -48,6 +49,9 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults, spend }) => (
               The access token that started this run reached its spend cap. Raise the cap in Settings, Agent
               access, then Resume. The cap is for the token&apos;s whole life, not a month.
             </p>
+          )}
+          {currentRun.status === 'paused' && selfPaused(currentRun.pause_reason) && currentRun.error_message && (
+            <p className="mt-1 text-xs text-amber-800" data-testid="run-self-paused">{currentRun.error_message}</p>
           )}
           {spend && (spend.cost_usd !== null || spend.searches !== null) && (
             <p className="mt-1 text-xs text-cube-black" data-testid="run-spend">
