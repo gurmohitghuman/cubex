@@ -20,7 +20,7 @@ const ICONS: Array<[RegExp, Icon]> = [
   [/^webhook/, Webhook],
   [/^rows_deleted|^sheet_deleted|duplicates_removed|rows_moved_out/, Trash2],
   [/restored/, ArchiveRestore],
-  [/rows_imported|rows_moved_in|sample_created/, Upload],
+  [/rows_imported|rows_moved_in|sample_created|ai_visibility_created/, Upload],
   [/rows_sorted/, ArrowDownUp],
   [/sheet_renamed|description/, Pencil],
 ]

@@ -1,0 +1,373 @@
+{
+  "endpoint": {
+    "id": "cloro.ai-search.chatgpt.scrape",
+    "provider": "cloro",
+    "provider_display": "cloro",
+    "name": "ChatGPT answer — text, sources, ads, shopping",
+    "summary": "Runs a prompt through the live ChatGPT web interface from a chosen country and returns the answer text with its cited sources, citation pills, brand entities, shopping cards and sponsored ads as structured fields.",
+    "method": "POST",
+    "path": "/v1/monitor/chatgpt",
+    "scope": "any_account",
+    "tier": "core",
+    "kind": "data",
+    "domain": "chatgpt",
+    "call_template": "treg call cloro.ai-search.chatgpt.scrape --method POST --data '{\"prompt\":\"what is a stock split\",\"country\":\"US\",\"include\":{\"markdown\":true,\"html\":true,\"rawResponse\":true,\"searchQueries\":true,\"ads\":true,\"shopping\":true}}'",
+    "cost": {
+      "type": "per_call",
+      "value": 9,
+      "currency": "credit",
+      "per": 1,
+      "unit": "call",
+      "source": "docs",
+      "source_url": "https://cloro.dev/docs/guides/providers",
+      "checked": "2026-09-05",
+      "confidence": "documented",
+      "modifiers": {
+        "state": {
+          "location": "body",
+          "when": "present",
+          "add_credits": 2
+        }
+      },
+      "note": "9 = 5 base + 2 for the include.rawResponse / searchQueries / ads / shopping family (charged once, however many of the four are set) + the 2-credit sync surcharge every /v1/monitor/* call carries. A plain call with none of those four flags is 7. `state` adds 2 more. Setting the ads/shopping flags is what is billed; whether those blocks actually render is a separate matter — they appear on the desktop UI, which `legacy: true` (free) selects. A failed extraction is not charged.",
+      "usd": 0.0036
+    },
+    "async": null,
+    "platform_eligible": true,
+    "platform_blocked": null,
+    "miss": null,
+    "status": null,
+    "status_note": null,
+    "superseded_by": null,
+    "verified": "2026-09-07",
+    "added": "2026-09-07",
+    "docs_url": "https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt",
+    "has_example": true,
+    "input": {
+      "body": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "note": "1-10,000 characters",
+          "example": "best running shoes for flat feet"
+        },
+        "country": {
+          "type": "string",
+          "required": true,
+          "note": "ISO 3166-1 alpha-2. CN, CZ, HK, IR, MO, RU and VE are refused.",
+          "example": "US"
+        },
+        "state": {
+          "type": "string",
+          "required": false,
+          "note": "US state code for state-level targeting; adds 2 credits",
+          "example": "CA"
+        },
+        "legacy": {
+          "type": "boolean",
+          "required": false,
+          "note": "serve the desktop UI, where ads and shopping render; free. Defaults to the mobile-web UI."
+        },
+        "disableWebSearch": {
+          "type": "boolean",
+          "required": false,
+          "note": "answer from the model alone, without a web search"
+        },
+        "include": {
+          "type": "object",
+          "required": false,
+          "note": "any of markdown, html, rawResponse, searchQueries, ads, shopping. markdown and html are free; setting any of rawResponse / searchQueries / ads / shopping adds 2 credits once, however many of the four are set."
+        }
+      },
+      "bodyType": "json"
+    },
+    "test_request": {
+      "body": {
+        "prompt": "what is a stock split",
+        "country": "US",
+        "include": {
+          "markdown": true,
+          "html": true,
+          "rawResponse": true,
+          "searchQueries": true,
+          "ads": true,
+          "shopping": true
+        }
+      },
+      "bodyType": "json"
+    },
+    "capability": "ai-search.chatgpt.scrape",
+    "capability_description": "Scrape a live ChatGPT answer page for a keyword",
+    "platform": "ai-search",
+    "platform_label": "AI Visibility / AEO",
+    "observed": {
+      "samples": 80916,
+      "decided": 80384,
+      "ok_rate": 0.9766,
+      "p50_ms": 29407,
+      "p95_ms": 73645,
+      "last_ok_days": 0,
+      "hit_rate": null,
+      "hit_samples": 0
+    },
+    "reviews": {
+      "teams": 25,
+      "samples": [
+        {
+          "usefulness": "useful",
+          "reason": "Local-business prompt with state targeting returned the named businesses, a structured map list showing the Yelp/Google feed behind them, and directory citations. Good for local AEO baselines.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "A plain call cost 7 credits and returned the answer text, an ordered source list with footnote flags, and citation pills. Good for brand citation checks.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "ChatGPT scrape returned answer text, ordered source list and citation pills in one cheap call; markdown include worked.",
+          "client": "mcp",
+          "month": "2026-10"
+        }
+      ],
+      "share": {
+        "useful": 0.91,
+        "partly": 0.06,
+        "not_useful": 0.03
+      }
+    }
+  },
+  "siblings": [
+    {
+      "id": "crawl4ai.ai-search.chatgpt.scrape",
+      "provider": "crawl4ai",
+      "provider_display": "Crawl4AI",
+      "name": "ChatGPT's answer to a question",
+      "summary": "What ChatGPT answers a logged-out visitor for one question, as one row: the answer as Markdown and as plain text, the sources it cited and the pages its web search read. For brand monitoring and AI-search visibility: does ChatGPT name you, and which pages does it cite. `prompt` is the question; `web_search` lets ChatGPT search the web first (default on); `country` asks from that country. About 30 s to 2 minutes. Columns: prompt, answer, answer_text, citations, sources, web_search_used, asked_at.",
+      "method": "POST",
+      "path": "/recipes/chatgpt-answer",
+      "scope": "any_account",
+      "tier": "core",
+      "kind": "data",
+      "domain": "chatgpt",
+      "call_template": "treg call crawl4ai.ai-search.chatgpt.scrape --method POST --data '{\"prompt\":\"What are the best open-source web crawlers for LLM pipelines?\"}'",
+      "cost": {
+        "type": "per_success",
+        "value": 3.2,
+        "currency": "credit",
+        "per": 1,
+        "unit": "call",
+        "source": "observed",
+        "source_url": "https://api.crawl4ai.com/recipes",
+        "checked": "2026-10-12",
+        "confidence": "verified",
+        "note": "treg's account price: 3.2 credits a call whatever pages the run fetched, second-source records included; a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.",
+        "usd": 0.0032
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-10-11",
+      "added": "2026-10-11",
+      "docs_url": "https://crawl4ai.com/llms.txt",
+      "has_example": true,
+      "input": {
+        "bodyType": "json",
+        "body": {
+          "country": {
+            "type": "string",
+            "required": false,
+            "note": "default ",
+            "example": "us"
+          },
+          "prompt": {
+            "type": "string",
+            "required": true,
+            "example": "What are the best open-source web crawlers for LLM pipelines?"
+          },
+          "web_search": {
+            "type": "boolean",
+            "required": false,
+            "note": "default True",
+            "example": true
+          }
+        }
+      },
+      "body_allowlist": true,
+      "test_request": {
+        "body": {
+          "prompt": "What are the best open-source web crawlers for LLM pipelines?"
+        }
+      },
+      "observed": {
+        "samples": 1258,
+        "decided": 1234,
+        "ok_rate": 0.1548,
+        "p50_ms": 85045,
+        "p95_ms": 166007,
+        "last_ok_days": 0,
+        "hit_rate": 1,
+        "hit_samples": 191
+      }
+    },
+    {
+      "id": "dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced",
+      "provider": "dataforseo",
+      "provider_display": "DataForSEO",
+      "name": "ChatGPT search results for a keyword, live",
+      "summary": "Live ChatGPT LLM Scraper endpoint provides results from ChatGPT searches.",
+      "method": "POST",
+      "path": "/ai_optimization/chat_gpt/llm_scraper/live/advanced",
+      "scope": "",
+      "tier": "extended",
+      "kind": "data",
+      "domain": "chatgpt",
+      "call_template": "treg call dataforseo.x.ai-optimization-chat-gpt-llm-scraper-live-advanced --method POST --data '[{\"language_code\":\"en\",\"location_code\":2840,\"keyword\":\"albert einstein\"}]'",
+      "cost": {
+        "type": "per_call",
+        "value": 0.004,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "observed",
+        "confidence": "verified",
+        "checked": "2026-07-28",
+        "note": "price observed at live verification (provider-reported charge)",
+        "usd": 0.004
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-07-28",
+      "added": "2026-07-28",
+      "docs_url": "",
+      "has_example": true,
+      "input": {
+        "bodyType": "json",
+        "body": {
+          "keyword": {
+            "type": "string",
+            "required": false,
+            "note": "<em>keyword</em><br><strong>required field</strong><br>you can specify <strong>up to 2000 characters</strong> in the <code>keyword</code> field<br>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<br>if you need to use the “%” character for your <code>keyword</code>, ",
+            "example": "albert einstein"
+          },
+          "location_name": {
+            "type": "string",
+            "required": false,
+            "note": "<em>full name of search engine location</em><br><strong>required field if you don't specify</strong> <code>location_code</code><br><strong>if you use this field, you don't need to specify <code>location_code</code></strong><br>you can receive the list of available locations of the search engine with"
+          },
+          "location_code": {
+            "type": "integer",
+            "required": false,
+            "note": "<em>search engine location code</em><br><strong>required field if you don't specify</strong> <code>location_name</code><br><strong>if you use this field, you don't need to specify <code>location_name</code></strong><br>you can receive the list of available locations of the search engines with their ",
+            "example": 2840
+          },
+          "language_name": {
+            "type": "string",
+            "required": false,
+            "note": "<em>full name of search engine language</em><br><strong>required field if you don't specify <code>language_code</code>;</strong><br>if you use this field, you don't need to specify <code>language_code</code>;<br>you can receive the list of available languages of the search engine with their <code>la"
+          },
+          "language_code": {
+            "type": "string",
+            "required": false,
+            "note": "<em>search engine language code</em><br><strong>required field if you don't specify <code>language_name</code>;</strong><br>if you use this field, you don't need to specify <code>language_name</code>;<br>you can receive the list of available languages of the search engine with their <code>language_c",
+            "example": "en"
+          },
+          "force_web_search": {
+            "type": "boolean",
+            "required": false,
+            "note": "<em>force AI agent to use web search</em><br>optional field<br>when enabled, the AI model is forced to access and cite current web information;<br>default value: <code>false</code>;<br><strong>Note:</strong> even if the parameter is set to <code>true</code>, there is no guarantee web sources will be"
+          },
+          "tag": {
+            "type": "string",
+            "required": false,
+            "note": "<em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response"
+          }
+        },
+        "note": "the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 \"You can set only one task at a time\""
+      },
+      "test_request": {
+        "body": [
+          {
+            "language_code": "en",
+            "location_code": 2840,
+            "keyword": "albert einstein"
+          }
+        ],
+        "bodyType": "json"
+      },
+      "observed": {
+        "samples": 111860,
+        "decided": 109364,
+        "ok_rate": 0.9995,
+        "p50_ms": 23699,
+        "p95_ms": 65144,
+        "last_ok_days": 0,
+        "hit_rate": null,
+        "hit_samples": 0
+      },
+      "reviews": {
+        "teams": 10,
+        "samples": [
+          {
+            "usefulness": "useful",
+            "reason": "PT ChatGPT forced-search answer listed 6 named vendors with brand entities, cited sources and fan-out queries; enough to check whether a brand is absent from category recommendations.",
+            "client": "mcp",
+            "month": "2026-10"
+          },
+          {
+            "usefulness": "useful",
+            "reason": "US forced-search answer with brand entities, cited sources, search results and fan-out queries; good for brand-mention baselines. An identical earlier attempt timed out at the MCP layer.",
+            "client": "mcp",
+            "month": "2026-10"
+          },
+          {
+            "usefulness": "useful",
+            "reason": "Forced-web-search AU run returned answer, 18 of 20 queries with cited sources plus local business entities; good for citation baselines. Location only country-level (location_name rejected).",
+            "client": "claude-code",
+            "month": "2026-10"
+          }
+        ],
+        "share": {
+          "useful": 0.94,
+          "partly": 0.06,
+          "not_useful": 0
+        }
+      }
+    }
+  ],
+  "example_response": {
+    "success": true,
+    "result": {
+      "model": "gpt-5-6",
+      "text": "A stock split is when a company increases the number of its shares by dividing existing shares into smaller pieces, while keeping the overall value of the company the same. FINRA+1\nThink of it like cu",
+      "sources": [
+        {
+          "position": 1,
+          "label": "Stock Splits | FINRA.org",
+          "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
+          "description": "",
+          "footnote": false
+        },
+        {
+          "position": 2,
+          "label": "Stock Split | Investor.gov",
+          "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
+          "description": "",
+          "footnote": false
+        }
+      ],
+      "citationPills": []
+    }
+  }
+}

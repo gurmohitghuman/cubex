@@ -7,6 +7,7 @@ import { Sheet, SheetData, Table } from '@/utils/api'
 
 import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetSampleGuide } from '@/components/sample/SampleGuide'
+import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityGuide'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -294,6 +295,8 @@ export const SheetPage: React.FC = () => {
       <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
       <SheetSampleGuide sheetData={sheetData} dedupeOpen={modals.showDedupeModal}
         onOpenAI={() => modals.setShowAddColumnModal(true)} onOpenDedupe={() => modals.setShowDedupeModal(true)} />
+      <SheetAiVisibilityGuide sheetData={sheetData}
+        onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}

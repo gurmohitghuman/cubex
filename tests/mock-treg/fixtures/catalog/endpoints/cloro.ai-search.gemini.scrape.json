@@ -1,0 +1,268 @@
+{
+  "endpoint": {
+    "id": "cloro.ai-search.gemini.scrape",
+    "provider": "cloro",
+    "provider_display": "cloro",
+    "name": "Google Gemini answer — text and sources",
+    "summary": "Runs a prompt through the live Google Gemini interface from a chosen country and returns the generated answer with its cited sources and citation pills, optionally as Markdown or HTML.",
+    "method": "POST",
+    "path": "/v1/monitor/gemini",
+    "scope": "any_account",
+    "tier": "core",
+    "kind": "data",
+    "domain": "gemini",
+    "call_template": "treg call cloro.ai-search.gemini.scrape --method POST --data '{\"prompt\":\"what is a stock split\",\"country\":\"US\",\"include\":{\"markdown\":true,\"html\":true,\"rawResponse\":true}}'",
+    "cost": {
+      "type": "per_call",
+      "value": 6,
+      "currency": "credit",
+      "per": 1,
+      "unit": "call",
+      "source": "docs",
+      "source_url": "https://cloro.dev/docs/guides/providers",
+      "checked": "2026-09-05",
+      "confidence": "documented",
+      "modifiers": {
+        "state": {
+          "location": "body",
+          "when": "present",
+          "add_credits": 2
+        }
+      },
+      "note": "4 base + the 2-credit sync surcharge. Every include flag on this endpoint is free — only `state` moves the price, by 2. A failed extraction is not charged.",
+      "usd": 0.0024
+    },
+    "async": null,
+    "platform_eligible": true,
+    "platform_blocked": null,
+    "miss": null,
+    "status": null,
+    "status_note": null,
+    "superseded_by": null,
+    "verified": "2026-09-07",
+    "added": "2026-09-07",
+    "docs_url": "https://cloro.dev/docs/api-reference/endpoint/monitor-gemini",
+    "has_example": true,
+    "input": {
+      "body": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "note": "1-10,000 characters",
+          "example": "how does a heat pump work"
+        },
+        "country": {
+          "type": "string",
+          "required": true,
+          "note": "ISO 3166-1 alpha-2. BY, CN and RU are refused.",
+          "example": "US"
+        },
+        "state": {
+          "type": "string",
+          "required": false,
+          "note": "US state code for state-level targeting; adds 2 credits",
+          "example": "CA"
+        },
+        "include": {
+          "type": "object",
+          "required": false,
+          "note": "any of markdown, html, rawResponse. All three are free on this endpoint."
+        }
+      },
+      "bodyType": "json"
+    },
+    "test_request": {
+      "body": {
+        "prompt": "what is a stock split",
+        "country": "US",
+        "include": {
+          "markdown": true,
+          "html": true,
+          "rawResponse": true
+        }
+      },
+      "bodyType": "json"
+    },
+    "capability": "ai-search.gemini.scrape",
+    "capability_description": "Scrape a live Gemini answer page for a keyword",
+    "platform": "ai-search",
+    "platform_label": "AI Visibility / AEO",
+    "observed": {
+      "samples": 45078,
+      "decided": 44805,
+      "ok_rate": 0.9819,
+      "p50_ms": 39211,
+      "p95_ms": 81413,
+      "last_ok_days": 0,
+      "hit_rate": null,
+      "hit_samples": 0
+    },
+    "reviews": {
+      "teams": 5,
+      "samples": [
+        {
+          "usefulness": "useful",
+          "reason": "Returned answer text and sources cheaply. Source URLs carry #:~:text fragments and repeat, so strip and dedupe them before counting citations.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "partly",
+          "reason": "Category-level answer, few named vendors; confirms absence.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "Gemini answer with per-claim sources and domains; sources repeat (17 entries, ~6 unique pages), so dedupe by URL before counting citations.",
+          "client": "mcp",
+          "month": "2026-10"
+        }
+      ],
+      "share": {
+        "useful": 0.76,
+        "partly": 0.24,
+        "not_useful": 0
+      }
+    }
+  },
+  "siblings": [
+    {
+      "id": "dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced",
+      "provider": "dataforseo",
+      "provider_display": "DataForSEO",
+      "name": "Gemini search results for a keyword, live",
+      "summary": "Live Gemini LLM Scraper endpoint provides structured results from Gemini.",
+      "method": "POST",
+      "path": "/ai_optimization/gemini/llm_scraper/live/advanced",
+      "scope": "",
+      "tier": "extended",
+      "kind": "data",
+      "domain": "gemini",
+      "call_template": "treg call dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced --method POST --data '[{\"language_code\":\"en\",\"location_code\":2840,\"keyword\":\"albert einstein\"}]'",
+      "cost": {
+        "type": "per_call",
+        "value": 0.004,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "observed",
+        "confidence": "verified",
+        "checked": "2026-07-28",
+        "note": "price observed at live verification (provider-reported charge)",
+        "usd": 0.004
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-07-28",
+      "added": "2026-07-28",
+      "docs_url": "",
+      "has_example": true,
+      "input": {
+        "bodyType": "json",
+        "body": {
+          "keyword": {
+            "type": "string",
+            "required": false,
+            "note": "<em>keyword</em><br><strong>required field</strong><br>you can specify <strong>up to 2000 characters</strong> in the <code>keyword</code> field<br>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<br>if you need to use the “%” character for your <code>keyword</code>, ",
+            "example": "albert einstein"
+          },
+          "location_name": {
+            "type": "string",
+            "required": false,
+            "note": "<em>full name of search engine location</em><br><strong>required field if you don't specify</strong> <code>location_code</code> or <code>location_coordinate</code><br><strong>if you use this field, you don't need to specify <code>location_code</code> or <code>location_coordinate</code></strong><br>y"
+          },
+          "location_code": {
+            "type": "integer",
+            "required": false,
+            "note": "<em>search engine location code</em><br><strong>required field if you don't specify</strong> <code>location_name</code> or <code>location_coordinate</code><br><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_coordinate</code></strong><br>you can r",
+            "example": 2840
+          },
+          "location_coordinate": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>GPS coordinates of a location</em><p><strong>required field if you don't specify</strong> <code>location_name</code>&nbsp;or <code>location_code</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_code</code></strong><p><code>location"
+          },
+          "language_name": {
+            "type": "string",
+            "required": false,
+            "note": "<em>full name of search engine language</em><br>required field if you don't specify <code>language_code</code>;<br>if you use this field, you don't need to specify <code>language_code</code>;<br>you can receive the list of available languages of the search engine with their <code>language_name</code"
+          },
+          "language_code": {
+            "type": "string",
+            "required": false,
+            "note": "<em>search engine language code</em><br>required field if you don't specify <code>language_name</code>;<br>if you use this field, you don't need to specify <code>language_name</code>;<br>you can receive the list of available languages of the search engine with their <code>language_code</code>_by mak",
+            "example": "en"
+          },
+          "tag": {
+            "type": "string",
+            "required": false,
+            "note": "<em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response"
+          }
+        },
+        "note": "the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 \"You can set only one task at a time\""
+      },
+      "test_request": {
+        "body": [
+          {
+            "language_code": "en",
+            "location_code": 2840,
+            "keyword": "albert einstein"
+          }
+        ],
+        "bodyType": "json"
+      },
+      "observed": {
+        "samples": 68674,
+        "decided": 66277,
+        "ok_rate": 0.9999,
+        "p50_ms": 19479,
+        "p95_ms": 37647,
+        "last_ok_days": 0,
+        "hit_rate": null,
+        "hit_samples": 0
+      },
+      "reviews": {
+        "teams": 5,
+        "samples": [
+          {
+            "usefulness": "useful",
+            "reason": "40/40 answers with many per-paragraph sources; brand_entities absent so business names need text parsing. Flash-Lite model, treat as one sample.",
+            "client": "claude-code",
+            "month": "2026-10"
+          },
+          {
+            "usefulness": "useful",
+            "reason": "Gemini answer with sources and snippets; no fan-out queries, and the model was a Flash-Lite variant, so treat it as one sample, not the Gemini app experience.",
+            "client": "mcp",
+            "month": "2026-10"
+          },
+          {
+            "usefulness": "partly",
+            "reason": "Answers and sources were good for French local queries, but brand_entities came back empty on every call, so brand detection had to be done by text matching.",
+            "client": "mcp",
+            "month": "2026-09"
+          }
+        ],
+        "share": {
+          "useful": 0.8,
+          "partly": 0.2,
+          "not_useful": 0
+        }
+      }
+    }
+  ],
+  "example_response": {
+    "success": true,
+    "result": {
+      "text": "A stock split is a corporate action in which a company increases the number of its outstanding shares by dividing existing shares into multiple new ones. While the total number of shares increases and",
+      "sources": [],
+      "citationPills": []
+    }
+  }
+}
