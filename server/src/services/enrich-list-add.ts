@@ -3,13 +3,13 @@
 // meanwhile). ONE immediate transaction:
 // re-read the journal row (still pending), append its rows where appends go
 // (nextRowIndex, under the row limit), record where each came from
-// (enrichment_list_rows), remove the rows the same source row added there
-// before (a rerun replaces them; after the append, so their positions are
-// never reused), write the source row's status cell, drop the journal row,
+// (enrichment_list_rows), move the rows the same source row added there
+// before to the trash (a rerun replaces them; after the append, so their
+// positions are never reused), write the source row's status cell, drop the journal row,
 // and tell open tabs. All of it commits or none: a restart never adds twice.
 import { db } from '../lib/db';
 import { ENRICH_LIST_RECOUNT_SLACK, MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { appendColumnsToOrder, getSheetColumns, countRows, purgeResultsForRows } from '../lib/sql-helpers';
+import { appendColumnsToOrder, getSheetColumns, countRows } from '../lib/sql-helpers';
 import { nextRowIndex } from '../lib/sheet-busy';
 import { settleRows } from './auto-dedupe-settle';
 import { redactError } from '../lib/redact';
@@ -19,6 +19,7 @@ import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { stopForRoom, writeSourceCell } from './enrich-list-source';
 import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-dest-run';
 import { orderedUuid } from '../lib/ordered-id';
+import { trashReplacedRows } from './trash-replaced';
 
 interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
@@ -167,12 +168,12 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
       from.run(id, j.user_id, j.dest_sheet_id, j.source_sheet_id, j.source_row_id, column ?? '', j.run_id, r.key);
     }
     if (earlier.length) {
-      const ids = JSON.stringify(earlier.map(e => e.dest_row_id));
-      db.prepare('DELETE FROM rows WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?')
-        .run(ids, j.dest_sheet_id, j.user_id);
-      purgeResultsForRows(j.dest_sheet_id, j.user_id, live.map(e => e.row_index as number));
+      const replaced = earlier.map(e => e.dest_row_id);
+      // Into the trash, never deleted outright: an answer that came back short
+      // (a provider's bad day) must not cost the rows it replaced.
+      trashReplacedRows(j.dest_sheet_id, j.user_id, live.map(e => e.dest_row_id));
       db.prepare(`DELETE FROM enrichment_list_rows WHERE dest_row_id IN (SELECT value FROM json_each(?))
-        AND user_id = ?`).run(ids, j.user_id);
+        AND user_id = ?`).run(JSON.stringify(replaced), j.user_id);
       if (live.length) autorunRowsRemoved(j.dest_sheet_id, j.user_id);
     }
     // Auto-dedupe in the other sheet: a row it already has isn't added again (or replaces it).
