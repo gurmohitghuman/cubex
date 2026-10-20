@@ -5,7 +5,8 @@
 // provider, so two rows searching the same company get the same people (the
 // duplicate check has something to find). All names are fictional.
 // Steering (/__mock/state): listSizes {word: n} caps a search mentioning
-// `word` at n rows; "nobody" anywhere in the request finds none.
+// `word` at n rows (0: an answer with an empty list, count 0); "nobody"
+// anywhere in the request finds none (a miss).
 import { fixture, state } from './state.mjs'
 
 const PEOPLE = ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Katherine Johnson', 'Edsger Dijkstra',
@@ -55,5 +56,5 @@ export function listAnswer(toolId, p, body) {
   const capped = Object.entries(state.listSizes ?? {}).find(([w]) => key.includes(w.toLowerCase()))
   const n = Math.min(Number(body.limit ?? 10), capped ? Number(capped[1]) : 10)
   const rows = Array.from({ length: Math.max(0, n) }, (_, i) => (ROWS[field] ?? ROWS.results)(p.provider, i, key))
-  return rows.length ? { output: { [field]: rows, count: rows.length } } : {}
+  return rows.length || capped ? { output: { [field]: rows, count: rows.length } } : {}
 }

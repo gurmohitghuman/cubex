@@ -58,11 +58,21 @@ function seeds(tool: EnrichToolDetail, preset: string | undefined, inputNames: S
   }))
 }
 
+// A list job's fields outside its results: they may also fill this row.
+export function rowFields(tool: EnrichToolDetail): EnrichToolDetail {
+  const at = tool.list?.path
+  return at ? { ...tool, outputs: tool.outputs.filter(o => o.path !== at && !o.path.startsWith(`${at}[`)) } : tool
+}
+
+// addsRows: a list job's own outputs all start off (its results are the point).
 export function defaultOutputs(
   tool: EnrichToolDetail, preset: string | undefined, inputNames: Set<string>, existing: string[], statusColumn: string,
+  addsRows = false,
 ): OutputPick[] {
   const taken = [...existing, statusColumn]
-  return seeds(tool, preset, inputNames).map(s => {
+  const picks = addsRows ? seeds(rowFields(tool), undefined, inputNames).map(s => ({ ...s, enabled: false }))
+    : seeds(tool, preset, inputNames)
+  return picks.map(s => {
     const columnName = uniqueName(s.label, taken)
     taken.push(columnName)
     return { ...s, columnName }

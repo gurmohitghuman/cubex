@@ -31,8 +31,11 @@ export interface EnrichRow { rowIndex: number; rowId: string | null; data: Recor
 // What a row produced: cells to write, or nothing (the run stopped). A list
 // job's results (items) are journaled with them, to become rows elsewhere.
 // copied: the answer of another row of this run; reused: an earlier run's.
+// answered: a list job's call answered (results or none), so the row's
+// earlier rows are replaced, by nothing when it had none.
 export interface RowResult {
-  cells: RowCells; stored: unknown; costMicro: number; items?: unknown[]; copied?: boolean; reused?: boolean;
+  cells: RowCells; stored: unknown; costMicro: number; items?: unknown[]; answered?: boolean; copied?: boolean;
+  reused?: boolean;
 }
 
 // A reused answer's headers: nothing was called, so nothing was charged.
@@ -46,10 +49,11 @@ function answered(
   const e = config.enrichment;
   const copied = sameAsRow !== null;
   if (e.list) {
-    const { cells, items } = listAnswerCells({
-      routed, body, meta, providerNames: e.providerNames, list: e.list, sameAsRow, reusedFrom,
+    const { cells, items, answered: did } = listAnswerCells({
+      routed, body, meta, providerNames: e.providerNames, list: e.list, mapping: config.responseMapping, sameAsRow,
+      reusedFrom,
     });
-    return { cells, stored: trimAnswer(cells.answer, routed), costMicro, items, copied };
+    return { cells, stored: trimAnswer(cells.answer, routed), costMicro, items, answered: did, copied };
   }
   const cells = answerCells({
     routed, body, meta, providerNames: e.providerNames, mapping: config.responseMapping, sameAsRow, reusedFrom,
@@ -160,7 +164,7 @@ export async function processEnrichmentRow(
     run, generation, rowIndex: row.rowIndex, cells: result.cells, stored: result.stored,
     mapping: config.responseMapping, costMicro: result.costMicro, request, reuseKey, reused: !!result.reused,
     stamp: row.stamp,
-    ...(list && result.items?.length
+    ...(list && result.items && (result.items.length || result.answered)
       ? { list: { items: result.items, copy: copyValues(list, row.data), rowId: row.rowId } } : {}),
   });
 }

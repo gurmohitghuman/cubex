@@ -26,7 +26,7 @@ import { addListItems, type AddOutcome, type DestCount } from './enrich-list-add
 import { waitForRoom, writeSourceCell } from './enrich-list-source';
 import { releaseDestRunWaits } from './enrich-list-dest-run';
 
-interface Pending { id: string; source_sheet_id: string }
+interface Pending { id: string; source_sheet_id: string; source_row_id: string; item_count: number }
 
 // Results of a test whose fields were picked while it still ran: its worker
 // journaled them as waiting, and they can go now.
@@ -88,7 +88,8 @@ export async function drainListItems(): Promise<void> {
       WHERE status = 'pending' AND (wait_reason IS NULL OR wait_reason = 'room')
         AND dest_sheet_id IN (SELECT id FROM sheets WHERE trash_id IS NULL)`).pluck().all() as string[];
     for (const dest of dests) {
-      const items = db.prepare(`SELECT id, source_sheet_id FROM enrichment_list_items WHERE rowid IN (
+      const items = db.prepare(`SELECT id, source_sheet_id, source_row_id, item_count FROM enrichment_list_items
+        WHERE rowid IN (
           SELECT rowid FROM enrichment_list_items WHERE dest_sheet_id = ? AND status = 'pending'
             AND (wait_reason IS NULL OR wait_reason = 'room') ORDER BY created_at, rowid LIMIT ?)
         ORDER BY created_at, rowid`).all(dest, ENRICH_LIST_DRAIN_BATCH) as Pending[];
@@ -97,8 +98,18 @@ export async function drainListItems(): Promise<void> {
         // A sort, an import or a column change on either sheet: the next round goes on.
         if (sheetBusyWith(dest) || sheetBusyWith(item.source_sheet_id)) break;
         const out = tryAdd(item.id, count);   // synchronous: nothing runs between the check and the add
-        // The ones behind a full sheet wait for room as well.
-        if ('wait' in out && out.wait === 'room') for (const behind of items.slice(i + 1)) waitForRoom(behind.id);
+        // The ones behind a full sheet wait for room as well, but a removal with
+        // nothing of its row ahead goes on (it makes room).
+        if ('wait' in out && out.wait === 'room') {
+          const ahead = new Set(items.slice(0, i + 1).map(x => x.source_row_id));
+          for (const behind of items.slice(i + 1)) {
+            if (behind.item_count === 0 && !ahead.has(behind.source_row_id) && !sheetBusyWith(dest)
+              && !sheetBusyWith(behind.source_sheet_id)) {
+              tryAdd(behind.id, count);
+              await yieldToRequests();
+            } else { waitForRoom(behind.id); ahead.add(behind.source_row_id); }
+          }
+        }
         if ('error' in out || ('wait' in out && out.wait === 'room')) break;
         await yieldToRequests();
       }

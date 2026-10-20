@@ -49,7 +49,8 @@ export function reusableAnswer(
 ): boolean {
   if (r.cells.status !== 'completed' || r.stored === undefined || r.stored === null) return false;
   if (!how.routed && isObj(r.stored) && Array.isArray(r.stored.$trimmedPaths)) return false;
-  if (how.list) return (r.items?.length ?? 0) > 0;
+  // A list job found something with results, or with its own outputs filled.
+  if (how.list) return (r.items?.length ?? 0) > 0 || (how.mapped && r.cells.fill === 'all');
   return r.cells.fill === 'all' && (how.routed || how.mapped);
 }
 

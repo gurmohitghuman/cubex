@@ -2,9 +2,12 @@
 // fields picked after a test run, parsed strictly (pure). Names are checked
 // against the sheets at start (services/enrich-list-build.ts).
 import {
-  UUID_PATTERN, ENRICH_LIST_DEFAULT_ITEMS, ENRICH_LIST_MAX_COPY, ENRICH_LIST_MAX_FIELDS, ENRICH_LIST_MAX_ITEMS,
+  UUID_PATTERN, ENRICH_LIST_DEFAULT_ITEMS, ENRICH_LIST_MAX_COPY, ENRICH_LIST_MAX_COPY_VALUE, ENRICH_LIST_MAX_FIELDS,
+  ENRICH_LIST_MAX_ITEMS,
 } from './constants';
 import { validateMappingPath } from './jsonpath-extract';
+import { stripControlChars } from './csv-safety';
+import { holdsRunMarker } from './enrich-seed';
 import type { ListField } from './enrich-list';
 
 export interface ListInput {
@@ -13,9 +16,14 @@ export interface ListInput {
   provider: string | null;
   maxItems: number;
   fields: ListField[] | null;     // null: picked after the test run
-  copy: Array<{ from: string; to: string }>;
+  // A column of the asking row ({from, to}), or the same text in every added row ({from: '', to, value}).
+  copy: ListCopyInput[];
   dedupePath: string | null;
+  // Where a single tool's results are, when its example shows that list empty
+  // (null: where the catalog says).
+  itemsPath?: string | null;
 }
+export interface ListCopyInput { from: string; to: string; value?: string }
 
 const PROVIDER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const MAX_NAME = 200;
@@ -43,11 +51,29 @@ export function parseListFields(v: unknown): ListField[] | null | string {
   return out;
 }
 
+// A fixed value: plain text (control and direction characters out), never a
+// run's own words (⏳, ❌…), which later readers would take for a marker.
+function fixedValue(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > ENRICH_LIST_MAX_COPY_VALUE) return null;
+  const text = stripControlChars(v);
+  return holdsRunMarker(text) ? null : text;
+}
+
 function parseCopy(v: unknown): ListInput['copy'] | string {
   if (v === undefined) return [];
   if (!Array.isArray(v) || v.length > ENRICH_LIST_MAX_COPY) return `Copy at most ${ENRICH_LIST_MAX_COPY} columns.`;
   const out: ListInput['copy'] = [];
   for (const c of v) {
+    if (isObj(c) && c.value !== undefined && c.value !== null) {
+      const to = name(c.to);
+      const value = fixedValue(c.value);
+      if (!to || value === null || (c.from !== undefined && c.from !== '')) {
+        return `A fixed value needs a column name (to) and plain text of at most ${ENRICH_LIST_MAX_COPY_VALUE} `
+          + 'characters (not starting with ⏳, ❌, ⏭️ or ➕).';
+      }
+      out.push({ from: '', to, value });
+      continue;
+    }
     const from = isObj(c) ? name(c.from) : null;
     const to = isObj(c) ? name(c.to ?? c.from) : null;
     if (!from || !to) return 'Each copied column needs a name.';
@@ -55,6 +81,11 @@ function parseCopy(v: unknown): ListInput['copy'] | string {
     out.push({ from, to });
   }
   return out;
+}
+
+function parseItemsPath(v: unknown): string | null | undefined {
+  if (v === undefined || v === null || v === '') return null;
+  return typeof v === 'string' && v.length <= 500 && validateMappingPath(v).ok ? v : undefined;
 }
 
 // The dedupe path must be one of the fields kept.
@@ -90,5 +121,7 @@ export function parseListInput(v: unknown): ListInput | null | string {
   if (typeof copy === 'string') return copy;
   const dedupePath = parseDedupe(v.dedupePath, fields);
   if (dedupePath === undefined) return 'Skip duplicates by one of the fields you keep.';
-  return { dest, provider, maxItems, fields, copy, dedupePath };
+  const itemsPath = parseItemsPath(v.itemsPath);
+  if (itemsPath === undefined) return 'itemsPath must be a JSON path to the results.';
+  return { dest, provider, maxItems, fields, copy, dedupePath, ...(itemsPath ? { itemsPath } : {}) };
 }
