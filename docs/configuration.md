@@ -24,6 +24,7 @@ Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LO
 | `RUN_BREAKER_FAILURES` | `5` | AI and HTTP API rows failing in a row on the provider's side (no answer, a server error, a rejected key, no credits) before the run pauses itself. |
 | `AI_CALL_DEADLINE_MS` | `600000` | Longest one AI call may take, answer included, before its row fails as timed out. |
 | `DISK_LOW_MB` | `200` | Free space on the data folder below which the health check says `low` and stalled runs aren't started again. |
+| `CUBEX_START_TIMEOUT` | `600` | Seconds `cubex start` waits for Cubex to answer (30 to 86400). A big database takes a while to check, and to upgrade after an update. A server that keeps crashing fails sooner. |
 | `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |
 | `JWT_SECRET`, `APP_ENCRYPTION_KEY` | generated | Created on first boot. Set them only to manage them yourself. |
 
@@ -40,6 +41,7 @@ Everything Cubex keeps lives in one directory, `~/.cubex/data` (on Windows, `%LO
 | `.jwt-secret` | Signs sign-in sessions. |
 | `.encryption-key` | Encrypts your OpenRouter key, treg key, saved API keys, webhook URLs and run webhook secrets. |
 | `uploads/` | CSV files while they import. Emptied when Cubex starts; no need to back it up. |
+| `backups/` | The copy of `cubex.db` and `jobs.db` the last update kept (`before-update`), for `cubex rollback`, and the data each rollback replaced (`replaced-<time>`). Safe to delete; the next update makes a new copy. |
 
 Back up the whole directory together. **If `.encryption-key` is lost, saved keys can't be decrypted** and have to be entered again. To take a consistent snapshot while Cubex is running, use `scripts/backup-cubex-db.sh` (with the installer: `~/.cubex/app/scripts/backup-cubex-db.sh ~/.cubex/data/cubex.db`). The server guide shows how to [run it every night](self-hosting.md#6-back-up-every-night). The script needs bash, so on Windows run `cubex stop`, copy the `data` folder, then `cubex start`.
 

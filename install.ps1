@@ -435,24 +435,29 @@ function Build-App {
       "build for this PC: please report it at https://github.com/$Repo/issues.")
   }
   [IO.File]::WriteAllText("$next\.cubex-version", "$($S.SrcId)`r`n")
+  [IO.File]::WriteAllText("$next\.cubex-node", "$NodeMajor`r`n") # its native modules' Node (cubex rollback checks it)
   Ok 'Built Cubex'
 }
 
 # The `cubex` command, run by Windows PowerShell whatever runs this script. -Output returns what it prints;
 # otherwise it writes straight to this console (in order with its errors), and the answer is whether it succeeded.
-function Invoke-Cli([string[]]$CliArgs, [switch]$Output) {
-  $cli = "$CubexHome\app\bin\cubex.ps1"
+# From: which copy's command (app, app.next, app.failed). -Code returns its exit code instead of whether it succeeded.
+function Invoke-Cli([string[]]$CliArgs, [switch]$Output, [string]$From = 'app', [switch]$Code) {
+  $cli = "$CubexHome\$From\bin\cubex.ps1"
   $flags = '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File'
   if ($Output) { return & $PowerShellExe @flags $cli @CliArgs }
   $psi = New-Object Diagnostics.ProcessStartInfo $PowerShellExe, "$flags `"$cli`" $($CliArgs -join ' ')"
   $psi.UseShellExecute = $false
   $p = [Diagnostics.Process]::Start($psi)
   $p.WaitForExit()
+  if ($Code) { return $p.ExitCode }
   $p.ExitCode -eq 0
 }
 
 # Swap the new Node and build in. If Cubex was running (or this is a first install) it restarts on the new version;
-# if that fails, the previous one comes back.
+# if that fails, the previous one comes back, with the data as it was before the update. The copy of the data is taken
+# first, while Cubex is stopped: a new version's migrations only go forward, and the previous version refuses a
+# database they changed (cubex rollback uses the copy too).
 function Enable-NewVersion([bool]$NoStart) {
   $names = @(if ($S.NodeNext) { 'node' }; if ($S.Built) { 'app' })
   # Cleared while Cubex still runs: a file open in there then stops the update before anything is stopped.
@@ -460,6 +465,24 @@ function Enable-NewVersion([bool]$NoStart) {
   $wasRunning = $true
   if (Test-Path -LiteralPath "$CubexHome\app\bin\cubex.ps1") {
     if (Invoke-Cli 'is-active') { [void](Invoke-Cli 'stop', '--quiet') } else { $wasRunning = $false }
+  }
+  # The new build's cubex keeps the copy, or the installed one's when the new build is older than that.
+  $kept = ''
+  if ($S.Built -and (Test-Path -LiteralPath "$CubexHome\app\bin\cubex.ps1")) {
+    $kept = @('app.next', 'app') | Where-Object { Test-Path -LiteralPath "$CubexHome\$_\bin\cubex-backup.mjs" } |
+      Select-Object -First 1
+    if ($kept) {
+      $version = Get-Content -LiteralPath "$CubexHome\app\.cubex-version" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+      if (-not $version) { $version = 'unknown' }
+      $rc = Invoke-Cli 'snapshot', "`"$version`"" -From $kept -Code
+      if ($rc -eq 0) { Ok 'Kept a copy of your data from before the update' }
+      elseif ($rc -eq 4) { $kept = '' } # no database yet
+      else {
+        if ($wasRunning) { [void](Invoke-Cli 'start', '--quiet') }
+        Die 'The update stopped before changing anything.'
+      }
+    }
   }
   $swapped = @()
   try {
@@ -494,8 +517,17 @@ function Enable-NewVersion([bool]$NoStart) {
     Move-Folder "$CubexHome\node.previous" "$CubexHome\node"
     $failed += " The new Node.js is in $CubexHome\node.failed."
   }
-  [void](Invoke-Cli 'start', '--quiet')
-  Die "The new version didn't start, so the previous one is back.$failed"
+  # Whichever kept the copy puts it back (the new build is in app.failed now).
+  if ($kept -eq 'app.next') { $kept = 'app.failed' }
+  if ($kept -and $oldApp -and -not (Invoke-Cli 'restore-snapshot' -From $kept)) {
+    Die "The new version didn't start, and your data from before the update couldn't be put back (see above).$failed"
+  }
+  # The newer build's start, which waits for a big database (the previous version's may give up after a minute).
+  $starter = if ($oldApp) { 'app.failed' } else { 'app' }
+  if (Invoke-Cli 'start', '--quiet' -From $starter) {
+    Die "The new version didn't start, so the previous one is back, with your data as it was before the update.$failed"
+  }
+  Die "The new version didn't start, and the previous one didn't either. See: cubex logs.$failed"
 }
 
 function Switch-Folder([string]$Name) { # <name>.next becomes <name>; the one it replaces becomes <name>.previous

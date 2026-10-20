@@ -15,6 +15,7 @@ $Log = Join-Path $CubexHome 'logs\cubex.log'
 $Cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
 $Quiet = $false
 . (Join-Path $PSScriptRoot 'cubex-service.ps1')
+. (Join-Path $PSScriptRoot 'cubex-rollback.ps1')
 
 function Say([string]$Text) { if (-not $Quiet) { Write-Output $Text } }
 function Die([string]$Text) { [Console]::Error.WriteLine("Error: $Text"); exit 1 }
@@ -119,20 +120,52 @@ function Invoke-Run {
   exit $LASTEXITCODE
 }
 
+# The restarts bin\cubex-run.mjs logged after byte $From of the log (all of it, when the log was rotated meanwhile).
+function Get-Restarts([long]$From) {
+  if (-not (Test-Path -LiteralPath $Log)) { return 0 }
+  $file = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite')
+  try {
+    if ($file.Length -lt $From) { $From = 0 }
+    [void]$file.Seek($From, 'Begin')
+    $text = (New-Object IO.StreamReader($file)).ReadToEnd()
+  } finally { $file.Dispose() }
+  ([regex]::Matches($text, 'Cubex stopped \(')).Count
+}
+
+# How long a start may take (CUBEX_START_TIMEOUT seconds, 30 to 86400): a big database is checked, and upgraded by
+# a new version's migrations, before Cubex answers. A runner that stopped, or that had to start the server again
+# twice (it keeps crashing: bin\cubex-run.mjs logs each restart), fails at once.
 function Invoke-Start {
   Import-Config
+  $timeout = 600
+  if ($env:CUBEX_START_TIMEOUT -match '^\d{1,8}$') {
+    $timeout = [Math]::Min(86400, [Math]::Max(30, [int]$env:CUBEX_START_TIMEOUT))
+  }
   if (Test-Running) { Say "Cubex is already running: $(Get-DisplayUrl)"; return }
   $serviceRunning = Test-ServiceRunning
   if (-not $serviceRunning -and (Test-PortInUse)) {
     Die "Port $env:PORT is in use by another program. Set another PORT in $Config, then run: cubex start"
   }
   New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
+  $logFrom = if (Test-Path -LiteralPath $Log) { (Get-Item -LiteralPath $Log).Length } else { 0 }
   Start-CubexService
-  for ($i = 1; -not (Test-Healthy); $i++) {
-    if ($i -gt 120) {
+  $clock = [Diagnostics.Stopwatch]::StartNew()
+  $said = $false
+  while (-not (Test-Healthy)) {
+    $seconds = $clock.Elapsed.TotalSeconds
+    $gone = $seconds -ge 10 -and -not (Test-ServiceRunning)
+    if ($seconds -ge $timeout -or $gone -or (Get-Restarts $logFrom) -ge 2) {
       Stop-CubexService
       if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Tail 20 -Encoding UTF8 | Out-Host }
+      if ($seconds -ge $timeout) {
+        Die "Cubex didn't answer within $timeout seconds (CUBEX_START_TIMEOUT in $Config). Log: $Log"
+      }
       Die "Cubex didn't start; the end of its log is above. Full log: $Log"
+    }
+    if (-not $said -and $seconds -ge 20) {
+      # Shown with --quiet too: an installer waiting minutes should say why.
+      Write-Host '  Still starting: a big database takes a while to check (and to upgrade, after an update).'
+      $said = $true
     }
     Start-Sleep -Milliseconds 500
   }
@@ -291,6 +324,7 @@ Usage: cubex <command>
   open             Open Cubex in your browser
   logs             Follow the server log (Ctrl+C to stop)
   update           Update to the latest release (data and settings are kept)
+  rollback         Go back to the version and the data from before the last update (--yes: don't ask)
   config           Show the settings file
   reset-password   Choose a new password (signs out every browser)
   uninstall        Remove Cubex but keep your data (--delete-data removes it too)
@@ -317,6 +351,10 @@ switch ($command) {
     Get-Content -LiteralPath $Log -Tail 100 -Wait -Encoding UTF8
   }
   'update' { Invoke-Update $rest }
+  'rollback' { Invoke-Rollback $rest }
+  # For install.ps1: keep a copy of the data before an update / put it back.
+  'snapshot' { Invoke-Backup (@('save') + $rest) }
+  'restore-snapshot' { Invoke-Backup @('restore') }
   'config' {
     Write-Output "Settings file: $Config (after a change, run: cubex restart)"
     ''

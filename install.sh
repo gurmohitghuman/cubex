@@ -258,16 +258,39 @@ install build tools and run this again: macOS: xcode-select --install;
 Debian/Ubuntu: sudo apt install build-essential python3."
   fi
   echo "$SRC_ID" > "$next/.cubex-version"
+  echo "$NODE_MAJOR" > "$next/.cubex-node" # its native modules' Node (cubex rollback checks it)
   chmod +x "$next/bin/cubex"
   ok "Built Cubex"
 }
 
 # Swap the new build in. If Cubex was running (or this is a first install) it
-# restarts on the new version; if that fails, the previous version comes back.
+# restarts on the new version; if that fails, the previous version comes back
+# with the data as it was before the update. The copy of the data is taken
+# first, while Cubex is stopped: a new version's migrations only go forward,
+# and the previous version refuses a database they changed (cubex rollback
+# uses the copy too). The new build's cubex keeps it, or the installed one's
+# when the new build is older than that (an install of an older --ref).
 activate() {
-  local cli="$CUBEX_HOME/app/bin/cubex" was_running=1
+  local cli="$CUBEX_HOME/app/bin/cubex" was_running=1 kept='' rc=0 c
   if [ -x "$cli" ]; then
-    if "$cli" is-active; then "$cli" stop --quiet; else was_running=0; fi
+    if ! "$cli" is-active; then was_running=0; fi
+    "$cli" stop --quiet || true # also between a crashing server's restarts
+  fi
+  if [ -d "$CUBEX_HOME/app" ]; then
+    for c in app.next app; do
+      if [ -f "$CUBEX_HOME/$c/bin/cubex-backup.mjs" ]; then kept="$c"; break; fi
+    done
+    if [ -n "$kept" ]; then
+      "$CUBEX_HOME/$kept/bin/cubex" snapshot "$(cat "$CUBEX_HOME/app/.cubex-version" 2>/dev/null || echo unknown)" \
+        || rc=$?
+      case "$rc" in
+        0) ok "Kept a copy of your data from before the update" ;;
+        4) kept='' ;; # no database yet
+        *) restore_node
+          if [ "$was_running" = 1 ]; then "$cli" start --quiet || true; fi
+          die "The update stopped before changing anything." ;;
+      esac
+    fi
   fi
   rm -rf "$CUBEX_HOME/app.previous"
   if [ -d "$CUBEX_HOME/app" ]; then mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.previous"; fi
@@ -278,8 +301,19 @@ activate() {
   rm -rf "$CUBEX_HOME/app.failed" && mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.failed"
   mv "$CUBEX_HOME/app.previous" "$CUBEX_HOME/app"
   restore_node
-  "$cli" start --quiet || true
-  die "The new version didn't start, so the previous one is back. The failed build is in $CUBEX_HOME/app.failed."
+  # Whichever kept the copy puts it back (the new build is in app.failed now).
+  case "$kept" in app.next) kept=app.failed ;; esac
+  if [ -n "$kept" ] && ! "$CUBEX_HOME/$kept/bin/cubex" restore-snapshot; then
+    die "The new version didn't start, and your data from before the update couldn't be put back (see above).
+The previous version is in $CUBEX_HOME/app; the failed build is in $CUBEX_HOME/app.failed."
+  fi
+  # The newer build's start, which waits for a big database (the previous version's may give up after a minute).
+  if "$CUBEX_HOME/app.failed/bin/cubex" start --quiet; then
+    die "The new version didn't start, so the previous one is back, with your data as it was before the update.
+The failed build is in $CUBEX_HOME/app.failed."
+  fi
+  die "The new version didn't start, and the previous one didn't either. See: cubex logs
+The failed build is in $CUBEX_HOME/app.failed."
 }
 
 # The `cubex` command is a tiny launcher, so nothing else (no node) lands on PATH.
