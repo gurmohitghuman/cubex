@@ -1,8 +1,8 @@
 // The free formula columns of an AI visibility table (pure): each engine's
 // "You in <engine>" (your brand's place among the brands its answer names,
 // "1st of 4", or "Not named"), "Named by" (how many of the engines that
-// answered name you), "Named first" (the brand most engines name first) and
-// the cited sites' "Your site". A brand is found as a whole word, ignoring
+// answered name you), "Named first" (the brand most engines name first), a
+// check's "Change since <date>" and the cited sites' "Your site". A brand is found as a whole word, ignoring
 // case and accents; its place is where the answer first names it, and a name
 // inside a longer one found there ("Acme" in "Acme CRM") counts once, as the
 // longer. The brand list sits between marker comments, so editing it rewrites
@@ -52,6 +52,30 @@ export function namedByFormula(answerColumns: readonly string[], brands: readonl
   const v = [${answerColumns.map(ref).join(', ')}].map(fold).filter(t => t);
   if (!v.length) return '';
   return v.filter(t => named(t).includes(0)).length + ' of ' + v.length;
+})()`;
+}
+
+// "Change since <date>" (a check again, services/ai-visibility-check.ts): how
+// many engines name you now, from the answers as "Named by" counts them,
+// against the "3 of 5" kept that day (a lookup column, `thenColumn`): "Up 2",
+// "Down 1" or "Same"; "New" for a question with no answers then (added or
+// edited since). Blank while a different number of engines has answered than
+// then (a rerun fills one engine at a time; one failed, or was added): counts
+// over other engines can't be compared. It counts
+// with the brands of that day (its own marker, which set_brands leaves alone):
+// the count it compares with was made with them.
+export function changeFormula(
+  answerColumns: readonly string[], thenColumn: string, brands: readonly string[],
+): string {
+  return String.raw`(() => {
+  const B = /* brands then */ ${JSON.stringify(brands)} /* end */;${MATCHER}
+  const v = [${answerColumns.map(ref).join(', ')}].map(fold).filter(t => t);
+  if (!v.length) return '';
+  const then = /^\s*(\d+) of (\d+)\s*$/.exec(String(${ref(thenColumn)} == null ? '' : ${ref(thenColumn)}));
+  if (!then) return 'New';
+  if (v.length !== Number(then[2])) return '';
+  const d = v.filter(t => named(t).includes(0)).length - Number(then[1]);
+  return d > 0 ? 'Up ' + d : d < 0 ? 'Down ' + -d : 'Same';
 })()`;
 }
 
