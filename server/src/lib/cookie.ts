@@ -22,7 +22,7 @@ export function isHttps(req: Request): boolean {
   return typeof proto === 'string' && proto.split(',')[0].trim().toLowerCase() === 'https';
 }
 
-function cookieOptions(req: Request) {
+export function cookieOptions(req: Request) {
   return {
     httpOnly: true,
     secure: isHttps(req),

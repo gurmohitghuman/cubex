@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { db } from './db';
 import { loadOrCreateInstanceSecret } from './instance-secret';
@@ -10,6 +11,10 @@ import { loadOrCreateInstanceSecret } from './instance-secret';
 const JWT_SECRET = process.env.JWT_SECRET || loadOrCreateInstanceSecret('.jwt-secret');
 // Matches the session cookie's Max-Age (lib/cookie.ts).
 const JWT_EXPIRES_IN = '30d';
+// The device cookie's key (lib/device-cookie.ts): derived from the same secret,
+// never the secret itself, so a session token and a device cookie can't stand
+// in for each other.
+export const DEVICE_COOKIE_KEY = crypto.createHmac('sha256', JWT_SECRET).update('cubex device cookie').digest();
 
 export interface TokenPayload {
   userId: string;
