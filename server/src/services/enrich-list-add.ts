@@ -24,7 +24,9 @@ interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
   dest_sheet_id: string; items_json: string; item_count: number; wait_reason: string | null;
 }
-interface Payload { items: unknown[]; copy: Record<string, string> }
+// done: the status words a row with no results ends with (its rerun only
+// removes the rows it added before).
+interface Payload { items: unknown[]; copy: Record<string, string>; done?: string }
 
 export type AddOutcome =
   | { added: number; skipped: number }
@@ -104,8 +106,10 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     try { config = JSON.parse(run.config); } catch { /* below */ }
     const list = listOf(config);
     const column = run.master_column_name;
-    // No field to fill (its last column was deleted): it waits for fields to be picked again.
-    if (!list?.fields?.length) {
+    const payload = JSON.parse(j.items_json) as Payload;
+    // No field to fill (its last column was deleted): it waits for fields to be
+    // picked again. Removing earlier rows needs none.
+    if (!list || (!list.fields?.length && payload.items.length > 0)) {
       db.prepare("UPDATE enrichment_list_items SET wait_reason = 'fields', updated_at = datetime('now') WHERE id = ?")
         .run(j.id);
       writeSourceCell(j, column, listCell.waitingFields(j.item_count));
@@ -121,7 +125,6 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     // A pending or running one ends by itself: still being added, tried again next round.
     const blocker = live.length ? destRunBlocker(j.dest_sheet_id, j.user_id) : null;
     if (blocker) { out = blocker.paused ? waitForRun(j, column, name, blocker) : { wait: 'dest_run' }; return; }
-    const payload = JSON.parse(j.items_json) as Payload;
     const { rows, skipped } = rowsToAdd(list, payload, j, new Set(earlier.map(e => e.dest_row_id)));
 
     let have = count.rows;
@@ -144,7 +147,7 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     // Columns the rows fill that the sheet no longer lists come back, as a
     // webhook's do; past the column limit their values are left out.
     const listed = getSheetColumns(j.dest_sheet_id, j.user_id, false);
-    const wanted = [...new Set([...list.copy.map(c => c.to), ...list.fields.map(f => f.columnName)])];
+    const wanted = [...new Set([...list.copy.map(c => c.to), ...(list.fields ?? []).map(f => f.columnName)])];
     const missing = wanted.filter(c => !listed.includes(c));
     const room = Math.max(0, MAX_COLUMNS_PER_SHEET - listed.length);
     appendColumnsToOrder(j.dest_sheet_id, j.user_id, missing.slice(0, room));
@@ -177,7 +180,8 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
     const notKept = deduped?.removed.filter(r => ids.has(r.id)).length ?? 0;
     const added = rows.length - notKept;
     count.rows = after(have) - (deduped?.removed.length ?? 0);
-    writeSourceCell(j, column, listCell.added(added, skipped + notKept));
+    const empty = payload.items.length === 0 && payload.done !== undefined;
+    writeSourceCell(j, column, empty ? payload.done as string : listCell.added(added, skipped + notKept));
     db.prepare('DELETE FROM enrichment_list_items WHERE id = ?').run(j.id);
     db.prepare('UPDATE http_runs SET list_rows_added = list_rows_added + ? WHERE id = ? AND user_id = ?')
       .run(added, j.run_id, j.user_id);

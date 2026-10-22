@@ -39,9 +39,14 @@ export interface EnrichWrite {
 const NO_DEST = 'Rows not added: the sheet for them was deleted.';
 
 // The journal row for a list job's results, and the status cell it shows: the
-// run's fields as they are now (a test's fields may be picked mid-run). False:
-// nowhere to add them.
-function journal(w: EnrichWrite, cells: Record<string, string>): boolean {
+// run's fields as they are now (a test's fields may be picked mid-run). An
+// answer with no results is journaled only when the row added rows there
+// before or has results on their way (queued behind them, so it replaces
+// those too), and never by a test whose fields aren't picked (its results
+// wait, so it removes nothing either); its status cell (Not found, No rows to
+// add) is kept in the journal row as the words to end with. 'lost': nowhere
+// to add them.
+function journal(w: EnrichWrite, cells: Record<string, string>): 'journaled' | 'skipped' | 'lost' {
   const l = w.list!;
   const master = w.run.master_column_name;
   // Read now, not from the run the worker loaded: a deleted sheet nulls it.
@@ -49,18 +54,33 @@ function journal(w: EnrichWrite, cells: Record<string, string>): boolean {
       IFNULL(json_array_length(config, '$.enrichment.list.fields'), 0) > 0 AS ready FROM http_runs
     WHERE id = ? AND user_id = ?`).get(w.run.id, w.run.user_id) as { dest: string | null; ready: number } | undefined;
   const dest = now?.dest ?? null;
+  const empty = l.items.length === 0;
+  const ready = now?.ready === 1;
+  if (empty && (!dest || !l.rowId || !ready || !addedBefore(l.rowId, dest, w.run.user_id))) return 'skipped';
   if (!dest || !l.rowId) {
     if (master) cells[master] = failedCell(NO_DEST);
-    return false;
+    return 'lost';
   }
-  const ready = now?.ready === 1;
-  if (master) cells[master] = ready ? listCell.adding(l.items.length) : listCell.waitingFields(l.items.length);
+  const done = empty && master ? cells[master] : null;
+  if (master) {
+    cells[master] = empty ? listCell.replacing
+      : ready ? listCell.adding(l.items.length) : listCell.waitingFields(l.items.length);
+  }
   db.prepare(`INSERT INTO enrichment_list_items (id, user_id, run_id, source_sheet_id, source_row_id,
       dest_sheet_id, items_json, item_count, status, wait_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`)
     .run(uuidv4(), w.run.user_id, w.run.id, w.run.sheet_id, l.rowId, dest,
-      JSON.stringify({ items: l.items, copy: l.copy }), l.items.length, ready ? null : 'fields');
-  return true;
+      JSON.stringify({ items: l.items, copy: l.copy, ...(done !== null ? { done } : {}) }), l.items.length,
+      ready ? null : 'fields');
+  return 'journaled';
 }
+
+// Whether the source row added rows to that sheet before, or has results on
+// their way there (any column: the drain checks it was this one).
+const addedBefore = (rowId: string, dest: string, userId: string): boolean => !!db.prepare(`SELECT 1
+  FROM enrichment_list_rows WHERE source_row_id = ? AND dest_sheet_id = ? AND user_id = ?
+  UNION ALL SELECT 1 FROM enrichment_list_items WHERE source_row_id = ? AND status = 'pending'
+    AND dest_sheet_id = ? AND user_id = ? LIMIT 1`)
+  .get(rowId, dest, userId, rowId, dest, userId);
 
 // Returns false when the run was no longer ours (nothing written).
 export function writeEnrichmentResult(w: EnrichWrite): boolean {
@@ -68,7 +88,7 @@ export function writeEnrichmentResult(w: EnrichWrite): boolean {
   let written = false;
   db.transaction(() => {
     if (shouldStopHttpRun(w.run.id, w.generation)) return;
-    const lost = !!w.list && !journal(w, cells);
+    const lost = !!w.list && journal(w, cells) === 'lost';
     db.prepare(`
       INSERT INTO http_results (id, run_id, user_id, row_index, request_config, response_data, extracted_fields,
         status, error_message, cost_usd, reuse_key, answered_at)

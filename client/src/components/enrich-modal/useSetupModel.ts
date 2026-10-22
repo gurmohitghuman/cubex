@@ -97,7 +97,7 @@ export function useSetupModel(a: Args) {
   const reuse = reusableNames(draft)
   const taken = columns.filter(c => !reuse.has(c))
   const statusNameProblem = ready ? namesProblem(draft.columnName, [], taken, null) : null
-  const outputNameProblem = ready && !statusNameProblem && !card?.addsRows
+  const outputNameProblem = ready && !statusNameProblem
     ? namesProblem(draft.columnName, draft.outputs, taken, room === null ? null : room + reuse.size) : null
   const limitsProblem = (draft.maxCostPerRowUsd ?? 0) > ENRICH_MAX_ROW_CAP_USD
     ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.` : null

@@ -30,6 +30,9 @@ export interface ListDraft {
   copy: string[]                   // source columns copied into each new row
   fields: ListFieldPick[] | null   // null: picked from the first results
   dedupePath: string | null        // '': "skip" ticked, no field picked yet
+  // The same text written into each new row (set by an agent or a template, kept on Edit).
+  fixed?: Array<{ to: string; value: string }>
+  itemsPath?: string | null        // where the results are, when not where the catalog says
 }
 
 // "Results per row": 1 to 100, narrowed by the range treg declares for a
@@ -77,8 +80,9 @@ export function listRequest(l: ListDraft): EnrichListRequest {
     dest: l.dest.kind === 'new' ? { newSheetName: l.dest.name.trim() } : { sheetId: l.dest.sheetId },
     provider: l.provider, maxItems: l.maxItems,
     fields: on && on.length ? on.map(f => ({ path: f.path, columnName: f.columnName.trim() })) : null,
-    copy: l.copy.map(c => ({ from: c, to: c })),
+    copy: [...l.copy.map(c => ({ from: c, to: c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f }))],
     dedupePath: on?.some(f => f.path === l.dedupePath) ? l.dedupePath : null,
+    ...(l.itemsPath ? { itemsPath: l.itemsPath } : {}),
   }
 }
 
@@ -174,7 +178,7 @@ export function listProblem(
 export function fieldsProblem(l: ListDraft, test = false): string | null {
   const on = l.fields?.filter(f => f.enabled) ?? []
   if (!test && on.length === 0) return 'Keep at least one field.'
-  const names = [...l.copy, ...on.map(f => f.columnName.trim())]
+  const names = [...l.copy, ...(l.fixed ?? []).map(f => f.to), ...on.map(f => f.columnName.trim())]
   for (const n of names) {
     const p = nameProblem(n)
     if (p) return p

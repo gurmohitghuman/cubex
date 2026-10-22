@@ -61,9 +61,8 @@ function inputsOf(v: unknown): Json | string {
 }
 
 function outputsOf(a: AgentRunArgs, tool: EnrichTool, preset: string | null): Json[] | string {
-  if (isObj(a.list)) {
-    return a.outputs === undefined ? [] : 'A job that adds rows has no outputs: pick its fields in list.fields.';
-  }
+  // A job that adds rows may also fill columns of the row that asked (optional).
+  if (isObj(a.list) && a.outputs === undefined) return [];
   const fields = outputFields(tool, preset);
   if (a.outputs === undefined) {
     if (preset === 'verified_email') return EMAIL_DEFAULTS.map(d => ({ ...d, path: EMAIL_OUTPUTS[d.key] }));
@@ -121,8 +120,9 @@ function listOf(v: unknown): Json | null | string {
     dest: destId !== undefined ? { sheetId: destId } : { newSheetName: newName },
     provider: v.provider ?? null, maxItems: v.results_per_row,
     fields: fields === null ? null : fields.map(f => (isObj(f) ? { path: f.path, columnName: f.column_name } : f)),
-    copy: copy.map(c => (isObj(c) ? { from: c.from, to: c.to ?? c.from } : c)),
-    dedupePath: v.dedupe_path ?? null,
+    copy: copy.map(c => (!isObj(c) ? c : c.value !== undefined ? { to: c.to, value: c.value, from: c.from }
+      : { from: c.from, to: c.to ?? c.from })),
+    dedupePath: v.dedupe_path ?? null, itemsPath: v.items_path ?? null,
   };
 }
 

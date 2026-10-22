@@ -5,8 +5,9 @@
 // nothing ran out of the row's budget, which is not the same as "not found".
 import { ENRICH_CELL, enrichCellValues, failedCell, type RowCells } from './enrich-cells';
 import { providerOf, type TregMeta } from './treg-meta';
+import { providerTries } from './enrich-provider-tries';
 import type { ResponseMapping } from './http-request-template';
-import { itemsOf, type EnrichListConfig } from './enrich-list';
+import { itemsOf, readPath, type EnrichListConfig } from './enrich-list';
 import type { ReusedFrom } from './enrich-reuse-key';
 
 type Json = Record<string, unknown>;
@@ -87,26 +88,48 @@ export function missingCells(missing: string): RowCells {
   return { status: 'completed', statusCell: '', answer: null, fill: 'none', reason: `Missing inputs: ${missing}` };
 }
 
-// A list job's answer: its results (at most maxItems), and the row's cells
-// while they wait to become rows. The status cell of a row with results is
-// written with the journal row (services/enrich-row-write.ts).
+// A waterfall's miss that is an answer: each provider it tried answered (none erred or was skipped).
+function everyAnswered(body: unknown, meta: TregMeta): boolean {
+  const tries = providerTries(body, meta, null);
+  return tries.length > 0 && tries.every(t => t.outcome === 'miss' || t.outcome === 'hit');
+}
+
+// A list job's answer: its results (at most maxItems), the row's own outputs
+// (fields outside the list, when the run picked any), and the row's cells
+// while the results wait to become rows. The status cell of a row with
+// results is written with the journal row (services/enrich-row-write.ts).
+// answered: the call answered with a list, even an empty one (a waterfall
+// hit, or a miss every provider it tried answered; a single tool's answer
+// holding the list), so an empty list replaces the rows an earlier run added
+// for this row. A provider's error or skip, an answer without the list (a soft
+// failure, a changed shape) or a budget stop keeps them.
 export function listAnswerCells(a: {
   routed: boolean; body: unknown; meta: TregMeta; providerNames: Record<string, string>;
-  list: EnrichListConfig; sameAsRow: number | null; reusedFrom?: ReusedFrom | null;
-}): { cells: RowCells; items: unknown[] } {
+  list: EnrichListConfig; mapping: ResponseMapping[]; sameAsRow: number | null; reusedFrom?: ReusedFrom | null;
+}): { cells: RowCells; items: unknown[]; answered: boolean } {
   const shared = sharedNotes(a.sameAsRow, a.reusedFrom);
   const outcome = a.routed ? waterfallOutcome(a.body, a.meta) : 'hit';
   const items = outcome === 'hit' ? itemsOf(a.body, a.list.itemsPath, a.list.maxItems) : [];
   const t = isObj(a.body) && isObj(a.body._treg) ? a.body._treg : {};
   const servedBy = typeof t.served_by === 'string' ? t.served_by : a.meta.servedBy;
+  const probe = (answer: unknown): RowCells =>
+    ({ status: 'completed', statusCell: '', answer, fill: 'all', reason: null });
+  const filled = outcome === 'hit' && a.mapping.length > 0
+    && Object.values(enrichCellValues(probe(withCubex(a.body, shared)), a.mapping, null)).some(v => v !== '');
+  const found = items.length > 0 || filled;
   const answer = withCubex(a.body, {
     ...shared, ...(a.routed ? { outcome } : {}),
-    ...(a.routed && items.length ? { found_by: displayName(a.providerNames, servedBy) } : {}),
+    ...(a.routed && found ? { found_by: displayName(a.providerNames, servedBy) } : {}),
   });
   if (outcome === 'capped') {
     const reason = 'Every provider the budget allowed missed; the rest were skipped.';
-    return { cells: { status: 'completed', statusCell: ENRICH_CELL.budget, answer, fill: 'none', reason }, items };
+    const cells: RowCells = { status: 'completed', statusCell: ENRICH_CELL.budget, answer, fill: 'none', reason };
+    return { cells, items, answered: false };
   }
-  const statusCell = items.length ? '' : ENRICH_CELL.notFound;
-  return { cells: { status: 'completed', statusCell, answer, fill: 'none', reason: null }, items };
+  const statusCell = items.length ? '' : filled ? ENRICH_CELL.noRows : ENRICH_CELL.notFound;
+  // Found: every output reads the answer ("Found by" included, which only Cubex adds).
+  const cells: RowCells = { ...probe(answer), statusCell, fill: found ? 'all' : 'none' };
+  const answered = a.routed ? outcome === 'hit' || (outcome === 'miss' && everyAnswered(a.body, a.meta))
+    : Array.isArray(readPath(a.body, a.list.itemsPath));
+  return { cells, items, answered };
 }

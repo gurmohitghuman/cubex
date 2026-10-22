@@ -30,7 +30,9 @@ test('MCP: test 5 rows, read the fields, add those rows, run the rest', async ()
 
   const tool = await call(client, 'get_enrichment', { tool_id: 'treg.people.search' })
   expect(tool.adds_rows).toBe(true)
-  expect(tool.outputs).toEqual([])
+  // Only the fields outside the results, which may fill the asking row.
+  expect(tool.outputs.map((o: { field: string }) => o.field)).toEqual(['count', 'next_cursor'])
+  expect(tool.output_fields).not.toContain('people')
   // A full run needs fields, which come from a test's results.
   expect(await callError(client, 'run_enrichment', {
     sheet_id: sheetId, ...PEOPLE, list: { new_sheet_name: 'People', ...LIST },

@@ -6,7 +6,7 @@
 import { searchTools, getTool, featuredTools, addsRows, type ListedTool, type CatalogFailure } from './enrich-catalog';
 import { toolAccess } from './enrich-access';
 import { getTregToken } from './treg-key';
-import { outputFields } from '../lib/enrich-agent-input';
+import { FOUND_BY_FIELD, outputFields } from '../lib/enrich-agent-input';
 import type { EnrichTool, ToolPrice, ToolProvider } from '../lib/enrich-tool';
 import type { ToolAccess } from '../lib/treg';
 
@@ -67,6 +67,13 @@ function providersJson(providers: ToolProvider[], access: ToolAccess | null) {
   });
 }
 
+// A single tool's lists besides its listed results.
+const otherLists = (t: EnrichTool) => t.arrays.filter(p => p !== t.list?.path);
+
+// The outputs a row can fill: for a job that adds rows, the ones outside its results.
+const rowOutputs = (t: EnrichTool, listsRows: boolean) => (listsRows && t.list
+  ? t.outputs.filter(o => o.path !== t.list!.path && !o.path.startsWith(`${t.list!.path}[`)) : t.outputs);
+
 function toolJson(t: EnrichTool, listsRows: boolean, access: ToolAccess | null, hasKey: boolean) {
   const email = t.capability === 'people.email.find' && t.kind === 'waterfall';
   return {
@@ -80,13 +87,17 @@ function toolJson(t: EnrichTool, listsRows: boolean, access: ToolAccess | null, 
       ...(i.max !== undefined ? { max: i.max } : {}),
     })),
     identity_sets: t.identitySets,
-    outputs: listsRows ? [] : t.outputs.map(o => ({
+    // A job that adds rows: the fields outside its results, which may also fill this sheet's columns.
+    outputs: rowOutputs(t, listsRows).map(o => ({
       field: o.field, path: o.path, ...(o.type ? { type: o.type } : {}), ...(o.note ? { note: o.note } : {}),
       ...(o.required ? { always_filled: true } : {}),
     })),
-    output_fields: listsRows ? [] : outputFields(t, null),
+    output_fields: outputFields(t, null)
+      .filter(f => !listsRows || f === FOUND_BY_FIELD || rowOutputs(t, true).some(o => o.field === f)),
     adds_rows: listsRows,
     ...(listsRows && t.list ? { results_at: t.list.path } : {}),
+    // Its example's other lists (some shown empty): a run may name one as its results (list.items_path).
+    ...(t.kind === 'single' && otherLists(t).length ? { other_lists: otherLists(t) } : {}),
     providers: t.providers ? providersJson(t.providers, access) : null,
     ...(email ? {
       presets: [{

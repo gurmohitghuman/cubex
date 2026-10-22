@@ -118,7 +118,9 @@ export const ListRowsPane: React.FC<Props> = (p) => {
         </Row>
       ) : (
         <p className="text-xs text-gray-600">
-          Rows come from <span className="font-medium">{tool.list?.field}</span> in {tool.providerName ?? tool.provider}
+          Rows come from <span className="font-medium">
+            {list.itemsPath?.replace(/^\$\.?/, '') ?? tool.list?.field ?? 'its results'}
+          </span> in {tool.providerName ?? tool.provider}
           &apos;s answer, as its example at treg shows it.
         </p>
       )}
@@ -138,6 +140,15 @@ export const ListRowsPane: React.FC<Props> = (p) => {
               onChange={v => { if (v) update({ copy: [...list.copy, v] }) }}
               options={copyable.map(c => ({ value: c, label: c }))} />
           )}
+          {(list.fixed ?? []).map(f => (
+            <span key={`fixed:${f.to}`} title={`Every new row gets ${f.to}: ${f.value}`}
+              className="inline-flex items-center gap-1 border border-gray-300 bg-gray-50 px-2 py-0.5 text-xs">
+              {f.to}: {f.value}
+              <button type="button" aria-label={`Stop writing ${f.to}`} className="text-gray-400 hover:text-gray-700"
+                onClick={() => update({ fixed: (list.fixed ?? []).filter(x => x.to !== f.to) })}>
+                <X className="h-3 w-3" /></button>
+            </span>
+          ))}
         </div>
         <p className="text-xs text-gray-500">So each new row says which row it came from.</p>
       </Row>

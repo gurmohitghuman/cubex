@@ -68,6 +68,7 @@ export const ENRICH_LIST_MAX_ITEMS = 100;
 export const ENRICH_LIST_DEFAULT_ITEMS = 10;
 export const ENRICH_LIST_MAX_FIELDS = 100;
 export const ENRICH_LIST_MAX_COPY = 20;
+export const ENRICH_LIST_MAX_COPY_VALUE = 200;   // a fixed value written into every added row
 // The stored answers read to offer fields (the newest results of the column).
 export const ENRICH_LIST_FIELD_SAMPLE = 20;
 // Failed attempts to add a journal row's results before it's marked failed.
