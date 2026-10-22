@@ -19,8 +19,10 @@ export interface AutorunEntry {
 
 // Why an auto-run stopped. Some clear on their own: the capacity ones once
 // today's caps allow a row again (midnight UTC, or a raise); the treg ones are
-// retried a few minutes on; a missing column once it is back; a key problem
-// when a key is saved; 'token_cap' once the access token that turned it on
+// retried a few minutes on; 'ai_credits' (OpenRouter's credits ran out) once
+// OpenRouter reports some; a missing column once it is back; a key problem when
+// a key is saved ('ai_key', OpenRouter refusing a waterfall's AI step, when an
+// OpenRouter key is); 'token_cap' once the access token that turned it on
 // has room under its spend cap again (a raise); 'loop' (a list auto-run whose rows would come back and
 // set it off again) once nothing adds rows back. 'user', 'retired', 'setup',
 // 'priced' (treg prices a tool the team's own key billed: it needs a daily
@@ -100,6 +102,13 @@ export function clearEntryPause(id: string, reason?: string): boolean {
 export function clearKeyPauses(userId: string): void {
   db.prepare(`UPDATE autorun_columns SET paused_reason = NULL, paused_message = NULL, paused_at = NULL
     WHERE user_id = ? AND paused_reason IN ('auth', 'no_key', 'balance', 'team_rule')`).run(userId);
+}
+
+// An OpenRouter key was saved: waterfall auto-runs OpenRouter stopped (the key
+// or a model refused, the balance out) try again.
+export function clearAiKeyPauses(userId: string): void {
+  db.prepare(`UPDATE autorun_columns SET paused_reason = NULL, paused_message = NULL, paused_at = NULL
+    WHERE user_id = ? AND paused_reason IN ('ai_key', 'ai_credits')`).run(userId);
 }
 
 // The newest run of a column: what auto-run repeats.

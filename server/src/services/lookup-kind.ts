@@ -8,8 +8,9 @@
 // sheet as it is when the row is written. The pass also waits (derived-fill.ts
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
 // rewriting a column, and, for a fill, while a run is filling a column it
-// reads. A lookup whose other sheet or column is gone (`broken`), or a column
-// it reads that starts filling again mid-fill, stops the pass with that message.
+// reads (not a paused one). A lookup whose other sheet or column is gone
+// (`broken`), or a column it reads that starts filling again mid-fill, stops
+// the pass with that message.
 import { db } from '../lib/db';
 import {
   DERIVED_SLICE_CHARS, LOOKUP_CACHE_ENTRIES, LOOKUP_FOLLOW_MAINTAIN_MS, LOOKUP_STEP_ROUND_MS, LOOKUP_STEP_ROWS,
@@ -41,9 +42,10 @@ export function otherSheetName(sheetId: string, userId: string): string | null {
 // The other sheet's columns a lookup reads: the one it matches and the ones it returns.
 export const lookupReads = (rec: LookupColumnRow): string[] => [rec.match_column, ...(lookupReturnColumns(rec) ?? [])];
 
-// A column it reads that something is filling now: a run, or a derived column's fill.
+// A column it reads that something is filling now: a run, or a derived column's fill. Not a paused
+// run: one can stay paused for days, so a fill doesn't wait for it (a waterfall's lookup step doesn't).
 export function readsFilling(rec: LookupColumnRow): { column: string; byRun: boolean } | null {
-  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id);
+  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false });
   const fills = new Set(fillingColumns(rec.other_sheet_id, rec.user_id));
   for (const c of lookupReads(rec)) {
     if (runs.has(c)) return { column: c, byRun: true };

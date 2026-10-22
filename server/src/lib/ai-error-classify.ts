@@ -133,3 +133,16 @@ export function summarizeErrorClasses(
     .sort((a, b) => b[1] - a[1])
     .map(([error_class, count]) => ({ error_class, count, hint: AI_ERROR_CLASS_HINT[error_class] }));
 }
+
+// A 'configuration' error that is money running out at OpenRouter, the
+// account's or the key's own limit (not a key it refused, or a model it doesn't
+// have): fixed there, so an auto-run it paused goes on once OpenRouter reports
+// credits again (services/autorun-loop.ts).
+const OUT_OF_CREDITS = [
+  /\b402\b|\bpayment required\b|\bmore credits\b|\binsufficient (?:credits?|funds|balance)\b/i,
+  /\b(?:key|budget) limit exceeded\b/i,
+];
+
+export function isOutOfCredits(errorMessage: string): boolean {
+  return classifyAiError(errorMessage) === 'configuration' && OUT_OF_CREDITS.some(re => re.test(errorMessage));
+}
