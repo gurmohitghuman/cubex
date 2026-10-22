@@ -40,6 +40,12 @@ test('People at a company: test, pick the fields, add the rows, run the rest', a
   await drawer(page).locator('#enrich-list-max').fill('4')
   await expect(drawer(page).getByTestId('enrich-list-estimate'))
     .toHaveText('May add up to 28 rows to People (4 per row).', { timeout: 15_000 })
+  // The job's own fields can fill this sheet too, from the same call (all start off).
+  await drawer(page).getByRole('button', { name: /Outputs in this sheet/ }).click()
+  const outputs = drawer(page).getByTestId('enrich-outputs')
+  await expect(outputs.getByRole('checkbox', { checked: true })).toHaveCount(0)
+  await expect(outputs).not.toContainText('People')
+  await outputs.locator('li').filter({ hasText: 'Count' }).getByRole('checkbox').check()
 
   // The test: 5 rows' results wait for their fields.
   await drawer(page).getByTestId('enrich-run-test').click()
@@ -70,6 +76,7 @@ test('People at a company: test, pick the fields, add the rows, run the rest', a
   const source = await rowsOf(api, sheetId)
   // The status column is named after the job.
   expect(source.map(r => r['People at a company'])).toEqual(Array(7).fill('✅ 4 rows added'))
+  expect(source.map(r => r.Count)).toEqual(Array(7).fill('4'))
   const tables = await (await api.get(`/api/tables/${tableId}`)).json()
   const dest = tables.sheets.find((s: { name: string }) => s.name === 'People')
   const people = await destRows(api, dest.id)

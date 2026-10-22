@@ -84,9 +84,9 @@ export async function buildEnrichmentConfig(
   if (!input.list && tool.kind === 'waterfall' && tool.list) {
     return bad('This job adds its results as rows. Pick the sheet they go to.');
   }
-  if (input.list && (input.preset || input.outputs.length)) {
-    return bad('A job that adds rows has no output columns here: pick the fields to keep instead.');
-  }
+  // A job that adds rows may also fill columns of the row that asked, from the
+  // same answer (its fields outside the list), but not as a preset.
+  if (input.list && input.preset) return bad("A job that adds rows can't run as a preset.");
   let verify: EnrichTool | null = null;
   if (input.preset === 'verified_email') {
     if (tool.capability !== 'people.email.find' || tool.kind !== 'waterfall') {
@@ -121,6 +121,12 @@ export async function buildEnrichmentConfig(
   }
   const mapping = outputMapping(input, tool);
   if ('fail' in mapping) return mapping;
+  // A list job's outputs read the answer outside its results (those become rows).
+  const at = list?.itemsPath;
+  const inside = at ? mapping.find(m => m.jsonPath === at || m.jsonPath.startsWith(`${at}[`)) : undefined;
+  if (inside) {
+    return bad(`"${inside.columnName}" reads inside the results: keep it as a field of the new rows instead.`);
+  }
 
   // A tool with no listed price runs on the team's own provider key: the
   // provider bills it, so there is no cap to send and no run limit to keep.
@@ -152,7 +158,8 @@ export async function buildEnrichmentConfig(
     // The destination and its column names are settled at start (services/enrich-list-dest.ts).
     ...(list && input.list ? {
       list: {
-        destSheetId: '', itemsPath: list.itemsPath, provider: list.provider, maxItems: input.list.maxItems,
+        destSheetId: '', itemsPath: list.itemsPath, ...(list.itemsPath !== tool.list?.path ? { itemsNamed: true } : {}),
+        provider: list.provider, maxItems: input.list.maxItems,
         fields: input.list.fields, copy: [],
         dedupe: input.list.dedupePath ? { path: input.list.dedupePath } : null,
       },

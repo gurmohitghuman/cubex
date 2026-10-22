@@ -48,7 +48,7 @@ export function giveFields(
     // Its columns change: not while a sort, an import or a column change runs there.
     const busy = sheetBusyWith(dest);
     if (busy) return { fail: 'conflict', message: `${name}: ${busyMessage(busy)}` };
-    const cols = destColumns({ copy: list.copy.map(c => ({ from: c.from, to: c.to })), fields },
+    const cols = destColumns({ copy: list.copy.map(c => ({ ...c })), fields },
       getSheetColumns(dest, userId, false), getColumnTypes(dest, userId), name);
     if ('fail' in cols) return cols;
     appendColumnsToOrder(dest, userId, cols.newColumns);

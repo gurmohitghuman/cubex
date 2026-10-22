@@ -57,7 +57,9 @@ export function destColumns(
     }
     names.push(name);
   }
-  const copy = input.copy.map((c, i) => ({ id: `c${i + 1}`, from: c.from, to: names[i] }));
+  const copy = input.copy.map((c, i) => ({
+    id: `c${i + 1}`, from: c.from, to: names[i], ...(c.value !== undefined ? { value: c.value } : {}),
+  }));
   const fields = input.fields
     ? input.fields.map((f, i) => ({ path: f.path, columnName: names[input.copy.length + i] })) : null;
   const newColumns = names.filter(n => !have.includes(n));
@@ -73,7 +75,7 @@ export function planListDest(
   const source = db.prepare('SELECT table_id FROM sheets WHERE id = ? AND user_id = ?')
     .get(sourceSheetId, userId) as { table_id: string } | undefined;
   if (!source) return { fail: 'not_found', message: 'Sheet not found' };
-  const gone = input.copy.find(c => !sourceColumns.includes(c.from));
+  const gone = input.copy.find(c => c.value === undefined && !sourceColumns.includes(c.from));
   if (gone) return bad(`The column "${gone.from}" isn't in this sheet anymore.`);
   let sheetId: string | null = null, newName: string | null = null, name: string;
   let have: string[] = [], types: Record<string, string> = {};

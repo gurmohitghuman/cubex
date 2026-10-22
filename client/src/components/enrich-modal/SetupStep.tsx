@@ -118,12 +118,15 @@ export const SetupStep: React.FC<Props> = (p) => {
             </AccordionSection>
           )}
 
-          {draft.list ? (
+          {draft.list && (
             <ListSetupSection sheetId={p.sheetId} tool={m.tool} list={draft.list} updateList={m.updateList}
               columns={p.columns} sheets={m.sheets} sent={m.sent} destProblem={m.listDest ?? destError}
               column={more ? draft.columnName.trim() : null} active={p.active} />
-          ) : (
-            <AccordionSection title="Outputs" summary={outputsSummary(draft.outputs)} defaultOpen>
+          )}
+          {(!draft.list || draft.outputs.length > 0) && (
+            // A list job's other fields can fill this row too (all off at first).
+            <AccordionSection title={draft.list ? 'Outputs in this sheet' : 'Outputs'}
+              summary={outputsSummary(draft.outputs)} defaultOpen={!draft.list}>
               <OutputsPane outputs={draft.outputs} onChange={outputs => update({ outputs })} />
               {m.outputNameProblem && <p className="text-xs text-red-600">{m.outputNameProblem}</p>}
             </AccordionSection>

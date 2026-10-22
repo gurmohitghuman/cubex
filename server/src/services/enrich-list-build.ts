@@ -30,8 +30,21 @@ export function listProviders(tool: EnrichTool, given: string[]): ToolProvider[]
     && providerCanAnswer(p.accepts, sent, tool.derive, known));
 }
 
+// Where the results are: the catalog's list, or (a single tool) another list
+// of its example answer that the run names (refused once the example lacks it).
+function itemsPathOf(tool: EnrichTool, list: ListInput): string | null {
+  const asked = list.itemsPath ?? null;
+  if (!asked || asked === tool.list?.path) return tool.list?.path ?? null;
+  return tool.kind === 'single' && tool.arrays.includes(asked) ? asked : null;
+}
+
 export function planListRun(tool: EnrichTool, list: ListInput, given: string[]): ListPlan | RunFail {
-  if (!tool.list) return bad("This tool doesn't return a list of results, so it can't add rows.");
+  const itemsPath = itemsPathOf(tool, list);
+  if (!itemsPath) {
+    return bad(list.itemsPath && tool.kind === 'single'
+      ? `This tool's answer has no list at ${list.itemsPath}.`
+      : "This tool doesn't return a list of results, so it can't add rows.");
+  }
   // A tool that takes treg's `limit` is asked for the results per row (and
   // priced at it), within the range treg declares for that input.
   const lim = tool.inputs.find(i => i.name === 'limit');
@@ -40,7 +53,7 @@ export function planListRun(tool: EnrichTool, list: ListInput, given: string[]):
   if (list.maxItems < lo || list.maxItems > hi) return bad(`Results per row must be ${lo} to ${hi}.`);
   const limitInput = lim ? 'limit' : null;
   if (tool.kind !== 'waterfall') {
-    return { route: routeFor(tool, [], [], false), itemsPath: tool.list.path, provider: null, limitInput };
+    return { route: routeFor(tool, [], [], false), itemsPath, provider: null, limitInput };
   }
   if (!list.provider) return bad('Pick the provider whose results become rows.');
   const slug = list.provider.toLowerCase();
@@ -56,7 +69,7 @@ export function planListRun(tool: EnrichTool, list: ListInput, given: string[]):
     // One provider: preferred, every other one excluded (own keys and free
     // routes would otherwise run first), and no next provider on a miss.
     route: routeFor(tool, [slug], others, true),
-    itemsPath: tool.list.path, provider: slug, limitInput,
+    itemsPath, provider: slug, limitInput,
   };
 }
 

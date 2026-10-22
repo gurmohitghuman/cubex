@@ -100,16 +100,23 @@ export function contractOutputs(contract: unknown): { outputs: ToolOutput[]; lis
 }
 
 const MAX_EXAMPLE_OUTPUTS = 60;
+const MAX_EXAMPLE_ARRAYS = 20;
 const MAX_DEPTH = 4;
 
 // Single tools: suggest the leaf fields of the catalog's example answer (first
 // item of each array), and the first array of objects as a possible list.
-export function exampleOutputs(example: unknown): { outputs: ToolOutput[]; list: ToolList | null } {
+// arrays: the lists that could hold results, empty ones too (a run may name
+// one as its results, e.g. one the example shows empty:
+// services/enrich-list-build.ts); never one inside another list's item.
+export function exampleOutputs(example: unknown): { outputs: ToolOutput[]; list: ToolList | null; arrays: string[] } {
   const outputs: ToolOutput[] = [];
+  const arrays: string[] = [];
   let list: ToolList | null = null;
   const walk = (value: unknown, path: string, label: string, depth: number) => {
     if (outputs.length >= MAX_EXAMPLE_OUTPUTS || depth > MAX_DEPTH) return;
     if (Array.isArray(value)) {
+      const fits = value.length === 0 || isObj(value[0]);
+      if (fits && !path.includes('[') && arrays.length < MAX_EXAMPLE_ARRAYS) arrays.push(path);
       if (!list && value.length > 0 && isObj(value[0])) list = { field: label || 'items', path };
       if (value.length > 0) walk(value[0], `${path}[0]`, label, depth + 1);
       return;
@@ -121,5 +128,5 @@ export function exampleOutputs(example: unknown): { outputs: ToolOutput[]; list:
     if (label) outputs.push({ field: label, path, type: value === null ? 'null' : typeof value });
   };
   walk(example, '$', '', 0);
-  return { outputs, list };
+  return { outputs, list, arrays };
 }

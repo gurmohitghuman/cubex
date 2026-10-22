@@ -27,6 +27,8 @@ export const STATUS_WORDS =
   + 'Jobs that add rows to another sheet: '
   + '"➕ Adding N rows…", "➕ N results, waiting for fields", "➕ N rows waiting for room in <sheet>", '
   + '"✅ N rows added" (", M already there" when duplicates were skipped), "✅ Already there", '
-  + '"❌ Rows not added: <reason>". Output columns are empty on rows that found nothing; a column added from '
+  + '"✅ No rows to add" (its outputs filled, no results), "➕ Removing earlier rows…" (a rerun with no results '
+  + 'replaces the rows the row added before), "❌ Rows not added: <reason>". '
+  + 'Output columns are empty on rows that found nothing; a column added from '
   + 'stored answers says "⏭️ No data" where the answer had no value. An empty status cell means the row hasn\'t '
   + 'run (rows missing an input are skipped and stay empty).';

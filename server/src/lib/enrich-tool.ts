@@ -32,6 +32,8 @@ export interface ToolSummary {
 export interface EnrichTool extends ToolSummary {
   method: string; inputs: ToolInput[]; identitySets: string[][] | null; derive: Record<string, string> | null;
   outputs: ToolOutput[]; list: ToolList | null; providers: ToolProvider[] | null;
+  // A single tool's lists in its example answer, empty ones too (lib/enrich-tool-io.ts).
+  arrays: string[];
   strictQuery: boolean; bodyType: string | null; queryArrayEncoding: string | null;
   // A single tool's job waterfall (treg.<capability>), when treg lists it among
   // the tool's siblings: whether the job answers with a list is read from it.
@@ -145,7 +147,8 @@ export function normalizeTool(detail: Json): EnrichTool | null {
   if (!ep || !summary) return null;
   const routing = isObj(detail.routing) ? detail.routing : null;
   const identitySets = routing ? identitySetsOf(routing.contract) : null;
-  const io = routing ? contractOutputs(routing.contract) : exampleOutputs(detail.example_response);
+  const example = routing ? null : exampleOutputs(detail.example_response);
+  const io = example ?? contractOutputs(routing!.contract);
   const input = isObj(ep.input) ? ep.input : {};
   return {
     ...summary,
@@ -155,6 +158,7 @@ export function normalizeTool(detail: Json): EnrichTool | null {
     derive: routing ? deriveOf(routing.contract) : null,
     outputs: io.outputs,
     list: io.list,
+    arrays: example?.arrays ?? [],
     providers: routing ? providersOf(routing, detail.siblings) : null,
     strictQuery: ep.strict_query === true,
     bodyType: str(input.bodyType),

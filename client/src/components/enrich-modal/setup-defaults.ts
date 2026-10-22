@@ -39,7 +39,8 @@ export function autoBindings(
 }
 
 // A list job (its results become rows elsewhere) starts its "Add results as
-// rows" part instead of outputs; `sheets` are the table's other sheets.
+// rows" part, and its other fields as outputs, all off; `sheets` are the
+// table's other sheets.
 export function buildSetup(
   card: EnrichToolCard, tool: EnrichToolDetail, columns: string[], filled: Set<string> | null = null,
   sheets: SheetRef[] = [],
@@ -54,7 +55,7 @@ export function buildSetup(
     bindings,
     providerOrder: tool.providers ? providerRows(tool.providers, null).map(r => r.provider) : [],
     skipProviders: [],
-    outputs: addsRows ? [] : defaultOutputs(tool, card.preset, inputNames, columns, columnName),
+    outputs: defaultOutputs(tool, card.preset, inputNames, columns, columnName, addsRows),
     list: addsRows ? buildListDraft(tool, bindings, columns, sheets) : null,
   }
 }

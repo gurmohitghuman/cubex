@@ -13,14 +13,18 @@ export { LIST_MARK };
 
 // A result's field (a path inside one result) and the destination column it fills.
 export interface ListField { path: string; columnName: string }
-// A source column copied into every row a source row adds.
-export interface ListCopy { id: string; from: string; to: string }
+// A source column copied into every row a source row adds, or (value set,
+// from '') the same text written into each of them.
+export interface ListCopy { id: string; from: string; to: string; value?: string }
 
 export interface EnrichListConfig {
   destSheetId: string;
   // Where the results are in treg's answer: a waterfall's list output
   // ($.output.people), or the list in a single tool's example answer.
   itemsPath: string;
+  // The run named itemsPath (another list of a single tool's answer than the
+  // catalog's): kept on reruns, and refused once the example no longer has it.
+  itemsNamed?: boolean;
   provider: string | null;      // a waterfall's one provider (null: a single tool)
   maxItems: number;
   // null: not picked yet (a test run): its results wait in the journal.
@@ -35,10 +39,15 @@ export interface EnrichListConfig {
 const count = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 export const listCell = {
   adding: (n: number) => `${LIST_MARK} Adding ${count(n, 'row')}…`,
+  // A rerun with no results: the rows the row added before are on their way out.
+  replacing: `${LIST_MARK} Removing earlier rows…`,
   waitingFields: (n: number) => `${LIST_MARK} ${count(n, 'result')}, waiting for fields`,
-  waitingRoom: (n: number, dest: string) => `${LIST_MARK} ${count(n, 'row')} waiting for room in ${dest}`,
+  // n 0: a rerun with no results, whose removal waits behind its row's earlier results.
+  waitingRoom: (n: number, dest: string) =>
+    `${LIST_MARK} ${n ? `${count(n, 'row')} waiting` : 'Waiting'} for room in ${dest}`,
   // A paused run on the destination may still fill the rows these replace: say what to do.
-  waitingPausedRun: (n: number, dest: string, column: string | null) => `${LIST_MARK} ${count(n, 'row')} wait: `
+  waitingPausedRun: (n: number, dest: string, column: string | null) =>
+    `${LIST_MARK} ${n ? `${count(n, 'row')} wait` : 'Removing earlier rows waits'}: `
     + `the ${column ? `${column} ` : ''}run in ${dest} is paused. Resume or cancel it`,
   // Nothing new: the useful number first (a grid cell cuts the end off).
   added: (n: number, skipped: number) => (n === 0 && skipped > 0
@@ -114,6 +123,7 @@ export function discoverFields(items: unknown[]): ListFieldInfo[] {
 export function copyValues(list: EnrichListConfig, data: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const c of list.copy) {
+    if (c.value !== undefined) { out[c.id] = c.value; continue; }
     const v = data[c.from] ?? '';
     out[c.id] = holdsRunMarker(v) ? '' : v;
   }

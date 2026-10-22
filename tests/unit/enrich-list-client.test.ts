@@ -31,7 +31,9 @@ const sheets = [{ id: 's-people', name: 'People' }]
 
 // --- Defaults ----------------------------------------------------------------
 const built = buildSetup(card, tool, columns, null, sheets)
-check('a list job has no outputs, and a list part', (built.outputs ?? []).length === 0 && !!built.list)
+check('a list job offers its other fields as outputs, all off, and a list part',
+  (built.outputs ?? []).some(o => o.key === 'count') && !(built.outputs ?? []).some(o => o.enabled)
+  && !(built.outputs ?? []).some(o => o.key === 'people') && !!built.list)
 const list = built.list!
 check('a new sheet named after the list, clear of the table\'s names',
   list.dest.kind === 'new' && list.dest.name === 'People 2')

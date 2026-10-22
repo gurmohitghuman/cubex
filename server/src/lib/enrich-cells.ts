@@ -10,6 +10,8 @@ import type { ResponseMapping } from './http-request-template';
 
 export const ENRICH_CELL = {
   found: '✅ Found',
+  // A list job that filled the row's own outputs but had no results to add.
+  noRows: '✅ No rows to add',
   notFound: '⏭️ Not found',
   budget: '⏭️ Budget ran out',
 } as const;

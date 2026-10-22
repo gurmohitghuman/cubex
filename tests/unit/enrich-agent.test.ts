@@ -106,10 +106,19 @@ const listFull = parse(agentRunBody({
 check('a full list run takes fields and a dedupe path', 'ok' in listFull
   && listFull.ok.list?.fields?.[0].columnName === 'First name' && listFull.ok.list?.dedupePath === '$.first_name'
   && listFull.ok.continueColumn && listFull.ok.rows.status === 'not_enriched')
-const listOutputs = agentRunBody(
-  { ...listArgs, test: true, outputs: [], list: { new_sheet_name: 'P' } }, people, null, null,
-)
-check('a list job takes no outputs', 'error' in listOutputs)
+const listOutputs = parse(agentRunBody({
+  ...listArgs, test: true, outputs: [{ field: 'count', column_name: 'People found' }],
+  list: { new_sheet_name: 'P', copy_columns: [{ to: 'Source', value: 'Search' }] },
+}, people, null, null))
+check('a list job may also fill outputs of the asking row, and write a fixed value', 'ok' in listOutputs
+  && listOutputs.ok.outputs[0]?.columnName === 'People found' && listOutputs.ok.outputs[0]?.path === '$.output.count'
+  && JSON.stringify(listOutputs.ok.list?.copy) === '[{"from":"","to":"Source","value":"Search"}]')
+check('a list job\'s outputs are still checked',
+  'error' in agentRunBody({ ...listArgs, test: true, outputs: [{ field: 'people', column_name: 'P' }],
+    list: { new_sheet_name: 'P' } }, people, null, null))
+check('a fixed value needs a column name',
+  'error' in parse(agentRunBody({ ...listArgs, test: true,
+    list: { new_sheet_name: 'P', copy_columns: [{ value: 'x' }] } }, people, null, null)))
 const twoDests = agentRunBody({ ...listArgs, test: true,
   list: { new_sheet_name: 'P', destination_sheet_id: 'x' } }, people, null, null)
 check('a list job names one destination', 'error' in twoDests)

@@ -60,7 +60,10 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'nothing; the older where list still works). '
   + 'LIST JOBS (get_enrichment adds_rows:true): pass list {new_sheet_name or destination_sheet_id (same table), '
   + 'provider (one provider: treg returns each provider\'s own fields), results_per_row (the price dial), '
-  + 'copy_columns}; no outputs. The fields to keep come from real results: run with test:true, poll '
+  + 'copy_columns: [{from, to}] copies a column of the asking row, [{to, value}] writes the same text into '
+  + 'every added row}; outputs are optional and fill columns of the asking row from the answer\'s fields outside '
+  + 'its results (a row with none says "✅ No rows to add"). The fields to keep come from real results: run with '
+  + 'test:true, poll '
   + 'get_run_status until the run completes (its enrichment.list.waiting_for_fields counts them), read the fields '
   + 'with get_list_fields, pick them with add_list_rows (adds those rows), then control_run rerun mode "empty" runs '
   + 'the rest. Or pass list.fields when you already know them. When auto-run is on in the destination, '
@@ -93,7 +96,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
     description:
       'One enrichment tool, ready for run_enrichment: its inputs (name, type, required; identity_sets lists the '
       + 'inputs that are enough together; filter inputs narrow a search), its outputs (field names for '
-      + 'run_enrichment outputs; empty for a tool that adds rows, whose fields come from real results), its price, '
+      + 'run_enrichment outputs; for a tool that adds rows, only the fields outside its results, which fill the '
+      + 'asking row; the results\' own fields come from real results), its price, '
       + 'and for a waterfall each provider (price, hit rate, the inputs it accepts, and with a treg key saved, '
       + 'access as treg\'s plan says: your_key (the team\'s own key), your_connection_metered, free, treg (treg\'s '
       + 'key), or null when the plan doesn\'t say). The email finder also offers the verified_email preset.',
@@ -118,7 +122,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       inputs: z.record(z.string(), input).optional()
         .describe('Tool input -> column name, {"column": name} or {"value": fixed}'),
       outputs: z.array(z.object({ field: z.string(), column_name: z.string() }).strict()).optional()
-        .describe('Fields from get_enrichment output_fields, each a new column. Not for list jobs.'),
+        .describe('Fields from get_enrichment output_fields, each a new column. Optional for list jobs.'),
       email: z.object({
         accept: z.enum(['safest', 'balanced', 'wide']).optional(), guess: lenientBoolean().optional(),
         pattern: z.enum(GUESS_PATTERNS).optional(),
@@ -146,8 +150,13 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         provider: z.string().optional(),
         results_per_row: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional(),
         fields: z.array(z.object({ path: z.string(), column_name: z.string() }).strict()).optional(),
-        copy_columns: z.array(z.object({ from: z.string(), to: z.string().optional() }).strict()).optional(),
+        copy_columns: z.array(z.object({
+          from: z.string().optional(), to: z.string().optional(), value: z.string().optional(),
+        }).strict()).optional(),
         dedupe_path: z.string().optional().describe('Skip a result whose value here was added before'),
+        items_path: z.string().max(500).optional()
+          .describe('A single tool only: add the rows from another list of its answer, one get_enrichment '
+            + 'lists in other_lists (often shown empty in its example)'),
       }).strict().optional(),
       auto_run: z.object({ enabled: lenientBoolean(), daily_cap_usd: money().optional() }).strict().optional(),
       estimate_only: lenientBoolean().optional(),
