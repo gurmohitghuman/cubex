@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10">
+  <!-- The grid's processing spinner (.cube-cell-spinner): a green-600 ring whose green-300 quarter turns every 0.7 s. -->
+  <circle cx="5" cy="5" r="4.5" fill="none" stroke="#16a34a" stroke-width="1"/>
+  <path d="M1.818 1.818A4.5 4.5 0 0 1 8.182 1.818" fill="none" stroke="#86efac" stroke-width="1">
+    <animateTransform attributeName="transform" type="rotate" from="0 5 5" to="360 5 5" dur="0.7s"
+      repeatCount="indefinite"/>
+  </path>
+</svg>
