@@ -328,19 +328,19 @@
 
 /* LoadingCellRenderer: the processing spinner and the typing cursor, defined
    once here (each cell used to inject its own <style> tag: 400+ on a screen of
-   spinners, and every swap made the browser restyle the page). */
+   spinners, and every swap made the browser restyle the page).
+   The spinner turns inside its image (cell-spinner.svg), not by a CSS rotation:
+   a running transform animation gives each spinner its own compositor layer, and
+   with a run's columns in view (400+ spinners, ~900 layers) the browser rebuilt
+   them all on every frame that repainted anything, so the grid stuttered while
+   values arrived and when scrolled. An image's animation only repaints the cells. */
 .cube-cell-spinner {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 50%;
-  /* green-600 track with a lighter green-300 head so the rotation reads */
-  border: 1.5px solid #16a34a;
-  border-top-color: #86efac;
   margin-left: var(--ag-cell-horizontal-padding, 12px);
-  animation: cube-cell-spin 0.7s linear infinite;
+  background: url('./cell-spinner.svg') no-repeat center / 10px 10px;
 }
-@keyframes cube-cell-spin { to { transform: rotate(360deg); } }
 .cube-cell-cursor::after {
   content: '\258A';
   margin-left: 1px;
