@@ -12,9 +12,13 @@ import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { recordDroppedCall, STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
+import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiCallDeadline, AI_TIMEOUT_MESSAGE, failedRow, stoppedCall, throwIfStorage } from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
-// result (or error) to the transactional writers in ai-row-writers.ts.
+// result (or error) to the transactional writers in ai-row-writers.ts. Says
+// what the row came to (the runner's brake counts provider failures in a row);
+// throws only when the database can't be written (the runner stops then).
 export async function processRow(
   runId: string,
   row: SheetRow,
@@ -22,7 +26,7 @@ export async function processRow(
   openai: OpenAI,
   signal: AbortSignal | undefined,
   myGeneration: number,
-): Promise<void> {
+): Promise<RowOutcome> {
   // Structured (multi-column) runs take a separate processor: one call → a JSON
   // object → N typed columns + status. Delegated whole so this stays the
   // single-column path.
@@ -44,6 +48,8 @@ export async function processRow(
   // still records what that billed call cost and searched (as does a failed
   // response: billedUsage).
   let call: ModelCall | null = null;
+  // The call's hard end, body included (the SDK's timeout stops at the headers).
+  const deadline = aiCallDeadline(signal);
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
     const search = runSearchConfig(run);
@@ -79,7 +85,7 @@ export async function processRow(
     call = await withConnectRetry(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
-    }, signal), signal, () => shouldStop(runId, myGeneration));
+    }, deadline.signal), deadline.signal, () => shouldStop(runId, myGeneration));
 
     // Throws (→ caught below, recorded as a `failed` row + "❌ Error" cell) when
     // the model returned no usable content — a reasoning model exhausting the
@@ -104,36 +110,41 @@ export async function processRow(
     // If the run was cancelled OR a resume bumped past us while this row's API
     // call was in flight, drop the result (keeping what the billed call cost).
     // Cheap early-out before opening a txn.
-    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, rowUsage(call)); return; }
+    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, rowUsage(call)); return DROPPED; }
 
     // Tokens and cost for cost reporting + history-based estimates, best-effort
     // (null when the provider omits them), plus the row's searches.
     writeSuccess(ctx, result, scrapedDataJson, scrapedSummary, rowUsage(call));
+    return DONE;
   } catch (error) {
     // Our own in-txn stop sentinel: the run was cancelled/superseded, the write
     // rolled back. Benign — drop without recording a failure (what the call that
     // came back cost still counts: recordDroppedCall, here and below).
-    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
+    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return DROPPED; }
+    throwIfStorage(error);
     // If the row failed because we aborted it (or the run was cancelled mid-flight),
-    // don't record it as a failure — the user explicitly stopped this run.
-    const aborted =
-      (error as { name?: string })?.name === 'AbortError' ||
-      (error as { name?: string })?.name === 'APIUserAbortError' ||
-      signal?.aborted === true;
-    if (aborted || shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
+    // don't record it as a failure — the user explicitly stopped this run. The
+    // deadline passing is the row's failure, not a stop.
+    if (stoppedCall(error, deadline, signal) || shouldStop(runId, myGeneration)) {
+      recordDroppedCall(ctx, billedUsage(call, error));
+      return DROPPED;
+    }
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a
     // user-reported cell tells us WHICH transport failure it was — the SDK's
     // bare message hides whether the stale-socket retry missed or the retry
     // itself failed again.
     const causeCode = errorCauseCode(error);
-    const rawErrorMessage = (error instanceof Error ? error.message : 'Unknown error')
-      + (causeCode ? ` (${causeCode})` : '');
+    const rawErrorMessage = deadline.timedOut() ? AI_TIMEOUT_MESSAGE
+      : (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     // Redact API-key-shaped tokens before logging or persisting. OpenRouter 401
     // responses sometimes echo the offending key prefix; without this those keys
     // would land in server logs AND in ai_results.error_message.
     const errorMessage = redactSecrets(rawErrorMessage);
     console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
+    return failedRow(errorMessage);
+  } finally {
+    deadline.done();
   }
 }

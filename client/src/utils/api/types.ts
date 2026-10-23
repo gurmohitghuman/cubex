@@ -194,6 +194,9 @@ export interface HTTPRun {
   total_rows: number
   processed_rows: number
   master_column_name?: string
+  // A run that paused itself (lib/run-pool.ts on the server): why, in error_message.
+  pause_reason?: string | null
+  error_message?: string | null
   created_at: string
   updated_at: string
 }

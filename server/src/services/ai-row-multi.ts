@@ -15,13 +15,15 @@ import { recordDroppedCall, STOP_SENTINEL } from './ai-row-writers';
 import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-row-writers-multi';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
+import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiCallDeadline, AI_TIMEOUT_MESSAGE, failedRow, stoppedCall, throwIfStorage } from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
 // instruction, call OpenRouter once, parse the JSON object into N typed columns,
 // and hand success/failure to the multi writers. With web search or web fetch
 // on, the model gets those tools and also lists the URLs it used; those plus the
 // search citations fill the run's "(Data)" column. Mirrors ai-row.ts's error
-// handling (abort/stop are benign drops).
+// handling (abort/stop are benign drops) and what it returns.
 export async function processMultiRow(
   runId: string,
   row: SheetRow,
@@ -29,7 +31,7 @@ export async function processMultiRow(
   openai: OpenAI,
   signal: AbortSignal | undefined,
   myGeneration: number,
-): Promise<void> {
+): Promise<RowOutcome> {
   const specs = JSON.parse(run.output_columns as string) as OutputColumnSpec[];
   const statusColumn = run.status_column || run.column_name;
   const ctx: MultiWriteCtx = {
@@ -44,6 +46,7 @@ export async function processMultiRow(
   const blankOnFailure = dataColumn ? [...outputNames, dataColumn] : outputNames;
   // Set once the call comes back: a failure after it still records its cost.
   let call: ModelCall | null = null;
+  const deadline = aiCallDeadline(signal);
 
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
@@ -58,7 +61,7 @@ export async function processMultiRow(
     call = await withConnectRetry(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, web.fetch),
-    }, signal), signal, () => shouldStop(runId, myGeneration));
+    }, deadline.signal), deadline.signal, () => shouldStop(runId, myGeneration));
     const usage = rowUsage(call);
 
     // cleanMarkdown:false — this text is JSON, not prose. Cleaning it breaks a
@@ -68,12 +71,12 @@ export async function processMultiRow(
     const rawText = extractCompletionText(call.completion, { cleanMarkdown: false });
 
     // Stopped meanwhile: the row writes nothing, but the billed call counts.
-    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, usage); return; }
+    if (shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, usage); return DROPPED; }
 
     const parsed = parseMultiOutput(rawText, specs);
     if ('error' in parsed) {
       writeMultiFailure(ctx, blankOnFailure, parsed.error, usage);
-      return;
+      return failedRow(parsed.error);
     }
     // Apply the same per-cell input policy as the single-column path: strip
     // control chars + clamp to the enrichment cell cap.
@@ -96,18 +99,23 @@ export async function processMultiRow(
       };
     }
     writeMultiSuccess(ctx, values, clampCellChars(rawText, CELL_MAX_ENRICHMENT), usage, sources);
+    return DONE;
   } catch (error) {
     // A stop drops the row; what a call that came back cost still counts.
-    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
-    const aborted =
-      (error as { name?: string })?.name === 'AbortError' ||
-      (error as { name?: string })?.name === 'APIUserAbortError' ||
-      signal?.aborted === true;
-    if (aborted || shouldStop(runId, myGeneration)) { recordDroppedCall(ctx, billedUsage(call, error)); return; }
+    if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return DROPPED; }
+    throwIfStorage(error);
+    if (stoppedCall(error, deadline, signal) || shouldStop(runId, myGeneration)) {
+      recordDroppedCall(ctx, billedUsage(call, error));
+      return DROPPED;
+    }
     const causeCode = errorCauseCode(error);
-    const rawMsg = (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
+    const rawMsg = deadline.timedOut() ? AI_TIMEOUT_MESSAGE
+      : (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     const errorMessage = redactSecrets(rawMsg);
     console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
     writeMultiFailure(ctx, blankOnFailure, errorMessage, billedUsage(call, error));
+    return failedRow(errorMessage);
+  } finally {
+    deadline.done();
   }
 }

@@ -70,3 +70,9 @@ export function rowCostLabel(e: RunControlEstimate): string {
   const cost = costText(e)
   return cost ? `Run this row, ${cost}` : e.kind === 'http' ? 'Run this row (1 request)' : 'Run this row'
 }
+
+// A run that paused itself and left its reason in error_message: its provider
+// failing row after row, results that couldn't be saved, a worker that kept
+// stopping (server lib/run-pool.ts, services/stalled-runs.ts).
+const SELF_PAUSES = new Set(['provider_errors', 'storage', 'stalled'])
+export const selfPaused = (reason: string | null | undefined): boolean => !!reason && SELF_PAUSES.has(reason)

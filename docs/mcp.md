@@ -544,6 +544,8 @@ Row transfers are limited for the whole account: 10 a minute, one at a time.
 
 Going over returns a clear error; the assistant can wait and retry.
 
+**Runs that stop themselves.** An AI or HTTP API run doesn't write an error into every row when its provider is down. After 5 rows in a row fail on the provider's or the account's side (no answer, a server error, a rate limit after its retries, a rejected key, no credits, a model that's gone), it pauses, and the rows not run yet stay waiting. `get_run_status` then shows `pause_reason: "provider_errors"` and a `pause_message` with the last error; `control_run` resume goes on once it's fixed. An HTTP API column's auto-run tries again by itself a few minutes later. Two more reasons work the same way: `storage` (results couldn't be saved, usually a full disk; a resume is refused until there's space) and `stalled` (its worker stopped several times). Every AI call ends within 10 minutes, its answer included; a row that takes longer fails as timed out.
+
 ## REST API
 
 The same data is available as a plain HTTP API under `/api/v1`, with the same tokens and scopes. Send `Authorization: Bearer cubex_pat_...` and JSON bodies (`Content-Type: application/json`). `GET /api/v1/me` checks a token and lists its scopes and its spend cap (`token.spend`: `spend_cap_usd`, `spent_usd`, `left_usd`).

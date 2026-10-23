@@ -43,7 +43,9 @@ export interface AIRun {
   concurrency: number
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   // 'token_cap': it paused itself, the access token that started it at its spend cap.
+  // 'provider_errors', 'storage', 'stalled': it paused itself, error_message says why.
   pause_reason?: string | null
+  error_message?: string | null
   total_rows: number
   processed_rows: number
   created_at: string
