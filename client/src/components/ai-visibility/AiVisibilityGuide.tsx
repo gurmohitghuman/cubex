@@ -5,10 +5,12 @@ import type { SheetData } from '@/utils/api/types'
 import type { AiVisibilityView } from '@/utils/api/ai-visibility'
 import { AskEngines } from './AskEngines'
 import { BrandsEditor } from './BrandsEditor'
+import { CheckAgain } from './CheckAgain'
+import { LastCheck } from './LastCheck'
 
 // Above the grid of an AI visibility table's questions sheet: asking the
-// engines (after an estimate), how to read the columns, the cited sites, and
-// the brands looked for. Hidden (remembered in this browser only), it folds
+// engines (after an estimate) and, weeks later, checking again, how to read
+// the columns, the cited sites, and the brands looked for. Hidden (remembered in this browser only), it folds
 // into one line that opens it again: it's where the asking is.
 const hiddenKey = (sheetId: string) => `cubex-ai-visibility-guide-hidden-${sheetId}`
 
@@ -55,9 +57,13 @@ export const AiVisibilityGuide: React.FC<{ v: AiVisibilityView; onChanged: () =>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
         <Step icon={<Radar className="h-4 w-4 text-gray-900" />} title="Ask the engines"
-          action={<AskEngines id={v.id} onStarted={onChanged} />}>
+          action={<div className="flex flex-wrap gap-2">
+            <AskEngines id={v.id} onStarted={onChanged} />
+            {v.answersAt && <CheckAgain id={v.id} onDone={onChanged} />}
+          </div>}>
           Each engine column asks its engine every question, from {v.country}. The estimate comes first; asking uses
-          your treg key and balance. Add questions as rows, then ask again: only the new ones are asked.
+          your treg key and balance. Add questions as rows, then ask again: only the new ones are asked. Weeks later,
+          <b> Check again</b> keeps these answers in dated sheets and asks every question again.
         </Step>
         <Step icon={<MessageSquare className="h-4 w-4 text-gray-600" />} title="Read the answers">
           <b>You in …</b> says where an answer first names you among the brands looked for (“1st of 4”) or Not
@@ -71,6 +77,7 @@ export const AiVisibilityGuide: React.FC<{ v: AiVisibilityView; onChanged: () =>
           column’s value counts show the sites cited most: the pages worth getting onto.
         </Step>
       </div>
+      {v.checks[0] && <LastCheck check={v.checks[0]} tableId={v.tableId} />}
       <p className="text-xs text-gray-500 mt-2">
         Answers vary from one ask to the next: read the totals, not one question.
       </p>

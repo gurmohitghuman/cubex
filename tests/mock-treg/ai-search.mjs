@@ -5,7 +5,8 @@
 // only; AI Mode names Acme CRM first; Copilot names nobody; Perplexity names
 // Northdesk. "nobody" in the question answers nothing (an empty answer).
 // Steering (/__mock/state): aiQuiet [engine words] answers that engine with
-// no sources.
+// no sources; aiAlsoNames {engine: brand} adds that brand to its answer (a
+// later check whose answers changed).
 import { state } from './state.mjs'
 
 const ENGINE = {
@@ -36,7 +37,9 @@ function parts(toolId, body) {
   const engine = ENGINE[toolId]
   const q = String(body.prompt ?? '')
   const quiet = (state.aiQuiet ?? []).includes(engine)
-  return { engine, q, text: TEXT[engine](q), sites: quiet ? [] : SITES[engine] }
+  const also = state.aiAlsoNames?.[engine]
+  const text = also ? `${TEXT[engine](q)} ${also} is worth a look too.` : TEXT[engine](q)
+  return { engine, q, text, sites: quiet ? [] : SITES[engine] }
 }
 
 // A cloro scraper's answer: {success, result: {text, sources}}.

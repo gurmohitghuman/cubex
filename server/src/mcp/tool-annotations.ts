@@ -89,7 +89,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   waterfall_column: write('Run a waterfall column (paid)', true, false, true),
   // create and set_brands are free; ask (estimate_only false) starts paid treg runs, and asking
   // again or new brands rewrite the answer and formula cells.
-  ai_visibility: write('AI visibility table (ask is paid)', true, false, true),
+  ai_visibility: write('AI visibility table (ask and check_again are paid)', true, false, true),
   add_enrichment_field: write('Add a column from stored answers', false, false),
   add_list_rows: write('Add list results as rows', false, false),
   // Turning it on makes later rows spend (or send requests) on their own.
