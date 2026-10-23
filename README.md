@@ -183,6 +183,19 @@ Click the arrow next to **AI Column**, then **Waterfall**, to fill one value per
 
 Agents use `waterfall_column`; the [MCP guide](docs/mcp.md#waterfalls) has the details.
 
+### AI visibility
+
+On the dashboard or in **New Table**, **Check AI visibility** makes a table that asks AI engines the questions your buyers ask, and shows whether the answers name you. It runs on your treg key.
+
+- Give your brand, the competitors to look for, your site, and the questions as a buyer would ask them ("What's the best CRM for a small team?"). Pick the engines: ChatGPT, Gemini, Google AI Mode, Perplexity and Copilot.
+- Making the table asks nothing. Its guide shows what asking costs (a fraction of a cent per engine and question) and asks when you say so.
+- **You in ChatGPT**, and the same column for each engine, says where the answer first names you among the brands you track ("1st of 4"), or Not named. **Named by** counts the engines that name you, and **Named first** is the brand most engines put first. The view **Not named anywhere** lists the questions to work on.
+- The **Cited sites** sheet holds every source the answers cite, with its domain and whether it's your site. The Domain column's value counts show the sites AI cites most: the pages worth getting onto.
+- Add questions as rows and ask again: only the new ones are asked. Change the brands you track at any time: the columns read the answers again, at no cost.
+- Each engine column is an ordinary enrichment column: its menu runs it again, and auto-run can ask new rows as they arrive. Answers vary from one ask to the next, so read the totals rather than one question.
+
+Agents use `ai_visibility`; the [MCP guide](docs/mcp.md#ai-visibility) has the details.
+
 ### Clean data
 
 Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.

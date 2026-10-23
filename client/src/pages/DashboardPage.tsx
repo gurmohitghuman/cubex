@@ -13,6 +13,7 @@ import { CreateTableModal } from '@/components/dashboard/CreateTableModal'
 import { RenameTableModal } from '@/components/dashboard/RenameTableModal'
 import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
+import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
 import { plural } from '@/lib/utils'
 
 export const DashboardPage: React.FC = () => {
@@ -154,6 +155,7 @@ export const DashboardPage: React.FC = () => {
                   <span>Create Table</span>
                 </button>
                 <TrySampleButton />
+                <AiVisibilityButton />
               </div>
             </div>
           </div>

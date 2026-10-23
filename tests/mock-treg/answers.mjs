@@ -11,6 +11,7 @@
 //   others: a hit with a value per contract field, a miss for "nobody".
 import { fixture, state } from './state.mjs'
 import { listAnswer, listField } from './lists.mjs'
+import { perplexityAnswer } from './ai-search.mjs'
 
 const PATTERNS = [
   (f, l) => `${f}.${l}`, (f, l) => `${f[0]}${l}`, (f, l) => f, (f, l) => `${f}${l}`, (f, l) => `${f}_${l}`,
@@ -65,6 +66,7 @@ function generic(toolId, body) {
 }
 
 export function providerAnswer(toolId, p, n, body) {
+  if (toolId === 'treg.ai-search.perplexity.answer') return perplexityAnswer(body)
   if (toolId === 'treg.people.email.find') return find(p, n, body)
   if (toolId === 'treg.people.email.verify') return verify(p, body)
   if (listField(toolId)) return listAnswer(toolId, p, body)

@@ -1,0 +1,585 @@
+{
+  "endpoint": {
+    "id": "cloro.google.serp.ai_mode",
+    "provider": "cloro",
+    "provider_display": "cloro",
+    "name": "Google AI Mode answer — text, sources, products, places",
+    "summary": "Runs a prompt through Google AI Mode from a chosen country and returns the answer with its cited sources, citation pills, inline products, shopping cards, place cards, videos and sponsored ads.",
+    "method": "POST",
+    "path": "/v1/monitor/aimode",
+    "scope": "any_account",
+    "tier": "core",
+    "kind": "data",
+    "domain": "serp",
+    "call_template": "treg call cloro.google.serp.ai_mode --method POST --data '{\"prompt\":\"what is a stock split\",\"gl\":\"US\",\"include\":{\"markdown\":true,\"html\":true,\"googleGoto\":true}}'",
+    "cost": {
+      "type": "per_call",
+      "value": 6,
+      "currency": "credit",
+      "per": 1,
+      "unit": "call",
+      "source": "docs",
+      "source_url": "https://cloro.dev/docs/guides/providers",
+      "checked": "2026-09-05",
+      "confidence": "documented",
+      "note": "4 base + the 2-credit sync surcharge. markdown, html and googleGoto are free. include.expandProducts is the one flag left out of the test request: it adds 1 credit per product returned, so its total is not knowable before the response — leave it off for a fixed price. A failed extraction is not charged.",
+      "usd": 0.0024
+    },
+    "async": null,
+    "platform_eligible": true,
+    "platform_blocked": null,
+    "miss": null,
+    "status": null,
+    "status_note": null,
+    "superseded_by": null,
+    "verified": "2026-09-07",
+    "added": "2026-09-07",
+    "docs_url": "https://cloro.dev/docs/api-reference/endpoint/monitor-aimode",
+    "has_example": true,
+    "input": {
+      "body": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "note": "1-10,000 characters",
+          "example": "best electric suv under 50k"
+        },
+        "gl": {
+          "type": "string",
+          "required": true,
+          "note": "result geography, ISO 3166-1 alpha-2, from AI Mode's own supported-country list. `country` is a deprecated alias.",
+          "example": "US"
+        },
+        "hl": {
+          "type": "string",
+          "required": false,
+          "note": "interface language override",
+          "example": "en"
+        },
+        "location": {
+          "type": "string",
+          "required": false,
+          "note": "free-text location; mutually exclusive with uule"
+        },
+        "uule": {
+          "type": "string",
+          "required": false,
+          "note": "Google UULE location string; mutually exclusive with location"
+        },
+        "device": {
+          "type": "string",
+          "required": false,
+          "note": "desktop | mobile, default desktop",
+          "example": "desktop"
+        },
+        "include": {
+          "type": "object",
+          "required": false,
+          "note": "any of markdown, html, googleGoto, expandProducts. The first three are free; expandProducts adds 1 credit per expanded product, charged after the fact from the number actually returned."
+        }
+      },
+      "bodyType": "json"
+    },
+    "test_request": {
+      "body": {
+        "prompt": "what is a stock split",
+        "gl": "US",
+        "include": {
+          "markdown": true,
+          "html": true,
+          "googleGoto": true
+        }
+      },
+      "bodyType": "json"
+    },
+    "capability": "google.serp.ai_mode",
+    "capability_description": "Get Google AI Mode results for a keyword",
+    "platform": "google",
+    "platform_label": "Google Keyword Data",
+    "observed": {
+      "samples": 41676,
+      "decided": 41618,
+      "ok_rate": 0.9969,
+      "p50_ms": 10791,
+      "p95_ms": 23506,
+      "last_ok_days": 0,
+      "hit_rate": null,
+      "hit_samples": 0
+    },
+    "reviews": {
+      "teams": 5,
+      "samples": [
+        {
+          "usefulness": "useful",
+          "reason": "AI Mode returned a full answer with feature and pricing detail for a brand query; fine for brand-mention checks. Sources array was empty for that prompt.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "Named national implementers; confirms absence.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "Returned a substantive recommendation answer with cited source records for a live AI Mode query.",
+          "client": "mcp",
+          "month": "2026-10"
+        }
+      ],
+      "share": {
+        "useful": 0.93,
+        "partly": 0.07,
+        "not_useful": 0
+      }
+    }
+  },
+  "siblings": [
+    {
+      "id": "crawl4ai.google.serp.ai_mode",
+      "provider": "crawl4ai",
+      "provider_display": "Crawl4AI",
+      "name": "Google AI Mode answer for a question (text only)",
+      "summary": "Google's own AI Mode / AI Overview answer for a question, word for word, with answer.source naming which. deep must be 0, so the text is never written by another model; answered is false, and free, when Google shows no direct answer. Text only: no product, place or ad cards.",
+      "method": "GET",
+      "path": "/answer",
+      "scope": "any_account",
+      "tier": "core",
+      "kind": "data",
+      "domain": "serp",
+      "call_template": "treg call crawl4ai.google.serp.ai_mode --query 'q=what is a stock split' --query deep=0",
+      "cost": {
+        "type": "per_success",
+        "value": 0.15,
+        "currency": "credit",
+        "per": 1,
+        "unit": "call",
+        "source": "observed",
+        "source_url": "https://api.crawl4ai.com/v1/prices",
+        "checked": "2026-10-09",
+        "confidence": "verified",
+        "note": "treg's account price: 0.15 credits for Google's answer, 0 when there is none; the x-c4-cost header settles the charge (0.15 observed live 2026-10-09).",
+        "usd": 0.00015
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-10-07",
+      "added": "2026-10-07",
+      "docs_url": "https://crawl4ai.com/llms.txt",
+      "has_example": true,
+      "input": {
+        "queryParams": {
+          "q": {
+            "type": "string",
+            "required": true,
+            "note": "the question, up to 4,000 characters",
+            "example": "what is a stock split"
+          },
+          "deep": {
+            "type": "string",
+            "required": true,
+            "enum": [
+              "0"
+            ],
+            "note": "must be 0: only Google's own answer"
+          },
+          "gl": {
+            "type": "string",
+            "required": false,
+            "note": "search country, e.g. us"
+          },
+          "hl": {
+            "type": "string",
+            "required": false,
+            "note": "search language, e.g. en"
+          },
+          "nocache": {
+            "type": "string",
+            "required": false,
+            "enum": [
+              "1"
+            ],
+            "note": "1 skips every cache"
+          }
+        }
+      },
+      "strict_query": true,
+      "test_request": {
+        "queryParams": {
+          "q": "what is a stock split",
+          "deep": "0"
+        }
+      },
+      "observed": {
+        "samples": 1093,
+        "decided": 1093,
+        "ok_rate": 0.6404,
+        "p50_ms": 1745,
+        "p95_ms": 5750,
+        "last_ok_days": 0,
+        "hit_rate": 0.1114,
+        "hit_samples": 700
+      }
+    },
+    {
+      "id": "dataforseo.x.serp-google-ai-mode-live-advanced",
+      "provider": "dataforseo",
+      "provider_display": "DataForSEO",
+      "name": "Google AI Mode results for a keyword, live",
+      "summary": "Google AI Mode SERP API provides search results from the AI Mode feature of Google Search.",
+      "method": "POST",
+      "path": "/serp/google/ai_mode/live/advanced",
+      "scope": "",
+      "tier": "extended",
+      "kind": "data",
+      "domain": "serp",
+      "call_template": "treg call dataforseo.x.serp-google-ai-mode-live-advanced --method POST --data '[{\"language_code\":\"en\",\"location_code\":2840,\"keyword\":\"what is google ai mode\"}]'",
+      "cost": {
+        "type": "per_call",
+        "value": 0.004,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "observed",
+        "confidence": "verified",
+        "checked": "2026-07-28",
+        "note": "price observed at live verification (provider-reported charge)",
+        "usd": 0.004
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-07-28",
+      "added": "2026-07-28",
+      "docs_url": "",
+      "has_example": true,
+      "input": {
+        "bodyType": "json",
+        "body": {
+          "keyword": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>keyword</em><p><strong>required field</strong><p>you can specify <strong>up to 700 characters</strong> in the <code>keyword</code> field<p>all %## will be decoded (plus character ‘+’ will be decoded to a space character)<p>if you need to use the “%” character for your <code>keyword</code>, pl",
+            "example": "what is google ai mode"
+          },
+          "location_code": {
+            "type": "integer",
+            "required": false,
+            "note": "<p><em>search engine location code</em><p><strong>required field if you don't specify</strong> <code>location_name</code>&nbsp;or <code>location_coordinate</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_coordinate</code></strong><p>you ",
+            "example": 2840
+          },
+          "language_code": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>search engine language code</em><p>required field if you don't specify <code>language_name</code>;<p>if you use this field, you don't need to specify <code>language_name</code>;<p>you can receive the list of available languages of the search engine with their <code>language_code</code>&nbsp;b",
+            "example": "en"
+          },
+          "device": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>device type</em><p>optional field<p>return results for a specific device type<p>can take the values:<code>desktop</code>, <code>mobile</code><p>default value: <code>desktop</code></p>"
+          },
+          "location_name": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>full name of search engine location</em><p><strong>required field if you don't specify</strong> <code>location_code</code> or <code>location_coordinate</code><p><strong>if you use this field, you don't need to specify <code>location_code</code> or <code>location_coordinate</code></strong><p>y"
+          },
+          "language_name": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>full name of search engine language</em><p>required field if you don't specify <code>language_code</code>;<p>if you use this field, you don't need to specify <code>language_code</code>;<p>you can receive the list of available languages of the search engine with their <code>language_name</code"
+          },
+          "os": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>device operating system</em><p>optional field<p>if you specify <code>desktop</code> in the <code>device</code> field, choose from the following values: <code>windows</code>, <code>macos</code><p>default value: <code>windows</code><p>if you specify <code>mobile</code> in the <code>device</code"
+          },
+          "tag": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>"
+          },
+          "calculate_rectangles": {
+            "type": "boolean",
+            "required": false,
+            "note": "<p><em>calculate pixel rankings for SERP elements in advanced results</em><p>optional field<p>pixel ranking refers to the distance between the result snippet and top left corner of the screen;<p><a href=\"https://dataforseo.com/help-center/pixel-ranking-in-serp-api\">Visit Help Center to learn more&gt"
+          },
+          "browser_screen_width": {
+            "type": "integer",
+            "required": false,
+            "note": "<p><em>browser screen width</em><p>optional field<p>you can set a custom browser screen width to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1920</code> for <code>desktop</code>"
+          },
+          "browser_screen_height": {
+            "type": "integer",
+            "required": false,
+            "note": "<p><em>browser screen height</em><p>optional field<p>you can set a custom browser screen height to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>240-9999</code>;<p>by default, the parameter is set to:<p><code>1080</code> for <code>desktop</cod"
+          },
+          "browser_screen_resolution_ratio": {
+            "type": "integer",
+            "required": false,
+            "note": "<p><em>browser screen resolution ratio</em><p>optional field<p>you can set a custom browser screen resolution ratio to calculate pixel rankings for a particular device;<p>can be specified within the following range: <code>0.5-3</code>;<p>by default, the parameter is set to:<p><code>1</code> for <cod"
+          },
+          "location_coordinate": {
+            "type": "string",
+            "required": false,
+            "note": "<p><em>GPS coordinates of a location</em><p><strong>required field if you don't specify</strong> <code>location_name</code>&nbsp;or <code>location_code</code><p><strong>if you use this field, you don't need to specify <code>location_name</code> or <code>location_code</code></strong><p><code>location"
+          }
+        },
+        "note": "POST body is a JSON array that must contain exactly one task object (Live endpoints do not support multi-task arrays). Extra elements return per-task status 40000 \"You can set only one task at a time\" ($0 on the rejected tasks) while HTTP stays 200 — one keyword per call."
+      },
+      "test_request": {
+        "body": [
+          {
+            "language_code": "en",
+            "location_code": 2840,
+            "keyword": "what is google ai mode"
+          }
+        ],
+        "bodyType": "json"
+      },
+      "observed": {
+        "samples": 8372,
+        "decided": 8366,
+        "ok_rate": 1,
+        "p50_ms": 11566,
+        "p95_ms": 37219,
+        "last_ok_days": 0,
+        "hit_rate": null,
+        "hit_samples": 0
+      },
+      "reviews": {
+        "teams": 0,
+        "samples": [
+          {
+            "usefulness": "useful",
+            "reason": "Returned sourced research that was used for company screening; underlying facts were not independently validated.",
+            "client": "mcp",
+            "month": "2026-09"
+          }
+        ]
+      }
+    },
+    {
+      "id": "litescrape.google.serp.ai_mode",
+      "provider": "litescrape",
+      "provider_display": "Litescrape",
+      "name": "Get Google AI Mode answer",
+      "summary": "Returns the answer Google AI Mode generates for a question, as ordered text blocks, with the sources it cited",
+      "method": "GET",
+      "path": "/api/google/ai-mode",
+      "scope": "any_account",
+      "tier": "core",
+      "kind": "data",
+      "domain": "search",
+      "call_template": "treg call litescrape.google.serp.ai_mode --query 'q=what is photosynthesis' --query hl=en --query gl=us",
+      "cost": {
+        "type": "per_success",
+        "value": 0.00015,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://litescrape.com/pricing",
+        "checked": "2026-09-29",
+        "confidence": "verified",
+        "note": "One successful API response consumes one prepaid call; failures are free.",
+        "usd": 0.00015
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-09-29",
+      "added": "2026-09-29",
+      "docs_url": "https://litescrape.com/docs/reference",
+      "has_example": true,
+      "input": {
+        "queryParams": {
+          "q": {
+            "type": "string",
+            "required": true,
+            "maxLength": 2048,
+            "example": "what is the best espresso machine for a small kitchen",
+            "note": "Question to ask, up to 2,048 characters. Required on every turn, including follow-ups."
+          },
+          "continuable": {
+            "type": "boolean",
+            "required": false,
+            "default": false,
+            "note": "Return a subsequent_request_token so this answer can be followed up, when Google offers a continuation."
+          },
+          "subsequent_request_token": {
+            "type": "string",
+            "required": false,
+            "maxLength": 128,
+            "note": "Token from a previous continuable response. Send it with a new q to continue that conversation; reuse the same gl, hl and location. Expires after 30 minutes. Cannot be combined with image_url."
+          },
+          "image_url": {
+            "type": "string",
+            "required": false,
+            "maxLength": 2048,
+            "note": "Public http or https URL of an image to include in the question, up to 2,048 characters. The image may be at most 20 MB. Cannot be combined with subsequent_request_token."
+          },
+          "location": {
+            "type": "string",
+            "required": false,
+            "maxLength": 63,
+            "example": "Austin, Texas",
+            "note": "Human-readable search location, such as Austin, Texas. At most 63 UTF-8 bytes. Mutually exclusive with uule."
+          },
+          "uule": {
+            "type": "string",
+            "required": false,
+            "maxLength": 2048,
+            "note": "Pre-encoded Google location token. Mutually exclusive with location."
+          },
+          "google_domain": {
+            "type": "string",
+            "required": false,
+            "default": "google.com",
+            "example": "google.com",
+            "note": "Google domain used for the request."
+          },
+          "gl": {
+            "type": "string",
+            "required": false,
+            "minLength": 2,
+            "maxLength": 2,
+            "example": "us",
+            "note": "Two-letter country code used to localize results."
+          },
+          "hl": {
+            "type": "string",
+            "required": false,
+            "default": "en",
+            "example": "en",
+            "note": "Language code such as en, en-GB, or de."
+          },
+          "device": {
+            "type": "string",
+            "required": false,
+            "default": "desktop",
+            "enum": [
+              "desktop",
+              "tablet",
+              "mobile"
+            ],
+            "note": "Google device layout. Each device is served Google's real layout for it."
+          },
+          "timeout": {
+            "type": "number",
+            "required": false,
+            "max": 90,
+            "note": "Optional budget for the entire request in seconds, measured from gateway receipt until the response is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90. On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a request ID. Omit to retain the standard server deadline."
+          }
+        }
+      },
+      "strict_query": true,
+      "test_request": {
+        "queryParams": {
+          "q": "what is photosynthesis",
+          "hl": "en",
+          "gl": "us"
+        }
+      },
+      "observed": {
+        "samples": 677,
+        "decided": 617,
+        "ok_rate": 0.7618,
+        "p50_ms": 8406,
+        "p95_ms": 43419,
+        "last_ok_days": 0,
+        "hit_rate": null,
+        "hit_samples": 0
+      }
+    },
+    {
+      "id": "serpapi.x.google-ai-mode",
+      "provider": "serpapi",
+      "provider_display": "SerpApi",
+      "name": "Google AI Mode answer for a query",
+      "summary": "Google's conversational AI Mode answer for a query",
+      "method": "GET",
+      "path": "/search",
+      "scope": "",
+      "tier": "extended",
+      "kind": "data",
+      "domain": "serp",
+      "call_template": "treg call serpapi.x.google-ai-mode --query engine=google_ai_mode --query 'q=best coffee brewing method'",
+      "cost": {
+        "type": "per_success",
+        "value": 0.015,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://serpapi.com/pricing",
+        "checked": "2026-07-28",
+        "confidence": "documented",
+        "usd": 0.015
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-07-30",
+      "added": "2026-07-28",
+      "docs_url": "https://serpapi.com/google-ai-mode-api",
+      "has_example": true,
+      "input": {
+        "queryParams": {
+          "engine": {
+            "type": "string",
+            "required": true,
+            "example": "google_ai_mode"
+          },
+          "q": {
+            "type": "string",
+            "required": true,
+            "example": "best coffee brewing method"
+          }
+        },
+        "note": "sibling of engine=google, params not independently confirmed beyond `q`."
+      },
+      "test_request": {
+        "queryParams": {
+          "engine": "google_ai_mode",
+          "q": "best coffee brewing method"
+        }
+      },
+      "observed": {
+        "samples": 1201,
+        "decided": 1201,
+        "ok_rate": 0.9517,
+        "p50_ms": 6166,
+        "p95_ms": 11789,
+        "last_ok_days": 3,
+        "hit_rate": null,
+        "hit_samples": 0
+      }
+    }
+  ],
+  "example_response": {
+    "success": true,
+    "result": {
+      "text": "Shared0 filesA stock split is when a company increases the number of its outstanding shares by dividing existing shares into multiple new ones.  How it works (Example): In a 2-for-1 split, every share",
+      "sources": []
+    }
+  }
+}

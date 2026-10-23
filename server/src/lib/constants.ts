@@ -22,6 +22,8 @@ export * from './constants-waterfall';
 export * from './constants-run-safety';
 // The trash and the sheet change log, same split.
 export * from './constants-trash';
+// AI visibility tables, same split.
+export * from './constants-ai-visibility';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

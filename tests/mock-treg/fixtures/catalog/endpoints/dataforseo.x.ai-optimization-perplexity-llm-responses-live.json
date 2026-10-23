@@ -1,0 +1,377 @@
+{
+  "endpoint": {
+    "id": "dataforseo.x.ai-optimization-perplexity-llm-responses-live",
+    "provider": "dataforseo",
+    "provider_display": "DataForSEO",
+    "name": "Perplexity answer to a prompt, live",
+    "summary": "Live Perplexity LLM Responses endpoint allows you to retrieve structured responses from a specific Perplexity AI model, based on the input parameters.",
+    "method": "POST",
+    "path": "/ai_optimization/perplexity/llm_responses/live",
+    "scope": "",
+    "tier": "extended",
+    "kind": "data",
+    "domain": "perplexity",
+    "call_template": "treg call dataforseo.x.ai-optimization-perplexity-llm-responses-live --method POST --data '[{\"system_message\":\"communicate as if we are in a business meeting\",\"message_chain\":[{\"role\":\"user\",\"message\":\"Hello, what’s up?\"},{\"role\":\"ai\",\"message\":\"Hello! I’m doing well, thank you. How can I assist you today? Are there any specific topics or projects you’d like to discuss in our meeting?\"}],\"max_output_tokens\":200,\"temperature\":0.3,\"top_p\":0.5,\"web_search_country_iso_code\":\"FR\",\"model_name\":\"sonar\",\"user_prompt\":\"provide information on how relevant the amusement park business is in France now\"}]'",
+    "cost": {
+      "type": "per_call",
+      "value": 0.005861,
+      "currency": "USD",
+      "per": 1,
+      "unit": "call",
+      "source": "observed",
+      "confidence": "verified",
+      "checked": "2026-07-28",
+      "note": "price observed at live verification (provider-reported charge)",
+      "usd": 0.005861
+    },
+    "async": null,
+    "platform_eligible": true,
+    "platform_blocked": null,
+    "miss": null,
+    "status": null,
+    "status_note": null,
+    "superseded_by": null,
+    "verified": "2026-07-28",
+    "added": "2026-07-28",
+    "docs_url": "",
+    "has_example": true,
+    "input": {
+      "bodyType": "json",
+      "body": {
+        "user_prompt": {
+          "type": "string",
+          "required": false,
+          "note": "<em>prompt for the AI model</em><br><strong>required field</strong><br>the question or task you want to send to the AI model;<br>you can specify <strong>up to 500 characters</strong> in the <code>user_prompt</code> field",
+          "example": "provide information on how relevant the amusement park business is in France now"
+        },
+        "model_name": {
+          "type": "string",
+          "required": false,
+          "note": "<em>name of the AI model</em><br><strong>required field</strong><br><code>model_name</code >consists of the actual model name and version name;<br>if the basic model name is specified, its latest version will be set by default;<br>you can receive the list of available LLM models by making a separate",
+          "example": "sonar"
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "required": false,
+          "note": "<em>maximum number of tokens in the AI response</em><br>optional field<br>minimum value: <code>1</code><br>maximum value: <code>4096</code>;<br>default value: <code>2048</code>;<br><strong>Note:</strong> if the reasoning model is specified in the request, the output token count may exceed the specif",
+          "example": 200
+        },
+        "temperature": {
+          "type": "number",
+          "required": false,
+          "note": "<em>randomness of the AI response</em><br>optional field<br>higher values make output more diverse <br>lower values make output more focused<br>minimum value: <code>0</code><br>maximum value: <code>1.9</code><br>default value: <code>0.77</code>",
+          "example": 0.3
+        },
+        "top_p": {
+          "type": "number",
+          "required": false,
+          "note": "<em>diversity of the AI response</em><br>optional field <br>controls diversity of the response by limiting token selection<br>minimum value: <code>0</code><br>maximum value: <code>1</code> <br>default value: <code>0.9</code>",
+          "example": 0.5
+        },
+        "web_search_country_iso_code": {
+          "type": "string",
+          "required": false,
+          "note": "<em>country code for web search localization</em><br>optional field<br>specify the country ISO code to get localized web search results<br><strong>Note:</strong> available only for Perplexity Sonar models<br>example: <code>US</code>",
+          "example": "FR"
+        },
+        "system_message": {
+          "type": "string",
+          "required": false,
+          "note": "<em>instructions for the AI behavior</em><br>optional field<br>defines the AI's role, tone, or specific behavior <br>you can specify <strong>up to 500 characters</strong> in the <code>system_message</code> field",
+          "example": "communicate as if we are in a business meeting"
+        },
+        "message_chain": {
+          "type": "array",
+          "required": false,
+          "note": "conversation history optional field array of message objects representing previous conversation turns; each object must contain: role string with either user or ai role; message string with message content (max 500 characters); you can specify maximum of 10 message objects in the array; Note: for Pe",
+          "example": [
+            {
+              "role": "user",
+              "message": "Hello, what’s up?"
+            },
+            {
+              "role": "ai",
+              "message": "Hello! I’m doing well, thank you. How can I assist you today? Are there any specific topics or projects you’d like to discuss in our meeting?"
+            }
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "required": false,
+          "note": "<em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response"
+        }
+      },
+      "note": "POST body is a JSON array that must contain exactly one task object (Live endpoints do not support multi-task arrays). Extra elements return per-task status 40000 \"You can set only one task at a time\" ($0 on the rejected tasks) while HTTP stays 200 — one prompt per call."
+    },
+    "test_request": {
+      "body": [
+        {
+          "system_message": "communicate as if we are in a business meeting",
+          "message_chain": [
+            {
+              "role": "user",
+              "message": "Hello, what’s up?"
+            },
+            {
+              "role": "ai",
+              "message": "Hello! I’m doing well, thank you. How can I assist you today? Are there any specific topics or projects you’d like to discuss in our meeting?"
+            }
+          ],
+          "max_output_tokens": 200,
+          "temperature": 0.3,
+          "top_p": 0.5,
+          "web_search_country_iso_code": "FR",
+          "model_name": "sonar",
+          "user_prompt": "provide information on how relevant the amusement park business is in France now"
+        }
+      ],
+      "bodyType": "json"
+    },
+    "capability": "ai-search.perplexity.answer",
+    "capability_description": "Get a Perplexity answer",
+    "platform": "ai-search",
+    "platform_label": "AI Visibility / AEO",
+    "observed": {
+      "samples": 54079,
+      "decided": 53961,
+      "ok_rate": 0.9998,
+      "p50_ms": 3803,
+      "p95_ms": 6809,
+      "last_ok_days": 0,
+      "hit_rate": 0.9984,
+      "hit_samples": 41952
+    },
+    "reviews": {
+      "teams": 25,
+      "samples": [
+        {
+          "usefulness": "useful",
+          "reason": "National answer named implementers with citations.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "Sonar with US or DE web-search country answered 15 of 15 prompts in a few seconds at about USD 0.006 each, with 6-10 annotation URLs per answer; good for brand-mention checks.",
+          "client": "mcp",
+          "month": "2026-10"
+        },
+        {
+          "usefulness": "useful",
+          "reason": "Sonar with AU country code, 40/40 answered with 10 annotation URLs each in ~3s; best value per cited domain. Occasionally cites wrong-country pages for ambiguous suburb names.",
+          "client": "claude-code",
+          "month": "2026-10"
+        }
+      ],
+      "share": {
+        "useful": 0.94,
+        "partly": 0.06,
+        "not_useful": 0
+      }
+    }
+  },
+  "siblings": [
+    {
+      "id": "cloro.ai-search.perplexity.answer",
+      "provider": "cloro",
+      "provider_display": "cloro",
+      "name": "Perplexity answer — text, sources, media, shopping",
+      "summary": "Runs a prompt through the live Perplexity interface from a chosen country and returns the answer text with its cited sources, citation pills, shopping cards, media results and travel/place cards.",
+      "method": "POST",
+      "path": "/v1/monitor/perplexity",
+      "scope": "any_account",
+      "tier": "core",
+      "kind": "data",
+      "domain": "perplexity",
+      "call_template": "treg call cloro.ai-search.perplexity.answer --method POST --data '{\"prompt\":\"what is a stock split\",\"country\":\"US\",\"include\":{\"markdown\":true,\"html\":true,\"rawResponse\":true}}'",
+      "cost": {
+        "type": "per_call",
+        "value": 6,
+        "currency": "credit",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://cloro.dev/docs/guides/providers",
+        "checked": "2026-09-05",
+        "confidence": "documented",
+        "modifiers": {
+          "state": {
+            "location": "body",
+            "when": "present",
+            "add_credits": 2
+          }
+        },
+        "note": "4 base + the 2-credit sync surcharge. Every include flag on this endpoint is free — only `state` moves the price, by 2. A failed extraction is not charged.",
+        "usd": 0.0024
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": null,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-09-07",
+      "added": "2026-09-07",
+      "docs_url": "https://cloro.dev/docs/api-reference/endpoint/monitor-perplexity",
+      "has_example": true,
+      "input": {
+        "body": {
+          "prompt": {
+            "type": "string",
+            "required": true,
+            "note": "1-10,000 characters",
+            "example": "best noise cancelling headphones"
+          },
+          "country": {
+            "type": "string",
+            "required": true,
+            "note": "ISO 3166-1 alpha-2. CN is refused.",
+            "example": "US"
+          },
+          "state": {
+            "type": "string",
+            "required": false,
+            "note": "US state code for state-level targeting; adds 2 credits",
+            "example": "CA"
+          },
+          "include": {
+            "type": "object",
+            "required": false,
+            "note": "any of markdown, html, rawResponse. All three are free on this endpoint."
+          }
+        },
+        "bodyType": "json"
+      },
+      "test_request": {
+        "body": {
+          "prompt": "what is a stock split",
+          "country": "US",
+          "include": {
+            "markdown": true,
+            "html": true,
+            "rawResponse": true
+          }
+        },
+        "bodyType": "json"
+      },
+      "observed": {
+        "samples": 19979,
+        "decided": 15130,
+        "ok_rate": 0.395,
+        "p50_ms": 76714,
+        "p95_ms": 168056,
+        "last_ok_days": 6,
+        "hit_rate": 1,
+        "hit_samples": 909
+      },
+      "reviews": {
+        "teams": 5,
+        "samples": [
+          {
+            "usefulness": "not_useful",
+            "reason": "Perplexity returned 400 MODEL_UNAVAILABLE (logged-out sessions broken); not charged.",
+            "client": "mcp",
+            "month": "2026-10"
+          },
+          {
+            "usefulness": "useful",
+            "reason": "Concise definition for the direct question and cites Travel by B Corp's own site plus relevant independent sources.",
+            "client": "cli",
+            "month": "2026-09"
+          },
+          {
+            "usefulness": "useful",
+            "reason": "Consumer Perplexity answer with sources and related queries; source set matched the API run closely, useful as a cross-check. Many sibling calls timed out at the MCP layer.",
+            "client": "mcp",
+            "month": "2026-09"
+          }
+        ],
+        "share": {
+          "useful": 0.6,
+          "partly": 0,
+          "not_useful": 0.4
+        }
+      }
+    },
+    {
+      "id": "treg.ai-search.perplexity.answer",
+      "provider": "treg",
+      "provider_display": "treg",
+      "name": "ai-search.perplexity.answer — routed: best of 2 providers, own keys first",
+      "summary": "Ask Perplexity a question — the answer text and its cited sources; `source_kind` says whether it came from the Perplexity website or its model API",
+      "method": "POST",
+      "path": "/ai-search.perplexity.answer",
+      "scope": "",
+      "tier": "core",
+      "kind": "routed",
+      "domain": "perplexity",
+      "call_template": "treg call treg.ai-search.perplexity.answer --method POST --data '{\"prompt\":\"…\"}'",
+      "cost": {
+        "type": "per_success",
+        "value": 0.0024,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "inferred",
+        "confidence": "documented",
+        "checked": null,
+        "varies": true,
+        "note": "NOT free: misses are billed too. the children's range $0.0024–$0.005861 per hit, 0% markup; you pay the child that served AND every child tried before it that bills a miss (2 of 2 do), up to X-Treg-Route-Max-Cost (default $1 a call). X-Treg-Route-Exclude them, or X-Treg-Route-Waterfall: 0, to pay for one provider only",
+        "usd": 0.0024
+      },
+      "async": null,
+      "platform_eligible": true,
+      "platform_blocked": null,
+      "miss": {
+        "status": 200,
+        "means": "output.answer == null"
+      },
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": null,
+      "added": null,
+      "docs_url": "",
+      "has_example": false,
+      "input": {
+        "bodyType": "json",
+        "body": {
+          "prompt": {
+            "type": "str",
+            "required": false,
+            "note": "identity key (part of prompt)"
+          },
+          "country": {
+            "type": "str",
+            "required": false,
+            "note": "filter — default 'US'; ISO 3166-1 alpha-2: where the question is asked from"
+          }
+        },
+        "note": "Send everything you know about the subject — treg derives the rest (full_name ⇄ first+last), matches each provider on the variants it accepts ({prompt}) and sends each provider only the fields it wants. On a miss treg keeps trying providers, cheapest first, within X-Treg-Route-Max-Cost (default $1 per call; misses on per-success providers are free). Options ride as headers, never in the body: X-Treg-Route-Waterfall: 0 (stop at the first miss), X-Treg-Route-Max-Cost: <usd>, X-Treg-Route-Prefer / X-Treg-Route-Exclude: <provider>. The response is {output, raw, _treg: {served_by, tried}}; X-Treg-Served-By names the child."
+      },
+      "test_request": {
+        "body": {
+          "prompt": "…"
+        }
+      },
+      "routed_children": [
+        "cloro.ai-search.perplexity.answer",
+        "dataforseo.x.ai-optimization-perplexity-llm-responses-live"
+      ],
+      "observed": {
+        "samples": 17469,
+        "decided": 17361,
+        "ok_rate": 0.9907,
+        "p50_ms": null,
+        "p95_ms": null,
+        "last_ok_days": 0,
+        "hit_rate": null,
+        "hit_samples": 0
+      }
+    }
+  ],
+  "example_response": {
+    "tasks": []
+  }
+}

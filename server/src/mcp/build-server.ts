@@ -21,6 +21,7 @@ import { registerModelTools } from './tools-models';
 import { registerTransferTool } from './tools-transfer';
 import { registerTransformTool } from './tools-transform';
 import { registerEnrichTools } from './tools-enrich';
+import { registerAiVisibilityTool } from './tools-ai-visibility';
 import { registerWaterfallTools } from './tools-waterfall';
 import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
@@ -75,7 +76,9 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'many rows; fresh:true calls again). To fill ONE value per row from several sources in order (a treg ' +
         'tool, then another, then an AI prompt or your own API) and stop at the first answer, use ' +
         'waterfall_column: paid, estimate first (its default). get_usage says what runs cost by column, day or ' +
-        'run. ' +
+        'run. To see whether AI engines (ChatGPT, Gemini, AI Mode, Perplexity, Copilot) name a brand for the ' +
+        'questions buyers ask, and which sites they cite, ai_visibility makes a ready-made table (asking is ' +
+        'paid: estimate first, its default). ' +
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
         'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
         'with include_status. Saved views (get_sheet lists them) are named filters plus hidden columns: pass ' +
@@ -106,6 +109,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerEnrichTools(server, ctx);
   registerWaterfallTools(server, ctx);
   registerEnrichManageTools(server, ctx);
+  registerAiVisibilityTool(server, ctx);
   registerBalanceTools(server, ctx);
   registerUsageTools(server, ctx);
   registerTrashTools(server, ctx);

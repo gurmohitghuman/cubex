@@ -114,6 +114,7 @@ export function fitDetails(
 }
 
 // A column's newest run as its details name it: 'restored' for a setup put
-// back from a setup version (a run record that ran nothing, migration 043).
+// back from a setup version (a run record that ran nothing, migration 043),
+// 'set_up' for one a template set up that nothing ran yet (setup_only 2).
 export const runStatus = (run: { status: string; setup_only: number }): string =>
-  (run.setup_only ? 'restored' : run.status);
+  (run.setup_only === 2 ? 'set_up' : run.setup_only ? 'restored' : run.status);
