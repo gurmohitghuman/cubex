@@ -10,11 +10,12 @@ import { v4 as uuidv4 } from 'uuid';
 export type TrashKind = 'rows' | 'sheet' | 'table';
 // How the rows went: the grid, delete_rows (REST/MCP), removing duplicates,
 // auto-dedupe as rows arrived, a CSV import replacing the rows, transfer_rows
-// moving them out; or the sheet or table itself was deleted.
+// moving them out, a list job's rerun replacing the rows it added before; or
+// the sheet or table itself was deleted.
 export type TrashHow =
-  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'sheet' | 'table';
+  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table';
 export const TRASH_HOWS: readonly TrashHow[] =
-  ['grid', 'api', 'duplicates', 'auto_dedupe', 'import', 'transfer', 'sheet', 'table'];
+  ['grid', 'api', 'duplicates', 'auto_dedupe', 'import', 'transfer', 'rerun', 'sheet', 'table'];
 export type TrashState = 'moving' | 'kept' | 'restoring' | 'purging';
 
 export interface TrashItem {
@@ -79,6 +80,15 @@ export function setTrashState(id: number, state: TrashState): void {
 
 // Whether something deleted now is kept: Settings keeps it at least a day.
 export const trashKeeps = (userId: string): boolean => getTrashDays(userId) > 0;
+
+// Today's batch of a sheet's rows that went one way (auto-dedupe, a rerun
+// replacing them), while the sheet keeps its row order: a restore puts rows
+// back at their old places only then.
+export function todaysBatch(sheetId: string, userId: string, how: TrashHow, generation: number): number | null {
+  return (db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND user_id = ? AND kind = 'rows'
+    AND how = ? AND state = 'kept' AND row_generation = ? AND date(deleted_at) = date('now')
+    ORDER BY id DESC LIMIT 1`).pluck().get(sheetId, userId, how, generation) as number | undefined) ?? null;
+}
 
 // The day an item leaves the trash for good, as the API states it.
 export function trashExpiry(deletedAt: string, days: number): string {

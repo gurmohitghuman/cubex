@@ -42,7 +42,7 @@ export function rerunMessage(action: RerunAction, e: EnrichRerunEstimate): strin
   const reused = e.reusedRows > 0
   const costs = reused ? '' : `, and ${e.rows === 1 ? 'it costs' : 'each row costs'} again`
   const replaced = action === 'stale' ? ' Any out-of-date results are replaced.'
-    : list ? ` The rows ${e.rows === 1 ? 'it' : 'they'} added to ${list.name} before are replaced${costs}.`
+    : list ? ` The rows ${e.rows === 1 ? 'it' : 'they'} added to ${list.name} earlier move to the trash${costs}.`
       : e.rows === 1 ? ` Its current result is replaced${costs}.` : ` Their current results are replaced${costs}.`
   const reuse = !reused ? ''
     : reuseConfirmLine(e.reusedRows, e.reuseComplete)

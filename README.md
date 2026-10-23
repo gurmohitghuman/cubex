@@ -301,7 +301,7 @@ To keep the values as they are now, say before running a column again, choose **
 
 ### Trash and history
 
-Deleted rows, sheets and tables go to the trash (the trash can at the top of the dashboard), and so do rows a CSV import replaced, rows removed as duplicates and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.
+Deleted rows, sheets and tables go to the trash (the trash can at the top of the dashboard), and so do rows a CSV import replaced, rows removed as duplicates, rows a list enrichment's rerun replaced and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.
 
 In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
 

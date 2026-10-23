@@ -36,6 +36,9 @@ function entryOf(item: TrashItem, days: number): TrashEntry {
     ...(item.state === 'restoring' ? { restored_so_far: item.restored } : {}),
     ...(item.how === 'transfer'
       ? { note: 'These rows were moved to another sheet and are still there: restoring them here keeps both.' } : {}),
+    ...(item.how === 'rerun'
+      ? { note: 'A rerun replaced these rows. Restored, they stay as rows of their own: a later rerun adds new rows '
+        + 'beside them.' } : {}),
     ...blockedBy(item),
   };
 }

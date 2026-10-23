@@ -13,7 +13,7 @@ import { db } from '../lib/db';
 import { BLANK_CHARS, LIST_MARK, RUNNING_MARK } from '../lib/run-markers';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { removeRows, sealBatch } from '../lib/trash/move';
-import { insertTrashItem, sheetFacts, trashKeeps } from '../lib/trash/store';
+import { insertTrashItem, sheetFacts, todaysBatch, trashKeeps } from '../lib/trash/store';
 import type { AutoDedupe } from '../lib/auto-dedupe/store';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
 import { widenColumns } from './trash-rows';
@@ -24,14 +24,6 @@ export interface RemovedRow { id: string; index: number }
 function holdsRunWork(rid: number): boolean {
   return !!db.prepare(`SELECT 1 FROM rows r, json_each(r.data) j WHERE r.rowid = ? AND j.type = 'text'
     AND substr(ltrim(j.value, ?), 1, 1) IN (?, ?) LIMIT 1`).get(rid, BLANK_CHARS, RUNNING_MARK, LIST_MARK);
-}
-
-// Today's auto-dedupe batch of the sheet, while the sheet keeps its row order
-// (a restore puts rows back at their old places only then).
-function todaysBatch(s: AutoDedupe, generation: number): number | null {
-  return (db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND user_id = ? AND kind = 'rows'
-    AND how = 'auto_dedupe' AND state = 'kept' AND row_generation = ? AND date(deleted_at) = date('now')
-    ORDER BY id DESC LIMIT 1`).pluck().get(s.sheet_id, s.user_id, generation) as number | undefined) ?? null;
 }
 
 // One transaction's removals. Rows to remove are collected (a check's
@@ -80,7 +72,7 @@ export class AutoDedupeRemoval {
     if (this.item !== undefined) return this.item;
     const facts = sheetFacts(this.s.sheet_id, this.s.user_id);
     if (!facts || !trashKeeps(this.s.user_id)) return (this.item = null);
-    let id = todaysBatch(this.s, facts.generation);
+    let id = todaysBatch(this.s.sheet_id, this.s.user_id, 'auto_dedupe', facts.generation);
     if (id === null) {
       id = insertTrashItem({
         userId: this.s.user_id, kind: 'rows', how: 'auto_dedupe', tableId: facts.tableId, sheetId: this.s.sheet_id,
