@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Over 200 lines: every `cubex` command lives here (the launcher on PATH only runs this file).
 # The `cubex` command, for a Cubex installed with install.sh. Run `cubex help`.
 set -euo pipefail
 
@@ -8,8 +9,11 @@ NODE="$CUBEX_HOME/node/bin/node"
 CONFIG="$CUBEX_HOME/config.env"
 LOG="$CUBEX_HOME/logs/cubex.log"
 QUIET=0
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/cubex-service.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cubex-service.sh"
+. "$HERE/cubex-service.sh"
+# shellcheck source=bin/cubex-rollback.sh
+. "$HERE/cubex-rollback.sh"
 
 say() { if [ "$QUIET" = 0 ]; then printf '%s\n' "$*"; fi; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
@@ -58,9 +62,16 @@ cmd_run() { # foreground; what the service manager starts
   exec "$NODE" server/dist/index.js
 }
 
+# How long a start may take (CUBEX_START_TIMEOUT seconds, 30 to 86400): a big
+# database is checked, and upgraded by a new version's migrations, before Cubex
+# answers. A server that stopped, or that the service manager had to start again
+# twice (it keeps crashing), fails at once.
 cmd_start() {
-  local i=0
+  local t0 said=0 timeout starts0
   load_config
+  timeout="${CUBEX_START_TIMEOUT:-600}"
+  case "$timeout" in ''|*[!0-9]*|?????????*) timeout=600 ;; esac
+  if [ "$timeout" -lt 30 ]; then timeout=30; elif [ "$timeout" -gt 86400 ]; then timeout=86400; fi
   if running; then say "Cubex is already running: $(display_url)"; return 0; fi
   if ! service_running && port_in_use; then
     die "Port $PORT is in use by another program. Set another PORT in $CONFIG, then run: cubex start"
@@ -68,12 +79,21 @@ cmd_start() {
   mkdir -p "$(dirname "$LOG")"
   if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 10485760 ]; then mv -f "$LOG" "$LOG.1"; fi
   service_start
+  t0=$SECONDS starts0="$(service_starts)"
   until healthy; do
-    i=$((i + 1))
-    if [ "$i" -gt 120 ]; then
+    if [ $((SECONDS - t0)) -ge "$timeout" ] || [ "$(service_starts)" -ge $((starts0 + 2)) ] \
+      || { [ $((SECONDS - t0)) -ge 10 ] && ! service_running; }; then
       service_stop >/dev/null 2>&1 || true
       tail -n 20 "$LOG" >&2 || true
+      if [ $((SECONDS - t0)) -ge "$timeout" ]; then
+        die "Cubex didn't answer within $timeout seconds (CUBEX_START_TIMEOUT in $CONFIG). Log: $LOG"
+      fi
       die "Cubex didn't start; the end of its log is above. Full log: $LOG"
+    fi
+    if [ "$said" = 0 ] && [ $((SECONDS - t0)) -ge 20 ]; then
+      # Shown with --quiet too: an installer waiting minutes should say why.
+      printf '%s\n' "  Still starting: a big database takes a while to check (and to upgrade, after an update)." >&2
+      said=1
     fi
     sleep 0.5
   done
@@ -183,6 +203,7 @@ Usage: cubex <command>
   open             Open Cubex in your browser
   logs             Follow the server log (Ctrl+C to stop)
   update           Update to the latest release (data and settings are kept)
+  rollback         Go back to the version and the data from before the last update (--yes: don't ask)
   config           Show the settings file
   reset-password   Choose a new password (signs out every browser)
   uninstall        Remove Cubex but keep your data (--delete-data removes it too)
@@ -205,6 +226,10 @@ main() {
     url) load_config && display_url ;;
     logs) [ -f "$LOG" ] || die "There's no log yet."; exec tail -n 100 -F "$LOG" ;;
     update) cmd_update "$@" ;;
+    rollback) cmd_rollback "$@" ;;
+    # For install.sh: keep a copy of the data before an update / put it back.
+    snapshot) backup_step save "${1:-unknown}" ;;
+    restore-snapshot) backup_step restore >/dev/null ;;
     config) printf 'Settings file: %s (after a change, run: cubex restart)\n\n' "$CONFIG"; cat "$CONFIG" ;;
     reset-password) cmd_reset_password ;;
     uninstall) cmd_uninstall "$@" ;;
