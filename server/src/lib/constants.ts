@@ -53,9 +53,13 @@ export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 256;
 
 // Failed login / setup / change-password attempts allowed per window, shared by
-// the whole instance (lib/limits.ts). Env-overridable for test harnesses.
+// the whole instance, and the same again for each browser that has signed in
+// before (lib/limits.ts). Env-overridable for test harnesses.
 export const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 export const LOGIN_RATE_MAX = envInt('LOGIN_RATE_MAX', 10);
+// How long a browser stays one that has signed in before (lib/device-cookie.ts);
+// each sign-in starts it again.
+export const DEVICE_COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 // Cache TTLs
 export const HTTP_REQUEST_CACHE_TTL_MS = 5 * 60 * 1000;

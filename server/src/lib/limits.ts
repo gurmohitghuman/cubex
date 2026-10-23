@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import type { Request } from 'express';
 import { LOGIN_RATE_WINDOW_MS, LOGIN_RATE_MAX } from './constants';
 import { API_V1_RATE_PER_MIN } from './api-v1-constants';
+import type { DeviceRequest } from './device-cookie';
 
 // Neither limiter is keyed on IP address: Cubex is self-hosted with a single
 // account, so client IPs carry no useful identity (and behind a reverse proxy
@@ -13,18 +14,36 @@ const COMMON = {
   validate: { xForwardedForHeader: false },
 } as const;
 
-// Failed login / setup / change-password attempts: ONE budget for the whole
-// instance. There is a single account, so a shared budget protects it from
-// password guessing however many addresses an attacker uses, and it bounds how
-// many 64 MiB argon2 hashes can run at once. Successful attempts don't count,
-// and a real owner signs in rarely (sessions last 30 days).
+const TOO_MANY = { error: 'Too many attempts. Try again in a few minutes.' };
+
+// Failed login / setup / change-password attempts from browsers that never
+// signed in: ONE budget for the whole instance. There is a single account, so
+// a shared budget protects it from password guessing however many addresses an
+// attacker uses, and with the device budgets below it bounds the 64 MiB argon2
+// hashes a window can bring (argon2 runs at most 4 at once on Node's thread
+// pool). Successful attempts don't count, and a real owner signs in rarely
+// (sessions last 30 days). A browser that has signed in before spends
+// deviceLoginLimiter's instead (routes/auth.ts).
 export const loginLimiter = rateLimit({
   ...COMMON,
   windowMs: LOGIN_RATE_WINDOW_MS,
   max: LOGIN_RATE_MAX,
   keyGenerator: () => 'instance',
   skipSuccessfulRequests: true,
-  message: { error: 'Too many attempts. Try again in a few minutes.' },
+  message: TOO_MANY,
+});
+
+// The same budget for each browser holding a device cookie (lib/device-cookie.ts),
+// so wrong guesses from elsewhere, which spend the shared one, can't lock the
+// owner out of it. Keyed on the device id the route validated BEFORE this runs,
+// never on an unchecked cookie: only a sign-in can mint a key.
+export const deviceLoginLimiter = rateLimit({
+  ...COMMON,
+  windowMs: LOGIN_RATE_WINDOW_MS,
+  max: LOGIN_RATE_MAX,
+  keyGenerator: (req: DeviceRequest) => `device:${req.deviceId}`,
+  skipSuccessfulRequests: true,
+  message: TOO_MANY,
 });
 
 // /api/v1 + /mcp — keyed on the ACCESS TOKEN id, which authenticateAccessToken

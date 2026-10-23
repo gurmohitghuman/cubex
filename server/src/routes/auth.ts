@@ -5,7 +5,8 @@ import { signToken, authenticateUser } from '../lib/auth';
 import { hashPassword, verifyPassword, needsRehash, newPasswordError } from '../lib/password';
 import { setSessionCookie, clearSessionCookie, SESSION_COOKIE_NAME } from '../lib/cookie';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { loginLimiter } from '../lib/limits';
+import { deviceLoginLimiter, loginLimiter } from '../lib/limits';
+import { sentDeviceCookie, setDeviceCookie, trustedDevice, type DeviceRequest } from '../lib/device-cookie';
 import { MAX_PASSWORD_LENGTH } from '../lib/constants';
 
 // Single-user auth. Cubex has exactly one account: whoever opens a fresh install
@@ -57,16 +58,37 @@ function sessionUserId(req: express.Request): string | null {
 
 // Re-read the epoch at signing time: an await sits between the caller's read and
 // here, and a concurrent logout may have bumped it. A token signed with a stale
-// epoch would be rejected on its very next request.
+// epoch would be rejected on its very next request. The browser also becomes
+// one that has signed in before (lib/device-cookie.ts); the session cookie is
+// set first (tests/e2e/logout-revocation.spec.ts reads the first Set-Cookie).
 function startSession(req: express.Request, res: express.Response, userId: string): void {
-  const row = db.prepare('SELECT session_epoch FROM users WHERE id = ?')
-    .get(userId) as { session_epoch: number } | undefined;
+  const row = db.prepare('SELECT id, password_hash, session_epoch FROM users WHERE id = ?')
+    .get(userId) as UserRow | undefined;
   setSessionCookie(req, res, signToken({ userId, sessionEpoch: row?.session_epoch ?? 0 }));
+  if (row) setDeviceCookie(req, res, row);
 }
 
-// Public. Tells the login page which form to show.
+// Which budget a failed attempt spends: the browser's own when it has signed in
+// before (its device cookie checked here, before the limiter keys on it),
+// otherwise the instance's shared one (lib/limits.ts).
+function signInBudget(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!sentDeviceCookie(req)) return loginLimiter(req, res, next);
+  const user = getUser();
+  const device = user ? trustedDevice(req, user) : null;
+  if (!device) return loginLimiter(req, res, next);
+  (req as DeviceRequest).deviceId = device;
+  return deviceLoginLimiter(req, res, next);
+}
+
+// Public. Tells the login page which form to show. A browser that is signed in
+// but has no device cookie (it signed in before they existed, or the password
+// was rehashed) gets one here, on its next page load. So does a copied session
+// cookie: whoever holds one is already in, and gains only a budget of its own.
 router.get('/status', (req, res) => {
-  res.json({ setupRequired: !getUser(), authenticated: sessionUserId(req) !== null });
+  const user = getUser();
+  const userId = sessionUserId(req);
+  if (user && userId === user.id && !trustedDevice(req, user)) setDeviceCookie(req, res, user);
+  res.json({ setupRequired: !user, authenticated: userId !== null });
 });
 
 // Public, but only until an account exists. The already-set-up check runs
@@ -92,7 +114,7 @@ router.post('/setup', refuseIfSetUp, loginLimiter, async (req, res) => {
   }
 });
 
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', signInBudget, async (req, res) => {
   const { password } = body(req);
   // Cap the length BEFORE argon2 so a huge body can't tie up a hash.
   if (typeof password !== 'string' || !password || password.length > MAX_PASSWORD_LENGTH) {
@@ -146,7 +168,7 @@ router.post('/logout', (req, res) => {
 // out. Bumps session_epoch: every other browser is signed out, and this one
 // gets a fresh cookie. A wrong current password is a 400, not a 401: the
 // client treats any 401 as "signed out" and would bounce to /login.
-router.post('/change-password', authenticateToken, loginLimiter, async (req: AuthRequest, res) => {
+router.post('/change-password', authenticateToken, signInBudget, async (req: AuthRequest, res) => {
   const { currentPassword, newPassword } = body(req);
   if (typeof currentPassword !== 'string' || currentPassword.length > MAX_PASSWORD_LENGTH) {
     return res.status(400).json({ error: 'Current password is wrong' });

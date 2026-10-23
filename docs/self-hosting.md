@@ -216,7 +216,7 @@ The steps above already cover HTTPS and the password. If you set Cubex up your o
 
 - Put it behind HTTPS with a reverse proxy (Caddy, nginx, Traefik). The session cookie becomes `Secure` automatically when the proxy sends `X-Forwarded-Proto: https`. Keep the default `HOST=127.0.0.1` and run the proxy on the same server.
 - Set `INITIAL_PASSWORD` so the install is never open for someone else to claim, or choose the password before you open it up.
-- Use a strong password. Failed sign-ins are limited for the whole instance (10 per 15 minutes), not per IP: someone hammering the login can delay new sign-ins, but browsers that are already signed in keep working.
+- Use a strong password. Failed sign-ins are limited, and not per IP: 10 per 15 minutes from browsers that have never signed in, together, and 10 per 15 minutes for each browser you have signed in with before, on its own. So someone hammering the login can only delay sign-ins from new browsers: a browser you've used before still signs in, even after you sign out of it. Changing or resetting the password makes every browser count as new again.
 - Treat webhook URLs and access tokens like passwords. Both can be rotated or revoked in the app. With auto-run on in a sheet, its webhook URL can spend your treg balance and send HTTP requests, up to the caps you set.
 
 ## Check its health
