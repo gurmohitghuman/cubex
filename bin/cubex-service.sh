@@ -38,6 +38,27 @@ service_running() {
   esac
 }
 
+# Set up to run, even between the restarts of a server that keeps crashing
+# (launchd respawning it, systemd's auto-restart), unlike service_running.
+service_loaded() {
+  svc_vars
+  case "$MODE" in
+    launchd) launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 ;;
+    systemd) systemctl --user is-enabled --quiet "$UNIT" 2>/dev/null ;;
+    *) bg_pid >/dev/null ;;
+  esac
+}
+# How many times the service manager has started the server so far (launchd's
+# runs, systemd's automatic restarts); 0 in background mode, where a crash ends it.
+service_starts() {
+  local n=''
+  svc_vars
+  case "$MODE" in
+    launchd) n="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null | sed -n 's/^[[:space:]]*runs = \([0-9][0-9]*\).*/\1/p' | head -n 1)" ;;
+    systemd) n="$(systemctl --user show -p NRestarts --value "$UNIT" 2>/dev/null)" ;;
+  esac
+  case "$n" in ''|*[!0-9]*) echo 0 ;; *) echo "$n" ;; esac
+}
 service_start() {
   svc_vars
   case "$MODE" in launchd) launchd_start ;; systemd) systemd_start ;; *) bg_start ;; esac

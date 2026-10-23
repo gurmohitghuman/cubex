@@ -207,7 +207,7 @@ Enrichments keep each row's answer in the database, and pruning old answers free
 
 ## 7. Keep it up to date
 
-- **Cubex:** run `cubex update` to install the latest [release](https://github.com/gurmohitghuman/cubex/releases) (each one lists what changed). Your data and settings stay, and if the new version doesn't start, the previous one comes back.
+- **Cubex:** run `cubex update` to install the latest [release](https://github.com/gurmohitghuman/cubex/releases) (each one lists what changed). Your data and settings stay. Before the new version starts, the update keeps a copy of your data in `~/.cubex/data/backups/before-update` (it needs as much free disk space as the data takes). If the new version doesn't start, the previous one comes back with that copy of your data. If it starts but something is wrong, `cubex rollback` puts back the previous version and your data as it was before the update. Anything changed since then is lost, sign-in included: a password changed or a token revoked after the update is back as it was. Today's data is kept aside in a `~/.cubex/data/backups/replaced-<time>` folder. The next update replaces the copy, so delete the `backups` folder whenever you need the space.
 - **The server and Caddy:** run `sudo apt update && sudo apt upgrade -y` now and then. Ubuntu also installs security updates by itself.
 
 ## Keep it safe
