@@ -40,14 +40,17 @@ export function writeAiSetup(sheetId: string, userId: string, column: string, f:
 
 // columns: the sheet's columns once the restore has added its own back. A
 // caller that can't use saved keys freezes them off, as its reruns would.
+// setupOnly 2: set up by a template (an AI visibility table), never run; 1: restored.
 export function writeHttpSetup(
   sheetId: string, userId: string, column: string, f: HttpFill, columns: string[], hasSecretsScope: boolean,
+  setupOnly: 1 | 2 = 1,
 ): string {
   const id = uuidv4();
   db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, processed_rows,
       master_column_name, allow_secrets, dest_sheet_id, setup_only)
-    VALUES (?, ?, ?, ?, 'completed', 0, 0, ?, ?, ?, 1)`)
-    .run(id, sheetId, userId, JSON.stringify(f.config), column, hasSecretsScope ? f.allowSecrets : 0, f.destSheetId);
+    VALUES (?, ?, ?, ?, 'completed', 0, 0, ?, ?, ?, ?)`)
+    .run(id, sheetId, userId, JSON.stringify(f.config), column, hasSecretsScope ? f.allowSecrets : 0, f.destSheetId,
+      setupOnly);
   // A column it no longer fills loses its links (a rerun puts ⏳ in every
   // linked column: one it doesn't write would wait forever). Earlier runs keep
   // their links to the columns it still fills: an answer is found through them.

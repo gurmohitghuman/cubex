@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
+import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
 
 interface CreateTableModalProps {
   isOpen: boolean
@@ -72,6 +73,10 @@ export const CreateTableModal: React.FC<CreateTableModalProps> = ({ isOpen, onCl
         <TrySampleButton className="w-full" />
         <p className="text-xs text-gray-500 mt-2 text-center">
           25 made-up leads, with columns that show what Cubex does.
+        </p>
+        <AiVisibilityButton className="w-full mt-3" />
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          Ask AI engines your buyers' questions and see whether they name you.
         </p>
       </div>
     </Modal>

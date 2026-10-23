@@ -14,6 +14,7 @@ import crypto from 'node:crypto'
 import { fixture, hasFixture, state, billing } from './state.mjs'
 import { refuseKey } from './account.mjs'
 import { isWaterfall, runWaterfall } from './waterfall.mjs'
+import { aiSearchAnswer, isAiSearch } from './ai-search.mjs'
 
 const callId = () => crypto.randomBytes(16).toString('hex')
 const keys = new Map()        // Idempotency-Key → { fingerprint, answer }
@@ -39,14 +40,15 @@ function scenarioAnswer() {
   }
 }
 
-function singleTool(toolId, req) {
+function singleTool(toolId, req, body) {
   const d = hasFixture(`catalog/endpoints/${toolId}.json`) ? fixture(`catalog/endpoints/${toolId}.json`) : null
   if (!d) return { status: 404, refusal: `no tool '${toolId}' in this org` }
   const provider = d.endpoint.provider ?? toolId.split('.')[0]
   const own = state.ownKeys.includes(provider)
   const nobody = (req.query + req.body).toLowerCase().includes('nobody')
+  const answered = isAiSearch(toolId) ? aiSearchAnswer(toolId, body) : d.example_response ?? { ok: true }
   return {
-    status: 200, body: nobody ? {} : d.example_response ?? { ok: true },
+    status: 200, body: nobody ? {} : answered,
     costMicro: own ? null : Math.round((d.endpoint.cost?.usd ?? 0) * 1e6), servedBy: toolId, single: true,
   }
 }
@@ -60,7 +62,7 @@ function answer(toolId, req) {
   const raw = JSON.stringify(body).toLowerCase() + req.query.toLowerCase()
   const bad = (state.badDomains ?? []).find(d => raw.includes(String(d).toLowerCase()))
   if (bad) return refusal(400, { error: 'catalog_parameter_invalid', message: `${bad} is not a valid domain` })
-  const run = isWaterfall(toolId) ? runWaterfall(toolId, body, req.headers) : singleTool(toolId, req)
+  const run = isWaterfall(toolId) ? runWaterfall(toolId, body, req.headers) : singleTool(toolId, req, body)
   if (run.refusal) return refusal(run.status, run.refusal)
   const cost = run.costMicro
   if (cost !== null && cost > state.balanceMicro) {

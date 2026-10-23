@@ -20,7 +20,12 @@ import { type SheetRow, normalizeColumnName } from './sheets-shared';
 import { waterfallColumnSpend } from '../services/waterfall-status';
 import { autoDedupeView } from '../services/auto-dedupe-setting';
 import { isSampleSheet } from '../services/sample-table';
+import { aiVisibilityForSheet, aiVisibilityView } from '../services/ai-visibility-run';
 
+const aiVisibilityOfSheet = (sheetId: string, userId: string) => {
+  const rec = aiVisibilityForSheet(userId, sheetId);
+  return rec ? aiVisibilityView(rec) : null;
+};
 const RUN_MAIN_TYPES = new Set<string | undefined>(['ai-output', 'http-master', 'enrich-status', 'waterfall']);
 
 const router = express.Router();
@@ -126,6 +131,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
         autoDedupe: autoDedupeView(id, req.userId!),
         // The sample sheet (services/sample-table.ts) shows its guide above the grid.
         sample: isSampleSheet(id, req.userId!),
+        // An AI visibility table's questions sheet shows its guide (services/ai-visibility-*.ts).
+        aiVisibility: aiVisibilityOfSheet(id, req.userId!),
       },
     });
   } catch (error) {

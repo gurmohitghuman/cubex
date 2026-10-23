@@ -37,6 +37,7 @@ import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
+import aiVisibilityV1 from './api-v1-ai-visibility';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import { actAs } from '../lib/actor';
@@ -70,6 +71,7 @@ router.use('/sheets/:id', refuseChangesWhileBusy([
   /^\/setup-versions\/[^/]+\/restore$/,
 ]));
 router.use(tablesV1);
+router.use(aiVisibilityV1);
 router.use(tableSheetsV1);
 router.use(sheetsV1);
 router.use(sheetOpsV1);

@@ -5,6 +5,7 @@ import type { FormulaColumnView } from './formula'
 import type { SheetView } from './views'
 import type { LookupColumnView } from './lookup'
 import type { AutoDedupeView } from './dedupe'
+import type { AiVisibilityView } from './ai-visibility'
 export interface Table {
   id: string
   name: string
@@ -83,6 +84,8 @@ export interface SheetData {
     runColumns?: Record<string, string>
     // The sample sheet (Try with sample data): it shows its guide above the grid.
     sample?: boolean
+    // An AI visibility table's questions sheet: it shows its guide above the grid.
+    aiVisibility?: AiVisibilityView | null
   }
 }
 
