@@ -16,13 +16,19 @@ import { db } from './db';
 //   master column is NOT just the input — the worker overwrites it per-row with a
 //   status marker (✅ Success / ❌ Failed / ⏭️ Skipped, see http-cell-values.ts),
 //   and run-start stamps "⏳ Processing..." into it. So it's a write target too.
-export function getLockedRunColumns(sheetId: string, userId: string): Set<string> {
+//
+// `paused: false` leaves paused runs out: what a reader that would otherwise
+// wait for the run asks (a lookup fill), since a run can stay paused for days.
+export function getLockedRunColumns(sheetId: string, userId: string, opts: { paused?: boolean } = {}): Set<string> {
   const locked = new Set<string>();
+  // The literal list keeps the partial active-run index (migration 014) usable.
+  const paused = opts.paused === false ? 0 : 1;
 
   const aiRuns = db.prepare(`
     SELECT column_name, output_columns, data_column FROM ai_runs
-    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-  `).all(sheetId, userId) as Array<{ column_name: string; output_columns: string | null; data_column: string | null }>;
+    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
+  `).all(sheetId, userId, paused) as
+    Array<{ column_name: string; output_columns: string | null; data_column: string | null }>;
   for (const r of aiRuns) {
     // column_name is the (Output) column (single-column) OR the status column
     // (structured runs). Lock it either way.
@@ -49,8 +55,8 @@ export function getLockedRunColumns(sheetId: string, userId: string): Set<string
 
   const httpRuns = db.prepare(`
     SELECT config, master_column_name FROM http_runs
-    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused')
-  `).all(sheetId, userId) as Array<{ config: string | null; master_column_name: string | null }>;
+    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
+  `).all(sheetId, userId, paused) as Array<{ config: string | null; master_column_name: string | null }>;
   for (const r of httpRuns) {
     if (r.master_column_name) locked.add(r.master_column_name);
     if (!r.config) continue;

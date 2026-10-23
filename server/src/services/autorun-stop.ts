@@ -39,6 +39,18 @@ function entryReason(
   }
   // Lifted by the tick once the token that turned auto-run on has room again (autorun-loop.ts).
   if (reason === 'token_cap') return { reason, message: `${message} Auto-run goes on by itself once it is raised.` };
+  // Lifted by the tick once OpenRouter reports credits (ai_credits), and both when an OpenRouter key is saved.
+  if (reason === 'ai_credits') {
+    return {
+      reason, message: `${message} Add credits at OpenRouter, then resume auto-run. It also goes on by itself once `
+        + 'OpenRouter reports credits for the key.',
+    };
+  }
+  if (reason === 'ai_key') {
+    return {
+      reason, message: `${message} Fix it, then resume auto-run (saving an OpenRouter key in Settings resumes it too).`,
+    };
+  }
   return { reason, message };
 }
 

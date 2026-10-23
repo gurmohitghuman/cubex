@@ -9,12 +9,13 @@ import type {
 
 const SHORT: Record<AutorunPause, string> = {
   user: 'paused by you', column_cap: "this column's cap", row_cap: 'rows a day', daily_limit: 'the daily limit',
-  no_key: 'no treg key', auth: 'treg key refused', balance: 'balance', treg_cap: "treg's limit",
+  no_key: 'a key is missing', auth: 'treg key refused', balance: 'balance', treg_cap: "treg's limit",
   team_rule: 'treg team rule', provider_busy: 'provider busy', unreachable: "can't reach treg",
   unconfirmed: 'waiting on treg', retired: 'tool retired', missing_input: 'column missing',
   setup: 'needs a fix', failed: 'a run failed', queue: "couldn't queue", priced: 'needs a daily cap',
   dest_full: 'the sheet it adds to is full', loop: 'its rows would come back', too_slow: 'the formula is too slow',
-  over_cap: "this column's cap",
+  over_cap: "this column's cap", ai_key: 'OpenRouter refused it', ai_credits: 'OpenRouter credits ran out',
+  token_cap: "the agent's spend cap",
 }
 
 export const pauseShort = (r: AutorunPause | null): string => (r ? SHORT[r] ?? 'paused' : '')

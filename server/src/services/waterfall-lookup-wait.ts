@@ -22,13 +22,9 @@ export function otherSheetMoving(sheetId: string, userId: string): boolean {
   return db.prepare(JOBS).pluck().get({ s: sheetId, u: userId }) === 1;
 }
 
-const RUNNING = `SELECT EXISTS (SELECT 1 FROM http_runs WHERE sheet_id = @s AND user_id = @u
-    AND status IN ('pending', 'running'))
-  OR EXISTS (SELECT 1 FROM ai_runs WHERE sheet_id = @s AND user_id = @u AND status IN ('pending', 'running'))`;
-
-// The matched row's cell holds a run's ⏳ and a run there still fills that column.
+// The matched row's cell holds a run's ⏳ and a run there still fills that column
+// (a paused one doesn't, whatever else runs on that sheet).
 export function cellStillFilling(raw: unknown, sheetId: string, userId: string, column: string): boolean {
   if (typeof raw !== 'string' || !raw.startsWith('⏳')) return false;
-  return getLockedRunColumns(sheetId, userId).has(column)
-    && db.prepare(RUNNING).pluck().get({ s: sheetId, u: userId }) === 1;
+  return getLockedRunColumns(sheetId, userId, { paused: false }).has(column);
 }
