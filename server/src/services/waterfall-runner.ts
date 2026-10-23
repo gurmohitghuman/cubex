@@ -150,7 +150,7 @@ export async function processWaterfallRun(
   }
   let ai: WaterfallRowCtx['ai'] = null;
   if (needsAi) {
-    try { ai = await getOpenRouterClient(run.user_id); } catch { await stop('ai_key', NO_AI_KEY); return; }
+    try { ai = await getOpenRouterClient(run.user_id); } catch { await stop('no_key', NO_AI_KEY); return; }
   }
   clearCooldowns(run.id, run.user_id);
   // The sheet's columns, read at most once a second (input columns resolve against them).

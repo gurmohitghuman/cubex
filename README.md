@@ -223,7 +223,7 @@ Click **+ Add Column** and choose **Lookup** to fill a new column from another s
 
 A match is **is exactly** (the whole value) or **contains** (the value anywhere inside the other cell, 3 characters or more). Capital letters (accented ones too) and spaces around the value don't matter. It's free: no AI, and nothing is sent anywhere. You see the first matches before you save it.
 
-Changes in the other sheet don't update the column; click **Look up every row again** in its menu when they should. Auto-run is on by default, so new rows and rows whose value changes are looked up on their own. Renaming columns of the other sheet keeps the lookup working; if that sheet, or a column the lookup reads, is deleted, the column stops and its header says why.
+Changes in the other sheet don't update the column; click **Look up every row again** in its menu when they should. A lookup waits while a run is filling a column it reads there. A paused run doesn't hold it: the rows that run hasn't reached read as empty, and the lookup says so while the run is paused; look every row up again once it's done. Auto-run is on by default, so new rows and rows whose value changes are looked up on their own. Renaming columns of the other sheet keeps the lookup working; if that sheet, or a column the lookup reads, is deleted, the column stops and its header says why.
 
 Lookups stay fast on big sheets: Cubex keeps an index of each column other sheets look up, built in the background the first time, so your sheet stays usable meanwhile. Contains on very large sheets can take a few minutes.
 

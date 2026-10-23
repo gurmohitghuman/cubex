@@ -10,13 +10,16 @@ export interface AutorunCondition { column: string; op: string; value: string }
 // Why a column's auto-run is paused. 'user': paused on purpose. The caps
 // (column_cap, row_cap, daily_limit) lift at midnight UTC or on a raise; treg's
 // stops (and 'queue', a run that couldn't be queued) are retried a few minutes
-// on; missing_input lifts when the column is back. 'priced': treg prices a tool
-// the team's own key billed, and the column needs a daily cap. 'loop': rows it
-// adds would set off auto-run that adds rows back (lifts once that one is off).
+// on; 'ai_credits' (OpenRouter's credits out) lifts once OpenRouter reports some;
+// missing_input when the column is back; 'ai_key' (OpenRouter refused a
+// waterfall's AI step) when an OpenRouter key is saved; 'token_cap' when the
+// access token's spend cap is raised. 'priced': treg prices a tool the team's own key billed, and the
+// column needs a daily cap. 'loop': rows it adds would set off auto-run that adds
+// rows back (lifts once that one is off).
 export type AutorunPause =
   | 'user' | 'column_cap' | 'row_cap' | 'daily_limit' | 'no_key' | 'auth' | 'balance' | 'treg_cap' | 'team_rule'
   | 'provider_busy' | 'unreachable' | 'unconfirmed' | 'retired' | 'missing_input' | 'setup' | 'failed' | 'queue'
-  | 'dest_full' | 'priced' | 'loop' | 'too_slow' | 'over_cap'
+  | 'dest_full' | 'priced' | 'loop' | 'too_slow' | 'over_cap' | 'ai_key' | 'ai_credits' | 'token_cap'
 
 export interface AutorunColumn {
   column: string

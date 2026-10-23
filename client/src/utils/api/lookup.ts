@@ -26,6 +26,8 @@ export interface LookupColumnView {
   status: 'filling' | 'done' | 'failed'
   // What a fill waits for ("Waiting for "Companies" to finish sorting.").
   waiting: string | null
+  // A paused run in the other sheet hasn't finished a column it reads: its ⏳ rows read as empty.
+  pausedRun: string | null
   filledRows: number
   errorRows: number
   firstError: string | null

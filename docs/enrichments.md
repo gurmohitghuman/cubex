@@ -204,7 +204,7 @@ Auto-runs can chain: an HTTP API column can read what an enrichment fills, and s
 
 While auto-run is on, the sheet header shows **Auto-run on**. Click it to see each auto-run and to pause or resume them all. In the column's auto-run settings, **Pause** keeps the rows added meanwhile and runs them when you resume; **Turn off** skips them, and turned on again it starts from the rows there then.
 
-Auto-run can also pause by itself, and says why on the column header: its cap or the daily limit (it goes on after midnight UTC, or raise the cap), no treg key (it goes on once you add one), treg unreachable or your balance empty (it tries again a few minutes later), or a column it reads was deleted (it waits until a column by that name is back).
+Auto-run can also pause by itself, and says why on the column header: its cap or the daily limit (it goes on after midnight UTC, or raise the cap), no treg or OpenRouter key (it goes on once you add one), treg unreachable or your balance empty (it tries again a few minutes later), a waterfall's AI step out of OpenRouter credits (it goes on when you resume it, or by itself once OpenRouter reports credits for the key), OpenRouter refusing a waterfall's AI step, such as a key or a model it doesn't take (it goes on when you resume it or save an OpenRouter key), or a column it reads was deleted (it waits until a column by that name is back).
 
 ## The answer panel and adding fields
 

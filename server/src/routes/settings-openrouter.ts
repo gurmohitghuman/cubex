@@ -5,6 +5,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { encrypt, decrypt } from '../lib/crypto';
 import { validateKey, fetchAccountBalance, fetchModels } from '../lib/openrouter';
 import { dailyLimitView } from '../services/treg-key';
+import { clearAiKeyPauses } from '../services/autorun-entry';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -53,6 +54,8 @@ router.put('/openrouter-key', (req: AuthRequest, res) => {
       db.prepare('INSERT INTO settings (id, user_id, openrouter_api_key_encrypted) VALUES (?, ?, ?)')
         .run(uuidv4(), req.userId!, ciphertext);
     }
+    // Waterfall auto-runs OpenRouter stopped try again with it.
+    clearAiKeyPauses(req.userId!);
     res.json({ message: 'OpenRouter API key updated successfully' });
   } catch (error) {
     console.error('Update OpenRouter key error:', error);

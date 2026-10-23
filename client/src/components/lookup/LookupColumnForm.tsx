@@ -142,13 +142,14 @@ export const LookupColumnForm: React.FC<Props> = ({ sheetId, columns, editing, o
 }
 
 // Edit lookup: why it stopped (the other sheet or a column gone, a failed
-// fill), the first row that showed an error, what a fill waits for, and why
-// auto-run is paused.
+// fill), the first row that showed an error, what a fill waits for, a paused
+// run there it didn't wait for, and why auto-run is paused.
 const LookupStatus: React.FC<{ view: LookupColumnView }> = ({ view }) => {
   const notes = [
     view.broken ? `${view.broken} Pick the sheet and columns again.` : null,
     view.status === 'failed' && !view.broken ? `It stopped${view.error ? `: ${view.error}` : '.'}` : null,
     view.status === 'filling' && view.waiting ? view.waiting : null,
+    view.pausedRun,
     view.status === 'done' && view.errorRows > 0
       ? `${view.errorRows === 1 ? '1 row shows' : `${view.errorRows} rows show`} an error.`
         + (view.firstError ? ` The first: ${view.firstError}` : '')

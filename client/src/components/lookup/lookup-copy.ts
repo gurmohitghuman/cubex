@@ -37,6 +37,7 @@ export function lookupHeaderTip(v: LookupColumnView | undefined): LookupTip {
   const label = `Looks up ${v.sourceColumn} in ${where}${v.match === 'contains' ? ' (contains)' : ''}`
   const parts = [label]
   if (v.status === 'filling') parts.push(v.waiting ?? 'Looking up now')
+  if (v.pausedRun) parts.push(v.pausedRun)
   if (v.status === 'done' && v.errorRows > 0) {
     parts.push(`${plural(v.errorRows, 'row')} ${v.errorRows === 1 ? 'shows' : 'show'} an error`)
   }

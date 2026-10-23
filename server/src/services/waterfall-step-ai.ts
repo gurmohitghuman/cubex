@@ -10,7 +10,7 @@ import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { buildMultiOutputInstruction, parseMultiOutput } from '../lib/ai-multi-output';
 import { buildWebTools, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
-import { classifyAiError } from '../lib/ai-error-classify';
+import { classifyAiError, isOutOfCredits } from '../lib/ai-error-classify';
 import { redactSecrets } from '../lib/redact';
 import { WATERFALL_AI_MAX_TOKENS, WATERFALL_AI_TEMPERATURE } from '../lib/constants';
 import { normalizeResult, RESULT_INFO } from '../lib/waterfall/result-type';
@@ -29,7 +29,7 @@ export interface AiStepArgs {
   client: OpenAI;
   signal: AbortSignal;                 // ends waits only, never a call that went out
   stopped: () => boolean;
-  halt: (message: string) => void;     // an account problem: the run stops with this message
+  halt: (message: string, reason?: string) => void;   // an account problem: the run stops with this message
 }
 
 const SYSTEM = 'You look up one fact for one row of a spreadsheet. Use the details given and, when you can '
@@ -103,7 +103,8 @@ export async function aiStep(a: AiStepArgs): Promise<StepResult> {
     const text = (error instanceof Error ? error.message : 'Unknown error') + (cause ? ` (${cause})` : '');
     const message = redactSecrets(text);
     if (classifyAiError(message) === 'configuration') {
-      a.halt(`OpenRouter refused the AI step: ${message}`);
+      // Out of credits is fixed at OpenRouter, so an auto-run it paused tries again on its own.
+      a.halt(`OpenRouter refused the AI step: ${message}`, isOutOfCredits(message) ? 'ai_credits' : 'ai_key');
       // A refusal that still billed comes back as an error, so its cost reaches the run
       // (the halt keeps the row ⏳ for the resume all the same).
       if (!cost) return STOP;

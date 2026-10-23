@@ -6,7 +6,8 @@
 // clearing, and while it is paused. Pauses that can clear on their own are
 // cleared here: caps when today allows a row again (midnight UTC or a raise),
 // treg's stops after AUTORUN_RETRY_MS, a missing column once it is back, a
-// missing key once one is saved, a loop of list auto-runs once it is broken.
+// missing key once one is saved, a loop of list auto-runs once it is broken,
+// OpenRouter credits once OpenRouter reports some.
 import { usesTreg } from '../lib/waterfall/caps';
 import { db } from '../lib/db';
 import { AUTORUN_MAX_ROWS, AUTORUN_RETRY_MS, AUTORUN_SWEEP_MS } from '../lib/constants';
@@ -31,6 +32,7 @@ import { derivedFollowTick } from './derived-follow';
 import { isFollowKind } from '../lib/autorun-kick';
 import { isWaterfallConfig, onSteps } from '../lib/waterfall/config';
 import { getOpenRouterApiKey } from './openrouter';
+import { readOpenRouterBalance } from './openrouter-balance';
 import { rowCostOf, spendCapRefusal } from './token-spend';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
@@ -78,11 +80,27 @@ function setupOf(e: AutorunEntry): Setup | { reason: string; message: string } {
 
 const pausedMs = (at: string | null): number => (at ? Date.now() - Date.parse(`${at.replace(' ', 'T')}Z`) : Infinity);
 
+// Out of OpenRouter credits: it goes on only once OpenRouter reports money
+// for the key (its balance, or what's left of its limit), looked at every
+// AUTORUN_RETRY_MS. Trying sooner would run a waterfall's paid treg steps
+// ahead of its AI step for nothing once their free replay (24 h) has passed.
+// When OpenRouter shares neither, it waits for a resume or the key saved again.
+async function creditsBack(e: AutorunEntry): Promise<boolean> {
+  if (pausedMs(e.paused_at) < AUTORUN_RETRY_MS) return false;
+  const read = await readOpenRouterBalance(e.user_id);
+  const available = 'ok' in read ? read.ok.available_usd : null;
+  if (available !== null && available > 0) return true;
+  db.prepare(`UPDATE autorun_columns SET paused_at = datetime('now') WHERE id = ? AND paused_reason = 'ai_credits'`)
+    .run(e.id);
+  return false;
+}
+
 // Whether a paused entry may go on now (and clears its pause if so).
-function pauseLifted(e: AutorunEntry): boolean {
+async function pauseLifted(e: AutorunEntry): Promise<boolean> {
   const reason = e.paused_reason!;
   let lifted = false;
   if (RETRY_PAUSES.has(reason)) lifted = pausedMs(e.paused_at) >= AUTORUN_RETRY_MS;
+  else if (reason === 'ai_credits') lifted = await creditsBack(e);
   else if (reason === 'missing_input' || reason === 'no_key' || reason === 'token_cap') {
     lifted = !('reason' in setupOf(e));
   }
@@ -103,7 +121,7 @@ export async function autorunTick(id: string): Promise<void> {
   if (!e || !e.enabled) return;
   // A clean or formula column follows its inputs: free, no run, no caps (derived-follow.ts).
   if (isFollowKind(e.kind)) return derivedFollowTick(e);
-  if (e.paused_reason && !pauseLifted(e)) return;
+  if (e.paused_reason && !(await pauseLifted(e))) return;
   if (sheetBusyWith(e.sheet_id) || sheetYielding(e.sheet_id)) return;
   // New rows auto-dedupe hasn't checked yet may be about to go: not paid for.
   if (autoDedupeChecking(e.sheet_id)) return;

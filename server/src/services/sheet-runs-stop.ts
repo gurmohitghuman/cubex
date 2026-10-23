@@ -29,10 +29,11 @@ export interface SheetStopResult {
 
 // Pauses that lift on their own (autorun-loop.ts pauseLifted): treg's stops a
 // few minutes on, caps at midnight UTC or a raise, a column or key once it is
-// back, room in a list's sheet, a broken loop. An auto-run paused like this is
-// still on: it starts runs again without anyone resuming it.
+// back, room in a list's sheet, a broken loop, OpenRouter credits once it
+// reports some. An auto-run paused like this is still on: it starts runs again
+// without anyone resuming it.
 const LIFTS_ON_ITS_OWN = JSON.stringify([...RETRY_PAUSES, ...CAPACITY_PAUSES, 'missing_input', 'no_key', 'dest_full',
-  'loop']);
+  'loop', 'ai_credits']);
 
 // Columns whose auto-run is on, now or once such a pause lifts: new rows start runs there.
 const autorunsOn = (sheetId: string, userId: string): string[] => db.prepare(`SELECT status_column
