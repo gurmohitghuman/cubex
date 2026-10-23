@@ -2,6 +2,7 @@ import { db } from './db';
 import { stripControlChars } from './csv-safety';
 import { stripInvisibleNameChars } from './name-safety';
 import { jsonPath } from './json-path';
+import { orderedUuid } from './ordered-id';
 
 // A cell's JSON path (lib/json-path.ts, pure so lib/row-filter can build SQL without a database).
 export { jsonPath };
@@ -79,7 +80,7 @@ export function upsertCellsBatch(
   const tx = db.transaction(() => {
     for (const u of updates) {
       stmt.run(
-        crypto.randomUUID(),
+        orderedUuid(),
         sheetId, userId, u.rowIndex,
         u.columnName, u.value,
         jsonPath(u.columnName), u.value,

@@ -124,6 +124,9 @@ export const CURL_MAX_CHARS = 100_000;
 // usual 30 s request timeout, so both wait up to DEDUPE_REQUEST_TIMEOUT_MS.
 export const DEDUPE_CHECK_DELAY_MS = 400;
 export const DEDUPE_REQUEST_TIMEOUT_MS = 10 * 60_000;
+// "Copy values to a new sheet" answers once every row is in: a million rows take
+// about as long as importing them, more than the usual 30 s request timeout.
+export const SHEET_COPY_TIMEOUT_MS = 10 * 60_000;
 // The auto-dedupe dialog looks again this often while the sheet's keys build or checks wait.
 export const AUTO_DEDUPE_POLL_MS = 2_000;
 // Rows picked from a trash batch go back at most this many a call (server TRASH_RESTORE_PICK_MAX).

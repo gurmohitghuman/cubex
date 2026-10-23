@@ -1,5 +1,4 @@
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
@@ -9,6 +8,7 @@ import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from '../services/autorun-block';
 import { deleteRowsToTrash } from '../services/trash-rows';
 import { getTrashDays } from '../lib/trash/store';
+import { orderedUuid } from '../lib/ordered-id';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -53,7 +53,7 @@ router.post('/:id/rows', (req: AuthRequest, res) => {
 
       const insert = db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, '{}')");
       for (let i = 0; i < count; i++) {
-        insert.run(uuidv4(), id, req.userId!, nextIndex);
+        insert.run(orderedUuid(), id, req.userId!, nextIndex);
         newRowIndexes.push(nextIndex);
         nextIndex++;
       }

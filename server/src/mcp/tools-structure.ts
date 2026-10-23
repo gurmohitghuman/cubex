@@ -7,6 +7,9 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createTable, renameTable, deleteTable } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
+import { copySheetValues, sheetCopyWindow } from '../services/sheet-copy';
+import { tooManyMessage } from '../lib/rate-window';
+import { verifySheetInTable } from '../lib/sheet-crud-helpers';
 import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
@@ -62,29 +65,46 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_sheet',
     {
       description:
-        'Create, rename, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
-        + 'create auto-names the sheet when name is omitted and can insert after a given tab. delete puts the sheet '
+        'Create, rename, copy, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
+        + 'create auto-names the sheet when name is omitted and can insert after a given tab. copy makes a new sheet '
+        + 'right after sheet_id holding its values: the same rows in the same order under the same column names (or '
+        + 'only the columns you list), as plain columns that nothing fills (no runs, formulas, lookups, rules or '
+        + 'views come along), with a run\'s status words (⏳, ❌, ⏭️, ➕) left empty. Free, no AI; name defaults to '
+        + '"Copy of <sheet>". Use it to keep a sheet as it is now, for example before running its columns again; it '
+        + 'answers once every row is in (rows_copied). delete puts the sheet '
         + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
         + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
         + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
         + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'delete', 'reorder']),
+        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']),
         table_id: z.string(),
-        sheet_id: z.string().optional().describe('Required for rename/delete'),
-        name: z.string().optional().describe('create: optional; rename: required'),
+        sheet_id: z.string().optional().describe('Required for rename/copy/delete'),
+        name: z.string().optional().describe('create and copy: optional; rename: required'),
+        columns: z.array(z.string()).min(1).optional()
+          .describe('copy only: the columns to copy, in this order (default: every column)'),
         after_sheet_id: z.string().optional()
           .describe('create only: insert after this tab; an unknown id appends at the end'),
         ordered_sheet_ids: z.array(z.string()).min(1).optional()
           .describe('reorder only: every sheet id of the table, in the desired order'),
       },
     },
-    async ({ action, table_id, sheet_id, name, after_sheet_id, ordered_sheet_ids }) => {
+    async ({ action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       if (action === 'create') {
         const result = createSheet(ctx.userId, table_id, name, after_sheet_id);
         return 'fail' in result ? err(result.message) : ok(result.ok);
+      }
+      if (action === 'copy') {
+        if (!sheet_id) return err('sheet_id is required for copy');
+        if (!verifySheetInTable(sheet_id, table_id, ctx.userId)) return err('Sheet not found');
+        const slot = sheetCopyWindow(ctx.tokenId);
+        if (!slot.allowed) return err(tooManyMessage('sheet copies', slot));
+        const result = await copySheetValues(ctx.userId, sheet_id, { name, columns });
+        if ('fail' in result) return err(result.message);
+        const { sheet, sheets, rowsCopied, columns: copied } = result.ok;
+        return ok({ sheet, sheets, rows_copied: rowsCopied, columns: copied });
       }
       if (action === 'reorder') {
         if (!ordered_sheet_ids) return err('ordered_sheet_ids is required for reorder');

@@ -14,7 +14,7 @@
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS, TRASH_PURGE_BATCH_ROWS, TRASH_SLICE_ROWS, TRASH_SWEEP_MS } from '../lib/constants';
 import { runInCheckpointedSlices } from '../lib/slices';
-import { sheetBusyWith } from '../lib/sheet-busy';
+import { sheetHeld } from '../lib/sheet-busy';
 import { purgeSheetResults } from '../lib/import-undo';
 import { autorunDropPending } from '../lib/autorun-mark';
 import { lookupsLoseSheet } from '../lib/trash/lookups';
@@ -92,9 +92,10 @@ async function deleteInSlices(sql: string, params: unknown[], size: number): Pro
   await runInCheckpointedSlices(() => stmt.run(...params, size).changes > 0);
 }
 
-// False when something still finishing on it (a restart's job) holds it: next sweep.
+// False when something still finishing on it (a restart's job) holds it, or a
+// long read (an export, a copy of its values) is still reading it: next sweep.
 async function purgeSheet(sheetId: string, userId: string, itemId: number | null): Promise<boolean> {
-  if (sheetBusyWith(sheetId)) return false;
+  if (sheetHeld(sheetId)) return false;
   const name = db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(sheetId) as string | undefined;
   if (name !== undefined) db.transaction(() => lookupsLoseSheet(sheetId, name))();
   for (const batch of db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind = 'rows'`).pluck()
