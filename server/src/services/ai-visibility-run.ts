@@ -14,9 +14,11 @@ import { sheetFree } from './ai-visibility-columns';
 import { rerunEnrichmentColumn, type RerunEstimate } from './enrich-rerun';
 import type { DailyLimitView } from './treg-key';
 import type { RunFail } from './run-shared';
+import { checksOf, lastAskedAt, type CheckView } from './ai-visibility-check-store';
 
 export interface AiVisibilityRecord {
-  id: string; table_id: string; questions_sheet_id: string; sites_sheet_id: string | null; brand: string;
+  id: string; user_id: string; table_id: string; questions_sheet_id: string; sites_sheet_id: string | null;
+  brand: string;
   competitors: string; domain: string | null; country: string; engines: string;
 }
 
@@ -27,7 +29,10 @@ export interface AskEstimate {
   engines: EngineEstimate[]; rows: number; lowUsd: number; highUsd: number; dailyLimit: DailyLimitView | null;
   problems: string[];   // an engine column that can't be asked now, and why
 }
-export interface AskStarted { started: Array<{ column: string; runId: string; rows: number }>; problems: string[] }
+// nothing: engine columns with no question to ask (an "Only run if" rule keeps every row out).
+export interface AskStarted {
+  started: Array<{ column: string; runId: string; rows: number }>; problems: string[]; nothing: string[];
+}
 
 const TOOLS = new Set(ENGINES.map(e => e.toolId));
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -59,9 +64,13 @@ export function engineColumnsOf(userId: string, sheetId: string): string[] {
 const rowsFor = (again: boolean) => ({ mode: 'all' as const, status: again ? 'any' as const : 'not_enriched' as const,
   test: null, rowIndexes: null });
 
-export async function estimateAsk(userId: string, rec: AiVisibilityRecord, again: boolean): Promise<AskEstimate> {
+// skip: engine columns left out (a check picked up asks only those it didn't start).
+export async function estimateAsk(
+  userId: string, rec: AiVisibilityRecord, again: boolean, skip: readonly string[] = [],
+): Promise<AskEstimate> {
   const out: AskEstimate = { engines: [], rows: 0, lowUsd: 0, highUsd: 0, dailyLimit: null, problems: [] };
   for (const column of engineColumnsOf(userId, rec.questions_sheet_id)) {
+    if (skip.includes(column)) continue;
     const r = await rerunEnrichmentColumn(userId, rec.questions_sheet_id, {
       column, rows: rowsFor(again), estimateOnly: true, spendLimitUsd: null, rowGeneration: null, callAgain: again,
     });
@@ -85,13 +94,15 @@ export async function estimateAsk(userId: string, rec: AiVisibilityRecord, again
 // that can't start (a run of it still going, no treg key, the daily limit) is
 // a problem, and the others start all the same. refuse: an agent's check
 // before each start (its token's spend cap and run-start window), whose
-// refusal stops the rest.
+// refusal stops the rest. skip: columns left out; onStarted: told each start
+// as it happens (a check records it then).
 export async function startAsk(
   userId: string, rec: AiVisibilityRecord, again: boolean, refuse: () => string | null = () => null,
+  opts: { skip?: readonly string[]; onStarted?: (s: AskStarted['started'][number]) => void } = {},
 ): Promise<AskStarted | RunFail> {
-  const columns = engineColumnsOf(userId, rec.questions_sheet_id);
+  const columns = engineColumnsOf(userId, rec.questions_sheet_id).filter(c => !opts.skip?.includes(c));
   if (columns.length === 0) return { fail: 'bad_request', message: 'This table has no engine columns left to ask.' };
-  const out: AskStarted = { started: [], problems: [] };
+  const out: AskStarted = { started: [], problems: [], nothing: [] };
   const req = (column: string, estimateOnly: boolean) => ({
     column, rows: rowsFor(again), estimateOnly, spendLimitUsd: null, rowGeneration: null, callAgain: again,
   });
@@ -101,22 +112,27 @@ export async function startAsk(
       break;
     }
     const est = await rerunEnrichmentColumn(userId, rec.questions_sheet_id, req(column, true));
-    if ('ok' in est && 'estimate' in est.ok && est.ok.estimate.rows === 0) continue;
+    if ('ok' in est && 'estimate' in est.ok && est.ok.estimate.rows === 0) { out.nothing.push(column); continue; }
     const refused = refuse();
     if (refused) { out.problems.push(`${column}: ${refused}`); break; }
     const r = await rerunEnrichmentColumn(userId, rec.questions_sheet_id, req(column, false));
-    if ('ok' in r && 'runId' in r.ok) out.started.push({ column, runId: r.ok.runId, rows: r.ok.rowsInScope });
-    else if (!(r as { nothingToRun?: boolean }).nothingToRun) {
-      out.problems.push(`${column}: ${'message' in r ? r.message : "didn't start"}`);
+    if ('ok' in r && 'runId' in r.ok) {
+      const s = { column, runId: r.ok.runId, rows: r.ok.rowsInScope };
+      out.started.push(s);
+      opts.onStarted?.(s);
     }
+    else if ((r as { nothingToRun?: boolean }).nothingToRun) out.nothing.push(column);
+    else out.problems.push(`${column}: ${'message' in r ? r.message : "didn't start"}`);
   }
   return out;
 }
 
-// The record as the app, /api/v1 and MCP show it.
+// The record as the app, /api/v1 and MCP show it, with when the engines were
+// last asked (null: never) and the latest checks (services/ai-visibility-check.ts).
 export interface AiVisibilityView {
   id: string; tableId: string; questionsSheetId: string; sitesSheetId: string | null; brand: string;
   competitors: string[]; domain: string | null; country: string; engines: string[];
+  answersAt: string | null; checks: CheckView[];
 }
 const list = (s: string): string[] => {
   try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -124,4 +140,6 @@ const list = (s: string): string[] => {
 export const aiVisibilityView = (r: AiVisibilityRecord): AiVisibilityView => ({
   id: r.id, tableId: r.table_id, questionsSheetId: r.questions_sheet_id, sitesSheetId: r.sites_sheet_id,
   brand: r.brand, competitors: list(r.competitors), domain: r.domain, country: r.country, engines: list(r.engines),
+  answersAt: lastAskedAt(r.user_id, r.questions_sheet_id, engineColumnsOf(r.user_id, r.questions_sheet_id)),
+  checks: checksOf(r.user_id, r.id),
 });

@@ -1,7 +1,7 @@
 // AI visibility tables' pure parts: the formulas run in the real formula
 // sandbox (a brand found as a whole word, ignoring case and accents; its place
 // among the brands an answer names; how many engines name you; who most
-// engines name first; your site among the cited ones), rewriting the brand
+// engines name first; a check's change since then; your site among the cited ones), rewriting the brand
 // list and domain between their markers, and the create input's parse.
 // server/src is type:commonjs → default-import + destructure under tsx.
 import refsMod from '../../server/src/lib/formula/refs'
@@ -63,6 +63,21 @@ async function main() {
   check('named first: the brand most engines name first', first[0] === 'Northdesk' && first[1] === 'Acme'
     && first[2] === '', first)
 
+  const changeCols = ['A answer', 'B answer', 'Named by on 2026-10-01']
+  const change = await run(F.changeFormula(['A answer', 'B answer'], 'Named by on 2026-10-01', brands), changeCols, [
+    { 'A answer': 'Acme first', 'B answer': 'Acme too', 'Named by on 2026-10-01': '1 of 2' },
+    { 'A answer': 'Northdesk', 'B answer': 'Acme', 'Named by on 2026-10-01': '2 of 2' },
+    { 'A answer': 'Acme', 'B answer': 'Northdesk', 'Named by on 2026-10-01': ' 1 of 3 ' },
+    { 'A answer': 'Acme', 'B answer': '', 'Named by on 2026-10-01': '' },
+    { 'A answer': '', 'B answer': '⏳ Processing...', 'Named by on 2026-10-01': '1 of 2' },
+    { 'A answer': 'Northdesk', 'B answer': 'Pipewell', 'Named by on 2026-10-01': '❌ Failed' },
+    { 'A answer': 'Acme', 'B answer': 'Northdesk', 'Named by on 2026-10-01': '1 of 2' },
+  ])
+  check('change since: up, down, same; blank with a different number of answers or none; New without answers then',
+    change.join('|') === 'Up 1|Down 1||New||New|Same', change)
+  check('change since keeps the brands of its day: a brand edit leaves it alone',
+    F.withBrands(F.changeFormula(['A'], 'Then', brands), ['Zeta']) === null)
+
   const site = await run(F.yourSiteFormula('Domain', 'acme.com'), ['Domain'], [
     { Domain: 'acme.com' }, { Domain: 'blog.acme.com' }, { Domain: 'notacme.com' }, { Domain: '' },
   ])
@@ -100,9 +115,11 @@ async function main() {
   const many = Array.from({ length: 20 }, (_, i) => `${'"'.repeat(57)} ${i}`)
   const longest = F.namedFirstFormula(['ChatGPT answer', 'Gemini answer', 'AI Mode answer', 'Perplexity answer',
     'Copilot answer'], ['"'.repeat(60), ...many])
+  const longestChange = F.changeFormula(['ChatGPT answer', 'Gemini answer', 'AI Mode answer', 'Perplexity answer',
+    'Copilot answer'], 'Named by on 2026-10-01 2', ['"'.repeat(60), ...many])
   check('the most brands, at their longest, still fit a formula',
-    typeof parseBrands({ brand: '"'.repeat(60), competitors: many }) === 'object' && longest.length < 4000,
-    longest.length)
+    typeof parseBrands({ brand: '"'.repeat(60), competitors: many }) === 'object' && longest.length < 4000
+    && longestChange.length < 4000, [longest.length, longestChange.length])
   check('more brands than allowed are refused', typeof parseBrands({ brand: 'A', competitors: [...many, 'x'] })
     === 'string')
 

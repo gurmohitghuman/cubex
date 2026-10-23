@@ -35,7 +35,7 @@ refused (401).
   and a search mentioning a listed word at most that many, 0 for an answer with an empty list: lists.mjs), `badDomains` (a call whose request mentions one answers treg's 400
   `catalog_parameter_invalid`, so its row fails) and `bigRawDomains` (a hit whose request mentions one
   carries a long `raw.sources` list, about 30 KB, so Cubex keeps only part of it), and `aiQuiet` (AI engine ids
-  whose answers cite no sources). The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
+  whose answers cite no sources) and `aiAlsoNames` (`{engine: brand}`: that engine's answer names the brand too). The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
   with made-up brands and generic sites (ai-search.mjs), so specs can check which brands an answer names.
 - `GET /__mock/billing`: every charge, by Idempotency-Key. `GET /__mock/state` also has
   `inFlightCount`, the calls still being answered: a spec that stops a run waits for 0 before

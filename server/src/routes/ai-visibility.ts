@@ -1,5 +1,5 @@
 // AI visibility tables in the app (services/ai-visibility-*.ts): make one, ask
-// its engines (an estimate first), change the brands it looks for.
+// its engines (an estimate first), check it again, change the brands it looks for.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
@@ -8,6 +8,9 @@ import { parseAiVisibilityInput, parseBrands } from '../lib/ai-visibility/input'
 import { createAiVisibilityTable } from '../services/ai-visibility-create';
 import { aiVisibilityRecord, aiVisibilityView, estimateAsk, startAsk } from '../services/ai-visibility-run';
 import { setAiVisibilityBrands } from '../services/ai-visibility-brands';
+import { estimateCheck, startCheck } from '../services/ai-visibility-check';
+import { timeZoneOf } from '../lib/ai-visibility/check';
+import { runFailHttpStatus } from '../services/run-shared';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -54,6 +57,31 @@ router.post('/:id/ask', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Ask AI visibility engines error:', error);
     res.status(500).json({ error: "Couldn't ask the engines" });
+  }
+});
+
+// POST /:id/check — {estimateOnly, timeZone, fresh}: keep the answers in dated sheets, add the
+// columns comparing with them, then ask every question again. The estimate
+// answers {plan, estimate}; the check answers once its runs have started.
+router.post('/:id/check', async (req: AuthRequest, res) => {
+  try {
+    const rec = recordOf(req, res);
+    if (!rec) return;
+    const b = isObj(req.body) ? req.body : {};
+    // The asker's time zone, for the day in the names (UTC when it isn't one).
+    const opts = { timeZone: timeZoneOf(b.timeZone), fresh: b.fresh === true };
+    if (b.estimateOnly === true) {
+      const est = await estimateCheck(req.userId!, rec, opts);
+      if ('fail' in est) return res.status(runFailHttpStatus(est)).json({ error: est.message });
+      return res.json(est);
+    }
+    const out = await startCheck(req.userId!, rec, opts);
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    const now = aiVisibilityRecord(req.userId!, rec.id);
+    res.json({ check: out.ok, aiVisibility: now ? aiVisibilityView(now) : null });
+  } catch (error) {
+    console.error('Check AI visibility table again error:', error);
+    if (!res.headersSent) res.status(500).json({ error: "Couldn't check the table again" });
   }
 });
 

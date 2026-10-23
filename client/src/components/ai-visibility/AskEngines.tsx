@@ -54,7 +54,8 @@ export const AskEngines: React.FC<{ id: string; onStarted: () => void }> = ({ id
           <div className="p-6 space-y-3" data-testid="ai-visibility-ask-confirm">
             <h3 className="text-title text-gray-900">{again ? 'Ask every question again' : 'Ask the engines'}</h3>
             <p className="text-sm text-gray-700">
-              {again ? 'Every question has an answer. Asking again gets fresh answers for all of them: '
+              {again ? 'Every question has an answer. Asking again replaces them with fresh answers (Check again '
+                + 'keeps them first): '
                 : `${plural(est.rows, 'question')} not asked yet, `}
               {plural(est.engines.length, 'engine')}: {est.engines.map(e => e.column).join(', ')}.
             </p>

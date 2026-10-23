@@ -15,6 +15,7 @@ import { startLookupLoop } from '../services/lookup-host';
 import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
+import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -61,6 +62,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       startSetupLoop();
       // A write to a clean, formula or lookup column's input works it out again at once (services/derived-follow.ts).
       startDerivedFollow();
+      // An AI visibility check a restart cut short finishes its free part (services/ai-visibility-check.ts).
+      resumeAiVisibilityChecks();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:
       // a failure rolls the individual run to 'failed' inside resumeRecoveredRuns.

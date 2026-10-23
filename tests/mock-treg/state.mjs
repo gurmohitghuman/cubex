@@ -35,6 +35,10 @@ const defaults = () => ({
   // List jobs: a search mentioning one of these words returns at most that
   // many rows (lists.mjs; default 10, never above the request's limit).
   listSizes: {},
+  // AI engines (ai-search.mjs): engines whose answers cite no sources, and a
+  // brand an engine's answer names too ({gemini: 'Acme CRM'}).
+  aiQuiet: [],
+  aiAlsoNames: {},
   // Set when a call reached an async provider (Cubex must exclude those).
   asyncCalled: false,
 })
