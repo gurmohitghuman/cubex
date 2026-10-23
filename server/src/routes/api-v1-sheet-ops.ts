@@ -1,12 +1,15 @@
-// /v1 sheet operations: physical sort, removing duplicates, auto-dedupe, CSV
-// export and stopping every run. Each delegates to the implementation shared with the UI
-// routes (services/sheet-sort.ts, services/dedupe-*.ts, lib/csv-export.ts,
-// services/sheet-runs-stop.ts).
+// /v1 sheet operations: physical sort, copying the values to a new sheet,
+// removing duplicates, auto-dedupe, CSV export and stopping every run. Each
+// delegates to the implementation shared with the UI routes
+// (services/sheet-sort.ts, services/sheet-copy.ts, services/dedupe-*.ts,
+// lib/csv-export.ts, services/sheet-runs-stop.ts).
 import express from 'express';
 import type { NextFunction, Response } from 'express';
 import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { physicalSortSheet } from '../services/sheet-sort';
+import { copySheetValues, copyFailStatus, sheetCopyWindow } from '../services/sheet-copy';
+import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { runFailHttpStatus } from '../services/run-shared';
 import { streamSheetCsv } from '../lib/csv-export';
@@ -46,6 +49,32 @@ router.post('/sheets/:id/sort', requireScope('write'), async (req: TokenAuthRequ
   } catch (error) {
     console.error('POST /v1/sheets/:id/sort error:', error);
     res.status(500).json({ error: 'Failed to sort sheet' });
+  }
+});
+
+// POST /v1/sheets/:id/copy {name?, columns?}: a new sheet right after this one
+// holding its values (the same as MCP manage_sheet copy). Answers once every row is in.
+router.post('/sheets/:id/copy', requireScope('write'), async (req: TokenAuthRequest, res) => {
+  try {
+    const body = req.body ?? {};
+    if (typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'Send a JSON object.' });
+    const slot = sheetCopyWindow(req.accessTokenId!);
+    if (!slot.allowed) {
+      setRateLimitedHeaders(res, slot);
+      return res.status(429)
+        .json({ error: tooManyMessage('sheet copies', slot), retry_after_seconds: slot.retryAfterSec });
+    }
+    const out = await copySheetValues(req.userId!, req.params.id, { name: body.name, columns: body.columns });
+    if ('fail' in out) {
+      return res.status(copyFailStatus(out.fail))
+        .json({ error: out.message, ...(out.fail === 'busy' ? { busy: true } : {}) });
+    }
+    res.status(201).json({
+      sheet: out.ok.sheet, sheets: out.ok.sheets, rows_copied: out.ok.rowsCopied, columns: out.ok.columns,
+    });
+  } catch (error) {
+    console.error('POST /v1/sheets/:id/copy error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to copy the sheet' });
   }
 });
 

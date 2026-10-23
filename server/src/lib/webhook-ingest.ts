@@ -9,6 +9,7 @@ import { MAX_ROWS_PER_SHEET, WEBHOOK_MAX_CELL_CHARS, WEBHOOK_MAX_ROW_DATA_BYTES 
 import { nextRowIndex } from './sheet-busy';
 import { settleRows } from '../services/auto-dedupe-settle';
 import { appendColumnsToOrder, getSheetColumns } from './sheet-columns';
+import { orderedUuid } from './ordered-id';
 
 // The append transaction for one inbound webhook delivery. This is the only
 // place an UNAUTHENTICATED request mutates your data, so every step is
@@ -155,7 +156,7 @@ export function appendWebhookDelivery(
     // mid-sort or mid-import lands after that operation's rows.
     // (UNIQUE(sheet_id, user_id, row_index) backstops.)
     const rowIndex = nextRowIndex(source.sheet_id, source.user_id);
-    const rowId = uuidv4();
+    const rowId = orderedUuid();
 
     const rid = Number(db.prepare(
       `INSERT INTO rows (id, sheet_id, user_id, row_index, data, updated_at)

@@ -1,5 +1,4 @@
 // Over 200 lines: one transfer, from its checks to the ledger, in the transaction that makes it.
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import {
@@ -26,6 +25,7 @@ import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
 import { countOf, logSheetChange } from '../lib/change-log';
+import { orderedUuid } from '../lib/ordered-id';
 
 export type { TransferRequest } from './transfer-ledger';
 
@@ -134,7 +134,7 @@ function executeTransfer(
       // materialized as a blank cell: the read path prunes column_order entries
       // no row backs, which would silently un-reserve the marker again.
       for (const marker of plan.ghostMarkers) data[marker] = '';
-      const id = uuidv4();
+      const id = orderedUuid();
       added.add(id);
       rids.push(Number(insert.run(id, request.destinationSheetId, userId, nextIndex++, JSON.stringify(data))
         .lastInsertRowid));

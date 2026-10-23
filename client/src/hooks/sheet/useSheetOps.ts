@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, Table } from '@/utils/api'
 import { useSheetRename } from './useSheetRename'
 import { useSheetReconcile } from './useSheetReconcile'
+import { useSheetCopy } from './useSheetCopy'
 import { toastDeleted } from '@/components/trash/trashToast'
 
 interface UseSheetOpsArgs {
@@ -189,5 +190,9 @@ export const useSheetOps = ({
     } finally { endOp() }
   }, [tableId, table, waitForSaves, beginOp, endOp, reconcileSheets, dropAllPending, selectSheet])
 
-  return { selectSheet, createSheet, renameSheet, reorderSheets, deleteSheet }
+  const { copySheet } = useSheetCopy({
+    tableId, tableIdRef, activeSheetRef, waitForSaves, reconcileSheets, selectSheet, beginOp, endOp,
+  })
+
+  return { selectSheet, createSheet, renameSheet, copySheet, reorderSheets, deleteSheet }
 }

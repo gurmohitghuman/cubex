@@ -96,7 +96,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `add_column`, `rename_column`, `delete_column` | Manage columns. `add_column` takes an optional `description`. |
 | `set_description` | Describe a column, or the sheet when `column` is left out. See [Descriptions](#descriptions). |
 | `sort_sheet` | Permanently reorders the rows by a column. |
-| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. A deleted table or sheet goes to the trash whole. `manage_table` with `action: "create_sample"` makes a table of 25 made-up leads to try Cubex on: its free columns filled, its duplicate found by a dry run, and an AI column set up but not run (the answer says how to run it once the user agrees). |
+| `manage_table`, `manage_sheet` | Create, rename, delete and reorder tables and sheet tabs. A deleted table or sheet goes to the trash whole. `manage_sheet` with `action: "copy"` makes a new sheet right after one, holding its values: the same rows in the same order under plain columns that nothing fills, a run's words (⏳, ❌, ⏭️, ➕) left empty, and only the `columns` you list if you list some. Free; a way to keep a sheet as it is before running its columns again. `manage_table` with `action: "create_sample"` makes a table of 25 made-up leads to try Cubex on: its free columns filled, its duplicate found by a dry run, and an AI column set up but not run (the answer says how to run it once the user agrees). |
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, preview a few rows, target specific rows, or fill several typed columns at once. |
@@ -528,7 +528,7 @@ What keeps the links safe:
 - Until it's used, anyone who has the link can use it, so treat it like a password. Cubex stores only a hash of it.
 - Don't paste a download link into an app that previews links, such as Slack, Discord or iMessage: the preview would download the file and use the link up.
 
-A million rows take about half a minute to import. If `curl` stops waiting, the import still finishes, so check the sheet before trying again. Links point at the address the assistant reached Cubex on, or at `PUBLIC_URL` when you set it. Behind Cloudflare's proxy, the free plan refuses uploads over 100 MB.
+A million rows take about 10 seconds to import once the file is up. If `curl` stops waiting, the import still finishes, so check the sheet before trying again. Links point at the address the assistant reached Cubex on, or at `PUBLIC_URL` when you set it. Behind Cloudflare's proxy, the free plan refuses uploads over 100 MB.
 
 ## Limits
 
@@ -538,6 +538,7 @@ Agents can get stuck in loops, so each token has its own budget:
 - 30 run starts a minute (reruns and previews count; estimates don't).
 - Its spend cap, if you set one (see **Spend cap** above): what it may spend in all.
 - Through MCP: 5 CSV imports a minute. Each upload link counts as one.
+- 5 sheet copies a minute (`manage_sheet` copy and `POST /sheets/:id/copy`).
 
 Row transfers are limited for the whole account: 10 a minute, one at a time.
 
@@ -573,6 +574,7 @@ All paths below are relative to `/api/v1`.
 | `DELETE /sheets/:id/columns/:name` | |
 | `PUT /sheets/:id/columns/order` | `{"order": ["Email", "Company", "Status"]}` (every column, once) |
 | `POST /sheets/:id/sort` | `{"column": "Score", "direction": "desc"}`. Permanently reorders the rows. |
+| `POST /sheets/:id/copy` | `{"name": "Leads Oct 20", "columns": ["Email", "Company"]}` (both optional). A new sheet right after this one holding its values: the same rows in the same order under plain columns that nothing fills, a run's words (⏳, ❌, ⏭️, ➕) left empty. `name` defaults to "Copy of <sheet>". Answers `201` once every row is in, with `sheet`, `sheets`, `rows_copied` and `columns`. Same as `manage_sheet` copy. `write` scope. |
 
 ### Views
 
@@ -767,7 +769,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`;
 
 - Errors are JSON: `{"error": "message"}`. Some add detail: `unknownColumns`, `lockedColumns` (columns a run is still filling), `protectedColumns`, or `busy: true` (the sheet is in the middle of an import or sort; retry shortly).
 - `400` bad input · `401` missing or revoked token · `403` the token lacks a scope · `404` not found · `409` conflict (a name already taken, a run already active, a sheet that changed while you paged) · `413` body over 2 MB · `429` rate limited.
-- The limits above apply to each token across MCP and REST together. Every answer carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, and a `429` adds `Retry-After` (and `retry_after_seconds` in the body when the run-start limit refused it; its `RateLimit-*` headers then describe that limit).
+- The limits above apply to each token across MCP and REST together. Every answer carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, and a `429` adds `Retry-After` (and `retry_after_seconds` in the body when the run-start or sheet-copy limit refused it; its `RateLimit-*` headers then describe that limit).
 
 ## Security notes
 

@@ -14,7 +14,7 @@ export type ChangeAction =
   | 'clean_column' | 'formula_column' | 'lookup_column' | 'answer_field' | 'list_fields'
   | 'view_created' | 'view_changed' | 'view_deleted'
   | 'webhook' | 'setup_used' | 'description'
-  | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored'
+  | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored' | 'sheet_copied'
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
   | 'rows_moved_in' | 'rows_moved_out' | 'sample_created'
   | 'setup_version_saved' | 'setup_version_restored';

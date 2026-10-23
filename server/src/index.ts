@@ -37,6 +37,7 @@ import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
 import { DERIVED_KINDS } from './services/derived-kinds';
 import { resumeRunRewrites } from './services/run-config-rewrite';
+import { resumeSheetCopies } from './services/sheet-copy-job';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
 import tableSheetsRoutes from './routes/tables-sheets';
@@ -204,11 +205,12 @@ createAccountFromEnv().then((result) => {
   startServer();
   // Heavy jobs a restart interrupted finish in the background (migrations 003,
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
-  // duplicate removals, 036's restores from the trash, 041's run undos). Each
-  // marks its sheet busy synchronously, before the first request.
+  // duplicate removals, 036's restores from the trash, 041's run undos, 047's
+  // sheet copies). Each marks its sheet busy synchronously, before the first request.
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();
+  resumeSheetCopies();
   resumeTrashRestores();
   resumeRunUndos();
   resumeRunRewrites();

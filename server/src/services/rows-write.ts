@@ -2,7 +2,6 @@
 // the MCP tools share one implementation. Semantics:
 // UPDATE-ONLY columns, stable-row-id addressing, run-locked 409s, data_version
 // bump inside every transaction, result purge on delete.
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { countRows, jsonPath, parseRowData } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
@@ -14,6 +13,7 @@ import { deleteRowsToTrash } from './trash-rows';
 import { settleEdits, settleRows, type AutoDedupeOutcome } from './auto-dedupe-settle';
 import { autoDedupeAnswer } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
+import { orderedUuid } from '../lib/ordered-id';
 
 // rows: every row the call made, in the order given; notKept: those
 // auto-dedupe didn't keep (another row had their key), kept: how many stayed.
@@ -59,7 +59,7 @@ export function appendRows(
     );
     const rids: number[] = [];
     for (const cells of parsedRows) {
-      const id = uuidv4();
+      const id = orderedUuid();
       rids.push(Number(insert.run(id, sheetId, userId, next, JSON.stringify(cells)).lastInsertRowid));
       created.push({ id, index: next });
       next++;

@@ -2,7 +2,7 @@ import { api } from './client'
 import type { ColumnFilters } from '@/lib/filters'
 import type { Sheet, SheetData, Table } from './types'
 import type { GridAutoDedupe, ImportAutoDedupe } from './dedupe'
-import { SAMPLE_CREATE_TIMEOUT_MS } from '@/lib/constants'
+import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants'
 
 // Opt these requests out of the interceptor's generic "Server error occurred" toast.
 // Every caller surfaces its own signal on failure: structural ops (add/delete/rename/
@@ -167,6 +167,13 @@ export const sheetsAPI = {
 
   reorderSheets: (tableId: string, orderedSheetIds: string[]): Promise<{ sheets: Sheet[] }> =>
     api.patch(`/tables/${tableId}/sheets/reorder`, { orderedSheetIds }, noServerToast).then(r => r.data),
+
+  // "Copy values to a new sheet": the new sheet goes right after this one; answers once every row is in.
+  copySheet: (
+    tableId: string, sheetId: string,
+  ): Promise<{ sheet: Sheet; sheets: Sheet[]; rowsCopied: number }> =>
+    api.post(`/tables/${tableId}/sheets/${sheetId}/copy`, {}, { ...noServerToast, timeout: SHEET_COPY_TIMEOUT_MS })
+      .then(r => r.data),
 
   deleteSheet: (tableId: string, sheetId: string): Promise<{ sheets: Sheet[]; trash: TrashRef | null }> =>
     api.delete(`/tables/${tableId}/sheets/${sheetId}`, noServerToast).then(r => r.data),

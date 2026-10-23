@@ -4,7 +4,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 
 | Action | Time | Others waited | Peak memory |
 |---|---|---|---|
-| Import the CSV | 24 s | 0.1 s | 420 MB |
+| Import the CSV | 8 to 9.5 s | 0.05 to 0.35 s | 300 MB |
 | Open the sheet | 0.07 s | none | 300 MB |
 | Scroll to the middle or the end | 0.1 to 0.2 s | none | 480 MB |
 | Edit a cell | 0.05 to 0.1 s | none | 490 MB |
@@ -22,6 +22,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Rename a column | 5 s | 0.07 s | 620 MB |
 | Delete a column | 0.8 s | 0.02 s | 890 MB |
 | Sort every row by a column | 24 s | 0.15 s | 680 MB |
+| Copy the sheet's values to a new sheet (a sheet sorted since its rows went in takes as long) | 7 to 8.6 s | 0.07 to 0.17 s | 500 MB |
 | Export to CSV | 2.7 s | 0.04 s | 590 MB |
 | Receive a webhook (adds row 1,000,001) | 0.08 s | 0.04 s | 850 MB |
 | Start an HTTP run on every row | answers in 0.1 s; the run starts 2.8 s later (about 1 s more since a run keeps what it overwrites, so it can be undone) | 0.08 s | 890 MB |
@@ -59,7 +60,7 @@ A filter has to check every row to count the matches, so a filtered read takes a
 
 Lookups were measured with two sheets of 1,000,000 rows, one looking up the other. The column a lookup reads in the other sheet gets an index, built in the background the first time: about 70 MB for a million short values, 175 MB with contains. Writing to that sheet costs a little more while it's looked up: changing another of its columns takes 15 to 30% longer in a big run, and a sheet nobody looks up pays nothing measurable. After a sort of a looked-up sheet, the index reads every row's new position again in the background (about 2 to 7 s at a million rows), and lookups into that sheet wait until it has. Contains on a million different values against a million rows depends on the words: about a minute for company names, more when every value shares the same few letters.
 
-While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows, undoing a run) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
+While a big job (import, sort, column rename or delete, cleaning a column, filling a formula or lookup column, removing duplicates, restoring rows from the trash, preparing a run's rows, undoing a run, copying a sheet's values into a new one) works on a sheet, other changes to that sheet wait for it: your cell edits stay queued and save when it finishes, and anything else gets a "this sheet is busy" message. Other sheets are not affected, and a sheet whose values are being copied keeps taking edits and new rows; only the big jobs above say it's busy until the copy is done. If Cubex stops in the middle of one of these jobs, it finishes it (or, for an import, removes the partly imported rows) the next time it starts.
 
 ### Date filters and filter groups
 

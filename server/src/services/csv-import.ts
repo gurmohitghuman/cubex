@@ -10,7 +10,7 @@
 // restart cuts it short, its rows are removed (lib/import-undo.ts): an append
 // leaves the sheet as it was, a replace leaves it empty with the file's columns.
 // Over 200 lines: one import flow (checks, journal, slices, undo); split, the journal steps would scatter.
-import { v4 as uuidv4 } from 'uuid';
+import { orderedUuid } from '../lib/ordered-id';
 import { db } from '../lib/db';
 import { appendColumnsToOrder, touchSheet } from '../lib/sql-helpers';
 import { purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob } from '../lib/import-undo';
@@ -155,7 +155,7 @@ export async function importCsv(
             if (stripped.length > CELL_MAX_BASIC) truncatedCells++;
             data[k] = clampCellChars(stripped, CELL_MAX_BASIC);
           }
-          lastRid = Number(insertRow.run(uuidv4(), sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
+          lastRid = Number(insertRow.run(orderedUuid(), sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
           firstRid ??= lastRid;
         }
         batch = [];
@@ -174,7 +174,7 @@ export async function importCsv(
         const hasAnyRow = db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1')
           .get(sheetId, userId);
         if (opts.seedEmptyRow !== false && next === startingRow && !hasAnyRow) {
-          insertRow.run(uuidv4(), sheetId, userId, startingRow, '{}');
+          insertRow.run(orderedUuid(), sheetId, userId, startingRow, '{}');
         }
         if (replace) {
           // Every row_index now means a different row: filters and the column

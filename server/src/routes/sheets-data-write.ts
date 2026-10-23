@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET, CELL_MAX_BASIC, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, jsonPath, touchSheet } from '../lib/sql-helpers';
@@ -9,6 +8,7 @@ import {
 import type { ParsedUpdate } from './sheets-data-validate';
 import { markAutorunEdits } from '../lib/autorun-mark';
 import { settleGridEdits, type GridAutoDedupe } from '../services/auto-dedupe-settle';
+import { orderedUuid } from '../lib/ordered-id';
 
 export interface DataWriteResult {
   // A 400-ready column-name error (reserved / symbol-only / case-token dup) for a
@@ -159,7 +159,7 @@ export function applyDataWrite(args: {
         // preview cell can legitimately be long, and dropping/400-ing would
         // dead-end the whole commit. clampCellChars is surrogate-safe.
         const value = clampCellChars(cleaned, CELL_MAX_ENRICHMENT);
-        upsert.run(uuidv4(), id, userId, u.rowIndex, u.columnName, value, jsonPath(u.columnName), value);
+        upsert.run(orderedUuid(), id, userId, u.rowIndex, u.columnName, value, jsonPath(u.columnName), value);
         writtenColumns.add(u.columnName);
         edits.push({ column: u.columnName, rowIndex: u.rowIndex });
       }

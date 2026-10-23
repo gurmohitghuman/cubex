@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  ArchiveRestore, ArrowDownUp, Bookmark, Columns, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Undo2, Upload,
-  Webhook,
+  ArchiveRestore, ArrowDownUp, Bookmark, Columns, Copy, Eye, History, Loader2, Pencil, Play, Settings2, Trash2, Undo2,
+  Upload, Webhook,
 } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
 import { historyAPI, trashAPI, type SheetChange } from '@/utils/api'
@@ -22,6 +22,7 @@ const ICONS: Array<[RegExp, Icon]> = [
   [/restored/, ArchiveRestore],
   [/rows_imported|rows_moved_in|sample_created/, Upload],
   [/rows_sorted/, ArrowDownUp],
+  [/sheet_copied/, Copy],
   [/sheet_renamed|description/, Pencil],
 ]
 const iconOf = (action: string): Icon => ICONS.find(([re]) => re.test(action))?.[1] ?? Settings2

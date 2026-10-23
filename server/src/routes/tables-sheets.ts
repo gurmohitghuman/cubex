@@ -2,8 +2,11 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
 import { validateSheetName } from '../lib/sheet-validation';
-import { verifyTableOwnership, listSheets, getSheetForClient, createSheetTxn } from '../lib/sheet-crud-helpers';
+import {
+  verifyTableOwnership, verifySheetInTable, listSheets, getSheetForClient, createSheetTxn,
+} from '../lib/sheet-crud-helpers';
 import { deleteSheet, renameSheet, reorderSheets } from '../services/sheet-crud';
+import { copySheetValues, copyFailStatus } from '../services/sheet-copy';
 import { getTrashDays } from '../lib/trash/store';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { normalizeNameSpacing } from '../lib/name-safety';
@@ -70,6 +73,26 @@ router.patch('/reorder', (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Reorder sheets error:', error);
     res.status(500).json({ error: 'Failed to reorder sheets' });
+  }
+});
+
+// POST /:tableId/sheets/:sheetId/copy — "Copy values to a new sheet" (services/sheet-copy.ts).
+// Body { name? }. Answers once every row is in; a name conflict is 400, as on create.
+router.post('/:sheetId/copy', async (req: AuthRequest, res) => {
+  try {
+    const { tableId, sheetId } = req.params;
+    if (!verifySheetInTable(sheetId, tableId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    const out = await copySheetValues(req.userId!, sheetId, { name: req.body?.name });
+    if ('fail' in out) {
+      const status = out.fail === 'conflict' ? 400 : copyFailStatus(out.fail);
+      return res.status(status).json({ error: out.message, ...(out.fail === 'busy' ? { busy: true } : {}) });
+    }
+    res.status(201).json({
+      sheet: getSheetForClient(out.ok.sheet.id, req.userId!), sheets: out.ok.sheets, rowsCopied: out.ok.rowsCopied,
+    });
+  } catch (error) {
+    console.error('Copy sheet error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to copy the sheet' });
   }
 });
 
