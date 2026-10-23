@@ -19,7 +19,11 @@ Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LO
 | `ENRICH_DEFAULT_CONCURRENCY` | `5` | Requests one enrichment run sends to treg at once. |
 | `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **Add as column**. |
 | `TREG_BASE_URL` | `https://treg.to` | Where enrichment calls go. Only for testing or a self-hosted treg. |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | Where AI calls go. Only for testing. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes, for the whole instance. |
+| `RUN_BREAKER_FAILURES` | `5` | AI and HTTP API rows failing in a row on the provider's side (no answer, a server error, a rejected key, no credits) before the run pauses itself. |
+| `AI_CALL_DEADLINE_MS` | `600000` | Longest one AI call may take, answer included, before its row fails as timed out. |
+| `DISK_LOW_MB` | `200` | Free space on the data folder below which the health check says `low` and stalled runs aren't started again. |
 | `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |
 | `JWT_SECRET`, `APP_ENCRYPTION_KEY` | generated | Created on first boot. Set them only to manage them yourself. |
 

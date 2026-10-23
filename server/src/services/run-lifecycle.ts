@@ -15,6 +15,7 @@ import { enqueueAIRun, enqueueAIRerun, enqueueHTTPRun, enqueueHTTPRerun } from '
 import { autorunStoppedByUser } from './autorun-stop';
 import { logRunControl } from '../lib/change-log';
 import { resumeTokenFor, rowCostOf, spendCapRefusal } from './token-spend';
+import { diskLow } from '../lib/disk-space';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -81,6 +82,10 @@ export async function resumeRun(
   const run = getRun(kind, runId, userId);
   if (!run) return { fail: 'not_found', message: 'Run not found' };
   if (run.status !== 'paused') return { fail: 'not_paused', message: `Run is not paused (status: ${run.status})` };
+  // Paused because results couldn't be saved: each row would be paid for again and lost.
+  if ((run as { pause_reason?: string | null }).pause_reason === 'storage' && diskLow()) {
+    return { fail: 'conflict', message: "The disk is still nearly full. Free some space, then resume the run." };
+  }
   // The run spends for the token that resumes it, or (the app resuming) the one it spent for until now.
   const capped = capOf(kind, run, userId);
   if (capped) return { fail: 'spend_cap', message: capped };
@@ -115,7 +120,8 @@ export async function resumeRun(
   // bumped generation at startup. Compare-and-set on status='paused': between
   // the SELECT above and here the user can cancel — a bare UPDATE would
   // clobber 'cancelled' back to 'pending' and re-enqueue a killed run.
-  // A run's pause reason (migrations 011 and 042) ends with the pause. An
+  // A run's pause reason (migrations 011 and 042) ends with the pause, and so
+  // does the message a run that paused itself left (lib/run-pool.ts). An
   // access token resuming it makes it its own (the app, a revoked token's):
   // what it spends from now on counts against that token, and so do the calls
   // still out from before when they come back (its usage record follows,
@@ -125,7 +131,7 @@ export async function resumeRun(
          pause_reason = NULL, error_message = NULL, access_token_id = ?
        WHERE id = ? AND user_id = ? AND status = 'paused'`
     : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
-         pause_reason = NULL, access_token_id = ?
+         pause_reason = NULL, error_message = NULL, access_token_id = ?
        WHERE id = ? AND user_id = ? AND status = 'paused'`,
   ).run(resumeTokenFor(userId, run.access_token_id), runId, userId);
   if (resumed.changes === 0) return { fail: 'conflict', message: 'Run is no longer paused' };

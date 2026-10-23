@@ -18,6 +18,7 @@ import { traceDetail, traceValue } from '../lib/waterfall/trace';
 import type { AiChoices, BuiltAi, WaterfallBlock } from '../lib/waterfall/config';
 import { sendModelCall, FailedCallError, type ModelCall } from './ai-model-call';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
+import { aiCallDeadline, AI_TIMEOUT_MESSAGE } from './ai-row-outcome';
 import { STOP, type StepResult, type StepRun } from './waterfall-step-types';
 
 export interface AiStepArgs {
@@ -65,12 +66,20 @@ async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>):
   const tools = buildWebTools(a.choices.prompt, a.inputs, { search, fetch: false });
   for (let tries = 0; ; tries++) {
     try {
-      // No abort signal: a call that went out finishes, so what it cost is
-      // counted (a stopped run drops the row's write; the journal keeps the answer).
-      return await withConnectRetry(() => sendModelCall(a.client, {
-        model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE, maxTokens: WATERFALL_AI_MAX_TOKENS,
-        tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, false),
-      }), a.signal, a.stopped);
+      // No stop signal: a call that went out finishes, so what it cost is
+      // counted (a stopped run drops the row's write; the journal keeps the
+      // answer). Only its deadline ends a call that never answers.
+      const deadline = aiCallDeadline(undefined);
+      try {
+        return await withConnectRetry(() => sendModelCall(a.client, {
+          model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE, maxTokens: WATERFALL_AI_MAX_TOKENS,
+          tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, false),
+        }, deadline.signal), a.signal, a.stopped);
+      } catch (error) {
+        throw deadline.timedOut() ? new Error(AI_TIMEOUT_MESSAGE) : error;
+      } finally {
+        deadline.done();
+      }
     } catch (error) {
       if (!waitable(error) || tries >= AI_429_RETRIES || a.stopped()) throw error;
       await new Promise(resolve => setTimeout(resolve, AI_429_WAIT_MS[tries]));

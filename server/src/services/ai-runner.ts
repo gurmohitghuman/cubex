@@ -2,7 +2,7 @@ import { db } from '../lib/db';
 import { redactError } from '../lib/redact';
 import { runRows, countRunRows } from '../lib/run-rows';
 import { shouldNotStartRun, type AIRunRow } from './ai-runner-status';
-import { dispatchRows, finalizeStatus, markFailed, pauseAtTokenCap } from './ai-runner-lifecycle';
+import { dispatchRows, finalizeStatus, markFailed, pauseAt } from './ai-runner-lifecycle';
 import { fetchModels } from '../lib/openrouter';
 import { aiRunStamper } from '../lib/run-inputs/stampers';
 
@@ -92,10 +92,9 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
 
     // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, null, aiRunStamper(run));
-    if (await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller)) {
-      pauseAtTokenCap(runId, myGeneration);
-      return;
-    }
+    // Stopped itself (spend cap, provider failing, nothing can be saved): paused, rows still ⏳.
+    const end = await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    if (end) { pauseAt(runId, myGeneration, end); return; }
     await finalizeStatus(runId, run, myGeneration);
   } catch (error) {
     console.error(`AI run ${runId} error:`, redactError(error));
@@ -144,10 +143,9 @@ export async function processAIRerun(runId: string, targetRows: number[], expect
     if (run.use_openrouter_web_search) await fetchModels(Date.now()); // see processAIRun
 
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, targetRows, aiRunStamper(run));
-    if (await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller)) {
-      pauseAtTokenCap(runId, myGeneration);
-      return;
-    }
+    // Stopped itself (spend cap, provider failing, nothing can be saved): paused, rows still ⏳.
+    const end = await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    if (end) { pauseAt(runId, myGeneration, end); return; }
     // Scope the stuck-row check to the rerun's targets (subset) — see finalizeStatus.
     await finalizeStatus(runId, run, myGeneration, targetRows);
   } catch (error) {

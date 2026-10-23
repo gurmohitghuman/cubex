@@ -3,7 +3,9 @@
 // need to know about the physical split.
 
 // OpenRouter integration
-export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+// Overridable only to point a test at a stand-in (as TREG_BASE_URL).
+export const OPENROUTER_BASE_URL = (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1')
+  .replace(/\/+$/, '');
 export const OPENROUTER_ATTRIBUTION_HEADERS: Record<string, string> = {
   'X-Title': 'Cubex',
 };

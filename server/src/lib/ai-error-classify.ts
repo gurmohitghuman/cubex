@@ -65,6 +65,10 @@ const RULES: ReadonlyArray<{ cls: AiErrorClass; re: RegExp }> = [
   { cls: 'configuration', re: /\b(401|403)\b|\bunauthorized\b|\binvalid api key\b|\bno auth credentials\b/i },
   { cls: 'configuration', re: /\binsufficient (?:credits?|funds|balance)\b|\bpayment required\b|\b402\b/i },
   { cls: 'configuration', re: /\bmodel not found\b|\bunknown model\b|\bis not a valid model\b/i },
+  // OpenRouter's 404 when no provider serves the request: the model is gone,
+  // or the account's privacy settings (data policy, zero retention) rule out
+  // every provider that has it.
+  { cls: 'configuration', re: /\bno endpoints found\b/i },
 
   // --- prompt_content: the wording is the problem ----------------------------
   { cls: 'prompt_content', re: /\bmodel refused to answer\b|\brefusal\b/i },
@@ -113,7 +117,8 @@ export const AI_ERROR_CLASS_HINT: Record<AiErrorClass, string> = {
     + 'these rows at a lower concurrency (control_run action "rerun", mode "errored", concurrency e.g. 10), or add '
     + 'OpenRouter credits.',
   configuration:
-    'An account setting is wrong (API key, credits, or model choice). Fix it in Settings — a rerun cannot.',
+    'An account setting is wrong (API key, credits, model choice, or OpenRouter privacy settings). Fix it in '
+    + 'Settings — a rerun cannot.',
   unknown:
     'Unrecognized error. Read error_message directly before re-running; do not assume it is transient.',
 };

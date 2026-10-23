@@ -227,7 +227,7 @@ Cubex answers a health check at `/api/health`, which an uptime monitor can call 
 curl -s http://127.0.0.1:3002/api/health
 ```
 
-It returns `200` with `"status": "ok"` when the database, the run queue and the encryption key all work, and `503` with `"status": "degraded"` when one doesn't (`checks` says which). Once you've saved a treg key and Cubex has called treg, it also has `"treg": "ok"` or `"treg": "unreachable"`, with `tregSince` saying since when. That's the outcome of Cubex's last call to treg: the health check makes no call of its own, and treg being unreachable never turns the check to `503`, since restarting Cubex can't fix it.
+It returns `200` with `"status": "ok"` when the database, the run queue and the encryption key all work, and `503` with `"status": "degraded"` when one doesn't (`checks` says which). Once you've saved a treg key and Cubex has called treg, it also has `"treg": "ok"` or `"treg": "unreachable"`, with `tregSince` saying since when. That's the outcome of Cubex's last call to treg: the health check makes no call of its own, and treg being unreachable never turns the check to `503`, since restarting Cubex can't fix it. It also says how much space is left on the data folder, as `"disk": {"freeMb": 51200, "low": false}`. `low` is `true` below 200 MB (`DISK_LOW_MB` changes that). Like treg, it never fails the check, but it matters: when the disk is full, runs pause instead of paying for answers they can't save.
 
 ## Troubleshooting
 

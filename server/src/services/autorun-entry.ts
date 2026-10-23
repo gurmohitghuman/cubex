@@ -30,6 +30,7 @@ export const CAPACITY_PAUSES = new Set(['column_cap', 'row_cap', 'daily_limit'])
 export const RETRY_PAUSES = new Set([
   'unreachable', 'balance', 'treg_cap', 'provider_busy', 'unconfirmed', 'team_rule', 'queue',
   'over_cap',   // a waterfall's rows now cost more than what's left of today's cap (its prices rose)
+  'provider_errors',   // an HTTP API column's rows kept failing on the API's side (lib/run-breaker.ts)
 ]);
 export const KEY_PAUSES = new Set(['auth', 'no_key']);
 

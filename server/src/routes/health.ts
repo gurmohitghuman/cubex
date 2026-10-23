@@ -5,6 +5,7 @@ import { encrypt, decrypt } from '../lib/crypto';
 import { redactSecrets } from '../lib/http-request';
 import { JOBS_DB_PATH } from '../queue';
 import { tregReach } from '../services/treg-reach';
+import { dataDirFreeBytes, diskLow } from '../lib/disk-space';
 
 // Liveness/readiness probe. Mounted at /api/health in index.ts.
 const router = express.Router();
@@ -54,10 +55,14 @@ router.get('/', (_req, res) => {
       console.error('Health check: treg status read failed:', redactSecrets(String(err)));
     }
   }
+  // Free space on the data folder. Informational too (a restart can't free
+  // disk), but low space stops runs: their results couldn't be saved.
+  const free = dataDirFreeBytes();
   res.status(ok ? 200 : 503).json({
     status: ok ? 'ok' : 'degraded',
     checks,
     ...(treg ? { treg: treg.treg, tregSince: treg.since } : {}),
+    ...(free !== null ? { disk: { freeMb: Math.floor(free / 1024 / 1024), low: diskLow(free) } } : {}),
     timestamp: new Date().toISOString(),
   });
 });

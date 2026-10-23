@@ -15,6 +15,8 @@ import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import { httpResultCellValues } from '../lib/http-cell-values';
 import type { RunRow } from '../lib/run-rows';
+import { DONE, DROPPED, httpProviderSide, type RowOutcome } from '../lib/run-breaker';
+import { isStorageFailure } from '../lib/storage-failure';
 
 const shouldStop = shouldStopHttpRun;
 
@@ -22,7 +24,9 @@ const shouldStop = shouldStopHttpRun;
 // longer ours (cancel/resume raced us). Rolls back; the catch drops it benignly.
 const STOP_SENTINEL = Symbol('run-stopped');
 
-// Process a single sheet row: build the request, extract fields, write back into rows.data.
+// Process a single sheet row: build the request, extract fields, write back
+// into rows.data. Says what the row came to (the runner's brake counts provider
+// failures in a row); throws only when the database can't be written.
 export async function processHTTPRow(
   runId: string,
   row: RunRow,
@@ -31,7 +35,7 @@ export async function processHTTPRow(
   signal: AbortSignal | undefined,
   myGeneration: number,
   sheetColumns: string[],
-): Promise<void> {
+): Promise<RowOutcome> {
   // Upsert on the (run_id, row_index) unique key (migration 028): a re-write of
   // the SAME run+row is an idempotent overwrite, not a duplicate. (Reruns use a
   // NEW run_id, so they never collide here.) Belt-and-suspenders behind the
@@ -80,7 +84,7 @@ export async function processHTTPRow(
   const statusColumns = statusColumnsOf(config.responseMapping);
   try {
     const answer = await sendWithRetries(runId, myGeneration, config, rowData, run.user_id, signal, allowSavedKeys);
-    if (answer === STOPPED) return;
+    if (answer === STOPPED) return DROPPED;
     const responseData = answer.data;
     // A path that didn't match is a blank cell; a malformed one (Bug 7: once
     // swallowed to a misleading '⏭️ No data') FAILS the row with a fixable
@@ -89,7 +93,7 @@ export async function processHTTPRow(
     try { extractedFields = extractMappedFields(responseData, answer.status, config.responseMapping); }
     catch (error) { throw withResponseStatus(error, answer.status); }
 
-    if (shouldStop(runId, myGeneration)) return;
+    if (shouldStop(runId, myGeneration)) return DROPPED;
 
     const resultId = uuidv4();
 
@@ -110,12 +114,15 @@ export async function processHTTPRow(
       writeRowColumns(run.id, run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
+    return DONE;
   } catch (error: any) {
     // Our own in-txn stop sentinel: run cancelled/superseded, write rolled back.
-    if (error === STOP_SENTINEL) return;
+    if (error === STOP_SENTINEL) return DROPPED;
+    // Nothing can be saved: the runner stops sending requests.
+    if (isStorageFailure(error)) throw error;
     // Don't record failures caused by an explicit cancel/abort.
     const aborted = error?.name === 'AbortError' || signal?.aborted === true;
-    if (aborted || shouldStop(runId, myGeneration)) return;
+    if (aborted || shouldStop(runId, myGeneration)) return DROPPED;
 
     const resultId = uuidv4();
     const errorMessage = redactSecrets(error?.message || 'Unknown error');
@@ -139,6 +146,7 @@ export async function processHTTPRow(
       writeRowColumns(run.id, run.sheet_id, run.user_id, row.rowIndex, writes, row.stamp);
       touchSheet(run.sheet_id, run.user_id);
     }).immediate();
+    return { kind: 'failed', message: errorMessage, provider: httpProviderSide(tryFailureOf(error)) };
   }
 }
 

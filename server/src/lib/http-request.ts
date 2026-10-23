@@ -1,5 +1,7 @@
+// Over 200 lines: one outbound request path (template, cache, address check, request, bounded body) kept whole.
 import { request, Agent } from 'undici';
-import { HTTP_REQUEST_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS } from './constants';
+import { HTTP_REQUEST_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_TOTAL_SLACK_MS } from './constants';
+import { callDeadline, deadlineWords } from './call-deadline';
 import { getCachedResponse, setCachedResponse } from './http-request-cache';
 import { checkOutboundUrl, pinnedLookup } from './outbound-guard';
 import {
@@ -101,6 +103,7 @@ export async function sendHTTPRequest(
   // where an attacker's domain could return a public IP during the guard and a
   // private IP during the actual fetch.
   const dispatcher = new Agent({ connect: { lookup: pinnedLookup(guard.addresses || []) } });
+  let deadline: ReturnType<typeof callDeadline> | null = null;
   try {
 
   // undici has no `timeout` option — the old code passed one and undici
@@ -111,6 +114,9 @@ export async function sendHTTPRequest(
   const rawTimeout = typeof config.timeout === 'number' && Number.isFinite(config.timeout)
     ? config.timeout : HTTP_REQUEST_TIMEOUT_MS;
   const timeoutMs = Math.max(HTTP_MIN_TIMEOUT_MS, Math.min(rawTimeout, HTTP_MAX_TIMEOUT_MS));
+  // The whole request ends too: bodyTimeout alone lets a server trickling bytes hold the row.
+  const totalMs = timeoutMs * 2 + HTTP_TOTAL_SLACK_MS;
+  deadline = callDeadline(totalMs, signal);
 
   const requestOptions: any = {
     method: config.method,
@@ -118,8 +124,8 @@ export async function sendHTTPRequest(
     headersTimeout: timeoutMs,
     bodyTimeout: timeoutMs,
     dispatcher,
+    signal: deadline.signal,
   };
-  if (signal) requestOptions.signal = signal;
   // DELETE carries a body too: the dialog offers one and some APIs (bulk deletes) read it.
   if (processedBody && ['POST', 'PUT', 'DELETE'].includes(config.method)) requestOptions.body = processedBody;
 
@@ -128,6 +134,7 @@ export async function sendHTTPRequest(
   // before anything was sent (a header with a line break) stays as it is.
   // undici never follows a redirect here: a 3xx is an answer like any other.
   const noAnswer = (error: any): never => {
+    if (deadline?.timedOut()) throw new NetworkError(`No full answer within ${deadlineWords(totalMs)}.`);
     if (signal?.aborted || error?.name === 'AbortError' || !isTransportFailure(error)) throw error;
     throw new NetworkError(error?.message || 'The request failed.');
   };
@@ -187,6 +194,7 @@ export async function sendHTTPRequest(
     // every exit path — otherwise each row leaks a socket pool until GC.
     // Body is fully consumed (or destroyed) by now; fire-and-forget is fine.
     dispatcher.close().catch(() => {});
+    deadline?.done();
   }
 }
 

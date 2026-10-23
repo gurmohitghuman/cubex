@@ -1,6 +1,7 @@
+// Over 200 lines: one run's loop (claim, resume filter, rolling rows, brake, end) read top to bottom.
 import { db } from '../lib/db';
 import { runRows, countRunRows } from '../lib/run-rows';
-import { HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY } from '../lib/constants';
+import { HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, RUN_BREAKER_FAILURES } from '../lib/constants';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { redactError } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
@@ -12,6 +13,10 @@ import { processEnrichmentRun } from './enrich-runner';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { processWaterfallRun } from './waterfall-runner';
 import { requestRunStamper } from '../lib/run-inputs/stampers';
+import { brakeMessage, RunBreaker } from '../lib/run-breaker';
+import { isStorageFailure } from '../lib/storage-failure';
+import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
+import { stopAutorunRun } from './autorun-stop';
 
 export type { HTTPRunRow };
 
@@ -127,9 +132,10 @@ export async function processHTTPRun(
     // Rolling: a row starts as soon as one settles, up to batchSize at once, so a
     // row waiting to retry (lib/http-retry.ts, up to a minute on a Retry-After)
     // holds only its own slot. Batches that waited for their slowest row left
-    // every other slot idle meanwhile. A stop is checked before each row starts;
-    // rows already out finish (their writes are dropped once the run isn't ours,
-    // and a wait to retry ends early), and a resume picks up the rows still ⏳.
+    // every other slot idle meanwhile. A stop is checked before each row starts
+    // and, with every slot busy, every second; rows already out are aborted by
+    // it (their writes are dropped once the run isn't ours, and a wait to retry
+    // ends early), and a resume picks up the rows still ⏳.
     //
     // Progress counts rows PROCESSED, not rows that succeeded: processHTTPRow
     // catches its own errors and writes a ❌ cell, so failures count too. This is
@@ -141,11 +147,23 @@ export async function processHTTPRun(
     const source = runRows(run.sheet_id, run.user_id, masterCol, targets, requestRunStamper(run, config))
       [Symbol.asyncIterator]();
     const out = new Set<Promise<void>>();
-    // A full pool waits for one row to settle. One fresh promise per wait, never
-    // Promise.race(out): each race hangs a reaction on every row still out, and
-    // rows waiting minutes to retry kept hundreds of MB of them alive.
-    let slotFreed: (() => void) | null = null;
-    const aSlotFrees = () => new Promise<void>(resolve => { slotFreed = resolve; });
+    // A full pool waits for one row to settle, checking for a stop every
+    // RUN_STOP_POLL_MS and beating updated_at meanwhile (lib/run-pool.ts).
+    const pool = slotWaiter();
+    const beat = runHeartbeat('http_runs', runId, myGeneration);
+    // Rows failing in a row on the provider's side stop it (lib/run-breaker.ts),
+    // and so does a database that can't be written.
+    const breaker = new RunBreaker(RUN_BREAKER_FAILURES);
+    // Set from the rows' callbacks, so its type is spelled out (no narrowing to null).
+    let end = null as LoopEnd | null;
+    // Rows were still waiting to start when the loop stopped (a brake with none left pauses nothing).
+    let rowsLeft = false;
+    // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
+    const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
+    const wait = async () => {
+      await pool.settledOrTick();
+      try { beat(); } catch (error) { ended(error); }
+    };
     // The sheet's columns, read at most once a second: a cell with no key is an
     // empty value, not an unresolved {{column}} (withSheetColumns).
     let columns: string[] = [];
@@ -159,31 +177,63 @@ export async function processHTTPRun(
     };
     try {
       for (;;) {
-        if (out.size >= batchSize) { await aSlotFrees(); continue; }
         if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
+        if (out.size >= batchSize) { await wait(); continue; }
         const next = await source.next();
         if (next.done) break;
+        if (end) { rowsLeft = true; break; }
         const done: Promise<void> = processHTTPRow(
           runId, next.value, run, config, controller.signal, myGeneration, sheetColumns(),
         )
-          .catch(error => { console.error(`HTTP run ${runId} row error:`, redactError(error)); })
+          .then(outcome => {
+            breaker.record(outcome);
+            const tripped = breaker.tripped;
+            if (tripped && !end) {
+              end = { reason: 'provider_errors', message: brakeMessage(tripped, !!run.autorun_id) };
+            }
+          })
+          .catch(error => {
+            if (isStorageFailure(error)) { ended(error); return; }
+            console.error(`HTTP run ${runId} row error:`, redactError(error));
+          })
           .finally(() => {
             out.delete(done);
-            const wake = slotFreed;
-            slotFreed = null;
-            wake?.();
+            pool.settled();
             // Never rejects: nothing may be waiting on this row yet (a worker
             // thread dies on an unhandled rejection); a resume recounts anyway.
             try {
               if (!shouldStop(runId, myGeneration)) updateProgress.run(++completed, runId);
-            } catch (error) { console.error(`HTTP run ${runId} progress error:`, redactError(error)); }
+            } catch (error) {
+              ended(error);
+              console.error(`HTTP run ${runId} progress error:`, redactError(error));
+            }
           });
         out.add(done);
       }
     } finally {
-      await Promise.allSettled([...out]);
+      // The rows still out finish (a stop meanwhile aborts them), beating as they go.
+      while (out.size > 0) {
+        await wait();
+        // A read that fails here is tried again next tick: the rows out must settle before the run can end.
+        try { if (shouldStop(runId, myGeneration)) controller.abort(); } catch { /* next tick */ }
+      }
     }
 
+    // The provider failed the last rows: nothing is left to hold back, so the run ends as usual.
+    if (end?.reason === 'provider_errors' && !rowsLeft) end = null;
+    // Stopped itself: a person's run pauses (rows still ⏳, Resume goes on). An
+    // auto-run run its provider stopped cancels and pauses its column's auto-run,
+    // which tries again later (autorun-stop.ts): its ⏳ rows were never sent. One
+    // that couldn't save pauses like a person's: a ⏳ row there may have been
+    // sent, so it isn't queued again by itself.
+    if (end) {
+      if (run.autorun_id && end.reason === 'provider_errors') {
+        await stopAutorunRun(run, myGeneration, end.reason, end.message, targets);
+      } else {
+        pauseItself('http_runs', runId, myGeneration, end);
+      }
+      return;
+    }
     await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
   } catch (error) {
     console.error(`HTTP run ${runId} error:`, redactError(error));

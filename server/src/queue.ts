@@ -12,6 +12,7 @@ import { db } from './lib/db';
 import { DATA_DIR } from './lib/db-path';
 import { parseTargetRows } from './lib/run-targets';
 import type { RecoveredRuns } from './lib/orphan-runs';
+import { clearRunPlaceholders } from './lib/run-placeholders';
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const JOBS_SHIM_PATH = path.resolve(REPO_ROOT, 'sidequest.jobs.cjs');
@@ -147,6 +148,20 @@ export async function enqueueHTTPRerun(runId: string, targetRows: number[]): Pro
 // column with the rerun's prompt), else a full run. Each run is enqueued
 // independently — one failure rolls THAT run to 'failed' (so it doesn't sit
 // 'pending' forever, invisible to the worker) without blocking the others.
+// A recovered run that couldn't be queued again ends as failed, and its ⏳
+// cells are cleared (marked first, so a restart midway finishes the clear):
+// left alone they would spin with no worker, and Cancel refuses a failed run.
+function failUnresumed(kind: 'ai' | 'http', id: string): void {
+  const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
+  const failed = db.prepare(
+    `UPDATE ${table} SET status = 'failed', error_message = 'Could not resume after restart. Re-run to continue.',
+       placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'`,
+  ).run(id);
+  if (failed.changes > 0) {
+    clearRunPlaceholders(kind, id).catch(err => console.error(`Clearing the cells of ${kind} run ${id} failed:`, err));
+  }
+}
+
 export async function resumeRecoveredRuns(recovered: RecoveredRuns): Promise<void> {
   for (const id of recovered.aiRunIds) {
     try {
@@ -157,9 +172,7 @@ export async function resumeRecoveredRuns(recovered: RecoveredRuns): Promise<voi
       else await enqueueAIRun(id);
     } catch (err) {
       console.error(`Failed to resume AI run ${id} on boot:`, err);
-      db.prepare(
-        "UPDATE ai_runs SET status='failed', error_message='Could not resume after restart. Re-run to continue.', updated_at=datetime('now') WHERE id=? AND status='pending'",
-      ).run(id);
+      failUnresumed('ai', id);
     }
   }
   for (const id of recovered.httpRunIds) {
@@ -171,9 +184,7 @@ export async function resumeRecoveredRuns(recovered: RecoveredRuns): Promise<voi
       else await enqueueHTTPRun(id);
     } catch (err) {
       console.error(`Failed to resume HTTP run ${id} on boot:`, err);
-      db.prepare(
-        "UPDATE http_runs SET status='failed', error_message='Could not resume after restart. Re-run to continue.', updated_at=datetime('now') WHERE id=? AND status='pending'",
-      ).run(id);
+      failUnresumed('http', id);
     }
   }
 }

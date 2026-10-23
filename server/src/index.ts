@@ -28,6 +28,7 @@ import { redactSecrets } from './lib/http-request';
 import { createAccountFromEnv } from './services/account';
 import { resumeColumnPurges } from './lib/column-purge';
 import { resumeRunCleanups } from './lib/run-placeholders';
+import { requeueStalledRuns } from './services/stalled-runs';
 import { resumeSorts } from './services/sheet-sort';
 import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
@@ -58,7 +59,7 @@ import autorunRoutes from './routes/autorun';
 import setupsRoutes from './routes/setups';
 import setupRunsRoutes from './routes/setup-runs';
 import trashRoutes from './routes/trash';
-import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS } from './lib/constants';
+import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS, RUN_STALL_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
 
 // Run database migrations on boot before anything else.
@@ -219,6 +220,8 @@ createAccountFromEnv().then((result) => {
   for (const kind of DERIVED_KINDS) resumeDerivedFills(kind);
   resumeRunCleanups();
   setInterval(() => resumeRunCleanups(RUN_CLEANUP_STALE_MINUTES), RUN_CLEANUP_SWEEP_MS).unref();
+  // A running run whose worker stopped is queued again (services/stalled-runs.ts).
+  setInterval(() => { void requeueStalledRuns(); }, RUN_STALL_SWEEP_MS).unref();
 }, (err) => {
   console.error(`❌ ${(err as Error).message}`);
   process.exit(1);

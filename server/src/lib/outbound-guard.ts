@@ -1,5 +1,6 @@
 import { promises as dns } from 'node:dns';
 import { isPrivateAddress } from './ip-classify';
+import { HTTP_DNS_TIMEOUT_MS } from './constants';
 
 // SSRF guard for user-supplied outbound URLs (HTTP API enrichment).
 //
@@ -51,11 +52,21 @@ export async function checkOutboundUrl(url: string): Promise<GuardResult> {
   // We resolve ALL addresses — not just the first — because a hostname can
   // round-robin between public and private IPs and we'd be fooled by the
   // happy-path resolution.
+  // A resolver that never answers would hold the row: the wait is bounded (the
+  // lookup itself can't be cancelled; its late answer is dropped).
   let addresses: Array<{ address: string; family: number }>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    addresses = await dns.lookup(hostname, { all: true });
+    addresses = await Promise.race([
+      dns.lookup(hostname, { all: true }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), HTTP_DNS_TIMEOUT_MS);
+      }),
+    ]);
   } catch {
     return { ok: false, reason: `Could not resolve ${hostname}.` };
+  } finally {
+    clearTimeout(timer);
   }
 
   for (const { address } of addresses) {

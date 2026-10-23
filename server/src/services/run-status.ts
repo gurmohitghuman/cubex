@@ -53,6 +53,10 @@ export interface RunSummary {
   // not in total_rows; counted once the run has started).
   run_if?: string;
   condition_skipped_rows?: number;
+  // A run that paused itself: why, and what to do (token_cap, provider_errors,
+  // storage, stalled; an enrichment's own reasons are under enrichment).
+  pause_reason?: string;
+  pause_message?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +99,15 @@ function capPausePart(r: CapPaused) {
   };
 }
 
+// An AI or HTTP API run that paused itself for a reason it stored the words
+// of (lib/run-pool.ts, services/stalled-runs.ts): its provider failing row
+// after row, a database that couldn't be written, a worker that kept stopping.
+const SELF_PAUSES = new Set(['provider_errors', 'storage', 'stalled']);
+function selfPausePart(r: { status: string; pause_reason?: string | null; error_message?: string | null }) {
+  if (r.status !== 'paused' || !r.pause_reason || !SELF_PAUSES.has(r.pause_reason)) return {};
+  return { pause_reason: r.pause_reason, pause_message: r.error_message ?? null };
+}
+
 // One ai_runs row as a summary (the SELECTs here and in run-list.ts list the
 // columns it reads, written out so the SQL schema test checks them). Says which
 // columns the run fills, so a caller reading a structured run knows where its
@@ -110,7 +123,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     ...(search ? { web_search: search } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
-    error_message: r.error_message, ...capPausePart(r), ...aiRowOutcomes(r.id, r.user_id),
+    error_message: r.error_message, ...capPausePart(r), ...selfPausePart(r), ...aiRowOutcomes(r.id, r.user_id),
     ...rulePart(r.run_if, r.condition_skipped_rows),
     created_at: r.created_at, updated_at: r.updated_at,
   };
@@ -147,7 +160,7 @@ export function httpRunSummaryFromRow(r: any, userId: string, full: boolean): Ru
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...rowOutcomes('http_results', r.id),
     ...enrichSummaryPart(r, userId, full), ...waterfallSummaryPart(r, userId),
-    ...rulePart(runIfOf(r.config), r.condition_skipped_rows),
+    ...rulePart(runIfOf(r.config), r.condition_skipped_rows), ...selfPausePart(r),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }

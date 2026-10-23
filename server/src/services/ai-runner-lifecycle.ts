@@ -8,6 +8,10 @@ import {
 } from './ai-runner-status';
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
 import { spendCapRefusal } from './token-spend';
+import { RUN_BREAKER_FAILURES } from '../lib/constants';
+import { brakeMessage, RunBreaker } from '../lib/run-breaker';
+import { isStorageFailure } from '../lib/storage-failure';
+import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
 
 // Lifecycle + dispatch helpers shared by processAIRun / processAIRerun
 // (ai-runner.ts). Split out so the orchestration entry points stay readable and
@@ -15,13 +19,19 @@ import { spendCapRefusal } from './token-spend';
 // dispatched and how the run transitions to a terminal state".
 
 // Shared dispatch loop. Used by both processAIRun and processAIRerun — same
-// per-row pattern (semaphore + shouldStop checks + progress update + .finally
-// cleanup). `rows` streams the unfinished rows a page at a time (lib/run-rows),
-// so the worker never holds the whole sheet.
+// per-row pattern (a pool of `concurrency` rows + shouldStop checks + progress
+// update + .finally cleanup). `rows` streams the unfinished rows a page at a
+// time (lib/run-rows), so the worker never holds the whole sheet.
 // A run done for an access token with a spend cap reads what the token spent
 // before each row: at the cap it starts no more rows but lets the ones out
 // finish and write (their cost is billed: aborted, it would be lost and billed
-// again on resume), and answers 'token_cap' so the runner pauses it.
+// again on resume), and answers 'token_cap' so the runner pauses it. Rows
+// failing in a row on the provider's side (lib/run-breaker.ts) end it the same
+// way ('provider_errors'), and so does a database that can't be written
+// ('storage'): each row is paid before its result is written.
+// A stop (pause, cancel, a resume taking over) starts no more rows; the calls
+// out finish, within their deadline, and count (each is paid: cancelled, what
+// it cost would be lost). A full pool beats updated_at while it waits.
 export const dispatchRows = async (
   runId: string,
   run: AIRunRow,
@@ -29,59 +39,80 @@ export const dispatchRows = async (
   rows: AsyncIterable<SheetRow>,
   startCompleted: number,
   controller: AbortController,
-): Promise<'token_cap' | null> => {
-  const { default: OpenAI } = await import('openai'); void OpenAI; // satisfy ts when we only need the openai instance
+): Promise<LoopEnd | null> => {
   const openai = await getOpenRouterClient(run.user_id);
   const concurrency = run.concurrency || 5;
-  const semaphore = new Map<number, Promise<void>>();
+  const out = new Set<Promise<void>>();
+  const pool = slotWaiter();
+  const beat = runHeartbeat('ai_runs', runId, myGeneration);
+  const breaker = new RunBreaker(RUN_BREAKER_FAILURES);
   let completed = startCompleted;
+  // Set from the rows' callbacks, so its type is spelled out (no narrowing to null).
+  let end = null as LoopEnd | null;
+  // Rows were still waiting to start when the loop stopped (a brake with none left pauses nothing).
+  let rowsLeft = false;
   const updateProgress = db.prepare(
     "UPDATE ai_runs SET processed_rows = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
   );
+  // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
+  const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
+  const wait = async () => {
+    await pool.settledOrTick();
+    try { beat(); } catch (error) { ended(error); }
+  };
 
-  let i = 0;
-  let capped = false;
   // A throw from the row stream still waits for the rows already out: the run
   // is marked failed only once none of them can write (an undo checks for that).
   try {
-  for await (const row of rows) {
-    while (semaphore.size >= concurrency) await Promise.race(semaphore.values());
+    rowLoop: for await (const row of rows) {
+      for (;;) {
+        if (shouldStop(runId, myGeneration)) break rowLoop;
+        if (end) { rowsLeft = true; break rowLoop; }
+        if (out.size < concurrency) break;
+        await wait();
+      }
+      if (run.access_token_id && spendCapRefusal(run.user_id, run.access_token_id)) {
+        end = { reason: 'token_cap', message: null };
+        break;
+      }
 
-    if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
-    if (run.access_token_id && spendCapRefusal(run.user_id, run.access_token_id)) { capped = true; break; }
-
-    const key = i++;
-    const promise = processRow(runId, row, run, openai, controller.signal, myGeneration)
-      .then(() => {
-        // Progress counts rows PROCESSED, not rows that succeeded. A row that
-        // errored (API 401, etc.) writes a ❌ cell and resolves normally through
-        // here — so it IS counted. This matches the HTTP runner's per-batch
-        // `completed += batch.length` (which over allSettled also counts failures).
-        // The .catch below is only for an UNEXPECTED throw out of processRow, not
-        // ordinary row failures (those are handled inside processRow).
-        // Don't count or persist progress for rows that finished after a cancel
-        // OR after a resume that bumped the generation past ours.
-        if (shouldStop(runId, myGeneration)) return;
-        completed++;
-        updateProgress.run(completed, runId, run.user_id);
-      })
-      .catch(error => { console.error(`Error processing row ${row.rowIndex}:`, redactError(error)); })
-      .finally(() => { semaphore.delete(key); });
-    semaphore.set(key, promise);
-  }
+      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration)
+        .then(outcome => {
+          breaker.record(outcome);
+          const tripped = breaker.tripped;
+          if (tripped && !end) end = { reason: 'provider_errors', message: brakeMessage(tripped, false) };
+          // Progress counts rows PROCESSED, not rows that succeeded. A row that
+          // errored (API 401, etc.) writes a ❌ cell and resolves normally through
+          // here — so it IS counted. This matches the HTTP runner, which also
+          // counts failures. Don't count or persist progress for rows that
+          // finished after a cancel OR after a resume that bumped the generation past ours.
+          if (outcome.kind === 'dropped' || shouldStop(runId, myGeneration)) return;
+          completed++;
+          updateProgress.run(completed, runId, run.user_id);
+        })
+        // Thrown only by a write that failed (processRow handles ordinary row
+        // failures itself): a database that can't be written ends the run.
+        .catch(error => {
+          if (isStorageFailure(error)) { ended(error); return; }
+          console.error(`Error processing row ${row.rowIndex}:`, redactError(error));
+        })
+        .finally(() => { out.delete(promise); pool.settled(); });
+      out.add(promise);
+    }
   } finally {
-    await Promise.allSettled(semaphore.values());
+    // The rows still out finish, beating as they go.
+    while (out.size > 0) await wait();
   }
-  return capped ? 'token_cap' : null;
+  // The provider failed the last rows: nothing is left to hold back, so the run ends as usual.
+  if (end?.reason === 'provider_errors' && !rowsLeft) return null;
+  return end;
 };
 
-// The run's token reached its spend cap: paused (CAS on running + our
-// generation, so a person's pause, cancel or resume wins), rows still ⏳. A
-// resume is refused until the cap is raised (run-lifecycle.ts).
-export const pauseAtTokenCap = (runId: string, myGeneration: number): void => {
-  db.prepare(`UPDATE ai_runs SET status = 'paused', pause_reason = 'token_cap', updated_at = datetime('now')
-    WHERE id = ? AND status = 'running' AND worker_generation = ?`).run(runId, myGeneration);
-};
+// The run paused itself (the token's spend cap, its provider failing, a
+// database that can't be written: lib/run-pool.ts). A resume of a token_cap
+// pause is refused until the cap is raised (run-lifecycle.ts).
+export const pauseAt = (runId: string, myGeneration: number, end: LoopEnd): void =>
+  pauseItself('ai_runs', runId, myGeneration, end);
 
 export const finalizeStatus = async (
   runId: string, run: AIRunRow, myGeneration: number, targetRows?: number[],

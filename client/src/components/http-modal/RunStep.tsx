@@ -1,6 +1,7 @@
 import React from 'react'
 import { CheckCircle, Loader2 } from 'lucide-react'
 import { HTTPResult, HTTPRun } from '@/utils/api'
+import { selfPaused } from '@/lib/run-controls-copy'
 
 interface Props {
   currentRun: HTTPRun
@@ -37,6 +38,9 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults, onViewResults
               </span>
             </span>
           </div>
+          {currentRun.status === 'paused' && selfPaused(currentRun.pause_reason) && currentRun.error_message && (
+            <p className="mt-1 text-xs text-amber-800" data-testid="run-self-paused">{currentRun.error_message}</p>
+          )}
         </div>
       </div>
     </div>
