@@ -4,7 +4,8 @@ import { api } from './client'
 // sheets and batches of rows, kept for the days Settings sets, restored or
 // deleted for good. Field names match /api/v1/trash and MCP list_trash.
 export type TrashKind = 'rows' | 'sheet' | 'table'
-export type TrashHow = 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'sheet' | 'table'
+export type TrashHow =
+  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table'
 
 export interface TrashEntry {
   id: number

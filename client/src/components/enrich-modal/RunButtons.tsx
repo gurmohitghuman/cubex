@@ -57,7 +57,7 @@ function runMessage(p: Pick<Props, 'draft' | 'rows' | 'estimate' | 'unpriced' | 
   const what = `Run ${title} on ${rowsPhrase(p.rows ?? 0, status, more)}?`
     + (list ? ` May add up to ${plural(list.addUpTo, 'row')} to ${p.listDest || 'the other sheet'}.` : '')
   const again = !more || status === 'not_enriched' ? ''
-    : list ? ' The rows each one added before are replaced.'
+    : list ? ' The rows each one added earlier move to the trash.'
       : p.rows === 1 ? ' Its current result is replaced.' : ' Their current results are replaced.'
   const reused = p.reuse ? reuseConfirmLine(p.reuse.rows, p.reuse.complete) : ''
   if (p.unpriced) return `${what}${again}${reused} Your provider bills these calls directly.`

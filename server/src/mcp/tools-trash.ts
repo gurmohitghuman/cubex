@@ -19,7 +19,8 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'list_trash', {
     description:
       'What was deleted and can still be restored: batches of rows (from delete_rows, remove_duplicates, '
-      + 'auto-dedupe, a CSV import that replaced the rows, transfer_rows moving rows out, or the app), whole '
+      + 'auto-dedupe, a CSV import that replaced the rows, transfer_rows moving rows out, a list job\'s rerun '
+      + 'replacing the rows it added before, or the app), whole '
       + 'sheets and whole tables. '
       + 'Each item has its trash_id, what it was (table_name, sheet_name, rows), how and by whom it was deleted, '
       + 'and expires_at (kept for kept_days, set in Settings; then deleted). Without trash_id: the list, '

@@ -350,7 +350,7 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 
 Deleted rows, sheets and tables aren't gone at once: they wait in the trash for the days set in Settings (30 by default, up to 90; 0 deletes at once), then are deleted. The app has a Trash page; agents use `list_trash` and `restore_from_trash`.
 
-- **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; rows [auto-dedupe](#auto-dedupe) didn't keep, one batch per sheet a day; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
+- **What goes there:** rows from `delete_rows`, `remove_duplicates`, an `import_csv` (or upload link) in replace mode, `transfer_rows` moving rows out, and the app's deletes, one batch per deletion; rows [auto-dedupe](#auto-dedupe) didn't keep, and rows a list job's rerun replaced, one batch per sheet a day; a deleted sheet or table, whole (rows, columns, runs, views, webhook). A deleted sheet's webhook answers 404 until it's back, and lookups into it stop with a message.
 - **The answer:** each of those deletes answers with `trash`: `trash_id`, `kept_days`, `restorable_until` and `how_to_restore`.
 - **Restoring rows:** a batch goes back to its old places when the sheet hasn't been sorted, replaced or deduplicated since and those places are free; otherwise to the end of the sheet, in the order the rows had. Rows keep their ids. Columns they need that the sheet lost come back (`columns_added`); when the sheet has no room for them, the restore is refused rather than leaving cells out. Rows moved out with `transfer_rows` are still in their new sheet, so restoring them keeps both. Auto-run doesn't run restored rows. A run active on the sheet refuses a restore. A batch over 20,000 rows answers `"state": "restoring"` and finishes in the background.
 - **Finding rows:** `list_trash` with a batch's `trash_id` reads its rows (`seq`, `row_id`, `old_row_index`, `cells`); `column` and `contains` search them. Pass the `seq`s you want to `restore_from_trash` with that `trash_id`.
@@ -443,7 +443,7 @@ Enrichments look things up per row through [treg.to](https://treg.to) with the t
 
 - `copy_columns` takes `{from, to}` to copy a column of the asking row into each added row, or `{to, value}` to write the same text into each (say which engine or source the rows came from).
 - `outputs` are optional on a list job: they fill columns of the asking row from the answer's fields outside its results (`get_enrichment` lists only those for a tool that adds rows), from the same call.
-- A rerun replaces the rows each source row added before; a rerun that answers with no results removes them.
+- A rerun replaces the rows each source row added before, and a rerun that answers with no results removes them: they go to the trash (one batch per sheet a day, `list_trash` with `how: "rerun"`; deleted at once when Settings keeps the trash 0 days) and the other sheet's History counts them, so an answer that comes back shorter never costs the rows it replaced. Restored, they stay as rows of their own: a later rerun adds new rows beside them.
 - A single tool's other lists (often shown empty in its example answer, so treg's catalog doesn't name them as results) are in `get_enrichment`'s `other_lists`; pass one as `list.items_path` to add its items as rows. Deleting a sheet whose results aren't rows yet drops them: `manage_sheet` and `manage_table` deletes (and the REST deletes) say how many in `list_results_dropped`.
 
 **Auto-run** (`set_auto_run`, or `auto_run` on `run_enrichment`) keeps an enrichment or HTTP API column filling new rows, and rows whose inputs get filled, at most once a row. Rows already in the sheet when you turn it on are left alone. An enrichment auto-run has a daily cap (default $5, never above the daily limit); an HTTP API auto-run has a daily row cap (default 500) and **sends real requests**, for example adding leads to a sequencer. With a webhook on the sheet, anyone with its URL can add rows that spend.
@@ -777,7 +777,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Reading needs `read`;
 
 | Endpoint | Body or query |
 |---|---|
-| `GET /trash` | Same as `list_trash` without an id: `?q=` (a table, sheet or token name), `kind` (`rows`, `sheet`, `table`), `how` (`grid`, `api`, `duplicates`, `auto_dedupe`, `import`, `transfer`, `sheet`, `table`), `sheet_id`, `before` (the next page), `limit`. `read` scope. |
+| `GET /trash` | Same as `list_trash` without an id: `?q=` (a table, sheet or token name), `kind` (`rows`, `sheet`, `table`), `how` (`grid`, `api`, `duplicates`, `auto_dedupe`, `import`, `transfer`, `rerun`, `sheet`, `table`), `sheet_id`, `before` (the next page), `limit`. `read` scope. |
 | `GET /trash/:id` · `GET /trash/:id/rows` | One item; a batch's rows: `?after=` (a `seq`), `limit` (up to 500), `column` and `contains` to search. `read` scope. |
 | `GET /trash/:id/csv` | A batch's rows as CSV. `read` scope. |
 | `POST /trash/restore` | `{"trash_ids": [12, 14]}`: tables first, then sheets, then rows. `results` says what each did. `write` scope. |

@@ -9,6 +9,7 @@ const HOW: Record<TrashHow, string> = {
   auto_dedupe: 'Removed by auto-dedupe',
   import: 'Replaced by a CSV import',
   transfer: 'Moved to another sheet',
+  rerun: 'Replaced by a rerun',
   sheet: 'Sheet deleted',
   table: 'Table deleted',
 }
