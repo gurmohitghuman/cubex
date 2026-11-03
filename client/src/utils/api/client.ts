@@ -1,5 +1,7 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import { BUILD_HEADER, tabBuild, updatedSinceLoad } from '@/lib/build-watch'
+import { showUpdateNotice } from '@/components/UpdateNotice'
 
 const API_BASE_URL = '/api'
 
@@ -34,9 +36,20 @@ export function redirectToLoginOn401(): void {
   }
 }
 
+// Every answer names the app build the server serves: another one than this tab
+// runs means Cubex was updated while it stayed open (lib/build-watch.ts).
+function watchBuild(headers: unknown): void {
+  const build = (headers as Record<string, unknown> | undefined)?.[BUILD_HEADER]
+  if (updatedSinceLoad(build, tabBuild())) showUpdateNotice()
+}
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    watchBuild(response.headers)
+    return response
+  },
   (error) => {
+    watchBuild(error.response?.headers)
     if (error.response?.status === 401) {
       redirectToLoginOn401()
     } else if (error.response?.status >= 500) {

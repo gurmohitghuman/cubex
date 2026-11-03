@@ -22,6 +22,7 @@ import { runMigrations } from './db/migrate';
 import { assertEncryptionConfigured } from './lib/crypto';
 import { applyServerMiddleware } from './lib/server-middleware';
 import { serveClientInProduction } from './lib/serve-client';
+import { BUILD_HEADER, currentBuildId } from './lib/build-id';
 import { startBackground, installShutdownHandlers } from './lib/server-lifecycle';
 import { resetOrphanedRuns } from './lib/orphan-runs';
 import { redactSecrets } from './lib/http-request';
@@ -116,6 +117,12 @@ const noStore = (_req: express.Request, res: express.Response, next: express.Nex
 };
 app.use('/api', noStore);
 app.use('/mcp', noStore); // MCP tool results carry sheet data too
+// The app build served (lib/build-id.ts): an open tab compares it with its own.
+app.use('/api', (_req, res, next) => {
+  const build = currentBuildId();
+  if (build) res.setHeader(BUILD_HEADER, build);
+  next();
+});
 
 // PUBLIC webhook ingestion — mounted BEFORE the authenticated routes and with NO
 // authenticateToken. The token in the path is the capability. The global JSON
