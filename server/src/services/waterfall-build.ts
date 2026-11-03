@@ -24,6 +24,7 @@ import { buildEnrichmentStep } from './waterfall-build-enrich';
 import { buildCheck, compileStepFormula } from './waterfall-build-check';
 import { buildLookupStep } from './waterfall-build-lookup';
 import { priceAiStep, type AiStepPrice } from './waterfall-ai-price';
+import { modelProblem } from '../lib/ai-model-check';
 import type { RunFail } from './run-shared';
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -125,6 +126,8 @@ export async function buildWaterfall(
       }
       const model = resolveAiModel(c.model, ctx.sheetId, ctx.userId);
       if (!model) return bad(`${where}: ${NO_MODEL_ERROR}`);
+      const gone = await modelProblem(model);
+      if (gone) return bad(`${where}: ${gone} Choose another model for this step.`);
       const price = await priceAiStep(ctx.userId, w, model, c.prompt, c.webSearch, sample);
       if ('error' in price) return bad(`${where}: ${price.error}`);
       ai.set(id, price.ok);

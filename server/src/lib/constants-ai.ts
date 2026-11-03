@@ -14,6 +14,9 @@ export const OPENROUTER_ATTRIBUTION_HEADERS: Record<string, string> = {
 // sheet default > account default (lib/ai-model-resolve.ts) — and is rejected
 // when none is set. Don't reintroduce a hardcoded fallback.
 export const OPENROUTER_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+// A run's start waits at most this long for OpenRouter's model list to check
+// its model (lib/ai-model-check.ts); without the list in time, it starts.
+export const MODEL_CHECK_WAIT_MS = 3000;
 // What OpenRouter says about the key's money (services/openrouter-balance.ts)
 // is read at most this often per key: estimates and get_balances can repeat.
 export const OPENROUTER_BALANCE_CACHE_MS = 30 * 1000;
