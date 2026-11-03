@@ -35,20 +35,29 @@ If Cubex is reachable from the internet, put it behind HTTPS. [Run Cubex on your
 
 | Situation | Response |
 |---|---|
-| Event stored (or not kept by [auto-dedupe](../README.md#auto-dedupe): the sender can't tell) | `202` |
+| Event stored (or not kept by [auto-dedupe](../README.md#auto-dedupe), or a retry already added: the sender can't tell) | `202` |
 | `Content-Type` isn't `application/json` | `415` |
 | Body isn't valid JSON | `400` |
 | Body over 512 KB | `413` |
 | Nested deeper than 10 levels, or more than 5,000 values | `400` |
 | More than about 10 events a second (bursts of 20 are fine) | `429` with `Retry-After` |
 | The sheet is at its row limit | `409` |
+| `Idempotency-Key` that isn't 1 to 255 visible ASCII characters | `400` |
 | Unknown, rotated or disabled URL | `404` |
 
 A text value longer than 8,000 characters is cut to 8,000 before it's written. If one event would write more than 64 KB in total, the row is still created and the cells that don't fit are dropped.
 
 Cubex keeps the raw events for the newest 1,000 deliveries (up to 10 MB) per webhook, so you can pick new fields from a recent event later. The rows themselves are never deleted by this.
 
+### Retries
+
+A sender that didn't get an answer (a timeout, a `5xx`) sends the event again. If it sends an `Idempotency-Key` header with each event, and the same key on each retry, the event adds its row once: a retry with a key and body this webhook saw in the last 24 hours gets `202` and adds nothing. The same key with a different body (other values, or the same fields in another order) is a new event and adds a row, and its retries aren't stopped: a key stops repeats of the first body it came with, so give each event its own. In Zapier, Make or n8n, add the header yourself with an id from the event (an order or event id); with `curl`, add `-H 'Idempotency-Key: order-1042'`.
+
 Senders often send the same event twice. Turn on [auto-dedupe](../README.md#auto-dedupe) (the Webhook panel links to it) to keep one row per email, domain or other key: a delivery whose key is already in the sheet shows as **not kept** in the panel's deliveries, and its row waits in the trash.
+
+### Adding a delivery again
+
+Fixed a mapping after some events came in? Open a row's raw event (its **Webhook** cell) and click **Add again**: the event is read again with the mappings as they are now and added as a new row, like a new event: the old row stays, unless [auto-dedupe](../README.md#auto-dedupe) keeps the newest row with a key, which sends the old one to the trash. The message and History say what happened. This works while the raw event is still kept (the newest 1,000 deliveries).
 
 ## Keeping it safe
 

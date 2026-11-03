@@ -3,6 +3,7 @@ import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { getSourceForSheet } from '../lib/webhook-service';
+import { replayDelivery } from '../services/webhook-replay';
 
 // Authenticated raw-delivery access for a sheet's webhook. Mounted under
 // /api/sheets. The raw payload lives in webhook_deliveries (NOT in rows.data);
@@ -25,12 +26,12 @@ router.get('/:id/webhook-deliveries', (req: AuthRequest, res) => {
 
   const limit = clampLimit(req.query.limit);
   const rows = db.prepare(
-    `SELECT id, row_id, payload, payload_bytes, status, error_message, received_at
+    `SELECT id, row_id, payload, payload_bytes, status, error_message, received_at, replay_of
        FROM webhook_deliveries WHERE source_id = ?
        ORDER BY received_at DESC, id DESC LIMIT ?`,
   ).all(src.id, limit) as Array<{
     id: string; row_id: string | null; payload: string; payload_bytes: number;
-    status: string; error_message: string | null; received_at: string;
+    status: string; error_message: string | null; received_at: string; replay_of: string | null;
   }>;
 
   res.json({
@@ -44,6 +45,7 @@ router.get('/:id/webhook-deliveries', (req: AuthRequest, res) => {
       status: r.status,
       errorMessage: r.error_message,
       receivedAt: r.received_at,
+      replayOf: r.replay_of,
     })),
   });
 });
@@ -78,13 +80,13 @@ router.get('/:id/webhook-deliveries/:rowId', (req: AuthRequest, res) => {
 // Shared raw-delivery responder for both lookups (by row_id and by row_index).
 function sendRawForRow(res: express.Response, sourceId: string, userId: string, rowId: string) {
   const delivery = db.prepare(
-    `SELECT payload, payload_bytes, status, error_message, received_at
+    `SELECT id, payload, payload_bytes, status, error_message, received_at, replay_of
        FROM webhook_deliveries
        WHERE source_id = ? AND user_id = ? AND row_id = ?
        ORDER BY received_at DESC LIMIT 1`,
   ).get(sourceId, userId, rowId) as {
-    payload: string; payload_bytes: number; status: string;
-    error_message: string | null; received_at: string;
+    id: string; payload: string; payload_bytes: number; status: string;
+    error_message: string | null; received_at: string; replay_of: string | null;
   } | undefined;
 
   if (!delivery) {
@@ -92,14 +94,30 @@ function sendRawForRow(res: express.Response, sourceId: string, userId: string, 
   }
   const retained = delivery.status !== 'pruned' && delivery.payload_bytes > 0;
   return res.json({
+    id: delivery.id,
     retained,
     payload: retained ? safeParse(delivery.payload) : null,
     payloadBytes: delivery.payload_bytes,
     status: delivery.status,
     errorMessage: delivery.error_message,
     receivedAt: delivery.received_at,
+    replayOf: delivery.replay_of,
   });
 }
+
+// POST /:id/webhook-deliveries/:deliveryId/replay — add a logged delivery
+// again as a new row, with the webhook's mappings as they are now
+// (services/webhook-replay.ts).
+router.post('/:id/webhook-deliveries/:deliveryId/replay', (req: AuthRequest, res) => {
+  try {
+    const out = replayDelivery(req.userId!, req.params.id, req.params.deliveryId);
+    if ('fail' in out) return res.status(out.fail === 'not_found' ? 404 : 409).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error) {
+    console.error('Webhook replay error:', error);
+    res.status(500).json({ error: 'Adding the delivery again failed.' });
+  }
+});
 
 function clampLimit(raw: unknown): number {
   const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;

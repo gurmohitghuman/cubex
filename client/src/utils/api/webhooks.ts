@@ -43,6 +43,8 @@ export interface WebhookDelivery {
   status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error'
   errorMessage: string | null
   receivedAt: string
+  // Added again from the log ("Add again"): the delivery it repeats.
+  replayOf?: string | null
 }
 
 export interface WebhookState {
@@ -84,6 +86,11 @@ export const webhooksAPI = {
   // (which resolves to the stable rows.id and then the delivery).
   rawForRowIndex: (sheetId: string, rowIndex: number): Promise<WebhookDelivery> =>
     api.get(`/sheets/${sheetId}/webhook-deliveries/by-row-index/${rowIndex}`, noServerToast).then(r => r.data),
+
+  // Add a logged delivery again as a new row, with the webhook's mappings as they are now.
+  replayDelivery: (sheetId: string, deliveryId: string):
+    Promise<{ rowIndex: number; status: 'stored' | 'partial' | 'duplicate'; replaced: number }> =>
+    api.post(`/sheets/${sheetId}/webhook-deliveries/${deliveryId}/replay`, {}, noServerToast).then(r => r.data),
 
   // Change-poll: resolves when data_version > since OR row_generation moved
   // off sinceRg (long-poll, ~25s hold). Pass an AbortSignal so switching
