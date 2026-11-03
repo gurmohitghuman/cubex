@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
-import { DB_CHECK_NOTICE_BYTES } from './constants';
+import { DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV } from './constants';
 import { registerRowFilterFunctions } from './row-filter/sql-functions';
 import { registerRunInputFunctions } from './run-inputs/fingerprint';
 
@@ -104,20 +104,28 @@ process.on('beforeExit', () => {
 // to restore from backup or accept the risk; crashing on every boot of a
 // corrupt DB makes recovery harder. It reads the whole file (about 20 s for
 // 2.5 GB), so the log says so first and a slow boot doesn't look like a hang.
-console.log(`📁 SQLite database: ${dbPath}`);
-try {
-  const bytes = fs.statSync(dbPath).size;
-  if (bytes > DB_CHECK_NOTICE_BYTES) {
-    const gb = (bytes / 1024 ** 3).toFixed(1);
-    console.log(`Checking the database file (${gb} GB) before starting. This can take a minute.`);
+//
+// Once per start: the first process to open the file (the server) checks it and
+// marks that in its environment. The threads that open it after inherit the mark
+// and skip a second whole-file read: the lookup worker, and every job thread (in
+// the worker process Sidequest forks). Each of them used to check it again.
+if (process.env[DB_CHECKED_ENV] !== dbPath) {
+  console.log(`📁 SQLite database: ${dbPath}`);
+  try {
+    const bytes = fs.statSync(dbPath).size;
+    if (bytes > DB_CHECK_NOTICE_BYTES) {
+      const gb = (bytes / 1024 ** 3).toFixed(1);
+      console.log(`Checking the database file (${gb} GB) before starting. This can take a minute.`);
+    }
+  } catch { /* a new database */ }
+  try {
+    const result = db.pragma('integrity_check(10)') as Array<{ integrity_check: string }>;
+    const ok = Array.isArray(result) && result.every(r => r.integrity_check === 'ok');
+    if (!ok) {
+      console.error('🚨 SQLite integrity_check FAILED:', JSON.stringify(result));
+    }
+  } catch (err) {
+    console.error('⚠️  SQLite integrity_check threw:', (err as Error).message);
   }
-} catch { /* a new database */ }
-try {
-  const result = db.pragma('integrity_check(10)') as Array<{ integrity_check: string }>;
-  const ok = Array.isArray(result) && result.every(r => r.integrity_check === 'ok');
-  if (!ok) {
-    console.error('🚨 SQLite integrity_check FAILED:', JSON.stringify(result));
-  }
-} catch (err) {
-  console.error('⚠️  SQLite integrity_check threw:', (err as Error).message);
+  process.env[DB_CHECKED_ENV] = dbPath;
 }

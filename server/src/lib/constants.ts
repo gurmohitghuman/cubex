@@ -143,6 +143,14 @@ export const HTTP_PREVIEW_CONCURRENCY = 5;
 // Sidequest worker pool size (queue.ts): how many AI/HTTP runs execute at once.
 // Runs started beyond this wait as 'pending' until a worker frees up.
 export const WORKER_POOL_SIZE = envInt('SIDEQUEST_MAX_CONCURRENT_JOBS', 4);
+// Its job threads: none kept while nothing runs (Sidequest's default kept one per
+// CPU core alive); one with no job for this long exits, so back-to-back runs
+// (auto-run starts a batch every AUTORUN_SWEEP_MS) reuse it.
+export const SIDEQUEST_IDLE_THREAD_MS = 60_000;
+// How often the Sidequest worker looks for a job to start while it has none or
+// is full (its default, 100 ms, kept it busy all day). A new run starts within
+// about this long; one waiting for a free slot, within about twice it.
+export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
 
 // Incoming webhooks (POST /api/webhooks/:token). The app's only unauthenticated
 // write surface — every number here is a guard. See docs/webhooks.md.
@@ -229,6 +237,9 @@ export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // Boot reads the whole database file to check it (lib/db.ts); above this size
 // the log says so first, so a slow boot doesn't look like a hang.
 export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
+// Set to the database path by the process that checked it, so the processes and
+// threads it starts (which inherit its environment) don't read the file again.
+export const DB_CHECKED_ENV = 'CUBEX_DB_CHECKED';
 
 // The sample table (services/sample-table.ts) fills its free columns one after
 // another: each waits up to this long for the one before to finish filling
