@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import { serveBuildFrom } from './build-id';
 
 // Serve client static files in production (single-port deployment).
 // Extracted from index.ts verbatim — cache-header strategy is load-bearing:
@@ -29,6 +30,7 @@ export function serveClientInProduction(app: express.Express) {
     console.warn(`⚠️  Client dist not found at ${clientDist} — run "npm run build" first`);
     return;
   }
+  serveBuildFrom(path.join(clientDist, 'index.html'));
 
   app.use(express.static(clientDist, {
     dotfiles: 'deny',

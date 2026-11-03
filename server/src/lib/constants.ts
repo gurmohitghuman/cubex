@@ -246,6 +246,8 @@ export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
 // Set to the database path by the process that checked it, so the processes and
 // threads it starts (which inherit its environment) don't read the file again.
 export const DB_CHECKED_ENV = 'CUBEX_DB_CHECKED';
+// The served app's build id (lib/build-id.ts) looks at index.html on disk at most this often.
+export const BUILD_ID_RECHECK_MS = 5000;
 
 // The sample table (services/sample-table.ts) fills its free columns one after
 // another: each waits up to this long for the one before to finish filling
