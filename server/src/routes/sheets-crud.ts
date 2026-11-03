@@ -102,13 +102,13 @@ router.put('/:id/column-filters', (req: AuthRequest, res) => {
 // Thin wrapper over services/ai-model-config.ts (shared with the MCP
 // set_default_model tool). Historical strictness preserved: a body without a
 // `model` key is a 400, not a clear.
-router.put('/:id/default-model', (req: AuthRequest, res) => {
+router.put('/:id/default-model', async (req: AuthRequest, res) => {
   try {
     const { model } = req.body as { model?: unknown };
     if (model !== null && (typeof model !== 'string' || model.length > 200)) {
       return res.status(400).json({ error: 'Invalid model value' });
     }
-    const result = setSheetDefaultModel(req.userId!, req.params.id, model);
+    const result = await setSheetDefaultModel(req.userId!, req.params.id, model);
     if ('fail' in result) {
       return res.status(result.fail === 'not_found' ? 404 : 400).json({ error: result.message });
     }

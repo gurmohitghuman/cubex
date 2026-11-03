@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_AI_CONCURRENCY, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
+import { modelGone, modelList } from '../lib/ai-model-check';
 import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
@@ -64,6 +65,9 @@ export function rerunConcurrency(asked: number | undefined, previous: number): {
 export type RerunOutcome = { ok: { runId: string; targetCount: number } } | RunFail;
 
 export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<RerunOutcome> {
+  // OpenRouter's model list, read first: from the active-run check to the
+  // insert nothing may wait (lib/ai-model-check.ts).
+  const models = await modelList();
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
@@ -90,7 +94,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   const structuredStatus = p.columnName
     ? structuredRunOwning(p.sheetId, userId, p.columnName)
     : structuredRunByBase(p.sheetId, userId, p.baseColumnName, cleanBase);
-  if (structuredStatus) return rerunAiMultiColumn(userId, p, structuredStatus);
+  if (structuredStatus) return rerunAiMultiColumn(userId, p, structuredStatus, models);
 
   // Runs on a sheet are only created inside its busy window (services/run-seed.ts),
   // so no new one can appear between this check and the insert below.
@@ -106,13 +110,15 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   if (!latestRun) return { fail: 'not_found', message: 'No AI run found for this column' };
   // A structured run whose status column was renamed "<base> (Output)" is still
   // structured: cloning it as a single-column run would write prose into it.
-  if (latestRun.output_columns) return rerunAiMultiColumn(userId, p, latestRun.column_name);
+  if (latestRun.output_columns) return rerunAiMultiColumn(userId, p, latestRun.column_name, models);
 
   // A rerun reuses the original run's model — that's what the user chose for
   // this column. Legacy runs (pre account-defaults) can carry NULL: resolve
   // through sheet/account defaults, never a hardcoded fallback.
   const model = latestRun.model || resolveAiModel(undefined, p.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const gone = modelGone(models, model);
+  if (gone) return { fail: 'bad_request', message: `${gone} Edit the column to choose another model.` };
 
   // Inherit Data-column behavior from the original run. If the user enabled
   // web search the first time, the (Data) column already exists and rerun

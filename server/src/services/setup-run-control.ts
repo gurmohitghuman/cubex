@@ -9,7 +9,8 @@
 // record stops allowing saved keys, as resuming a run does.
 import { db } from '../lib/db';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
-import { pauseRun, resumeCapRefusal, resumeRun, cancelRun } from './run-lifecycle';
+import { pauseRun, resumeCapRefusal, resumeModelRefusal, resumeRun, cancelRun } from './run-lifecycle';
+import { modelList } from '../lib/ai-model-check';
 import { advanceSetupRun } from './setup-runner';
 import {
   getSetupRun, loadSetupRun, planOf, setStatus, stepsOf, type SetupRunRow, type SetupRunView, type StepRecord,
@@ -36,6 +37,8 @@ const runsOf = (steps: StepRecord[]) =>
 export async function controlSetupRun(
   userId: string, id: string, action: SetupRunAction, hasSecretsScope: boolean,
 ): Promise<{ ok: SetupRunView } | RunFail> {
+  // A resume looks its AI steps' models up in OpenRouter's list, read before any check below.
+  const models = action === 'resume' ? await modelList() : null;
   const r = loadSetupRun(id);
   if (!r || r.user_id !== userId) return { fail: 'not_found', message: 'Setup run not found' };
   const runs = runsOf(stepsOf(r));
@@ -45,6 +48,9 @@ export async function controlSetupRun(
     for (const x of runs) pauseRun(x.kind, x.runId, userId);
   } else if (action === 'resume') {
     if (r.status !== 'paused') return { fail: 'conflict', message: `It isn't paused (it's ${r.status}).` };
+    // An AI step whose model OpenRouter's list doesn't have would fail every row: refused up front too.
+    const gone = runs.map(x => resumeModelRefusal(x.kind, x.runId, userId, models)).find(m => m !== null);
+    if (gone) return { fail: 'bad_request', message: gone };
     // Its steps spend for the token that applied it, or for a token that resumes it (it becomes that
     // token's, as each run it resumes does; the app takes a revoked token's over): that token's cap
     // counts. Every paused run is checked before any resumes, so a refusal leaves the setup as it was.
@@ -66,6 +72,7 @@ export async function controlSetupRun(
       if ('fail' in out && (out.fail === 'secrets_required' || out.fail === 'spend_cap')) {
         return { fail: 'forbidden', message: out.message };
       }
+      if ('fail' in out && out.fail === 'model_gone') return { fail: 'bad_request', message: out.message };
     }
     // Its later steps spend for whom it was resumed for; a pause at the cap (setup-runner.ts) said why in
     // error_message, and that ends with the pause.

@@ -11,13 +11,13 @@ router.use(authenticateToken);
 // are rejected until the user picks a model — there is no hardcoded fallback.
 // null clears the setting. Historical strictness preserved: a body WITHOUT a
 // `model` key is a 400, not a clear.
-router.put('/default-model', (req: AuthRequest, res) => {
+router.put('/default-model', async (req: AuthRequest, res) => {
   try {
     const { model } = req.body as { model?: unknown };
     if (model !== null && (typeof model !== 'string' || model.length > 200)) {
       return res.status(400).json({ error: 'Invalid model value' });
     }
-    const result = setAccountDefaultModel(req.userId!, model);
+    const result = await setAccountDefaultModel(req.userId!, model);
     if ('fail' in result) return res.status(400).json({ error: result.message });
     res.json({ defaultAiModel: result.ok.model });
   } catch (error) {

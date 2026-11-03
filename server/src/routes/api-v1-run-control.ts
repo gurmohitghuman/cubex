@@ -39,6 +39,7 @@ function refuseRunStart(req: TokenAuthRequest, res: express.Response, paid = tru
 const controlStatus = (f: Exclude<ControlOutcome, { ok: true }>): number =>
   f.fail === 'not_found' ? 404
   : f.fail === 'secrets_required' || f.fail === 'spend_cap' ? 403
+  : f.fail === 'model_gone' ? 400
   : 409;
 
 // Registers pause/resume/cancel for one run kind; responses echo the fresh

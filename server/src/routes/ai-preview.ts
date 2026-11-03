@@ -5,6 +5,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { AI_PREVIEW_CONCURRENCY } from '../lib/constants';
 import { parsePreviewRequest, previewErrorMessage } from './ai-preview-parse';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
+import { modelProblem } from '../lib/ai-model-check';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { samplePreviewRows } from '../lib/ai-preview-sample';
 import { checkRunRule } from '../services/run-rule';
@@ -57,6 +58,8 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // would poison draft reuse with a config the run can't reproduce.
     const model = resolveAiModel(requestedModel, sheetId, req.userId!);
     if (!model) return res.status(400).json({ error: NO_MODEL_ERROR });
+    const gone = await modelProblem(model);
+    if (gone) return res.status(400).json({ error: `${gone} Choose another model.` });
 
     // Same up-front /column reference gate as /ai/run: a preview full of
     // "[MISSING: /token]" wastes the iteration loop, and a run started from

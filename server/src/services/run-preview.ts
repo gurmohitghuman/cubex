@@ -8,6 +8,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { db } from '../lib/db';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { resolveAiModel, NO_MODEL_ERROR } from '../lib/ai-model-resolve';
+import { modelProblem } from '../lib/ai-model-check';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { getOpenRouterClient } from './openrouter';
 import { processOneRow } from '../routes/ai-preview-runner';
@@ -90,6 +91,8 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   if (refsError) return { fail: 'bad_request', message: refsError };
   const model = resolveAiModel(input.model, input.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const gone = await modelProblem(model);
+  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
   // The engine, mode and cap the run would get (lib/web-search-plan.ts).
   const planned = await planIfSearching(userId, model, !!input.useOpenRouterWebSearch, input.search);
   if ('error' in planned) return { fail: 'bad_request', message: planned.error };

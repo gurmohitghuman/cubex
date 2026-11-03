@@ -7,7 +7,7 @@ import { Sidequest } from 'sidequest';
 // references to the same classes for `Sidequest.build()` to bind to. We also
 // require from dist so the class identity matches what worker threads load.
 import type { JobClassType } from 'sidequest';
-import { WORKER_POOL_SIZE } from './lib/constants';
+import { SIDEQUEST_IDLE_THREAD_MS, SIDEQUEST_POLL_MS, WORKER_POOL_SIZE } from './lib/constants';
 import { db } from './lib/db';
 import { DATA_DIR } from './lib/db-path';
 import { parseTargetRows } from './lib/run-targets';
@@ -40,10 +40,10 @@ const { HTTPRerunJob } = require(path.join(COMPILED_JOBS_DIR, 'http-rerun-job'))
 //   3. If we ever drop the queue (e.g. swap to Redis-backed BullMQ), no
 //      data migration is needed.
 //
-// In-process mode: Sidequest spawns worker threads inside this same Node
-// process. Worker threads have their own JS context — they can't see the
-// API process's request handlers, in-memory caches, or SSE clients. That's
-// why ai-runner / http-runner write everything observable to the DB.
+// Sidequest forks one worker process of its own, which runs each job in a
+// thread of its pool. Those threads have their own JS context — they
+// can't see the API process's request handlers, in-memory caches, or SSE
+// clients. That's why ai-runner / http-runner write everything observable to the DB.
 //
 // Manual job resolution: worker threads load job code via `await import()`,
 // which (a) doesn't inherit tsx's TS hook and (b) chokes on ESM `import`
@@ -75,6 +75,14 @@ export async function startQueue(): Promise<void> {
       config: JOBS_DB_PATH,
     },
     maxConcurrentJobs: WORKER_POOL_SIZE,
+    // Job threads start as jobs need them, and none stay while idle. Room for
+    // twice the jobs: Sidequest's hourly release of jobs running over 10 minutes
+    // can briefly count one job too few and start another, which then gets a
+    // thread of its own rather than waiting for one.
+    minThreads: 0,
+    maxThreads: WORKER_POOL_SIZE * 2,
+    idleWorkerTimeout: SIDEQUEST_IDLE_THREAD_MS,
+    jobPollingInterval: SIDEQUEST_POLL_MS,
     manualJobResolution: true,
     jobsFilePath: JOBS_SHIM_PATH,
     // Don't start the bundled web dashboard: it would bind port 8678 with no

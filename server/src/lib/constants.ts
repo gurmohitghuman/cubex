@@ -143,6 +143,14 @@ export const HTTP_PREVIEW_CONCURRENCY = 5;
 // Sidequest worker pool size (queue.ts): how many AI/HTTP runs execute at once.
 // Runs started beyond this wait as 'pending' until a worker frees up.
 export const WORKER_POOL_SIZE = envInt('SIDEQUEST_MAX_CONCURRENT_JOBS', 4);
+// Its job threads: none kept while nothing runs (Sidequest's default kept one per
+// CPU core alive); one with no job for this long exits, so back-to-back runs
+// (auto-run starts a batch every AUTORUN_SWEEP_MS) reuse it.
+export const SIDEQUEST_IDLE_THREAD_MS = 60_000;
+// How often the Sidequest worker looks for a job to start while it has none or
+// is full (its default, 100 ms, kept it busy all day). A new run starts within
+// about this long; one waiting for a free slot, within about twice it.
+export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
 
 // Incoming webhooks (POST /api/webhooks/:token). The app's only unauthenticated
 // write surface — every number here is a guard. See docs/webhooks.md.
@@ -200,6 +208,12 @@ export const WEBHOOK_DELIVERY_KEEP_COUNT = 5000;
 // :token URL-segment format (base64url of 32 random bytes -> 43 chars). A cheap
 // regex pre-check rejects malformed tokens with a generic 404 before any DB work.
 export const WEBHOOK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+// A delivery's Idempotency-Key (lib/webhook-idempotency.ts): kept a day, at most this long.
+export const WEBHOOK_IDEMPOTENCY_MS = 24 * 60 * 60 * 1000;
+export const WEBHOOK_IDEMPOTENCY_KEY_MAX = 255;
+// Expired keys are deleted this many at a time, at most this many times a sweep.
+export const WEBHOOK_IDEMPOTENCY_PRUNE_ROWS = 1000;
+export const WEBHOOK_IDEMPOTENCY_PRUNE_SLICES = 20;
 
 // ---- Personal access tokens (/api/v1, /mcp) — docs/mcp.md ----
 // Full token: cubex_pat_ + 64 hex chars (32 random bytes). Cheap-format regex
@@ -229,6 +243,9 @@ export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // Boot reads the whole database file to check it (lib/db.ts); above this size
 // the log says so first, so a slow boot doesn't look like a hang.
 export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
+// Set to the database path by the process that checked it, so the processes and
+// threads it starts (which inherit its environment) don't read the file again.
+export const DB_CHECKED_ENV = 'CUBEX_DB_CHECKED';
 // The served app's build id (lib/build-id.ts) looks at index.html on disk at most this often.
 export const BUILD_ID_RECHECK_MS = 5000;
 

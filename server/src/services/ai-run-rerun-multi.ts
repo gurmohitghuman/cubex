@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
+import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -33,7 +34,12 @@ export function structuredRunByBase(sheetId: string, userId: string, base: strin
     r.status_column === base || r.status_column === `${cleanBase} (Status)` || r.data_column === `${cleanBase} (Data)`);
 }
 
-export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statusColumn: string): Promise<RerunOutcome> {
+export async function rerunAiMultiColumn(
+  userId: string, p: AiRerunParams, statusColumn: string, list?: ModelList,
+): Promise<RerunOutcome> {
+  // OpenRouter's model list, read first: from the locked-columns check to the
+  // insert nothing may wait (lib/ai-model-check.ts).
+  const models = list !== undefined ? list : await modelList();
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
@@ -74,6 +80,8 @@ export async function rerunAiMultiColumn(userId: string, p: AiRerunParams, statu
 
   const model = latest.model || resolveAiModel(undefined, p.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const gone = modelGone(models, model);
+  if (gone) return { fail: 'bad_request', message: `${gone} Edit the column to choose another model.` };
 
   // A column gone from the sheet (a CSV replace drops it, but not the run) is
   // recreated, unless a DIFFERENT column now holds its name (case/token).
