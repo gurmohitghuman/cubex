@@ -9,6 +9,7 @@ import {
   type WebhookSourceRow,
   type WebhookMappingRow,
 } from '../lib/webhook-ingest';
+import { IDEMPOTENCY_HEADER, parseIdempotencyKey } from '../lib/webhook-idempotency';
 
 // PUBLIC, UNAUTHENTICATED ingestion endpoint: POST /api/webhooks/:token.
 // Mounted in index.ts WITHOUT authenticateToken. The token IS the capability.
@@ -24,6 +25,7 @@ const router = express.Router();
 // re-query. Typed locally; not exported.
 interface WebhookReq extends express.Request {
   webhookSource?: WebhookSourceRow;
+  idempotencyKey?: string | null;
 }
 
 // PRE-BODY validation (steps 1, 3, 4 + content-type). Runs BEFORE the body is
@@ -64,7 +66,16 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
     return res.status(429).json({ error: 'Rate limit exceeded.' });
   }
 
+  // A retrying sender's Idempotency-Key (lib/webhook-idempotency.ts): a bad one
+  // is refused before the body is read.
+  const idem = parseIdempotencyKey(req.headers[IDEMPOTENCY_HEADER]);
+  if ('error' in idem) {
+    recordSourceError(source.id, idem.error);
+    return res.status(400).json({ error: idem.error });
+  }
+
   req.webhookSource = source;
+  req.idempotencyKey = idem.key;
   next();
 }
 
@@ -107,7 +118,8 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
 
   // Step 7: the append transaction (row cap, insert, delivery, prune, data_version).
   try {
-    const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText);
+    const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText,
+      { idempotencyKey: req.idempotencyKey });
     if (!result.ok) {
       // Its sheet went to the trash meanwhile: the generic 404.
       if (result.code === 404) return res.status(404).json({ error: 'Not found' });
@@ -115,8 +127,9 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
       recordSourceError(source.id, result.reason);
       return res.status(409).json({ error: result.reason });
     }
-    // The same answer when auto-dedupe didn't keep the row: the URL can add
-    // rows, never tell what the sheet holds (the delivery log says "not kept").
+    // The same answer when auto-dedupe didn't keep the row, and for a repeat of
+    // a delivery already added (its Idempotency-Key): the URL can add rows, never
+    // tell what the sheet holds (the delivery log says "not kept").
     return res.status(202).json({ ok: true });
   } catch (err) {
     console.error('Webhook ingest error:', err);

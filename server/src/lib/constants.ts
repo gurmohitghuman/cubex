@@ -200,6 +200,12 @@ export const WEBHOOK_DELIVERY_KEEP_COUNT = 5000;
 // :token URL-segment format (base64url of 32 random bytes -> 43 chars). A cheap
 // regex pre-check rejects malformed tokens with a generic 404 before any DB work.
 export const WEBHOOK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+// A delivery's Idempotency-Key (lib/webhook-idempotency.ts): kept a day, at most this long.
+export const WEBHOOK_IDEMPOTENCY_MS = 24 * 60 * 60 * 1000;
+export const WEBHOOK_IDEMPOTENCY_KEY_MAX = 255;
+// Expired keys are deleted this many at a time, at most this many times a sweep.
+export const WEBHOOK_IDEMPOTENCY_PRUNE_ROWS = 1000;
+export const WEBHOOK_IDEMPOTENCY_PRUNE_SLICES = 20;
 
 // ---- Personal access tokens (/api/v1, /mcp) — docs/mcp.md ----
 // Full token: cubex_pat_ + 64 hex chars (32 random bytes). Cheap-format regex

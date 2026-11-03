@@ -10,6 +10,7 @@ import { nextRowIndex } from './sheet-busy';
 import { settleRows } from '../services/auto-dedupe-settle';
 import { appendColumnsToOrder, getSheetColumns } from './sheet-columns';
 import { orderedUuid } from './ordered-id';
+import { isRepeat, rememberKey } from './webhook-idempotency';
 
 // The append transaction for one inbound webhook delivery. This is the only
 // place an UNAUTHENTICATED request mutates your data, so every step is
@@ -34,8 +35,18 @@ export interface WebhookMappingRow {
 
 export type IngestResult =
   // duplicate: auto-dedupe didn't keep its row (another row has its key; services/auto-dedupe-settle.ts).
-  | { ok: true; rowIndex: number; status: 'stored' | 'partial' | 'duplicate' }
+  // repeat: a delivery with an Idempotency-Key already seen with this body: nothing added.
+  // replaced: older rows auto-dedupe (keeping the newest) took out for this one.
+  | { ok: true; rowIndex: number; status: 'stored' | 'partial' | 'duplicate' | 'repeat'; replaced: number }
   | { ok: false; code: 404 | 409; reason: string };
+
+export interface IngestOptions {
+  // The sender's Idempotency-Key (lib/webhook-idempotency.ts).
+  idempotencyKey?: string | null;
+  // A delivery from the log added again (services/webhook-replay.ts): no new
+  // arrival, so the webhook's counters stay as they are.
+  replayOf?: string;
+}
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
 // missing/null -> ''; scalar -> stringified; object/array -> '' unless the
@@ -127,6 +138,7 @@ export function appendWebhookDelivery(
   mappings: WebhookMappingRow[],
   payload: unknown,
   rawPayloadText: string,
+  opts: IngestOptions = {},
 ): IngestResult {
   const receivedClock = new Date().toISOString().slice(11, 19); // HH:MM:SS for the marker
   const { data, partial, errorMessage } = buildRowData(
@@ -136,12 +148,17 @@ export function appendWebhookDelivery(
   const payloadSha = crypto.createHash('sha256').update(rawPayloadText).digest('hex');
   const dataJson = JSON.stringify(data);
 
-  let result: IngestResult = { ok: true, rowIndex: -1, status: partial ? 'partial' : 'stored' };
+  let result: IngestResult = { ok: true, rowIndex: -1, status: partial ? 'partial' : 'stored', replaced: 0 };
 
   db.transaction(() => {
     // Its sheet went to the trash since the token was checked: the same 404.
     if (!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND trash_id IS NULL').get(source.sheet_id)) {
       result = { ok: false, code: 404, reason: 'Not found' };
+      return;
+    }
+    const key = opts.idempotencyKey ?? null;
+    if (key && isRepeat(source.id, source.user_id, key, payloadSha)) {
+      result = { ok: true, rowIndex: -1, status: 'repeat', replaced: 0 };
       return;
     }
     // Row cap inside the txn so a burst can't push a sheet past its row limit.
@@ -173,13 +190,13 @@ export function appendWebhookDelivery(
 
     const deliveryId = uuidv4();
     db.prepare(
-      `INSERT INTO webhook_deliveries
-         (id, source_id, user_id, sheet_id, row_id, payload, payload_sha256, payload_bytes, status, error_message)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO webhook_deliveries (id, source_id, user_id, sheet_id, row_id, payload, payload_sha256,
+         payload_bytes, status, error_message, replay_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       deliveryId, source.id, source.user_id, source.sheet_id, rowId,
-      rawPayloadText, payloadSha, payloadBytes, partial ? 'partial' : 'stored', errorMessage,
+      rawPayloadText, payloadSha, payloadBytes, partial ? 'partial' : 'stored', errorMessage, opts.replayOf ?? null,
     );
+    if (key) rememberKey(source.id, source.user_id, key, payloadSha);
 
     // Auto-dedupe: a row whose key another row already has isn't kept (or
     // replaces it); the delivery says so.
@@ -194,8 +211,9 @@ export function appendWebhookDelivery(
     pruneDeliveries(source.id);
 
     // Counters + first-event masking: nulling token_ciphertext on the first
-    // delivery makes the secret hash-only (unrecoverable) from now on.
-    db.prepare(
+    // delivery makes the secret hash-only (unrecoverable) from now on. A replay
+    // isn't an arrival: neither changes.
+    if (!opts.replayOf) db.prepare(
       `UPDATE webhook_sources
           SET total_received = total_received + 1,
               last_received_at = datetime('now'),
@@ -212,7 +230,8 @@ export function appendWebhookDelivery(
         WHERE id = ? AND user_id = ?`,
     ).run(source.sheet_id, source.user_id);
 
-    result = { ok: true, rowIndex, status: duplicate ? 'duplicate' : partial ? 'partial' : 'stored' };
+    const replaced = deduped?.removed.filter(r => r.id !== rowId).length ?? 0;
+    result = { ok: true, rowIndex, status: duplicate ? 'duplicate' : partial ? 'partial' : 'stored', replaced };
   }).immediate();
 
   return result;
