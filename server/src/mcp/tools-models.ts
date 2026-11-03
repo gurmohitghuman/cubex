@@ -23,14 +23,6 @@ async function browseModels(): Promise<TrimmedModel[] | null> {
   return result.stale ?? null;
 }
 
-// For VALIDATION, only a FRESH catalog may reject: a stale list
-// wouldn't contain a valid, newly-added OpenRouter id, so rejecting against
-// it during an outage would block a legitimate set. Null = don't validate.
-async function freshModels(): Promise<TrimmedModel[] | null> {
-  const result = await fetchModels(Date.now());
-  return result.ok ? result.models : null;
-}
-
 export function registerModelTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
     'list_models',
@@ -58,7 +50,7 @@ export function registerModelTools(server: McpServer, ctx: McpAuthCtx) {
     'set_default_model',
     {
       description:
-        'Set (or clear with null) the default AI model. Without sheet_id it sets the ACCOUNT default; with sheet_id it sets that sheet\'s default, which overrides the account one. run_ai_column uses these when no model is passed. Clearing both means AI runs require an explicit model.',
+        'Set (or clear with null) the default AI model. Without sheet_id it sets the ACCOUNT default; with sheet_id it sets that sheet\'s default, which overrides the account one. run_ai_column uses these when no model is passed. Clearing both means AI runs require an explicit model. A model OpenRouter\'s list doesn\'t have is refused (when the list can\'t be reached it is saved with validated: false).',
       inputSchema: {
         model: z.string().nullable().describe('OpenRouter model id from list_models; null clears the default'),
         sheet_id: z.string().optional().describe('Omit for the account-wide default'),
@@ -67,27 +59,20 @@ export function registerModelTools(server: McpServer, ctx: McpAuthCtx) {
     async ({ model, sheet_id }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
-      // Catch typos while a FRESH catalog is reachable: a bad DEFAULT is
-      // sticky — every later run fails confusingly. Catalog unavailable →
-      // accept, but say so (validated: false), so the agent isn't misled
-      // into thinking the id was checked.
-      let validated = true;
-      if (typeof model === 'string' && model.trim()) {
-        const models = await freshModels();
-        if (!models) validated = false;
-        else if (!models.some(m => m.id === model.trim())) {
-          return err(`Unknown model id "${model.trim()}". Use list_models (with search) to find the exact id.`);
-        }
-      }
+      // The service refuses a model OpenRouter's list doesn't have (a bad
+      // DEFAULT is sticky). List unreachable: saved, but said so (validated:
+      // false), so the agent isn't misled into thinking the id was checked.
       const result = sheet_id
-        ? setSheetDefaultModel(ctx.userId, sheet_id, model)
-        : setAccountDefaultModel(ctx.userId, model);
-      if ('fail' in result) return err(result.message);
+        ? await setSheetDefaultModel(ctx.userId, sheet_id, model)
+        : await setAccountDefaultModel(ctx.userId, model);
+      if ('fail' in result) {
+        return err(result.gone ? `${result.message} Use list_models (with search) to find the exact id.` : result.message);
+      }
       return ok({
         ...(sheet_id
           ? { sheet_id, default_ai_model: result.ok.model }
           : { account_default_model: result.ok.model }),
-        ...(validated ? {} : {
+        ...(result.ok.checked ? {} : {
           validated: false,
           warning: 'OpenRouter catalog unreachable; the id was saved without validation.',
         }),

@@ -8,6 +8,7 @@ import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKEN
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { resolveAiModel } from '../lib/ai-model-resolve';
+import { modelProblem } from '../lib/ai-model-check';
 import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '../lib/ai-cost';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
@@ -105,6 +106,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
+  const gone = model ? await modelProblem(model) : null;
+  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
   // The engine the searches would run on and its price: the plan a run would
   // store. Refused the same way a run would be (a cap that can't hold).
   const webEst = await estimateWebWork(userId, model, web, input.search);

@@ -96,7 +96,7 @@ async function main() {
       Array.from({ length: rows }, (_, i) => ({ Name: `P${i}`, [status]: PLACEHOLDER })))
     const id = uuid()
     db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, concurrency, status, total_rows,
-      access_token_id, output_columns, status_column) VALUES (?,?,?,?,'Hi /Name','test/model',?,'pending',?,?,?,?)`)
+      access_token_id, output_columns, status_column) VALUES (?,?,?,?,'Hi /Name','openai/gpt-4o-mini',?,'pending',?,?,?,?)`)
       .run(id, sheetId, uid, status, concurrency, rows, t,
         structured ? JSON.stringify([{ columnName: 'A', type: 'string', description: 'a' }]) : null,
         structured ? status : null)
@@ -198,7 +198,7 @@ async function main() {
 
   // --- A setup at its token's cap pauses before an AI step starts --------------------
   const spec: SetupSpec = { v: 1, inputs: ['Name'], keys: [], steps: [{
-    kind: 'ai', name: 'Hello', prompt: 'Say hi to /Name', systemPrompt: null, model: 'test/model', temperature: 0.7,
+    kind: 'ai', name: 'Hello', prompt: 'Say hi to /Name', systemPrompt: null, model: 'openai/gpt-4o-mini', temperature: 0.7,
     maxChars: null, concurrency: null, webSearch: false, webFetch: false, search: null, outputColumns: null,
     runIf: null,
   }] }

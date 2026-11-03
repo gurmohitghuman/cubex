@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { MAX_AI_CONCURRENCY, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel, resolveAiConcurrency } from '../lib/ai-model-resolve';
+import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
 import {
   appendColumnsToOrder, countColumnsAndRows, getSheetColumns, verifySheetOwnership,
 } from '../lib/sql-helpers';
@@ -33,7 +34,11 @@ import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 
 
-export async function startAiMultiRun(userId: string, p: AiRunStartParams): Promise<AiRunStartOutcome> {
+export async function startAiMultiRun(
+  userId: string, p: AiRunStartParams, list?: ModelList,
+): Promise<AiRunStartOutcome> {
+  // OpenRouter's model list, read first: nothing below may wait (lib/ai-model-check.ts).
+  const models = list !== undefined ? list : await modelList();
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
@@ -42,6 +47,8 @@ export async function startAiMultiRun(userId: string, p: AiRunStartParams): Prom
 
   const resolvedModel = resolveAiModel(p.model, p.sheetId, userId);
   if (!resolvedModel) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const gone = modelGone(models, resolvedModel);
+  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
 
   // The search plan, awaited before the checks below (none may await between
   // them and the insert), as in ai-run-start.ts.
