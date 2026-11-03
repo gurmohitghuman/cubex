@@ -229,6 +229,8 @@ export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // Boot reads the whole database file to check it (lib/db.ts); above this size
 // the log says so first, so a slow boot doesn't look like a hang.
 export const DB_CHECK_NOTICE_BYTES = 500 * 1024 * 1024;
+// The served app's build id (lib/build-id.ts) looks at index.html on disk at most this often.
+export const BUILD_ID_RECHECK_MS = 5000;
 
 // The sample table (services/sample-table.ts) fills its free columns one after
 // another: each waits up to this long for the one before to finish filling
