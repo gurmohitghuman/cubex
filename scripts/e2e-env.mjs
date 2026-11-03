@@ -42,6 +42,8 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     HTTP_RETRY_BASE_MS: env.HTTP_RETRY_BASE_MS || '100',
     RUN_HOOK_RETRY_BASE_MS: env.RUN_HOOK_RETRY_BASE_MS || '300',
     RUN_HOOK_SWEEP_MS: env.RUN_HOOK_SWEEP_MS || '200',
+    // Runs leave the queue on a faster beat here (the Sidequest worker looks every 1 s in production).
+    SIDEQUEST_POLL_MS: env.SIDEQUEST_POLL_MS || '100',
     // Specs reach a receiver they start on 127.0.0.1 through the real outbound path (SSRF guard
     // included) via names under .cubex-e2e.invalid (tests/e2e/net-shim.cjs).
     E2E_RECEIVER_PORT: receiverPort,
