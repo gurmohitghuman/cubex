@@ -8,10 +8,26 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { validateModelParam } from '../lib/ai-model-resolve';
 import { logSheetChange } from '../lib/change-log';
+import { checkModel, modelGoneMessage } from '../lib/ai-model-check';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 
+// checked: false when a model was saved without OpenRouter's list to check it
+// against (unreachable); a cleared default is always true. gone: the model
+// isn't on the list.
 export type ModelConfigOutcome =
-  | { ok: { model: string | null } }
-  | { fail: 'bad_request' | 'not_found'; message: string };
+  | { ok: { model: string | null; checked: boolean } }
+  | { fail: 'bad_request' | 'not_found'; message: string; gone?: true };
+
+// A model the list doesn't have is refused: a default is sticky, and every
+// later run on it would be refused at its start.
+async function checkDefault(model: string | null): Promise<{ checked: boolean } | { fail: ModelConfigOutcome }> {
+  if (model === null) return { checked: true };
+  const check = await checkModel(model);
+  if (check === 'gone') {
+    return { fail: { fail: 'bad_request', message: `${modelGoneMessage(model)} Choose another model.`, gone: true } };
+  }
+  return { checked: check === 'listed' };
+}
 
 // Normalize a client-supplied model value: trimmed id, or null to clear.
 function normalizeModel(model: unknown): { value: string | null } | { error: string } {
@@ -25,9 +41,11 @@ function normalizeModel(model: unknown): { value: string | null } | { error: str
 // Account-level default (settings.default_ai_model, migration 032). Upsert:
 // registration creates the settings row, but accounts predating that (or rows
 // cleared by support tooling) may not have one.
-export function setAccountDefaultModel(userId: string, model: unknown): ModelConfigOutcome {
+export async function setAccountDefaultModel(userId: string, model: unknown): Promise<ModelConfigOutcome> {
   const n = normalizeModel(model);
   if ('error' in n) return { fail: 'bad_request', message: n.error };
+  const check = await checkDefault(n.value);
+  if ('fail' in check) return check.fail;
 
   const existing = db.prepare('SELECT id FROM settings WHERE user_id = ?')
     .get(userId) as { id: string } | undefined;
@@ -39,14 +57,19 @@ export function setAccountDefaultModel(userId: string, model: unknown): ModelCon
     db.prepare('INSERT INTO settings (id, user_id, default_ai_model) VALUES (?, ?, ?)')
       .run(uuidv4(), userId, n.value);
   }
-  return { ok: { model: n.value } };
+  return { ok: { model: n.value, checked: check.checked } };
 }
 
 // Sheet-level default (sheets.default_ai_model) — overrides the account
 // default for runs on that sheet.
-export function setSheetDefaultModel(userId: string, sheetId: string, model: unknown): ModelConfigOutcome {
+export async function setSheetDefaultModel(
+  userId: string, sheetId: string, model: unknown,
+): Promise<ModelConfigOutcome> {
   const n = normalizeModel(model);
   if ('error' in n) return { fail: 'bad_request', message: n.error };
+  if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+  const check = await checkDefault(n.value);
+  if ('fail' in check) return check.fail;
 
   const result = db.prepare(
     `UPDATE sheets SET default_ai_model = ?, updated_at = datetime('now')
@@ -56,5 +79,5 @@ export function setSheetDefaultModel(userId: string, sheetId: string, model: unk
   logSheetChange(sheetId, userId, 'default_model',
     n.value ? `Set the sheet's default AI model to ${n.value}` : "Cleared the sheet's default AI model",
     { detail: { model: n.value } });
-  return { ok: { model: n.value } };
+  return { ok: { model: n.value, checked: check.checked } };
 }

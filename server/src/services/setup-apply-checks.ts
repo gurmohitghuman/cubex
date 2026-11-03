@@ -4,6 +4,7 @@
 import { db } from '../lib/db';
 import { resolveAiModel } from '../lib/ai-model-resolve';
 import { fetchModels } from '../lib/openrouter';
+import { modelListed } from '../lib/ai-model-check';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
 import { templateTokenIs } from '../lib/template-token-match';
 import type { SheetColumnStep, StepMode } from '../lib/setups/again';
@@ -46,7 +47,7 @@ export async function withModels(
         ? `"${mainColumn(s)}" has no model of its own and there's no default model. Set one in Settings.`
         : `Pick a model for "${mainColumn(s)}": there's no default model to use.`);
     }
-    if (catalog.ok && !catalog.models.some(m => m.id === model)) {
+    if (catalog.ok && !modelListed(model, new Set(catalog.models.map(m => m.id)))) {
       const fix = modes[i] === 'again' ? 'Pick another in the column\'s Edit, or give the step another name.'
         : 'Pick another.';
       return bad(`The model "${model}" of "${mainColumn(s)}" isn't on OpenRouter anymore. ${fix}`);

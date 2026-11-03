@@ -16,6 +16,7 @@ import { autorunStoppedByUser } from './autorun-stop';
 import { logRunControl } from '../lib/change-log';
 import { resumeTokenFor, rowCostOf, spendCapRefusal } from './token-spend';
 import { diskLow } from '../lib/disk-space';
+import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -27,7 +28,8 @@ export type ControlOutcome =
   | { fail: 'not_paused'; message: string }   // resume target isn't paused
   | { fail: 'conflict'; message: string }     // resume CAS lost to a cancel
   | { fail: 'secrets_required'; message: string } // resume would resolve saved keys
-  | { fail: 'spend_cap'; message: string };       // resume of a run whose access token is at its spend cap
+  | { fail: 'spend_cap'; message: string }       // resume of a run whose access token is at its spend cap
+  | { fail: 'model_gone'; message: string };      // an AI run's model isn't on OpenRouter's list
 
 const getRun = (kind: RunKind, runId: string, userId: string) =>
   db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ? AND user_id = ?`)
@@ -51,6 +53,16 @@ const capOf = (kind: RunKind, run: AIRunRow & HTTPRunRow, userId: string): strin
 export function resumeCapRefusal(kind: RunKind, runId: string, userId: string): string | null {
   const run = getRun(kind, runId, userId);
   return run && run.status === 'paused' ? capOf(kind, run, userId) : null;
+}
+
+// A paused AI run whose model OpenRouter's list doesn't have: resuming it would
+// fail every row again (its brake likely paused it for that). `models` comes
+// from modelList(), read before the caller's checks.
+export function resumeModelRefusal(kind: RunKind, runId: string, userId: string, models: ModelList): string | null {
+  if (kind !== 'ai') return null;
+  const run = getRun(kind, runId, userId);
+  const gone = run && run.status === 'paused' && run.model ? modelGone(models, run.model) : null;
+  return gone ? `${gone} Edit the column to choose another model, then run it again.` : null;
 }
 
 export function pauseRun(kind: RunKind, runId: string, userId: string): ControlOutcome {
@@ -79,9 +91,14 @@ export function pauseRun(kind: RunKind, runId: string, userId: string): ControlO
 export async function resumeRun(
   kind: RunKind, runId: string, userId: string, hasSecretsScope: boolean,
 ): Promise<ControlOutcome> {
+  // An AI run's model is looked up in OpenRouter's list, read before the
+  // checks below (nothing between them and the resume may wait).
+  const models = kind === 'ai' ? await modelList() : null;
   const run = getRun(kind, runId, userId);
   if (!run) return { fail: 'not_found', message: 'Run not found' };
   if (run.status !== 'paused') return { fail: 'not_paused', message: `Run is not paused (status: ${run.status})` };
+  const gone = resumeModelRefusal(kind, runId, userId, models);
+  if (gone) return { fail: 'model_gone', message: gone };
   // Paused because results couldn't be saved: each row would be paid for again and lost.
   if ((run as { pause_reason?: string | null }).pause_reason === 'storage' && diskLow()) {
     return { fail: 'conflict', message: "The disk is still nearly full. Free some space, then resume the run." };

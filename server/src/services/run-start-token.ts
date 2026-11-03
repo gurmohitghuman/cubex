@@ -14,7 +14,7 @@
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
-import { fetchModels } from '../lib/openrouter';
+import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, runRequestHash } from '../lib/run-idempotency';
 import { parseRunRequest } from '../routes/ai-run-parse';
@@ -117,12 +117,12 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
   if (!parsed.ok) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
-  // A typo'd model used to start a run whose every row failed.
+  // A typo'd model used to start a run whose every row failed. Checked here
+  // too (the run's start checks the model it resolves) for the estimate and
+  // preview paths, with where to look the id up.
   if (typeof a.model === 'string' && a.model.trim()) {
-    const catalog = await fetchModels(Date.now());
-    if (catalog.ok && !catalog.models.some(m => m.id === a.model)) {
-      return bad(`Unknown model id "${a.model}". Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.`);
-    }
+    const gone = await modelProblem(a.model.trim());
+    if (gone) return bad(`${gone} Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.`);
   }
   if (parseBooleanOption(a.estimate_only) === true) {
     const est = await estimateAiRun(c.userId, {
