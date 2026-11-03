@@ -266,7 +266,7 @@ Keep one row per key as new rows come in, for free. In **Remove duplicates**, op
 
 A row is checked when it arrives (a webhook event, a CSV import, an agent adding rows) and when someone types a key into it, so adding a row in the grid and typing an email that's already there sends it to the trash, with **Restore** in the message. Blank cells and cells over 200 characters never match, and values that AI, HTTP or other filled columns write are never checked: the key is a column rows arrive with (to match a cleaned value, pick the raw column and the match, like a website column as a domain). Rows already in the sheet stay as they are; the dialog says how many share a key, and **Remove now** cleans them up once.
 
-What auto-dedupe removed is in the trash, one batch a day: the dialog's **See them in the trash** shows just those. A row a run is working on is never removed: its check waits for the run. Turning it on, changing it or turning it off waits for runs on the sheet to finish. On a big sheet it takes a moment to read the keys already there; rows that arrive meanwhile are checked once it's done.
+What auto-dedupe removed is in the trash, one batch a day: the dialog's **See them in the trash** shows just those, and the sheet's History counts them. A row a run is working on is never removed: its check waits for the run. Turning it on, changing it or turning it off waits for runs on the sheet to finish. On a big sheet it takes a moment to read the keys already there; rows that arrive meanwhile are checked once it's done.
 
 ### Filters
 

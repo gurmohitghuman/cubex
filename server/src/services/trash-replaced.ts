@@ -2,12 +2,12 @@
 // sheet last time. They go into that sheet's rerun batch in the trash (one per
 // sheet a day, like auto-dedupe's), or are gone at once when Settings keeps
 // deleted rows 0 days. History gets one line for a run of them, not one per
-// source row: the sheet's newest line, when it is today's line for the same
-// batch, counts the new ones too.
+// source row (services/removal-log.ts).
 import { db } from '../lib/db';
 import { removeRows, sealBatch } from '../lib/trash/move';
 import { insertTrashItem, sheetFacts, todaysBatch, trashKeeps } from '../lib/trash/store';
-import { countOf, logSheetChange, rewriteSheetChange } from '../lib/change-log';
+import { countOf } from '../lib/change-log';
+import { logRemoval } from './removal-log';
 import { widenColumns } from './trash-rows';
 
 const summary = (n: number): string => `A rerun replaced ${countOf(n, 'row')} it had added before`;
@@ -43,20 +43,6 @@ export function trashReplacedRows(sheetId: string, userId: string, ids: string[]
   return removed.count;
 }
 
-// Counts what this call replaced, so a restore of part of the batch meanwhile
-// never makes the line say fewer than went.
 function logReplaced(sheetId: string, userId: string, count: number, trashId: number | null): void {
-  const last = db.prepare(`SELECT id, action, detail, date(at) = date('now') AS today FROM sheet_changes
-    WHERE sheet_id = ? ORDER BY id DESC LIMIT 1`).get(sheetId) as
-    { id: number; action: string; detail: string | null; today: number } | undefined;
-  let detail: { how?: unknown; rows?: unknown; trash_id?: unknown } | null = null;
-  try { detail = last?.detail ? JSON.parse(last.detail) : null; } catch { /* a new line */ }
-  if (last && last.today && last.action === 'rows_deleted' && detail?.how === 'rerun'
-    && detail.trash_id === trashId && typeof detail.rows === 'number') {
-    const rows = detail.rows + count;
-    rewriteSheetChange(last.id, summary(rows), { rows, trash_id: trashId, how: 'rerun' });
-  } else {
-    logSheetChange(sheetId, userId, 'rows_deleted', summary(count),
-      { detail: { rows: count, trash_id: trashId, how: 'rerun' } });
-  }
+  logRemoval({ sheetId, userId, how: 'rerun', trashId, count, summary });
 }

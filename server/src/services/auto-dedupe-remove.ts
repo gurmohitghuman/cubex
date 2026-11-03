@@ -17,6 +17,9 @@ import { insertTrashItem, sheetFacts, todaysBatch, trashKeeps } from '../lib/tra
 import type { AutoDedupe } from '../lib/auto-dedupe/store';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
 import { widenColumns } from './trash-rows';
+import { logRemoval } from './removal-log';
+import { countOf } from '../lib/change-log';
+import { CUBEX, runAs } from '../lib/actor';
 
 export interface RemovedRow { id: string; index: number }
 
@@ -92,7 +95,12 @@ export class AutoDedupeRemoval {
   // transaction went (a row it added never reached auto-run: setting its
   // rescan for one would make it drop the run it was starting). Returns the
   // batch and the seqs of this transaction's rows in it.
+  // Cubex removes them, whoever's rows came in: its trash batch and History line say so.
   finish(): { trashId: number | null; seqs: number[] } {
+    return runAs(CUBEX, () => this.finishing());
+  }
+
+  private finishing(): { trashId: number | null; seqs: number[] } {
     this.flush();
     if (this.removed.length === 0) return { trashId: null, seqs: [] };
     const item = this.item ?? null;
@@ -104,6 +112,12 @@ export class AutoDedupeRemoval {
     }
     db.prepare(`UPDATE auto_dedupe SET removed_rows = removed_rows + ?, updated_at = datetime('now')
       WHERE id = ?`).run(this.removed.length, this.s.id);
+    const column = this.s.column_name;
+    logRemoval({
+      sheetId: this.s.sheet_id, userId: this.s.user_id, how: 'auto_dedupe', trashId: item,
+      count: this.removed.length, column,
+      summary: n => `Auto-dedupe removed ${countOf(n, 'row')}: another row has the same "${column}"`,
+    });
     if (this.olderGone) autorunRowsRemoved(this.s.sheet_id, this.s.user_id);
     if (this.bump) bumpDataVersion(this.s.sheet_id, this.s.user_id);
     return { trashId: item, seqs };
