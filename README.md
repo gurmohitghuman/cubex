@@ -363,7 +363,7 @@ See the [plugin guide](docs/agent-plugin.md).
 | [Enrichments](docs/enrichments.md) | treg keys, jobs, costs and limits, auto-run, stored answers |
 | [Webhooks](docs/webhooks.md) | Setting one up, reaching it from outside, what it accepts, keeping it safe |
 | [Run webhooks](docs/run-webhooks.md) | A signed notice when a run finishes: setting one up, checking the signature, delivery and retries |
-| [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API |
+| [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API and its [OpenAPI document](docs/mcp.md#openapi-document) |
 | [Agent plugin](docs/agent-plugin.md) | The Cubex plugin for Claude Code, Codex and Cursor: setup from one prompt, and its skills |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, and the contributor agreement |
 

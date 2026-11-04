@@ -567,6 +567,16 @@ The same data is available as a plain HTTP API under `/api/v1`, with the same to
 
 All paths below are relative to `/api/v1`.
 
+### OpenAPI document
+
+`GET /api/v1/openapi.json` describes every endpoint below in OpenAPI 3.1: what it does, the scope it needs, its path and query parameters, and its body. It needs a token like every other endpoint, and any scope can read it.
+
+```bash
+curl -H "Authorization: Bearer $CUBEX_TOKEN" http://localhost:3002/api/v1/openapi.json -o cubex-openapi.json
+```
+
+Import the file into Postman, Insomnia or Swagger UI, or generate a client from it. Its server address is relative (`/api/v1`), so set your Cubex address as the base URL, such as `http://localhost:3002/api/v1`. It says what each answer means, but not the shape of its JSON.
+
 ### Tables, sheets and columns
 
 | Endpoint | Body or query |

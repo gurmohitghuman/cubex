@@ -42,6 +42,7 @@ import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import { actAs } from '../lib/actor';
 import { tokenSpendFor } from '../services/token-spend';
+import { openApiDocument } from '../openapi/document';
 
 const router = express.Router();
 router.use(authenticateAccessToken);
@@ -123,6 +124,17 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
   } catch (error) {
     console.error('GET /v1/me error:', error);
     res.status(500).json({ error: 'Failed to fetch account info' });
+  }
+});
+
+// GET /api/v1/openapi.json: this API described as OpenAPI 3.1 (server/src/openapi/),
+// for Postman, Swagger UI or a client generator. Any valid token may read it.
+router.get('/openapi.json', requireScope('read'), (_req, res) => {
+  try {
+    res.json(openApiDocument());
+  } catch (error) {
+    console.error('GET /v1/openapi.json error:', error);
+    res.status(500).json({ error: 'Failed to build the OpenAPI document' });
   }
 });
 
