@@ -4,7 +4,7 @@
   "description": "Self-hosted AI spreadsheet: AI columns, HTTP API enrichment, webhooks, and an MCP server for agents.",
   "private": true,
   "engines": {
-    "node": ">=22.6"
+    "node": ">=24.7"
   },
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -35,7 +35,6 @@
     "@types/jsonpath-plus": "^5.0.5",
     "ag-grid-community": "^34.2.0",
     "ag-grid-react": "^34.2.0",
-    "argon2": "^0.44.0",
     "axios": "^1.6.2",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.0.0",

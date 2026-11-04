@@ -14,7 +14,7 @@ CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
 CUBEX_REF="${CUBEX_REF:-stable}" # stable = the latest release
 CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
 CUBEX_BIN_DIR="${CUBEX_BIN_DIR:-$HOME/.local/bin}"
-NODE_MAJOR=22
+NODE_MAJOR=24
 MARKER=.cubex-home # marks a folder as a Cubex install; uninstall only ever deletes inside those
 
 if [ -t 1 ]; then G=$'\033[32m' R=$'\033[31m' B=$'\033[1m' N=$'\033[0m'; else G='' R='' B='' N=''; fi
@@ -111,6 +111,17 @@ detect_platform() {
   esac
   # A Terminal running under Rosetta reports x86_64 on Apple silicon.
   if [ "$OS" = darwin ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ]; then ARCH=arm64; fi
+  # Node.js 24 runs on macOS 13.5 or newer. Stop before anything changes, so an installed Cubex keeps running.
+  if [ "$OS" = darwin ]; then
+    local macos major minor
+    macos="$(sw_vers -productVersion 2>/dev/null || true)"
+    major="${macos%%.*}" && minor=0
+    case "$macos" in *.*) minor="${macos#*.}" && minor="${minor%%.*}" ;; esac
+    case "$major.$minor" in *[!0-9.]*|.*|*.) major=0 minor=0 ;; esac
+    if [ "$major" -lt 13 ] || { [ "$major" -eq 13 ] && [ "$minor" -lt 5 ]; }; then
+      die "Cubex needs macOS 13.5 or newer (for Node.js $NODE_MAJOR), and this Mac has macOS ${macos:-unknown}."
+    fi
+  fi
   if [ "$OS" = linux ]; then # musl's ldd exits 1 even for --version, so read its output instead
     case "$(ldd --version 2>&1 || true)" in
       *musl*) die "Alpine and other musl-based Linux aren't supported by this installer. Use Docker instead." ;;

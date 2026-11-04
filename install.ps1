@@ -26,7 +26,7 @@ $RunAsFile = [bool]{}.File # pasted text (irm | iex) has no file, and there `exi
 $Repo = if ($env:CUBEX_REPO) { $env:CUBEX_REPO } else { 'gurmohitghuman/cubex' } # the public GitHub repository
 $Ref = if ($env:CUBEX_REF) { $env:CUBEX_REF } else { 'stable' } # stable = the latest release
 $CubexHome = if ($env:CUBEX_HOME) { $env:CUBEX_HOME } else { Join-Path $env:LOCALAPPDATA 'cubex' }
-$NodeMajor = 22
+$NodeMajor = 24
 $Marker = '.cubex-home' # marks a folder as a Cubex install; uninstall only ever deletes inside those
 $Cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
 $Tar = Join-Path $env:SystemRoot 'System32\tar.exe'

@@ -66,7 +66,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 
 ## Install
 
-On macOS or Linux:
+On macOS (13.5 or newer) or Linux:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.sh | bash

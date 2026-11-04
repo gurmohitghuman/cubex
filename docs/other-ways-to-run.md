@@ -25,7 +25,7 @@ Open http://localhost:3002 and choose a password. Settings go under `environment
 
 ## From source
 
-Needs Node.js 22.6 or newer.
+Needs Node.js 24.7 or newer.
 
 ```bash
 git clone https://github.com/gurmohitghuman/cubex.git && cd cubex
