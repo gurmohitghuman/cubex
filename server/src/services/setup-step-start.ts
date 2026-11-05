@@ -3,7 +3,9 @@
 // (its references, rule, model, JSONPaths, the outbound guard, caps, the busy
 // sheet) applies unchanged. rowIndexes: a test on some rows (null: every row);
 // clean and formula columns always fill every row (they're free), but a test
-// leaves their auto-run off, as it leaves every auto-run off.
+// leaves their auto-run off, as it leaves every auto-run off. spendLimitUsd:
+// what is left of the setup's ceiling (setup-ceiling.ts), an AI step's hard
+// spend limit and the most an enrichment step's run limit may be.
 import { parseRunRequest } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
 import { startHttpRun } from './http-run-start';
@@ -19,7 +21,7 @@ export type StepStarted = { kind: 'ai' | 'http'; runId: string } | { kind: 'clea
 
 export async function startSetupStep(
   userId: string, sheetId: string, step: SetupStep,
-  opts: { rowIndexes: number[] | null; allowSecrets: boolean },
+  opts: { rowIndexes: number[] | null; allowSecrets: boolean; spendLimitUsd?: number | null },
 ): Promise<{ ok: StepStarted } | RunFail> {
   const targets = opts.rowIndexes ?? undefined;
   switch (step.kind) {
@@ -33,7 +35,7 @@ export async function startSetupStep(
         runIf: step.runIf,
       });
       if (!parsed.ok) return { fail: 'bad_request', message: parsed.error };
-      const out = await startAiRun(userId, { ...parsed, targetRowIndexes: targets });
+      const out = await startAiRun(userId, { ...parsed, targetRowIndexes: targets, spendLimitUsd: opts.spendLimitUsd });
       return 'fail' in out ? out : { ok: { kind: 'ai', runId: out.ok.runId } };
     }
     case 'http': {
@@ -59,6 +61,7 @@ export async function startSetupStep(
       const { kind: _k, name, autoRun: _a, toolName: _t, ...choices } = step;
       const out = await startEnrichmentRun(userId, sheetId, {
         ...choices, columnName: name, continueColumn: false, spendLimitUsd: null, rowGeneration: null, list: null,
+        spendCeilingUsd: opts.spendLimitUsd ?? null,
         rows: targets
           ? { mode: 'selected', status: 'any', test: null, rowIndexes: targets }
           : { mode: 'all', status: 'any', test: null, rowIndexes: null },

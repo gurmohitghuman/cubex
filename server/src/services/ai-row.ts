@@ -5,7 +5,9 @@ import { redactSecrets } from '../lib/http-request';
 import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
-import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
+import {
+  buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget, WEB_SYSTEM_MESSAGE,
+} from '../lib/ai-web-tools';
 import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
@@ -60,10 +62,7 @@ export async function processRow(
       messages.push({ role: 'system', content: run.system_prompt });
     }
     if (usingTools) {
-      messages.push({
-        role: 'system',
-        content: 'You are a helpful AI assistant. You can reference and analyze information from web search results and fetched pages when provided. Use that context to provide accurate, up-to-date information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When you cite sources, prefer plain URLs over markdown links.',
-      });
+      messages.push({ role: 'system', content: WEB_SYSTEM_MESSAGE });
     }
     messages.push({ role: 'user', content: processedPrompt });
 

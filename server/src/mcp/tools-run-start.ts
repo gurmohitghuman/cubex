@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   MAX_ROWS_PER_SHEET, HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_REQUEST_TIMEOUT_MS,
-  CURL_MAX_CHARS, HTTP_RETRY_DEFAULT, HTTP_RETRY_MAX, HTTP_STATUS_PATH,
+  CURL_MAX_CHARS, HTTP_RETRY_DEFAULT, HTTP_RETRY_MAX, HTTP_STATUS_PATH, RUN_SPEND_LIMIT_MAX_USD,
 } from '../lib/constants';
 import { PREVIEW_MAX_ROWS, MAX_AI_CONCURRENCY, FREE_MODEL_CONCURRENCY_WARN, MAX_SEARCHES_PER_ROW } from '../lib/constants-ai';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
@@ -16,6 +16,7 @@ import { tokenStartHttpRun, type TokenHttpRunArgs } from '../services/run-start-
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { runIfSchema } from './run-if-schema';
 import { capToolNote } from '../lib/token-spend';
+import { AI_SPEND_LIMIT_NOTE } from '../lib/ai-spend-limit';
 
 const idempotencyKeySchema = z.string().min(1).max(200).optional();
 const webhookIdSchema = z.string().optional().describe(
@@ -35,6 +36,11 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         `Run an AI prompt per row. DEFAULT: writes one "<column_name> (Output)" column. STRUCTURED: pass output_columns to write SEVERAL typed columns from ONE call per row (e.g. a score AND a reason) — never run a second AI pass to reformat or extract from a prior run's output${MCP_EFFICIENT_ROWS_ENABLED ? '; and for pure string ops (extract/split/case/template) use transform_column (no AI cost)' : ''}. To clean names, company names, emails, domains, phones, case or spaces, use clean_column instead: it is free. The prompt references other columns as /column_name: the name in lowercase with each run of other characters turned into _ ("What they sell (Output)" is /what_they_sell_output); an unknown or misspelled one is rejected with a suggestion. Returns a run_id immediately — poll get_run_status; rows show "⏳ Processing..." until done. Model resolves: explicit > sheet default > account default (errors if none). Omit target_row_ids to run every row. ONLY RUN IF: run_if skips rows that fail a rule (no AI call, "⏭️ Condition not met"), so a chain of columns can each run only where the one before said so. WEB: web_search lets the model search, web_fetch lets it read pages, but only on the sites named in the cells your prompt references (reference /domain or /website to keep each row on its own site). Both work with output_columns: the same single call fills the typed columns plus a "<column_name> (Data)" column listing the sources it used. SEARCH COST: search fees are usually most of a web run's cost. Choose the engine with search_engine (parallel in turbo or fast mode is the cheapest, $0.001 a search) and limit searches with max_searches_per_row; estimate_only names the engine the run will really use and prices it. Every row records its search words, how many searches ran and what it cost: get_run_results returns them and the (Data) cell shows them in short. COST: one AI call PER ROW, plus web fees when web_search or web_fetch is on. Call estimate_only:true for a priced range (web fees included), or preview_rows:N to see real sample outputs, their sources, searches and the measured cost before committing.`
+        + ' COST CEILING: max_cost_usd refuses to start (nothing is created, no run-start slot is used) when the '
+        + "estimate's high end is above it, or when the model has no known price unless allow_unpriced is true; "
+        + 'with estimate_only the answer says over_ceiling and ceiling_problem instead. SPEND LIMIT: max_cost_usd '
+        + 'is also the run\'s hard spend limit, and spend_limit_usd sets one without the estimate check (with both, '
+        + `the lower one). ${AI_SPEND_LIMIT_NOTE}`
         + capToolNote(ctx.spend ?? null, true),
       inputSchema: {
         sheet_id: z.string(),
@@ -68,13 +74,23 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt on the first N rows (max ${PREVIEW_MAX_ROWS}) with the same web tools, and return the sample outputs (with their sources, search words and cost) + MEASURED cost + full-run projection. Nothing is created or saved: validate a prompt before the full run. On your own provider key (BYOK) cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add what the provider bills.`),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run (safe retries after a timeout/limit).'),
         webhook_id: webhookIdSchema,
+        max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional().describe(
+          'Refuse to start when the estimate could cost more than this many dollars; also the run\'s hard spend '
+          + 'limit. Check it first with estimate_only.'),
+        allow_unpriced: lenientBoolean().optional().describe(
+          'With max_cost_usd: start even when the model has no known price (default false). Such a run stops '
+          + 'only once what was billed reaches the limit.'),
+        spend_limit_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional().describe(
+          'The run\'s hard spend limit in dollars: it pauses before a row that could pass it (pause_reason '
+          + 'spend_limit). control_run resume with a higher spend_limit_usd goes on.'),
       },
     },
     async (args: TokenAiRunArgs) => {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const r = await tokenStartAiRun(ctx, args);
-      return 'fail' in r ? err(r.message) : ok(r.ok);
+      if (!('fail' in r)) return ok(r.ok);
+      return err(r.fail === 'over_ceiling' ? `${r.message} Estimate: ${JSON.stringify(r.estimate)}` : r.message);
     },
   );
 

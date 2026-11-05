@@ -17,7 +17,8 @@ export type RunControlStarted = { ok: { kind: RunKind; runId: string; rows: numb
 
 // rowGeneration: the sheet's when the row was picked (a sort since refuses it).
 // spendLimitUsd: an enrichment's or a waterfall's limit its confirm quoted
-// (null: sized to its rows at start, as an agent's rerun is).
+// (null: sized to its rows at start, as an agent's rerun is); an AI run's hard
+// spend limit (null: none).
 export async function startRunControl(
   userId: string, sheetId: string, col: RunColumn, t: RunTarget,
   opts: { rowGeneration: number | null; spendLimitUsd: number | null },
@@ -28,6 +29,7 @@ export async function startRunControl(
     // The run that owns the main column (a structured run's status column too).
     const out = await rerunAiColumn(userId, {
       sheetId, baseColumnName: col.main.replace(/ \(Output\)$/, ''), columnName: col.main, mode, rowIndices,
+      spendLimitUsd: opts.spendLimitUsd,
     });
     return 'fail' in out ? out : { ok: { kind: 'ai', runId: out.ok.runId, rows: out.ok.targetCount } };
   }

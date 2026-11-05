@@ -117,15 +117,16 @@ export async function rerunAiMultiColumn(
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows,
           processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
+          spend_limit_usd
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         runId, p.sheetId, userId, statusColumn, latest.prompt, latest.system_prompt, model, latest.temperature,
         latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, concurrency.value,
         targets.length, JSON.stringify(targets), JSON.stringify(specs), statusColumn, dataColumn,
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
         latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
-        actorTokenId(),
+        actorTokenId(), p.spendLimitUsd ?? null,
       );
     }).immediate();
     if (capExceeded) return {

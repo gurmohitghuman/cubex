@@ -1,3 +1,4 @@
+// Over 200 lines: one AI run start for both token surfaces, its estimate, ceiling, preview and replay together.
 // Run starts for the token surfaces (/api/v1 and MCP), in ONE place so the two
 // can't drift: REST used to drop estimate_only, preview_rows, output_columns and
 // idempotency keys without a word (an "estimate" started a billed run) and skip
@@ -9,14 +10,17 @@
 //   - idempotency_key: a retry with the same key and arguments replays the
 //     original run; the same key with different arguments is refused;
 //   - the per-token run-start window, shared by both surfaces (startWindow);
-//   - an explicit model must exist in the catalog (when it's reachable).
+//   - an explicit model must exist in the catalog (when it's reachable);
+//   - max_cost_usd / allow_unpriced (AI): refused before anything starts when
+//     the estimate could pass the ceiling, and spend_limit_usd: the run's hard
+//     spend limit (the lower of the two; services/run-start-ceiling.ts).
 // Callers check the token holds 'run' first. HTTP runs: run-start-token-http.ts.
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
-import { readRunLedger, writeRunLedger, runRequestHash } from '../lib/run-idempotency';
+import { readRunLedger, writeRunLedger } from '../lib/run-idempotency';
 import { parseRunRequest } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
 import { estimateAiRun } from './run-estimate';
@@ -28,14 +32,16 @@ import { webSearchSummary } from '../lib/web-search-plan';
 import { runIfReply } from './run-rule';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
+import { aiCeilingCheck, aiRunLimitsOf, aiRunRequestHash } from './run-start-ceiling';
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
 // preview or a replay of an earlier start.
 // rate: set on 'rate_limited', so REST can send Retry-After and the window's headers.
+// estimate: set on 'over_ceiling', the estimate the ceiling refused.
 export type TokenRunResult =
   | { ok: object; started: boolean }
-  | { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision };
+  | { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision; estimate?: object };
 
 export type Fail = { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision };
 export const bad = (message: string): Fail => ({ fail: 'bad_request', message });
@@ -89,7 +95,7 @@ export interface TokenAiRunArgs {
   web_search?: unknown; web_fetch?: unknown; max_chars?: unknown; target_row_ids?: unknown;
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
   search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown; run_if?: unknown;
-  webhook_id?: unknown;
+  webhook_id?: unknown; max_cost_usd?: unknown; allow_unpriced?: unknown; spend_limit_usd?: unknown;
 }
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
@@ -117,6 +123,11 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
   if (!parsed.ok) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
+  const limits = aiRunLimitsOf(a);
+  if ('error' in limits) return bad(limits.error);
+  if (limits.any && a.preview_rows !== undefined) {
+    return bad('max_cost_usd and spend_limit_usd apply to a run, not to preview_rows.');
+  }
   // A typo'd model used to start a run whose every row failed. Checked here
   // too (the run's start checks the model it resolves) for the estimate and
   // preview paths, with where to look the id up.
@@ -124,7 +135,8 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     const gone = await modelProblem(a.model.trim());
     if (gone) return bad(`${gone} Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.`);
   }
-  if (parseBooleanOption(a.estimate_only) === true) {
+  // The estimate a ceiling is checked against is the one estimate_only answers.
+  const estimate = async () => {
     const est = await estimateAiRun(c.userId, {
       sheetId, prompt: parsed.prompt, systemPrompt: parsed.systemPrompt, model: parsed.model,
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
@@ -132,7 +144,14 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       targetRowIndexes: pre.targetRowIndexes, search: parsed.search, runIf: parsed.runIf,
       concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
     });
-    return 'fail' in est ? { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } : { ok: est.ok, started: false };
+    if ('fail' in est) {
+      return { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } as Fail;
+    }
+    return aiCeilingCheck(est.ok, limits.ceiling);
+  };
+  if (parseBooleanOption(a.estimate_only) === true) {
+    const est = await estimate();
+    return 'fail' in est ? est : { ok: est.estimate, started: false };
   }
   if (a.preview_rows !== undefined) {
     const limited = startWindow(c);
@@ -147,19 +166,15 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     }, `token:${c.tokenId}`);
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
-  const hash = runRequestHash('ai_run', {
-    sheet_id: sheetId, column_name: a.column_name, prompt: a.prompt, system_prompt: a.system_prompt,
-    model: a.model, concurrency: a.concurrency, output_columns: a.output_columns,
-    target_row_ids: a.target_row_ids, temperature: a.temperature, max_chars: a.max_chars,
-    // Parsed values, so a retry sending "true" (or a cap of "1") replays a start
-    // that sent true (or 1) instead of conflicting with it.
-    web_search: parsed.useOpenRouterWebSearch, web_fetch: parsed.useWebFetch,
-    ...(parsed.useOpenRouterWebSearch ? { search: parsed.search } : {}),
-    ...(parsed.runIf ? { run_if: parsed.runIf } : {}),
-    ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  });
+  const hash = aiRunRequestHash(sheetId, a, parsed, limits);
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
+  // Over the ceiling: refused with the estimate; nothing is created and no run-start slot is taken.
+  if (limits.ceiling.maxCostUsd !== null) {
+    const checked = await estimate();
+    if ('fail' in checked) return checked;
+    if (checked.problem) return { fail: 'over_ceiling', message: checked.problem, estimate: checked.estimate };
+  }
   const limited = startWindow(c);
   if (limited) return limited;
   const result = await startAiRun(c.userId, {
@@ -169,6 +184,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     safeTemperature: parsed.safeTemperature, safeConcurrency: parsed.safeConcurrency,
     safeMaxChars: parsed.safeMaxChars, targetRowIndexes: pre.targetRowIndexes,
     outputColumns: parsed.outputColumns, search: parsed.search, runIf: parsed.runIf,
+    spendLimitUsd: limits.spendLimitUsd,
   });
   if ('fail' in result) return result;
   const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
@@ -178,6 +194,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     ...(result.ok.webSearch ? { web_search: webSearchSummary(result.ok.webSearch) } : {}),
     ...(result.ok.runIf ? runIfReply(result.ok.runIf) : {}),
     ...(hook ? { webhook_id: hook } : {}),
+    ...(limits.spendLimitUsd !== null ? { spend_limit_usd: limits.spendLimitUsd } : {}),
   };
   const payload = result.ok.statusColumn ? {
     run_id: result.ok.runId, status_column: result.ok.statusColumn,

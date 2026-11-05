@@ -74,7 +74,7 @@ router.post('/sheets/:id/setups', requireScope('write'), guarded('POST /v1/sheet
   }), true);
 }));
 
-// { inputs, names, models, first_rows, estimate_only }: a price, or the start
+// { inputs, names, models, first_rows, estimate_only, max_cost_usd, allow_unpriced }: a price, or the start
 // (201). Steps whose columns the sheet has already carry them on (carries_on).
 router.post('/sheets/:id/setups/:setupId/apply', requireScope('run'),
   guarded('POST /v1/sheets/:id/setups/:setupId/apply', async (req, res) => {
@@ -83,7 +83,10 @@ router.post('/sheets/:id/setups/:setupId/apply', requireScope('run'),
     const out = await applySetup(req.userId!, req.params.id, req.params.setupId, input,
       { hasSecretsScope: !!req.tokenScopes?.has('secrets') });
     if ('fail' in out) {
-      return res.status(runFailHttpStatus(out)).json({ error: out.message, missing: out.missing, taken: out.taken });
+      // Over the ceiling: 409 with the estimate it was checked against (over_ceiling: true).
+      const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+      return res.status(runFailHttpStatus(out))
+        .json({ error: out.message, missing: out.missing, taken: out.taken, ...over });
     }
     return res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
   }));

@@ -7,6 +7,7 @@ import { actorTokenId } from '../lib/actor';
 import { mainColumn, type SetupSpec, type StepKind } from '../lib/setups/spec';
 import type { StepMode } from '../lib/setups/again';
 import type { ApplyChoices } from '../lib/setups/apply-plan';
+import type { SetupCeiling } from './setup-ceiling';
 
 export type StepState = 'waiting' | 'starting' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface StepRecord {
@@ -32,10 +33,11 @@ export interface SetupRunRow {
 }
 // modes: whether each step makes its columns or carries the sheet's on (none
 // recorded: every one new). choices: what it was used with, so using it again
-// on the sheet (to carry on) can start from them.
+// on the sheet (to carry on) can start from them. ceiling: apply_setup's
+// max_cost_usd with each step's estimated high end (setup-ceiling.ts).
 export interface SetupRunChoices extends ApplyChoices { models?: Record<string, string> }
 export interface SetupRunPlan {
-  spec: SetupSpec; layers: number[]; modes?: StepMode[]; choices?: SetupRunChoices;
+  spec: SetupSpec; layers: number[]; modes?: StepMode[]; choices?: SetupRunChoices; ceiling?: SetupCeiling;
 }
 
 export interface SetupRunView {
@@ -45,6 +47,7 @@ export interface SetupRunView {
   test_rows: number | null; error_message: string | null; created_at: string; updated_at: string;
   choices: SetupRunChoices | null;
   webhook_id: string | null;
+  max_cost_usd?: number;  // the ceiling it was applied with (setup-ceiling.ts)
   steps: Array<{
     column: string; kind: StepKind; layer: number; mode: StepMode; state: StepState; run_id: string | null;
     note: string | null;
@@ -98,6 +101,7 @@ export function setupRunView(r: SetupRunRow): SetupRunView {
     test_rows: r.target_row_ids ? (JSON.parse(r.target_row_ids) as string[]).length : null,
     error_message: r.error_message, created_at: r.created_at, updated_at: r.updated_at,
     choices: plan.choices ?? null, webhook_id: r.webhook_id ?? null,
+    ...(plan.ceiling ? { max_cost_usd: plan.ceiling.maxCostUsd } : {}),
     steps: plan.spec.steps.map((s, i) => ({
       column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: modes[i], state: steps[i].state,
       run_id: steps[i].runId ?? null, note: steps[i].note ?? null,

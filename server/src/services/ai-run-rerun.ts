@@ -51,6 +51,8 @@ export interface AiRerunParams extends RerunScope {
   // Rows in parallel for the new run (1..MAX_AI_CONCURRENCY); absent keeps the
   // run it repeats. Lowering it is the fix for OpenRouter's in-flight budget 402.
   concurrency?: number;
+  // The new run's hard spend limit in USD (services/ai-spend-gate.ts); absent: none (never the old run's).
+  spendLimitUsd?: number | null;
 }
 
 // The new run's concurrency: the caller's, else the run it repeats.
@@ -182,8 +184,9 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
           status, total_rows, processed_rows, target_rows, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
+          spend_limit_usd
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
@@ -194,7 +197,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         latestRun.web_search_engine ?? null, latestRun.web_search_engine_used ?? null,
         latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
         // A rerun is done for whoever asks for it (lib/actor.ts), not the run it repeats.
-        actorTokenId(),
+        actorTokenId(), p.spendLimitUsd ?? null,
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 

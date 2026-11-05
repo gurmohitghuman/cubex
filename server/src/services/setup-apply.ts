@@ -8,7 +8,10 @@
 // layer starts at once and the rest as the ones before finish
 // (setup-runner.ts). A token without 'secrets' can't use a setup whose
 // requests read a saved key. firstRows tests it on the top rows of the sheet
-// (auto-run isn't turned on after a test).
+// (auto-run isn't turned on after a test). With a ceiling (maxCostUsd), a start
+// whose estimate could pass it, or that has a step with no price (unless
+// allowUnpriced), is refused ('over_ceiling') and creates nothing; the ceiling
+// is kept in the record's plan for its steps' limits (setup-ceiling.ts).
 import { db } from '../lib/db';
 import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
@@ -25,6 +28,8 @@ import { keyProblem, liveSetupClash, withModels, type ApplyFail } from './setup-
 import { webhookIdProblem } from './run-hooks-attach';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { actorSpendRefusal } from './token-spend';
+import { ceilingProblem, ceilingView } from '../lib/cost-ceiling';
+import { setupCeilingOf } from './setup-ceiling';
 
 export type { ApplyFail } from './setup-apply-checks';
 
@@ -33,11 +38,16 @@ export interface ApplyInput extends ApplyChoices {
   firstRows?: number | null;       // test on the top rows; null/undefined: every row
   estimateOnly: boolean;
   webhookId?: string | null;       // a run webhook told when the setup finishes (REST/MCP)
+  // The cost ceiling (lib/cost-ceiling.ts): checked against the estimate here,
+  // then each AI and enrichment step's limit as it starts (setup-ceiling.ts).
+  maxCostUsd?: number | null;
+  allowUnpriced?: boolean;
 }
 // makes: every column its steps make or carry on; carries_on: the main columns
 // of the steps that carry a column of the sheet on.
+type PricedEstimate = SetupEstimate & ReturnType<typeof ceilingView>;
 export type ApplyOutcome =
-  | { ok: { estimate: SetupEstimate; inputs: Record<string, string>; makes: string[]; carries_on: string[] } }
+  | { ok: { estimate: PricedEstimate; inputs: Record<string, string>; makes: string[]; carries_on: string[] } }
   | { ok: { setup_run: SetupRunView } }
   | ApplyFail;
 
@@ -76,22 +86,32 @@ export async function applySetup(
     : db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck().get(sheetId, userId) as number;
   if (rows === 0) return bad('This sheet has no rows yet. Import or add rows first, then use the setup.');
   const layered = { spec, layers, modes };
+  const ceiling = { maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: !!input.allowUnpriced };
 
-  if (input.estimateOnly) {
+  // Priced for an estimate, and for a start under a ceiling (the same figures).
+  let priced: PricedEstimate | null = null;
+  if (input.estimateOnly || ceiling.maxCostUsd !== null) {
     const indexes = rowIds ? db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ?
       ORDER BY row_index LIMIT ?`).pluck().all(sheetId, userId, first) as number[] : null;
-    const estimate = await estimateSetup(userId, sheetId, layered, columns, rows, indexes, existing);
-    const carries = spec.steps.filter((_, i) => modes[i] === 'again').map(mainColumn);
-    return { ok: { estimate, inputs: plan.ok.inputs, makes, carries_on: carries } };
+    const est = await estimateSetup(userId, sheetId, layered, columns, rows, indexes, existing);
+    priced = { ...est, ...ceilingView({ highUsd: est.high_usd, unpriced: est.unpriced }, ceiling) };
   }
+  if (input.estimateOnly) {
+    const carries = spec.steps.filter((_, i) => modes[i] === 'again').map(mainColumn);
+    return { ok: { estimate: priced!, inputs: plan.ok.inputs, makes, carries_on: carries } };
+  }
+  const over = priced && ceilingProblem({ highUsd: priced.high_usd, unpriced: priced.unpriced }, ceiling);
+  if (over) return { fail: 'over_ceiling', message: over, estimate: priced! };
   // Its steps spend for the access token applying it (setup-runner.ts).
   const capped = actorSpendRefusal(userId);
   if (capped) return { fail: 'forbidden', message: capped };
   const busy = sheetBusyWith(sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
   const choices = { inputs: plan.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };
+  const kept = priced && ceiling.maxCostUsd !== null ? { ceiling: setupCeilingOf(priced, ceiling) } : {};
   const id = insertSetupRun({
-    userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices }, targetRowIds: rowIds,
+    userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices, ...kept },
+    targetRowIds: rowIds,
     allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null, webhookId: input.webhookId ?? null,
   });
   logSheetChange(sheetId, userId, 'setup_used',
