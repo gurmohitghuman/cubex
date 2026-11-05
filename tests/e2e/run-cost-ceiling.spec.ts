@@ -1,19 +1,23 @@
+// Over 200 lines: one ceiling story per surface (MCP, REST, the app), each on its own seeded sheet.
 import { test, expect, type APIRequestContext } from '@playwright/test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, seedSheet, BASE, makeAccessToken, getSheet } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
 
-// A cost ceiling and an AI run's spend limit over MCP and /api/v1 (docs/mcp.md,
-// "Cost ceiling and spend limits"). OpenRouter's public price list prices the
-// model; the key is fake, so a row that runs fails for free and spends
-// nothing. A limit below one row's most (its prompt and all the output it may
-// write) pauses the run before any call: that is the spend limit at work.
-//   - max_cost_usd over the estimate: run_ai_column and apply_setup refuse it
-//     (MCP error, REST 409 over_ceiling with the estimate) and create nothing;
-//     estimate_only says over_ceiling and ceiling_problem instead;
-//   - spend_limit_usd: the run pauses (pause_reason spend_limit) with its rows
-//     still ⏳; a resume that leaves no room is refused; one with a higher
-//     limit (MCP control_run, REST resume) goes on; a rerun takes a limit too;
+// A cost ceiling and an AI run's spend limit over MCP, /api/v1 and the app
+// (docs/mcp.md, "Cost ceiling and spend limits"). OpenRouter's public price
+// list prices the model; the key is fake, so a row that runs fails for free
+// and spends nothing.
+//   - max_cost_usd under the estimate's high end plus one row's most (the
+//     room the run's spend limit keeps for its next row): run_ai_column and
+//     apply_setup refuse it (MCP error, REST 409 over_ceiling with the
+//     estimate) and create nothing; estimate_only says over_ceiling,
+//     ceiling_problem (both figures) and row_most_usd instead;
+//   - spend_limit_usd sets a limit without that check: one below a row's most
+//     pauses the run before any call (pause_reason spend_limit) with its rows
+//     still ⏳; a resume that leaves no room is refused; in the app, Resume asks
+//     for a higher limit and goes on with it; a rerun takes a limit too and
+//     resumes over REST;
 //   - a setup applied under a ceiling gives its AI step that as its limit.
 
 const FAKE_KEY = 'sk-or-v1-cost-ceiling-e2e'
@@ -38,10 +42,12 @@ async function priced(client: Client, sheetId: string): Promise<boolean> {
   return est.pricing_available === true
 }
 
-test('an AI run: refused over its ceiling, paused at its spend limit, resumed with a higher one', async () => {
-  test.setTimeout(150_000)
+test('an AI run: refused over its ceiling, paused at its spend limit, resumed with a higher one', async ({
+  page, context,
+}) => {
+  test.setTimeout(180_000)
   const api = await authedApi()
-  const { sheetId } = await seedSheet(api, 3)
+  const { tableId, sheetId } = await seedSheet(api, 3)
   const token = await makeAccessToken(api, ['read', 'write', 'run'], 'e2e cost ceiling')
   const client = await mcpClient(token)
   const auth = { Authorization: `Bearer ${token}` }
@@ -60,8 +66,9 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     // estimate_only says it is over, and starts nothing.
     const est = await call(client, 'run_ai_column', { ...base, estimate_only: true, max_cost_usd: TINY })
     expect(est).toMatchObject({ max_cost_usd: TINY, over_ceiling: true })
-    expect(est.ceiling_problem).toMatch(/^It could cost up to \$[\d.]+, more than the \$0\.000001 ceiling/)
-    expect(est.ceiling_problem).toContain('(max_cost_usd)')
+    expect(est.ceiling_problem).toMatch(/^It could cost up to \$[\d.]+, and its spend limit starts a row only /)
+    expect(est.ceiling_problem).toContain('more than the $0.000001 ceiling (max_cost_usd)')
+    expect(est.row_most_usd).toBeGreaterThan(est.estimated_cost_usd.high)
     const roomy = await call(client, 'run_ai_column', { ...base, estimate_only: true, max_cost_usd: 1000 })
     expect(roomy).toMatchObject({ max_cost_usd: 1000, over_ceiling: false, ceiling_problem: null })
     expect((await call(client, 'run_ai_column', { ...base, estimate_only: true })).over_ceiling).toBeUndefined()
@@ -82,10 +89,23 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     expect(await restEst.json()).toMatchObject({ over_ceiling: true, max_cost_usd: TINY })
     expect((await api.post(`${BASE}/api/v1/sheets/${sheetId}/ai-runs`,
       { headers: auth, data: { ...base, sheet_id: undefined, max_cost_usd: 0 } })).status()).toBe(400)
+
+    // Above the high end but short of one row's most on top: a run limited to it would stop before its rows.
+    const high = est.estimated_cost_usd.high, most = est.row_most_usd
+    const short = Math.round((high + most / 2) * 1e6) / 1e6
+    const shortEst = await call(client, 'run_ai_column', { ...base, estimate_only: true, max_cost_usd: short })
+    expect(shortEst.over_ceiling).toBe(true)
+    expect(shortEst.ceiling_problem).toContain('needs room for one row at its most on top (up to $')
+    expect(shortEst.ceiling_problem).toMatch(/Raise max_cost_usd to at least \$[\d.]+, or run fewer rows\.$/)
+    expect(await callError(client, 'run_ai_column', { ...base, max_cost_usd: short }))
+      .toContain('needs room for one row at its most on top')
+    const need = Math.ceil((high + most) * 1e6) / 1e6
+    expect((await call(client, 'run_ai_column', { ...base, estimate_only: true, max_cost_usd: need })).over_ceiling)
+      .toBe(false)
     expect((await call(client, 'get_sheet', { sheet_id: sheetId })).columns).not.toContain('Hi (Output)')
     expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs).toEqual([])
 
-    // A limit below one row's most: the run pauses before any call, its rows waiting.
+    // spend_limit_usd below one row's most (no ceiling check): the run pauses before any call, its rows waiting.
     const started = await call(client, 'run_ai_column', { ...base, spend_limit_usd: TINY })
     expect(started.spend_limit_usd).toBe(TINY)
     const paused = await aiStatus(client, started.run_id, ['paused'])
@@ -107,8 +127,20 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
       .toContain('higher spend_limit_usd')
     expect((await aiStatus(client, started.run_id, ['paused'])).spend_limit_usd).toBe(TINY)
 
-    // A higher limit goes on: every row runs (and fails on the fake key, for free).
-    await call(client, 'control_run', { run_type: 'ai', run_id: started.run_id, action: 'resume', spend_limit_usd: 5 })
+    // In the app, Resume asks for a higher limit, then goes on: every row runs (and fails on the fake key, free).
+    await context.addCookies((await api.storageState()).cookies)
+    await page.goto(`${BASE}/table/${tableId}`)
+    await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTitle('Resume all runs').click()
+    const dialog = page.getByTestId('ai-raise-limit')
+    await expect(dialog).toContainText('This run stopped at its $0.000001 spend limit. It has spent $0.00.')
+    const limit = dialog.getByLabel('New limit')
+    await limit.fill('0.000001')
+    await expect(dialog).toContainText('Enter more than $0.000001.')
+    await expect(dialog.getByRole('button', { name: 'Raise and resume' })).toBeDisabled()
+    await limit.fill('5')
+    await dialog.getByRole('button', { name: 'Raise and resume' }).click()
+    await expect(dialog).toBeHidden()
     const done = await aiStatus(client, started.run_id, ['completed', 'failed'])
     expect(done.spend_limit_usd).toBe(5)
     expect(done.pause_reason).toBeUndefined()

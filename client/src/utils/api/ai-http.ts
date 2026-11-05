@@ -69,7 +69,9 @@ export const aiAPI = {
     api.get(`/ai/runs`, { params: { sheetId }, ...noServerToast }).then(res => res.data),
 
   pauseRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/pause`, null, noServerToast).then(() => {}),
-  resumeRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/resume`, null, noServerToast).then(() => {}),
+  // spendLimitUsd: a new spend limit, for a run that paused at its own (pause_reason spend_limit).
+  resumeRun: (id: string, spendLimitUsd?: number): Promise<void> => api.post(`/ai/runs/${id}/resume`,
+    spendLimitUsd === undefined ? null : { spendLimitUsd }, noServerToast).then(() => {}),
   cancelRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/cancel`, null, noServerToast).then(() => {}),
 
   // updateResult/commitResults were removed with the vestigial review step —

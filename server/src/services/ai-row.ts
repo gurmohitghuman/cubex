@@ -15,7 +15,9 @@ import { recordDroppedCall, STOP_SENTINEL, writeSuccess, writeFailure } from './
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
-import { aiCallDeadline, AI_TIMEOUT_MESSAGE, failedRow, stoppedCall, throwIfStorage } from './ai-row-outcome';
+import {
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage,
+} from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
 // result (or error) to the transactional writers in ai-row-writers.ts. Says
@@ -52,6 +54,8 @@ export async function processRow(
   let call: ModelCall | null = null;
   // The call's hard end, body included (the SDK's timeout stops at the headers).
   const deadline = aiCallDeadline(signal);
+  // Set once the call goes out: a failure after it may be billed (callMayBeBilled).
+  let sent = false;
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
     const search = runSearchConfig(run);
@@ -81,6 +85,7 @@ export async function processRow(
     // maxRetries:0 semantics.
     // Floored max_tokens so reasoning models can think AND answer (the old 1000
     // cap made them return null content → silent blank cells); max_chars raises it.
+    sent = true;
     call = await withConnectRetry(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
@@ -142,7 +147,7 @@ export async function processRow(
     const errorMessage = redactSecrets(rawErrorMessage);
     console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage);
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call }));
   } finally {
     deadline.done();
   }

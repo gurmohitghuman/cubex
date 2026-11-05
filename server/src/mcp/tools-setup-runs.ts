@@ -32,11 +32,12 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + `first_rows tests it on the top rows (1 to ${MAX_SETUP_TEST_ROWS}); auto-run is turned on only after a `
       + 'run on every row. Returns a setup_run with each step\'s run_id (get_run_status works on those); follow '
       + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope. '
-      + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end is above '
-      + 'it, or when a step has no known price unless allow_unpriced is true; with estimate_only the estimate '
-      + 'says over_ceiling and ceiling_problem instead. Once started, each AI step gets a hard spend limit and '
-      + 'each enrichment step a run limit no higher than what is left of the ceiling (less what the steps not '
-      + 'started yet are estimated at), so they pause there; a step with no known price runs without one.'
+      + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end, plus '
+      + "one row's most for each AI step (row_most_usd: the room its spend limit keeps for the next row), is "
+      + 'above it, or when a step has no known price unless allow_unpriced is true; with estimate_only the '
+      + 'estimate says over_ceiling and ceiling_problem instead. Once started, each AI step gets a hard spend '
+      + 'limit and each enrichment step a run limit no higher than what is left of the ceiling (less what the '
+      + 'steps not started yet need), so they pause there; a step with no known price runs without one.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string(),

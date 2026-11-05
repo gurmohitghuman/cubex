@@ -29,7 +29,7 @@ import { webhookIdProblem } from './run-hooks-attach';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { actorSpendRefusal } from './token-spend';
 import { ceilingProblem, ceilingView } from '../lib/cost-ceiling';
-import { setupCeilingOf } from './setup-ceiling';
+import { setupCeilingFigures, setupCeilingOf } from './setup-ceiling';
 
 export type { ApplyFail } from './setup-apply-checks';
 
@@ -94,13 +94,13 @@ export async function applySetup(
     const indexes = rowIds ? db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ?
       ORDER BY row_index LIMIT ?`).pluck().all(sheetId, userId, first) as number[] : null;
     const est = await estimateSetup(userId, sheetId, layered, columns, rows, indexes, existing);
-    priced = { ...est, ...ceilingView({ highUsd: est.high_usd, unpriced: est.unpriced }, ceiling) };
+    priced = { ...est, ...ceilingView(setupCeilingFigures(est), ceiling) };
   }
   if (input.estimateOnly) {
     const carries = spec.steps.filter((_, i) => modes[i] === 'again').map(mainColumn);
     return { ok: { estimate: priced!, inputs: plan.ok.inputs, makes, carries_on: carries } };
   }
-  const over = priced && ceilingProblem({ highUsd: priced.high_usd, unpriced: priced.unpriced }, ceiling);
+  const over = priced && ceilingProblem(setupCeilingFigures(priced), ceiling);
   if (over) return { fail: 'over_ceiling', message: over, estimate: priced! };
   // Its steps spend for the access token applying it (setup-runner.ts).
   const capped = actorSpendRefusal(userId);

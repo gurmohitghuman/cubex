@@ -11,6 +11,7 @@
 //   - rows an earlier worker of the run still has out (its hold) are waited
 //     for; a hold older than any call can be is not;
 //   - a model with no listed price stops on what was billed;
+//   - a row whose call may be billed keeps its hold (ai-spend-gate-stuck.test.ts: what the run does then);
 //   - a run without a limit holds nothing; boot drops every hold.
 import http from 'node:http'
 import path from 'node:path'
@@ -58,7 +59,7 @@ const { encrypt } = await import('../../server/src/lib/crypto')
 const { processAIRun } = await import('../../server/src/services/ai-runner')
 const { resumeAiRun } = await import('../../server/src/services/ai-run-limit')
 const { runSpentUsd, rowFixedOf, openSpendGate } = await import('../../server/src/services/ai-spend-gate')
-const { AI_TIMEOUT_MESSAGE } = await import('../../server/src/services/ai-row-outcome')
+const { AI_TIMEOUT_MESSAGE, failedRow } = await import('../../server/src/services/ai-row-outcome')
 const { rowMaxMicro } = await import('../../server/src/lib/ai-spend-limit')
 const { getAiRunSummary } = await import('../../server/src/services/run-status')
 const { resetOrphanedRuns } = await import('../../server/src/lib/orphan-runs')
@@ -122,7 +123,7 @@ await ok('several rows out at once: it never spends past its limit and pauses wh
   assert.ok(most > costUsd && most < 0.01, `a row's most ${most}`)
   await processAIRun(paused.runId, 0)
   const r = runRow(paused.runId)
-  const spent = runSpentUsd(paused.runId)
+  const spent = runSpentUsd(paused.runId, uid)
   assert.equal(r.status, 'paused')
   assert.equal(r.pause_reason, 'spend_limit')
   assert.match(r.error_message ?? '', /^The run reached its \$0\.03 spend limit \(\$0\.0\d+ spent\)\. The next row/)
@@ -157,7 +158,7 @@ await ok('a resume at a limit already spent is refused and changes nothing; a hi
   assert.equal(runRow(paused.runId).status, 'completed')
   assert.ok(cells(paused.sid).every(v => v === 'Hello'))
   assert.equal(calls, 12, 'each row called once in all')
-  assert.ok(Math.abs(runSpentUsd(paused.runId) - 12 * costUsd) < 1e-9)
+  assert.ok(Math.abs(runSpentUsd(paused.runId, uid) - 12 * costUsd) < 1e-9)
 })
 
 await ok('a run at its limit: a resume without a higher one is refused; one paused by hand resumes', async () => {
@@ -218,12 +219,12 @@ await ok('a model with no listed price stops once what was billed reaches the li
   assert.equal(r.status, 'paused')
   assert.equal(r.pause_reason, 'spend_limit')
   assert.match(r.error_message ?? '', /No price is listed for its model, so it stopped on what was billed/)
-  const spent = runSpentUsd(runId)
+  const spent = runSpentUsd(runId, uid)
   assert.ok(spent >= 0.012 && spent <= 0.012 + costUsd + 1e-9, `spent ${spent}: past the limit by at most a row out`)
   assert.equal(cells(sid).filter(v => v === PLACEHOLDER).length, 6 - calls)
 })
 
-await ok('a row cut off at its deadline keeps its hold (its call may be billed); the others give it back', async () => {
+await ok('a row whose call may be billed keeps its hold (as spent); the others give it back', async () => {
   const { runId } = runOf(1, 1, 1)
   const gate = (await openSpendGate(db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(runId) as never, 7))!
   const row = { rowIndex: 0, data: { name: 'N0' } } as never
@@ -232,12 +233,17 @@ await ok('a row cut off at its deadline keeps its hold (its call may be billed);
   const a = gate.admit(row)
   assert.ok('start' in a && a.start > 0)
   assert.equal(holdOf(), a.start)
-  gate.settle(a.start, { kind: 'failed', message: AI_TIMEOUT_MESSAGE, provider: true })
+  gate.settle(a.start, failedRow(AI_TIMEOUT_MESSAGE, true))
   assert.equal(holdOf(), a.start)
   const b = gate.admit(row)
   assert.ok('start' in b)
   assert.equal(holdOf(), a.start + b.start)
-  gate.settle(b.start, { kind: 'failed', message: 'Bad key', provider: true })
+  gate.settle(b.start, failedRow('Bad key'))
+  assert.equal(holdOf(), a.start)
+  // The deadline's words alone don't keep it: the row says whether its call may be billed.
+  const c = gate.admit(row)
+  assert.ok('start' in c)
+  gate.settle(c.start, failedRow(AI_TIMEOUT_MESSAGE))
   assert.equal(holdOf(), a.start)
   gate.close()
   assert.equal(holdOf(), undefined)

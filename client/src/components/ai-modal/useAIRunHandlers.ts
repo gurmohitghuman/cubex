@@ -129,8 +129,11 @@ export const useAIRunHandlers = (a: Args) => {
     try { await aiAPI.pauseRun(currentRun.id) }
     catch { toast.error('Failed to pause run') }
   }
+  // A run that paused at its spend limit resumes only with a higher one: Resume asks for it (RaiseLimitDialog).
+  const [raiseLimitFor, setRaiseLimitFor] = useState<string | null>(null)
   const handleResumeRun = async () => {
     if (!currentRun) return
+    if (currentRun.pause_reason === 'spend_limit') { setRaiseLimitFor(currentRun.id); return }
     try { await aiAPI.resumeRun(currentRun.id) }
     // Refused while its access token is still at its spend cap: the server says so.
     catch (error: any) { toast.error(error?.response?.data?.error || 'Failed to resume run') }
@@ -148,6 +151,6 @@ export const useAIRunHandlers = (a: Args) => {
     ...preview,
     runResults, runSpend, currentRun, setCurrentRun, isPolling, setIsPolling,
     handleStartRun,
-    handlePauseRun, handleResumeRun, handleCancelRun,
+    handlePauseRun, handleResumeRun, handleCancelRun, raiseLimitFor, setRaiseLimitFor,
   }
 }

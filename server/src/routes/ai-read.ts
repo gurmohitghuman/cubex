@@ -5,6 +5,7 @@ import { aiRowOutcomes } from '../services/ai-run-outcomes';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { type AIRunRow } from '../services/ai-runner';
+import { runSpentUsd } from '../services/ai-spend-gate';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -19,9 +20,10 @@ router.get('/runs/:id', (req: AuthRequest, res) => {
     const results = db.prepare(
       'SELECT * FROM ai_results WHERE run_id = ? AND user_id = ? ORDER BY row_index ASC',
     ).all(id, req.userId!);
-    // What the run has cost and searched so far (an index-only count).
+    // What the run has cost and searched so far (an index-only count), and
+    // what its spend limit counts as spent (its usage record).
     const { cost_usd, searches } = aiRowOutcomes(id, req.userId!);
-    res.json({ run, results, spend: { cost_usd, searches } });
+    res.json({ run, results, spend: { cost_usd, searches, spent_usd: runSpentUsd(id, req.userId!) } });
   } catch (error) {
     console.error('Get AI run error:', error);
     res.status(500).json({ error: 'Failed to fetch AI run' });

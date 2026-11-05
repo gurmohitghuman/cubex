@@ -111,6 +111,10 @@ export function modelTakesTemperature(model: string): boolean | null {
   return !modelsCache.noTemperature.has(model);
 }
 
+// A fee kept in the trimmed list: listed and not 0. A negative one (the price
+// varies) is kept too, so an AI run's spend limit reads it as no listed price.
+const listedFee = (v: unknown): boolean => v !== undefined && v !== null && v !== '' && Number(v) !== 0;
+
 async function readModels(now: number): Promise<ModelsResult> {
   let result: FetchResult<{ data: any[] }>;
   try {
@@ -138,8 +142,8 @@ async function readModels(now: number): Promise<ModelsResult> {
       context_length: typeof m.context_length === 'number' ? m.context_length : 0,
       pricing: {
         prompt: m.pricing?.prompt || '0', completion: m.pricing?.completion || '0',
-        ...(Number(m.pricing?.request) > 0 ? { request: String(m.pricing.request) } : {}),
-        ...(Number(m.pricing?.internal_reasoning) > 0
+        ...(listedFee(m.pricing?.request) ? { request: String(m.pricing.request) } : {}),
+        ...(listedFee(m.pricing?.internal_reasoning)
           ? { internal_reasoning: String(m.pricing.internal_reasoning) } : {}),
       },
     }));

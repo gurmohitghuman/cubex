@@ -49,7 +49,8 @@ export interface SearchPlanResponse {
 }
 
 // What a run has cost and searched so far (GET /ai/runs/:id).
-export interface RunSpend { cost_usd: number | null; searches: number | null }
+// spent_usd (AI runs): what its spend limit counts as spent, dropped calls included.
+export interface RunSpend { cost_usd: number | null; searches: number | null; spent_usd?: number }
 
 // The search fields of a preview or run request: only with web search on (the
 // server refuses them without it). '' and null mean the defaults, so they're

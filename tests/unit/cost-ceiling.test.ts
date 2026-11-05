@@ -1,6 +1,7 @@
 // The cost ceiling's one rule (lib/cost-ceiling.ts) and what run_ai_column
 // reads from its estimate (services/run-start-ceiling.ts): under, equal and
-// over the ceiling, something with no price with and without allow_unpriced,
+// over the ceiling, with room for one row's most on top (the run's spend
+// limit needs it), something with no price with and without allow_unpriced,
 // no ceiling at all; the arguments refused as sent; the estimate's view;
 // spend_limit_usd and max_cost_usd giving the run's limit (the lower one); and
 // the idempotency hash, unchanged when they are unset (keys from before still
@@ -9,7 +10,7 @@ import assert from 'node:assert/strict'
 import ceilingMod from '../../server/src/lib/cost-ceiling'
 import startMod from '../../server/src/services/run-start-ceiling'
 import ledgerMod from '../../server/src/lib/run-idempotency'
-const { ceilingArgsOf, ceilingProblem, ceilingView, money, usdLimitOf, CAMEL } =
+const { ceilingArgsOf, ceilingProblem, ceilingView, money, moneyUp, usdLimitOf, CAMEL } =
   ceilingMod as typeof import('../../server/src/lib/cost-ceiling')
 const { aiCeilingFigures, aiRunLimitsOf, aiRunRequestHash } =
   startMod as typeof import('../../server/src/services/run-start-ceiling')
@@ -29,6 +30,22 @@ const over = ceilingProblem({ highUsd: 1.25, unpriced: [] }, c(1))
 assert.match(over ?? '', /could cost up to \$1\.25, more than the \$1\.00 ceiling \(max_cost_usd\)/)
 assert.match(ceilingProblem({ highUsd: 0.00002, unpriced: [] }, c(0.000001)) ?? '', /\$0\.00002.*\$0\.000001/)
 ok('over the ceiling, also below a cent: refused, both amounts said')
+
+// The run's spend limit starts a row only while its most fits: the ceiling holds one more on top of the high end.
+assert.equal(ceilingProblem({ highUsd: 0.05, unpriced: [], rowMostUsd: 0.12 }, c(0.17)), null)
+const tail = ceilingProblem({ highUsd: 0.05, unpriced: [], rowMostUsd: 0.12 }, c(0.1)) ?? ''
+assert.equal(tail, "It could cost up to $0.05, and its spend limit starts a row only while the row's most still "
+  + 'fits, so it needs room for one row at its most on top (up to $0.12): $0.17 in all, more than the $0.10 '
+  + 'ceiling (max_cost_usd). Raise max_cost_usd to at least $0.17, or run fewer rows.')
+assert.match(ceilingProblem({ highUsd: 0.2, unpriced: [], rowMostUsd: 0.24, rowMostSteps: 2 }, c(0.3)) ?? '',
+  /one row at its most for each of its 2 AI steps on top \(up to \$0\.24\): \$0\.44 in all/)
+assert.match(ceilingProblem({ highUsd: 0.0024, unpriced: [], rowMostUsd: 0.008 }, c(0.0064)) ?? '',
+  /\$0\.011 in all, more than the \$0\.0064 ceiling.*at least \$0\.011,/)
+assert.equal(moneyUp(0.0104), '$0.011')
+assert.equal(moneyUp(0.1693), '$0.17')
+assert.equal(moneyUp(12.341), '$12.35')
+assert.equal(moneyUp(0.000001), '$0.000001')
+ok("one row's most on top: under both refused, saying both figures and what to raise to (rounded up)")
 
 const unpriced = ceilingProblem({ highUsd: 0.1, unpriced: ['Fit (Output)', 'Email'] }, c(1))
 assert.match(unpriced ?? '', /No price is known for "Fit \(Output\)" and "Email".*allow_unpriced: true/)
@@ -81,18 +98,18 @@ ok('the run\'s hard limit is max_cost_usd or spend_limit_usd, the lower of the t
 
 const est = (over: Record<string, unknown>) => ({
   rows_to_process: 3, model: 'm/x', pricing_available: true, estimated_cost_usd: { low: 0.1, high: 0.2 },
-  per_row_usd: null, web_fees_usd: null, web_search: null, basis: 'history', note: '',
+  per_row_usd: null, row_most_usd: 0.12, web_fees_usd: null, web_search: null, basis: 'history', note: '',
   assumptions: { avg_input_tokens: 1, input_tokens: { low: 1, high: 1 }, output_tokens: { low: 1, high: 1 },
     sampled_rows: 1, history_rows: 0 }, ...over,
 }) as never
-assert.deepEqual(aiCeilingFigures(est({})), { highUsd: 0.2, unpriced: [] })
-assert.deepEqual(aiCeilingFigures(est({ estimated_cost_usd: null, pricing_available: false })),
-  { highUsd: 0, unpriced: ['m/x'] })
+assert.deepEqual(aiCeilingFigures(est({})), { highUsd: 0.2, unpriced: [], rowMostUsd: 0.12 })
+assert.deepEqual(aiCeilingFigures(est({ estimated_cost_usd: null, pricing_available: false, row_most_usd: null })),
+  { highUsd: 0, unpriced: ['m/x'], rowMostUsd: 0 })
 assert.deepEqual(aiCeilingFigures(est({ web_search: { price_per_search_usd: null } })),
-  { highUsd: 0.2, unpriced: ['web search'] })
+  { highUsd: 0.2, unpriced: ['web search'], rowMostUsd: 0.12 })
 assert.deepEqual(aiCeilingFigures(est({ web_search: { price_per_search_usd: null }, basis: 'measured' })),
-  { highUsd: 0.2, unpriced: [] })
-ok('an AI estimate: a model with no price, or search fees neither priced nor measured, is unpriced')
+  { highUsd: 0.2, unpriced: [], rowMostUsd: 0.12 })
+ok("an AI estimate: a model with no price, or search fees neither priced nor measured, is unpriced; a row's most")
 
 // --- The idempotency hash -----------------------------------------------------------
 const a = { sheet_id: 's1', column_name: 'Fit', prompt: 'Rate /name', model: 'm/x', webhook_id: 'w1' }
@@ -106,6 +123,8 @@ const before = runRequestHash('ai_run', {
 const hash = (extra: Record<string, unknown>) => aiRunRequestHash('s1', { ...a, ...extra }, parsed, limits(extra))
 assert.equal(hash({}), before)
 assert.equal(hash({ allow_unpriced: false }), before)
+// Without max_cost_usd it does nothing, so a retry that drops it is the same call.
+assert.equal(hash({ allow_unpriced: true }), before)
 const capped = hash({ max_cost_usd: 1 })
 assert.notEqual(capped, before)
 assert.notEqual(hash({ max_cost_usd: 2 }), capped)
@@ -113,4 +132,4 @@ assert.notEqual(hash({ max_cost_usd: 1, allow_unpriced: true }), capped)
 assert.equal(hash({ max_cost_usd: 1, allow_unpriced: 'false' }), capped)
 assert.notEqual(hash({ spend_limit_usd: 1 }), before)
 assert.notEqual(hash({ spend_limit_usd: 1 }), capped)
-ok('the ledger hash: unchanged without them, and max_cost_usd, allow_unpriced, spend_limit_usd count when set')
+ok('the ledger hash: unchanged without them; max_cost_usd, spend_limit_usd, and allow_unpriced with a ceiling count')

@@ -17,6 +17,12 @@ export const AI_HOLD_WEB_TOOLS_TOKENS = 1_000;
 // deadline), so a hold left by a worker that died stops counting.
 export const AI_HOLD_GRACE_MS = AI_CALL_DEADLINE_MS + 60_000;
 
+// An AI run with a spend limit reads its model's price from OpenRouter's model
+// list when its worker starts: this many tries, this long apart, then it
+// pauses (it never runs rows it can't price).
+export const AI_PRICE_READ_TRIES = 3;
+export const AI_PRICE_READ_RETRY_MS = 1_000;
+
 // Stable row ids resolve to positions this many at a time, each chunk bound as
 // one JSON value: SQLite takes at most 32,766 bound values in one statement.
 export const ROW_ID_RESOLVE_CHUNK = 10_000;

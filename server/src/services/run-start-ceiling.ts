@@ -6,7 +6,9 @@
 // the request hash idempotency keys are checked against, with these fields
 // in it only when they are set (so keys from before them still replay).
 import { runRequestHash } from '../lib/run-idempotency';
-import { ceilingArgsOf, ceilingProblem, ceilingView, usdLimitOf, type CeilingArgs } from '../lib/cost-ceiling';
+import {
+  ceilingArgsOf, ceilingProblem, ceilingView, usdLimitOf, type CeilingArgs, type CeilingFigures,
+} from '../lib/cost-ceiling';
 import type { AiEstimate } from './run-estimate';
 import type { TokenAiRunArgs } from './run-start-token';
 
@@ -25,15 +27,17 @@ export function aiRunLimitsOf(a: { max_cost_usd?: unknown; allow_unpriced?: unkn
   };
 }
 
-// What the ceiling reads from an AI estimate: its high end, and what has no
-// price (the model, or web search fees Cubex can't price and hasn't measured).
-export function aiCeilingFigures(e: AiEstimate): { highUsd: number; unpriced: string[] } {
+// What the ceiling reads from an AI estimate: its high end, what has no price
+// (the model, or web search fees Cubex can't price and hasn't measured), and
+// one row's most, which the run's spend limit keeps room for (the ceiling is
+// that limit).
+export function aiCeilingFigures(e: AiEstimate): CeilingFigures {
   const unpriced: string[] = [];
   if (!e.estimated_cost_usd) unpriced.push(e.model ?? 'the model');
   else if (e.web_search && e.web_search.price_per_search_usd === null && e.basis !== 'measured') {
     unpriced.push('web search');
   }
-  return { highUsd: e.estimated_cost_usd?.high ?? 0, unpriced };
+  return { highUsd: e.estimated_cost_usd?.high ?? 0, unpriced, rowMostUsd: e.row_most_usd ?? 0 };
 }
 
 // The estimate with the ceiling's outcome, and why a start is refused (null: it may go ahead).
@@ -56,7 +60,8 @@ export function aiRunRequestHash(sheetId: string, a: TokenAiRunArgs, parsed: {
     ...(parsed.runIf ? { run_if: parsed.runIf } : {}),
     ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
     ...(limits.ceiling.maxCostUsd !== null ? { max_cost_usd: limits.ceiling.maxCostUsd } : {}),
-    ...(limits.ceiling.allowUnpriced ? { allow_unpriced: true } : {}),
+    // allow_unpriced does nothing without max_cost_usd, so only then does it count.
+    ...(limits.ceiling.maxCostUsd !== null && limits.ceiling.allowUnpriced ? { allow_unpriced: true } : {}),
     ...(a.spend_limit_usd !== undefined && a.spend_limit_usd !== null ? { spend_limit_usd: a.spend_limit_usd } : {}),
   });
 }

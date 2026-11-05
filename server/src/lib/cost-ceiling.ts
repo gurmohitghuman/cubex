@@ -4,13 +4,28 @@
 // Without max_cost_usd, allow_unpriced does nothing. An estimate only reports
 // the outcome (over_ceiling, ceiling_problem); a start is refused with
 // fail 'over_ceiling' (REST 409) and creates nothing. For an AI run the
-// ceiling is also its hard spend limit (lib/ai-spend-limit.ts).
+// ceiling is also its hard spend limit (lib/ai-spend-limit.ts), which starts a
+// row only while that row's most still fits: so the ceiling must also hold one
+// row's most on top of the high end (rowMostUsd; a setup: one for each AI
+// step), or the run would stop before its last rows even at the estimate.
 import { RUN_SPEND_LIMIT_MAX_USD } from './constants';
 
 // Dollars for people: cents from a cent up, two significant figures below
 // ($0.00042), never a real amount rounded away to $0.00.
 export const money = (usd: number): string =>
   `$${usd >= 0.01 || usd <= 0 ? usd.toFixed(2) : usd.toLocaleString('en-US', { maximumSignificantDigits: 2 })}`;
+
+// Rounded up, for an amount to raise a limit to: cents from $1 up, two
+// significant figures below ($0.011, never a crude $0.02 for $0.0104).
+export const moneyUp = (usd: number): string => {
+  if (usd <= 0) return money(usd);
+  if (usd >= 1) return `$${(Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)}`;
+  const step = 10 ** (Math.floor(Math.log10(usd)) - 1);
+  const digits = Math.max(2, -Math.floor(Math.log10(step) + 1e-9));
+  // Trailing zeros past the cents go ($0.0000010 is $0.000001).
+  const [whole, frac] = (Math.ceil(usd / step - 1e-9) * step).toFixed(digits).split('.');
+  return `$${whole}.${frac.replace(/0+$/, '').padEnd(2, '0')}`;
+};
 
 // Compared in micro-dollars, so a ceiling and an estimate that print alike are alike.
 export const micro = (usd: number): number => Math.round(usd * 1e6);
@@ -52,17 +67,30 @@ const listOf = (names: string[]): string => {
   return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}` : quoted[0];
 };
 
-// Why a start must not go ahead under the ceiling, or null. highUsd: the
-// estimate's high end, summed over what has a price; unpriced: what costs
-// something with no known price (an AI model, a step, web search).
-export function ceilingProblem(
-  e: { highUsd: number; unpriced: string[] }, c: CeilingArgs, names: CeilingNames = SNAKE,
-): string | null {
+// What the ceiling reads from an estimate. highUsd: its high end, summed over
+// what has a price; unpriced: what costs something with no known price (an AI
+// model, a step, web search); rowMostUsd: the room an AI run's spend limit
+// keeps for one row at its most (summed over a setup's AI steps, rowMostSteps
+// of them).
+export interface CeilingFigures { highUsd: number; unpriced: string[]; rowMostUsd?: number; rowMostSteps?: number }
+
+// Why a start must not go ahead under the ceiling, or null.
+export function ceilingProblem(e: CeilingFigures, c: CeilingArgs, names: CeilingNames = SNAKE): string | null {
   if (c.maxCostUsd === null) return null;
   const parts: string[] = [];
-  if (micro(e.highUsd) > micro(c.maxCostUsd)) {
-    parts.push(`It could cost up to ${money(e.highUsd)}, more than the ${money(c.maxCostUsd)} ceiling `
-      + `(${names.max}). Raise ${names.max}, or run fewer rows.`);
+  const tail = e.rowMostUsd ?? 0;
+  if (micro(e.highUsd) + micro(tail) > micro(c.maxCostUsd)) {
+    if (micro(tail) > 0) {
+      const each = (e.rowMostSteps ?? 1) > 1 ? ` for each of its ${e.rowMostSteps} AI steps` : '';
+      const need = moneyUp(e.highUsd + tail);
+      parts.push(`It could cost up to ${money(e.highUsd)}, and its spend limit starts a row only while the row's `
+        + `most still fits, so it needs room for one row at its most${each} on top (up to ${money(tail)}): `
+        + `${need} in all, more than the ${money(c.maxCostUsd)} ceiling (${names.max}). Raise ${names.max} to at `
+        + `least ${need}, or run fewer rows.`);
+    } else {
+      parts.push(`It could cost up to ${money(e.highUsd)}, more than the ${money(c.maxCostUsd)} ceiling `
+        + `(${names.max}). Raise ${names.max}, or run fewer rows.`);
+    }
   }
   if (e.unpriced.length > 0 && !c.allowUnpriced) {
     parts.push(`No price is known for ${listOf(e.unpriced)}, so Cubex can't tell whether it stays within the `
@@ -72,7 +100,7 @@ export function ceilingProblem(
 }
 
 // What an estimate answer adds once a ceiling is given (nothing without one).
-export function ceilingView(e: { highUsd: number; unpriced: string[] }, c: CeilingArgs, names: CeilingNames = SNAKE)
+export function ceilingView(e: CeilingFigures, c: CeilingArgs, names: CeilingNames = SNAKE)
   : { max_cost_usd?: number; over_ceiling?: boolean; ceiling_problem?: string | null } {
   if (c.maxCostUsd === null) return {};
   const problem = ceilingProblem(e, c, names);

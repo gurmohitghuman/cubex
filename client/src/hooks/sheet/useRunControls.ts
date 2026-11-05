@@ -45,9 +45,15 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
     await refetch()
   }
 
+  // An AI run that paused at its spend limit resumes only with a higher one:
+  // Resume asks for it (RaiseLimitDialog), the first such run, and resumes the rest.
+  const [raiseLimitFor, setRaiseLimitFor] = useState<string | null>(null)
   const resumeAll = async () => {
     const actions: Promise<any>[] = []
-    aiRuns.filter(r => r.status === 'paused').forEach(r => actions.push(aiAPI.resumeRun(r.id)))
+    const atLimit = aiRuns.filter(r => r.status === 'paused' && r.pause_reason === 'spend_limit')
+    if (atLimit.length) setRaiseLimitFor(atLimit[0].id)
+    aiRuns.filter(r => r.status === 'paused' && r.pause_reason !== 'spend_limit')
+      .forEach(r => actions.push(aiAPI.resumeRun(r.id)))
     httpRuns.filter(r => r.status === 'paused').forEach(r => actions.push(httpAPI.controlRun(r.id, 'resume')))
     const results = await Promise.allSettled(actions)
     const failed = results.filter(r => r.status === 'rejected').length
@@ -78,8 +84,11 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
     }
   }
 
+  const raiseLimit = {
+    runId: raiseLimitFor, close: () => setRaiseLimitFor(null), resumed: () => { void refetch() },
+  }
   return useMemo(
-    () => ({ anyActiveRuns, anyRunning, canStopAll, stoppingAll, pauseAll, resumeAll, stopAll }),
-    [anyActiveRuns, anyRunning, canStopAll, stoppingAll, aiRuns, httpRuns, sheetId],
+    () => ({ anyActiveRuns, anyRunning, canStopAll, stoppingAll, pauseAll, resumeAll, stopAll, raiseLimit }),
+    [anyActiveRuns, anyRunning, canStopAll, stoppingAll, aiRuns, httpRuns, sheetId, raiseLimitFor],
   )
 }

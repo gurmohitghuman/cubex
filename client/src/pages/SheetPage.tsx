@@ -30,6 +30,7 @@ import { useEmptyFilter } from '@/hooks/sheet/useEmptyFilter'
 import { useColumnFilters } from '@/hooks/sheet/useColumnFilters'
 import { useExport } from '@/hooks/sheet/useExport'
 import { useRunControls } from '@/hooks/sheet/useRunControls'
+import { RaiseLimitDialog } from '@/components/ai-modal/RaiseLimitDialog'
 import { useSheetLoad } from '@/hooks/sheet/useSheetLoad'
 import { planWindowReload } from '@/hooks/sheet/reloadWindow'
 import { useGridHandles } from '@/hooks/sheet/useGridHandles'
@@ -342,6 +343,8 @@ export const SheetPage: React.FC = () => {
         dropAllPending={cellOps.dropAllPending}
       />
       <AutorunDialogHost autorun={autorun} />
+      <RaiseLimitDialog runId={runControls.raiseLimit.runId} onClose={runControls.raiseLimit.close}
+        onResumed={runControls.raiseLimit.resumed} />
       <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals}
         sheetName={table?.sheets?.find(s => s.id === modals.versionsFor)?.name ?? ''}
         onRestored={id => { if (id === activeSheet?.id) void silentReloadRef.current(id) }} />

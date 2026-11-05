@@ -13,6 +13,7 @@ import { AIHeaderControls, subtitleFor } from './ai-modal/ModalHeader'
 import { ConfigureStep } from './ai-modal/ConfigureStep'
 import { PreviewStep } from './ai-modal/PreviewStep'
 import { RunStep } from './ai-modal/RunStep'
+import { RaiseLimitDialog } from './ai-modal/RaiseLimitDialog'
 import { useModels } from './ai-modal/useModels'
 import { useAIRunHandlers } from './ai-modal/useAIRunHandlers'
 import { useColumnNameValidation } from './ai-modal/useColumnNameValidation'
@@ -207,6 +208,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
           <RunStep currentRun={h.currentRun} runResults={h.runResults} spend={h.runSpend} />
         )}
       </div>
+      {/* The poll picks the resumed run up. */}
+      <RaiseLimitDialog runId={h.raiseLimitFor} onClose={() => h.setRaiseLimitFor(null)} onResumed={() => {}} />
 
     </Drawer>
   )

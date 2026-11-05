@@ -1,3 +1,4 @@
+// Over 200 lines: the shared row loop and the transitions it ends in, kept together.
 import { db } from '../lib/db';
 import { redactSecrets, redactError } from '../lib/redact';
 import { getOpenRouterClient } from './openrouter';
@@ -10,7 +11,7 @@ import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders'
 import { spendCapRefusal } from './token-spend';
 import { RUN_BREAKER_FAILURES } from '../lib/constants';
 import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
-import { isStorageFailure } from '../lib/storage-failure';
+import { isBusyLock, isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
 import { openSpendGate, type GateAnswer } from './ai-spend-gate';
 
@@ -31,7 +32,8 @@ import { openSpendGate, type GateAnswer } from './ai-spend-gate';
 // way ('provider_errors'), and so does a database that can't be written
 // ('storage'): each row is paid before its result is written. A run with its
 // own spend limit starts a row only while the row's most fits under it, and
-// answers 'spend_limit' when it can't (services/ai-spend-gate.ts).
+// answers 'spend_limit' when it can't (services/ai-spend-gate.ts); a database
+// busy with another writer then only makes the row wait.
 // A stop (pause, cancel, a resume taking over) starts no more rows; the calls
 // out finish, within their deadline, and count (each is paid: cancelled, what
 // it cost would be lost). A full pool beats updated_at while it waits.
@@ -61,8 +63,10 @@ export const dispatchRows = async (
   const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
   const gate = await openSpendGate(run, myGeneration);
   // Room for the row under the run's limit; null: a database that can't be written (end is set).
+  // Busy with another writer past busy_timeout: the row waits and asks again.
   const admit = (row: SheetRow): GateAnswer | null => {
     try { return gate!.admit(row); } catch (error) {
+      if (isBusyLock(error)) return { wait: true };
       if (!isStorageFailure(error)) throw error;
       ended(error);
       return null;
@@ -98,7 +102,12 @@ export const dispatchRows = async (
           room = admit(row);
         }
         if (!room) break;
-        if ('pause' in room) { end = { reason: 'spend_limit', message: room.pause }; break; }
+        // This row didn't start: rows are left, whatever the reason (a brake's end needs that too).
+        if ('pause' in room) {
+          end = { reason: room.reason ?? 'spend_limit', message: room.pause };
+          rowsLeft = true;
+          break;
+        }
         held = room.start;
       }
 

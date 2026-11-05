@@ -1,10 +1,15 @@
 // What an AI run's row (ai-row.ts, ai-row-multi.ts) comes to, for the runner's
-// brake (lib/run-breaker.ts): its call has a hard deadline, a stop drops it, a
-// database that can't be written stops the run, anything else is its ❌.
+// brake (lib/run-breaker.ts) and its spend limit (ai-spend-gate.ts): its call
+// has a hard deadline, a stop drops it, a database that can't be written stops
+// the run, anything else is its ❌, which says whether the call may be billed
+// with no cost Cubex saw.
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { callDeadline, deadlineWords, type CallDeadline } from '../lib/call-deadline';
 import { AI_CALL_DEADLINE_MS } from '../lib/constants';
 import { aiProviderSide, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
+import { FailedCallError, type ModelCall } from './ai-model-call';
+import { connectionCauseCode } from './openrouter-retry';
 
 // The row's call ends when the run stops or the deadline passes.
 export const aiCallDeadline = (signal: AbortSignal | undefined): CallDeadline =>
@@ -27,5 +32,27 @@ export function throwIfStorage(error: unknown): void {
   if (isStorageFailure(error)) throw error;
 }
 
-export const failedRow = (message: string): RowOutcome =>
-  ({ kind: 'failed', message, provider: aiProviderSide(message) });
+export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
+  ({ kind: 'failed', message, provider: aiProviderSide(message), ...(maybeBilled ? { maybeBilled } : {}) });
+
+// Transport failures that come before anything reaches the provider: no
+// address, no connection, or the stale keep-alive socket openrouter-retry.ts
+// retries (the request died on the wire).
+const NEVER_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'ECONNRESET']);
+
+// Whether a failed row's call may be billed although no cost came back. With
+// stream:false the provider generates (and bills) the whole answer before it
+// sends it, so a call that was sent and then gave nothing back may be paid
+// for: cut off at the row's deadline (an abort), the SDK's "Request timed
+// out." (no headers within AI_REQUEST_TIMEOUT_MS), an answer that broke off
+// or couldn't be read, a connection lost after it was sent. Not: a call never
+// sent, one that came back (its cost is recorded, failed responses included),
+// an error status from OpenRouter (a refusal is not billed; also when the
+// deadline passed while waiting to try again), a connection that never
+// reached it. The error is the last try's own.
+export function callMayBeBilled(error: unknown, a: { sent: boolean; call: ModelCall | null }): boolean {
+  if (!a.sent || a.call || error instanceof FailedCallError) return false;
+  if (error instanceof APIConnectionTimeoutError) return true;
+  if (error instanceof APIConnectionError) return !NEVER_SENT.has(connectionCauseCode(error) ?? '');
+  return !(error instanceof APIError && typeof error.status === 'number');
+}

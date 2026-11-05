@@ -16,7 +16,9 @@ import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-r
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
-import { aiCallDeadline, AI_TIMEOUT_MESSAGE, failedRow, stoppedCall, throwIfStorage } from './ai-row-outcome';
+import {
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage,
+} from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
 // instruction, call OpenRouter once, parse the JSON object into N typed columns,
@@ -47,6 +49,8 @@ export async function processMultiRow(
   // Set once the call comes back: a failure after it still records its cost.
   let call: ModelCall | null = null;
   const deadline = aiCallDeadline(signal);
+  // Set once the call goes out: a failure after it may be billed (callMayBeBilled).
+  let sent = false;
 
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
@@ -58,6 +62,7 @@ export async function processMultiRow(
     const model = run.model;
     if (!model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
     const tools = buildWebTools(run.prompt, row.data, { search, fetch: web.fetch });
+    sent = true;
     call = await withConnectRetry(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, web.fetch),
@@ -114,7 +119,7 @@ export async function processMultiRow(
     const errorMessage = redactSecrets(rawMsg);
     console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
     writeMultiFailure(ctx, blankOnFailure, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage);
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call }));
   } finally {
     deadline.done();
   }

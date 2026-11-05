@@ -10,7 +10,8 @@ import type { TryFailure } from './http-retry';
 // What one row came to.
 export type RowOutcome =
   | { kind: 'done' }                                          // its answer was written
-  | { kind: 'failed'; message: string; provider: boolean }    // its ❌ was written
+  // its ❌ was written; maybeBilled: an AI call that may be billed with no cost Cubex saw (ai-row-outcome.ts)
+  | { kind: 'failed'; message: string; provider: boolean; maybeBilled?: boolean }
   | { kind: 'dropped' };                                      // a stop: nothing written
 
 export const DONE: RowOutcome = { kind: 'done' };
