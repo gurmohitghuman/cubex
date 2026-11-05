@@ -5,7 +5,9 @@
 // one-row update's sheet_id is the row's; keys are per user, last a day and
 // share the run ledger's namespace without crowding run keys out; stored
 // answers stay small. The race (two connections at once) is
-// idempotent-writes-race.test.ts.
+// idempotent-writes-race.test.ts; the cap, the sweep and expired keys reused by
+// run starts and transfers are idempotent-writes-ledger.test.ts; the trash, a
+// busy sheet and the restore words on each surface idempotent-writes-surfaces.test.ts.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -22,12 +24,10 @@ const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { appendRowsKeyed, patchRowKeyed, batchUpdateKeyed, idempotencyKeyOf } =
   keyedMod as typeof import('../../server/src/services/rows-write-keyed')
 const { appendRows, deleteRowsByIds } = rowsMod as typeof import('../../server/src/services/rows-write')
-const { pruneWriteKeys, writeRequestHash, canonicalJson } =
-  ledgerMod as typeof import('../../server/src/lib/write-idempotency')
+const { writeRequestHash, canonicalJson } = ledgerMod as typeof import('../../server/src/lib/write-idempotency')
 const { writeRunLedger, readRunLedger } = runLedgerMod as typeof import('../../server/src/lib/run-idempotency')
 const { writeTransferLedger } = transferLedgerMod as typeof import('../../server/src/services/transfer-ledger')
-const { IDEMPOTENT_WRITE_KEYS_MAX, IDEMPOTENT_WRITE_ROW_BYTES } =
-  constMod as typeof import('../../server/src/lib/api-v1-constants')
+const { IDEMPOTENT_WRITE_ROW_BYTES } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { parseCellMap } = sharedMod as typeof import('../../server/src/services/data-plane-shared')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -201,29 +201,6 @@ ok('a key lasts a day: past that the same call writes again', () => {
   const fresh = done(appendRowsKeyed(A, uid, [{ Name: 'Ann', Email: 'a@x.io' }, { Name: 'Bo' }], 'ap-1', 'mcp'))
   assert.equal(fresh.replayed, false)
   assert.equal(count(A), before + 2)
-})
-
-ok('the sweep deletes row-write keys over a day old, never a run\'s', () => {
-  writeRunLedger(uid, 'run-old', 'h', 'ai_run', { run_id: 'r1' })
-  age('run-old', 48)
-  age('bt-1', 30)
-  assert.ok(pruneWriteKeys() >= 1)
-  assert.equal(entry('bt-1'), undefined)
-  assert.ok(entry('run-old'), 'run keys keep their own rule')
-  assert.ok(entry('up-1'))
-})
-
-ok('row-write keys past the cap go oldest first; a run key isn\'t one of them', () => {
-  const insert = db.prepare(`INSERT INTO data_operation_ledger (id, user_id, idempotency_key, operation_kind,
-    request_hash, result_json, created_at) VALUES (?, ?, ?, 'cells_update_batch', 'h', '{}', datetime('now', ?))`)
-  db.transaction(() => {
-    for (let i = 0; i < IDEMPOTENT_WRITE_KEYS_MAX; i++) insert.run(uuid(), uid, `filler-${i}`, `-${i % 3600} seconds`)
-  })()
-  age('filler-0', 20)
-  done(batchUpdateKeyed(A, uid, [{ rowId: firstRows[0].id, cells: { Name: 'cap' } }], 'cap-1', 'mcp'))
-  assert.equal(entry('filler-0'), undefined, 'the oldest row-write key went')
-  assert.ok(entry('cap-1'))
-  assert.ok(entry('run-old'), 'a run key is never pruned by row writes')
 })
 
 ok('run and transfer keys keep their 1,000 window: row-write keys don\'t count in it', () => {

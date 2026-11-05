@@ -3,7 +3,7 @@
 import express from 'express';
 import { db } from '../lib/db';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
-import { parseCellMap, failResponse } from './api-v1-shared';
+import { parseCellMap, failResponse, rawIdempotencyKey } from './api-v1-shared';
 import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import {
@@ -23,9 +23,10 @@ function ownsSheet(sheetId: string, userId: string): boolean {
 
 // An idempotency key in the body or the Idempotency-Key header, as run starts
 // take theirs (services/rows-write-keyed.ts): a retry replays the first answer.
-const keyOf = (req: express.Request) =>
-  idempotencyKeyOf((req.body as { idempotency_key?: unknown })?.idempotency_key ?? req.get('Idempotency-Key')
-    ?? undefined);
+// With a key, the sheet is checked after the ledger, so a retry replays even
+// once the sheet is in the trash; without one, first, as before.
+const keyOf = (req: express.Request) => idempotencyKeyOf(rawIdempotencyKey(req));
+const NO_SHEET = { error: 'Sheet not found' };
 
 // POST /v1/sheets/:id/rows: append a batch. Body: { rows: [{data: {col: val}}], idempotency_key? }.
 // The answer lists the auto-runs that will fill the new rows (auto_run); a
@@ -33,9 +34,9 @@ const keyOf = (req: express.Request) =>
 router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
     const k = keyOf(req);
     if ('error' in k) return res.status(400).json({ error: k.error });
+    if (!k.key && !ownsSheet(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
 
     const rawRows = (req.body as { rows?: unknown }).rows;
     if (!Array.isArray(rawRows) || rawRows.length === 0) {
@@ -53,7 +54,8 @@ router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequ
 
     if (k.key) {
       const keyed = appendRowsKeyed(sheetId, req.userId!, parsedRows, k.key, 'rest');
-      if ('fail' in keyed) return failResponse(res, keyed);
+      if ('fail' in keyed) return keyed.fail === 'sheet_not_found' ? res.status(404).json(NO_SHEET)
+        : failResponse(res, keyed);
       if (keyed.replayed) return res.json({ ...keyed.ok.answer, replayed: true });
       return res.status(201).json({
         ...keyed.ok.answer, replayed: false, ...await appendAutorunNotice(req.userId!, sheetId, keyed.ok.kept),
@@ -103,12 +105,13 @@ router.patch('/rows/:rowId', requireScope('write'), (req: TokenAuthRequest, res)
 });
 
 // POST /v1/sheets/:id/rows/update: { updates: [{row_id, data}], idempotency_key? }, all or nothing.
+// With a key it passes the busy gate (api-v1-shared.ts): a replay answers, a write is refused after the ledger.
 router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
     const k = keyOf(req);
     if ('error' in k) return res.status(400).json({ error: k.error });
+    if (!k.key && !ownsSheet(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
     const updates = (req.body as { updates?: unknown }).updates;
     if (!Array.isArray(updates) || updates.length < 1 || updates.length > API_V1_MAX_BATCH_UPDATES) {
       return res.status(400).json({ error: `updates must contain 1-${API_V1_MAX_BATCH_UPDATES} entries` });
@@ -128,6 +131,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
       if (result.fail === 'duplicate_rows') {
         return res.status(400).json({ error: 'updates must not contain duplicate row ids' });
       }
+      if (result.fail === 'sheet_not_found') return res.status(404).json(NO_SHEET);
       if (result.fail === 'not_found') {
         return res.status(404).json({ error: 'One or more rows were not found in the supplied sheet.' });
       }

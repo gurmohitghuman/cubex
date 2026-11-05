@@ -82,7 +82,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   webhookBucketSweep = setInterval(() => {
     try { evictIdleWebhookBuckets(); } catch { /* best-effort */ }
     try { pruneWebhookKeys(); } catch (err) { console.error('Deleting expired webhook keys failed:', err); }
-    try { pruneWriteKeys(); } catch (err) { console.error('Deleting expired row write keys failed:', err); }
+    // In slices that yield to requests (lib/write-idempotency.ts).
+    pruneWriteKeys().catch(err => console.error('Deleting expired row write keys failed:', err));
   }, WEBHOOK_BUCKET_IDLE_EVICT_MS);
   webhookBucketSweep.unref();
 };

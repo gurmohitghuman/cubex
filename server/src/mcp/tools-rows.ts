@@ -1,6 +1,9 @@
 // Row mutation tools — same services/rows-write.ts flows as /api/v1 (stable
 // row ids, update-only columns, run-locked errors, data_version bumps). With an
-// idempotency_key, services/rows-write-keyed.ts (a retry replays the first answer).
+// idempotency_key, services/rows-write-keyed.ts (a retry replays the first
+// answer): the sheet is checked after the ledger, so a retry replays even once
+// the sheet is in the trash or busy (tool-helpers.ts lets a keyed update_cells
+// through its busy gate).
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
@@ -49,7 +52,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     async ({ sheet_id, rows, idempotency_key }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
-      if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (!idempotency_key && !ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
       const parsedRows: Array<Record<string, string>> = [];
       for (const entry of rows) {
         const p = parseCellMap(entry, API_V1_MAX_PATCH_CELLS);
@@ -58,7 +61,9 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       if (idempotency_key) {
         const keyed = appendRowsKeyed(sheet_id, ctx.userId, parsedRows, idempotency_key, 'mcp');
-        if ('fail' in keyed) return err(txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
+        if ('fail' in keyed) {
+          return err(keyed.fail === 'sheet_not_found' ? 'Sheet not found' : txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
+        }
         if (keyed.replayed) return ok({ ...keyed.ok.answer, replayed: true });
         return ok({
           ...keyed.ok.answer, replayed: false, ...await appendAutorunNotice(ctx.userId, sheet_id, keyed.ok.kept),
@@ -104,7 +109,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       if (batch) {
         if (!sheet_id) return err('The many-rows form needs sheet_id with updates.');
-        if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+        if (!idempotency_key && !ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
         const parsed = [];
         for (const update of updates) {
           const p = parseCellMap(update.data, API_V1_MAX_PATCH_CELLS);
@@ -115,6 +120,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
           : batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
         if ('fail' in result) {
           if (result.fail === 'duplicate_rows') return err('updates must not contain duplicate row ids');
+          if (result.fail === 'sheet_not_found') return err('Sheet not found');
           return err(result.fail === 'not_found'
             ? 'One or more rows were not found in the supplied sheet.'
             : txnFailMessage(result, MAX_ROWS_PER_SHEET));

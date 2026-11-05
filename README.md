@@ -335,7 +335,7 @@ Then ask for the work in chat:
 
 Give each token only the scopes it needs, so an agent can be read-only:
 
-- `read`: list tables, read rows and check runs.
+- `read`: list tables, read rows and check runs. It also sees your saved API keys' names and where they're used, never their values.
 - `write`: also create and change tables, sheets, columns and rows.
 - `run`: also start, pause and re-run runs, which spend your OpenRouter credits and treg balance.
 - `secrets`: also start HTTP runs that use your saved API keys.

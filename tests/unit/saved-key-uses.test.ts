@@ -1,10 +1,14 @@
 // Saved keys by name and where they're used (services/saved-key-uses.ts, MCP
 // list_saved_keys, GET /api/v1/saved-keys): a column counts by its newest run
-// only, in a listed column of a live sheet; waterfall steps and both token
-// forms count; trashed sheets and tables, deleted columns and other users
-// don't; setups that name a key are listed; lists stop at SAVED_KEY_USES_LISTED
-// with whole counts. And the answer can't hold any byte of a saved value, nor
-// its hash, its ciphertext or any field but the listed ones.
+// only, in a listed column of a live sheet that a request still fills (not a
+// name an AI or clean column took since); waterfall steps and both token forms
+// count; trashed sheets and tables, deleted columns and other users don't;
+// setups that name a key, in any case, are listed. Bounded: SAVED_KEYS_LISTED
+// keys a call (paged by next_after), SAVED_KEY_USES_BRIEF places each, or
+// SAVED_KEY_USES_LISTED for one key by name, every count whole. And the answer
+// can't hold any byte of a saved value, nor its hash, its ciphertext or any
+// field but the listed ones.
+// Over 200 lines: one fixture and every rule of the listing, read top to bottom.
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { v4 as uuid } from 'uuid'
@@ -17,7 +21,8 @@ const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
 const { listSavedKeys } = usesMod as typeof import('../../server/src/services/saved-key-uses')
-const { SAVED_KEY_USES_LISTED } = constMod as typeof import('../../server/src/lib/api-v1-constants')
+const { SAVED_KEY_USES_LISTED, SAVED_KEY_USES_BRIEF, SAVED_KEYS_LISTED } =
+  constMod as typeof import('../../server/src/lib/api-v1-constants')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 
@@ -61,7 +66,7 @@ const http = (url: string, headers: Record<string, string> = {}, extra: Record<s
 })
 
 const T1 = table('Leads')
-const A = sheet(T1, 'People', ['Website', 'Lookup', 'Old', 'Plain', 'Enrich'])
+const A = sheet(T1, 'People', ['Website', 'Lookup', 'Old', 'Plain', 'Enrich', 'Summary', 'Tidy'])
 // The column's setup is its newest run: the older one named Stripe_Key, the newest names openai.
 run(A, 'Lookup', http('https://api.example.com/{{Stripe_Key}}'), 48)
 run(A, 'Lookup', http('https://api.example.com/{{Website}}', { Authorization: 'Bearer {{OpenAI}}' }))
@@ -71,6 +76,13 @@ db.prepare(`INSERT INTO autorun_columns (id, user_id, sheet_id, status_column, k
 run(A, 'Old', http('https://api.example.com/{{openai}}', {}, { goneColumns: ['openai'] }))
 run(A, 'Gone', http('https://api.example.com/{{openai}}'))
 run(A, 'Enrich', { ...http('https://treg.example/run'), enrichment: { v: 1, toolId: 't' } })
+// HTTP columns deleted, their names taken since by an AI column and a clean column: their old runs stay.
+run(A, 'Summary', http('https://api.example.com/{{openai}}'), 2)
+db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status)
+  VALUES (?,?,?,?,?,?,'completed')`).run(uuid(), A, uid, 'Summary', 'Sum up /Website', 'some/model')
+run(A, 'Tidy', http('https://api.example.com/{{Stripe_Key}}'), 2)
+db.prepare(`INSERT INTO clean_columns (id, user_id, sheet_id, column_name, source_column, cleaner, fill_status)
+  VALUES (?,?,?,?,?,?,'done')`).run(uuid(), uid, A, 'Tidy', 'Website', 'domain')
 const B = sheet(T1, 'Companies', ['Domain', 'Email'])
 run(B, 'Email', {
   ...http('https://none.example'),
@@ -85,7 +97,8 @@ run(C, 'Lookup', http('https://api.example.com/{{openai}}'))
 // Another user's sheet with the same key name.
 const O = sheet(table('Theirs', other), 'Theirs', ['Lookup'], other)
 run(O, 'Lookup', http('https://api.example.com/{{openai}}'), 0, other)
-for (const [name, keys] of [['Lead flow', ['openai']], ['Plain flow', []]] as const) {
+// A setup names a key in any case, as a request does.
+for (const [name, keys] of [['Lead flow', ['openai']], ['Plain flow', []], ['Upper flow', ['STRIPE_KEY']]] as const) {
   db.prepare('INSERT INTO setups (id, user_id, name, spec) VALUES (?,?,?,?)')
     .run(uuid(), uid, name, JSON.stringify({ v: 1, inputs: [], keys, steps: [] }))
 }
@@ -110,6 +123,12 @@ ok('a column counts by its newest run, any case of the name; auto-run is said', 
   assert.equal(byName('openai').used_in_count, 1)
 })
 
+ok('a name an AI or clean column took since an HTTP column of that name was deleted isn\'t a use', () => {
+  const columns = listed().flatMap(k => k.used_in.map(u => u.column))
+  assert.ok(!columns.includes('Summary') && !columns.includes('Tidy'), JSON.stringify(columns))
+  assert.equal(byName('openai').used_in_count, 1)
+})
+
 ok('a waterfall\'s HTTP step counts (the /name form too); trash, deleted columns, enrichments, others don\'t', () => {
   assert.deepEqual(byName('Stripe_Key').used_in.map(u => [u.sheet_name, u.column, u.kind, u.auto_run]),
     [['Companies', 'Email', 'waterfall', false]])
@@ -118,30 +137,62 @@ ok('a waterfall\'s HTTP step counts (the /name form too); trash, deleted columns
   assert.deepEqual(byName('unused_key').used_in, [])
 })
 
-ok('saved setups that name a key', () => {
+ok('saved setups that name a key, in any case', () => {
   assert.deepEqual(byName('openai').setups.map(s => s.name), ['Lead flow'])
   assert.equal(byName('openai').setups_count, 1)
-  assert.deepEqual(byName('Stripe_Key').setups, [])
+  assert.deepEqual(byName('Stripe_Key').setups.map(s => s.name), ['Upper flow'])
 })
 
 ok('name narrows it to one key, any case; an unknown name says so', () => {
-  const one = listSavedKeys(uid, 'OPENAI')
+  const one = listSavedKeys(uid, { name: 'OPENAI' })
   assert.ok('ok' in one)
   assert.deepEqual(one.ok.keys.map(k => k.name), ['openai'])
-  const none = listSavedKeys(uid, 'nope')
+  const none = listSavedKeys(uid, { name: 'nope' })
   assert.ok('fail' in none && none.fail === 'not_found')
   const empty = listSavedKeys(uuid())
-  assert.deepEqual(empty, { ok: { keys: [] } })
+  assert.deepEqual(empty, { ok: { keys: [], keys_count: 0 } })
+  const both = listSavedKeys(uid, { name: 'openai', after: 'a' })
+  assert.ok('fail' in both && both.fail === 'bad_request')
 })
 
-ok(`at most ${SAVED_KEY_USES_LISTED} places a key, with the whole count`, () => {
+ok(`${SAVED_KEY_USES_BRIEF} places and setups a key, ${SAVED_KEY_USES_LISTED} by name; counts whole`, () => {
   const T = table('Many')
   for (let i = 0; i < SAVED_KEY_USES_LISTED + 7; i++) {
     run(sheet(T, `S${i}`, ['Call']), 'Call', http('https://api.example.com/x', { 'X-Api-Key': '{{unused_key}}' }))
+    db.prepare('INSERT INTO setups (id, user_id, name, spec) VALUES (?,?,?,?)')
+      .run(uuid(), uid, `Flow ${i}`, JSON.stringify({ v: 1, inputs: [], keys: ['unused_key'], steps: [] }))
   }
-  const k = byName('unused_key')
+  const brief = byName('unused_key')
+  assert.equal(brief.used_in.length, SAVED_KEY_USES_BRIEF)
+  assert.equal(brief.setups.length, SAVED_KEY_USES_BRIEF)
+  const out = listSavedKeys(uid, { name: 'unused_key' })
+  assert.ok('ok' in out)
+  const [k] = out.ok.keys
   assert.equal(k.used_in.length, SAVED_KEY_USES_LISTED)
-  assert.equal(k.used_in_count, SAVED_KEY_USES_LISTED + 7)
+  assert.equal(k.setups.length, SAVED_KEY_USES_LISTED)
+  for (const each of [brief, k]) {
+    assert.equal(each.used_in_count, SAVED_KEY_USES_LISTED + 7)
+    assert.equal(each.setups_count, SAVED_KEY_USES_LISTED + 7)
+  }
+})
+
+ok(`at most ${SAVED_KEYS_LISTED} keys a call, keys_count whole; next_after pages on to the rest`, () => {
+  const many = uuid()
+  db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(many, 'x')
+  const names = Array.from({ length: SAVED_KEYS_LISTED + 3 }, (_, i) => `key_${String(i).padStart(2, '0')}`)
+  for (const name of names) {
+    assert.ok('ok' in createSavedKey(many, { name, key_type: 'bearer', key_value: ASCII_VALUE, description: null }))
+  }
+  const first = listSavedKeys(many)
+  assert.ok('ok' in first)
+  assert.deepEqual(first.ok.keys.map(k => k.name), names.slice(0, SAVED_KEYS_LISTED))
+  assert.equal(first.ok.keys_count, names.length)
+  assert.equal(first.ok.next_after, names[SAVED_KEYS_LISTED - 1])
+  const rest = listSavedKeys(many, { after: first.ok.next_after })
+  assert.ok('ok' in rest)
+  assert.deepEqual(rest.ok.keys.map(k => k.name), names.slice(SAVED_KEYS_LISTED))
+  assert.equal(rest.ok.keys_count, names.length)
+  assert.equal(rest.ok.next_after, undefined)
 })
 
 ok('the answer holds no byte of a saved value, nor its hash, its ciphertext or any other field', () => {

@@ -28,15 +28,23 @@ export function savedKeyRefsInConfig(userId: string, config: HTTPRequestConfig):
   return savedKeyMatcher(keyRows.map(r => r.name))(config);
 }
 
-// The same scan with the key names given, for a caller that checks many
-// configs (services/saved-key-uses.ts): the names a request config reads.
-export function savedKeyMatcher(names: readonly string[]): (config: HTTPRequestConfig) => string[] {
+// The saved key a name in a request reads (any case, or its normalized form),
+// among `names`; undefined for none. Saved setups' key names resolve this way
+// too (services/saved-key-uses.ts).
+export function savedKeyResolver(names: readonly string[]): (token: string) => string | undefined {
   const byLower = new Map<string, string>();
   const byNorm = new Map<string, string>();
   for (const name of names) {
     byLower.set(name.toLowerCase(), name);
     byNorm.set(normalizeColumnName(name), name);
   }
+  return token => byLower.get(token.toLowerCase()) ?? byNorm.get(normalizeColumnName(token));
+}
+
+// The same scan with the key names given, for a caller that checks many
+// configs (services/saved-key-uses.ts): the names a request config reads.
+export function savedKeyMatcher(names: readonly string[]): (config: HTTPRequestConfig) => string[] {
+  const resolve = savedKeyResolver(names);
   return (config: HTTPRequestConfig) => {
     if (names.length === 0) return [];
     const parts: string[] = [typeof config.url === 'string' ? config.url : ''];
@@ -49,7 +57,7 @@ export function savedKeyMatcher(names: readonly string[]): (config: HTTPRequestC
     for (const part of parts) {
       for (const token of extractTemplateTokenNames(part)) {
         if (goneColumnFor(token, gone) !== undefined) continue;
-        const hit = byLower.get(token.toLowerCase()) ?? byNorm.get(normalizeColumnName(token));
+        const hit = resolve(token);
         if (hit) matched.add(hit);
       }
     }

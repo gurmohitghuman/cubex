@@ -40,6 +40,7 @@ import trashV1 from './api-v1-trash';
 import savedKeysV1 from './api-v1-saved-keys';
 import aiVisibilityV1 from './api-v1-ai-visibility';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
+import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import { actAs } from '../lib/actor';
 import { tokenSpendFor } from '../services/token-spend';
@@ -63,14 +64,8 @@ router.use(actAs(req => ({
 })));
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
-// Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
-// Stopping every run is allowed too: a run still writing its placeholders holds the sheet.
-router.use('/sheets/:id', refuseChangesWhileBusy([
-  '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
-  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
-  // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
-  /^\/setup-versions\/[^/]+\/restore$/,
-]));
+// Same busy-sheet rule as the UI routes (lib/sheet-busy.ts); what goes through: api-v1-shared.ts.
+router.use('/sheets/:id', refuseChangesWhileBusy(V1_SHEET_BUSY_ALLOWED));
 router.use(tablesV1);
 router.use(aiVisibilityV1);
 router.use(tableSheetsV1);

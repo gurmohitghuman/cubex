@@ -8,6 +8,7 @@ import { parseBooleanOption } from '../lib/web-search-options';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { bad, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
 import { readRunLedger, runRequestHash, writeRunLedger } from '../lib/run-idempotency';
+import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { waitForRunChange } from './run-status-wait';
 import { startWaterfallDryRun } from './waterfall-dry-run';
 import { readDryRun, type DryRunView } from './waterfall-dry-read';
@@ -50,7 +51,7 @@ export async function tokenDryRun(c: TokenCaller, sheetId: string, input: Waterf
   const { rowGeneration: _gen, ...rest } = input;
   const hash = runRequestHash('waterfall_dry', { sheet_id: sheetId, input: rest });
   const prior = key ? readRunLedger(c.userId, key, hash) : null;
-  if (prior && 'conflict' in prior) return bad('Idempotency key was already used with different arguments.');
+  if (prior && 'conflict' in prior) return bad(IDEMPOTENCY_CONFLICT_MESSAGE);
   let runId: string;
   if (prior) runId = prior.replay.run_id;
   else {

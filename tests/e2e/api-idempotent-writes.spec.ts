@@ -128,11 +128,19 @@ test('a read token lists saved key names and where they are used, never a value'
       ['created_at', 'name', 'setups', 'setups_count', 'updated_at', 'used_in', 'used_in_count'])
     expect((await v1.get(`/api/v1/saved-keys?name=${name.toUpperCase()}`)).status()).toBe(200)
     expect((await v1.get('/api/v1/saved-keys?name=no_such_key')).status()).toBe(404)
+    // Bounded and paged by name: keys_count is whole, ?after= starts past a name.
+    const all = JSON.parse(text)
+    expect(all.keys_count).toBeGreaterThanOrEqual(all.keys.length)
+    const after = await (await v1.get(`/api/v1/saved-keys?after=${name}`)).json()
+    expect(after.keys_count).toBe(all.keys_count)
+    expect(after.keys.every((k: { name: string }) => k.name > name)).toBe(true)
+    expect((await v1.get(`/api/v1/saved-keys?after=${name}&name=${name}`)).status()).toBe(400)
 
     const mcp = await mcpClient(readToken, 'e2e-saved-keys')
     const viaMcp = await call(mcp, 'list_saved_keys', { name })
     expect(JSON.stringify(viaMcp)).not.toContain(value)
     expect(viaMcp.keys).toEqual([listed])
+    expect((await call(mcp, 'list_saved_keys', { after: name })).keys).toEqual(after.keys)
     await mcp.close()
 
     // Using the key in a new request still needs 'secrets'.

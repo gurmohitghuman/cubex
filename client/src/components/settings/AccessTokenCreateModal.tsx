@@ -12,7 +12,8 @@ interface Props {
 }
 
 const SCOPE_OPTIONS: Array<{ scope: AccessTokenScope; label: string; hint: string }> = [
-  { scope: 'read', label: 'Read', hint: 'Read tables, sheets, and rows' },
+  { scope: 'read', label: 'Read',
+    hint: "Read tables, sheets, and rows; see saved API key names and where they're used, never their values" },
   { scope: 'write', label: 'Write', hint: 'Create and edit tables, columns, and rows' },
   { scope: 'run', label: 'Run', hint: 'Start and control AI and HTTP enrichment runs' },
   { scope: 'secrets', label: 'Use saved API keys', hint: 'Let runs started with this token reference your saved API keys (/key_name)' },

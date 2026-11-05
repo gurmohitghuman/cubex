@@ -4,16 +4,25 @@
 // refused. The ledger check, the rows and the ledger entry go in ONE immediate
 // transaction (lib/write-idempotency.ts), the plain services nested inside it.
 // Without a key the routes and tools call the plain services, unchanged.
+// The ledger is read before anything else, so a replay answers whatever
+// happened since: the sheet went to the trash or is busy, the rows were
+// deleted or sorted. It returns the first answer as it was. A call that
+// would write checks those after the ledger (sheet_not_found, busy).
 import { db } from '../lib/db';
 import { IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_ROW_BYTES } from '../lib/api-v1-constants';
+import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { readWriteLedger, writeRequestHash, writeWriteLedger } from '../lib/write-idempotency';
 import { appendAnswer, appendRows, patchAnswer, patchRowById } from './rows-write';
 import { batchUpdateRows, type BatchUpdate } from './rows-batch-update';
 import type { TxnFail } from './data-plane-shared';
-import type { AutoDedupeAnswer } from './auto-dedupe-answer';
+import {
+  withoutRestoreWords, withRestoreWords, type AutoDedupeAnswer, type StoredAutoDedupe,
+} from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
 
 export type Keyed<T> = { ok: T; replayed: boolean } | TxnFail;
+// sheet_not_found: the sheet doesn't exist or is in the trash (a replay still answers).
+export type KeyedOnSheet<T> = Keyed<T> | { fail: 'sheet_not_found' };
 
 // undefined: no key. Run starts check theirs the same way (run-start-token.ts).
 export function idempotencyKeyOf(raw: unknown): { key?: string } | { error: string } {
@@ -24,40 +33,52 @@ export function idempotencyKeyOf(raw: unknown): { key?: string } | { error: stri
   return { key: raw };
 }
 
+// The un-keyed routes' check (a sheet in the trash is not found).
+const liveSheet = (sheetId: string, userId: string): boolean =>
+  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
+
+// An answer's auto_dedupe part is kept without its restore words, and a replay
+// says them for the surface asking (services/auto-dedupe-answer.ts).
+const neutral = <T extends { auto_dedupe?: unknown }>(a: T): T =>
+  (a.auto_dedupe ? { ...a, auto_dedupe: withoutRestoreWords(a.auto_dedupe as AutoDedupeAnswer) } : a);
+const worded = <T extends { auto_dedupe?: unknown }>(a: T, surface: Surface): T =>
+  (a.auto_dedupe ? { ...a, auto_dedupe: withRestoreWords(a.auto_dedupe as StoredAutoDedupe, surface) } : a);
+
 // An append's answer, compact: its row ids in order, the first one's index
 // (they're consecutive), the positions auto-dedupe didn't keep, and its
 // auto_dedupe part (bounded: at most AUTO_DEDUPE_LIST_IDS of each list).
 // About 40 bytes a row: 1,000 rows stay well under 64 KB.
-interface StoredAppend { ids: string[]; first: number; not_kept: number[]; auto_dedupe?: AutoDedupeAnswer }
+interface StoredAppend { ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe }
 
-const appendReplay = (s: StoredAppend): Record<string, unknown> => {
+const appendReplay = (s: StoredAppend, surface: Surface): Record<string, unknown> => {
   const out = new Set(s.not_kept);
-  return {
+  return worded({
     rows: s.ids.map((id, i) => (out.has(i) ? { id, index: s.first + i, kept: false } : { id, index: s.first + i })),
     ...(s.auto_dedupe ? { auto_dedupe: s.auto_dedupe } : {}),
-  };
+  }, surface);
 };
 
 // kept: how many of the rows stayed (for the auto-run notice of a first call).
 export function appendRowsKeyed(
   sheetId: string, userId: string, parsedRows: Array<Record<string, string>>, key: string, surface: Surface,
-): Keyed<{ answer: Record<string, unknown>; kept: number }> {
+): KeyedOnSheet<{ answer: Record<string, unknown>; kept: number }> {
   const hash = writeRequestHash('rows_append', { sheet_id: sheetId, rows: parsedRows });
-  return db.transaction((): Keyed<{ answer: Record<string, unknown>; kept: number }> => {
+  return db.transaction((): KeyedOnSheet<{ answer: Record<string, unknown>; kept: number }> => {
     const prior = readWriteLedger<StoredAppend>(userId, key, hash);
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
-        : { ok: { answer: appendReplay(prior.replay), kept: 0 }, replayed: true };
+        : { ok: { answer: appendReplay(prior.replay, surface), kept: 0 }, replayed: true };
     }
+    if (!liveSheet(sheetId, userId)) return { fail: 'sheet_not_found' };
     const done = appendRows(sheetId, userId, parsedRows);
     if ('fail' in done) return done;
     const answer = appendAnswer(userId, done.ok, surface);
     const rows = done.ok.rows;
-    writeWriteLedger(userId, key, 'rows_append', hash, {
+    writeWriteLedger(userId, key, 'rows_append', hash, neutral({
       ids: rows.map(r => r.id), first: rows[0]?.index ?? 0,
       not_kept: rows.flatMap((r, i) => (done.ok.notKept.has(r.id) ? [i] : [])),
-      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as AutoDedupeAnswer } : {}),
-    } satisfies StoredAppend);
+      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as StoredAutoDedupe } : {}),
+    } satisfies StoredAppend));
     return { ok: { answer, kept: done.ok.kept }, replayed: false };
   }).immediate();
 }
@@ -77,7 +98,8 @@ function keptPatch(answer: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-// not_in_sheet: sheet_id was given and the row isn't in it.
+// not_in_sheet: sheet_id was given and the row isn't in it. Past the ledger,
+// the row is checked as the plain update checks it (patchRowById).
 export function patchRowKeyed(
   rowId: string, userId: string, cells: Record<string, string>, sheetId: string | undefined, key: string,
   surface: Surface,
@@ -86,7 +108,8 @@ export function patchRowKeyed(
   return db.transaction((): Keyed<Record<string, unknown>> | { fail: 'not_in_sheet' } => {
     const prior = readWriteLedger<StoredPatch>(userId, key, hash, s => sheetId === undefined || s.sheet_id === sheetId);
     if (prior) {
-      return 'conflict' in prior ? { fail: 'idempotency_conflict' } : { ok: prior.replay.answer, replayed: true };
+      return 'conflict' in prior ? { fail: 'idempotency_conflict' }
+        : { ok: worded(prior.replay.answer, surface), replayed: true };
     }
     const home = db.prepare('SELECT sheet_id FROM rows WHERE id = ? AND user_id = ?').pluck()
       .get(rowId, userId) as string | undefined;
@@ -95,28 +118,37 @@ export function patchRowKeyed(
     const done = patchRowById(rowId, userId, cells);
     if ('fail' in done) return done;
     const answer = patchAnswer(userId, done.ok, surface);
-    writeWriteLedger(userId, key, 'cells_update', hash, { sheet_id: home, answer: keptPatch(answer) });
+    writeWriteLedger(userId, key, 'cells_update', hash, { sheet_id: home, answer: neutral(keptPatch(answer)) });
     return { ok: answer, replayed: false };
   }).immediate();
 }
 
 type BatchAnswer = { updated: number; auto_dedupe?: AutoDedupeAnswer };
 
-// The updates' order changes nothing they write, so it doesn't change the call either.
+// The updates' order changes nothing they write, so it doesn't change the call
+// either. A replay answers while the sheet is busy (the /api/v1 and MCP busy
+// gates let a keyed call through); a call that would write is refused, as the
+// gates refuse one without a key.
 export function batchUpdateKeyed(
   sheetId: string, userId: string, updates: BatchUpdate[], key: string, surface: Surface,
-): Keyed<BatchAnswer> | { fail: 'duplicate_rows' } {
+): KeyedOnSheet<BatchAnswer> | { fail: 'duplicate_rows' } {
   if (new Set(updates.map(u => u.rowId)).size !== updates.length) return { fail: 'duplicate_rows' };
   const sorted = [...updates].sort((a, b) => (a.rowId < b.rowId ? -1 : a.rowId > b.rowId ? 1 : 0));
   const hash = writeRequestHash('cells_update_batch', {
     sheet_id: sheetId, updates: sorted.map(u => ({ row_id: u.rowId, cells: u.cells })),
   });
-  return db.transaction((): Keyed<BatchAnswer> | { fail: 'duplicate_rows' } => {
+  return db.transaction((): KeyedOnSheet<BatchAnswer> | { fail: 'duplicate_rows' } => {
     const prior = readWriteLedger<BatchAnswer>(userId, key, hash);
-    if (prior) return 'conflict' in prior ? { fail: 'idempotency_conflict' } : { ok: prior.replay, replayed: true };
+    if (prior) {
+      return 'conflict' in prior ? { fail: 'idempotency_conflict' }
+        : { ok: worded(prior.replay, surface), replayed: true };
+    }
+    if (!liveSheet(sheetId, userId)) return { fail: 'sheet_not_found' };
+    const busy = sheetBusyWith(sheetId);
+    if (busy) return { fail: 'busy', message: busyMessage(busy) };
     const done = batchUpdateRows(sheetId, userId, updates, surface);
     if ('fail' in done) return done;
-    writeWriteLedger(userId, key, 'cells_update_batch', hash, done.ok);
+    writeWriteLedger(userId, key, 'cells_update_batch', hash, neutral(done.ok));
     return { ok: done.ok, replayed: false };
   }).immediate();
 }

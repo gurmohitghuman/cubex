@@ -128,10 +128,16 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
   'control_run',
 ]);
 
-function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {
+// With an idempotency_key, update_cells reads the ledger first: a replay
+// writes nothing, and one that would write is refused there, in these words
+// (services/rows-write-keyed.ts; the one-row form's patchRowById checks too).
+const KEYED_RUNS_WHILE_SHEET_BUSY = new Set(['update_cells']);
+
+export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {
   if (RUNS_WHILE_SHEET_BUSY.has(name)) return handler;
   return async (...args: any[]): Promise<ToolResult> => {
     const input = (args[0] ?? {}) as Record<string, unknown>;
+    if (KEYED_RUNS_WHILE_SHEET_BUSY.has(name) && typeof input.idempotency_key === 'string') return handler(...args);
     for (const key of ['sheet_id', 'source_sheet_id', 'destination_sheet_id']) {
       const what = typeof input[key] === 'string' ? sheetBusyWith(input[key] as string) : null;
       if (what) return err(busyMessage(what));

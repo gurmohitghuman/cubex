@@ -17,6 +17,7 @@ import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, runRequestHash } from '../lib/run-idempotency';
+import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { parseRunRequest } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
 import { estimateAiRun } from './run-estimate';
@@ -79,7 +80,7 @@ export function ledgerReplay(c: TokenCaller, key: unknown, hash: string): TokenR
   const prior = readRunLedger(c.userId, key, hash);
   if (!prior) return null;
   return 'conflict' in prior
-    ? { fail: 'conflict', message: 'Idempotency key was already used with different arguments.' }
+    ? { fail: 'conflict', message: IDEMPOTENCY_CONFLICT_MESSAGE }
     : { ok: { ...prior.replay, replayed: true }, started: false };
 }
 

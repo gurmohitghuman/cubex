@@ -126,7 +126,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
 | `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts, your own APIs, free formulas and lookups in your other sheets, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
-| `list_saved_keys` | The saved API keys by name, never their values: when each was saved and last changed, and where it's used, each HTTP API, enrichment or waterfall column whose request names it (with its sheet, and whether auto-run is on) and each saved setup that names it. Sheets in the trash are left out. `name` narrows it to one key. Needs only the `read` scope. |
+| `list_saved_keys` | The saved API keys by name, never their values: when each was saved and last changed, and where it's used, each HTTP API, enrichment or waterfall column whose request names it (with its sheet, and whether auto-run is on) and each saved setup that names it. Up to 20 keys a call with 10 places and 10 setups each, and whole counts (`keys_count`, `used_in_count`, `setups_count`). When more keys are left, the answer has `next_after`: pass it as `after` for the next ones. `name` gives one key (any case) with up to 50 places and 50 setups. Sheets in the trash and setup versions are left out. Needs only the `read` scope. |
 | `list_run_webhooks` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). |
 | `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, sheets and tables. Look inside a batch and search its rows, then restore whole items or rows you pick. See [The trash](#the-trash). |
 | `get_sheet_history` | A sheet's change log: columns added, renamed and deleted, runs, auto-run, views, its webhook, rows deleted (auto-dedupe's included), restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
@@ -146,8 +146,11 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 - The same arguments means the same sheet and the same values as Cubex reads them: `1` and `"1"` are the same, so are `null` and `""`, and the order of a row's columns doesn't matter. Appended rows must come in the same order. For `update_cells`, the many-rows form's updates can come in any order, and the one-row form is the same call with or without its row's `sheet_id`.
 - Two calls with one key at the same moment write once: the other answers as a replay.
 - Keys belong to the account, not to a token or a sheet: the same key sent over REST or from another token replays too. Run starts and `transfer_rows` use the same keys, so use a new key for each separate call.
+- A replay returns the first answer as it was, whatever happened since: the ids of rows deleted since, each row's `index` from before a sort, a one-row update's cells as they were then. Read the rows to see them now.
+- A replay answers even after the sheet went to the trash, where an append or a many-row update with a new key gets `Sheet not found`, and while the sheet is busy sorting or importing, where an update with a new key is refused as busy, as one without a key is.
+- When auto-dedupe sent rows to the trash, a replay says how to restore them in the words of the surface asking: the MCP tool or the REST route.
 - A replay of a one-row update keeps the row's cells up to 16 KB; past that it leaves them out and says `data_left_out: true`. Read the row to see them.
-- Cubex keeps the newest 10,000 keys of row writes, each for 24 hours. Without a key, nothing changes.
+- Cubex keeps the newest 10,000 keys of row writes (run and transfer keys aside), each for 24 hours. Past that the key is free again, for a row write, a run start or `transfer_rows`. Without a key, nothing changes.
 
 ## Finding rows
 
@@ -664,7 +667,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 
 | Endpoint | Body or query |
 |---|---|
-| `GET /saved-keys` | Same as `list_saved_keys`: `{keys: [{name, created_at, updated_at, used_in, used_in_count, setups, setups_count}]}`, each place in `used_in` as `{sheet_id, sheet_name, table_id, table_name, column, kind, auto_run}`, at most 50 places and 50 setups a key (the counts are whole). `?name=` for one key (any case; `404` when there's none). Never a value. `read` scope. |
+| `GET /saved-keys` | Same as `list_saved_keys`: `{keys: [{name, created_at, updated_at, used_in, used_in_count, setups, setups_count}], keys_count, next_after?}`, each place in `used_in` as `{sheet_id, sheet_name, table_id, table_name, column, kind, auto_run}`. Up to 20 keys a call with 10 places and 10 setups each (the counts are whole); `?after=` with `next_after` for the next keys. `?name=` for one key (any case; `404` when there's none) with up to 50 places and 50 setups. Never a value. `read` scope. |
 
 ### Runs
 

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { WRITE_KINDS_SQL } from './write-idempotency';
+import { forgetExpiredWriteKey, WRITE_KINDS_SQL } from './write-idempotency';
 
 // Idempotency for run_ai_column / run_http_enrichment / run_enrichment, on the same
 // data_operation_ledger table transfer_rows uses (migration 040). A run returns
@@ -38,10 +38,12 @@ function canonicalHash(kind: string, config: Record<string, unknown>): string {
 }
 
 // Read: null (proceed), {replay} (return the stored run), or {conflict} (key
-// reused with different args).
+// reused with different args). A row write's key over a day old is free again:
+// deleted first, so the start records the key (lib/write-idempotency.ts).
 export function readRunLedger(
   userId: string, key: string, hash: string,
 ): { replay: RunLedgerResult } | { conflict: true } | null {
+  forgetExpiredWriteKey(userId, key);
   const row = db.prepare(
     'SELECT request_hash, result_json FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = ?',
   ).get(userId, key) as { request_hash: string; result_json: string } | undefined;

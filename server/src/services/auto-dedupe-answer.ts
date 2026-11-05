@@ -64,9 +64,29 @@ export function autoDedupeAnswer(
     trash_id: d.trashId, seqs: d.seqs.slice(0, AUTO_DEDUPE_LIST_IDS), seqs_count: d.seqs.length,
     ...(cut ? { seq_ranges: seqRanges(d.seqs) } : {}),
     restorable_until: at ? trashExpiry(at, getTrashDays(userId)) : undefined,
-    how_to_restore: howToRestore(d.trashId, d.seqs, surface),
+    how_to_restore: howToRestore(d.trashId, d.seqs.slice(0, AUTO_DEDUPE_LIST_IDS), d.seqs.length, surface),
   };
   return out;
+}
+
+// An answer kept for a replay (services/rows-write-keyed.ts) leaves out
+// how_to_restore, whose words name the MCP tool or the REST route; a replay
+// puts it back in the words of the surface asking (withRestoreWords).
+export type StoredAutoDedupe = Omit<AutoDedupeAnswer, 'trash'>
+  & { trash?: Omit<NonNullable<AutoDedupeAnswer['trash']>, 'how_to_restore'> };
+
+export function withoutRestoreWords(a: AutoDedupeAnswer): StoredAutoDedupe {
+  if (!a.trash) return a;
+  const { how_to_restore: _words, ...trash } = a.trash;
+  return { ...a, trash };
+}
+
+export function withRestoreWords(a: StoredAutoDedupe, surface: Surface): AutoDedupeAnswer {
+  const { trash, ...rest } = a;
+  if (!trash) return rest;
+  return {
+    ...rest, trash: { ...trash, how_to_restore: howToRestore(trash.trash_id, trash.seqs, trash.seqs_count, surface) },
+  };
 }
 
 // A CSV import's: how many rows went (its own, or older ones they replaced),
@@ -89,13 +109,15 @@ export function importDedupeAnswer(
   return out;
 }
 
-// Just these rows back: a restore takes at most TRASH_RESTORE_PICK_MAX seqs a call.
-function howToRestore(trashId: number, seqs: number[], surface: Surface): string {
-  const perCall = seqs.length > TRASH_RESTORE_PICK_MAX
+// Just these rows back: a restore takes at most TRASH_RESTORE_PICK_MAX seqs a
+// call. `listed`: the seqs the answer lists (all of them when count is at most
+// AUTO_DEDUPE_LIST_IDS), `count`: how many there are.
+function howToRestore(trashId: number, listed: number[], count: number, surface: Surface): string {
+  const perCall = count > TRASH_RESTORE_PICK_MAX
     ? `, ${TRASH_RESTORE_PICK_MAX.toLocaleString('en-US')} a call` : '';
-  const list = seqs.length > AUTO_DEDUPE_LIST_IDS
-    ? `the ${seqs.length.toLocaleString('en-US')} seqs in seq_ranges (each from its first to its last)${perCall}`
-    : JSON.stringify(seqs);
+  const list = count > AUTO_DEDUPE_LIST_IDS
+    ? `the ${count.toLocaleString('en-US')} seqs in seq_ranges (each from its first to its last)${perCall}`
+    : JSON.stringify(listed);
   return surface === 'mcp'
     ? `restore_from_trash with trash_id ${trashId} and seqs ${list} puts just these rows back.`
     : `POST /api/v1/trash/${trashId}/restore with {"seqs": ...} (${list}) puts just these rows back.`;
