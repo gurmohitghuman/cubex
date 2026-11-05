@@ -3,12 +3,13 @@
 // only, in a listed column of a live sheet that a request still fills (not a
 // name an AI or clean column took since); waterfall steps and both token forms
 // count; trashed sheets and tables, deleted columns and other users don't;
-// setups that name a key, in any case, are listed. Bounded: SAVED_KEYS_LISTED
-// keys a call (paged by next_after), SAVED_KEY_USES_BRIEF places each, or
-// SAVED_KEY_USES_LISTED for one key by name, every count whole. And the answer
-// can't hold any byte of a saved value, nor its hash, its ciphertext or any
-// field but the listed ones.
-// Over 200 lines: one fixture and every rule of the listing, read top to bottom.
+// setups that name a key, in any case, are listed. Bounded: SAVED_KEY_USES_BRIEF
+// places each, or SAVED_KEY_USES_LISTED for one key by name, every count whole
+// (paging through the keys: saved-key-paging.test.ts). And the answer can't
+// hold any byte of a saved value, nor its hash, its ciphertext or any field but
+// the listed ones.
+// Over 200 lines: every rule of what's listed reads the one fixture built above
+// them (its sheets, runs, trash and setups), so they stay in one file.
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { v4 as uuid } from 'uuid'
@@ -21,7 +22,7 @@ const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
 const { listSavedKeys } = usesMod as typeof import('../../server/src/services/saved-key-uses')
-const { SAVED_KEY_USES_LISTED, SAVED_KEY_USES_BRIEF, SAVED_KEYS_LISTED } =
+const { SAVED_KEY_USES_LISTED, SAVED_KEY_USES_BRIEF } =
   constMod as typeof import('../../server/src/lib/api-v1-constants')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -174,25 +175,6 @@ ok(`${SAVED_KEY_USES_BRIEF} places and setups a key, ${SAVED_KEY_USES_LISTED} by
     assert.equal(each.used_in_count, SAVED_KEY_USES_LISTED + 7)
     assert.equal(each.setups_count, SAVED_KEY_USES_LISTED + 7)
   }
-})
-
-ok(`at most ${SAVED_KEYS_LISTED} keys a call, keys_count whole; next_after pages on to the rest`, () => {
-  const many = uuid()
-  db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(many, 'x')
-  const names = Array.from({ length: SAVED_KEYS_LISTED + 3 }, (_, i) => `key_${String(i).padStart(2, '0')}`)
-  for (const name of names) {
-    assert.ok('ok' in createSavedKey(many, { name, key_type: 'bearer', key_value: ASCII_VALUE, description: null }))
-  }
-  const first = listSavedKeys(many)
-  assert.ok('ok' in first)
-  assert.deepEqual(first.ok.keys.map(k => k.name), names.slice(0, SAVED_KEYS_LISTED))
-  assert.equal(first.ok.keys_count, names.length)
-  assert.equal(first.ok.next_after, names[SAVED_KEYS_LISTED - 1])
-  const rest = listSavedKeys(many, { after: first.ok.next_after })
-  assert.ok('ok' in rest)
-  assert.deepEqual(rest.ok.keys.map(k => k.name), names.slice(SAVED_KEYS_LISTED))
-  assert.equal(rest.ok.keys_count, names.length)
-  assert.equal(rest.ok.next_after, undefined)
 })
 
 ok('the answer holds no byte of a saved value, nor its hash, its ciphertext or any other field', () => {

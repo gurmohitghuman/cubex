@@ -148,7 +148,7 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 - Keys belong to the account, not to a token or a sheet: the same key sent over REST or from another token replays too. Run starts and `transfer_rows` use the same keys, so use a new key for each separate call.
 - A replay returns the first answer as it was, whatever happened since: the ids of rows deleted since, each row's `index` from before a sort, a one-row update's cells as they were then. Read the rows to see them now.
 - A replay answers even after the sheet went to the trash, where an append or a many-row update with a new key gets `Sheet not found`, and while the sheet is busy sorting or importing, where an update with a new key is refused as busy, as one without a key is.
-- When auto-dedupe sent rows to the trash, a replay says how to restore them in the words of the surface asking: the MCP tool or the REST route.
+- When auto-dedupe sent rows to the trash, a row write's replay says how to restore them in the words of the surface asking: the MCP tool or the REST route. A `transfer_rows` replay keeps the first call's words.
 - A replay of a one-row update keeps the row's cells up to 16 KB; past that it leaves them out and says `data_left_out: true`. Read the row to see them.
 - Cubex keeps the newest 10,000 keys of row writes (run and transfer keys aside), each for 24 hours. Past that the key is free again, for a row write, a run start or `transfer_rows`. Without a key, nothing changes.
 

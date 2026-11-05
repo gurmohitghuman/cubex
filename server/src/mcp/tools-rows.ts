@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
@@ -26,9 +27,6 @@ const idempotencyKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS).opt
   + '(replayed: true) and writes nothing; with other arguments it is refused.');
 const RETRY_WORDS = 'idempotency_key makes a retry safe: the same key and arguments within 24 hours answer as '
   + 'the first call did, with replayed: true, and write nothing; the same key with other arguments is refused.';
-
-const ownsSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -52,7 +50,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     async ({ sheet_id, rows, idempotency_key }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
-      if (!idempotency_key && !ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (!idempotency_key && !verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
       const parsedRows: Array<Record<string, string>> = [];
       for (const entry of rows) {
         const p = parseCellMap(entry, API_V1_MAX_PATCH_CELLS);
@@ -109,7 +107,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       if (batch) {
         if (!sheet_id) return err('The many-rows form needs sheet_id with updates.');
-        if (!idempotency_key && !ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+        if (!idempotency_key && !verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
         const parsed = [];
         for (const update of updates) {
           const p = parseCellMap(update.data, API_V1_MAX_PATCH_CELLS);
@@ -167,7 +165,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     async ({ sheet_id, row_ids }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
-      if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
       const result = deleteRowsByIds(sheet_id, ctx.userId, row_ids);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
       return ok({

@@ -23,7 +23,8 @@ export function registerSavedKeyTools(server: McpServer, ctx: McpAuthCtx) {
       + 'deleted. Read-only.',
     inputSchema: {
       name: z.string().min(1).max(200).optional().describe('Just this key (any case), with more of its places'),
-      after: z.string().min(1).max(200).optional().describe('The keys after this name: the next_after of a call'),
+      // Any length: next_after is a saved key's name, and a saved name has no length limit.
+      after: z.string().min(1).optional().describe('The keys after this name: the next_after of a call'),
     },
   }, async ({ name, after }) => {
     const denied = missingScope(ctx, 'read');

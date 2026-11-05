@@ -1,7 +1,7 @@
 // /v1 row mutations — thin HTTP wrappers over services/rows-write.ts (shared
 // with the MCP tools). Semantics live there.
 import express from 'express';
-import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { parseCellMap, failResponse, rawIdempotencyKey } from './api-v1-shared';
 import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
@@ -16,10 +16,6 @@ import {
 } from '../services/rows-write-keyed';
 
 const router = express.Router();
-
-function ownsSheet(sheetId: string, userId: string): boolean {
-  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
-}
 
 // An idempotency key in the body or the Idempotency-Key header, as run starts
 // take theirs (services/rows-write-keyed.ts): a retry replays the first answer.
@@ -36,7 +32,7 @@ router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequ
     const sheetId = req.params.id;
     const k = keyOf(req);
     if ('error' in k) return res.status(400).json({ error: k.error });
-    if (!k.key && !ownsSheet(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
+    if (!k.key && !verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
 
     const rawRows = (req.body as { rows?: unknown }).rows;
     if (!Array.isArray(rawRows) || rawRows.length === 0) {
@@ -111,7 +107,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
     const sheetId = req.params.id;
     const k = keyOf(req);
     if ('error' in k) return res.status(400).json({ error: k.error });
-    if (!k.key && !ownsSheet(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
+    if (!k.key && !verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
     const updates = (req.body as { updates?: unknown }).updates;
     if (!Array.isArray(updates) || updates.length < 1 || updates.length > API_V1_MAX_BATCH_UPDATES) {
       return res.status(400).json({ error: `updates must contain 1-${API_V1_MAX_BATCH_UPDATES} entries` });
@@ -148,7 +144,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
 router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    if (!verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
     const rawIds = (req.body as { row_ids?: unknown }).row_ids;
     if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.some(x => typeof x !== 'string')) {
       return res.status(400).json({ error: 'row_ids must be a non-empty array of row id strings' });

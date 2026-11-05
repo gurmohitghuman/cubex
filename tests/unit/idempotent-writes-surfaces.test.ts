@@ -2,9 +2,10 @@
 // all three forms replay after the sheet went to the trash, where a new key is
 // "Sheet not found"; a many-row update's replay answers while the sheet is busy,
 // through the /api/v1 gate (routes/api-v1-shared.ts) and the MCP one
-// (mcp/tool-helpers.ts), while a call that would write, or one without a key,
-// is refused as busy; and auto-dedupe's restore words come back in the words of
-// the surface asking, never stored.
+// (mcp/tool-helpers.ts), while a call that would write (a keyed one-row update
+// too, which the MCP gate lets through), or one without a key, is refused as
+// busy; and auto-dedupe's restore words come back in the words of the surface
+// asking, never stored.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -106,12 +107,18 @@ await ok('a busy sheet: a many-row update\'s replay answers on both surfaces; a 
     assert.deepEqual(batchUpdateKeyed(s.sheet, uid, ups, 'bz-1', 'rest'), { ...first, replayed: true })
     assert.deepEqual(batchUpdateKeyed(s.sheet, uid, ups, 'bz-2', 'rest'),
       { fail: 'busy', message: busyMessage('sorting') })
+    // The gate lets a keyed one-row update through too: patchRowById refuses it, and no key is kept.
+    assert.deepEqual(patchRowKeyed(s.rows[0], uid, { Name: 'z' }, s.sheet, 'bz-3', 'mcp'),
+      { fail: 'busy', message: busyMessage('sorting') })
+    assert.equal(stored('bz-3'), undefined)
     let ran = 0
     const tool = refuseWhileSheetBusy('update_cells', async () => { ran++; return { content: [] } })
     await tool({ sheet_id: s.sheet, updates: [], idempotency_key: 'bz-1' })
     assert.equal(ran, 1, 'a keyed update_cells reaches the tool')
+    await tool({ sheet_id: s.sheet, row_id: s.rows[0], data: { Name: 'z' }, idempotency_key: 'bz-3' })
+    assert.equal(ran, 2, 'a keyed one-row update_cells reaches the tool')
     const refused = await tool({ sheet_id: s.sheet, updates: [] })
-    assert.equal(ran, 1)
+    assert.equal(ran, 2)
     assert.match(JSON.stringify(refused), /This sheet is busy sorting/)
   })
   assert.equal(db.prepare('SELECT json_extract(data, \'$.Name\') FROM rows WHERE id = ?').pluck().get(s.rows[0]), 'q')

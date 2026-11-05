@@ -9,6 +9,7 @@
 // deleted or sorted. It returns the first answer as it was. A call that
 // would write checks those after the ledger (sheet_not_found, busy).
 import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_ROW_BYTES } from '../lib/api-v1-constants';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { readWriteLedger, writeRequestHash, writeWriteLedger } from '../lib/write-idempotency';
@@ -32,10 +33,6 @@ export function idempotencyKeyOf(raw: unknown): { key?: string } | { error: stri
   }
   return { key: raw };
 }
-
-// The un-keyed routes' check (a sheet in the trash is not found).
-const liveSheet = (sheetId: string, userId: string): boolean =>
-  !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 // An answer's auto_dedupe part is kept without its restore words, and a replay
 // says them for the surface asking (services/auto-dedupe-answer.ts).
@@ -69,7 +66,7 @@ export function appendRowsKeyed(
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
         : { ok: { answer: appendReplay(prior.replay, surface), kept: 0 }, replayed: true };
     }
-    if (!liveSheet(sheetId, userId)) return { fail: 'sheet_not_found' };
+    if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
     const done = appendRows(sheetId, userId, parsedRows);
     if ('fail' in done) return done;
     const answer = appendAnswer(userId, done.ok, surface);
@@ -143,7 +140,7 @@ export function batchUpdateKeyed(
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
         : { ok: worded(prior.replay, surface), replayed: true };
     }
-    if (!liveSheet(sheetId, userId)) return { fail: 'sheet_not_found' };
+    if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
     const busy = sheetBusyWith(sheetId);
     if (busy) return { fail: 'busy', message: busyMessage(busy) };
     const done = batchUpdateRows(sheetId, userId, updates, surface);
