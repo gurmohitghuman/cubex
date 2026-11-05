@@ -30,10 +30,12 @@ router.put('/results/:id', (req: AuthRequest, res) => {
     // was a missed write path). Truncate (don't reject) like the run
     // worker; store the clamped value so commit reads the capped string.
     const clampedValue = clampCellChars(value, CELL_MAX_ENRICHMENT);
+    // A result of a run whose sheet is in the trash is as gone as its sheet (as the commit below).
     const result = db.prepare(`
       UPDATE ai_results SET output_value = ?, status = ?, updated_at = datetime('now')
-      WHERE id = ? AND user_id = ?
-    `).run(clampedValue, status, id, req.userId!);
+      WHERE id = ? AND user_id = ? AND run_id IN (SELECT r.id FROM ai_runs r JOIN sheets s ON s.id = r.sheet_id
+        WHERE r.user_id = ? AND s.trash_id IS NULL)
+    `).run(clampedValue, status, id, req.userId!, req.userId!);
     if (result.changes === 0) return res.status(404).json({ error: 'AI result not found' });
     res.json({ message: 'Result updated successfully' });
   } catch (error) {

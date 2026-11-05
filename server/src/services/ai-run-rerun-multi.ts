@@ -10,7 +10,7 @@ import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
-import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
+import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
@@ -43,6 +43,8 @@ export async function rerunAiMultiColumn(
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
+  // A rerun by run id (run-rerun-by-id.ts) comes here with no sheet checked.
+  if (!verifySheetOwnership(p.sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
 
   const latest = db.prepare(`
     SELECT * FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND column_name = ?

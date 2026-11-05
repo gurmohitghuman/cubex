@@ -15,7 +15,7 @@ import {
   CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
-import { getSheetColumns } from '../lib/sql-helpers';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { yieldToRequests } from '../lib/slices';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
@@ -31,11 +31,12 @@ interface Step {
   kind: DerivedKind; entry: AutorunEntry; rec: DerivedRecord; pass: DerivedPass; inputs: string[]; page: number;
 }
 
-// Inside each slice's transaction: the sheet is free and the column is set up
-// as when the tick began. Between slices a sort, an import, a rename, a delete
-// or an edit of the column can start; this tick's slices then stop.
+// Inside each slice's transaction: the sheet is free and out of the trash, and
+// the column is set up as when the tick began. Between slices a sort, an import,
+// a rename, a delete, an edit of the column or the sheet's deletion can start;
+// this tick's slices then stop.
 function stillCurrent(s: Step): boolean {
-  if (sheetBusyWith(s.entry.sheet_id)) return false;
+  if (sheetBusyWith(s.entry.sheet_id) || !verifySheetOwnership(s.entry.sheet_id, s.entry.user_id)) return false;
   const now = s.kind.forColumn(s.entry.sheet_id, s.entry.user_id, s.rec.column_name);
   const e = loadEntry(s.entry.id);
   return !!now && !!e && now.id === s.rec.id && now.fill_status === 'done' && s.kind.sameSetup(now, s.rec)

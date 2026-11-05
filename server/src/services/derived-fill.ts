@@ -9,8 +9,10 @@
 // stops the pass (a formula too slow). A pass that has to wait (a lookup whose
 // other sheet is sorting) ends the attempt with the column still filling and
 // the cursor kept: the sheet is free meanwhile, and the fill takes it again
-// once the pass can go on. Every read shows the column as processing until
-// the fill is done (lib/field-fill-columns.ts).
+// once the pass can go on. The sheet can go to the trash meanwhile: the fill
+// then writes nothing and waits for it to come back (backFromTrash). Every
+// read shows the column as processing until the fill is done
+// (lib/field-fill-columns.ts).
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS, LOOKUP_WAIT_POLL_MS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
@@ -19,10 +21,19 @@ import { yieldToRequests } from '../lib/slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import { redactSecrets } from '../lib/redact';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import type { DerivedKind, DerivedRecord, DerivedWait } from './derived-kind';
 import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
 
 const FILL_ATTEMPTS = 5;
+
+// A fill whose sheet is in the trash (it went there while a lookup waited with
+// the sheet free, or before a restart): it goes on once the sheet is back, and
+// ends with it when the trash deletes it (its record goes with the sheet).
+const backFromTrash = (job: DerivedRecord): DerivedWait => ({
+  note: 'Waits for its sheet to come back from the trash.',
+  ready: () => !!verifySheetOwnership(job.sheet_id, job.user_id),
+});
 
 // Returns what the pass waits for when it has to stop before the end, else null.
 async function work<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): Promise<DerivedWait | null> {
@@ -44,9 +55,10 @@ async function work<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): Prom
       await pass.prepare();
       const waitBefore = pass.waiting?.();
       if (waitBefore) return waitBefore;
-      let stopped = false;
+      let stopped = false, trashed = false;
       let next = at;
       db.transaction(() => {
+        if (!verifySheetOwnership(job.sheet_id, job.user_id)) { trashed = true; return; }
         // Edited, or started again meanwhile (an agent's second call): this fill is over.
         const now = kind.load(job.id);
         if (!now || now.fill_status !== 'filling' || !kind.sameSetup(now, job)) {
@@ -69,6 +81,7 @@ async function work<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): Prom
         if (next > at) kind.advance(job, rowIds[next - 1], counts);
         page = pageAfter(page, rows.length, counts.done);
       }).immediate();
+      if (trashed) return backFromTrash(job);
       if (stopped) return null;
       const failure = pass.failure();
       if (failure) {

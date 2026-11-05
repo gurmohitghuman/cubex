@@ -19,13 +19,22 @@ import type { RunFail } from './run-shared';
 
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
 
+// Whether the sheet is out of the trash (its table too: deleting a table marks
+// its sheets). The caller checked it's the user's before waiting.
+const sheetLive = (sheetId: string): boolean =>
+  !!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND trash_id IS NULL').get(sheetId);
+
 // Runs a start as the sheet's one heavy operation, or fails with the reason
-// the sheet is busy.
+// the sheet is busy. A start checks its sheet, then may wait (the model list,
+// a search plan, treg's prices, auto-run's pick) before it gets here: a sheet
+// deleted meanwhile takes no run. Once held, it can't be deleted
+// (trash-sheets.ts refuses a busy sheet).
 export async function asRunStart<T extends object>(sheetId: string, work: () => Promise<T>): Promise<T | RunFail> {
-  const outcome = await withSheetBusy(sheetId, 'starting a run', work);
+  const outcome = await withSheetBusy(sheetId, 'starting a run', async (): Promise<T | RunFail> =>
+    (sheetLive(sheetId) ? work() : { fail: 'not_found', message: 'Sheet not found' }));
   return 'busy' in outcome && typeof outcome.busy === 'string'
     ? { fail: 'conflict', message: outcome.busy }
-    : outcome as T;
+    : outcome as T | RunFail;
 }
 
 // How many rows the sheet has and its last row_index, from the index alone.

@@ -33,6 +33,9 @@ export function sheetHasActiveRun(sheetId: string, userId: string): boolean {
 // transactions are sync, so flows set a flag and map it to a response after the
 // txn returns (throwing would roll back AND lose the shape).
 export type TxnFail =
+  // A row addressed by its id whose sheet (or table) is in the trash: answered
+  // as the sheet-addressed forms answer that sheet (patchRowById).
+  | { fail: 'sheet_not_found' }
   | { fail: 'cap'; remaining: number }
   | { fail: 'unknown_columns'; columns: string[] }
   | { fail: 'locked'; columns: string[] }
@@ -101,6 +104,8 @@ export function parseCellMap(
 // errors so agents see identical wording on both surfaces.
 export function txnFailMessage(f: TxnFail, maxRows: number): string {
   switch (f.fail) {
+    case 'sheet_not_found':
+      return 'Sheet not found';
     case 'cap':
       return `Row limit reached (${maxRows} per sheet). You can add at most ${f.remaining} more.`;
     case 'unknown_columns':
