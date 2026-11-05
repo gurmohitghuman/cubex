@@ -5,6 +5,8 @@ import http from 'node:http'
 // under .cubex-e2e.invalid (tests/e2e/net-shim.cjs, loaded by the harness).
 // Each path answers from a script of replies (the last one repeats) and every
 // request is kept: method, path, query, headers, raw body and when it came.
+// hold() keeps every answer back until its release is called, so a spec can
+// keep an HTTP API run's requests in flight for as long as it needs.
 export interface Hit {
   method: string; path: string; query: URLSearchParams; headers: http.IncomingHttpHeaders; body: string; at: number
 }
@@ -15,6 +17,7 @@ export class Receiver {
   readonly hits: Hit[] = []
   private replies = new Map<string, Reply[]>()
   private server: http.Server | null = null
+  private gate: { held: Promise<void>; release: () => void } | null = null
 
   // The URL Cubex uses; `name` is any label (all go to this receiver).
   url(path: string, name = 'api'): string {
@@ -22,6 +25,15 @@ export class Receiver {
   }
 
   on(path: string, ...replies: Reply[]): void { this.replies.set(path, replies) }
+
+  hold(): () => void {
+    this.gate?.release()
+    let resolve!: () => void
+    const held = new Promise<void>(r => { resolve = r })
+    const gate = { held, release: () => { if (this.gate === gate) this.gate = null; resolve() } }
+    this.gate = gate
+    return gate.release
+  }
 
   hitsOn(path: string): Hit[] { return this.hits.filter(h => h.path === path) }
 
@@ -46,8 +58,11 @@ export class Receiver {
         })
         const script = this.replies.get(u.pathname)
         const reply = script ? (script.length > 1 ? script.shift()! : script[0]) : { status: 404, body: '{}' }
-        res.writeHead(reply.status, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) })
-        res.end(reply.body ?? '{}')
+        void (this.gate?.held ?? Promise.resolve()).then(() => {
+          if (res.destroyed) return
+          res.writeHead(reply.status, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) })
+          res.end(reply.body ?? '{}')
+        })
       })
     })
     return new Promise((resolve, reject) => {
@@ -57,6 +72,7 @@ export class Receiver {
   }
 
   stop(): Promise<void> {
+    this.gate?.release()
     return new Promise(resolve => (this.server ? this.server.close(() => resolve()) : resolve()))
   }
 }

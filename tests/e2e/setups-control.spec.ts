@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { authedApi, getSheet, makeAccessToken } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { Receiver } from './helpers-receiver'
 import { sheetWith, waitSetup, column } from './helpers-setups'
 
 // A setup being used: paused right after its start (the next step waits), then
@@ -8,6 +9,12 @@ import { sheetWith, waitSetup, column } from './helpers-setups'
 // (it carries on from there); resuming one whose later step reads a saved key
 // needs 'secrets'; an AI step starts on the model it was saved with, and used
 // again it runs only on rows its column hasn't done (failed rows aren't empty).
+// The setup paused and stopped starts with an HTTP API call to the spec's
+// receiver, which holds its answers meanwhile: that step is still running when
+// the pause or the stop lands, so the runner can't have started the next one.
+const rx = new Receiver()
+test.beforeAll(() => rx.start())
+test.afterAll(() => rx.stop())
 
 test('a setup run pauses between steps, resumes, stops; an AI step starts on its model', async () => {
   test.setTimeout(180_000)
@@ -16,12 +23,23 @@ test('a setup run pauses between steps, resumes, stops; an AI step starts on its
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'setups-control'))
   const a = await sheetWith(api, null, [{ Website: 'acme.com' }])
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
-  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Domain}} + "!"' })
+  // Each site's short name, from the receiver (a POST: no answer is reused from the cache).
+  for (const site of ['acme', 'one', 'two', 'three']) {
+    rx.on(`/short/${site}.com`, { status: 200, body: JSON.stringify({ short: site }) })
+  }
+  const lookup = await call(client, 'run_http_enrichment', { sheet_id: a.sheetId, url: rx.url('/short/{{Website}}'),
+    method: 'POST', master_column_name: 'Lookup', response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })
+  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: lookup.run_id }))
+    .status, { timeout: 30_000 }).toBe('completed')
+  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Short}} + "!"' })
   const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
   const b = await sheetWith(api, a.tableId, [{ Website: 'one.com' }, { Website: 'two.com' }, { Website: 'three.com' }])
+  // The AI step further down reads Domain.
+  await call(client, 'formula_column', { sheet_id: b.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-  // Paused right after its start: the second step waits, whatever the first does.
+  // Paused right after its start, its first step held: the second step waits.
+  let release = rx.hold()
   const run = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false }))
     .setup_run
   expect((await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'pause' })).status).toBe('paused')
@@ -30,18 +48,21 @@ test('a setup run pauses between steps, resumes, stops; an AI step starts on its
   expect(paused.status).toBe('paused')
   expect(paused.steps.find((s: any) => s.column === 'Label').state).toBe('waiting')
   expect((await getSheet(api, b.sheetId)).data.columns).not.toContain('Label')
+  release()
   await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'resume' })
   expect((await waitSetup(client, run.id)).status).toBe('done')
   expect(await column(api, b.sheetId, 'Label')).toEqual(['one!', 'two!', 'three!'])
 
-  // Stopped right after its start: no later step starts.
-  const names2 = { Domain: 'Domain 2', Label: 'Label 2' }
+  // Stopped right after its start, its first step held: no later step starts.
+  const names2 = { Lookup: 'Lookup 2', Short: 'Short 2', Label: 'Label 2' }
+  release = rx.hold()
   const again = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false,
     names: names2 })).setup_run
   expect((await call(client, 'control_setup_run', { setup_run_id: again.id, action: 'cancel' })).status)
     .toBe('cancelled')
   await sleep(2000)
   expect((await getSheet(api, b.sheetId)).data.columns).not.toContain('Label 2')
+  release()
   // Used again with the same names, it carries on from there.
   const carried = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false,
     names: names2 })).setup_run
