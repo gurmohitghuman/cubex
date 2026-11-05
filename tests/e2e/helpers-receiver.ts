@@ -6,7 +6,8 @@ import http from 'node:http'
 // Each path answers from a script of replies (the last one repeats) and every
 // request is kept: method, path, query, headers, raw body and when it came.
 // hold() keeps every answer back until its release is called, so a spec can
-// keep an HTTP API run's requests in flight for as long as it needs.
+// keep an HTTP API run's requests in flight for as long as it needs; settled()
+// waits until each request so far was answered or dropped by Cubex.
 export interface Hit {
   method: string; path: string; query: URLSearchParams; headers: http.IncomingHttpHeaders; body: string; at: number
 }
@@ -18,6 +19,7 @@ export class Receiver {
   private replies = new Map<string, Reply[]>()
   private server: http.Server | null = null
   private gate: { held: Promise<void>; release: () => void } | null = null
+  private open = 0
 
   // The URL Cubex uses; `name` is any label (all go to this receiver).
   url(path: string, name = 'api'): string {
@@ -36,6 +38,14 @@ export class Receiver {
   }
 
   hitsOn(path: string): Hit[] { return this.hits.filter(h => h.path === path) }
+
+  async settled(timeoutMs = 20_000): Promise<void> {
+    const until = Date.now() + timeoutMs
+    while (this.open > 0) {
+      if (Date.now() > until) throw new Error(`${this.open} requests still open`)
+      await new Promise(r => setTimeout(r, 50))
+    }
+  }
 
   async waitFor(path: string, count: number, timeoutMs = 20_000): Promise<Hit[]> {
     const until = Date.now() + timeoutMs
@@ -58,6 +68,8 @@ export class Receiver {
         })
         const script = this.replies.get(u.pathname)
         const reply = script ? (script.length > 1 ? script.shift()! : script[0]) : { status: 404, body: '{}' }
+        this.open++
+        res.once('close', () => { this.open-- })
         void (this.gate?.held ?? Promise.resolve()).then(() => {
           if (res.destroyed) return
           res.writeHead(reply.status, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) })

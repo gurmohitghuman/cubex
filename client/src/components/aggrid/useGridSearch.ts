@@ -76,13 +76,15 @@ export function useGridSearch(args: {
   }, [registerSearch, context, reveal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Asked when scrolling stops at the window's top. Not while a cell search
-  // jumped to waits to be shown: a scroll that ended just before the jump is
-  // read against the new window's top, and the rows added above would then
-  // push the match out of view.
+  // jumped to is about to be shown (its row is among the rows held now, so
+  // the grid shows it once it takes them): a scroll that ended just before the
+  // jump is read against the new window's top, and the rows added above would
+  // then push the match out of view. A jump whose window failed to load or
+  // missed its row holds nothing back.
   const loadEarlier = useCallback(() => {
-    const api = liveApi(), rows = dataRef.current
+    const api = liveApi(), rows = dataRef.current, p = pending.current
     if (!api || !onLoadEarlier || context.windowStart <= 0 || rows.length === 0) return
-    if (pending.current && pending.current.until >= Date.now()) return
+    if (p && p.until >= Date.now() && rows.some(r => r.rowIndex === p.rowIndex)) return
     const top = api.getDisplayedRowAtIndex(api.getFirstDisplayedRowIndex())
     if (typeof top?.data?.__rowIndex === 'number') {
       anchor.current = { rowIndex: top.data.__rowIndex, firstHeld: rows[0].rowIndex, until: Date.now() + 5000 }
