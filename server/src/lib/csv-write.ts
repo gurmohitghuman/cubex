@@ -17,9 +17,13 @@ export interface SheetExportPlan { sheetName: string; columns: string[]; filter?
 
 const EXPORT_PAGE_ROWS = 5_000;
 
-// One row as a CSV line, escaped the same way in every export.
+// One row as a CSV line, escaped the same way in every export. A row without a
+// column's key has an empty cell there, also for a column named like an
+// object's own member ("constructor"), which must not read the inherited one.
+const cellOf = (data: Record<string, string>, col: string): string =>
+  (Object.prototype.hasOwnProperty.call(data, col) ? data[col] ?? '' : '');
 export const csvLine = (columns: string[], data: Record<string, string>): string =>
-  columns.map(col => escapeCsvCell(data[col] ?? '')).join(',');
+  columns.map(col => escapeCsvCell(cellOf(data, col))).join(',');
 
 // The sheet's row data in row order, EXPORT_PAGE_ROWS rows at a time,
 // yielding to other requests between pages, until `apply` returns false. With
