@@ -17,6 +17,18 @@ export const GROUP_VALUE_MAX_CHARS = 200;
 // agent's context), then says truncated.
 export const MCP_MAX_GROUP_CHARS = 40_000;
 
+// `updated_since` (services/rows-since.ts): as_of is this long before the read
+// started. A write's updated_at is the time its statement ran, and the write
+// shows only once its transaction commits, up to a few seconds later (a slice
+// of a big job, a 2 s transfer). A read in between misses it; the next read
+// from as_of still gets it. Rows changed in this window come back again.
+export const ROWS_SINCE_AS_OF_SLACK_SECONDS = 10;
+// `row_ids` with include_status (services/run-cell-errors.ts): index probes
+// spent finding the full error text in a column's runs, newest run first. An
+// auto-run column holds tens of thousands of runs; rows not reached in time
+// keep the words their cell holds.
+export const RUN_ERROR_PROBES = 50_000;
+
 // A nested path inside a JSON cell (columns: [{column, path}]): its keys, and
 // the characters in one key or in an output name.
 export const MAX_PATH_DEPTH = 5;

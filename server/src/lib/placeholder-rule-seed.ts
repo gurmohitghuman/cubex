@@ -26,11 +26,11 @@ export async function seedPlaceholdersByRule(args: {
 }): Promise<{ notMet: number } | null> {
   const { run: runRef, sheetId, userId, columns, rule, live } = args;
   const paths = columns.map(jsonPath);
-  const run = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const run = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')}),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const others = columns.filter(c => c !== rule.markColumn).map(jsonPath);
-  const keepOut = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?${others.map(() => ", ?, ''").join('')})
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const keepOut = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?${others.map(() => ", ?, ''").join('')}),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const picks = rule.columns.map(() => ', json_extract(data, ?)').join('');
   const read = db.prepare(`SELECT rowid, row_index, json_extract(data, ?)${picks}
     FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`).raw();

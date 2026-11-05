@@ -1,0 +1,60 @@
+// A row query's rows as it asked for them (read_rows and REST rows/query:
+// pages, filtered pages, reads by id and by time): cells parsed, a column still
+// filling reads "⏳ Processing...", the columns named or picked, and with
+// include_status run columns as {status, value, error}.
+import { db } from '../lib/db';
+import { parseRowData } from '../lib/sql-helpers';
+import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
+import { rowWithStatus } from '../lib/row-filter/status-rows';
+import { pickName, pickValue } from '../lib/row-select/paths';
+import type { RunColumnMap } from '../lib/row-filter/sql';
+import { staleByRow } from './run-status-rows';
+import type { RowQuery } from './row-query-input';
+
+export type PageRow = { id: string; row_index: number; data: string };
+export type ShapedRow = { id: string; index: number; data: Record<string, unknown> };
+// Run column → the column holding its run's state (services/row-filter.ts sheetRunColumns).
+type RunColumns = RunColumnMap;
+
+export type Versions = { data_version: number; row_generation: number };
+export const versionsOf = (sheetId: string, userId: string) => db.prepare(
+  'SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?',
+).get(sheetId, userId) as Versions | undefined;
+
+// Own-property cell read: row data is plain JSON.parse output, so a sparse
+// row's missing "constructor"/"toString" cell would otherwise resolve to the
+// inherited prototype member (non-empty to filters, dropped by stringify).
+export const cellOf = (data: Record<string, string>, column: string): string =>
+  Object.prototype.hasOwnProperty.call(data, column) ? data[column] ?? '' : '';
+
+// runs: the sheet's run columns when include_status asked, else null.
+// errors: row id → state column → the full error text its run recorded
+// (services/run-cell-errors.ts), for the cells that read as failed.
+export function shapeRows(
+  sheetId: string, userId: string, page: PageRow[], q: RowQuery, runs: RunColumns | null,
+  errors?: ReadonlyMap<string, ReadonlyMap<string, string>>,
+): ShapedRow[] {
+  const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
+  overlayFilling(rows, fillingColumns(sheetId, userId));
+  const stale = runs ? staleByRow(sheetId, userId, rows.map(r => r.id), runs) : null;
+  for (const r of rows) {
+    (r as ShapedRow).data = projectRow(r.data, q, runs, stale?.get(r.id), errors?.get(r.id));
+  }
+  return rows;
+}
+
+// A row's data as the query asked: every column, the columns named, or picks
+// (a value out of a JSON cell, a column under another name); run columns as
+// {status, value, error} with include_status.
+function projectRow(
+  data: Record<string, string>, q: RowQuery, runs: RunColumns | null, stale?: ReadonlySet<string>,
+  errors?: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  const plain = runs ? rowWithStatus(data, runs, q.columns, stale, errors) : null;
+  if (!q.picks) {
+    if (plain) return plain;
+    return q.columns ? Object.fromEntries(q.columns.map(c => [c, cellOf(data, c)])) : data;
+  }
+  return Object.fromEntries(q.picks.map(p => [pickName(p),
+    p.path ? pickValue(cellOf(data, p.column), p.path) : plain ? plain[p.column] : cellOf(data, p.column)]));
+}

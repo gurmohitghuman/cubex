@@ -2,39 +2,27 @@
 // /api/v1 rows/query. The `where` grammar is lib/row-filter (where.ts),
 // checked and compiled to SQL by services/row-filter.ts: SQLite checks every
 // row, a slice at a time between other requests, and only the page's rows are
-// read.
+// read. Reads by id (row_ids) and by time (updated_since) are their own:
+// services/rows-by-id.ts and rows-since.ts.
 import { db } from '../lib/db';
-import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
-import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
-import { rowWithStatus } from '../lib/row-filter/status-rows';
-import { pickName, pickValue } from '../lib/row-select/paths';
+import { getSheetColumns } from '../lib/sql-helpers';
+import { fillingColumns } from '../lib/field-fill-columns';
 import { aggregateColumns } from '../lib/row-aggregate/spec';
 import { scanFiltered } from '../lib/filtered-scan';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 import { prepareWhere, sheetRunColumns } from './row-filter';
 import { withView } from './view-read';
-import { validateQuery, type RowQuery } from './row-query-input';
+import { checkPickedQuery, validateQuery, type RowQuery } from './row-query-input';
 import { aggregateRows } from './row-aggregate';
-import { staleByRow } from './run-status-rows';
+import { shapeRows, versionsOf, type PageRow, type Versions } from './row-project';
+import { readRowsById } from './rows-by-id';
+import { readRowsSince } from './rows-since';
+import type { QueryFail, RowQueryResult } from './row-query-result';
 
 export type { WhereItem } from '../lib/row-filter/where';
 export { parseRowQueryBody, type RowQuery } from './row-query-input';
-
-type PageRow = { id: string; row_index: number; data: string };
-// busy: a heavy operation holds the sheet (aggregates wait for it; REST answers 409).
-type QueryFail = { fail: 'invalid' | 'version_conflict' | 'busy'; error: string };
-export type RowQueryResult = { ok: Record<string, unknown> } | QueryFail;
-
-// Own-property cell read: row data is plain JSON.parse output, so a sparse
-// row's missing "constructor"/"toString" cell would otherwise resolve to the
-// inherited prototype member (non-empty to filters, dropped by stringify).
-export const cellOf = (data: Record<string, string>, column: string): string =>
-  Object.prototype.hasOwnProperty.call(data, column) ? data[column] ?? '' : '';
-
-type Versions = { data_version: number; row_generation: number };
-const versionsOf = (sheetId: string, userId: string) => db.prepare(
-  'SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?',
-).get(sheetId, userId) as Versions | undefined;
+export { cellOf } from './row-project';
+export type { RowQueryResult } from './row-query-result';
 
 // The fences, the query's columns and its `where`, checked before any row is read.
 function prepareQuery(
@@ -71,7 +59,13 @@ function prepareQuery(
 // before the scan, so a write meanwhile fails the next page's fence. When a
 // sort or replace moved the rows meanwhile (row_generation), a page of a
 // fenced walk answers "restart paging"; a first page is read again, once.
+// row_ids and updated_since are reads of their own (services/rows-by-id.ts,
+// rows-since.ts), refused with what they don't take before anything is read.
 export async function queryRows(sheetId: string, userId: string, query: RowQuery): Promise<RowQueryResult> {
+  const picked = checkPickedQuery(query);
+  if (picked) return { fail: 'invalid', error: picked };
+  if (query.rowIds) return readRowsById(sheetId, userId, query);
+  if (query.updatedSince !== undefined) return readRowsSince(sheetId, userId, query);
   const viewed = withView(sheetId, userId, query);
   if ('fail' in viewed) return viewed;
   const out = viewed.query.aggregate
@@ -116,27 +110,8 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
   if (q.returnMode === 'ids') {
     return { ok: { rows: page.map(r => ({ id: r.id, index: r.row_index })), next_cursor, ...versions } };
   }
-  const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
-  overlayFilling(rows, fillingColumns(sheetId, userId));
   const runs = q.includeStatus ? prep.runColumns ?? sheetRunColumns(sheetId, userId, columns) : null;
-  const stale = runs ? staleByRow(sheetId, userId, rows.map(r => r.id), runs) : null;
-  for (const r of rows) (r as { data: unknown }).data = projectRow(r.data, q, runs, stale?.get(r.id));
-  return { ok: { rows, next_cursor, ...versions } };
-}
-
-// A row's data as the query asked: every column, the columns named, or picks
-// (a value out of a JSON cell, a column under another name); run columns as
-// {status, value, error} with include_status.
-function projectRow(
-  data: Record<string, string>, q: RowQuery, runs: Map<string, string> | null, stale?: ReadonlySet<string>,
-): Record<string, unknown> {
-  const plain = runs ? rowWithStatus(data, runs, q.columns, stale) : null;
-  if (!q.picks) {
-    if (plain) return plain;
-    return q.columns ? Object.fromEntries(q.columns.map(c => [c, cellOf(data, c)])) : data;
-  }
-  return Object.fromEntries(q.picks.map(p => [pickName(p),
-    p.path ? pickValue(cellOf(data, p.column), p.path) : plain ? plain[p.column] : cellOf(data, p.column)]));
+  return { ok: { rows: shapeRows(sheetId, userId, page, q, runs), next_cursor, ...versions } };
 }
 
 // group_by / aggregates: the groups of the rows the `where` and view pass,
