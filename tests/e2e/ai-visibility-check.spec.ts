@@ -30,7 +30,9 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: str
   }
 }
 
-// A table asked once, every formula filled.
+// A table asked once, every formula filled. Named by follows each engine's answer as it lands, so it reads
+// "1 of 1" for a moment before "1 of 2": wait until it counts every engine asked, or a check started right
+// after keeps that passing count and its Change since stays blank (the engines that answered differ).
 async function asked(api: APIRequestContext, input: Record<string, unknown> = INPUT) {
   const res = await api.post('/api/ai-visibility', { data: input })
   expect(res.ok(), await res.text()).toBeTruthy()
@@ -38,7 +40,9 @@ async function asked(api: APIRequestContext, input: Record<string, unknown> = IN
   const started = await (await api.post(`/api/ai-visibility/${v.id}/ask`, { data: {} })).json()
   for (const s of started.started) await waitRun(api, s.runId, ['completed'])
   await waitAdded(v.questionsSheetId)
-  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => x['Named by']), 'first answers')
+  const all = ` of ${started.started.length}`
+  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => String(x['Named by']).endsWith(all)),
+    'first answers')
   return v
 }
 
@@ -50,7 +54,11 @@ test('check again from the guide: the answers kept, the change since then', asyn
   const v = await asked(api)
   expect((await rowsOf(api, v.questionsSheetId)).map(r => r['Named by'])).toEqual(['2 of 4', '2 of 4'])
 
-  const est = await (await api.post(`/api/ai-visibility/${v.id}/check`, { data: { estimateOnly: true } })).json()
+  // The app names the copies by the day where the browser is (it sends its time zone), so ask with the same
+  // one: without it the day is UTC's, another date between midnight here and midnight in UTC.
+  const timeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const est = await (await api.post(`/api/ai-visibility/${v.id}/check`, { data: { estimateOnly: true, timeZone } }))
+    .json()
   const day = est.plan.label
   expect(est.plan).toMatchObject({ soon: true, days: 0, questions: 2, names: {
     questionsCopy: `Questions ${day}`, sitesCopy: `Cited sites ${day}`, namedBy: `Named by on ${day}`,
