@@ -66,3 +66,19 @@ export const MCP_EXPORT_MAX_CHARS = 40_000;
 // shape (32 random bytes in hex), checked before any database lookup.
 export const FILE_LINK_TTL_MINUTES = 15;
 export const FILE_LINK_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
+// Idempotency keys on row writes (append_rows, update_cells and their REST
+// routes; lib/write-idempotency.ts): a key replays its first answer for a day,
+// on the ledger runs use. A user keeps at most the newest KEYS_MAX of them; a
+// one-row update's stored answer keeps the row's cells up to ROW_BYTES (past
+// that a replay leaves them out and says so).
+export const IDEMPOTENT_WRITE_TTL_MS = 24 * 60 * 60 * 1000;
+export const IDEMPOTENT_WRITE_KEYS_MAX = 10_000;
+export const IDEMPOTENT_WRITE_ROW_BYTES = 16 * 1024;
+export const IDEMPOTENT_WRITE_KEY_MAX_CHARS = 200;
+// Deleted a slice at a time (the sweep, and a write past KEYS_MAX).
+export const IDEMPOTENT_WRITE_PRUNE_ROWS = 500;
+
+// list_saved_keys / GET /api/v1/saved-keys: the places listed per key (the
+// count is whole) and per setup list.
+export const SAVED_KEY_USES_LISTED = 50;

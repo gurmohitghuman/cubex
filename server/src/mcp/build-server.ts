@@ -37,6 +37,7 @@ import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
+import { registerSavedKeyTools } from './tools-saved-keys';
 import { capToolNote } from '../lib/token-spend';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
@@ -121,6 +122,7 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerSetupRunTools(server, ctx);
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
+  registerSavedKeyTools(server, ctx);
   if (MCP_EFFICIENT_ROWS_ENABLED) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);

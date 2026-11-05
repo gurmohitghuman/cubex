@@ -1,20 +1,28 @@
 // Row mutation tools — same services/rows-write.ts flows as /api/v1 (stable
-// row ids, update-only columns, run-locked errors, data_version bumps).
+// row ids, update-only columns, run-locked errors, data_version bumps). With an
+// idempotency_key, services/rows-write-keyed.ts (a retry replays the first answer).
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
+  IDEMPOTENT_WRITE_KEY_MAX_CHARS,
 } from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
 import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
+import { appendRowsKeyed, batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const idempotencyKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS).optional().describe(
+  'Optional retry key: the same key with the same arguments within 24 hours returns the first answer '
+  + '(replayed: true) and writes nothing; with other arguments it is refused.');
+const RETRY_WORDS = 'idempotency_key makes a retry safe: the same key and arguments within 24 hours answer as '
+  + 'the first call did, with replayed: true, and write nothing; the same key with other arguments is refused.';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -30,13 +38,15 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         + '(set_auto_dedupe), a row whose key the sheet already had says kept: false (it went to the trash) and '
         + 'auto_dedupe says what was not kept or replaced. When auto-run is on in the sheet, '
         + 'auto_run lists the columns that will fill the new rows on their own: an enrichment spends treg credit '
-        + '(estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the user.',
+        + '(estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the user. '
+        + `${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
       inputSchema: {
         sheet_id: z.string(),
         rows: z.array(z.record(z.string(), cellValue)).min(1).max(API_V1_MAX_APPEND_ROWS),
+        idempotency_key: idempotencyKey,
       },
     },
-    async ({ sheet_id, rows }) => {
+    async ({ sheet_id, rows, idempotency_key }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
@@ -45,6 +55,14 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         const p = parseCellMap(entry, API_V1_MAX_PATCH_CELLS);
         if ('error' in p) return err(p.error);
         parsedRows.push(p.cells);
+      }
+      if (idempotency_key) {
+        const keyed = appendRowsKeyed(sheet_id, ctx.userId, parsedRows, idempotency_key, 'mcp');
+        if ('fail' in keyed) return err(txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
+        if (keyed.replayed) return ok({ ...keyed.ok.answer, replayed: true });
+        return ok({
+          ...keyed.ok.answer, replayed: false, ...await appendAutorunNotice(ctx.userId, sheet_id, keyed.ok.kept),
+        });
       }
       const result = appendRows(sheet_id, ctx.userId, parsedRows);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
@@ -65,7 +83,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         + 'MANY ROWS, all or nothing: {"sheet_id": "…", "updates": [{"row_id": "…", "data": {"Status": "Done"}}]} '
         + `(up to ${API_V1_MAX_BATCH_UPDATES}); returns {updated}. `
         + 'Columns must already exist (add_column first). Values: string/number/boolean; null clears a cell. '
-        + 'Columns a run is still filling are refused.',
+        + `Columns a run is still filling are refused. ${RETRY_WORDS}`,
       inputSchema: {
         row_id: z.string().optional().describe('One-row form: the row to update'),
         data: z.record(z.string(), cellValue).optional().describe('One-row form: {column: value}'),
@@ -73,9 +91,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         updates: z.array(z.object({
           row_id: z.string(), data: z.record(z.string(), cellValue),
         })).min(1).max(API_V1_MAX_BATCH_UPDATES).optional().describe('Many-rows form: [{row_id, data}]'),
+        idempotency_key: idempotencyKey,
       },
     },
-    async ({ row_id, data, sheet_id, updates }) => {
+    async ({ row_id, data, sheet_id, updates, idempotency_key }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       const single = row_id !== undefined || data !== undefined;
@@ -92,16 +111,26 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
           if ('error' in p) return err(p.error);
           parsed.push({ rowId: update.row_id, cells: p.cells });
         }
-        const result = batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
+        const result = idempotency_key ? batchUpdateKeyed(sheet_id, ctx.userId, parsed, idempotency_key, 'mcp')
+          : batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
         if ('fail' in result) {
           if (result.fail === 'duplicate_rows') return err('updates must not contain duplicate row ids');
           return err(result.fail === 'not_found'
             ? 'One or more rows were not found in the supplied sheet.'
             : txnFailMessage(result, MAX_ROWS_PER_SHEET));
         }
-        return ok(result.ok);
+        return ok('replayed' in result ? { ...result.ok, replayed: result.replayed } : result.ok);
       }
       if (!row_id || data === undefined) return err('The one-row form needs both row_id and data.');
+      if (idempotency_key) {
+        // The row's sheet is checked after the key (a replay still answers once the row is gone).
+        const p = parseCellMap(data, API_V1_MAX_PATCH_CELLS);
+        if ('error' in p) return err(p.error);
+        const keyed = patchRowKeyed(row_id, ctx.userId, p.cells, sheet_id, idempotency_key, 'mcp');
+        if (!('fail' in keyed)) return ok({ ...keyed.ok, replayed: keyed.replayed });
+        return err(keyed.fail === 'not_in_sheet' ? 'Row not found in that sheet'
+          : keyed.fail === 'not_found' ? 'Row not found' : txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
+      }
       if (sheet_id !== undefined
         && !db.prepare('SELECT 1 FROM rows WHERE id = ? AND sheet_id = ? AND user_id = ?')
           .get(row_id, sheet_id, ctx.userId)) {

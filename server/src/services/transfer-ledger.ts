@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
+import { WRITE_KINDS_SQL } from '../lib/write-idempotency';
 import type { TransferSelection } from './transfer-selection';
 import type { AutoDedupeAnswer } from './auto-dedupe-answer';
 
@@ -104,7 +105,7 @@ export function writeTransferLedger(
   `).run(uuidv4(), userId, key, hash, JSON.stringify(result));
   db.prepare(`
     DELETE FROM data_operation_ledger WHERE id IN (
-      SELECT id FROM data_operation_ledger WHERE user_id = ?
+      SELECT id FROM data_operation_ledger WHERE user_id = ? AND operation_kind NOT IN (${WRITE_KINDS_SQL})
       ORDER BY created_at DESC LIMIT 25 OFFSET 1000
     )
   `).run(userId);

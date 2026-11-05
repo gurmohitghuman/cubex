@@ -25,29 +25,36 @@ export function savedKeyRefsInConfig(userId: string, config: HTTPRequestConfig):
   const keyRows = db.prepare('SELECT name FROM api_keys WHERE user_id = ?')
     .all(userId) as Array<{ name: string }>;
   if (keyRows.length === 0) return [];
+  return savedKeyMatcher(keyRows.map(r => r.name))(config);
+}
 
+// The same scan with the key names given, for a caller that checks many
+// configs (services/saved-key-uses.ts): the names a request config reads.
+export function savedKeyMatcher(names: readonly string[]): (config: HTTPRequestConfig) => string[] {
   const byLower = new Map<string, string>();
   const byNorm = new Map<string, string>();
-  for (const { name } of keyRows) {
+  for (const name of names) {
     byLower.set(name.toLowerCase(), name);
     byNorm.set(normalizeColumnName(name), name);
   }
+  return (config: HTTPRequestConfig) => {
+    if (names.length === 0) return [];
+    const parts: string[] = [typeof config.url === 'string' ? config.url : ''];
+    for (const [k, v] of Object.entries(config.headers ?? {})) parts.push(k, typeof v === 'string' ? v : '');
+    if (typeof config.body === 'string') parts.push(config.body);
 
-  const parts: string[] = [config.url ?? ''];
-  for (const [k, v] of Object.entries(config.headers ?? {})) parts.push(k, v);
-  if (config.body) parts.push(config.body);
-
-  // A deleted column's token never resolves to a key (lib/template-token-match.ts).
-  const gone = goneColumnsOf(config);
-  const matched = new Set<string>();
-  for (const part of parts) {
-    for (const token of extractTemplateTokenNames(part)) {
-      if (goneColumnFor(token, gone) !== undefined) continue;
-      const hit = byLower.get(token.toLowerCase()) ?? byNorm.get(normalizeColumnName(token));
-      if (hit) matched.add(hit);
+    // A deleted column's token never resolves to a key (lib/template-token-match.ts).
+    const gone = goneColumnsOf(config);
+    const matched = new Set<string>();
+    for (const part of parts) {
+      for (const token of extractTemplateTokenNames(part)) {
+        if (goneColumnFor(token, gone) !== undefined) continue;
+        const hit = byLower.get(token.toLowerCase()) ?? byNorm.get(normalizeColumnName(token));
+        if (hit) matched.add(hit);
+      }
     }
-  }
-  return [...matched];
+    return [...matched];
+  };
 }
 
 // Names of saved api_keys any request of a run reads: its own and, for a

@@ -108,6 +108,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Puts columns' setups back (and gone columns, empty); nothing runs, but later runs and auto-run use it.
   restore_setup_version: write('Restore a setup version', true, true),
   list_run_webhooks: read('List run webhooks'),
+  // Names and where they're used; a value never leaves Settings.
+  list_saved_keys: read('List saved API keys (names only)'),
   // Puts rows, sheets and tables back; repeating it finds nothing more to restore.
   restore_from_trash: write('Restore from the trash', false, true),
 };
