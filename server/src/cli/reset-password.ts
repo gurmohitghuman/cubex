@@ -45,7 +45,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const { db } = await import('../lib/db');
-  const { hashPassword, newPasswordError } = await import('../lib/password');
+  const { hashPassword, newPasswordError, passwordHashingUnavailable } = await import('../lib/password');
+  const unusable = passwordHashingUnavailable();
+  if (unusable) {
+    console.error(unusable);
+    process.exit(1);
+  }
 
   const user = db.prepare('SELECT id FROM users LIMIT 1').get() as { id: string } | undefined;
   if (!user) {

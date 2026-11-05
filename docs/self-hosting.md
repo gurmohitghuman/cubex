@@ -300,7 +300,7 @@ While that runs, open `http://localhost:3002`. A private network such as Tailsca
 
 ### A Windows PC or server
 
-The one-line install works on Windows 10 (version 1809 or newer) and Windows 11 with an Intel or AMD (x64) processor; Windows on ARM follows in a later release. Run it in PowerShell, without administrator rights:
+The one-line install works on Windows 10 (version 1809 or newer) and Windows 11, with an Intel or AMD (x64) or an ARM64 processor. Run it in PowerShell, without administrator rights:
 
 ```powershell
 irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.ps1 | iex

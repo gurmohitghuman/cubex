@@ -3,7 +3,7 @@
 // and the account may hold only part of its balance, so the balance is a ceiling.
 import assert from 'node:assert/strict'
 import mod from '../../server/src/lib/ai-in-flight'
-// Default import + destructure: Node 22 (CI) can't see named exports of the
+// Default import + destructure: Node 22 can't see named exports of the
 // server's CommonJS modules from this ESM test file.
 const { inFlightCheck } = mod as typeof import('../../server/src/lib/ai-in-flight')
 

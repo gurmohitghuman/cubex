@@ -28,11 +28,31 @@ const VARIANTS: ReadonlySet<string> = new Set(['argon2d', 'argon2i', 'argon2id']
 const BASE64 = /^[A-Za-z0-9+/]+$/;
 const DECIMAL = /^(0|[1-9]\d{0,9})$/;
 
-// A message when this Node can't hash passwords (crypto.argon2 arrived in
-// 24.7.0), else null. The server checks it at boot, before migrations run.
+// A message when this Node can't hash passwords, else null. crypto.argon2
+// arrived in 24.7.0, and a Node built against an OpenSSL older than 3.2 has the
+// function but throws on every call, so a tiny hash (under a millisecond)
+// decides, once. The server checks at boot, before migrations run, and the
+// reset-password CLI before it asks for anything.
+let unavailable: string | null | undefined;
 export function passwordHashingUnavailable(): string | null {
-  if (typeof crypto.argon2 === 'function') return null;
-  return `Cubex needs Node.js 24.7 or newer to hash passwords, and this is Node.js ${process.versions.node}.`;
+  if (unavailable === undefined) unavailable = argon2Problem();
+  return unavailable;
+}
+
+type Argon2Sync = (algorithm: Variant, parameters: crypto.Argon2Parameters) => Buffer;
+export function argon2Problem(node: { argon2Sync?: Argon2Sync } = crypto): string | null {
+  const version = `Node.js ${process.versions.node}`;
+  if (typeof node.argon2Sync !== 'function') {
+    return `Cubex needs Node.js 24.7 or newer to hash passwords, and this is ${version}.`;
+  }
+  try {
+    node.argon2Sync('argon2id', { message: '', nonce: Buffer.alloc(8), memory: 8, passes: 1, parallelism: 1,
+      tagLength: 4 });
+    return null;
+  } catch {
+    return `This ${version} can't hash passwords with argon2: it's built with OpenSSL ${process.versions.openssl}, `
+      + 'and Cubex needs OpenSSL 3.2 or newer (the official Node.js 24 builds have it).';
+  }
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -51,6 +71,10 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
     const computed = await derive(stored.variant, password, stored.salt, stored.cost, stored.hash.length, stored.data);
     return computed.length === stored.hash.length && crypto.timingSafeEqual(computed, stored.hash);
   } catch {
+    // A stored hash Node refuses is just a no. A Node that can't hash at all is
+    // worth a line in the log: every sign-in would fail the same way.
+    const unusable = passwordHashingUnavailable();
+    if (unusable) console.error(`❌ ${unusable}`);
     return false;
   }
 }
