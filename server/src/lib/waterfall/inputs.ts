@@ -6,6 +6,7 @@
 // every other HTTP run's request: an input whose column is gone reads empty.
 import { COLUMN_REF_PATTERN, normalizeColumnName } from '../prompt';
 import { holdsRunMarker, trimBlank } from '../run-markers';
+import { cellOf } from '../row-cell';
 import { goneColumnsOf } from '../template-token-match';
 import { inputTemplates } from '../enrich-run-config';
 import type { HTTPAPIConfig } from '../http-request-template';
@@ -75,7 +76,7 @@ export function inputValues(
     const named = templateColumn(template);
     if (named === null) { out[key] = template; continue; }
     const column = gone.includes(named) ? null : resolveColumn(named, columns);
-    const cell = column === null ? '' : row[column];
+    const cell = column === null ? '' : cellOf(row, column);
     const v = typeof cell === 'string' ? trimBlank(cell) : cell === undefined || cell === null ? '' : String(cell);
     out[key] = holdsRunMarker(v) ? '' : v;
   }

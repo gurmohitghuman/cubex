@@ -3,9 +3,10 @@
 // sheet's column_order): rows from before a column was added (Add Column, a
 // webhook field) have no key for it. A name that is no column still gives
 // [MISSING], and a row holding its keys gets the same prompt and draft
-// fingerprint as before, byte for byte. Checked on the pure function, the draft
-// fingerprint, a real AI run (prose and structured), a preview row, credit
-// reuse at run start and an estimate.
+// fingerprint as before, byte for byte. A name matching ignoring case wins over
+// a normalized one on a row without its key too. Checked on the pure function,
+// the draft fingerprint, a real AI run (prose and structured), a preview row and
+// the draft row the preview route keeps, credit reuse at run start and an estimate.
 import { createHash } from 'node:crypto'
 import { v4 as uuid } from 'uuid'
 
@@ -23,12 +24,12 @@ globalThis.fetch = (async () => new Response('', { status: 503 })) as typeof fet
 const { db } = await import('../../server/src/lib/db')
 const { runMigrations } = await import('../../server/src/db/migrate')
 const { encrypt } = await import('../../server/src/lib/crypto')
-const { processPromptTemplate } = await import('../../server/src/lib/prompt')
+const { processPromptTemplate, promptReads } = await import('../../server/src/lib/prompt')
 const { computeInputHash, saveDraftPreview, upsertDraftConfig } = await import('../../server/src/lib/ai-drafts')
 const { promotePreviewReuse } = await import('../../server/src/lib/ai-run-promote')
 const { processAIRun } = await import('../../server/src/services/ai-runner')
 const { getOpenRouterClient } = await import('../../server/src/services/openrouter')
-const { processOneRow } = await import('../../server/src/routes/ai-preview-runner')
+const { processOneRow, previewDraftRow } = await import('../../server/src/routes/ai-preview-runner')
 const { estimateAiRun } = await import('../../server/src/services/run-estimate')
 const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
 runMigrations()
@@ -51,6 +52,19 @@ check('... the same prompt as a row holding empty cells there',
   olderFilled === processPromptTemplate(prompt, emptyCells, cols))
 check('a name that is no column of the sheet still gives [MISSING]',
   processPromptTemplate('/nope and /mail', {}, cols) === '[MISSING: /nope] and ')
+// Both "Company Name" and "company_name" listed (a sheet from before the name
+// collision check): /company_name is company_name, as promptReads says, also on a
+// row with no key for it, never Company Name's value.
+const pair = ['Company Name', 'company_name']
+const pairOf = (row: string) => processPromptTemplate('At /company_name.', JSON.parse(row), pair)
+check('an exact name wins over a normalized one on a row without its key',
+  pairOf('{"Company Name":"Acme"}') === 'At .' && promptReads('At /company_name.', pair).join() === 'company_name',
+  pairOf('{"Company Name":"Acme"}'))
+check('... and on a row holding both keys, in either order, as before',
+  pairOf('{"Company Name":"Acme","company_name":"co"}') === 'At co.'
+  && pairOf('{"company_name":"co","Company Name":"Acme"}') === 'At co.')
+check('... a normalized name still reads the row\'s value when no exact name is listed',
+  processPromptTemplate('At /company_name.', { 'Company Name': 'Acme' }, ['Company Name']) === 'At Acme.')
 
 // --- The draft fingerprint (the preview's input hash, checked at run start) -----
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -124,6 +138,14 @@ await processOneRow({ rowIndex: 1, data: { Name: 'Bob' } }, client, {
   search: null, useWebFetch: false,
 })
 check('a preview row without the key sends an empty value', sent[0] === 'Write to Bob at .', sent)
+// What the preview route keeps for that row in the draft (routes/ai-preview.ts).
+const previewArgs = { prompt: 'Write to /name at /mail.', columns: ['Name', 'Mail'] }
+const kept = previewDraftRow({ data: { Name: 'Bob' } }, { rowIndex: 1, value: 'ok' }, previewArgs)
+check("the preview's draft row fingerprints the prompt the row sent (an empty cell, not [MISSING])",
+  kept.inputHash === sha('Write to Bob at .') && kept.inputHash === sha(sent[0]) && kept.value === 'ok', kept)
+check('... an errored preview row keeps its error and no fingerprint',
+  JSON.stringify(previewDraftRow({ data: {} }, { rowIndex: 0, value: '', error: 'x' }, previewArgs))
+    === JSON.stringify({ rowIndex: 0, value: '', error: 'x' }))
 
 // Credit reuse: a preview row's fingerprint is the prompt it sent; run start
 // promotes the row only while the row's prompt still fingerprints the same.
@@ -133,10 +155,9 @@ const config = { columnName: 'Hi', prompt: 'Write to /name at /mail.', systemPro
   temperature: 0.7, useOpenRouterWebSearch: false, useWebFetch: false, maxChars: null, concurrency: 1 }
 const previewed = []
 for (const [i, data] of reuseRows.entries()) {
-  sent.length = 0
-  await processOneRow({ rowIndex: i, data }, client, { ...config, columns: ['Name', 'Mail', 'Hi (Output)'],
-    systemPrompt: undefined, safeTemperature: 0.7, search: null })
-  previewed.push({ rowIndex: i, value: `v${i}`, inputHash: sha(sent[0]) })
+  const args = { ...config, columns: ['Name', 'Mail', 'Hi (Output)'], systemPrompt: undefined, safeTemperature: 0.7,
+    search: null }
+  previewed.push(previewDraftRow({ data }, await processOneRow({ rowIndex: i, data }, client, args), args))
 }
 saveDraftPreview(uid, reuseSheet, upsertDraftConfig(uid, reuseSheet, config, 0), previewed, 2)
 const reuseRun = uuid()

@@ -7,6 +7,7 @@ import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { SearchQueryLog } from '../lib/responses-adapter';
 import { billedUsage, sendModelCall, type ModelCall } from '../services/ai-model-call';
 import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } from '../lib/ai-multi-output';
+import { computeInputHash, type DraftPreviewRow } from '../lib/ai-drafts';
 
 interface PreviewArgs {
   prompt: string
@@ -62,6 +63,21 @@ export function structuredPreview(specs: OutputColumnSpec[], withSources: boolea
       const parsed = parseMultiOutput(r.value, specs);
       return 'error' in parsed ? { ...r, error: parsed.error } : { ...r, fields: parsed.ok };
     },
+  };
+}
+
+// What a preview row keeps in the draft. Its fingerprint (the inputHash run
+// start compares, lib/ai-run-promote.ts) reads the row with the same prompt and
+// column list processOneRow filled it from, so a row without a listed column's
+// key fingerprints as its run will fill it.
+export function previewDraftRow(
+  row: { data: Record<string, string> }, result: PreviewRowResult, args: Pick<PreviewArgs, 'prompt' | 'columns'>,
+): DraftPreviewRow {
+  return {
+    rowIndex: result.rowIndex, value: result.value,
+    ...(result.error ? { error: result.error } : { inputHash: computeInputHash(args.prompt, row.data, args.columns) }),
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens,
+    costUsd: result.costUsd, searchQueries: result.searchQueries, webSearches: result.webSearches,
   };
 }
 

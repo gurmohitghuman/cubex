@@ -11,3 +11,14 @@ export const hasCell = (data: object, column: string): boolean =>
 // The row's own value for the column, '' when it holds none.
 export const cellOf = (data: Record<string, string>, column: string): string =>
   hasCell(data, column) ? data[column] ?? '' : '';
+
+// Cells read as json_extract picks (a raw SQL row): columns[i] is picked[from + i],
+// NULL as ''. A null-prototype record: a column named "__proto__" keeps its value
+// (a plain object's setter drops it) and a missing "constructor" reads undefined.
+export function pickedCells(
+  columns: readonly string[], picked: readonly unknown[], from: number,
+): Record<string, string> {
+  const out: Record<string, string> = Object.create(null);
+  columns.forEach((c, i) => { const v = picked[from + i]; out[c] = v == null ? '' : String(v); });
+  return out;
+}
