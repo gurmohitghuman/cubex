@@ -7,8 +7,9 @@ import { BAD_URL, pollTerminal } from './helpers-run-results'
 // rows changed since a time. By id: the rows in the order asked, `missing` for
 // a deleted id, a failed run cell's full error with include_status (a page
 // read says what the cell holds). By time: the edits and new rows since the
-// last read's as_of, a deleted row not among them, paging with the text cursor.
-// Both work with a read-only token and refuse what they don't take.
+// last read's as_of, a deleted row not among them (the copy drops it by listing
+// ids), paging with the text cursor. Both work with a read-only token and
+// refuse what they don't take. A row index quoted as text over MCP still pages.
 
 const bearer = (token: string) => pwRequest.newContext({
   baseURL: BASE, extraHTTPHeaders: { Authorization: `Bearer ${token}` },
@@ -85,6 +86,7 @@ test('rows changed since: a copy kept up to date with the as_of loop, over MCP a
       rows.push(...r.rows)
       asOf ||= r.as_of
       expect(r.as_of).toBe(asOf)
+      expect(r.filling).toEqual([])
       cursor = r.next_cursor ?? undefined
     } while (cursor)
     return { rows, asOf }
@@ -111,6 +113,9 @@ test('rows changed since: a copy kept up to date with the as_of loop, over MCP a
   expect(first.asOf).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/)
   const restFirst = await walkRest('2000-01-01 00:00:00')
   expect(new Set(restFirst.rows.map(r => r.id))).toEqual(new Set(copy.keys()))
+  // A model quoting a page read's cursor: digits as text are the row index.
+  const quoted = await call(ro, 'read_rows', { sheet_id: sheetId, cursor: '1', limit: 2 })
+  expect(quoted.rows.map((r: Row) => r.index)).toEqual([2, 3])
 
   // Changes after the first read: an edit, a new row, a deleted row.
   const ids = [...copy.keys()]
@@ -125,9 +130,12 @@ test('rows changed since: a copy kept up to date with the as_of loop, over MCP a
     expect([...seen.values()].some(r => r.data.val === 'new')).toBe(true)
     expect(seen.has(ids[4])).toBe(false)
   }
-  // Dedupe by id: the copy (less the deleted row, list_trash has it) matches the sheet.
+  // Dedupe by id, then drop the rows gone (ids listed with return_mode ids): the copy matches the sheet.
   for (const r of (await walkMcp(first.asOf)).rows) copy.set(r.id, r.data)
-  copy.delete(ids[4])
+  const live = await call(ro, 'read_rows', { sheet_id: sheetId, return_mode: 'ids' })
+  const liveIds = new Set(live.rows.map((r: Row) => r.id))
+  for (const id of [...copy.keys()]) if (!liveIds.has(id)) copy.delete(id)
+  expect(copy.has(ids[4])).toBe(false)
   const now = await call(ro, 'read_rows', { sheet_id: sheetId })
   expect(Object.fromEntries(copy)).toEqual(Object.fromEntries(now.rows.map((r: Row) => [r.id, r.data])))
 

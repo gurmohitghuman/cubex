@@ -21,13 +21,17 @@ export const MCP_MAX_GROUP_CHARS = 40_000;
 // started. A write's updated_at is the time its statement ran, and the write
 // shows only once its transaction commits, up to a few seconds later (a slice
 // of a big job, a 2 s transfer). A read in between misses it; the next read
-// from as_of still gets it. Rows changed in this window come back again.
-export const ROWS_SINCE_AS_OF_SLACK_SECONDS = 10;
-// `row_ids` with include_status (services/run-cell-errors.ts): index probes
-// spent finding the full error text in a column's runs, newest run first. An
-// auto-run column holds tens of thousands of runs; rows not reached in time
-// keep the words their cell holds.
-export const RUN_ERROR_PROBES = 50_000;
+// from as_of still gets it. Rows changed in this window come back again, so a
+// wider window only costs repeats. It assumes the server's clock doesn't jump
+// back: a clock set back further than this can stamp a change before as_of.
+export const ROWS_SINCE_AS_OF_SLACK_SECONDS = 30;
+// `row_ids` with include_status (services/run-cell-errors.ts): the full error
+// text is looked for in a column's runs, newest run first, one statement per
+// run, on the API thread. An auto-run column holds tens of thousands of runs,
+// so the look stops after this many statements (about 20 us each) or this many
+// milliseconds, whichever comes first; rows not reached keep their cell's words.
+export const RUN_ERROR_CALLS = 2_000;
+export const RUN_ERROR_MS = 50;
 
 // A nested path inside a JSON cell (columns: [{column, path}]): its keys, and
 // the characters in one key or in an output name.

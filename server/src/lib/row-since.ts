@@ -54,22 +54,25 @@ export function parseSinceTime(raw: unknown): { sql: string } | { error: string 
 // rows.updated_at (or any SQLite time) as ISO 8601 UTC; anything else as it is.
 export const isoTime = (sql: string): string => (SQL_TIME.test(sql) ? `${sql.replace(' ', 'T')}Z` : sql);
 
-// Where a walk is: the row last answered (its updated_at and rowid), and what
-// its first page fixed: the updated_since asked, the newest time it reads
-// (`until`, so a walk ends even while rows keep changing) and the as_of it answers.
-export interface SinceCursor { since: string; t: string; r: number; until: string; asOf: string }
+// Where a walk is: the sheet it reads, the row last answered (its updated_at as
+// stored, any text, and its rowid), and what its first page fixed: the
+// updated_since asked, the newest time it reads (`until`, so a walk ends even
+// while rows keep changing) and the as_of it answers.
+export interface SinceCursor { sheet: string; since: string; t: string; r: number; until: string; asOf: string }
 
 export function encodeSinceCursor(c: SinceCursor): string {
-  return Buffer.from(JSON.stringify([1, c.since, c.t, c.r, c.until, c.asOf]), 'utf8').toString('base64url');
+  return Buffer.from(JSON.stringify([1, c.sheet, c.since, c.t, c.r, c.until, c.asOf]), 'utf8')
+    .toString('base64url');
 }
 
 export function decodeSinceCursor(raw: string): SinceCursor | null {
   let parts: unknown;
   try { parts = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')); } catch { return null; }
-  if (!Array.isArray(parts) || parts.length !== 6 || parts[0] !== 1) return null;
-  const [, since, t, r, until, asOf] = parts as unknown[];
-  const times = [since, t, until, asOf];
-  if (!times.every(v => typeof v === 'string' && SQL_TIME.test(v))) return null;
+  if (!Array.isArray(parts) || parts.length !== 7 || parts[0] !== 1) return null;
+  const [, sheet, since, t, r, until, asOf] = parts as unknown[];
+  if (typeof sheet !== 'string' || typeof t !== 'string') return null;
+  // Only the times Cubex wrote are checked; t is a row's updated_at as it is stored.
+  if (![since, until, asOf].every(v => typeof v === 'string' && SQL_TIME.test(v))) return null;
   if (typeof r !== 'number' || !Number.isSafeInteger(r) || r < 0) return null;
-  return { since: since as string, t: t as string, r, until: until as string, asOf: asOf as string };
+  return { sheet, since: since as string, t, r, until: until as string, asOf: asOf as string };
 }

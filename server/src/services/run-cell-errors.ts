@@ -6,10 +6,12 @@
 // (services/answer-runs.ts): the state column's runs newest first, one probe of
 // the (run_id, row_index) index per run for the rows still unanswered, each
 // row stopping at its newest result. A column can hold tens of thousands of
-// runs (auto-run makes one per batch), so the walk stops after RUN_ERROR_PROBES
-// probes: rows not reached keep their cell's words. Page reads don't look.
+// runs (auto-run makes one per batch), and this runs on the API thread, so the
+// look stops after RUN_ERROR_CALLS statements or RUN_ERROR_MS, whichever comes
+// first, and reads only the ids of the newest runs that budget can reach: rows
+// not reached keep their cell's words. Page reads don't look.
 import { db } from '../lib/db';
-import { RUN_ERROR_PROBES } from '../lib/constants-query';
+import { RUN_ERROR_CALLS, RUN_ERROR_MS } from '../lib/constants-query';
 import { cellStatus } from '../lib/row-filter/cell-status';
 
 type Raw = { id: string; row_index: number; data: Record<string, string> };
@@ -33,14 +35,16 @@ function failedCells(rows: Raw[], runs: ReadonlyMap<string, string>, columns?: r
   return asks;
 }
 
-// The column's runs, newest first: an AI run's main column wins over an HTTP
-// one of the same name (lib/column-types.ts).
-function stateRuns(sheetId: string, userId: string, state: string): { ai: boolean; ids: string[] } {
+// The column's newest `max` runs, newest first: an AI run's main column wins
+// over an HTTP one of the same name (lib/column-types.ts). Each reads an index
+// in order and stops at `max`: ai_runs by sheet (then rowid), http_runs by
+// sheet, column and created_at.
+function stateRuns(sheetId: string, userId: string, state: string, max: number): { ai: boolean; ids: string[] } {
   const ai = db.prepare(`SELECT id FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND column_name = ?
-    ORDER BY rowid DESC`).pluck().all(sheetId, userId, state) as string[];
+    ORDER BY rowid DESC LIMIT ?`).pluck().all(sheetId, userId, state, max) as string[];
   if (ai.length > 0) return { ai: true, ids: ai };
   const http = db.prepare(`SELECT id FROM http_runs WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-    ORDER BY created_at DESC, rowid DESC`).pluck().all(sheetId, userId, state) as string[];
+    ORDER BY created_at DESC, rowid DESC LIMIT ?`).pluck().all(sheetId, userId, state, max) as string[];
   return { ai: false, ids: http };
 }
 
@@ -62,13 +66,18 @@ export function fullRunErrors(
       WHERE run_id = ? AND row_index IN (SELECT value FROM json_each(?)) AND +user_id = ? AND undone = 0
         AND status != 'pending'`),
   };
-  let spent = 0;
+  // Statements run so far (the run-id reads too) and the time the look ends.
+  const deadline = performance.now() + RUN_ERROR_MS;
+  let calls = 0;
+  const spent = () => calls >= RUN_ERROR_CALLS || performance.now() >= deadline;
   for (const [state, wanted] of asks) {
-    const { ai, ids } = stateRuns(sheetId, userId, state);
+    if (spent()) break;
+    const { ai, ids } = stateRuns(sheetId, userId, state, RUN_ERROR_CALLS - calls);
+    calls++;
     const left = new Set(wanted);
     for (const runId of ids) {
-      if (left.size === 0 || spent >= RUN_ERROR_PROBES) break;
-      spent += left.size;
+      if (left.size === 0 || spent()) break;
+      calls++;
       const hits = (ai ? probes.ai : probes.http).all(runId, JSON.stringify([...left]), userId) as Hit[];
       for (const h of hits) {
         if (!left.delete(h.row_index)) continue;

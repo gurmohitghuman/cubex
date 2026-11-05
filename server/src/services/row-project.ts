@@ -1,6 +1,7 @@
 // A row query's rows as it asked for them (read_rows and REST rows/query:
 // pages, filtered pages, reads by id and by time): cells parsed, a column still
-// filling reads "⏳ Processing...", the columns named or picked, and with
+// filling reads "⏳ Processing..." (except in a read by time, which answers what
+// rows hold: services/rows-since.ts), the columns named or picked, and with
 // include_status run columns as {status, value, error}.
 import { db } from '../lib/db';
 import { parseRowData } from '../lib/sql-helpers';
@@ -30,15 +31,22 @@ export const cellOf = (data: Record<string, string>, column: string): string =>
 // runs: the sheet's run columns when include_status asked, else null.
 // errors: row id → state column → the full error text its run recorded
 // (services/run-cell-errors.ts), for the cells that read as failed.
+// stored: the cells as rows hold them, with no "⏳ Processing..." over a
+// column still filling (a read by time: a fill stamps only the rows it
+// changes, so a placeholder answered there would never be answered again).
+export interface ShapeOptions {
+  errors?: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  stored?: boolean;
+}
+
 export function shapeRows(
-  sheetId: string, userId: string, page: PageRow[], q: RowQuery, runs: RunColumns | null,
-  errors?: ReadonlyMap<string, ReadonlyMap<string, string>>,
+  sheetId: string, userId: string, page: PageRow[], q: RowQuery, runs: RunColumns | null, opts: ShapeOptions = {},
 ): ShapedRow[] {
   const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
-  overlayFilling(rows, fillingColumns(sheetId, userId));
+  if (!opts.stored) overlayFilling(rows, fillingColumns(sheetId, userId));
   const stale = runs ? staleByRow(sheetId, userId, rows.map(r => r.id), runs) : null;
   for (const r of rows) {
-    (r as ShapedRow).data = projectRow(r.data, q, runs, stale?.get(r.id), errors?.get(r.id));
+    (r as ShapedRow).data = projectRow(r.data, q, runs, stale?.get(r.id), opts.errors?.get(r.id));
   }
   return rows;
 }

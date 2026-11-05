@@ -6,10 +6,13 @@
 // it left alone keep their time: a person's or agent's edit, new rows (append,
 // CSV import), run placeholders seeded, "Only run if" marks, run results and
 // the clear of leftover placeholders, a clean column's fill (the derived engine
-// clean, formula and lookup columns share), an answer field from stored
-// answers, transform_column, a column rename and delete (keys rewritten), rows
-// restored from the trash (changed now, not at their old time) and a run
-// undone. A sort only moves rows: it keeps every time.
+// clean, formula and lookup columns share) and its cell writer emptying a cell,
+// an answer field from stored answers, transform_column, a column rename and
+// delete (keys rewritten; a delete that also drops dead run-input keys stamps
+// only the rows holding the cell), rows restored from the trash (changed now,
+// not at their old time) and a run undone. A sort only moves rows: it keeps
+// every time. Auto-run's and an enrichment's seeding are in
+// rows-updated-at-starts.test.ts (they need the job queue stubbed).
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -33,6 +36,9 @@ const { restoreRows } = await import('../../server/src/services/trash-restore')
 const { undoRun } = await import('../../server/src/services/run-undo')
 const { physicalSortSheet } = await import('../../server/src/services/sheet-sort')
 const { checkRule } = await import('../../server/src/lib/run-condition')
+const { writeDerivedCells, asDerivedRead } = await import('../../server/src/services/derived-write')
+const { purgeColumnKey } = await import('../../server/src/lib/column-purge')
+const { jsonPath } = await import('../../server/src/lib/sql-rows')
 
 const PAST = '2000-01-01 00:00:00'
 const past = (sid: string) => db.prepare('UPDATE rows SET updated_at = ? WHERE sheet_id = ?').run(PAST, sid)
@@ -118,6 +124,24 @@ await ok("a clean column's fill (the engine clean, formula and lookup columns sh
   assert.deepEqual(changed(sid, now), [0, 2], 'the empty row got no value, so it was not written')
 })
 
+await ok("a derived column's cell writer: an emptied cell (its key removed) and a new value are stamped", () => {
+  const sid = sheet([{ A: 'x', D: 'old' }, { A: 'y', D: 'same' }, { A: 'z' }], ['A', 'D'])
+  past(sid)
+  const now = clock()
+  const rows = (db.prepare(`SELECT rowid, row_index AS i, json_extract(data, '$.D') AS cell,
+    json_extract(data, '$.A') AS in0 FROM rows WHERE sheet_id = ? ORDER BY row_index`).all(sid) as
+    Array<Record<string, unknown>>).map(r => asDerivedRead(r, 1))
+  // What a kind works out per row: empty (the key goes), the value it holds already, a new one.
+  const values = ['', 'same', 'new']
+  const pass = { compute: (inputs: unknown[][]) => inputs.map((_, k) => ({ value: values[k], filled: !!values[k] })),
+    prepare: async () => {}, failure: () => null, dispose: () => {} }
+  const counts = db.transaction(() => writeDerivedCells(uid, jsonPath('D'), rows, pass))()
+  assert.deepEqual([counts.done, counts.changed.length], [3, 2])
+  assert.deepEqual(changed(sid, now), [0, 2], 'the unchanged row is not written')
+  const data = db.prepare('SELECT data FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck().all(sid) as string[]
+  assert.deepEqual(data.map(d => JSON.parse(d).D), [undefined, 'same', 'new'])
+})
+
 await ok('an answer field filled from stored answers', async () => {
   const sid = sheet([{ Name: 'P0' }, { Name: 'P1' }], ['Name', 'Email', 'Title'])
   const runId = uuid()
@@ -158,6 +182,22 @@ await ok('a column rename and a column delete rewrite the rows holding that cell
   assert.ok('ok' in await deleteSheetColumn(sid, uid, 'B'))
   await idle(sid)
   assert.deepEqual(changed(sid, now), [0, 1])
+})
+
+await ok("a column delete that also drops dead run-input keys stamps only the rows holding the cell", async () => {
+  const sid = sheet([{ A: '1', B: 'x' }, { B: 'y' }, { B: 'z' }], ['B'])
+  const inputs = db.prepare('UPDATE rows SET run_inputs = ? WHERE sheet_id = ? AND row_index = ?')
+  inputs.run('{"7":"fp","8":"keep"}', sid, 0)
+  inputs.run('{"7":"fp"}', sid, 1)
+  db.prepare('INSERT INTO run_input_purges (sheet_id, key) VALUES (?, 7)').run(sid)
+  past(sid)
+  const now = clock()
+  await purgeColumnKey(sid, uid, 'A')
+  assert.deepEqual(changed(sid, now), [0], 'a row holding only a dead key keeps its time')
+  const after = db.prepare('SELECT data, run_inputs FROM rows WHERE sheet_id = ? ORDER BY row_index').all(sid)
+  assert.deepEqual(after, [{ data: '{"B":"x"}', run_inputs: '{"8":"keep"}' }, { data: '{"B":"y"}', run_inputs: '{}' },
+    { data: '{"B":"z"}', run_inputs: null }])
+  assert.equal(db.prepare('SELECT COUNT(*) FROM run_input_purges WHERE sheet_id = ?').pluck().get(sid), 0)
 })
 
 await ok('rows restored from the trash count as changed now, not at their old time', async () => {

@@ -114,17 +114,20 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + `BY ID: row_ids (1 to ${ROWS_BY_ID_MAX}) returns exactly those rows in the order given, each with its `
         + 'updated_at, and missing: the ids that are no row of this sheet (deleted ones included: list_trash). '
         + 'Prefer it to re-read rows you know, such as the rows a run just touched. With include_status a failed '
-        + 'cell\'s error is the full message its run recorded. It takes columns and include_status only. Rows stop '
-        + 'at about 40,000 characters: ask again with unread_ids. '
+        + 'cell\'s error is the full message its run recorded when Cubex finds it within its budget (on a '
+        + 'column with thousands of runs it often doesn\'t), otherwise the cell\'s own words. It takes columns and '
+        + 'include_status only. Rows stop at about 40,000 characters: ask again with unread_ids. '
         + 'CHANGED SINCE: updated_since (UTC, 2026-11-05T10:00:00Z) returns the rows whose cells changed at or after '
-        + 'that second, oldest change first, each with its updated_at; page with limit and cursor = next_cursor '
-        + '(text). '
+        + 'that second, oldest change first, each with its updated_at, cells as stored; page with limit and cursor = '
+        + 'next_cursor (text). filling lists columns being filled again (their changed rows come in a later read). '
         + 'Prefer it to keep a copy up to date: when next_cursor is null, pass as_of as the next updated_since and '
-        + 'dedupe by id (a row can come back). Deleted rows don\'t show (list_trash); a sort is no change. It takes '
-        + 'columns, include_status, limit and cursor.',
+        + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
+        + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor.',
       inputSchema: {
         sheet_id: z.string(),
-        cursor: z.union([z.number().int().min(0), z.string().min(1)]).optional()
+        // Digits sent as text are the number cursor (a model often quotes it).
+        cursor: z.preprocess(v => (typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v.trim()) : v),
+          z.union([z.number().int().min(0), z.string().min(1)])).optional()
           .describe('index of the last row already received, or the next_cursor (text) of an updated_since read'),
         limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional(),
         columns: columnsSchema.optional(),

@@ -49,7 +49,10 @@ export function parseRowQueryBody(
   const b = body as Record<string, unknown>;
   const int = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
   // A text cursor is an updated_since walk's (checked with it, in checkPickedQuery).
-  if (b.cursor !== undefined && !int(b.cursor) && !(typeof b.cursor === 'string' && b.cursor !== '')) {
+  // A string of digits is a row index sent as text: refused, as before text
+  // cursors existed (MCP reads it as the number: mcp/tools-read.ts).
+  const textCursor = typeof b.cursor === 'string' && b.cursor !== '' && !/^\s*\d+\s*$/.test(b.cursor);
+  if (b.cursor !== undefined && !int(b.cursor) && !textCursor) {
     return { error: 'cursor must be a non-negative integer, or the next_cursor of an updated_since read.' };
   }
   if (b.row_ids !== undefined && (!Array.isArray(b.row_ids) || !b.row_ids.every(id => typeof id === 'string'))) {

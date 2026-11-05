@@ -37,7 +37,7 @@ export function readRowsById(sheetId: string, userId: string, q: RowQuery): RowQ
     const errors = runs
       ? fullRunErrors(sheetId, userId, page.map(r => ({ ...r, data: parseRowData(r.data) })), runs, q.columns)
       : undefined;
-    const shaped = shapeRows(sheetId, userId, page, q, runs, errors)
+    const shaped = shapeRows(sheetId, userId, page, q, runs, { errors })
       .map((r, i) => ({ id: r.id, index: r.index, updated_at: isoTime(page[i].updated_at), data: r.data }));
     const { rows, unread } = fitChars(shaped, q.maxChars);
     return { ok: { rows, missing, ...(unread.length > 0 ? { unread_ids: unread } : {}), ...versions } };

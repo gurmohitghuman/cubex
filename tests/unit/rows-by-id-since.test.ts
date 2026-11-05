@@ -18,6 +18,7 @@ import trashMod from '../../server/src/services/trash-rows'
 import sinceMod from '../../server/src/services/rows-since'
 import byIdMod from '../../server/src/services/rows-by-id'
 import timeMod from '../../server/src/lib/row-since'
+import constMod from '../../server/src/lib/constants-query'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { queryRows, parseRowQueryBody } = selMod as typeof import('../../server/src/services/row-selection')
@@ -27,6 +28,7 @@ const { ROWS_SINCE_SQL } = sinceMod as typeof import('../../server/src/services/
 const { ROWS_BY_ID_SQL } = byIdMod as typeof import('../../server/src/services/rows-by-id')
 const { parseSinceTime, decodeSinceCursor, encodeSinceCursor } =
   timeMod as typeof import('../../server/src/lib/row-since')
+const { ROWS_SINCE_AS_OF_SLACK_SECONDS } = constMod as typeof import('../../server/src/lib/constants-query')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -194,7 +196,8 @@ async function main() {
     const first = await okRows({ updated_since: '2026-01-01T10:00:00Z', limit: 3, columns: ['Name'] }, U.sid)
     assert.equal(names(first.rows), 'abc')
     const walk = decodeSinceCursor(first.next_cursor!)!
-    const back = db.prepare("SELECT datetime(?, '-10 seconds')").pluck().get(walk.until) as string
+    const back = db.prepare('SELECT datetime(?, ?)').pluck()
+      .get(walk.until, `-${ROWS_SINCE_AS_OF_SLACK_SECONDS} seconds`) as string
     assert.equal(walk.asOf, back, 'as_of is the slack before the walk started')
     assert.equal(first.as_of, `${back.replace(' ', 'T')}Z`)
     // Edits in a later second than the walk's start (as the app's autosave writes them).
@@ -264,7 +267,7 @@ async function main() {
     await refused({ updated_since: since, return_mode: 'count' }, /leave out return_mode/)
     await refused({ updated_since: since, cursor: 3 }, /a number cursor/)
     await refused({ updated_since: since, cursor: 'garbage' }, /start again without cursor/)
-    const other = encodeSinceCursor({ since: '2026-01-02 00:00:00', t: '2026-01-02 00:00:00', r: 1,
+    const other = encodeSinceCursor({ sheet: S.sid, since: '2026-01-02 00:00:00', t: '2026-01-02 00:00:00', r: 1,
       until: '2026-01-03 00:00:00', asOf: '2026-01-02 00:00:00' })
     await refused({ updated_since: since, cursor: other }, /from another time/)
     await refused({ cursor: other }, /send it with the same updated_since/)
@@ -279,7 +282,7 @@ async function main() {
     assert.deepEqual(parseSinceTime(' 2026-11-05 10:00:00 '), { sql: '2026-11-05 10:00:00' })
     assert.deepEqual(parseSinceTime('2026-11-05T00:30:00+01:00'), { sql: '2026-11-04 23:30:00' })
     assert.ok('error' in parseSinceTime('2026-11-05T10:00:00+25:00'))
-    const c = { since: '2026-11-05 10:00:00', t: '2026-11-05 10:00:01', r: 42, until: '2026-11-05 11:00:00',
+    const c = { sheet: 's', since: '2026-11-05 10:00:00', t: '2026-11-05 10:00:01', r: 42, until: '2026-11-05 11:00:00',
       asOf: '2026-11-05 10:59:50' }
     assert.deepEqual(decodeSinceCursor(encodeSinceCursor(c)), c)
     assert.equal(decodeSinceCursor(Buffer.from('[1,"x"]').toString('base64url')), null)
