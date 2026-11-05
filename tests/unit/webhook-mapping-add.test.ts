@@ -2,8 +2,9 @@
 // /api/sheets/:id/webhook/mappings, services/webhook-mapping-add.ts): the new
 // column is only listed in column_order. No row is written (data and updated_at
 // stay, a trigger counts 0 row writes), an empty sheet stays empty (its first
-// event is row 0), a busy sheet is refused with 409 busy, and the path, name,
-// collision and cap answers are the same. Then a delivery fills the column on its
+// event is row 0), a busy sheet is refused with 409 busy before anything is
+// checked or read, and the path, name, collision, cap and 404 answers are the
+// same; a json value mode is stored. Then a delivery fills the column on its
 // new row while the older rows read it as empty: the empty/not_empty filters,
 // get_sheet's counts and CSV lines.
 import express from 'express'
@@ -74,10 +75,10 @@ const server = app.listen(0, '127.0.0.1')
 await new Promise(r => server.once('listening', r))
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
-async function addMapping(sid: string, jsonPath: string, columnName: string) {
+async function addMapping(sid: string, jsonPath: string, columnName: string, valueMode?: string) {
   const res = await fetch(`${base}/api/sheets/${sid}/webhook/mappings`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ jsonPath, columnName }),
+    body: JSON.stringify({ jsonPath, columnName, valueMode }),
   })
   return { status: res.status, body: await res.json() as Record<string, any> }
 }
@@ -120,6 +121,26 @@ const full = sheet('Full', Array.from({ length: 199 }, (_, i) => `C${i}`), 0)
 const capped = await addMapping(full, '$.x', 'X')
 check('a sheet at the column cap is refused (400)', capped.status === 400
   && capped.body.error === 'Column limit reached (200 per sheet).', capped)
+const noName = await addMapping(leads, '$.n', '')
+check('an empty name becomes "Column", as before (201)', noName.status === 201
+  && mappings(leads).some(m => m.column_name === 'Column' && m.json_path === '$.n'), noName)
+const symbols = await addMapping(leads, '$.s', '!!!')
+check('a name without a letter or digit is refused (400)', symbols.status === 400
+  && /needs at least one letter A-Z or digit 0-9/.test(symbols.body.error), symbols)
+const reserved = await addMapping(leads, '$.r', '__rowIndex')
+check('the reserved __rowIndex is refused (400)', reserved.status === 400
+  && reserved.body.error === '"__rowIndex" is reserved for Cubex\'s internal row identity. Choose a different name.',
+  reserved)
+const noSheet = await addMapping(uuid(), '$.x', 'X')
+check('an unknown sheet answers 404', noSheet.status === 404 && noSheet.body.error === 'Sheet not found', noSheet)
+const bare = uuid()
+db.prepare('INSERT INTO sheets (id, table_id, user_id, name) VALUES (?, ?, ?, ?)').run(bare, tid, uid, 'Bare')
+const noHook = await addMapping(bare, '$.x', 'X')
+check('a sheet without a webhook answers 404', noHook.status === 404
+  && noHook.body.error === 'No webhook on this sheet.', noHook)
+const asJson = await addMapping(leads, '$.payload', 'Payload', 'json')
+check('a json value mode is stored', asJson.status === 201 && mappings(leads)
+  .some(m => m.column_name === 'Payload' && m.value_mode === 'json'), mappings(leads))
 
 // A busy sheet (a sort, an import, a column rename) is refused, and nothing changes.
 let release = () => {}
@@ -131,6 +152,20 @@ check('a busy sheet answers 409 busy', busy.status === 409 && busy.body.busy ===
   && /This sheet is busy sorting/.test(busy.body.error), busy)
 check('... and adds no column or mapping', !listed(leads).includes('Busy')
   && mappings(leads).every(m => m.column_name !== 'Busy'))
+// The busy check comes first: before the request is checked (409, not 400) and
+// before the columns are read, which on a sheet from before the column list writes them.
+const old = sheet('Old', ['Name'], 2)
+db.prepare('UPDATE sheets SET column_order = NULL WHERE id = ?').run(old)
+let releaseOld = () => {}
+const heldOld = withSheetBusy(old, 'sorting', () => new Promise<void>(r => { releaseOld = r }))
+const busyBad = await addMapping(old, '$..bad', 'Bad')
+const busyGood = await addMapping(old, '$.good', 'Good')
+releaseOld()
+await heldOld
+check('a busy sheet answers 409 busy to a request it would refuse anyway', busyBad.status === 409
+  && busyBad.body.busy === true, busyBad)
+check('... and writes no column list while busy', busyGood.status === 409
+  && db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(old) === null)
 
 // A delivery fills the new column on its row; the older rows read it as empty.
 const delivered = deliver(leads, { mail: 'a@x.com' })

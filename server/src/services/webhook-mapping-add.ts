@@ -18,12 +18,20 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 export interface WebhookMappingInput { jsonPath: string; columnName: string; valueMode: 'scalar' | 'json' }
 
 // error: what the route answers (400 invalid, 409 busy).
-export type WebhookMappingAdd = { ok: true } | { fail: 'invalid' | 'busy'; error?: string };
+export type WebhookMappingAdd = { ok: true } | { fail: 'invalid' | 'busy'; error: string };
 
 // The caller has verified the sheet is the user's and found its webhook source.
 export function addWebhookMapping(
   sheetId: string, userId: string, sourceId: string, input: WebhookMappingInput,
 ): WebhookMappingAdd {
+  // First, as in the clean and formula services: the sheets router refuses a
+  // busy sheet too, but Express yields between its routers, so a sort, an
+  // import or a column rename may have started since. Refused (409 busy) until
+  // it finishes, before the columns are read (on a sheet from before the column
+  // list, reading them writes it). Everything from here to the write is synchronous.
+  const busy = sheetBusyWith(sheetId);
+  if (busy) return { fail: 'busy', error: busyMessage(busy) };
+
   // Validate the path against the client builder grammar + length cap BEFORE
   // storing it — a stored mapping path runs on every unauthenticated webhook POST,
   // so a hand-crafted filter/script path must be rejected here, not at run time.
@@ -40,13 +48,6 @@ export function addWebhookMapping(
   if (existingCols.length >= MAX_COLUMNS_PER_SHEET) {
     return { fail: 'invalid', error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet).` };
   }
-
-  // The sheets router refuses a busy sheet first, but Express yields between
-  // its routers, so a sort, an import or a column rename may have started
-  // since. Like adding any column, this waits for it (a CSV replace sets the
-  // columns when it ends).
-  const busy = sheetBusyWith(sheetId);
-  if (busy) return { fail: 'busy', error: busyMessage(busy) };
 
   db.transaction(() => {
     appendColumnsToOrder(sheetId, userId, [columnName]);

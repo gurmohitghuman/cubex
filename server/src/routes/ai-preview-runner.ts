@@ -10,6 +10,8 @@ import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } 
 
 interface PreviewArgs {
   prompt: string
+  // The sheet's columns, read once per preview (lib/prompt.ts processPromptTemplate).
+  columns: readonly string[]
   systemPrompt?: string
   model: string
   safeTemperature: number
@@ -75,7 +77,7 @@ export const processOneRow = async (
 ): Promise<PreviewRowResult> => {
   let billed: ModelCall | null = null;
   try {
-    const filled = processPromptTemplate(args.prompt, row.data);
+    const filled = processPromptTemplate(args.prompt, row.data, args.columns);
     const processedPrompt = args.promptSuffix ? `${filled}\n\n${args.promptSuffix}` : filled;
     // A prose answer with web tools gets the runner's tools system message in
     // place of the user's (ai-row.ts); a structured (JSON) one keeps the user's

@@ -13,7 +13,7 @@ import { isPristineSeedSheet } from './transfer-seed';
 import {
   readTransferLedger, transferHashes, TransferRequest, TransferResult, writeTransferLedger,
 } from './transfer-ledger';
-import { cellOf } from './row-selection';
+import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';

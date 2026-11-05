@@ -1,6 +1,7 @@
 // Over 200 lines: the one streaming preview route, request to saved draft; its parsing and row runs live apart.
 import express from 'express';
 import { db } from '../lib/db';
+import { getSheetColumns } from '../lib/sql-helpers';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { AI_PREVIEW_CONCURRENCY } from '../lib/constants';
 import { parsePreviewRequest, previewErrorMessage } from './ai-preview-parse';
@@ -85,9 +86,11 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // reuses no preview (services/ai-run-start-multi.ts), so it keeps no draft.
     const structured = parsed.outputColumns
       ? structuredPreview(parsed.outputColumns, useOpenRouterWebSearch || useWebFetch) : null;
+    // Read once for the preview: what each row's prompt and its draft fingerprint read.
+    const columns = getSheetColumns(sheetId, req.userId!, false);
     const args = {
-      prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, search: planned.ok,
-      useWebFetch, ...structured?.args,
+      prompt, columns, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined,
+      search: planned.ok, useWebFetch, ...structured?.args,
     };
 
     // Persist the draft CONFIG before streaming (survives close/reopen even if
@@ -159,7 +162,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
           const result = structured ? structured.shape(answer) : answer;
           collected[i + j] = {
             rowIndex: result.rowIndex, value: result.value,
-            ...(result.error ? { error: result.error } : { inputHash: computeInputHash(prompt, row.data) }),
+            ...(result.error ? { error: result.error } : { inputHash: computeInputHash(prompt, row.data, columns) }),
             promptTokens: result.promptTokens, completionTokens: result.completionTokens,
             costUsd: result.costUsd, searchQueries: result.searchQueries, webSearches: result.webSearches,
           };
