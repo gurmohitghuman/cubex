@@ -4,13 +4,15 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { listSavedKeys } from '../services/saved-key-uses';
+import { API_KEY_NAME_MAX } from '../lib/constants';
 
 const router = express.Router();
 
+// name: up to the longest name a key can be saved or renamed to.
 const nameParam = (v: unknown): string | undefined | null =>
-  v === undefined ? undefined : typeof v === 'string' && v && v.length <= 200 ? v : null;
+  v === undefined ? undefined : typeof v === 'string' && v && v.length <= API_KEY_NAME_MAX ? v : null;
 // after takes any length the request carries: next_after is a saved key's
-// name, and a saved name has no length limit.
+// name, and a name saved before API_KEY_NAME_MAX can be longer.
 const afterParam = (v: unknown): string | undefined | null =>
   v === undefined ? undefined : typeof v === 'string' && v ? v : null;
 

@@ -46,6 +46,11 @@ export const RELAXED_COLUMN_NAME_PATTERN = /^(?=.*[A-Za-z0-9])[^"\\\x00-\x1F\x7F
 // columns get opaque col_xxxx colIds — so they're safe as data NAMES.)
 export const RESERVED_COLUMN_NAMES = new Set(['__rowIndex']);
 export const API_KEY_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+// Longest name a saved API key gets when it's saved or renamed: the most the
+// `name` lookup of list_saved_keys and GET /api/v1/saved-keys takes, so a key
+// can always be looked up by name. A longer name saved before the cap keeps
+// working (services/saved-keys.ts validateSavedKey).
+export const API_KEY_NAME_MAX = 200;
 
 // Password rules for the single account (lib/password.ts). The max stops a
 // huge body from tying up an argon2 hash.

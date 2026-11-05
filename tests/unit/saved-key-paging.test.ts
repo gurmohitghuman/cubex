@@ -1,8 +1,9 @@
 // Paging through saved keys (services/saved-key-uses.ts): SAVED_KEYS_LISTED keys
 // a call by name, keys_count whole, next_after the last listed name, and
-// `after` takes it back on every surface. A saved name has no length limit, so
-// GET /api/v1/saved-keys?after= and MCP list_saved_keys' after take any length
-// the request carries: a 250-character name at the edge of a page pages on.
+// `after` takes it back on every surface. A name saved before API_KEY_NAME_MAX
+// can be longer, so GET /api/v1/saved-keys?after= and MCP list_saved_keys'
+// after take any length the request carries: a 250-character name at the edge
+// of a page pages on.
 import assert from 'node:assert/strict'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
@@ -11,6 +12,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import keysMod from '../../server/src/services/saved-keys'
+import cryptoMod from '../../server/src/lib/crypto'
 import usesMod from '../../server/src/services/saved-key-uses'
 import constMod from '../../server/src/lib/api-v1-constants'
 import routeMod from '../../server/src/routes/api-v1-saved-keys'
@@ -18,6 +20,7 @@ import buildMod from '../../server/src/mcp/build-server'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createSavedKey, validateSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
+const { encrypt } = cryptoMod as typeof import('../../server/src/lib/crypto')
 const { listSavedKeys } = usesMod as typeof import('../../server/src/services/saved-key-uses')
 const { SAVED_KEYS_LISTED } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { default: savedKeysRouter } = routeMod as unknown as { default: express.Router }
@@ -62,11 +65,14 @@ await ok(`at most ${SAVED_KEYS_LISTED} keys a call, keys_count whole; next_after
   assert.equal(rest.next_after, undefined)
 })
 
-// The last key of the first page has a 250-character name.
+// The last key of the first page has a 250-character name, saved before names
+// were capped (inserted directly: Settings now refuses it).
 const LONG = `key_${String(SAVED_KEYS_LISTED - 1).padStart(2, '0')}_`.padEnd(250, 'x')
 const names = Array.from({ length: SAVED_KEYS_LISTED + 3 }, (_, i) => `key_${String(i).padStart(2, '0')}`)
 names[SAVED_KEYS_LISTED - 1] = LONG
-const long = userWithKeys(names)
+const long = userWithKeys(names.filter(n => n !== LONG))
+db.prepare('INSERT INTO api_keys (id, user_id, name, key_type, key_value_encrypted) VALUES (?,?,?,?,?)')
+  .run(uuid(), long, LONG, 'bearer', encrypt('k'.repeat(16)))
 const rest = names.slice(SAVED_KEYS_LISTED)
 
 await ok('a 250-character name at the edge of a page: the service pages on past it', () => {

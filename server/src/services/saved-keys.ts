@@ -4,7 +4,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { db } from '../lib/db';
 import { decrypt, encrypt } from '../lib/crypto';
-import { API_KEY_NAME_PATTERN, MIN_API_KEY_VALUE_LENGTH } from '../lib/constants';
+import { API_KEY_NAME_MAX, API_KEY_NAME_PATTERN, MIN_API_KEY_VALUE_LENGTH } from '../lib/constants';
 import { templateTokenIs } from '../lib/template-token-match';
 import type { RunFail } from './run-shared';
 
@@ -13,10 +13,17 @@ export interface SavedKeyInput { name: string; key_type: SavedKeyType; key_value
 const PUBLIC_COLUMNS = 'id, name, key_type, description, created_at, updated_at';
 
 // A Settings form body, checked: the input to save, or what's wrong with it.
-export function validateSavedKey(body: Record<string, unknown>): string | SavedKeyInput {
+// currentName: the key's name when an existing key is edited. Only creating a
+// key or renaming one to a name over API_KEY_NAME_MAX is refused. A longer name
+// saved before the cap is never refused anywhere else: it is read, run, listed,
+// paged and deleted as before, and an edit that keeps it saves.
+export function validateSavedKey(body: Record<string, unknown>, currentName?: string): string | SavedKeyInput {
   const { name, key_type, key_value, description } = body;
   if (typeof name !== 'string' || !name.trim()) return 'API key name is required';
   const trimmedName = name.trim();
+  if (trimmedName.length > API_KEY_NAME_MAX && trimmedName !== currentName) {
+    return `API key name can be at most ${API_KEY_NAME_MAX} characters`;
+  }
   if (!API_KEY_NAME_PATTERN.test(trimmedName)) {
     return 'API key name can only contain letters, numbers, underscores, and hyphens';
   }

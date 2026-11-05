@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { listSavedKeys } from '../services/saved-key-uses';
 import { SAVED_KEY_USES_BRIEF, SAVED_KEY_USES_LISTED, SAVED_KEYS_LISTED } from '../lib/api-v1-constants';
+import { API_KEY_NAME_MAX } from '../lib/constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 export function registerSavedKeyTools(server: McpServer, ctx: McpAuthCtx) {
@@ -22,8 +23,9 @@ export function registerSavedKeyTools(server: McpServer, ctx: McpAuthCtx) {
       + 'headers or body; that needs the secrets scope), or to see what stops working if a key is renamed or '
       + 'deleted. Read-only.',
     inputSchema: {
-      name: z.string().min(1).max(200).optional().describe('Just this key (any case), with more of its places'),
-      // Any length: next_after is a saved key's name, and a saved name has no length limit.
+      name: z.string().min(1).max(API_KEY_NAME_MAX).optional()
+        .describe('Just this key (any case), with more of its places'),
+      // Any length: next_after is a saved key's name, and one saved before API_KEY_NAME_MAX can be longer.
       after: z.string().min(1).optional().describe('The keys after this name: the next_after of a call'),
     },
   }, async ({ name, after }) => {
