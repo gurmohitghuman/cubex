@@ -46,12 +46,13 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
   }
 
   // An AI run that paused at its spend limit resumes only with a higher one:
-  // Resume asks for it (RaiseLimitDialog), the first such run, and resumes the rest.
-  const [raiseLimitFor, setRaiseLimitFor] = useState<string | null>(null)
+  // Resume all asks for it (RaiseLimitDialog), for each such run one after
+  // another (closing or raising one opens the next), and resumes the rest.
+  const [raiseQueue, setRaiseQueue] = useState<string[]>([])
   const resumeAll = async () => {
     const actions: Promise<any>[] = []
     const atLimit = aiRuns.filter(r => r.status === 'paused' && r.pause_reason === 'spend_limit')
-    if (atLimit.length) setRaiseLimitFor(atLimit[0].id)
+    if (atLimit.length) setRaiseQueue(atLimit.map(r => r.id))
     aiRuns.filter(r => r.status === 'paused' && r.pause_reason !== 'spend_limit')
       .forEach(r => actions.push(aiAPI.resumeRun(r.id)))
     httpRuns.filter(r => r.status === 'paused').forEach(r => actions.push(httpAPI.controlRun(r.id, 'resume')))
@@ -85,10 +86,11 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
   }
 
   const raiseLimit = {
-    runId: raiseLimitFor, close: () => setRaiseLimitFor(null), resumed: () => { void refetch() },
+    runId: raiseQueue[0] ?? null, queued: Math.max(0, raiseQueue.length - 1),
+    close: () => setRaiseQueue(q => q.slice(1)), resumed: () => { void refetch() },
   }
   return useMemo(
     () => ({ anyActiveRuns, anyRunning, canStopAll, stoppingAll, pauseAll, resumeAll, stopAll, raiseLimit }),
-    [anyActiveRuns, anyRunning, canStopAll, stoppingAll, aiRuns, httpRuns, sheetId, raiseLimitFor],
+    [anyActiveRuns, anyRunning, canStopAll, stoppingAll, aiRuns, httpRuns, sheetId, raiseQueue],
   )
 }

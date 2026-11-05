@@ -5,7 +5,7 @@
 // with no cost Cubex saw.
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { callDeadline, deadlineWords, type CallDeadline } from '../lib/call-deadline';
-import { AI_CALL_DEADLINE_MS } from '../lib/constants';
+import { AI_CALL_DEADLINE_MS, AI_RESET_MAYBE_BILLED_MS } from '../lib/constants';
 import { aiProviderSide, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 import { FailedCallError, type ModelCall } from './ai-model-call';
@@ -36,23 +36,51 @@ export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
   ({ kind: 'failed', message, provider: aiProviderSide(message), ...(maybeBilled ? { maybeBilled } : {}) });
 
 // Transport failures that come before anything reaches the provider: no
-// address, no connection, or the stale keep-alive socket openrouter-retry.ts
-// retries (the request died on the wire).
-const NEVER_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'ECONNRESET']);
+// address, no connection. A connection reset is the stale keep-alive socket
+// openrouter-retry.ts retries (the request died on the wire) only when it
+// comes at once; one that comes AI_RESET_MAYBE_BILLED_MS or more after a try
+// went out (a proxy's idle timeout during a long answer) may follow a billed
+// answer.
+const NEVER_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH']);
+const isReset = (error: unknown) => error instanceof APIConnectionError
+  && !(error instanceof APIConnectionTimeoutError) && connectionCauseCode(error) === 'ECONNRESET';
+
+// The tries of one call (withConnectRetry calls send once a try), timed:
+// lateReset says whether any try was reset that long after it went out. Such
+// a try may be billed even when a try after it fails otherwise.
+export function timedTries<T>(send: () => Promise<T>): { send: () => Promise<T>; lateReset: () => boolean } {
+  let late = false;
+  return {
+    send: async () => {
+      const at = Date.now();
+      try { return await send(); } catch (error) {
+        if (isReset(error) && Date.now() - at >= AI_RESET_MAYBE_BILLED_MS) late = true;
+        throw error;
+      }
+    },
+    lateReset: () => late,
+  };
+}
 
 // Whether a failed row's call may be billed although no cost came back. With
 // stream:false the provider generates (and bills) the whole answer before it
 // sends it, so a call that was sent and then gave nothing back may be paid
 // for: cut off at the row's deadline (an abort), the SDK's "Request timed
 // out." (no headers within AI_REQUEST_TIMEOUT_MS), an answer that broke off
-// or couldn't be read, a connection lost after it was sent. Not: a call never
-// sent, one that came back (its cost is recorded, failed responses included),
-// an error status from OpenRouter (a refusal is not billed; also when the
-// deadline passed while waiting to try again), a connection that never
-// reached it. The error is the last try's own.
-export function callMayBeBilled(error: unknown, a: { sent: boolean; call: ModelCall | null }): boolean {
-  if (!a.sent || a.call || error instanceof FailedCallError) return false;
+// or couldn't be read, a connection lost after it was sent, a try reset late
+// (lateReset). Not: a call never sent, one that came back (its cost is
+// recorded, failed responses included), an error status from OpenRouter (a
+// refusal is not billed; also when the deadline passed while waiting to try
+// again), a connection that never reached it, one reset at once. The error is
+// the last try's own.
+export function callMayBeBilled(
+  error: unknown, a: { sent: boolean; call: ModelCall | null; lateReset?: boolean },
+): boolean {
+  if (!a.sent) return false;
+  if (a.lateReset) return true;
+  if (a.call || error instanceof FailedCallError) return false;
   if (error instanceof APIConnectionTimeoutError) return true;
+  if (isReset(error)) return false;
   if (error instanceof APIConnectionError) return !NEVER_SENT.has(connectionCauseCode(error) ?? '');
   return !(error instanceof APIError && typeof error.status === 'number');
 }

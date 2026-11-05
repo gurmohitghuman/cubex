@@ -344,7 +344,7 @@ export const SheetPage: React.FC = () => {
       />
       <AutorunDialogHost autorun={autorun} />
       <RaiseLimitDialog runId={runControls.raiseLimit.runId} onClose={runControls.raiseLimit.close}
-        onResumed={runControls.raiseLimit.resumed} />
+        onResumed={runControls.raiseLimit.resumed} queued={runControls.raiseLimit.queued} />
       <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals}
         sheetName={table?.sheets?.find(s => s.id === modals.versionsFor)?.name ?? ''}
         onRestored={id => { if (id === activeSheet?.id) void silentReloadRef.current(id) }} />

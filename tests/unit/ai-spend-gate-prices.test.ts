@@ -7,7 +7,9 @@
 //   - a negative listed price (openrouter/auto's "-1") is no listed price, in
 //     the run and in the estimate;
 //   - the estimate prices a routing variant as its model, as the run does, and
-//     names one row's most (row_most_usd) exactly as the run holds it;
+//     names one row's most (row_most_usd) exactly as a real run started with
+//     the same settings (system prompt, output columns, max_chars, web search)
+//     holds it;
 //   - a ceiling under the high end plus one row's most is refused at the start
 //     (such a run would stop before its rows); one that covers both runs every row;
 //   - a resume refused for another reason keeps the old limit.
@@ -82,17 +84,34 @@ await ok('a negative listed price is no price: the run stops on what was billed;
   assert.ok('ok' in fee && fee.ok.pricing_available === false && fee.ok.estimated_cost_usd === null)
 })
 
-await ok("the estimate prices a variant as its model and names one row's most as the run holds it", async () => {
-  const { sid, runId } = runOf(4, 1, 1)
-  const gate = rowMaxMicro(price, rowFixedOf(runById(runId) as never), 'Say hi to N3'.length) / 1e6
-  for (const model of [PRICED, `${PRICED}:nitro`, `${PRICED}@preset/fast`]) {
-    const est = await estimateAiRun(uid, { sheetId: sid, prompt: 'Say hi to /name', model, maxChars: null,
-      concurrency: 1 })
-    assert.ok('ok' in est, model)
-    assert.equal(est.ok.pricing_available, true, model)
-    assert.ok(est.ok.estimated_cost_usd !== null, model)
-    assert.equal(est.ok.row_most_usd, gate, model)
+await ok("the estimate prices a variant as its model and names one row's most as a real run holds it", async () => {
+  const sid = sheetOf(4)
+  const caller = { userId: uid, tokenId: 'tok-most', scopes: new Set(['read', 'write', 'run']) }
+  const args = {
+    sheet_id: sid, column_name: 'Most', prompt: 'Say hi to /name', concurrency: 1, system_prompt: 'Be brief.',
+    max_chars: 40_000, web_search: true, search_engine: 'exa', max_searches_per_row: 2,
+    output_columns: [{ column_name: 'Greeting', type: 'string', description: 'A short greeting' },
+      { column_name: 'Words', type: 'number', description: 'How many words it has' }],
   }
+  const estimateOf = async (model: string) => {
+    const est = await tokenStartAiRun(caller, { ...args, model, estimate_only: true })
+    assert.ok('ok' in est, JSON.stringify(est))
+    const e = est.ok as { pricing_available: boolean; estimated_cost_usd: unknown; row_most_usd: number }
+    assert.equal(e.pricing_available, true, model)
+    assert.ok(e.estimated_cost_usd !== null, model)
+    return e.row_most_usd
+  }
+  const most = await estimateOf(PRICED)
+  const started = await tokenStartAiRun(caller, { ...args, model: PRICED })
+  assert.ok('ok' in started, JSON.stringify(started))
+  const run = runById((started.ok as { run_id: string }).run_id) as never
+  // Every sampled prompt ("Say hi to N0" to "N3") is 12 bytes: the longest is one of them.
+  assert.equal(rowMaxMicro(price, rowFixedOf(run), 'Say hi to N3'.length) / 1e6, most)
+  const fixed = rowFixedOf(run)
+  assert.ok(fixed.webTokens > 0 && fixed.webFeesUsd > 0 && fixed.maxTokens > 8_000 && fixed.messages === 2,
+    JSON.stringify(fixed))
+  for (const model of [`${PRICED}:nitro`, `${PRICED}@preset/fast`]) assert.equal(await estimateOf(model), most, model)
+  db.prepare("UPDATE ai_runs SET status = 'cancelled' WHERE sheet_id = ?").run(sid)
 })
 
 await ok("a ceiling under the high end plus one row's most is refused; one covering both runs every row", async () => {

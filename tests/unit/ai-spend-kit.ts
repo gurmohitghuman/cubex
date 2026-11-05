@@ -22,9 +22,11 @@ export interface StandIn {
   modelsFailFirst: number         // fail this many model list reads, then answer
   modelsHits: number
   calls: number
-  // Per call (1-based): 'ok', 'cut' (a 200 whose body breaks off: the call may be billed), or wait for a promise.
-  answer: (n: number) => 'ok' | 'cut' | Promise<void>
+  // Per call (1-based): 'ok', 'cut' (a 200 whose body breaks off: the call may be billed), 'reset' (the
+  // connection is reset, no answer), or wait for a promise (then answer as it says, 'ok' by default).
+  answer: (n: number) => Answer | Promise<Answer | void>
 }
+type Answer = 'ok' | 'cut' | 'reset'
 
 export async function startStandIn(): Promise<StandIn & { close: () => void }> {
   const s: StandIn = {
@@ -50,9 +52,9 @@ export async function startStandIn(): Promise<StandIn & { close: () => void }> {
       }
       if (!req.url?.includes('/chat/completions')) { res.writeHead(404).end(); return }
       const n = ++s.calls
-      const how = s.answer(n)
-      if (how instanceof Promise) await how
+      const how = (await s.answer(n)) ?? 'ok'
       await new Promise(r => setTimeout(r, s.delayMs))
+      if (how === 'reset') { req.socket.resetAndDestroy(); return }
       res.writeHead(200, { 'content-type': 'application/json' })
       if (how === 'cut') { res.end('{"id":"gen-cut","choices":['); return }
       res.end(JSON.stringify({

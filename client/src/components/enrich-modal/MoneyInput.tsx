@@ -12,12 +12,15 @@ interface Props {
   fallback: number | null
   label: string
   onChange: (v: number | null) => void
+  // An amount is needed (a raise): empty isn't offered as a choice.
+  required?: boolean
 }
 
 // A dollar amount; empty means "use the default" (shown as the placeholder,
-// in the summary's own format). Anything else that isn't above $0 is flagged.
-// Used by Rows and limits and by a paused run's "raise the limit" fixes.
-export const MoneyInput: React.FC<Props> = ({ value, fallback, label, onChange }) => {
+// in the summary's own format), unless one is required. Anything else that
+// isn't above $0 is flagged. Used by Rows and limits and by a paused run's
+// "raise the limit" fixes (required).
+export const MoneyInput: React.FC<Props> = ({ value, fallback, label, onChange, required }) => {
   const [text, setText] = useState(value === null ? '' : String(value))
   const invalid = text.trim() !== '' && parseMoney(text) === null
   return (
@@ -28,7 +31,11 @@ export const MoneyInput: React.FC<Props> = ({ value, fallback, label, onChange }
           aria-label={label} placeholder={fallback === null ? '' : formatCost(fallback).slice(1)}
           onChange={e => { setText(e.target.value); onChange(parseMoney(e.target.value)) }} />
       </span>
-      {invalid && <span className="text-xs text-red-600 mt-0.5">Enter an amount above $0, or leave it empty.</span>}
+      {invalid && (
+        <span className="text-xs text-red-600 mt-0.5">
+          {required ? 'Enter an amount above $0.' : 'Enter an amount above $0, or leave it empty.'}
+        </span>
+      )}
     </span>
   )
 }

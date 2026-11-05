@@ -17,7 +17,7 @@ import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
-  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage,
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage, timedTries,
 } from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
@@ -51,6 +51,8 @@ export async function processMultiRow(
   const deadline = aiCallDeadline(signal);
   // Set once the call goes out: a failure after it may be billed (callMayBeBilled).
   let sent = false;
+  // Whether a try was reset late enough to have reached the provider (timedTries).
+  let lateReset = () => false;
 
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
@@ -62,11 +64,13 @@ export async function processMultiRow(
     const model = run.model;
     if (!model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
     const tools = buildWebTools(run.prompt, row.data, { search, fetch: web.fetch });
-    sent = true;
-    call = await withConnectRetry(() => sendModelCall(openai, {
+    const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, web.fetch),
-    }, deadline.signal), deadline.signal, () => shouldStop(runId, myGeneration));
+    }, deadline.signal));
+    lateReset = tries.lateReset;
+    sent = true;
+    call = await withConnectRetry(tries.send, deadline.signal, () => shouldStop(runId, myGeneration));
     const usage = rowUsage(call);
 
     // cleanMarkdown:false — this text is JSON, not prose. Cleaning it breaks a
@@ -119,7 +123,7 @@ export async function processMultiRow(
     const errorMessage = redactSecrets(rawMsg);
     console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
     writeMultiFailure(ctx, blankOnFailure, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage, callMayBeBilled(error, { sent, call }));
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
   } finally {
     deadline.done();
   }

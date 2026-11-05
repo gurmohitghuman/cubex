@@ -16,7 +16,7 @@ import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
-  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage,
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage, timedTries,
 } from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
@@ -56,6 +56,8 @@ export async function processRow(
   const deadline = aiCallDeadline(signal);
   // Set once the call goes out: a failure after it may be billed (callMayBeBilled).
   let sent = false;
+  // Whether a try was reset late enough to have reached the provider (timedTries).
+  let lateReset = () => false;
   try {
     const processedPrompt = processPromptTemplate(run.prompt, row.data);
     const search = runSearchConfig(run);
@@ -85,11 +87,13 @@ export async function processRow(
     // maxRetries:0 semantics.
     // Floored max_tokens so reasoning models can think AND answer (the old 1000
     // cap made them return null content → silent blank cells); max_chars raises it.
-    sent = true;
-    call = await withConnectRetry(() => sendModelCall(openai, {
+    const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
-    }, deadline.signal), deadline.signal, () => shouldStop(runId, myGeneration));
+    }, deadline.signal));
+    lateReset = tries.lateReset;
+    sent = true;
+    call = await withConnectRetry(tries.send, deadline.signal, () => shouldStop(runId, myGeneration));
 
     // Throws (→ caught below, recorded as a `failed` row + "❌ Error" cell) when
     // the model returned no usable content — a reasoning model exhausting the
@@ -147,7 +151,7 @@ export async function processRow(
     const errorMessage = redactSecrets(rawErrorMessage);
     console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage, callMayBeBilled(error, { sent, call }));
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
   } finally {
     deadline.done();
   }

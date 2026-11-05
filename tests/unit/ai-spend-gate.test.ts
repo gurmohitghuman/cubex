@@ -11,7 +11,8 @@
 //   - rows an earlier worker of the run still has out (its hold) are waited
 //     for; a hold older than any call can be is not;
 //   - a model with no listed price stops on what was billed;
-//   - a row whose call may be billed keeps its hold (ai-spend-gate-stuck.test.ts: what the run does then);
+//   - a row whose call may be billed moves its most from the hold to the run's cut-off total, counted as
+//     spent (ai-spend-gate-stuck.test.ts: what the run does then; ai-spend-resume.test.ts: after a resume);
 //   - a run without a limit holds nothing; boot drops every hold.
 import http from 'node:http'
 import path from 'node:path'
@@ -145,7 +146,9 @@ await ok('a resume at a limit already spent is refused and changes nothing; a hi
   const before = runRow(paused.runId)
   const low = await resumeAiRun(paused.runId, uid, 0.001, true)
   assert.ok('fail' in low && low.fail === 'bad_request')
-  assert.match(low.message, /spent \$0\.0\d+ of its \$0\.001 spend limit/)
+  assert.match(low.message, new RegExp('^The run paused at its \\$0\\.03 spend limit: it spent \\$0\\.0\\d+ and '
+    + 'its next row could cost up to \\$0\\.00\\d+\\. Resume it with a higher spend_limit_usd, at least '
+    + '\\$0\\.0\\d+, to go on\\.$'))
   const same = runRow(paused.runId)
   assert.deepEqual(same, before)
   const resumed = await resumeAiRun(paused.runId, uid, 1, true)
@@ -224,29 +227,33 @@ await ok('a model with no listed price stops once what was billed reaches the li
   assert.equal(cells(sid).filter(v => v === PLACEHOLDER).length, 6 - calls)
 })
 
-await ok('a row whose call may be billed keeps its hold (as spent); the others give it back', async () => {
+await ok("a row whose call may be billed counts its most as spent on the run; the others give it back", async () => {
   const { runId } = runOf(1, 1, 1)
   const gate = (await openSpendGate(db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(runId) as never, 7))!
   const row = { rowIndex: 0, data: { name: 'N0' } } as never
   const holdOf = () => db.prepare('SELECT hold_micro FROM ai_run_holds WHERE run_id = ? AND worker_generation = 7')
     .pluck().get(runId) as number | undefined
+  const cutOff = () => db.prepare('SELECT spend_cut_off_micro FROM ai_runs WHERE id = ?').pluck().get(runId)
   const a = gate.admit(row)
   assert.ok('start' in a && a.start > 0)
   assert.equal(holdOf(), a.start)
   gate.settle(a.start, failedRow(AI_TIMEOUT_MESSAGE, true))
-  assert.equal(holdOf(), a.start)
+  assert.equal(holdOf(), 0)
+  assert.equal(cutOff(), a.start, 'its most moved to the run: it counts as spent, for every worker')
   const b = gate.admit(row)
   assert.ok('start' in b)
-  assert.equal(holdOf(), a.start + b.start)
+  assert.equal(holdOf(), b.start)
   gate.settle(b.start, failedRow('Bad key'))
-  assert.equal(holdOf(), a.start)
+  assert.equal(holdOf(), 0)
   // The deadline's words alone don't keep it: the row says whether its call may be billed.
   const c = gate.admit(row)
   assert.ok('start' in c)
   gate.settle(c.start, failedRow(AI_TIMEOUT_MESSAGE))
-  assert.equal(holdOf(), a.start)
+  assert.equal(holdOf(), 0)
+  assert.equal(cutOff(), a.start)
   gate.close()
   assert.equal(holdOf(), undefined)
+  assert.equal(cutOff(), a.start, 'and stays when the worker ends')
 })
 
 await ok('a run without a limit holds nothing and runs as before; boot drops every hold', async () => {

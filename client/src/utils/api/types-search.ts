@@ -52,6 +52,16 @@ export interface SearchPlanResponse {
 // spent_usd (AI runs): what its spend limit counts as spent, dropped calls included.
 export interface RunSpend { cost_usd: number | null; searches: number | null; spent_usd?: number }
 
+// An AI run's spend limit as a resume sees it (GET /ai/runs/:id/spend-limit, server
+// services/ai-run-limit.ts): least_usd is the lowest limit it can go on with (what it
+// spent, plus what cut-off calls count, plus its next row's most), suggest_usd enough
+// to finish the rows left. Never the run's results.
+export interface AiLimitView {
+  column_name: string | null; status: string; pause_reason: string | null; message: string | null
+  limit_usd: number | null; spent_usd: number; cut_off_usd: number; next_row_usd: number | null
+  least_usd: number; suggest_usd: number; rows_left: number
+}
+
 // The search fields of a preview or run request: only with web search on (the
 // server refuses them without it). '' and null mean the defaults, so they're
 // left out.

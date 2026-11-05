@@ -3,7 +3,8 @@
 // spent, plus the most its rows still out can cost, plus the most this row can
 // cost must stay within the limit: then it starts and its most is held until
 // it settles. A row whose call may be billed with no cost Cubex saw (cut off
-// before its answer came back) keeps its most held as if spent. When only rows
+// before its answer came back) counts its most as spent from then on, for the
+// rest of the run (ai_runs.spend_cut_off_micro, migration 052). When only rows
 // out are in the way, it waits for them; when what was spent (and held for
 // such calls) leaves no room for this row, the run pauses, so it never waits
 // with nothing out.
@@ -18,8 +19,9 @@
 // more than its most. A model with no listed price (none, or a negative one)
 // has no most: such a run stops once what was billed reaches the limit.
 import {
-  AI_HOLD_MESSAGE_TOKENS, AI_HOLD_WEB_TOOLS_TOKENS, WEB_FETCH_PAGES_PER_ROW, WEB_FETCH_TOKENS_PER_PAGE,
-  WEB_FETCH_USD_PER_PAGE, WEB_SEARCH_TOKENS_PER_SEARCH, WEB_SEARCHES_PER_ROW, WEB_SEARCHES_PER_ROW_NATIVE,
+  AI_HOLD_MESSAGE_TOKENS, AI_HOLD_WEB_TOOLS_TOKENS, AI_RESET_MAYBE_BILLED_MS, WEB_FETCH_PAGES_PER_ROW,
+  WEB_FETCH_TOKENS_PER_PAGE, WEB_FETCH_USD_PER_PAGE, WEB_SEARCH_TOKENS_PER_SEARCH, WEB_SEARCHES_PER_ROW,
+  WEB_SEARCHES_PER_ROW_NATIVE,
 } from './constants';
 import { aiMaxTokens } from './constants-ai';
 import { enginePrice, nativeSearchProvider, type BilledEngine } from './web-search-pricing';
@@ -163,9 +165,13 @@ export const AI_SPEND_LIMIT_NOTE = 'The run starts a row only while what it spen
   + 'out and that row can cost (its prompt counted as one token a byte, plus all the output the call may write, '
   + "at least 8,000 tokens, at the model's listed prices), stays within the limit. Otherwise it waits for rows "
   + 'out, or pauses with pause_reason spend_limit and its rows not started stay ⏳; control_run resume with a '
-  + 'higher spend_limit_usd goes on. Near the limit fewer rows run at once and up to one row\'s most can stay '
-  + 'unspent. A call cut off before it answered counts at its most from then on (it may still be billed). '
+  + 'higher spend_limit_usd goes on (at least what it spent, plus what its cut-off calls hold, plus its next '
+  + "row's most: a lower one is refused, saying what to raise it to). Near the limit fewer rows run at once and up "
+  + "to one row's most can stay unspent. A call cut off before it answered, or whose connection was reset "
+  + `${AI_RESET_MAYBE_BILLED_MS / 1000} seconds or more after it went out, counts at its most for the rest of the `
+  + 'run (it may still be billed). '
   + "Spend can pass the limit only: with web search or fetch (a row's most counts their fees and found text as "
   + 'estimated), on a model with no listed price (it stops once what was billed reaches it, so it passes by the '
-  + 'rows out then), and when the server restarts or the run is resumed while calls it cut off may be billed.'
+  + 'rows out then), when the server restarts while calls are out, and when a call tried again after a late '
+  + 'reset answers (only that answer\'s cost counts).'
   + " If OpenRouter's model list can't be read, the run pauses (pause_reason provider_errors); resume to retry.";

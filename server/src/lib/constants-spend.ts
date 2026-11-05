@@ -23,6 +23,12 @@ export const AI_HOLD_GRACE_MS = AI_CALL_DEADLINE_MS + 60_000;
 export const AI_PRICE_READ_TRIES = 3;
 export const AI_PRICE_READ_RETRY_MS = 1_000;
 
+// A connection reset this long after an AI call's try went out may follow a
+// billed answer (services/ai-row-outcome.ts); sooner, it is a stale
+// keep-alive socket that never reached OpenRouter (it resets within a round
+// trip).
+export const AI_RESET_MAYBE_BILLED_MS = 2_000;
+
 // Stable row ids resolve to positions this many at a time, each chunk bound as
 // one JSON value: SQLite takes at most 32,766 bound values in one statement.
 export const ROW_ID_RESOLVE_CHUNK = 10_000;

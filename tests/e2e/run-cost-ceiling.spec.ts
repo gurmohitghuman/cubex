@@ -16,8 +16,13 @@ import { mcpClient, call, callError } from './helpers-mcp'
 //   - spend_limit_usd sets a limit without that check: one below a row's most
 //     pauses the run before any call (pause_reason spend_limit) with its rows
 //     still ⏳; a resume that leaves no room is refused; in the app, Resume asks
-//     for a higher limit and goes on with it; a rerun takes a limit too and
-//     resumes over REST;
+//     for a higher limit (from a light read, never the run's results: the
+//     column, why it paused, the least the server takes, to the micro-dollar,
+//     filled in with enough to finish) and goes on with it; Resume all with two
+//     runs at their limit asks for each, one after the other; a rerun takes a
+//     limit too and resumes over REST;
+//   - the AI drawer's own Resume asks in the same dialog, and its poll follows
+//     the resumed run to the end;
 //   - a setup applied under a ceiling gives its AI step that as its limit.
 
 const FAKE_KEY = 'sk-or-v1-cost-ceiling-e2e'
@@ -32,6 +37,8 @@ async function aiStatus(client: Client, runId: string, statuses: string[]) {
     new RegExp(`^(${statuses.join('|')})$`))
   return last
 }
+// A limit to the micro-dollar, as the dialog shows it (client lib/enrich-format.ts limitText).
+const exact = (usd: number) => `$${usd.toFixed(6).replace(/0+$/, '')}`
 const cells = async (api: APIRequestContext, sheetId: string, column: string) =>
   (await getSheet(api, sheetId)).data.rows.map((r: any) => r.data[column] ?? '')
 
@@ -128,19 +135,46 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     expect((await aiStatus(client, started.run_id, ['paused'])).spend_limit_usd).toBe(TINY)
 
     // In the app, Resume asks for a higher limit, then goes on: every row runs (and fails on the fake key, free).
+    // The dialog reads the light spend-limit route, never the run with all its results.
+    const view = await (await api.get(`/api/ai/runs/${started.run_id}/spend-limit`)).json()
+    expect(view).toMatchObject({ column_name: 'Hi (Output)', pause_reason: 'spend_limit', limit_usd: TINY,
+      spent_usd: 0, cut_off_usd: 0, rows_left: 3, message: paused.pause_message })
+    // Nothing spent, nothing cut off: the least is the next row's most.
+    expect(Math.round(view.least_usd * 1e6)).toBe(Math.round(view.next_row_usd * 1e6))
+    expect(view.suggest_usd).toBe(Math.ceil(3 * view.next_row_usd * 100 - 1e-9) / 100)
+    const fullRead = `/api/ai/runs/${started.run_id}`
+    const fullReads: string[] = []
+    page.on('request', r => { if (new URL(r.url()).pathname === fullRead) fullReads.push(r.url()) })
     await context.addCookies((await api.storageState()).cookies)
     await page.goto(`${BASE}/table/${tableId}`)
     await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+    const lightRead = page.waitForRequest(r => new URL(r.url()).pathname === `${fullRead}/spend-limit`)
     await page.getByTitle('Resume all runs').click()
+    await lightRead
     const dialog = page.getByTestId('ai-raise-limit')
-    await expect(dialog).toContainText('This run stopped at its $0.000001 spend limit. It has spent $0.00.')
+    await expect(dialog).toContainText('Hi (Output)')
+    await expect(dialog.getByTestId('ai-raise-limit-why')).toHaveText(paused.pause_message)
+    await expect(dialog.getByTestId('ai-raise-limit-least')).toContainText(
+      `It needs at least ${exact(view.least_usd)} to go on: what it spent ($0.00), plus its next row at its most`)
     const limit = dialog.getByLabel('New limit')
-    await limit.fill('0.000001')
-    await expect(dialog).toContainText('Enter more than $0.000001.')
-    await expect(dialog.getByRole('button', { name: 'Raise and resume' })).toBeDisabled()
+    await expect(limit).toHaveValue(String(view.suggest_usd))
+    await expect(dialog).toContainText('The amount filled in is enough for the 3 rows left, each at that most.')
+    // A micro-dollar under the least is refused here, as the server refuses it; the least itself is taken.
+    const raise = dialog.getByRole('button', { name: 'Raise and resume' })
+    await limit.fill(((Math.round(view.least_usd * 1e6) - 1) / 1e6).toFixed(6))
+    await expect(dialog).toContainText(`Enter at least ${exact(view.least_usd)}.`)
+    await expect(raise).toBeDisabled()
+    await limit.fill(view.least_usd.toFixed(6))
+    await expect(raise).toBeEnabled()
+    // Empty isn't a choice here, so the hint doesn't offer it.
+    await limit.fill('ten')
+    await expect(dialog).toContainText('Enter an amount above $0.')
+    await expect(dialog).not.toContainText('or leave it empty')
+    await expect(raise).toBeDisabled()
     await limit.fill('5')
-    await dialog.getByRole('button', { name: 'Raise and resume' }).click()
+    await raise.click()
     await expect(dialog).toBeHidden()
+    expect(fullReads).toEqual([])
     const done = await aiStatus(client, started.run_id, ['completed', 'failed'])
     expect(done.spend_limit_usd).toBe(5)
     expect(done.pause_reason).toBeUndefined()
@@ -157,6 +191,88 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
       { headers: auth, data: { spend_limit_usd: 5 } })
     expect(resumed.ok(), await resumed.text()).toBeTruthy()
     expect((await aiStatus(client, again.run_id, ['completed', 'failed'])).spend_limit_usd).toBe(5)
+
+    // Resume all with two runs at their limit: each asks for its own, one after the other.
+    const two = [await call(client, 'run_ai_column', { ...base, column_name: 'Two', spend_limit_usd: TINY }),
+      await call(client, 'run_ai_column', { ...base, column_name: 'Three', spend_limit_usd: TINY })]
+    for (const r of two) await aiStatus(client, r.run_id, ['paused'])
+    await page.reload()
+    await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTitle('Resume all runs').click()
+    const column = dialog.locator('p.font-medium')
+    await expect(dialog).toContainText('Then 1 more run that stopped at its spend limit, one at a time.')
+    const first = await column.innerText()
+    await dialog.getByLabel('New limit').fill('5')
+    await raise.click()
+    await expect(column).not.toHaveText(first)
+    await expect(dialog.getByTestId('ai-raise-limit-least')).toBeVisible()
+    expect([first, await column.innerText()].sort()).toEqual(['Three (Output)', 'Two (Output)'])
+    await expect(dialog).not.toContainText('more run')
+    await dialog.getByLabel('New limit').fill('5')
+    await raise.click()
+    await expect(dialog).toBeHidden()
+    for (const r of two) expect((await aiStatus(client, r.run_id, ['completed', 'failed'])).spend_limit_usd).toBe(5)
+  } finally {
+    await api.delete('/api/settings/openrouter-key')
+  }
+})
+
+test("the AI drawer's Resume on a run at its spend limit asks for a higher one; its poll follows the run", async ({
+  page, context,
+}) => {
+  test.setTimeout(150_000)
+  const api = await authedApi()
+  const { tableId, sheetId } = await seedSheet(api, 3)
+  const token = await makeAccessToken(api, ['read', 'write', 'run'], 'e2e drawer limit')
+  const client = await mcpClient(token)
+  test.skip(!(await priced(client, sheetId)), "OpenRouter's public price list is unreachable")
+  expect((await api.put(`/api/sheets/${sheetId}/default-model`, { data: { model: MODEL } })).ok()).toBeTruthy()
+  expect((await api.put('/api/settings/openrouter-key', { data: { apiKey: FAKE_KEY } })).ok()).toBeTruthy()
+  try {
+    await context.addCookies((await api.storageState()).cookies)
+    // The drawer starts runs without a limit: this one gets a tiny one on its way to the server.
+    await page.route('**/api/ai/run', async route => {
+      const body = JSON.parse(route.request().postData() ?? '{}')
+      await route.continue({ postData: JSON.stringify({ ...body, spendLimitUsd: TINY }) })
+    })
+    await page.goto(`${BASE}/table/${tableId}`)
+    await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByRole('button', { name: 'AI Column', exact: true }).click()
+    await page.getByPlaceholder('e.g., Industry Analysis, Sentiment Score').fill('Drawer')
+    await page.locator('#prompt').fill('Say hi to /val')
+    await page.getByRole('button', { name: /Try on/ }).click()
+    await expect(page.getByRole('button', { name: 'Run All Rows' })).toBeEnabled({ timeout: 60_000 })
+    await page.getByRole('button', { name: 'Run All Rows' }).click()
+    let runId = ''
+    await expect.poll(async () => {
+      const runs = await (await api.get('/api/ai/runs', { params: { sheetId } })).json()
+      const run = runs.find((r: any) => r.column_name === 'Drawer (Output)')
+      runId = run?.id ?? ''
+      return run ? `${run.status}/${run.pause_reason}/${run.spend_limit_usd}` : ''
+    }, { timeout: 60_000 }).toBe(`paused/spend_limit/${TINY}`)
+
+    // The drawer closed when the run started; opened again it shows the run where it stopped.
+    if (!(await page.getByTestId('run-self-paused').isVisible())) {
+      await page.getByRole('button', { name: 'AI Column', exact: true }).click()
+    }
+    const why = page.getByTestId('run-self-paused')
+    await expect(why).toContainText('spend limit', { timeout: 30_000 })
+    const fullReads: string[] = []
+    page.on('request', r => { if (new URL(r.url()).pathname === `/api/ai/runs/${runId}`) fullReads.push(r.url()) })
+    await page.getByRole('dialog').filter({ has: why }).getByRole('button', { name: 'Resume', exact: true }).click()
+    const dialog = page.getByTestId('ai-raise-limit')
+    await expect(dialog).toContainText('Drawer (Output)')
+    await expect(dialog.getByTestId('ai-raise-limit-least')).toContainText('It needs at least $')
+    await dialog.getByLabel('New limit').fill('5')
+    await dialog.getByRole('button', { name: 'Raise and resume' }).click()
+    await expect(dialog).toBeHidden()
+    // The drawer's poll (a full read, the drawer's own) picks the resumed run up and follows it to the end:
+    // rows fail for free on the fake key, and the drawer goes back to a fresh start.
+    const done = await aiStatus(client, runId, ['completed', 'failed'])
+    expect(done.spend_limit_usd).toBe(5)
+    await expect(why).toBeHidden({ timeout: 30_000 })
+    await expect(page.locator('#prompt')).toHaveValue('', { timeout: 30_000 })
+    expect(fullReads.length).toBeGreaterThan(0)
   } finally {
     await api.delete('/api/settings/openrouter-key')
   }
