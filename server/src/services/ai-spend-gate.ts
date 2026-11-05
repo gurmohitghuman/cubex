@@ -10,10 +10,10 @@
 // resume needs: services/ai-run-limit.ts). Rows settle with settle(), which
 // gives their hold back once their cost is in the usage record. A row whose
 // call may be billed with no cost Cubex saw (cut off before its answer came
-// back: services/ai-row-outcome.ts) moves its most from its hold to the run's
-// cut-off total, which counts as spent for the rest of the run, across
-// resumes and restarts: the run pauses instead of waiting for room that never
-// comes back. close() drops the worker's hold. So the run's rows out never
+// back: services/ai-row-outcome.ts), also one a pause or a resume dropped,
+// moves its most from its hold to the run's cut-off total, which counts as
+// spent for the rest of the run, across resumes and restarts: the run pauses
+// instead of waiting for room that never comes back. close() drops the worker's hold. So the run's rows out never
 // count the same room twice, also when a resume starts a new worker while the
 // old one's calls are still out. Only runs with a limit come here: the rest
 // pay nothing for it. A model list that can't be read is tried again, then
@@ -140,8 +140,9 @@ export async function openSpendGate(run: AIRunRow, generation: number): Promise<
     },
     settle(micro, outcome) {
       out = Math.max(0, out - micro);
-      // Its call may be billed and no cost came back: its most counts as spent for the rest of the run.
-      const cutOff = outcome?.kind === 'failed' && !!outcome.maybeBilled;
+      // Its call may be billed and no cost came back (its row failed, or a pause or a resume dropped it):
+      // its most counts as spent for the rest of the run.
+      const cutOff = (outcome?.kind === 'failed' || outcome?.kind === 'dropped') && !!outcome.maybeBilled;
       // Never throws: the worker drops its whole hold when it ends anyway.
       try {
         db.transaction(() => {

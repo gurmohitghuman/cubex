@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { aiAPI, webSearchBody, type RunSpend, type WebSearchSettings } from '@/utils/api'
 import { AIResult, AIRun, Step } from './types'
 import { usePreviewHandlers } from './usePreviewHandlers'
+import { asksForHigherLimit } from './raise-limit-ask'
 import { outputColumnsBody, type OutputColumnDraft } from '@/lib/output-columns'
 
 interface Args {
@@ -129,11 +130,12 @@ export const useAIRunHandlers = (a: Args) => {
     try { await aiAPI.pauseRun(currentRun.id) }
     catch { toast.error('Failed to pause run') }
   }
-  // A run that paused at its spend limit resumes only with a higher one: Resume asks for it (RaiseLimitDialog).
+  // A run that paused at its spend limit, or was paused once its limit was used up, resumes only with a
+  // higher one: Resume asks for it (RaiseLimitDialog).
   const [raiseLimitFor, setRaiseLimitFor] = useState<string | null>(null)
   const handleResumeRun = async () => {
     if (!currentRun) return
-    if (currentRun.pause_reason === 'spend_limit') { setRaiseLimitFor(currentRun.id); return }
+    if (await asksForHigherLimit(currentRun)) { setRaiseLimitFor(currentRun.id); return }
     try { await aiAPI.resumeRun(currentRun.id) }
     // Refused while its access token is still at its spend cap: the server says so.
     catch (error: any) { toast.error(error?.response?.data?.error || 'Failed to resume run') }

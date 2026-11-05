@@ -17,13 +17,19 @@ export const money = (usd: number): string =>
 
 // Rounded up, for an amount to raise a limit to: cents from $1 up, two
 // significant figures below ($0.011, never a crude $0.02 for $0.0104).
-export const moneyUp = (usd: number): string => {
-  if (usd <= 0) return money(usd);
-  if (usd >= 1) return `$${(Math.ceil(usd * 100 - 1e-9) / 100).toFixed(2)}`;
+function roundUp(usd: number): { value: number; digits: number } {
+  if (usd >= 1) return { value: Math.ceil(usd * 100 - 1e-9) / 100, digits: 2 };
   const step = 10 ** (Math.floor(Math.log10(usd)) - 1);
   const digits = Math.max(2, -Math.floor(Math.log10(step) + 1e-9));
+  return { value: Number((Math.ceil(usd / step - 1e-9) * step).toFixed(digits)), digits };
+}
+// The amount moneyUp prints, as a number.
+export const usdUp = (usd: number): number => (usd <= 0 ? usd : roundUp(usd).value);
+export const moneyUp = (usd: number): string => {
+  if (usd <= 0) return money(usd);
+  const { value, digits } = roundUp(usd);
   // Trailing zeros past the cents go ($0.0000010 is $0.000001).
-  const [whole, frac] = (Math.ceil(usd / step - 1e-9) * step).toFixed(digits).split('.');
+  const [whole, frac] = value.toFixed(digits).split('.');
   return `$${whole}.${frac.replace(/0+$/, '').padEnd(2, '0')}`;
 };
 

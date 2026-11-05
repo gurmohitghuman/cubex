@@ -18,9 +18,10 @@ import { mcpClient, call, callError } from './helpers-mcp'
 //     still ⏳; a resume that leaves no room is refused; in the app, Resume asks
 //     for a higher limit (from a light read, never the run's results: the
 //     column, why it paused, the least the server takes, to the micro-dollar,
-//     filled in with enough to finish) and goes on with it; Resume all with two
-//     runs at their limit asks for each, one after the other; a rerun takes a
-//     limit too and resumes over REST;
+//     filled in with that least plus the rows left at what a row cost so far,
+//     the worst case to finish only as words) and goes on with it; Resume all
+//     with two runs at their limit asks for each, one after the other; a rerun
+//     takes a limit too and resumes over REST;
 //   - the AI drawer's own Resume asks in the same dialog, and its poll follows
 //     the resumed run to the end;
 //   - a setup applied under a ceiling gives its AI step that as its limit.
@@ -139,9 +140,14 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     const view = await (await api.get(`/api/ai/runs/${started.run_id}/spend-limit`)).json()
     expect(view).toMatchObject({ column_name: 'Hi (Output)', pause_reason: 'spend_limit', limit_usd: TINY,
       spent_usd: 0, cut_off_usd: 0, rows_left: 3, message: paused.pause_message })
-    // Nothing spent, nothing cut off: the least is the next row's most.
+    // Nothing spent, nothing cut off: the least is the next row's most. No row has run, so the amount filled
+    // in is that least, rounded up (two figures); the worst case (every row left at its most) is only words.
     expect(Math.round(view.least_usd * 1e6)).toBe(Math.round(view.next_row_usd * 1e6))
-    expect(view.suggest_usd).toBe(Math.ceil(3 * view.next_row_usd * 100 - 1e-9) / 100)
+    expect(view.avg_row_usd).toBeNull()
+    expect(Math.round(view.suggest_usd * 1e6)).toBeGreaterThanOrEqual(Math.round(view.least_usd * 1e6))
+    expect(view.suggest_usd).toBeLessThan(view.least_usd * 1.1)
+    expect(view.finish_usd).toBeGreaterThanOrEqual(3 * view.next_row_usd - 1e-9)
+    expect(view.finish_usd).toBeGreaterThan(view.suggest_usd)
     const fullRead = `/api/ai/runs/${started.run_id}`
     const fullReads: string[] = []
     page.on('request', r => { if (new URL(r.url()).pathname === fullRead) fullReads.push(r.url()) })
@@ -158,7 +164,10 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
       `It needs at least ${exact(view.least_usd)} to go on: what it spent ($0.00), plus its next row at its most`)
     const limit = dialog.getByLabel('New limit')
     await expect(limit).toHaveValue(String(view.suggest_usd))
-    await expect(dialog).toContainText('The amount filled in is enough for the 3 rows left, each at that most.')
+    await expect(dialog.getByTestId('ai-raise-limit-filled')).toHaveText(
+      'The amount filled in is that least: no row has run yet to show what one costs.')
+    await expect(dialog.getByTestId('ai-raise-limit-finish')).toHaveText(
+      /^To finish for sure, even if every row left costs its most, it would need \$0\.\d+\.$/)
     // A micro-dollar under the least is refused here, as the server refuses it; the least itself is taken.
     const raise = dialog.getByRole('button', { name: 'Raise and resume' })
     await limit.fill(((Math.round(view.least_usd * 1e6) - 1) / 1e6).toFixed(6))

@@ -2,7 +2,7 @@
 // against a stand-in for OpenRouter (ai-spend-kit.ts):
 //   - the least limit a run paused at its limit can go on with is what it
 //     spent, plus what its cut-off calls count, plus its next row's most
-//     (services/ai-run-limit.ts, the app dialog's light read); a resume a
+//     (services/ai-run-floor.ts, the app dialog's light read); a resume a
 //     micro-dollar under it is refused and names it; one that rounds to it
 //     goes on, and the worker rounds the limit the same way;
 //   - a cut-off call's most stays counted across a resume
@@ -10,8 +10,9 @@
 //   - a setup's resume is refused while a step's AI run is paused at its
 //     limit, and changes nothing; paused by hand, it resumes;
 //   - a connection reset counts as maybe billed only when it came 2 s or more
-//     after a try went out, also when the try after it reset at once; a reset
-//     at once (the stale socket) is tried again and never counts;
+//     after a try went out, and then a run with a limit doesn't try it again
+//     (one without is as before); a reset at once (the stale socket) is tried
+//     again and never counts;
 //   - a negative listed price is no price for a waterfall's AI step and for a
 //     preview's token cost (never $0).
 import assert from 'node:assert/strict'
@@ -28,6 +29,7 @@ const { processAIRun } = await import('../../server/src/services/ai-runner')
 const { rowFixedOf } = await import('../../server/src/services/ai-spend-gate')
 const { rowMaxMicro } = await import('../../server/src/lib/ai-spend-limit')
 const { aiLimitView, resumeAiRun } = await import('../../server/src/services/ai-run-limit')
+const { usdUp } = await import('../../server/src/lib/cost-ceiling')
 const { processRow } = await import('../../server/src/services/ai-row')
 const { priceAiStep } = await import('../../server/src/services/waterfall-ai-price')
 const { previewCosts } = await import('../../server/src/services/run-preview-cost')
@@ -63,14 +65,17 @@ await ok("resume needs what it spent, plus cut-off calls, plus the next row's mo
     assert.equal(r.pause_reason, 'spend_limit')
     assert.deepEqual(kept(runId), { cut: most, next: most }, "the cut-off call's most and the next row's are kept")
 
-    // The dialog's read: the column, why, the least limit (exact) and enough to finish the rows left.
+    // The dialog's read: the column, why, the least limit (exact), and what it fills in: that least plus
+    // the rows left at what a row cost so far (nothing here), never the worst case (only shown as words).
     const v = aiLimitView(runId, uid)!
     assert.equal(v.column_name, OUT)
     assert.equal(v.message, r.error_message)
     assert.deepEqual([v.spent_usd, v.cut_off_usd, v.next_row_usd], [0, most / 1e6, most / 1e6])
     assert.equal(Math.round(v.least_usd * 1e6), 2 * most)
     assert.equal(v.rows_left, 3)
-    assert.equal(v.suggest_usd, Math.ceil((most + 3 * most) / 1e4 - 1e-9) / 100)
+    assert.equal(v.avg_row_usd, 0)
+    assert.equal(v.suggest_usd, usdUp(2 * most / 1e6))
+    assert.equal(v.finish_usd, usdUp(4 * most / 1e6))
 
     // A micro-dollar under it is refused, naming it, and nothing changes.
     const under = await resumeAiRun(runId, uid, (2 * most - 1) / 1e6, true)
@@ -127,15 +132,15 @@ await ok("a setup's resume is refused while a step's AI run is paused at its lim
 
 await ok('a connection reset counts as maybe billed only when it came 2 s or more after a try went out', async () => {
   const { runId } = runOf(1, 1, 1)
-  db.prepare("UPDATE ai_runs SET status = 'running' WHERE id = ?").run(runId)
-  const run = runById(runId) as never
+  const { runId: freeId } = runOf(1, 1, null)
+  db.prepare("UPDATE ai_runs SET status = 'running' WHERE id IN (?, ?)").run(runId, freeId)
   const client = new sdk.OpenAI({
     apiKey: 'sk-or-test', baseURL: process.env.OPENROUTER_BASE_URL, maxRetries: 0, timeout: 30_000,
   })
-  const outcomeOf = async (answer: typeof stand.answer) => {
+  const outcomeOf = async (answer: typeof stand.answer, id = runId) => {
     stand.calls = 0
     stand.answer = answer
-    const o = await processRow(runId, { rowIndex: 0, data: { name: 'N0' } }, run, client, undefined, 0)
+    const o = await processRow(id, { rowIndex: 0, data: { name: 'N0' } }, runById(id) as never, client, undefined, 0)
     stand.answer = () => 'ok'
     return o
   }
@@ -145,13 +150,14 @@ await ok('a connection reset counts as maybe billed only when it came 2 s or mor
   assert.equal(stand.calls, 2, 'a reset at once is tried once more')
   assert.ok(now.kind === 'failed' && now.message.includes('ECONNRESET'), JSON.stringify(now))
   assert.equal(now.kind === 'failed' && !!now.maybeBilled, false)
-  // Late: it may follow a billed answer.
+  // Late: it may follow a billed answer, so a run with a limit doesn't try it again (one row's hold, one call).
   const slow = await outcomeOf(late)
+  assert.equal(stand.calls, 1, 'a late reset is not tried again')
   assert.equal(slow.kind === 'failed' && slow.maybeBilled, true, JSON.stringify(slow))
-  // Late, then at once on the try after it: the late try may still be billed.
-  const mixed = await outcomeOf(n => (n === 1 ? late() : 'reset'))
-  assert.equal(stand.calls, 2)
-  assert.equal(mixed.kind === 'failed' && mixed.maybeBilled, true, JSON.stringify(mixed))
+  // A run without a limit is as before: a late reset is tried once more.
+  const free = await outcomeOf(n => (n === 1 ? late() : 'reset'), freeId)
+  assert.equal(stand.calls, 2, 'without a limit a late reset is tried again')
+  assert.equal(free.kind === 'failed' && free.maybeBilled, true, JSON.stringify(free))
 })
 
 await ok("a negative listed price is no price for a waterfall's AI step and a preview's token cost", async () => {

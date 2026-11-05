@@ -12,7 +12,8 @@ export type RowOutcome =
   | { kind: 'done' }                                          // its answer was written
   // its ❌ was written; maybeBilled: an AI call that may be billed with no cost Cubex saw (ai-row-outcome.ts)
   | { kind: 'failed'; message: string; provider: boolean; maybeBilled?: boolean }
-  | { kind: 'dropped' };                                      // a stop: nothing written
+  // a stop: nothing written; maybeBilled: its AI call was cut off and may still be billed, as a failed one's
+  | { kind: 'dropped'; maybeBilled?: boolean };
 
 export const DONE: RowOutcome = { kind: 'done' };
 export const DROPPED: RowOutcome = { kind: 'dropped' };

@@ -16,7 +16,8 @@ import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
-  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage, timedTries,
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
+  throwIfStorage, timedTries,
 } from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
@@ -90,7 +91,7 @@ export async function processRow(
     const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
-    }, deadline.signal));
+    }, deadline.signal), hasSpendLimit(run));
     lateReset = tries.lateReset;
     sent = true;
     call = await withConnectRetry(tries.send, deadline.signal, () => shouldStop(runId, myGeneration));
@@ -133,9 +134,10 @@ export async function processRow(
     // If the row failed because we aborted it (or the run was cancelled mid-flight),
     // don't record it as a failure — the user explicitly stopped this run. The
     // deadline passing is the row's failure, not a stop.
+    // A call cut off then may be billed all the same: its most still counts against the spend limit.
     if (stoppedCall(error, deadline, signal) || shouldStop(runId, myGeneration)) {
       recordDroppedCall(ctx, billedUsage(call, error));
-      return DROPPED;
+      return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a

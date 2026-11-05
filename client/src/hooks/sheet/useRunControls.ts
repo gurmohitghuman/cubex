@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { aiAPI, httpAPI, runsStopAPI, AIRun, HTTPRun } from '@/utils/api'
 import { setupRunsChanged } from '@/lib/setup-runs-signal'
+import { asksForHigherLimit } from '@/components/ai-modal/raise-limit-ask'
 
 interface UseRunControlsArgs {
   sheetId: string | null
@@ -45,16 +46,18 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
     await refetch()
   }
 
-  // An AI run that paused at its spend limit resumes only with a higher one:
-  // Resume all asks for it (RaiseLimitDialog), for each such run one after
-  // another (closing or raising one opens the next), and resumes the rest.
+  // An AI run that paused at its spend limit, or was paused once its limit was
+  // used up, resumes only with a higher one: Resume all asks for it
+  // (RaiseLimitDialog), for each such run one after another (closing or
+  // raising one opens the next), and resumes the rest.
   const [raiseQueue, setRaiseQueue] = useState<string[]>([])
   const resumeAll = async () => {
     const actions: Promise<any>[] = []
-    const atLimit = aiRuns.filter(r => r.status === 'paused' && r.pause_reason === 'spend_limit')
+    const paused = aiRuns.filter(r => r.status === 'paused')
+    const asks = await Promise.all(paused.map(asksForHigherLimit))
+    const atLimit = paused.filter((_, i) => asks[i])
     if (atLimit.length) setRaiseQueue(atLimit.map(r => r.id))
-    aiRuns.filter(r => r.status === 'paused' && r.pause_reason !== 'spend_limit')
-      .forEach(r => actions.push(aiAPI.resumeRun(r.id)))
+    paused.filter((_, i) => !asks[i]).forEach(r => actions.push(aiAPI.resumeRun(r.id)))
     httpRuns.filter(r => r.status === 'paused').forEach(r => actions.push(httpAPI.controlRun(r.id, 'resume')))
     const results = await Promise.allSettled(actions)
     const failed = results.filter(r => r.status === 'rejected').length

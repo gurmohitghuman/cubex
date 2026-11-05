@@ -17,7 +17,8 @@ import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
-  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, failedRow, stoppedCall, throwIfStorage, timedTries,
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
+  throwIfStorage, timedTries,
 } from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
@@ -67,7 +68,7 @@ export async function processMultiRow(
     const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, web.fetch),
-    }, deadline.signal));
+    }, deadline.signal), hasSpendLimit(run));
     lateReset = tries.lateReset;
     sent = true;
     call = await withConnectRetry(tries.send, deadline.signal, () => shouldStop(runId, myGeneration));
@@ -113,9 +114,10 @@ export async function processMultiRow(
     // A stop drops the row; what a call that came back cost still counts.
     if (error === STOP_SENTINEL) { recordDroppedCall(ctx, billedUsage(call, error)); return DROPPED; }
     throwIfStorage(error);
+    // A call cut off then may be billed all the same: its most still counts against the spend limit.
     if (stoppedCall(error, deadline, signal) || shouldStop(runId, myGeneration)) {
       recordDroppedCall(ctx, billedUsage(call, error));
-      return DROPPED;
+      return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
     const causeCode = errorCauseCode(error);
     const rawMsg = deadline.timedOut() ? AI_TIMEOUT_MESSAGE

@@ -166,12 +166,14 @@ export const AI_SPEND_LIMIT_NOTE = 'The run starts a row only while what it spen
   + "at least 8,000 tokens, at the model's listed prices), stays within the limit. Otherwise it waits for rows "
   + 'out, or pauses with pause_reason spend_limit and its rows not started stay ⏳; control_run resume with a '
   + 'higher spend_limit_usd goes on (at least what it spent, plus what its cut-off calls hold, plus its next '
-  + "row's most: a lower one is refused, saying what to raise it to). Near the limit fewer rows run at once and up "
-  + "to one row's most can stay unspent. A call cut off before it answered, or whose connection was reset "
-  + `${AI_RESET_MAYBE_BILLED_MS / 1000} seconds or more after it went out, counts at its most for the rest of the `
-  + 'run (it may still be billed). '
+  + "row's most: a lower one is refused, saying what to raise it to; get_run_status shows it as resume_least_usd). "
+  + "Near the limit fewer rows run at once and up to one row's most can stay unspent. A call cut off before it "
+  + `answered, or whose connection was reset ${AI_RESET_MAYBE_BILLED_MS / 1000} seconds or more after it went out `
+  + '(never tried again), counts at its most for the rest of the run (it may still be billed), also when the run '
+  + 'was paused or resumed while it was out. '
   + "Spend can pass the limit only: with web search or fetch (a row's most counts their fees and found text as "
   + 'estimated), on a model with no listed price (it stops once what was billed reaches it, so it passes by the '
-  + 'rows out then), when the server restarts while calls are out, and when a call tried again after a late '
-  + 'reset answers (only that answer\'s cost counts).'
+  + 'rows out then), when the server restarts while calls are out, and when a connection reset within '
+  + `${AI_RESET_MAYBE_BILLED_MS / 1000} seconds (taken for a stale connection, so the call is tried again) had `
+  + 'reached OpenRouter and was billed.'
   + " If OpenRouter's model list can't be read, the run pauses (pause_reason provider_errors); resume to retry.";

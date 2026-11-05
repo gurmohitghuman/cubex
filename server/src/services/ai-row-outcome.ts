@@ -6,10 +6,10 @@
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { callDeadline, deadlineWords, type CallDeadline } from '../lib/call-deadline';
 import { AI_CALL_DEADLINE_MS, AI_RESET_MAYBE_BILLED_MS } from '../lib/constants';
-import { aiProviderSide, type RowOutcome } from '../lib/run-breaker';
+import { aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 import { FailedCallError, type ModelCall } from './ai-model-call';
-import { connectionCauseCode } from './openrouter-retry';
+import { connectionCauseCode, markLateReset } from './openrouter-retry';
 
 // The row's call ends when the run stops or the deadline passes.
 export const aiCallDeadline = (signal: AbortSignal | undefined): CallDeadline =>
@@ -32,29 +32,44 @@ export function throwIfStorage(error: unknown): void {
   if (isStorageFailure(error)) throw error;
 }
 
+// The run has a hard spend limit (services/ai-spend-gate.ts): runs without one pay nothing for it.
+export const hasSpendLimit = (run: { spend_limit_usd?: number | null }): boolean =>
+  typeof run.spend_limit_usd === 'number';
+
 export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
   ({ kind: 'failed', message, provider: aiProviderSide(message), ...(maybeBilled ? { maybeBilled } : {}) });
+
+// A row a stop dropped (a pause, a cancel, a resume taking over) while its
+// call was out: nothing is written, but a call cut off then (it timed out,
+// its answer broke off) may be billed all the same (callMayBeBilled).
+export const droppedRow = (maybeBilled: boolean): RowOutcome =>
+  (maybeBilled ? { kind: 'dropped', maybeBilled } : DROPPED);
 
 // Transport failures that come before anything reaches the provider: no
 // address, no connection. A connection reset is the stale keep-alive socket
 // openrouter-retry.ts retries (the request died on the wire) only when it
 // comes at once; one that comes AI_RESET_MAYBE_BILLED_MS or more after a try
 // went out (a proxy's idle timeout during a long answer) may follow a billed
-// answer.
+// answer (and with a spend limit isn't tried again).
 const NEVER_SENT = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH']);
 const isReset = (error: unknown) => error instanceof APIConnectionError
   && !(error instanceof APIConnectionTimeoutError) && connectionCauseCode(error) === 'ECONNRESET';
 
 // The tries of one call (withConnectRetry calls send once a try), timed:
-// lateReset says whether any try was reset that long after it went out. Such
-// a try may be billed even when a try after it fails otherwise.
-export function timedTries<T>(send: () => Promise<T>): { send: () => Promise<T>; lateReset: () => boolean } {
+// lateReset says whether a try was reset that long after it went out. Such a
+// try may be billed: in a run with a spend limit (limited) it is marked and
+// never tried again (markLateReset), so one row's hold is never billed twice.
+export function timedTries<T>(send: () => Promise<T>, limited: boolean)
+  : { send: () => Promise<T>; lateReset: () => boolean } {
   let late = false;
   return {
     send: async () => {
       const at = Date.now();
       try { return await send(); } catch (error) {
-        if (isReset(error) && Date.now() - at >= AI_RESET_MAYBE_BILLED_MS) late = true;
+        if (isReset(error) && Date.now() - at >= AI_RESET_MAYBE_BILLED_MS) {
+          late = true;
+          if (limited) markLateReset(error as object);
+        }
         throw error;
       }
     },

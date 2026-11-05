@@ -3,7 +3,7 @@ import { Loader2, Play } from 'lucide-react'
 import Modal from '../Modal'
 import { MoneyInput } from '../enrich-modal/MoneyInput'
 import { aiAPI, type AiLimitView } from '@/utils/api'
-import { leastLine, pauseLine, queuedLine, suggestLine, tooLow, tooLowLine } from './raise-limit'
+import { finishLine, leastLine, pauseLine, queuedLine, suggestLine, tooLow, tooLowLine } from './raise-limit'
 
 interface Props {
   // The AI run that paused at its spend limit; null: closed.
@@ -16,12 +16,14 @@ interface Props {
 }
 
 // Resume for an AI run that paused at its spend limit (pause_reason
-// spend_limit): it goes on only with a higher limit (server
-// services/ai-run-limit.ts), so Resume asks for one here. It shows the
-// column, why the run paused and the least limit the server takes (what it
-// spent, plus what cut-off calls count, plus its next row's most), filled in
-// with enough to finish, as an enrichment's pause does (PausedNotice.tsx).
-// Read from a light route that never loads the run's results.
+// spend_limit), or was paused another way once its limit was used up: it goes
+// on only with a higher limit (server services/ai-run-limit.ts), so Resume
+// asks for one here. It shows the column, why the run paused and the least
+// limit the server takes (what it spent, plus what cut-off calls count, plus
+// its next row's most), filled in with that least plus the rows left at what
+// a row has cost so far on average. What would finish for sure (every row
+// left at its most, a worst case) shows as words, never as the amount. Read
+// from a light route that never loads the run's results.
 export const RaiseLimitDialog: React.FC<Props> = ({ runId, onClose, onResumed, queued = 0 }) => {
   const [view, setView] = useState<AiLimitView | null>(null)
   const [value, setValue] = useState<number | null>(null)
@@ -58,6 +60,7 @@ export const RaiseLimitDialog: React.FC<Props> = ({ runId, onClose, onResumed, q
 
   const more = queuedLine(queued)
   const filled = view && suggestLine(view)
+  const finish = view && finishLine(view)
   return (
     <Modal isOpen={!!runId} onClose={busy ? () => {} : onClose} panelClassName="max-w-md w-full"
       zClassName="z-[20010]">
@@ -77,7 +80,8 @@ export const RaiseLimitDialog: React.FC<Props> = ({ runId, onClose, onResumed, q
               <span>New limit</span>
               <MoneyInput key={runId} value={value} fallback={null} label="New limit" onChange={setValue} required />
             </div>
-            {filled && <p className="text-xs text-gray-500">{filled}</p>}
+            {filled && <p className="text-xs text-gray-500" data-testid="ai-raise-limit-filled">{filled}</p>}
+            {finish && <p className="text-xs text-gray-500" data-testid="ai-raise-limit-finish">{finish}</p>}
           </div>
         )}
         {short && <p className="text-xs text-red-600">{tooLowLine(view!)}</p>}

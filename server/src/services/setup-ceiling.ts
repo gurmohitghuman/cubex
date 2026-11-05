@@ -3,7 +3,8 @@
 // spend cap is checked before each spending step too (moved here from
 // setup-runner.ts). What is left for a step: the ceiling, less what the steps
 // started spent or may still spend (a run still going counts at its own
-// limit, or what it spent if more), less what the steps not started yet need,
+// limit, or what it spent if more; an AI run's calls cut off before they
+// answered count as spent), less what the steps not started yet need,
 // so a step never takes their share. A step needs its estimated high end and,
 // for an AI step, one row's most on top: its run's hard spend limit
 // (services/ai-spend-gate.ts) starts a row only while that row's most still
@@ -52,13 +53,18 @@ const LIVE = new Set(['pending', 'running', 'paused']);
 const floor6 = (usd: number) => Math.floor(usd * 1e6 + 1e-6) / 1e6;
 
 // What a step's run spent, or may still spend while it goes on (its own limit, when it has one).
+// An AI run's calls cut off before they answered may be billed: their most counts as spent
+// (ai_runs.spend_cut_off_micro, kept only by a run with a limit: services/ai-spend-gate.ts).
 function committedUsd(kind: 'ai' | 'http', runId: string): number {
-  const spent = (db.prepare(`SELECT ai_cost_usd + provider_cost_usd + enrich_micro / 1e6 FROM run_usage
+  const billed = (db.prepare(`SELECT ai_cost_usd + provider_cost_usd + enrich_micro / 1e6 FROM run_usage
     WHERE run_id = ?`).pluck().get(runId) as number | undefined) ?? 0;
   const run = (kind === 'ai'
-    ? db.prepare('SELECT status, spend_limit_usd AS lim FROM ai_runs WHERE id = ?').get(runId)
+    ? db.prepare('SELECT status, spend_limit_usd AS lim, spend_cut_off_micro AS cut FROM ai_runs WHERE id = ?')
+      .get(runId)
     : db.prepare(`SELECT status, CASE WHEN json_valid(config) THEN json_extract(config, '$.enrichment.spendLimitUsd')
-        END AS lim FROM http_runs WHERE id = ?`).get(runId)) as { status: string; lim: number | null } | undefined;
+        END AS lim, 0 AS cut FROM http_runs WHERE id = ?`).get(runId)) as
+    { status: string; lim: number | null; cut: number } | undefined;
+  const spent = billed + (run?.cut ?? 0) / 1e6;
   return run && LIVE.has(run.status) && typeof run.lim === 'number' ? Math.max(spent, run.lim) : spent;
 }
 

@@ -1,13 +1,15 @@
 // The app's "Raise the spend limit" dialog (client/src/components/ai-modal/raise-limit.ts):
 // a new limit is checked against the least the server takes, in micro-dollars as
 // the server compares (rounded), never as floats; its words show that least
-// exactly, why the run paused, what the amount filled in covers, and the runs
-// Resume all has still to ask about. Pure: no DB, no network. Value imports are
+// exactly, why the run paused, what the amount filled in is (the least plus the
+// rows left at the average a row cost, never the worst case, which shows only as
+// words), when a run paused another way needs a higher limit, and the runs Resume
+// all has still to ask about. Pure: no DB, no network. Value imports are
 // relative (tsx has no "@/" alias).
 import assert from 'node:assert/strict'
 import ceilingMod from '../../server/src/lib/cost-ceiling'
 import {
-  leastLine, microOf, pauseLine, queuedLine, suggestLine, tooLow, tooLowLine,
+  finishLine, leastLine, limitUsedUp, microOf, pauseLine, queuedLine, suggestLine, tooLow, tooLowLine,
 } from '../../client/src/components/ai-modal/raise-limit'
 import { limitText } from '../../client/src/lib/enrich-format'
 import type { AiLimitView } from '../../client/src/utils/api/types-search'
@@ -21,8 +23,8 @@ function check(label: string, fn: () => void) {
 
 const view = (o: Partial<AiLimitView> = {}): AiLimitView => ({
   column_name: 'Fit (Output)', status: 'paused', pause_reason: 'spend_limit', message: null, limit_usd: 0.1,
-  spent_usd: 0.05, cut_off_usd: 0, next_row_usd: 0.050001, least_usd: 0.100001, suggest_usd: 0.26, rows_left: 4,
-  ...o,
+  spent_usd: 0.05, cut_off_usd: 0, next_row_usd: 0.050001, least_usd: 0.100001, suggest_usd: 0.15,
+  avg_row_usd: 0.0125, finish_usd: 0.26, rows_left: 4, ...o,
 })
 
 check('a new limit compares in micro-dollars, rounded as the server rounds it', () => {
@@ -58,12 +60,28 @@ check('why it paused: the message the run left, else its limit and what it spent
   assert.equal(pauseLine(view({ message: 'The run reached its $0.10 spend limit ($0.05 spent).' })),
     'The run reached its $0.10 spend limit ($0.05 spent).')
   assert.equal(pauseLine(view()), 'The run reached its $0.10 spend limit ($0.050 spent).')
+  assert.equal(pauseLine(view({ pause_reason: null })), 'The run is paused, and its $0.10 spend limit is used up.')
 })
 
-check('what the amount filled in covers, and the runs still to ask', () => {
-  assert.equal(suggestLine(view()), 'The amount filled in is enough for the 4 rows left, each at that most.')
-  assert.equal(suggestLine(view({ next_row_usd: null })), null)
-  assert.equal(suggestLine(view({ rows_left: 0 })), null)
+check('a run paused another way asks for a higher limit only once its limit is used up', () => {
+  assert.equal(limitUsedUp({ limit_usd: 0.1, least_usd: 0.100001 }), true)
+  assert.equal(limitUsedUp({ limit_usd: 0.1, least_usd: 0.1000004 }), false, 'rounds to the limit: the server takes it')
+  assert.equal(limitUsedUp({ limit_usd: 0.1, least_usd: 0.04 }), false)
+  assert.equal(limitUsedUp({ limit_usd: null, least_usd: 0.04 }), false)
+})
+
+check('what the amount filled in is (the least plus the rows left at the average), and the worst case as words', () => {
+  assert.equal(suggestLine(view()), 'The amount filled in is that least, plus the 4 rows left at what a row has '
+    + 'cost so far on average ($0.013).')
+  assert.equal(suggestLine(view({ avg_row_usd: null })),
+    'The amount filled in is that least: no row has run yet to show what one costs.')
+  assert.equal(suggestLine(view({ rows_left: 0 })), 'The amount filled in is that least.')
+  assert.equal(finishLine(view()), 'To finish for sure, even if every row left costs its most, it would need $0.26.')
+  assert.equal(finishLine(view({ finish_usd: null })), null)
+  assert.equal(finishLine(view({ finish_usd: 0.15 })), null, 'no more than the amount filled in')
+})
+
+check('the runs Resume all still has to ask about', () => {
   assert.equal(queuedLine(0), null)
   assert.equal(queuedLine(1), 'Then 1 more run that stopped at its spend limit, one at a time.')
   assert.equal(queuedLine(2), 'Then 2 more runs that stopped at their spend limit, one at a time.')

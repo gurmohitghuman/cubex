@@ -13,7 +13,8 @@
 //   - each AI step starts with the ceiling less what the steps started spent or
 //     may still spend, less what the steps not started need (their high ends
 //     and an AI step's row most); a step with no price gets no limit; one left
-//     no room (for its high end and its row most) is refused with words.
+//     no room (for its high end and its row most) is refused with words;
+//   - an earlier AI step's calls cut off before they answered count as spent.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
@@ -222,5 +223,19 @@ late[1] = { state: 'done', kind: 'ai', runId: aiRun('completed', null, 0.35) }
 gate = stepGate(loadSetupRun(mostRec)!, 2, late)
 assert.ok('limitUsd' in gate && near(gate.limitUsd, 0.15), JSON.stringify(gate))
 ok("each AI step needs its high end and one row's most: the first gets $1 - $0.35 - $0.15; a late one needs both")
+
+// An earlier AI step's calls cut off before they answered may be billed: their most counts as spent.
+const cut = waiting()
+cut[0] = { state: 'done', kind: 'ai', runId: aiRun('completed', 0.6, 0.15) }
+cut[1] = { state: 'done', kind: 'ai', runId: aiRun('completed', 0.3, 0.25) }
+db.prepare('UPDATE ai_runs SET spend_cut_off_micro = 100000 WHERE id = ?').run(cut[1].runId)
+gate = stepGate(r(), 2, cut)
+assert.ok('limitUsd' in gate && near(gate.limitUsd, 0.5), JSON.stringify(gate))
+cut[1] = { state: 'running', kind: 'ai', runId: aiRun('running', 0.3, 0.25) }
+db.prepare('UPDATE ai_runs SET spend_cut_off_micro = 100000 WHERE id = ?').run(cut[1].runId)
+gate = stepGate(r(), 2, cut)
+// Past its own limit with them: it counts what it spent and they hold, not its limit.
+assert.ok('limitUsd' in gate && near(gate.limitUsd, 0.5), JSON.stringify(gate))
+ok("an earlier AI step's cut-off calls count as spent: $1 - $0.15 - ($0.25 + $0.10), also while it runs")
 
 server.close()

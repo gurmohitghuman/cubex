@@ -13,9 +13,16 @@ export const microOf = (usd: number): number => Math.round(usd * 1e6)
 export const tooLow = (value: number, view: Pick<AiLimitView, 'least_usd'>): boolean =>
   microOf(value) < microOf(view.least_usd)
 
+// A run paused another way (by you, say) whose limit is used up: what it spent and
+// its cut-off calls count leave no room, so the server takes a resume only with a
+// higher limit, and Resume asks for one here instead.
+export const limitUsedUp = (v: Pick<AiLimitView, 'limit_usd' | 'least_usd'>): boolean =>
+  v.limit_usd !== null && microOf(v.least_usd) > microOf(v.limit_usd)
+
 // Why the run stopped: the pause message it left, else the limit and what it spent.
-export const pauseLine = (v: AiLimitView): string => v.message
-  ?? `The run reached its ${limitText(v.limit_usd ?? 0)} spend limit (${spent(v.spent_usd)} spent).`
+export const pauseLine = (v: AiLimitView): string => v.message ?? (v.pause_reason === 'spend_limit'
+  ? `The run reached its ${limitText(v.limit_usd ?? 0)} spend limit (${spent(v.spent_usd)} spent).`
+  : `The run is paused, and its ${limitText(v.limit_usd ?? 0)} spend limit is used up.`)
 
 // The least limit, exactly (to the micro-dollar the server counts), and what it is made of.
 export function leastLine(v: AiLimitView): string {
@@ -27,10 +34,19 @@ export function leastLine(v: AiLimitView): string {
   return `It needs at least ${limitText(v.least_usd)} to go on: ${parts}.`
 }
 
-// What the amount filled in covers (null: nothing to say).
-export function suggestLine(v: AiLimitView): string | null {
-  if (!v.next_row_usd || v.rows_left < 1) return null
-  return `The amount filled in is enough for the ${plural(v.rows_left, 'row')} left, each at that most.`
+// What the amount filled in is: the least, plus the rows left at what a row has cost so far.
+export function suggestLine(v: AiLimitView): string {
+  if (v.avg_row_usd === null) return 'The amount filled in is that least: no row has run yet to show what one costs.'
+  if (v.rows_left < 1) return 'The amount filled in is that least.'
+  return `The amount filled in is that least, plus the ${plural(v.rows_left, 'row')} left at what a row has `
+    + `cost so far on average (${spent(v.avg_row_usd)}).`
+}
+
+// Enough to finish for sure, as words only: a row's most is a worst case, often far above what rows cost
+// (null: unknown, or no more than the amount filled in).
+export function finishLine(v: AiLimitView): string | null {
+  if (v.finish_usd === null || microOf(v.finish_usd) <= microOf(v.suggest_usd)) return null
+  return `To finish for sure, even if every row left costs its most, it would need ${limitText(v.finish_usd)}.`
 }
 
 export const tooLowLine = (v: AiLimitView): string => `Enter at least ${limitText(v.least_usd)}.`

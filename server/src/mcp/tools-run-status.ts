@@ -17,7 +17,8 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         'Status of an AI, HTTP, enrichment or waterfall run: '
         + 'status (pending/running/paused/completed/failed/cancelled), '
         + 'processed vs total rows, failed_rows and succeeded_rows, and error_message when the run itself failed (or '
-        + 'why it paused). A run that paused itself says pause_reason and pause_message: token_cap, provider_errors '
+        + 'why it paused). A run that paused itself says pause_reason and pause_message: token_cap, spend_limit '
+        + '(an AI run at its own spend limit: resume with a higher spend_limit_usd), provider_errors '
         + '(rows kept failing on the provider\'s side: resume once it works again), storage (results couldn\'t be '
         + 'saved: free disk space first) or stalled (its worker kept stopping). '
         + '"completed" means every row was processed, not that it worked: check failed_rows, then '
@@ -26,7 +27,10 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         + 'figure, web fees included; with rows on the user\'s own provider key (BYOK) only OpenRouter\'s fee, and '
         + 'provider_cost_usd is what that provider billed the key), and with web search the searches that ran '
         + '(searches) and the web_search '
-        + 'settings (engine sent, runs_on, mode billed, max_searches_per_row). '
+        + 'settings (engine sent, runs_on, mode billed, max_searches_per_row). An AI run with a spend limit '
+        + 'reports spend_limit_usd and, until it finishes, resume_least_usd: the least spend_limit_usd a resume '
+        + "takes (what it spent, plus what calls cut off before they answered count, plus, after a spend_limit "
+        + "pause, its next row's most), exact to the micro-dollar; it grows as the run spends. "
         + 'Enrichment runs (run_type enrichment or http) report cost_usd (what its treg calls cost so far), '
         + 'daily_limit, and enrichment: the tool, max_cost_per_row_usd, spend_limit_usd, pause_reason (spend_limit, '
         + 'daily_limit, balance, no_key, unreachable…: resume with control_run once fixed; a run limit can be raised '

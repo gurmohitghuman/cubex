@@ -12,6 +12,7 @@ import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
 import { spendCapRefusal } from './token-spend';
+import { resumeLeastPart } from './ai-run-floor';
 
 export interface RunSummary {
   id: string;
@@ -53,8 +54,10 @@ export interface RunSummary {
   // not in total_rows; counted once the run has started).
   run_if?: string;
   condition_skipped_rows?: number;
-  // AI runs with a hard spend limit (migration 051): the limit, in USD.
+  // AI runs with a hard spend limit (migration 051): the limit, in USD, and
+  // while not finished the least a resume takes (services/ai-run-floor.ts).
   spend_limit_usd?: number;
+  resume_least_usd?: number;
   // A run that paused itself: why, and what to do (token_cap, spend_limit,
   // provider_errors, storage, stalled; an enrichment's own reasons are under enrichment).
   pause_reason?: string;
@@ -138,10 +141,12 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
     SELECT id, sheet_id, column_name, model, concurrency, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
-           run_if, condition_skipped_rows, pause_reason, access_token_id, user_id, spend_limit_usd
+           run_if, condition_skipped_rows, pause_reason, access_token_id, user_id, spend_limit_usd,
+           spend_cut_off_micro, spend_next_row_micro
     FROM ai_runs WHERE id = ? AND user_id = ?
-  `).get(runId, userId);
-  return r ? aiRunSummaryFromRow(r) : null;
+  `).get(runId, userId) as any;
+  // One run's summary only (not list_runs): its least resume limit reads its usage record.
+  return r ? { ...aiRunSummaryFromRow(r), ...resumeLeastPart(runId, userId, r) } : null;
 }
 
 export function getHttpRunSummary(runId: string, userId: string): RunSummary | null {
