@@ -170,8 +170,8 @@ export async function startAutorunRun(
       // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
       journalSeed({ kind: 'http', id: runId }, e.sheet_id, e.user_id, { ids: JSON.stringify(keep.map(r => r.id)) },
         [e.status_column, ...prep.outputs].map((c): [string, string] => [c, PLACEHOLDER]));
-      db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => ', ?, ?').join('')})
-        WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`)
+      db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => ', ?, ?').join('')}),
+        updated_at = datetime('now') WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`)
         .run(...paths.flatMap(p => [p, PLACEHOLDER]), JSON.stringify(keep.map(r => r.id)), e.sheet_id, e.user_id);
       db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
         .run(e.sheet_id, e.user_id);

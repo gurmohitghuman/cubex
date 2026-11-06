@@ -77,8 +77,10 @@ export function writeDerivedCells(
   userId: string, cellPath: string, rows: DerivedRead[], pass: DerivedPass,
   opts: { keepWhenEmpty?: boolean } = {},
 ): DerivedCounts {
-  const set = db.prepare('UPDATE rows SET data = json_set(data, ?, ?) WHERE rowid = ? AND user_id = ?');
-  const unset = db.prepare('UPDATE rows SET data = json_remove(data, ?) WHERE rowid = ? AND user_id = ?');
+  const set = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
+    WHERE rowid = ? AND user_id = ?`);
+  const unset = db.prepare(`UPDATE rows SET data = json_remove(data, ?), updated_at = datetime('now')
+    WHERE rowid = ? AND user_id = ?`);
   const counts: DerivedCounts = { changed: [], done: 0, filled: 0, flagged: 0, firstFlag: null };
   if (pass.failure()) return counts;
   const kept = rows.map(r => !!opts.keepWhenEmpty && text(r.cell) !== '' && r.inputs.length > 0
