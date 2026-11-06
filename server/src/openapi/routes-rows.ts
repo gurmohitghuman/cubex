@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
-  API_V1_MAX_ROWS_PAGE, API_V1_DEFAULT_ROWS_PAGE,
+  API_V1_MAX_ROWS_PAGE, API_V1_DEFAULT_ROWS_PAGE, IDEMPOTENT_WRITE_KEY_MAX_CHARS,
 } from '../lib/api-v1-constants';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { MAX_VIEW_DESCRIPTION_CHARS, MAX_VIEW_NAME_CHARS } from '../lib/constants-filters';
@@ -14,6 +14,14 @@ import { toolBody } from './tool-schemas';
 
 const cells = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
   .describe(`{column: value}, up to ${API_V1_MAX_PATCH_CELLS} columns. Columns must exist; null clears a cell.`);
+// A row write's retry key (api-v1-rows.ts, services/rows-write-keyed.ts).
+const retryKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS);
+const retryHeaders = z.object({
+  'Idempotency-Key': retryKey.optional().describe('Or idempotency_key in the body. The same key and arguments '
+    + 'within 24 hours answer as the first call did (replayed: true) and write nothing; other arguments get 409.'),
+});
+const retryBody = { idempotency_key: retryKey.optional().describe('Or the Idempotency-Key header.') };
+const replay = 'A retry with the same idempotency key and arguments: the first answer again, replayed: true.';
 const rowsPage = z.object({
   limit: z.number().int().min(1).max(API_V1_MAX_ROWS_PAGE).optional()
     .describe(`Rows per page, 1 to ${API_V1_MAX_ROWS_PAGE}. Default ${API_V1_DEFAULT_ROWS_PAGE}.`),
@@ -49,16 +57,23 @@ export const rowRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/rows', operationId: 'appendRows', tag: 'rows', scope: 'write',
     summary: 'Add rows at the end of a sheet.',
     description: "Note the data wrapper (MCP's append_rows takes the objects directly).",
+    headers: retryHeaders,
     body: z.object({
       rows: z.array(z.object({ data: cells })).min(1).max(API_V1_MAX_APPEND_ROWS)
         .describe(`Up to ${API_V1_MAX_APPEND_ROWS} rows.`),
+      ...retryBody,
     }),
-    responses: { 201: 'The new stable row ids, in order, and the auto-runs that will fill them.' },
+    responses: {
+      201: 'The new stable row ids, in order, and the auto-runs that will fill them.',
+      200: `${replay} Nothing is added.`,
+    },
   }),
   op({
     method: 'patch', path: '/rows/{rowId}', operationId: 'updateRow', tag: 'rows', scope: 'write',
     summary: 'Set cells on one row.',
-    body: z.object({ data: cells }),
+    headers: retryHeaders,
+    body: z.object({ data: cells, ...retryBody }),
+    responses: { 200: `The row: its id, index and cells. ${replay}` },
   }),
   op({
     method: 'post', path: '/sheets/{id}/rows/update', operationId: 'updateRows', tag: 'rows', scope: 'write',
@@ -66,7 +81,10 @@ export const rowRoutes = (): RouteDoc[] => [
     body: z.object({
       updates: z.array(z.object({ row_id: z.string(), data: cells })).min(1).max(API_V1_MAX_BATCH_UPDATES)
         .describe(`Up to ${API_V1_MAX_BATCH_UPDATES} rows, each once.`),
+      ...retryBody,
     }),
+    headers: retryHeaders,
+    responses: { 200: `How many rows changed. ${replay}` },
   }),
   op({
     method: 'post', path: '/sheets/{id}/rows/delete', operationId: 'deleteRows', tag: 'rows', scope: 'write',
