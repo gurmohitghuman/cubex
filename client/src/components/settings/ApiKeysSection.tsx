@@ -98,7 +98,8 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ apiKeys, reloadA
                           'bg-gray-100 text-cube-black'
                         }`}>{apiKey.key_type}</span>
                       </div>
-                      {apiKey.description && <p className="text-sm text-gray-500">{apiKey.description}</p>}
+                      {apiKey.description &&
+                        <p className="text-sm text-gray-500 [overflow-wrap:anywhere]">{apiKey.description}</p>}
                       <p className="text-xs text-gray-400 truncate" title={`/${apiKey.name}`}>
                         Reference: <code className="bg-gray-100 px-1 rounded">/{apiKey.name}</code>
                       </p>
