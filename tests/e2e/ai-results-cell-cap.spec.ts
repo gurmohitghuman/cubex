@@ -62,3 +62,37 @@ test('ai-results commit path clamps an oversize value to the enrichment cap', as
     await api.dispose()
   }
 })
+
+// A sheet in the trash is hidden, its runs' results too: editing one answers
+// 404 and changes nothing (the commit already refused it) until it's restored.
+test('a result of a run whose sheet is in the trash cannot be edited until the sheet is back', async () => {
+  const api = await authedApi()
+  const { tableId, sheetId } = await seedSheet(api, 1)
+  await api.post(`/api/tables/${tableId}/sheets`, { data: { name: 'Spare' } })
+  const db = openTestDb()
+  try {
+    const userId = (db.prepare('SELECT id FROM users LIMIT 1').get() as { id: string }).id
+    const runId = randomUUID(), resultId = randomUUID()
+    db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, status)
+      VALUES (?, ?, ?, 'Gone (Output)', 'p', 'completed')`).run(runId, sheetId, userId)
+    db.prepare(`INSERT INTO ai_results (id, run_id, user_id, row_index, output_value, status)
+      VALUES (?, ?, ?, 0, 'kept', 'pending')`).run(resultId, runId, userId)
+    const stored = () => db.prepare('SELECT output_value AS v, status FROM ai_results WHERE id = ?').get(resultId)
+    const edit = () => api.put(`/api/ai/results/${resultId}`, { data: { value: 'edited', status: 'accepted' } })
+
+    const gone = await api.delete(`/api/tables/${tableId}/sheets/${sheetId}`)
+    expect(gone.status(), await gone.text()).toBe(200)
+    const refused = await edit()
+    expect(refused.status()).toBe(404)
+    expect(await refused.json()).toEqual({ error: 'AI result not found' })
+    expect(stored()).toEqual({ v: 'kept', status: 'pending' })
+
+    const back = await (await api.post('/api/trash/restore', { data: { ids: [(await gone.json()).trash.id] } })).json()
+    expect(back.results[0].restored).toMatchObject({ state: 'restored' })
+    expect((await edit()).status()).toBe(200)
+    expect(stored()).toEqual({ v: 'edited', status: 'accepted' })
+  } finally {
+    db.close()
+    await api.dispose()
+  }
+})

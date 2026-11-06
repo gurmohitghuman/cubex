@@ -10,7 +10,7 @@ import { csvLine } from '../lib/csv-write';
 import { getTrashItem } from '../lib/trash/store';
 import { batchColumns } from '../lib/trash/restore-rows';
 import { restoreRows, type RestoreFail, type RowsRestored } from './trash-restore';
-import { restoreSheetItem, type SheetRestored } from './trash-restore-sheet';
+import { nothingRestarted, restoreSheetItem, startRestored, type SheetRestored } from './trash-restore-sheet';
 import type { BlockingRun } from './autorun-block';
 
 export interface RestoreResult {
@@ -23,20 +23,30 @@ export interface RestoreResult {
 }
 
 // In the order given: a table before its sheets, a sheet before its rows.
+// What the restored sheets start again (their lookups and parked fills) waits
+// for the whole request, so no batch of rows restored in it is refused as busy.
 export async function restoreFromTrash(userId: string, ids: number[]): Promise<RestoreResult[]> {
   const out: RestoreResult[] = [];
-  for (const id of ids) {
-    const item = getTrashItem(id, userId);
-    if (!item) { out.push({ trash_id: id, error: 'Nothing in the trash with that id.', fail: 'not_found' }); continue; }
-    const r = item.kind === 'rows' ? await restoreRows(userId, id) : restoreSheetItem(userId, id);
-    if ('ok' in r) out.push({ trash_id: id, restored: r.ok });
-    else {
-      out.push({
-        trash_id: id, error: r.message, fail: r.fail,
-        ...(r.busy ? { busy: true } : {}),
-        ...(r.blockingRun ? { blocking_run: r.blockingRun } : {}),
-      });
+  const later = nothingRestarted();
+  try {
+    for (const id of ids) {
+      const item = getTrashItem(id, userId);
+      if (!item) {
+        out.push({ trash_id: id, error: 'Nothing in the trash with that id.', fail: 'not_found' });
+        continue;
+      }
+      const r = item.kind === 'rows' ? await restoreRows(userId, id) : restoreSheetItem(userId, id, later);
+      if ('ok' in r) out.push({ trash_id: id, restored: r.ok });
+      else {
+        out.push({
+          trash_id: id, error: r.message, fail: r.fail,
+          ...(r.busy ? { busy: true } : {}),
+          ...(r.blockingRun ? { blocking_run: r.blockingRun } : {}),
+        });
+      }
     }
+  } finally {
+    startRestored(later);
   }
   return out;
 }
