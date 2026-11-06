@@ -124,9 +124,17 @@ export const ledger = (runId: string): Array<{
   ).all(runId))
 
 // Waits until the mock has answered every call it was still working on (a
-// stopped run's calls in flight finish and are billed), then checks the bill.
+// stopped run's calls in flight finish and are billed) and Cubex's ledger holds
+// each call the mock billed (Cubex writes a call once its answer arrives, a
+// moment after the mock counts it answered), then checks the bill.
 export async function expectSettledBilledOnce(runIds: string[]) {
   await expect.poll(async () => Number((await mockState()).inFlightCount ?? 0), { timeout: 20_000 }).toBe(0)
+  const billedKeys = (await mockBilling()).map(b => b.key).filter((k): k is string => k !== null)
+  await expect.poll(() => {
+    const charged = new Set(runIds.flatMap(id => ledger(id)).filter(c => (c.cost_micro ?? 0) > 0)
+      .map(c => c.idempotency_key))
+    return billedKeys.filter(k => !charged.has(k))
+  }, { message: 'billed calls missing from the ledger', timeout: 20_000 }).toEqual([])
   await expectBilledOnce(runIds)
 }
 

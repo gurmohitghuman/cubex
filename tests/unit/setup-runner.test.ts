@@ -7,7 +7,8 @@
 // their columns on: filled again when their auto-run is off, and when it's on,
 // done once the auto-run has worked the new rows out (no fill). A column
 // carried on with a paused run on it stops the setup with a message (nothing
-// would resume it); an active one is waited for.
+// would resume it); an active one is waited for. Paused while a step fills, the
+// fill finishes and the next step waits for the resume.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -29,7 +30,7 @@ const { withSheetRead } = busyMod as typeof import('../../server/src/lib/sheet-b
 const { planApply } = planMod as typeof import('../../server/src/lib/setups/apply-plan')
 const { insertSetup } = libMod as typeof import('../../server/src/services/setup-library')
 const { insertSetupRun, getSetupRun } = storeMod as typeof import('../../server/src/services/setup-run-store')
-const { advanceSetupRun } = runnerMod as typeof import('../../server/src/services/setup-runner')
+const { advanceSetupRun, setupSweep } = runnerMod as typeof import('../../server/src/services/setup-runner')
 const { controlSetupRun } = controlMod as typeof import('../../server/src/services/setup-run-control')
 const { sheetCandidates } = stepsMod as typeof import('../../server/src/services/setup-steps')
 const { setCleanAutorun } = derivedMod as typeof import('../../server/src/services/derived-autorun')
@@ -159,6 +160,28 @@ async function main() {
   db.prepare(`UPDATE http_runs SET status = 'running' WHERE id = ?`).run(runId)
   check('an active one is waited for', 'wait' in await startAgainStep(uid, sheetId, httpStep as any, opts))
   db.prepare('DELETE FROM http_runs WHERE id = ?').run(runId)
+
+  // Paused while its first step fills: the fill finishes, and neither a sweep nor an advance starts the
+  // next step; resumed, it goes on to the end.
+  const third = sheet([' Ann ']), mid = start(third)
+  await advanceSetupRun(mid)
+  const pause = await controlSetupRun(uid, mid, 'pause', true)
+  check('a pause while the first step fills answers paused', 'ok' in pause && pause.ok.status === 'paused'
+    && pause.ok.steps[0].state === 'running', pause)
+  const fill = db.prepare(`SELECT fill_status FROM clean_columns WHERE sheet_id = ? AND column_name = 'Trimmed'`)
+  for (let i = 0; i < 100 && fill.pluck().get(third) === 'filling'; i++) await sleep(50)
+  check('the fill finishes while paused', fill.pluck().get(third) === 'done' && cells(third, 'Trimmed')[0] === 'Ann')
+  await setupSweep()
+  await advanceSetupRun(mid)
+  view = getSetupRun(uid, mid)!
+  const order = db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(third) as string
+  check('its first step done, a paused setup starts no next step', view.status === 'paused'
+    && view.steps[1].state === 'waiting' && !JSON.parse(order).includes('Lower'), [view, order])
+  const resumed = await controlSetupRun(uid, mid, 'resume', true)
+  check('a resume answers running', 'ok' in resumed && resumed.ok.status === 'running', resumed)
+  view = await settle(mid)
+  check('then it goes on to the end', view.status === 'done' && cells(third, 'Lower')[0] === 'ann',
+    [view, cells(third, 'Lower')])
 
   // Stopped before it moves on: nothing more starts.
   const other = sheet(['X'])
