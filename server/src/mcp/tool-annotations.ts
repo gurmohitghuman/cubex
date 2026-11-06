@@ -44,6 +44,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   rename_column: write('Rename a column', true, true),
   set_description: write('Describe a sheet or column', true, true),
   delete_column: write('Delete a column (permanent)', true, true),
+  // Only the order columns show in; repeating the same order changes nothing more.
+  set_column_order: write('Reorder columns', true, true),
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
   // A dry run (the default) changes nothing; a removal moves rows to the trash. Repeating it removes nothing more.
   remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
@@ -110,6 +112,10 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   list_run_webhooks: read('List run webhooks'),
   // Names and where they're used; a value never leaves Settings.
   list_saved_keys: read('List saved API keys (names only)'),
+  // Adds, changes or deletes where Cubex sends run notices; test sends one now (outside Cubex).
+  manage_run_webhook: write('Add, change, delete or test a run webhook', true, false, true),
+  // A saved view's name, filters and hidden columns; rows and columns never change.
+  manage_view: write('Create, change or delete a saved view', true, false),
   // Puts rows, sheets and tables back; repeating it finds nothing more to restore.
   restore_from_trash: write('Restore from the trash', false, true),
 };
