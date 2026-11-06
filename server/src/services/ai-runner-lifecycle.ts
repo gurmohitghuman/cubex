@@ -1,5 +1,6 @@
 // Over 200 lines: the shared row loop and the transitions it ends in, kept together.
 import { db } from '../lib/db';
+import { getSheetColumns } from '../lib/sql-helpers';
 import { redactSecrets, redactError } from '../lib/redact';
 import { getOpenRouterClient } from './openrouter';
 import { processRow } from './ai-row';
@@ -46,6 +47,10 @@ export const dispatchRows = async (
   controller: AbortController,
 ): Promise<LoopEnd | null> => {
   const openai = await getOpenRouterClient(run.user_id);
+  // The sheet's columns, read once for the run: a listed column a row holds no
+  // value for reads as empty in its prompt (lib/prompt.ts processPromptTemplate).
+  // The columns a prompt reads can't be renamed or deleted while it runs.
+  const columns = getSheetColumns(run.sheet_id, run.user_id, false);
   const concurrency = run.concurrency || 5;
   const out = new Set<Promise<void>>();
   const pool = slotWaiter();
@@ -61,7 +66,7 @@ export const dispatchRows = async (
   );
   // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
   const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
-  const gate = await openSpendGate(run, myGeneration);
+  const gate = await openSpendGate(run, myGeneration, columns);
   // Room for the row under the run's limit; null: a database that can't be written (end is set).
   // Busy with another writer past busy_timeout: the row waits and asks again.
   const admit = (row: SheetRow): GateAnswer | null => {
@@ -112,7 +117,7 @@ export const dispatchRows = async (
       }
 
       let settledAs: RowOutcome | null = null;
-      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration)
+      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
         .then(outcome => {
           settledAs = outcome;
           breaker.record(outcome);

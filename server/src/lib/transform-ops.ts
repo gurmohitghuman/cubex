@@ -4,6 +4,7 @@
 import {
   TRANSFORM_MAX_REGEX_LEN, TRANSFORM_REGEX_INPUT_CAP,
 } from './api-v1-constants';
+import { cellOf } from './row-cell';
 
 export type TransformOp =
   | 'regex_extract' | 'split' | 'template' | 'upper' | 'lower' | 'trim' | 'to_number';
@@ -126,6 +127,6 @@ export function applyTemplate(template: string, data: Record<string, string>): s
   // cubically on long runs of spaces, and [^}] quadratically on runs of "{".
   return template.replace(/\{\{([^{}]+)\}\}/g, (_, raw: string) => {
     const col = raw.trim();
-    return Object.prototype.hasOwnProperty.call(data, col) ? (data[col] ?? '') : '';
+    return cellOf(data, col);
   });
 }

@@ -162,7 +162,7 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
       // Appends reuse the positions of deleted last rows: auto-run's fence follows.
       autorunRowsRemoved(id, req.userId!);
       touchSheet(id, req.userId!);
-    })();
+    }).immediate();
 
     res.json({
       message: `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted`, deletedCount,

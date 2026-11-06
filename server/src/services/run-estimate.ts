@@ -4,7 +4,7 @@
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
 // AI (an honest low/high, "actual depends on usage"),
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
-import { verifySheetOwnership } from '../lib/sql-helpers';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -111,7 +111,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const instructionTokens = input.outputColumns
     ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
   const fixedTokens = sysTokens + instructionTokens;
-  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d)) + fixedTokens);
+  const columns = getSheetColumns(input.sheetId, userId, false);
+  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d, columns)) + fixedTokens);
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
@@ -154,7 +155,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
         low: rowCostUsd(inputTokens.low, out.range.low, p, c) + (fees?.low ?? 0),
         high: rowCostUsd(inputTokens.high, out.range.high, p, c) + (fees?.high ?? 0),
       };
-      rowMost = rowMostUsd(prices, model, input, w.plan, sample);
+      rowMost = rowMostUsd(prices, model, input, w.plan, sample, columns);
     }
   }
   // A search price Cubex doesn't know (some providers' own search) would leave

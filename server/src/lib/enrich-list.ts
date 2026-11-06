@@ -8,6 +8,7 @@ import { pathSegment } from './enrich-tool-io';
 import { cellText } from './enrich-cells';
 import { ENRICH_LIST_MAX_FIELDS } from './constants';
 import { LIST_MARK, holdsRunMarker } from './enrich-seed';
+import { cellOf } from './row-cell';
 
 export { LIST_MARK };
 
@@ -124,7 +125,7 @@ export function copyValues(list: EnrichListConfig, data: Record<string, string>)
   const out: Record<string, string> = {};
   for (const c of list.copy) {
     if (c.value !== undefined) { out[c.id] = c.value; continue; }
-    const v = data[c.from] ?? '';
+    const v = cellOf(data, c.from);
     out[c.id] = holdsRunMarker(v) ? '' : v;
   }
   return out;

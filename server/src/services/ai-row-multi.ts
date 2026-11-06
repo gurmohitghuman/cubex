@@ -26,7 +26,8 @@ import {
 // and hand success/failure to the multi writers. With web search or web fetch
 // on, the model gets those tools and also lists the URLs it used; those plus the
 // search citations fill the run's "(Data)" column. Mirrors ai-row.ts's error
-// handling (abort/stop are benign drops) and what it returns.
+// handling (abort/stop are benign drops) and what it returns. `columns`: the
+// sheet's columns, read once per run (lib/prompt.ts processPromptTemplate).
 export async function processMultiRow(
   runId: string,
   row: SheetRow,
@@ -34,6 +35,7 @@ export async function processMultiRow(
   openai: OpenAI,
   signal: AbortSignal | undefined,
   myGeneration: number,
+  columns: readonly string[],
 ): Promise<RowOutcome> {
   const specs = JSON.parse(run.output_columns as string) as OutputColumnSpec[];
   const statusColumn = run.status_column || run.column_name;
@@ -56,7 +58,7 @@ export async function processMultiRow(
   let lateReset = () => false;
 
   try {
-    const processedPrompt = processPromptTemplate(run.prompt, row.data);
+    const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const withSources = web.search || web.fetch;
     const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
     if (run.system_prompt) messages.push({ role: 'system', content: run.system_prompt });

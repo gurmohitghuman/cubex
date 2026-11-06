@@ -152,7 +152,7 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   const newRunId = uuidv4();
   const wantCols = needsDataColumn ? [outputCol, dataCol] : [outputCol];
 
-  return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<RerunOutcome> => {
     // Explicit indices are intersected with rows that actually EXIST: targeting
     // only nonexistent ones once left total_rows counting them while the worker
     // had nothing to process. Otherwise mode-driven selection over the (Output)

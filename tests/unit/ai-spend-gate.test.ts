@@ -229,7 +229,7 @@ await ok('a model with no listed price stops once what was billed reaches the li
 
 await ok("a row whose call may be billed counts its most as spent on the run; the others give it back", async () => {
   const { runId } = runOf(1, 1, 1)
-  const gate = (await openSpendGate(db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(runId) as never, 7))!
+  const gate = (await openSpendGate(db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(runId) as never, 7, ['name']))!
   const row = { rowIndex: 0, data: { name: 'N0' } } as never
   const holdOf = () => db.prepare('SELECT hold_micro FROM ai_run_holds WHERE run_id = ? AND worker_generation = 7')
     .pluck().get(runId) as number | undefined

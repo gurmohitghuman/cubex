@@ -69,7 +69,7 @@ await ok("a cut-off call's most settle() couldn't save stays held, counts, and c
     const most = mostOf(runId)
     // Room for one row at its most and half another.
     db.prepare("UPDATE ai_runs SET status = 'running', spend_limit_usd = ? WHERE id = ?").run(most * 1.5 / 1e6, runId)
-    const gate = (await openSpendGate(runById(runId) as never, 0))!
+    const gate = (await openSpendGate(runById(runId) as never, 0, ['name']))!
     const first = gate.admit({ rowIndex: 0, data: { name: 'N0' } } as never)
     assert.deepEqual(first, { start: most })
     // Another connection holds the write lock past busy_timeout (5 s): the settle's transaction fails.

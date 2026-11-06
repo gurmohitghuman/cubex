@@ -10,7 +10,7 @@ import type { AiEstimateInput } from './run-estimate';
 
 export function rowMostUsd(
   prices: RowPrices, model: string, input: AiEstimateInput, plan: SearchPlan | null,
-  sample: Array<Record<string, string>>,
+  sample: Array<Record<string, string>>, columns: readonly string[],
 ): number {
   const fixed = rowFixedFor({
     model, systemPrompt: input.systemPrompt ?? null, outputColumns: input.outputColumns ?? null,
@@ -21,6 +21,7 @@ export function rowMostUsd(
     },
   });
   const rows = sample.length ? sample : [{}];
-  const longest = Math.max(...rows.map(d => Buffer.byteLength(processPromptTemplate(input.prompt, d), 'utf8')));
+  const longest = Math.max(
+    ...rows.map(d => Buffer.byteLength(processPromptTemplate(input.prompt, d, columns), 'utf8')));
   return rowMaxMicro(prices, fixed, longest) / 1e6;
 }

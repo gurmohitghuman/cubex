@@ -82,9 +82,10 @@ export function promotePreviewReuse(args: {
   const currentData = new Map(current.map(r => [r.row_index, r.data]));
 
   // With the stamp of the inputs the preview read (the row's own, checked equal below).
+  const columns = getSheetColumns(sheetId, userId, false);
   const stamper = runInputStamper(sheetId, userId, outputColumn, aiRunInputColumns({
     column_name: outputColumn, prompt: runConfig.prompt, output_columns: null, use_openrouter_web_search: 0,
-  }, getSheetColumns(sheetId, userId, false)));
+  }, columns));
   const insertResult = db.prepare(`
     INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status)
     VALUES (?, ?, ?, ?, ?, ?, 'completed')
@@ -96,7 +97,7 @@ export function promotePreviewReuse(args: {
     if (!dataJson) continue;
     let rowData: Record<string, string>;
     try { rowData = JSON.parse(dataJson) as Record<string, string>; } catch { continue; }
-    if (computeInputHash(runConfig.prompt, rowData) !== c.inputHash) continue;
+    if (computeInputHash(runConfig.prompt, rowData, columns) !== c.inputHash) continue;
 
     // Enrichment cell cap (P2-8): clamp ONCE so the cell and the ai_results row
     // get the identical value (this path writes AI output directly, bypassing

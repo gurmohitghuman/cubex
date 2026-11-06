@@ -9,9 +9,10 @@ export function isPristineSeedSheet(sheetId: string, userId: string): boolean {
   let order: unknown;
   try { order = JSON.parse(sheet.column_order ?? 'null'); } catch { return false; }
   if (!Array.isArray(order) || order.length !== 1 || order[0] !== SEED_COLUMN_NAME) return false;
+  // One row past the seed's is enough to tell (callers hold the write lock).
   const rows = db.prepare(
-    'SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index',
-  ).all(sheetId, userId) as Array<{ row_index: number; data: string }>;
+    'SELECT row_index, data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index LIMIT ?',
+  ).all(sheetId, userId, SEED_ROW_COUNT + 1) as Array<{ row_index: number; data: string }>;
   if (rows.length !== SEED_ROW_COUNT) return false;
   return rows.every((row, i) => {
     if (row.row_index !== i) return false;

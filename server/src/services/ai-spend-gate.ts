@@ -105,7 +105,11 @@ export function rowFixedOf(run: AIRunRow): RowFixed {
   });
 }
 
-export async function openSpendGate(run: AIRunRow, generation: number): Promise<SpendGate | null> {
+// columns: the sheet's columns as the run read them (ai-runner-lifecycle.ts), so a row's prompt is
+// sized as it's sent (lib/prompt.ts processPromptTemplate).
+export async function openSpendGate(
+  run: AIRunRow, generation: number, columns: readonly string[],
+): Promise<SpendGate | null> {
   const limitUsd = run.spend_limit_usd;
   if (limitUsd === null || limitUsd === undefined) return null;
   const prices = await modelPrices(run.model);
@@ -119,7 +123,8 @@ export async function openSpendGate(run: AIRunRow, generation: number): Promise<
   let unsaved = 0;  // cut-off calls' most this worker couldn't add to the run's total: its hold keeps it
   return {
     admit(row) {
-      const rowMicro = prices ? rowMaxMicro(prices, fixed, bytes(processPromptTemplate(run.prompt, row.data))) : 0;
+      const rowMicro = prices
+        ? rowMaxMicro(prices, fixed, bytes(processPromptTemplate(run.prompt, row.data, columns))) : 0;
       const answer = db.transaction((): GateAnswer => {
         const spentMicro = Math.round(runSpentUsd(run.id, run.user_id) * 1e6);
         const cutOff = runCutOffMicro(run.id, run.user_id) + unsaved;

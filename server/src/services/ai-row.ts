@@ -24,6 +24,7 @@ import {
 // result (or error) to the transactional writers in ai-row-writers.ts. Says
 // what the row came to (the runner's brake counts provider failures in a row);
 // throws only when the database can't be written (the runner stops then).
+// `columns`: the sheet's columns, read once per run (lib/prompt.ts processPromptTemplate).
 export async function processRow(
   runId: string,
   row: SheetRow,
@@ -31,13 +32,14 @@ export async function processRow(
   openai: OpenAI,
   signal: AbortSignal | undefined,
   myGeneration: number,
+  columns: readonly string[],
 ): Promise<RowOutcome> {
   // Structured (multi-column) runs take a separate processor: one call → a JSON
   // object → N typed columns + status. Delegated whole so this stays the
   // single-column path.
   if (run.output_columns) {
     const { processMultiRow } = await import('./ai-row-multi');
-    return processMultiRow(runId, row, run, openai, signal, myGeneration);
+    return processMultiRow(runId, row, run, openai, signal, myGeneration, columns);
   }
   // (Data) column only exists for runs with web SEARCH on (lib/ai-data-column.ts).
   // Web fetch returns no caller-visible breadcrumb on chat-completions, and a
@@ -60,7 +62,7 @@ export async function processRow(
   // Whether a try was reset late enough to have reached the provider (timedTries).
   let lateReset = () => false;
   try {
-    const processedPrompt = processPromptTemplate(run.prompt, row.data);
+    const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const search = runSearchConfig(run);
     const usingTools = !!search || !!run.use_web_fetch;
 

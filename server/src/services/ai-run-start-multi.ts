@@ -134,7 +134,7 @@ export async function startAiMultiRun(
   // Cap check + run row + column_order append in ONE immediate txn (two
   // concurrent starts must not both pass the cap and both create columns).
   // All-or-nothing: a run that would cross the cap creates NOTHING (risk B2).
-  return asRunStart(p.sheetId, async (): Promise<AiRunStartOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<AiRunStartOutcome> => {
     let capExceeded = false;
     let capColsNeeded = 0;
     db.transaction(() => {

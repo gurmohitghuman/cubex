@@ -65,6 +65,8 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
     cleanupUpload();
     if ('fail' in result) {
       if (result.fail === 'busy') return res.status(409).json({ error: result.error });
+      // It went to the trash while the file was scanned.
+      if (result.fail === 'sheet_not_found') return res.status(404).json({ error: result.error });
       if (result.fail === 'locked') {
         return res.status(409).json({
           error: `Cannot import into column(s) an active run owns: ${result.columns.join(', ')}. Stop the run first.`,

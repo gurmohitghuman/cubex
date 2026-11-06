@@ -3,7 +3,7 @@
 // UPDATE-ONLY columns, stable-row-id addressing, run-locked 409s, data_version
 // bump inside every transaction, result purge on delete.
 import { db } from '../lib/db';
-import { countRows, jsonPath, parseRowData } from '../lib/sql-helpers';
+import { countRows, jsonPath, parseRowData, verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { bumpDataVersion, sheetHasActiveRun, checkColumns, TxnFail } from './data-plane-shared';
 import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
@@ -92,6 +92,9 @@ export function patchRowById(
       'SELECT rowid AS rid, id, sheet_id, row_index FROM rows WHERE id = ? AND user_id = ?',
     ).get(rowId, userId) as { rid: number; id: string; sheet_id: string; row_index: number } | undefined;
     if (!row) { fail = { fail: 'not_found' }; return; }
+    // Addressed by row id, so outside the sheet routes' checks: a sheet in the
+    // trash (alone or with its table) is hidden, and its rows can't be changed.
+    if (!verifySheetOwnership(row.sheet_id, userId)) { fail = { fail: 'sheet_not_found' }; return; }
     // Addressed by row id, so outside the sheet routes' busy gate: a sort, an
     // import or a column rewrite in progress (lib/sheet-busy.ts) is checked here.
     const busy = sheetBusyWith(row.sheet_id);
