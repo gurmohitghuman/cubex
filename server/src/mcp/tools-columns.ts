@@ -1,4 +1,4 @@
-// Column + sort tools — the shared cascade services (column-add/-rename/
+// Column, sort and column order tools: the shared cascade services (column-add/-rename/
 // -delete, sheet-sort), identical invariants to /api/v1 and the UI.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -8,7 +8,9 @@ import { renameSheetColumn } from '../services/column-rename';
 import { deleteSheetColumn } from '../services/column-delete';
 import { physicalSortSheet } from '../services/sheet-sort';
 import { describeColumn, describeSheet, descriptionProblem } from '../services/descriptions';
+import { reorderSheetColumns } from '../services/column-reorder';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
+import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
@@ -130,4 +132,22 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       return ok({ rows_reordered: result.rowsReordered });
     },
   );
+
+  // Same service and checks as REST PUT /v1/sheets/:id/columns/order.
+  registerTool(server, 'set_column_order', {
+    description:
+      'Put a sheet\'s columns in a new order: every column, once, by its exact name (get_sheet lists them in their '
+      + 'order now). Only the order the app and reads show changes: no row, cell, run or saved view changes, and a '
+      + 'hidden column stays hidden. A column left out, named twice or unknown is refused and nothing changes.',
+    inputSchema: z.object({
+      sheet_id: z.string(),
+      order: z.array(z.string()).min(1).max(MAX_COLUMNS_PER_SHEET).describe('Every column name, in the new order'),
+    }).strict(),
+  }, async ({ sheet_id, order }) => {
+    const denied = missingScope(ctx, 'write');
+    if (denied) return denied;
+    if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+    const result = reorderSheetColumns(sheet_id, ctx.userId, order, { bumpDataVersion: true });
+    return 'fail' in result ? err(result.error) : ok({ order });
+  });
 }
