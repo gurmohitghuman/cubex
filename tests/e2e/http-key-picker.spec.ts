@@ -119,7 +119,7 @@ test('the "/" list wraps a long column name and cuts a long key name', async ({ 
     const list = page.locator('div.max-w-sm').filter({ hasText: 'Type / to insert column or API key' })
 
     // The column row wraps: its whole name shows inside the row and nothing runs past the row's edge.
-    const col = list.getByTitle('/annual_revenue_estimate_for_the_parent_company_group', { exact: true })
+    const col = list.getByRole('button').filter({ hasText: `(${COL})` })
     await col.scrollIntoViewIfNeeded()
     await expectInside(col, list, true)
     await expectInside(col.getByText(`(${COL})`, { exact: true }), col)
