@@ -103,7 +103,7 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
       if (checkpoint) { db.pragma('wal_checkpoint(PASSIVE)'); checkpoint = false; return true; }
       const next = nextDedupeChunk(job.sheet_id);
       if (!next) return false;
-      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item))();
+      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item)).immediate();
       checkpoint = true;
       return true;
     });
@@ -115,7 +115,7 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
       touchSheet(job.sheet_id, job.user_id);
       // Sealed after the fence: a restore compares the row_generation it keeps.
       if (item !== null && !dropIfEmpty(item)) { sealBatch(item, job.sheet_id, job.user_id); kept = item; }
-    })();
+    }).immediate();
     return kept;
   } catch (error) {
     stayBusyToFinish(job.sheet_id, WHAT, async () => {

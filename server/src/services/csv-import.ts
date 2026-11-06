@@ -119,7 +119,7 @@ export async function importCsv(
         }
         startingRow = nextRowIndex(sheetId, userId);
         return journal(sheetId, userId, false, startingRow, startingRow + rowCount, csvColumns);
-      })();
+      }).immediate();
     }
     reserve(job.end_row);
     let replaced: { trashId: number | null; moved: number } | null = null;
@@ -203,7 +203,7 @@ export async function importCsv(
         }
         db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(sheetId);
         if (firstRid !== null) dedupeQueued = queueImportedRows(sheetId, userId, firstRid, lastRid!, csvColumns);
-      })();
+      }).immediate();
 
       logImport(sheetId, userId, next - startingRow, replaced);
       const autoDedupe = dedupeQueued

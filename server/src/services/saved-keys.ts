@@ -88,7 +88,9 @@ export function saveImportedKeys(
 ): { ok: string[] } | RunFail {
   const batch = new Map<string, string>();
   try {
-    return { ok: db.transaction(() => keys.map(k => saveOne(userId, columns, k, batch, dryRun)))() };
+    // A save reads the saved keys before it writes, so it takes the write lock first; a dry run only reads.
+    const save = db.transaction(() => keys.map(k => saveOne(userId, columns, k, batch, dryRun)));
+    return { ok: dryRun ? save() : save.immediate() };
   } catch (e) {
     if (e instanceof KeyConflict) return { fail: 'conflict', message: e.message };
     throw e;
