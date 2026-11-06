@@ -11,6 +11,7 @@
 // Verified to be a real regression test: with the pre-fix behavior (markdown-
 // cleaning the JSON) the first case below fails with "Model did not return
 // valid JSON" instead of writing values.
+// Over 200 lines: one script over the real writer and runner; split, each part would rebuild the same fixtures.
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import ctMod from '../../server/src/lib/completion-text'
@@ -161,7 +162,8 @@ async function webRow(
       }
     },
   }
-  await processMultiRow(rid, { rowIndex: 0, data: { domain: 'stripe.com' } }, run as any, openai as any, undefined, 0)
+  await processMultiRow(rid, { rowIndex: 0, data: { domain: 'stripe.com' } }, run as any, openai as any, undefined, 0,
+    ['domain'])
   const result = db.prepare('SELECT scraped_data, cost_usd, web_searches, web_search_queries FROM ai_results WHERE run_id = ?').get(rid) as
     { scraped_data: string | null; cost_usd: number | null; web_searches: number | null; web_search_queries: string | null }
   return {

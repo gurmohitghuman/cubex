@@ -5,6 +5,7 @@
 // "⏭️ Condition not met" instead of a run, and costs nothing.
 import { resolveColumnRef, suggestColumn } from './column-ref-resolve';
 import { holdsRunMarker } from './run-markers';
+import { cellOf } from './row-cell';
 import { asDate } from './row-filter/dates';
 import { asNumber, datePasses, foldText, numberPasses, textPasses } from './row-filter/ops';
 import {
@@ -91,7 +92,9 @@ const DATE_OP = { on: 'date_eq', not_on: 'date_neq', before: 'date_lt', after: '
 const isDateCompare = (op: Compare['op']): op is DateCompareOp => op in DATE_OP;
 
 function comparePasses(c: Compare, data: Record<string, string>): boolean {
-  const raw = data[c.column] ?? '';
+  // The row's own value: a row without the key (a column added since) reads as
+  // empty, also for a column named like an inherited member ("constructor").
+  const raw = cellOf(data, c.column);
   // A run's own words (⏳, ❌, ⏭️, ➕) read as empty in a rule.
   const cell = holdsRunMarker(String(raw)) ? '' : raw;
   if (c.op === 'gt' || c.op === 'lt' || c.op === 'gte' || c.op === 'lte') {

@@ -23,7 +23,7 @@ assert.equal(renamePromptColumnRefs('Open https://x.com/website or www.x.com/web
 assert.equal(renamePromptColumnRefs('/company-domain', 'Company Domain', 'Domain'), '/company-domain')
 // A rewritten prompt resolves to the renamed column's value.
 const rewritten = renamePromptColumnRefs('Score /company_name', 'Company Name', 'Account')
-assert.equal(processPromptTemplate(rewritten, { Account: 'Acme' }), 'Score Acme')
+assert.equal(processPromptTemplate(rewritten, { Account: 'Acme' }, ['Account']), 'Score Acme')
 
 // HTTP templates ({{name}} and /token)
 assert.equal(renameTemplateColumnRefs('https://api.github.com/orgs/{{github}}', 'GitHub', 'GH handle'),

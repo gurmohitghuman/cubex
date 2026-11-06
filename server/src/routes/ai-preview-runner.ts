@@ -7,9 +7,12 @@ import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { SearchQueryLog } from '../lib/responses-adapter';
 import { billedUsage, sendModelCall, type ModelCall } from '../services/ai-model-call';
 import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } from '../lib/ai-multi-output';
+import { computeInputHash, type DraftPreviewRow } from '../lib/ai-drafts';
 
 interface PreviewArgs {
   prompt: string
+  // The sheet's columns, read once per preview (lib/prompt.ts processPromptTemplate).
+  columns: readonly string[]
   systemPrompt?: string
   model: string
   safeTemperature: number
@@ -63,6 +66,21 @@ export function structuredPreview(specs: OutputColumnSpec[], withSources: boolea
   };
 }
 
+// What a preview row keeps in the draft. Its fingerprint (the inputHash run
+// start compares, lib/ai-run-promote.ts) reads the row with the same prompt and
+// column list processOneRow filled it from, so a row without a listed column's
+// key fingerprints as its run will fill it.
+export function previewDraftRow(
+  row: { data: Record<string, string> }, result: PreviewRowResult, args: Pick<PreviewArgs, 'prompt' | 'columns'>,
+): DraftPreviewRow {
+  return {
+    rowIndex: result.rowIndex, value: result.value,
+    ...(result.error ? { error: result.error } : { inputHash: computeInputHash(args.prompt, row.data, args.columns) }),
+    promptTokens: result.promptTokens, completionTokens: result.completionTokens,
+    costUsd: result.costUsd, searchQueries: result.searchQueries, webSearches: result.webSearches,
+  };
+}
+
 // Run a single row through OpenRouter for preview. Returns a result row including any
 // per-row error so /preview can show partial success. `externalSignal` (the route's
 // client-disconnect signal) aborts the OpenRouter call AND the 429 retry sleep early
@@ -75,7 +93,7 @@ export const processOneRow = async (
 ): Promise<PreviewRowResult> => {
   let billed: ModelCall | null = null;
   try {
-    const filled = processPromptTemplate(args.prompt, row.data);
+    const filled = processPromptTemplate(args.prompt, row.data, args.columns);
     const processedPrompt = args.promptSuffix ? `${filled}\n\n${args.promptSuffix}` : filled;
     // A prose answer with web tools gets the runner's tools system message in
     // place of the user's (ai-row.ts); a structured (JSON) one keeps the user's
