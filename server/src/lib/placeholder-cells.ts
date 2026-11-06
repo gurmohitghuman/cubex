@@ -26,6 +26,7 @@ export async function clearProcessingPlaceholders(
   const keepOrClear = `?, CASE WHEN json_extract(data, ?) = '${PLACEHOLDER}' THEN '' ELSE json_extract(data, ?) END`;
   const clear = db.prepare(
     'UPDATE rows SET data = json_replace(data, ' + paths.map(() => keepOrClear).join(', ') + ')' +
+    ", updated_at = datetime('now')" +
     ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND (' +
     paths.map(() => `json_extract(data, ?) = '${PLACEHOLDER}'`).join(' OR ') + ')',
   );
@@ -56,6 +57,7 @@ export async function seedProcessingPlaceholders(args: {
   const paths = columns.map(jsonPath);
   const set = db.prepare(
     'UPDATE rows SET data = json_set(data' + paths.map(() => `, ?, '${PLACEHOLDER}'`).join('') + ')' +
+    ", updated_at = datetime('now')" +
     ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?' +
     ' AND row_index NOT IN (SELECT value FROM json_each(?))',
   );
