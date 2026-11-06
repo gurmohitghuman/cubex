@@ -32,7 +32,8 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: str
 
 // Rows still queued for one of the sheet's clean, formula or lookup columns to follow what was written in them
 // (services/derived-follow.ts). An answer and the rows it queues are written together, and so are a formula's
-// cell and the row leaving its queue: with none left, each of their cells is worked out from its row as it is.
+// cell and the row leaving its queue. A run's start puts ⏳ in its cells without queuing any, so only once every
+// run writing to the sheet has completed does none queued mean each of their cells is worked out from its row.
 const unfollowed = (sheetId: string): number => readDb(db => db.prepare(`SELECT COUNT(*) FROM autorun_pending p
   JOIN autorun_columns a ON a.id = p.autorun_id
   WHERE a.sheet_id = ? AND a.enabled = 1 AND a.kind IN ('clean', 'formula', 'lookup')`).pluck().get(sheetId))
@@ -91,13 +92,17 @@ test('check again from the guide: the answers kept, the change since then', asyn
   const table = await (await api.get(`/api/tables/${v.tableId}`)).json()
   const sheets = table.sheets as Array<{ id: string; name: string }>
   expect(sheets.map(s => s.name)).toEqual(['Questions', `Questions ${day}`, 'Cited sites', `Cited sites ${day}`])
-  // Change since says Up 1 once Gemini's new answer is in, but Named by follows the same answers on its own turn,
-  // so it can still count them as they were a moment ago ("3 of 3") or, having followed none yet, as before the
-  // check ("2 of 4"). Read the rows once every formula column has followed every answer written.
-  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => x[`Change since ${day}`] === 'Up 1'),
-    'the change column')
+  // Change since and Named by follow the answers on their own turns, and an engine's start puts ⏳ in its answers
+  // without either following that: Change since can say Up 1 while Named by, having followed none yet, counts as
+  // before the check ("2 of 4"), or counts three answers while Perplexity's is still ⏳ ("3 of 3"). Read the rows
+  // once the check's runs have all completed and every formula column has followed what they wrote.
+  const check = await until(async () => (await (await api.get(`/api/sheets/${v.questionsSheetId}`)).json())
+    .data.aiVisibility.checks[0], c => c?.stage === 'done', 'the check')
+  expect(check.runs).toHaveLength(4)
+  for (const r of check.runs) await waitRun(api, r.runId, ['completed'])
   await until(async () => unfollowed(v.questionsSheetId), n => n === 0, 'the formula columns')
   const now = await rowsOf(api, v.questionsSheetId)
+  expect(now.map(r => r[`Change since ${day}`])).toEqual(['Up 1', 'Up 1'])
   expect(now.map(r => [r['Named by'], r[`Named by on ${day}`]])).toEqual([['3 of 4', '2 of 4'], ['3 of 4', '2 of 4']])
   const kept = await rowsOf(api, sheets[1].id)
   expect(kept.map(r => r['Named by'])).toEqual(['2 of 4', '2 of 4'])
