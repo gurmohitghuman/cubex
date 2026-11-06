@@ -81,7 +81,7 @@ await ok("an enrichment's seeding: ⏳ in the rows it runs, the condition mark i
   past(sid)
   const now = clock()
   const before = queued.length
-  await asRunStart(sid, async () => {
+  await asRunStart(sid, uid, async () => {
     seedEnrichmentThenEnqueue({
       runId, sheetId: sid, userId: uid, columns: ['Work email', 'Email'],
       plan: { statusColumn: null, status: 'any', where: [{ column: 'Size', op: 'gt', value: '50' }], rule: null,
