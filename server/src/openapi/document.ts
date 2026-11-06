@@ -18,7 +18,8 @@ const ERRORS: Record<number, [string, string]> = {
   403: ['Forbidden', "The token lacks a scope this call needs (error names it), or it's at its spend cap."],
   404: ['NotFound', 'Nothing with that id or name in this account.'],
   409: ['Conflict', 'A conflict: a name already taken, a run already active, the sheet busy with an import or '
-    + 'a sort (busy: true, try again shortly), or a sheet that changed while you paged.'],
+    + 'a sort (busy: true, try again shortly), a sheet that changed while you paged, an idempotency key sent '
+    + 'before with other arguments, or a start over its cost ceiling (over_ceiling: true, with the estimate).'],
   413: ['PayloadTooLarge', `The JSON body is over ${MB} MB.`],
   429: ['TooManyRequests', `Rate limited: ${API_V1_RATE_PER_MIN} requests a minute per token, or the run-start `
     + 'or sheet-copy limit. Retry-After says when to try again.'],

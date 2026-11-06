@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
+import { forgetExpiredWriteKey, WRITE_KINDS_SQL } from './write-idempotency';
 
 // Idempotency for run_ai_column / run_http_enrichment / run_enrichment, on the same
 // data_operation_ledger table transfer_rows uses (migration 040). A run returns
@@ -37,10 +38,12 @@ function canonicalHash(kind: string, config: Record<string, unknown>): string {
 }
 
 // Read: null (proceed), {replay} (return the stored run), or {conflict} (key
-// reused with different args).
+// reused with different args). A row write's key over a day old is free again:
+// deleted first, so the start records the key (lib/write-idempotency.ts).
 export function readRunLedger(
   userId: string, key: string, hash: string,
 ): { replay: RunLedgerResult } | { conflict: true } | null {
+  forgetExpiredWriteKey(userId, key);
   const row = db.prepare(
     'SELECT request_hash, result_json FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = ?',
   ).get(userId, key) as { request_hash: string; result_json: string } | undefined;
@@ -51,7 +54,8 @@ export function readRunLedger(
 
 // Write after a successful start. INSERT OR IGNORE so a concurrent winner's row
 // stands (we don't clobber it); the caller's own run_id is still valid to return.
-// Prunes the per-user ledger to the most recent 1000 (shared with transfer).
+// Prunes the per-user ledger to the most recent 1000 (shared with transfer; row
+// writes' keys keep their own rule, lib/write-idempotency.ts).
 export function writeRunLedger(
   userId: string, key: string, hash: string, kind: RunLedgerKind, result: RunLedgerResult,
 ): void {
@@ -62,7 +66,7 @@ export function writeRunLedger(
   `).run(uuidv4(), userId, key, kind, hash, JSON.stringify(result));
   db.prepare(`
     DELETE FROM data_operation_ledger WHERE id IN (
-      SELECT id FROM data_operation_ledger WHERE user_id = ?
+      SELECT id FROM data_operation_ledger WHERE user_id = ? AND operation_kind NOT IN (${WRITE_KINDS_SQL})
       ORDER BY created_at DESC LIMIT 25 OFFSET 1000
     )
   `).run(userId);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Eye, EyeOff, Loader2, Shield } from 'lucide-react'
 import { APIKey } from '@/utils/api'
 import { Select } from '@/components/ui/Select'
+import { API_KEY_NAME_MAX } from '@/lib/constants'
 
 interface Form {
   name: string
@@ -68,6 +69,7 @@ export const ApiKeyEditorModal: React.FC<Props> = ({ isOpen, editing, onCancel, 
               type="text"
               className="input w-full"
               placeholder="e.g., openai_key, stripe_secret"
+              maxLength={API_KEY_NAME_MAX}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />

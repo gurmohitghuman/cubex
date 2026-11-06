@@ -1,3 +1,4 @@
+// Over 200 lines: the one list of server limits the client mirrors, kept together so none drifts.
 // Mirrors of server-side limits in `server/src/lib/constants.ts`. Keep in sync.
 // (Row/column caps are server-configurable, so the client doesn't mirror them;
 // the server's error message names the limit when one is hit.)
@@ -67,6 +68,9 @@ export const RECENTLY_SAVED_TTL_MS = 10000;
 // before submitting.
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 256;
+
+// Longest name a saved API key can be saved or renamed to (mirrors server API_KEY_NAME_MAX).
+export const API_KEY_NAME_MAX = 200;
 
 // While the server is busy with a big change to a sheet (a sort, an import, a
 // column rename or delete on a large sheet), it answers cell saves with a

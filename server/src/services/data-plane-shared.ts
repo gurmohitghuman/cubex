@@ -42,7 +42,9 @@ export type TxnFail =
   | { fail: 'protected_columns'; columns: string[] }
   | { fail: 'active_run' }
   | { fail: 'busy'; message: string }
-  | { fail: 'not_found' };
+  | { fail: 'not_found' }
+  // An idempotency key used before with other arguments (lib/write-idempotency.ts).
+  | { fail: 'idempotency_conflict' };
 
 // Validate incoming columns against existing structure (UPDATE-ONLY: unknown
 // column → error, never implicit creation) + run locks. Call INSIDE the write
@@ -100,6 +102,9 @@ export function parseCellMap(
   return { cells };
 }
 
+// The words run starts and transfer_rows use too.
+export const IDEMPOTENCY_CONFLICT_MESSAGE = 'Idempotency key was already used with different arguments.';
+
 // Human-readable message for a TxnFail — shared by v1 responses and MCP tool
 // errors so agents see identical wording on both surfaces.
 export function txnFailMessage(f: TxnFail, maxRows: number): string {
@@ -120,5 +125,7 @@ export function txnFailMessage(f: TxnFail, maxRows: number): string {
       return f.message;
     case 'not_found':
       return 'Not found.';
+    case 'idempotency_conflict':
+      return IDEMPOTENCY_CONFLICT_MESSAGE;
   }
 }

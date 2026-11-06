@@ -153,12 +153,15 @@ export async function withSheetRead<T>(
 // while the sheet is busy, any change to it gets a 409 with the reason. Reads,
 // and the POSTs listed in `allowed` (appending rows lands above the reserved
 // range; a row query only reads), go through. An entry can be a pattern for a
-// path with an id in it.
-export function refuseChangesWhileBusy(allowed: Array<string | RegExp>) {
+// path with an id in it, or a test of the request (a keyed call that checks
+// for busy itself).
+export type BusyAllowed = string | RegExp | ((req: Request) => boolean);
+export function refuseChangesWhileBusy(allowed: BusyAllowed[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     const what = sheetBusyWith(req.params.id);
-    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path : a.test(req.path)));
+    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path
+      : a instanceof RegExp ? a.test(req.path) : a(req)));
     if (!what || (req.method === 'POST' && listed)) return next();
     res.status(409).json({ error: busyMessage(what), busy: true });
   };

@@ -5,6 +5,7 @@ import { startQueue, stopQueue, resumeRecoveredRuns } from '../queue';
 import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { pruneWebhookKeys } from './webhook-idempotency';
+import { pruneWriteKeys } from './write-idempotency';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startSetupLoop } from '../services/setup-runner';
@@ -77,10 +78,12 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       process.exit(1);
     });
   // Sweep idle webhook rate-limit buckets on the same cadence as the idle window,
-  // and delete webhook Idempotency-Keys over a day old.
+  // and delete webhook Idempotency-Keys and row writes' idempotency keys over a day old.
   webhookBucketSweep = setInterval(() => {
     try { evictIdleWebhookBuckets(); } catch { /* best-effort */ }
     try { pruneWebhookKeys(); } catch (err) { console.error('Deleting expired webhook keys failed:', err); }
+    // In slices that yield to requests (lib/write-idempotency.ts).
+    pruneWriteKeys().catch(err => console.error('Deleting expired row write keys failed:', err));
   }, WEBHOOK_BUCKET_IDLE_EVICT_MS);
   webhookBucketSweep.unref();
 };

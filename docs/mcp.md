@@ -11,12 +11,12 @@ Choose the token's scopes:
 
 | Scope | Lets the assistant |
 |---|---|
-| `read` | List tables, read rows, check runs. |
+| `read` | List tables, read rows, check runs, and see the saved API keys' names and where they're used (never their values). |
 | `write` | Also create and change tables, sheets, columns and rows. |
 | `run` | Also start, pause, resume, stop and re-run AI, HTTP, enrichment and waterfall runs, and turn auto-run on or off. These spend your OpenRouter credits and your treg balance, and call your APIs. |
 | `secrets` | Also start HTTP runs that use your saved API keys, and save the keys in a pasted cURL command as new saved keys. Needs `run`. |
 
-`write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password, and it can never read or change a saved key. With `secrets` it can add a new one, from a cURL command it passes to an HTTP run.
+`write` and `run` each include `read`. `run` doesn't include `write`, but starting a run does create its output columns. You can have 10 active tokens and revoke any of them at any time. A token can't create other tokens or change your password, and it can never read a saved key's value or change a saved key. Any token can list the keys by name, with where each is used (`list_saved_keys`); using one in a new request still needs `secrets`. With `secrets` it can add a new one, from a cURL command it passes to an HTTP run.
 
 **Spend cap.** Give a token a spend cap when you create it, or later from its row in **Settings → Agent access**, to limit what an agent can spend in dollars. It counts what the runs the token started spent on AI (OpenRouter's charge and your own provider key's) and on enrichments, and also its previews and AI helpers (`preview_rows`, `write_formula`, `write_run_condition`). Auto-runs it turned on and setups it applied count too. These are the same numbers as the usage history. The cap is for the token's whole life, not a month: to go on, raise it or make a new token. At the cap, new AI and enrichment runs, previews and AI helpers are refused with a message that says so, and so is resuming any run with that token (yours from the app too). A run a token resumes spends for that token from then on, whoever started it, and calls already out when a run changes hands count for the token that resumed it; what was billed before stays with the token it was billed for. Running runs pause, and so does a setup before its next AI or enrichment step; you can resume them once the cap is raised (an auto-run goes on by itself). Resumed from the app, a run keeps its token, so its cap must have room, unless that token was revoked: then the app takes the run over and what it spends from then on counts against no token. HTTP API runs cost nothing here and are never stopped by the cap. Calls already in flight finish and count, also when you pause or stop the run, so spend can pass the cap by those calls alone: up to an AI run's concurrency (default 5, at most 100) for each run, with up to 4 runs at once, and a preview's rows (up to 20; each token runs at most 3 previews at once, and the app another 3). An enrichment or waterfall run with a per-row cap holds room for its rows first, so it stops before the cap. The token list shows each token's spend, cap and what is left, and the agent sees the same in `get_balances`, `GET /api/v1/me` and the run tools' descriptions. Only the app can set a cap; a token never can. Spend counts from the update that added caps, so older runs don't count.
 
@@ -93,7 +93,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. `group_by` and `aggregates` count, sum and average per value instead of reading rows, and `columns` can take one value out of a JSON cell. See [Finding rows](#finding-rows). `row_ids` reads up to 1,000 rows by id, in the order given, and lists the ids that are no longer rows in `missing` ([Rows by id](#rows-by-id)). `updated_since` reads the rows whose cells changed since a time ([Keeping a copy up to date](#keeping-a-copy-up-to-date)). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
 | `manage_view` | Create, change or delete a saved view: a name, a description, filters and hidden columns. Creating one never switches the view the app shows. See [Saved views](#saved-views). |
-| `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. Deleted rows go to the trash. |
+| `append_rows`, `update_cells`, `delete_rows` | Add, edit and delete rows by their stable row id. Deleted rows go to the trash. `append_rows` and `update_cells` take an `idempotency_key` so a retry can't write twice: see [Retrying row writes](#retrying-row-writes). |
 | `add_column`, `rename_column`, `delete_column` | Manage columns. `add_column` takes an optional `description`. |
 | `set_column_order` | Put a sheet's columns in a new order: every column, once, by name. Rows, runs and views don't change. |
 | `set_description` | Describe a column, or the sheet when `column` is left out. See [Descriptions](#descriptions). |
@@ -128,6 +128,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `add_enrichment_field` | A new column filled from answers a run already stored, for free. |
 | `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts, your own APIs, free formulas and lookups in your other sheets, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
+| `list_saved_keys` | The saved API keys by name, never their values: when each was saved and last changed, and where it's used, each HTTP API, enrichment or waterfall column whose request names it (with its sheet, and whether auto-run is on) and each saved setup that names it. Up to 20 keys a call with 10 places and 10 setups each, and whole counts (`keys_count`, `used_in_count`, `setups_count`). When more keys are left, the answer has `next_after`: pass it as `after` for the next ones. `name` gives one key (any case) with up to 50 places and 50 setups. Sheets in the trash and setup versions are left out. Needs only the `read` scope. |
 | `list_run_webhooks`, `manage_run_webhook` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). `manage_run_webhook` adds, changes and deletes them, makes a new signing secret or sends a test notice (`run` scope). |
 | `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, sheets and tables. Look inside a batch and search its rows, then restore whole items or rows you pick. See [The trash](#the-trash). |
 | `get_sheet_history` | A sheet's change log: columns added, renamed and deleted, runs, auto-run, views, its webhook, rows deleted (auto-dedupe's included), restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
@@ -137,6 +138,21 @@ Deleted rows, sheets and tables go to the trash for the days set in Settings (30
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
+
+## Retrying row writes
+
+`append_rows` and `update_cells`, and their REST routes, take an optional `idempotency_key` (1 to 200 characters), so a call that timed out can be sent again without adding the rows twice:
+
+- The same key with the same arguments within 24 hours answers as the first call did, with `replayed: true`, and writes nothing. The first call answers `replayed: false`. A replay leaves out `auto_run`, since the first call already set those runs off.
+- The same key with other arguments is refused with `Idempotency key was already used with different arguments.` (a `409` over REST), and nothing is written.
+- The same arguments means the same sheet and the same values as Cubex reads them: `1` and `"1"` are the same, so are `null` and `""`, and the order of a row's columns doesn't matter. Appended rows must come in the same order. For `update_cells`, the many-rows form's updates can come in any order, and the one-row form is the same call with or without its row's `sheet_id`.
+- Two calls with one key at the same moment write once: the other answers as a replay.
+- Keys belong to the account, not to a token or a sheet: the same key sent over REST or from another token replays too. Run starts and `transfer_rows` use the same keys, so use a new key for each separate call.
+- A replay returns the first answer as it was, whatever happened since: the ids of rows deleted since, each row's `index` from before a sort, a one-row update's cells as they were then. Read the rows to see them now.
+- A replay answers even after the sheet went to the trash, where an append or a many-row update with a new key gets `Sheet not found`, and while the sheet is busy sorting or importing, where an update with a new key is refused as busy, as one without a key is.
+- When auto-dedupe sent rows to the trash, a row write's replay says how to restore them in the words of the surface asking: the MCP tool or the REST route. A `transfer_rows` replay keeps the first call's words.
+- A replay of a one-row update keeps the row's cells up to 16 KB; past that it leaves them out and says `data_left_out: true`. Read the row to see them.
+- Cubex keeps the newest 10,000 keys of row writes (run and transfer keys aside), each for 24 hours. Past that the key is free again, for a row write, a run start or `transfer_rows`. Without a key, nothing changes.
 
 ## Finding rows
 
@@ -706,13 +722,23 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 |---|---|
 | `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. Add `&include_status=true` for run columns as `{status, value, error}`. |
 | `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `columns` can take a value out of a JSON cell ([Values inside JSON cells](#values-inside-json-cells)), and `group_by` with `aggregates` answers groups instead of rows ([Counting and summing](#counting-and-summing)). `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. `{"row_ids": ["..."]}` (up to 1,000) reads those rows instead, in the order given, with `missing` for ids that are no row of the sheet; it takes `columns` and `include_status` only ([Rows by id](#rows-by-id)). `{"updated_since": "2026-11-05T10:00:00Z", "limit": 500}` reads the rows changed since then, oldest change first, paged with the text `next_cursor` it answers as `cursor`, plus `as_of` for the next read and `filling` for the columns being filled; it takes `columns`, `include_status`, `limit` and `cursor`, not `where`, `view` or `group_by` ([Keeping a copy up to date](#keeping-a-copy-up-to-date)). |
-| `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). |
+| `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). `201`; a replay answers `200`. |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |
 | `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. They go to the trash: the answer's `trash` gives the `trash_id`. |
 | `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending (the replaced rows go to the trash). |
 | `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. |
 | `POST /sheets/:sourceId/rows/transfer` | Copy or move rows to another sheet. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
+
+**Retrying safely:** the three writes above (append, `PATCH /rows/:rowId`, `rows/update`) take an `Idempotency-Key` header or `idempotency_key` in the body, as `append_rows` and `update_cells` do: see [Retrying row writes](#retrying-row-writes).
+
+### Saved keys
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /saved-keys` | Same as `list_saved_keys`: `{keys: [{name, created_at, updated_at, used_in, used_in_count, setups, setups_count}], keys_count, next_after?}`, each place in `used_in` as `{sheet_id, sheet_name, table_id, table_name, column, kind, auto_run}`. Up to 20 keys a call with 10 places and 10 setups each (the counts are whole); `?after=` with `next_after` for the next keys. `?name=` for one key (any case; `404` when there's none) with up to 50 places and 50 setups. Never a value. `read` scope. |
+
+A saved key's name can be at most 200 characters. Only saving or renaming a key to a longer name is refused: a key saved with a longer name before this limit still works, lists and pages, and every listed key can be looked up by `name`, whatever its length.
 
 ### Runs
 
@@ -859,7 +885,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Agents use `list_run_
 ### Responses and errors
 
 - Errors are JSON: `{"error": "message"}`. Some add detail: `unknownColumns`, `lockedColumns` (columns a run is still filling), `protectedColumns`, or `busy: true` (the sheet is in the middle of an import or sort; retry shortly).
-- `400` bad input · `401` missing or revoked token · `403` the token lacks a scope · `404` not found · `409` conflict (a name already taken, a run already active, a sheet that changed while you paged, a start over its cost ceiling: `over_ceiling: true` with the `estimate`) · `413` body over 2 MB · `429` rate limited.
+- `400` bad input · `401` missing or revoked token · `403` the token lacks a scope · `404` not found · `409` conflict (a name already taken, a run already active, a sheet that changed while you paged, an idempotency key sent before with other arguments, a start over its cost ceiling: `over_ceiling: true` with the `estimate`) · `413` body over 2 MB · `429` rate limited.
 - The limits above apply to each token across MCP and REST together. Every answer carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers, and a `429` adds `Retry-After` (and `retry_after_seconds` in the body when the run-start or sheet-copy limit refused it; its `RateLimit-*` headers then describe that limit).
 
 ## Security notes

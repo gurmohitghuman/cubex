@@ -37,6 +37,7 @@ import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
+import { registerSavedKeyTools } from './tools-saved-keys';
 import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
 
@@ -131,6 +132,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx, efficientRo
   registerSetupRunTools(server, ctx);
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
+  registerSavedKeyTools(server, ctx);
   registerViewTools(server, ctx);
   if (efficientRows) {
     registerTransferTool(server, ctx);

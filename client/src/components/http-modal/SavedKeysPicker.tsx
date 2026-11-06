@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { settingsAPI } from '@/utils/api'
 import type { APIKey } from '@/utils/api/types'
 import { Select } from '@/components/ui/Select'
+import { API_KEY_NAME_MAX } from '@/lib/constants'
 
 interface Props {
   // Currently selected saved-key name (the user picks from existing keys) OR
@@ -113,6 +114,7 @@ export const SavedKeysPicker: React.FC<Props> = ({
                 type="text"
                 className="input flex-1 max-w-xs"
                 placeholder="e.g. Apollo"
+                maxLength={API_KEY_NAME_MAX}
                 value={inlineKeyName}
                 onChange={(e) => setInlineKeyName(e.target.value)}
                 disabled={!saveInline}
@@ -129,9 +131,12 @@ export const SavedKeysPicker: React.FC<Props> = ({
       )}
 
       {selectedKeyName && (
-        <p className="text-xs text-gray-500 flex items-center gap-1">
+        // A long name (up to 200 characters, older ones longer) ends in an ellipsis; the button stays in view.
+        <p className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
           <Key className="h-3 w-3" />
-          Using saved key: <span className="font-medium text-gray-700">{selectedKeyName}</span>
+          Using saved key: <span className="font-medium text-gray-700 truncate" title={selectedKeyName}>
+            {selectedKeyName}
+          </span>
           <button type="button" onClick={() => setSelectedKeyName('')} className="ml-2 underline">Use a different key</button>
         </p>
       )}
