@@ -11,6 +11,7 @@ import type { RunFail } from './run-shared';
 export type SavedKeyType = 'bearer' | 'api_key' | 'custom';
 export interface SavedKeyInput { name: string; key_type: SavedKeyType; key_value: string; description: string | null }
 const PUBLIC_COLUMNS = 'id, name, key_type, description, created_at, updated_at';
+const NAME_TOO_LONG = `API key name can be at most ${API_KEY_NAME_MAX} characters`;
 
 // A Settings form body, checked: the input to save, or what's wrong with it.
 // currentName: the key's name when an existing key is edited. Only creating a
@@ -21,9 +22,7 @@ export function validateSavedKey(body: Record<string, unknown>, currentName?: st
   const { name, key_type, key_value, description } = body;
   if (typeof name !== 'string' || !name.trim()) return 'API key name is required';
   const trimmedName = name.trim();
-  if (trimmedName.length > API_KEY_NAME_MAX && trimmedName !== currentName) {
-    return `API key name can be at most ${API_KEY_NAME_MAX} characters`;
-  }
+  if (trimmedName.length > API_KEY_NAME_MAX && trimmedName !== currentName) return NAME_TOO_LONG;
   if (!API_KEY_NAME_PATTERN.test(trimmedName)) {
     return 'API key name can only contain letters, numbers, underscores, and hyphens';
   }
@@ -88,7 +87,8 @@ export interface ImportedKey { name: string; value: string; key_type: SavedKeyTy
 // Saves the keys a pasted cURL command held, all or none. A name may already
 // hold the same value (a retry): that key is reused. A name that holds another
 // value, that differs from a saved key's name only in case, or that a column of
-// this sheet answers to (a column would be read instead of the key) is refused.
+// this sheet answers to (a column would be read instead of the key) is refused,
+// and so is a name over API_KEY_NAME_MAX, whatever the caller checked before.
 // dryRun runs every check and writes nothing.
 export function saveImportedKeys(
   userId: string, columns: string[], keys: ImportedKey[], dryRun = false,
@@ -97,25 +97,28 @@ export function saveImportedKeys(
   try {
     return { ok: db.transaction(() => keys.map(k => saveOne(userId, columns, k, batch, dryRun)))() };
   } catch (e) {
-    if (e instanceof KeyConflict) return { fail: 'conflict', message: e.message };
+    if (e instanceof KeyRefused) return { fail: e.fail, message: e.message };
     throw e;
   }
 }
 
 // Thrown inside the transaction so a refused key rolls back the ones before it.
-class KeyConflict extends Error {}
+class KeyRefused extends Error {
+  constructor(message: string, readonly fail: 'conflict' | 'bad_request' = 'conflict') { super(message); }
+}
 
 function saveOne(
   userId: string, columns: string[], k: ImportedKey, batch: Map<string, string>, dryRun: boolean,
 ): string {
+  if (k.name.length > API_KEY_NAME_MAX) throw new KeyRefused(NAME_TOO_LONG, 'bad_request');
   if (columns.some(c => templateTokenIs(k.name, c))) {
-    throw new KeyConflict(`"${k.name}" is also a column in this sheet. Choose another name for the key.`);
+    throw new KeyRefused(`"${k.name}" is also a column in this sheet. Choose another name for the key.`);
   }
   const taken = `A saved key named "${k.name}" already exists. Use it, or choose another name.`;
   const earlier = batch.get(k.name.toLowerCase());
   if (earlier !== undefined) {
     if (sameSecret(earlier, k.value)) return k.name;
-    throw new KeyConflict(taken);
+    throw new KeyRefused(taken);
   }
   const rows = db.prepare(
     'SELECT name, key_value_encrypted FROM api_keys WHERE user_id = ? AND lower(name) = lower(?)',
@@ -124,7 +127,7 @@ function saveOne(
   const plain = same ? decrypt(same.key_value_encrypted) : null;
   if (plain === null || !sameSecret(plain, k.value)) {
     if (rows.length > 0) {
-      throw new KeyConflict(`A saved key named "${rows[0].name}" already exists. Use it, or choose another name.`);
+      throw new KeyRefused(`A saved key named "${rows[0].name}" already exists. Use it, or choose another name.`);
     }
     if (!dryRun) {
       insertKey(userId, { name: k.name, key_type: k.key_type, key_value: k.value, description: k.description });

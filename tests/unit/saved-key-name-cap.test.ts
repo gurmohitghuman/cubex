@@ -4,8 +4,9 @@
 // with a 250-character name (inserted directly) still lists, pages, resolves in
 // a request, saves an edit that keeps its name and deletes; only renaming it to
 // another long name is refused. The `name` lookup of GET /api/v1/saved-keys and
-// MCP list_saved_keys takes up to the cap, so a key saved at it is found by
-// name, and a pasted cURL command can't name a key past it.
+// MCP list_saved_keys takes any length, so every listed key, one at the cap or a
+// 250-character one, is found by name. The client's copy of the cap matches.
+// A pasted cURL command: saved-key-name-curl.test.ts.
 import assert from 'node:assert/strict'
 import express from 'express'
 import cookieParser from 'cookie-parser'
@@ -23,11 +24,12 @@ import requestMod from '../../server/src/lib/http-request-build'
 import settingsMod from '../../server/src/routes/settings-api-keys'
 import v1Mod from '../../server/src/routes/api-v1-saved-keys'
 import mcpMod from '../../server/src/mcp/build-server'
+import { API_KEY_NAME_MAX as CLIENT_API_KEY_NAME_MAX } from '../../client/src/lib/constants'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
 const { encrypt } = cryptoMod as typeof import('../../server/src/lib/crypto')
-const { API_KEY_NAME_MAX, CURL_KEY_NAME_MAX } = constMod as typeof import('../../server/src/lib/constants')
+const { API_KEY_NAME_MAX } = constMod as typeof import('../../server/src/lib/constants')
 const { validateSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
 const { listSavedKeys } = usesMod as typeof import('../../server/src/services/saved-key-uses')
 const { buildRequest } = requestMod as typeof import('../../server/src/lib/http-request-build')
@@ -130,11 +132,19 @@ try {
     assert.deepEqual(listed(), [RENAMED, LAST])
   })
 
-  await ok('the name lookup takes up to the cap: REST and MCP find a 200-character key, refuse 201', async () => {
-    const found = await send('GET', `/v1/saved-keys?name=${RENAMED}`)
-    assert.equal(found.status, 200, JSON.stringify(found.json))
-    assert.deepEqual(found.json.keys?.map(k => k.name), [RENAMED])
-    assert.equal((await send('GET', `/v1/saved-keys?name=${OVER}`)).status, 400)
+  // Saved before the cap and kept: the lookup finds it by its whole name.
+  const OLDER = 'older_'.padEnd(250, 'q'), MISSING = 'older_'.padEnd(250, 'x')
+  db.prepare('INSERT INTO api_keys (id, user_id, name, key_type, key_value_encrypted) VALUES (?,?,?,?,?)')
+    .run(uuid(), uid, OLDER, 'bearer', encrypt('older-value-1234'))
+  const notFound = `There's no saved key named "${MISSING.slice(0, 64)}".`
+
+  await ok('the name lookup takes any length: REST and MCP find a 200- and a 250-character key by name', async () => {
+    for (const name of [RENAMED, OLDER]) {
+      const found = await send('GET', `/v1/saved-keys?name=${name}`)
+      assert.equal(found.status, 200, JSON.stringify(found.json))
+      assert.deepEqual(found.json.keys?.map(k => k.name), [name])
+    }
+    assert.deepEqual(await send('GET', `/v1/saved-keys?name=${MISSING}`), { status: 404, json: { error: notFound } })
     const mcp = buildMcpServer({ userId: uid, tokenId: 't', tokenName: 'n', scopes: new Set(['read']) })
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
     await mcp.connect(serverSide)
@@ -143,19 +153,23 @@ try {
     try {
       type Res = { content: Array<{ text: string }>; isError?: boolean }
       const call = (name: string) => client.callTool({ name: 'list_saved_keys', arguments: { name } }) as Promise<Res>
-      const res = await call(RENAMED)
-      assert.ok(!res.isError, res.content[0]?.text)
-      assert.deepEqual((JSON.parse(res.content[0].text) as { keys: Array<{ name: string }> }).keys.map(k => k.name),
-        [RENAMED])
-      assert.ok((await call(OVER)).isError)
+      for (const name of [RENAMED, OLDER]) {
+        const res = await call(name)
+        assert.ok(!res.isError, res.content[0]?.text)
+        assert.deepEqual((JSON.parse(res.content[0].text) as { keys: Array<{ name: string }> }).keys.map(k => k.name),
+          [name])
+      }
+      const missing = await call(MISSING)
+      assert.ok(missing.isError)
+      assert.deepEqual(JSON.parse(missing.content[0].text), { error: notFound })
     } finally {
       await client.close()
       await mcp.close()
     }
   })
 
-  await ok('a pasted cURL command names keys within the cap', () => {
-    assert.ok(CURL_KEY_NAME_MAX <= API_KEY_NAME_MAX)
+  await ok("the client's copy of the cap is the server's", () => {
+    assert.equal(CLIENT_API_KEY_NAME_MAX, API_KEY_NAME_MAX)
   })
 } finally {
   await new Promise(resolve => server.close(resolve))

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { settingsAPI } from '@/utils/api'
 import type { APIKey } from '@/utils/api/types'
 import { Select } from '@/components/ui/Select'
+import { API_KEY_NAME_MAX } from '@/lib/constants'
 
 interface Props {
   // Currently selected saved-key name (the user picks from existing keys) OR
@@ -113,6 +114,7 @@ export const SavedKeysPicker: React.FC<Props> = ({
                 type="text"
                 className="input flex-1 max-w-xs"
                 placeholder="e.g. Apollo"
+                maxLength={API_KEY_NAME_MAX}
                 value={inlineKeyName}
                 onChange={(e) => setInlineKeyName(e.target.value)}
                 disabled={!saveInline}

@@ -669,7 +669,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 |---|---|
 | `GET /saved-keys` | Same as `list_saved_keys`: `{keys: [{name, created_at, updated_at, used_in, used_in_count, setups, setups_count}], keys_count, next_after?}`, each place in `used_in` as `{sheet_id, sheet_name, table_id, table_name, column, kind, auto_run}`. Up to 20 keys a call with 10 places and 10 setups each (the counts are whole); `?after=` with `next_after` for the next keys. `?name=` for one key (any case; `404` when there's none) with up to 50 places and 50 setups. Never a value. `read` scope. |
 
-A saved key's name can be at most 200 characters, the longest `name` takes. A key saved with a longer name before this limit still works, lists and pages; only saving or renaming a key to a longer name is refused.
+A saved key's name can be at most 200 characters. Only saving or renaming a key to a longer name is refused: a key saved with a longer name before this limit still works, lists and pages, and every listed key can be looked up by `name`, whatever its length.
 
 ### Runs
 
