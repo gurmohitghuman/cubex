@@ -52,8 +52,10 @@ export function resetOrphanedRuns(): RecoveredRuns {
   }
 
   // No worker survives a restart, so neither do the holds enrichment batches
-  // took on the spend limits for their calls out (services/enrich-holds.ts).
+  // took on the spend limits for their calls out (services/enrich-holds.ts),
+  // nor an AI run's for its rows out (services/ai-spend-gate.ts).
   db.prepare('DELETE FROM enrich_holds').run();
+  db.prepare('DELETE FROM ai_run_holds').run();
 
   const aiRunIds = (db.prepare(
     `SELECT id FROM ai_runs WHERE status IN ('running', 'pending')`,

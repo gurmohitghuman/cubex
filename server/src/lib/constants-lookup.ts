@@ -20,6 +20,12 @@ export const LOOKUP_STEP_MS = 60;
 // tick that had to wait comes back after LOOKUP_FOLLOW_RETRY_MS.
 export const LOOKUP_WAIT_POLL_MS = 500;
 export const LOOKUP_FOLLOW_RETRY_MS = 2_000;
+// A fill waiting for a column it reads there to finish filling goes on when that fill ends; it
+// also looks this often, for what ends a fill otherwise (the column deleted, its sheet in the trash).
+export const LOOKUP_FILL_WAIT_POLL_MS = 5_000;
+// A fill with rows written starts over at most this many times for a change in what it reads there
+// (services/lookup-fill-changes.ts); after that it goes on where it was, and its note says so.
+export const LOOKUP_FILL_START_OVERS = 3;
 // An auto-run tick waits at most this long for the other sheet's keys to be brought up to date
 // (in the lookup worker), then comes back; a fill asks in rounds of LOOKUP_STEP_ROUND_MS until they are.
 export const LOOKUP_FOLLOW_MAINTAIN_MS = 200;

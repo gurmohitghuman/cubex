@@ -27,6 +27,10 @@ function send(res: express.Response, r: TokenRunResult) {
       if (r.rate) setRateLimitedHeaders(res, r.rate);
       return res.status(429).json({ error: r.message, retry_after_seconds: r.rate?.retryAfterSec });
     }
+    // Over max_cost_usd: 409 with the estimate it was checked against; nothing started.
+    if (r.fail === 'over_ceiling') {
+      return res.status(409).json({ error: r.message, over_ceiling: true, estimate: r.estimate });
+    }
     return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json({ error: r.message });
   }
   res.status(r.started ? 202 : 200).json(r.ok);
@@ -36,7 +40,8 @@ function send(res: express.Response, r: TokenRunResult) {
 // Body: { column_name, prompt, output_columns?, model?, system_prompt?,
 //         temperature?, web_search?, search_engine?, search_mode?,
 //         max_searches_per_row?, web_fetch?, max_chars?, concurrency?,
-//         target_row_ids?, estimate_only?, preview_rows?, idempotency_key?, webhook_id? }
+//         target_row_ids?, estimate_only?, preview_rows?, idempotency_key?, webhook_id?,
+//         max_cost_usd?, allow_unpriced?, spend_limit_usd? }
 router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
     const b = (req.body ?? {}) as Record<string, unknown>;

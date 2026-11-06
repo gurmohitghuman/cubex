@@ -12,6 +12,9 @@ export function accountExists(): boolean {
 // Create the account from an already-computed hash (hashing is slow and async,
 // so callers do it first). The existence check and the insert run in ONE
 // synchronous transaction, so two racing callers can't both create an account.
+// Immediate: it takes the write lock before the check, so it waits for other
+// writers (worker threads write at startup) like any write. A deferred one read
+// first, then failed at once with SQLITE_BUSY when its write found the lock taken.
 // Returns the new user id, or null when an account already exists.
 export function createAccount(passwordHash: string): string | null {
   const id = uuidv4();
@@ -20,7 +23,7 @@ export function createAccount(passwordHash: string): string | null {
     db.prepare('INSERT INTO users (id, password_hash) VALUES (?, ?)').run(id, passwordHash);
     db.prepare('INSERT INTO settings (id, user_id) VALUES (?, ?)').run(uuidv4(), id);
     return id;
-  })();
+  }).immediate();
 }
 
 // INITIAL_PASSWORD creates the account at boot, before the server accepts any

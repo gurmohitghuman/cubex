@@ -20,6 +20,7 @@ import {
   type UndoView,
 } from './run-undo-view';
 import { kickUndoDrops } from './run-undo-prune';
+import { fillEnded } from './derived-fill-wait';
 import type { RunFail } from './run-shared';
 
 const WHAT = 'undoing a run';
@@ -40,6 +41,10 @@ export async function undoRun(userId: string, kind: UndoRunKind, runId: string):
     if (!claimed) return { fail: 'conflict', message: 'This run is being undone now.' };
     let job: UndoJob;
     try { job = jobOf(j, now, userId); } catch (error) { putBack(j.id); throw error; }
+    // Its columns' cells go back: a lookup filling from one counts it as a fill of it, and looks every row
+    // up again (lookup-fill-changes.ts). Counted now, as no lookup looks at the sheet while it's busy with
+    // the undo, so this holds however the undo ends.
+    for (const c of job.columns) if (c !== null) fillEnded(run.sheet_id, c);
     if (j.row_count <= UNDO_WAIT_ROWS) await carryOn(job, now);
     else continueInBackground(run.sheet_id, WHAT, () => carryOn(job, now));
     return { ok: undoView(now, journalOf(kind, runId, userId), userId) };

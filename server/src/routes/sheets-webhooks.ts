@@ -1,23 +1,15 @@
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import {
-  appendColumnsToOrder, getSheetColumns, jsonPath,
-  touchSheet, verifySheetOwnership,
-} from '../lib/sql-helpers';
-import {
-  sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
-} from '../lib/column-names';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import {
   getSourceForSheet, serializeSource, listMappings, createSourceWithColumn,
   rotateSource,
 } from '../lib/webhook-service';
-import { validateMappingPath } from '../lib/jsonpath-extract';
+import { addWebhookMapping } from '../services/webhook-mapping-add';
 import { dropWebhookBucket } from '../lib/webhook-bucket';
 import { logSheetChange } from '../lib/change-log';
-import { orderedUuid } from '../lib/ordered-id';
 
 // Authenticated webhook management for a sheet. Mounted under /api/sheets via the
 // sheets aggregator, so every route proves req.userId owns :id (the Cubex pattern).
@@ -91,58 +83,23 @@ router.delete('/:id/webhook', (req: AuthRequest, res) => {
   res.json({ message: 'Webhook deleted.' });
 });
 
-// POST /:id/webhook/mappings — create a mapping + its target column (transactional).
+// POST /:id/webhook/mappings — create a mapping + its target column, which
+// only lists the column: no row is written (services/webhook-mapping-add.ts).
 router.post('/:id/webhook/mappings', (req: AuthRequest, res) => {
   const { id } = req.params;
   if (!verifySheetOwnership(id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
   const src = getSourceForSheet(id, req.userId!);
   if (!src) return res.status(404).json({ error: 'No webhook on this sheet.' });
 
-  const rawPath = typeof req.body?.jsonPath === 'string' ? req.body.jsonPath.trim() : '';
-  const rawCol = typeof req.body?.columnName === 'string' ? req.body.columnName : '';
-  const valueMode = req.body?.valueMode === 'json' ? 'json' : 'scalar';
-  // Validate the path against the client builder grammar + length cap BEFORE
-  // storing it — a stored mapping path runs on every unauthenticated webhook POST,
-  // so a hand-crafted filter/script path must be rejected here, not at run time.
-  const pathCheck = validateMappingPath(rawPath);
-  if (!pathCheck.ok) return res.status(400).json({ error: pathCheck.reason });
-
-  const nameCheck = sanitizeAndValidateColumnName(rawCol);
-  if ('error' in nameCheck) return res.status(400).json({ error: nameCheck.error });
-  const columnName = nameCheck.name;
-
-  const existingCols = getSheetColumns(id, req.userId!);
-  const collision = findColumnNameCollision(columnName, existingCols);
-  if (collision) return res.status(400).json({ error: columnCollisionMessage(columnName, collision) });
-  if (existingCols.length >= MAX_COLUMNS_PER_SHEET) {
-    return res.status(400).json({ error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet).` });
+  const out = addWebhookMapping(id, req.userId!, src.id, {
+    jsonPath: typeof req.body?.jsonPath === 'string' ? req.body.jsonPath.trim() : '',
+    columnName: typeof req.body?.columnName === 'string' ? req.body.columnName : '',
+    valueMode: req.body?.valueMode === 'json' ? 'json' : 'scalar',
+  });
+  if ('fail' in out) {
+    if (out.fail === 'busy') return res.status(409).json({ error: out.error, busy: true });
+    return res.status(400).json({ error: out.error });
   }
-
-  const mappingId = uuidv4();
-  db.transaction(() => {
-    // Create the target column (empty on every existing row), append to order.
-    const rowIds = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND user_id = ?')
-      .all(id, req.userId!) as Array<{ id: string }>;
-    if (rowIds.length > 0) {
-      const setEmpty = db.prepare(
-        "UPDATE rows SET data = json_set(data, ?, ''), updated_at = datetime('now') WHERE id = ?",
-      );
-      const path = jsonPath(columnName);
-      for (const r of rowIds) setEmpty.run(path, r.id);
-    } else {
-      db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, ?)')
-        .run(orderedUuid(), id, req.userId!, JSON.stringify({ [columnName]: '' }));
-    }
-    appendColumnsToOrder(id, req.userId!, [columnName]);
-    db.prepare(
-      `INSERT INTO webhook_mappings (id, source_id, user_id, json_path, column_name, value_mode)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(mappingId, src.id, req.userId!, rawPath, columnName, valueMode);
-    touchSheet(id, req.userId!);
-    logSheetChange(id, req.userId!, 'webhook', `The webhook fills "${columnName}" from ${rawPath}`,
-      { column: columnName });
-  })();
-
   res.status(201).json({ mappings: listMappings(src.id) });
 });
 

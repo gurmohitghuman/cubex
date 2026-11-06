@@ -63,7 +63,7 @@ export function settleRows(
   const s = autoDedupeOf(sheetId, userId);
   if (!s) return null;
   try {
-    return db.transaction(() => settle(s, rids, how))();
+    return db.transaction(() => settle(s, rids, how)).immediate();
   } catch (err) {
     console.error(`Auto-dedupe couldn't check rows of sheet ${sheetId}; they were kept:`, err);
     // Rows that arrived are checked later (an edit's check needs the key it replaced, which is gone).

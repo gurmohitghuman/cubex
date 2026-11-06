@@ -15,6 +15,7 @@ import { PLACEHOLDER } from './placeholder-cells';
 import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
 import { journalSeed, type RunRef } from './run-undo/journal';
+import { pickedCells } from './row-cell';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
 
@@ -45,9 +46,7 @@ export async function seedPlaceholdersByRule(args: {
     const pass: number[] = [], mark: number[] = [];
     for (const r of read.all(...readPaths, ids, sheetId, userId) as unknown[][]) {
       if (skip.has(r[1] as number)) continue;
-      const values: Record<string, string> = {};
-      rule.columns.forEach((c, i) => { values[c] = r[i + 3] == null ? '' : String(r[i + 3]); });
-      if (rulePasses(rule.tree, values)) { pass.push(r[0] as number); continue; }
+      if (rulePasses(rule.tree, pickedCells(rule.columns, r, 3))) { pass.push(r[0] as number); continue; }
       notMet++;
       const main = r[2] == null ? '' : String(r[2]);
       // A row kept out already keeps its mark: no write (a big sheet's rule may keep most rows out).

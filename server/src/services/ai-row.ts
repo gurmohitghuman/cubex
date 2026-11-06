@@ -5,7 +5,9 @@ import { redactSecrets } from '../lib/http-request';
 import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
-import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
+import {
+  buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget, WEB_SYSTEM_MESSAGE,
+} from '../lib/ai-web-tools';
 import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
@@ -13,12 +15,16 @@ import { recordDroppedCall, STOP_SENTINEL, writeSuccess, writeFailure } from './
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
-import { aiCallDeadline, AI_TIMEOUT_MESSAGE, failedRow, stoppedCall, throwIfStorage } from './ai-row-outcome';
+import {
+  aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
+  throwIfStorage, timedTries,
+} from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
 // result (or error) to the transactional writers in ai-row-writers.ts. Says
 // what the row came to (the runner's brake counts provider failures in a row);
 // throws only when the database can't be written (the runner stops then).
+// `columns`: the sheet's columns, read once per run (lib/prompt.ts processPromptTemplate).
 export async function processRow(
   runId: string,
   row: SheetRow,
@@ -26,13 +32,14 @@ export async function processRow(
   openai: OpenAI,
   signal: AbortSignal | undefined,
   myGeneration: number,
+  columns: readonly string[],
 ): Promise<RowOutcome> {
   // Structured (multi-column) runs take a separate processor: one call → a JSON
   // object → N typed columns + status. Delegated whole so this stays the
   // single-column path.
   if (run.output_columns) {
     const { processMultiRow } = await import('./ai-row-multi');
-    return processMultiRow(runId, row, run, openai, signal, myGeneration);
+    return processMultiRow(runId, row, run, openai, signal, myGeneration, columns);
   }
   // (Data) column only exists for runs with web SEARCH on (lib/ai-data-column.ts).
   // Web fetch returns no caller-visible breadcrumb on chat-completions, and a
@@ -50,8 +57,12 @@ export async function processRow(
   let call: ModelCall | null = null;
   // The call's hard end, body included (the SDK's timeout stops at the headers).
   const deadline = aiCallDeadline(signal);
+  // Set once the call goes out: a failure after it may be billed (callMayBeBilled).
+  let sent = false;
+  // Whether a try was reset late enough to have reached the provider (timedTries).
+  let lateReset = () => false;
   try {
-    const processedPrompt = processPromptTemplate(run.prompt, row.data);
+    const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const search = runSearchConfig(run);
     const usingTools = !!search || !!run.use_web_fetch;
 
@@ -60,10 +71,7 @@ export async function processRow(
       messages.push({ role: 'system', content: run.system_prompt });
     }
     if (usingTools) {
-      messages.push({
-        role: 'system',
-        content: 'You are a helpful AI assistant. You can reference and analyze information from web search results and fetched pages when provided. Use that context to provide accurate, up-to-date information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When you cite sources, prefer plain URLs over markdown links.',
-      });
+      messages.push({ role: 'system', content: WEB_SYSTEM_MESSAGE });
     }
     messages.push({ role: 'user', content: processedPrompt });
 
@@ -82,10 +90,13 @@ export async function processRow(
     // maxRetries:0 semantics.
     // Floored max_tokens so reasoning models can think AND answer (the old 1000
     // cap made them return null content → silent blank cells); max_chars raises it.
-    call = await withConnectRetry(() => sendModelCall(openai, {
+    const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
       tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
-    }, deadline.signal), deadline.signal, () => shouldStop(runId, myGeneration));
+    }, deadline.signal), hasSpendLimit(run));
+    lateReset = tries.lateReset;
+    sent = true;
+    call = await withConnectRetry(tries.send, deadline.signal, () => shouldStop(runId, myGeneration));
 
     // Throws (→ caught below, recorded as a `failed` row + "❌ Error" cell) when
     // the model returned no usable content — a reasoning model exhausting the
@@ -125,9 +136,10 @@ export async function processRow(
     // If the row failed because we aborted it (or the run was cancelled mid-flight),
     // don't record it as a failure — the user explicitly stopped this run. The
     // deadline passing is the row's failure, not a stop.
+    // A call cut off then may be billed all the same: its most still counts against the spend limit.
     if (stoppedCall(error, deadline, signal) || shouldStop(runId, myGeneration)) {
       recordDroppedCall(ctx, billedUsage(call, error));
-      return DROPPED;
+      return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a
@@ -143,7 +155,7 @@ export async function processRow(
     const errorMessage = redactSecrets(rawErrorMessage);
     console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage);
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
   } finally {
     deadline.done();
   }

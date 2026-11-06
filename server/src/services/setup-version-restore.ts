@@ -35,7 +35,7 @@ const RUNS_ACTIVE = `SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ?
   UNION ALL SELECT 1 FROM setup_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('running', 'paused')
   LIMIT 1`;
 // A clean, formula or lookup column being filled (a lookup's may wait, its sheet
-// free, for the other sheet): a restore writing its record back would end it.
+// free, for the other sheet or a column there): a restore writing its record back would end it.
 const FILLING = `SELECT column_name FROM clean_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
   UNION ALL SELECT column_name FROM formula_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
   UNION ALL SELECT column_name FROM lookup_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
@@ -53,8 +53,8 @@ function refusal(
   const filling = db.prepare(FILLING).pluck().get(sheetId, userId, sheetId, userId, sheetId, userId) as
     string | undefined;
   if (filling) {
-    return { fail: 'conflict', message: `"${filling}" is still being filled (or waits for the sheet it looks in). `
-      + 'Let it finish, then restore.' };
+    return { fail: 'conflict', message: `"${filling}" is still being filled (a lookup's fill may be waiting for `
+      + 'the sheet it looks in or a column there). Let it finish, then restore.' };
   }
   if (plan.loop) return { fail: 'conflict', message: plan.loop };
   const columns = getSheetColumns(sheetId, userId, false).length;

@@ -90,6 +90,8 @@ router.patch('/sheets/:id/columns/:name', requireScope('write'), async (req: Tok
       switch (result.fail) {
         case 'column_not_found':
           return res.status(404).json({ error: `Column "${req.params.name}" not found in this sheet` });
+        case 'sheet_not_found':
+          return res.status(404).json({ error: result.error });
         case 'collision':
           return res.status(409).json({ error: result.error });
         case 'active_run':

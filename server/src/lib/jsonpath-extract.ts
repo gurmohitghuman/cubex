@@ -14,7 +14,8 @@ import { literalSteps, readLiteral } from './jsonpath-literal';
 const SAFE_SEGMENT = /\.[A-Za-z_$][A-Za-z0-9_$]*|\["(?:[^"\\]|\\.)*"\]|\[\d+\]/;
 const SAFE_JSONPATH = new RegExp(`^\\$(?:${SAFE_SEGMENT.source})*$`);
 
-export interface PathValidation { ok: boolean; reason?: string }
+// A refused path always says why.
+export type PathValidation = { ok: true } | { ok: false; reason: string };
 
 // Validate a user-supplied mapping path against the client builder grammar +
 // length cap. Call at mapping-CREATE time (sheets-webhooks.ts).

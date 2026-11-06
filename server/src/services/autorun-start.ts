@@ -107,7 +107,7 @@ export async function startAutorunRun(
 ): Promise<StartOutcome> {
   const runId = uuidv4();
   let targets: number[] = [];
-  const outcome = await asRunStart(e.sheet_id, async (): Promise<StartOutcome> => {
+  const outcome = await asRunStart(e.sheet_id, e.user_id, async (): Promise<StartOutcome> => {
     let out: StartOutcome = { retry: true };
     db.transaction(() => {
       const cur = loadEntry(e.id);

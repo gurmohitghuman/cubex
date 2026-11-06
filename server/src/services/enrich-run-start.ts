@@ -48,7 +48,7 @@ export async function startEnrichmentRun(
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
 
-  return asRunStart(sheetId, async (): Promise<EnrichStartOutcome> => {
+  return asRunStart(sheetId, userId, async (): Promise<EnrichStartOutcome> => {
     let capNeeded = -1, raced: string | null = null, destSheetId: string | null = null, destRaced = false;
     try {
       db.transaction(() => {

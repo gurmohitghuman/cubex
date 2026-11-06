@@ -9,6 +9,7 @@
 import { WATERFALL_AI_MAX_TOKENS } from '../lib/constants';
 import { fetchModels } from '../lib/openrouter';
 import { average, estimateTokens, parseTokenPrice, rowCostUsd } from '../lib/ai-cost';
+import { rowPricesOf } from '../lib/ai-spend-limit';
 import { webFeesPerRow, webInputTokensPerRow, type WebTools } from '../lib/ai-web-cost';
 import type { SearchToolConfig } from '../lib/ai-web-tools';
 import type { WaterfallBlock } from '../lib/waterfall/config';
@@ -51,11 +52,13 @@ export async function priceAiStep(
   const fees = webSearch ? webFeesPerRow(est.ok.work) : { low: 0, high: 0 };
   const result = await fetchModels(Date.now());
   const m = (result.ok ? result.models : result.stale)?.find(x => x.id === model);
-  if (!m) {
+  // A negative listed price (openrouter/auto's "-1": it varies) is no price, never $0.
+  if (!m || !rowPricesOf(m.pricing)) {
     return {
       ok: {
         search, capUsd: 0, lowUsd: 0, highUsd: 0, priced: false,
-        note: "OpenRouter's prices for this model weren't available, so this step's cost isn't counted.",
+        note: m ? "OpenRouter lists no fixed price for this model (it varies), so this step's cost isn't counted."
+          : "OpenRouter's prices for this model weren't available, so this step's cost isn't counted.",
       },
     };
   }

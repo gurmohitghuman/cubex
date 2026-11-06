@@ -4,7 +4,7 @@ import { authedApi } from './helpers'
 import { bearer, makeToken } from './api-v1-run-helpers'
 import { call, callError, mcpClient } from './helpers-mcp'
 import { callEveryRow, freshTreg, readDb, rowsOf, seedCsv } from './helpers-enrich'
-import { Receiver } from './helpers-receiver'
+import { Receiver, deleteRunWebhooks } from './helpers-receiver'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 
 // waterfall_column over MCP and /api/v1: an estimate unless asked otherwise,
@@ -23,17 +23,20 @@ callEveryRow()
 test.beforeAll(async () => {
   await rx.start()
   api = await authedApi()
-  for (const h of (await (await api.get('/api/settings/run-webhooks')).json()).webhooks) {
-    await api.delete(`/api/settings/run-webhooks/${h.id}`)
-  }
+  await deleteRunWebhooks(api)
   v1 = await bearer(await makeToken(api, ['read', 'write', 'run'], 'waterfall agents spec'))
   mcp = await mcpClient(await makeToken(api, ['read', 'write', 'run'], 'waterfall mcp spec'))
   mcpSecrets = await mcpClient(await makeToken(api, ['read', 'write', 'run', 'secrets'], 'waterfall mcp secrets'))
   rx.on('/find', { status: 200, body: JSON.stringify({ email: 'nobody.here@nobody.example' }) })
   rx.on('/hook', { status: 200, body: '{}' })
 })
+// The run webhook its last test adds goes before its receiver does, or later specs' runs would notify theirs.
 test.afterAll(async () => {
-  await rx.stop(); await v1?.dispose(); await mcp?.close(); await mcpSecrets?.close(); await api?.dispose()
+  try {
+    if (api) await deleteRunWebhooks(api)
+  } finally {
+    await rx.stop(); await v1?.dispose(); await mcp?.close(); await mcpSecrets?.close(); await api?.dispose()
+  }
 })
 
 const CSV = ['Name,Website', 'Maya Chen,https://stripe.com', 'Nobody Here,nobody.example'].join('\n')

@@ -1,3 +1,4 @@
+// Over 200 lines: pause, resume and cancel for both run kinds, one implementation every surface shares.
 // Pause / resume / cancel for AI + HTTP runs — extracted from ai-control.ts and
 // http-jobs.ts (identical logic, parameterized by run kind) so the UI routes,
 // /api/v1 and the MCP control_run tool share one implementation.
@@ -88,8 +89,10 @@ export function pauseRun(kind: RunKind, runId: string, userId: string): ControlO
 // existing HTTP run whose stored config references a saved key would have the
 // worker inject the decrypted key, so a run-scope-only PAT must be refused
 // (the authoring-time scan doesn't cover operating a run you didn't author).
+// aiSpendLimitUsd: an AI run's new spend limit, written by the update that
+// resumes it, so a resume refused here leaves the old one (ai-run-limit.ts).
 export async function resumeRun(
-  kind: RunKind, runId: string, userId: string, hasSecretsScope: boolean,
+  kind: RunKind, runId: string, userId: string, hasSecretsScope: boolean, aiSpendLimitUsd: number | null = null,
 ): Promise<ControlOutcome> {
   // An AI run's model is looked up in OpenRouter's list, read before the
   // checks below (nothing between them and the resume may wait).
@@ -143,14 +146,15 @@ export async function resumeRun(
   // what it spends from now on counts against that token, and so do the calls
   // still out from before when they come back (its usage record follows,
   // migration 045).
-  const resumed = db.prepare(kind === 'http'
-    ? `UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
-         pause_reason = NULL, error_message = NULL, access_token_id = ?
-       WHERE id = ? AND user_id = ? AND status = 'paused'`
-    : `UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1, updated_at = datetime('now'),
-         pause_reason = NULL, error_message = NULL, access_token_id = ?
-       WHERE id = ? AND user_id = ? AND status = 'paused'`,
-  ).run(resumeTokenFor(userId, run.access_token_id), runId, userId);
+  const token = resumeTokenFor(userId, run.access_token_id);
+  const resumed = kind === 'http'
+    ? db.prepare(`UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1,
+         updated_at = datetime('now'), pause_reason = NULL, error_message = NULL, access_token_id = ?
+       WHERE id = ? AND user_id = ? AND status = 'paused'`).run(token, runId, userId)
+    : db.prepare(`UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1,
+         updated_at = datetime('now'), pause_reason = NULL, error_message = NULL, access_token_id = ?,
+         spend_limit_usd = IFNULL(?, spend_limit_usd)
+       WHERE id = ? AND user_id = ? AND status = 'paused'`).run(token, aiSpendLimitUsd, runId, userId);
   if (resumed.changes === 0) return { fail: 'conflict', message: 'Run is no longer paused' };
 
   // A rerun targets a row SUBSET (persisted in target_rows, migrations 019/024).
