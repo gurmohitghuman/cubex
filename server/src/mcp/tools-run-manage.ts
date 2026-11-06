@@ -10,6 +10,7 @@ import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
+import { resumeAiRun } from '../services/ai-run-limit';
 import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
 import { startRefusalMessage, takeRunStart } from '../services/run-shared';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
@@ -54,7 +55,9 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'rerun takes concurrency to change how many rows run at once (default: the run it repeats); rows that '
         + 'failed with error_class "concurrency" (OpenRouter\'s in-flight credit budget) need a lower one. Returns '
         + 'the NEW run_id. first_rows (AI and HTTP) reruns only among the sheet\'s top rows, a test before a big '
-        + 'run: every one of them, or those mode picks. '
+        + 'run: every one of them, or those mode picks. An AI rerun or resume takes spend_limit_usd: the run\'s '
+        + 'hard spend limit (a rerun\'s own; on resume it raises the limit of a run that paused at it, '
+        + 'pause_reason spend_limit; see run_ai_column). '
         + 'A run you resume becomes this access token\'s, whoever started it: what it spends from then on counts '
         + 'toward this token\'s spend cap, and so do calls already out when a run changes hands (they count for '
         + 'the token that resumed it). '
@@ -90,7 +93,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           .describe(`AI rerun, or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
             + `enrichment 1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
         spend_limit_usd: z.number().positive().optional()
-          .describe('Enrichment runs only: the run limit for a rerun, or a raised limit on resume.'),
+          .describe('AI, enrichment and waterfall runs: the run limit for a rerun, or a raised limit on resume.'),
         first_rows: z.number().int().min(1).max(MAX_FIRST_ROWS).optional()
           .describe(`AI or HTTP rerun only: only among the sheet's first rows (1-${MAX_FIRST_ROWS}).`),
         webhook_id: z.string().optional()
@@ -116,9 +119,9 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       const waterfall = run_type === 'http' && !enrichment && isWaterfallRun(run_id, ctx.userId);
       if (
         spend_limit_usd !== undefined
-        && !((enrichment || waterfall) && (action === 'resume' || action === 'rerun'))
+        && !((enrichment || waterfall || run_type === 'ai') && (action === 'resume' || action === 'rerun'))
       ) {
-        return err('spend_limit_usd applies to resuming or rerunning an enrichment or waterfall run only.');
+        return err('spend_limit_usd applies to resuming or rerunning an AI, enrichment or waterfall run only.');
       }
       if (concurrency !== undefined
         && !((action === 'rerun' && (run_type === 'ai' || enrichment)) || (action === 'resume' && enrichment))) {
@@ -201,6 +204,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         const result = run_type === 'ai'
           ? await rerunAiRunById(ctx.userId, run_id, {
             rowIds: row_ids, mode: mode ?? (first_rows ? 'all' : undefined), concurrency, firstRows: first_rows,
+            spendLimitUsd: spend_limit_usd,
           })
           : await rerunHttpRunById(ctx.userId, run_id, {
             rowIds: row_ids, mode, hasSecretsScope: hasSecrets,
@@ -214,6 +218,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       }
 
       const result = action === 'pause' ? pauseRun(run_type, run_id, ctx.userId)
+        : action === 'resume' && run_type === 'ai' ? await resumeAiRun(run_id, ctx.userId, spend_limit_usd, hasSecrets)
         : action === 'resume' ? await resumeRun(run_type, run_id, ctx.userId, hasSecrets)
         : await cancelRun(run_type, run_id, ctx.userId);
       if ('fail' in result) return err(result.message);

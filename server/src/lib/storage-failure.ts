@@ -10,3 +10,10 @@ export function isStorageFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : '';
   return /database or disk is full|disk I\/O error|attempt to write a readonly database/i.test(message);
 }
+
+// Another connection holds the write lock past busy_timeout: it clears once
+// that writer is done, so the caller waits and tries again.
+export function isBusyLock(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^SQLITE_(BUSY|LOCKED)/.test(code);
+}

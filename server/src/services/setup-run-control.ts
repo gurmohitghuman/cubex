@@ -6,7 +6,11 @@
 // finish. A stopped setup leaves the columns it made, as a stopped run does.
 // Resuming with a token without 'secrets' is refused when a step still to run
 // (or an auto-run it turns on at the end) reads a saved key; otherwise the
-// record stops allowing saved keys, as resuming a run does.
+// record stops allowing saved keys, as resuming a run does. A step's AI run
+// that paused at its spend limit can go on only with a higher one, which a
+// setup's resume can't give: resuming is refused until the setup is applied
+// again with a higher ceiling (it would otherwise run on past what the limit
+// counted, or pause again at once).
 import { db } from '../lib/db';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
 import { pauseRun, resumeCapRefusal, resumeModelRefusal, resumeRun, cancelRun } from './run-lifecycle';
@@ -17,6 +21,7 @@ import {
 } from './setup-run-store';
 import type { RunFail } from './run-shared';
 import { resumeTokenFor, spendCapRefusal } from './token-spend';
+import { setupResumeLimitRefusal } from './ai-run-limit';
 
 export type SetupRunAction = 'pause' | 'resume' | 'cancel';
 
@@ -51,6 +56,9 @@ export async function controlSetupRun(
     // An AI step whose model OpenRouter's list doesn't have would fail every row: refused up front too.
     const gone = runs.map(x => resumeModelRefusal(x.kind, x.runId, userId, models)).find(m => m !== null);
     if (gone) return { fail: 'bad_request', message: gone };
+    const atLimit = runs.map(x => (x.kind === 'ai' ? setupResumeLimitRefusal(x.runId, userId) : null))
+      .find(m => m !== null);
+    if (atLimit) return { fail: 'conflict', message: atLimit };
     // Its steps spend for the token that applied it, or for a token that resumes it (it becomes that
     // token's, as each run it resumes does; the app takes a revoked token's over): that token's cap
     // counts. Every paused run is checked before any resumes, so a refusal leaves the setup as it was.

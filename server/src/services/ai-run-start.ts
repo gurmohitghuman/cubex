@@ -124,8 +124,9 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, placeholder_work,
-      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?)
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
+      spend_limit_usd
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Cap check + mutation in ONE immediate() txn — otherwise two concurrent
@@ -152,7 +153,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
         p.safeMaxChars, resolvedConcurrency, targetCount,
         targets ? JSON.stringify(targets) : null,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
-        rule.ok?.rule ?? null, actorTokenId(),
+        rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
       );
       // Credit reuse: promote still-valid persisted preview results into this
       // run's cells + ai_results, BEFORE placeholder seeding, so the worker's

@@ -4,6 +4,7 @@ import { parseRunRequest } from './ai-run-parse';
 import { startAiRun } from '../services/ai-run-start';
 import { runFailHttpStatus } from '../services/run-shared';
 import { webSearchSummary } from '../lib/web-search-plan';
+import { usdLimitOf } from '../lib/cost-ceiling';
 
 // Thin wrapper over services/ai-run-start.ts (shared with /api/v1 and the MCP
 // run_ai_column tool). Parsing/bounding stays here (ai-run-parse.ts); the run
@@ -15,6 +16,9 @@ router.post('/run', async (req: AuthRequest, res) => {
   try {
     const parsed = parseRunRequest(req.body);
     if (!parsed.ok) return res.status(parsed.status).json({ error: parsed.error });
+    // Optional: the run's hard spend limit in dollars (services/ai-spend-gate.ts).
+    const limit = usdLimitOf((req.body as { spendLimitUsd?: unknown } | undefined)?.spendLimitUsd, 'spendLimitUsd');
+    if ('error' in limit) return res.status(400).json({ error: limit.error });
 
     const result = await startAiRun(req.userId!, {
       sheetId: parsed.sheetId,
@@ -31,6 +35,7 @@ router.post('/run', async (req: AuthRequest, res) => {
       runIf: parsed.runIf,
       // The dialog's output columns: one answer per row fills them all (ai-run-start-multi.ts).
       outputColumns: parsed.outputColumns,
+      spendLimitUsd: limit.value,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

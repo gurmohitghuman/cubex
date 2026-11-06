@@ -28,7 +28,7 @@ const RaiseAndResume: React.FC<{
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <span>{label}</span>
-        <MoneyInput value={suggest} fallback={null} label={label} onChange={setValue} />
+        <MoneyInput value={suggest} fallback={null} label={label} onChange={setValue} required />
         <button type="button" className="btn-primary text-xs" disabled={busy || value === null || short}
           onClick={() => value !== null && onRaise(value)} data-testid="enrich-raise-resume">Raise and resume</button>
       </div>
