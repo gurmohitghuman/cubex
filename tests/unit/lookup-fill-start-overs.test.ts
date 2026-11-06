@@ -2,8 +2,9 @@
 // (LOOKUP_FILL_START_OVERS). At the 4th change it goes on where it was, and
 // its note names the column that kept changing, or the rows, for the app and
 // agents (get_sheet, lookup_column), also once the fill is done, as the column
-// and sheet are called now. A new start ("Look up every row again", or a
-// restore filling it again) counts from 0 again, without the note.
+// and sheet are called now (renamed by its own user). A new start ("Look up
+// every row again", or a restore filling it again) counts from 0 again,
+// without the note.
 import assert from 'node:assert/strict'
 import { lookupWaitKit } from './lookup-wait-kit'
 import colMod from '../../server/src/services/lookup-column'
@@ -13,6 +14,7 @@ import constMod from '../../server/src/lib/constants'
 import actionsMod from '../../server/src/services/trash-actions'
 import renameMod from '../../server/src/services/column-rename'
 import sheetMod from '../../server/src/services/sheet-crud'
+import changesMod from '../../server/src/services/lookup-fill-changes'
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
 const { lookupColumnView } = viewMod as typeof import('../../server/src/services/lookup-view')
 const { getSheetMeta } = readMod as typeof import('../../server/src/services/workspace-read')
@@ -20,6 +22,7 @@ const { LOOKUP_FILL_START_OVERS } = constMod as typeof import('../../server/src/
 const { restoreFromTrash } = actionsMod as typeof import('../../server/src/services/trash-actions')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { renameSheet } = sheetMod as typeof import('../../server/src/services/sheet-crud')
+const { columnRenamedForLookups } = changesMod as typeof import('../../server/src/services/lookup-fill-changes')
 const k = lookupWaitKit('lookup-fill-start-overs')
 const { db, uid, ok, done, place, cells, statusOf, until, lookup, sheetName, rec, setCells, httpRun, oneRowASlice,
   failedOnTrash } = k
@@ -78,6 +81,11 @@ await ok('the note names the column and the sheet as they are called now', async
     assert.ok('ok' in await renameSheetColumn(o, uid, 'Full name', 'Name'))
     assert.ok('ok' in renameSheet(uid, tableOf, o, was))
   }
+  assert.equal(lookupColumnView(rec(id)!).keptChanging, note)
+})
+
+await ok("a rename told under another user's id doesn't touch the note", async () => {
+  columnRenamedForLookups(o, 'another-user', 'Name', 'Full name')
   assert.equal(lookupColumnView(rec(id)!).keptChanging, note)
 })
 

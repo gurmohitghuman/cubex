@@ -2,17 +2,19 @@
 // a fill with rows written would go on: then it looks every row up again from the first, so every row comes
 // from one version of those values (lookups are free: a start over costs only time). A change: a fill of a
 // column it reads ended (a clean, formula or lookup column, stored answers added as a column, a run's undo:
-// fillEnded counts them here), a run writing one started (a new run row) or a paused one went on (its
-// worker_generation moved), a column it read is gone there (renamed or deleted; one added isn't a change), or
-// that sheet's rows moved (row_generation: a sort, a replace by an import or its undo, removing duplicates).
-// Not an auto-run batch run, nor a set-up-only one (lookup-fill-wait.ts). Nothing is missed in this process
-// (renaming a column a value lookup reads starts it over for nothing); a fill it finds with rows written and
-// no look of its own (a restart) starts over.
+// fillEnded counts them here, a rename carrying the count), a run writing one started (a new run row) or a
+// paused one went on (its worker_generation moved), a column it read is gone there (renamed or deleted; one
+// added isn't a change), or that sheet's rows moved (row_generation: a sort, a replace by an import or its
+// undo, removing duplicates). Not an auto-run batch run, nor a set-up-only one (lookup-fill-wait.ts). Nothing
+// is missed in this process (renaming a column a value lookup reads starts it over for nothing); a fill it
+// finds with rows written and no look of its own (a restart) starts over.
 //
 // Each fill starts over at most LOOKUP_FILL_START_OVERS times for a change; past that it goes on where it was,
 // and its note (kept after the fill ends, until it starts again) names what kept changing, as it's called now.
+// Over 200 lines: one check over one in-memory state (its looks, fill-end counts, start overs, the note).
 import { db } from '../lib/db';
 import { LOOKUP_FILL_START_OVERS } from '../lib/constants';
+import { getSheetColumns } from '../lib/sheet-columns';
 import { addAiRunColumns, addHttpRunColumns, type AiRunWrites, type HttpRunWrites } from '../lib/run-locked-columns';
 import type { LookupColumnRow } from '../lib/lookup-columns';
 
@@ -155,15 +157,24 @@ export function keptChangingNote(rec: Pick<LookupColumnRow, 'id' | 'user_id'>): 
   if (!kept) return null;
   const sheet = (db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck()
     .get(kept.other, rec.user_id) as string | undefined) ?? 'the other sheet';
-  return (kept.column !== null
-    ? `"${kept.column}" in "${sheet}" kept changing, so rows looked up before its last change`
-    : `The rows of "${sheet}" kept changing (sorted, replaced by an import or duplicates removed), so rows `
-      + 'looked up before the last change') + ' may hold older values. Look up every row again to redo them.';
+  return (kept.column === null
+    ? `The rows of "${sheet}" kept changing (sorted, replaced by an import or duplicates removed), so rows `
+      + 'looked up before the last change'
+    : getSheetColumns(kept.other, rec.user_id, false).includes(kept.column)
+      ? `"${kept.column}" in "${sheet}" kept changing, so rows looked up before its last change`
+      // Gone (deleted, or renamed before the note): its old name would name nothing there.
+      : `A column of "${sheet}" it read was renamed or deleted, so rows looked up before that`)
+    + ' may hold older values. Look up every row again to redo them.';
 }
 
-// A column renamed (column-rename.ts, once switched): a note naming it names it as it's called now.
-export function keptChangingRenamed(sheetId: string, from: string, to: string): void {
-  for (const { kept } of byLookup.values()) if (kept?.other === sheetId && kept.column === from) kept.column = to;
+// A column of this user's sheet renamed (column-rename.ts, once switched): its fill ends count on under the new
+// name, and a note naming it names it as it's called now.
+export function columnRenamedForLookups(sheetId: string, userId: string, from: string, to: string): void {
+  const fills = ended.get(sheetId), n = fills?.get(from);
+  if (fills) { fills.delete(from); if (n === undefined) fills.delete(to); else fills.set(to, n); }
+  for (const { user, kept } of byLookup.values()) {
+    if (user === userId && kept?.other === sheetId && kept.column === from) kept.column = to;
+  }
 }
 
 // It fills again from the first row (a start, "Look up every row again", a restore): no start overs, no note.
