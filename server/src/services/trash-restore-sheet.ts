@@ -14,6 +14,7 @@ import { lookupsFillAgain, restartLookupsInto, type LookupRefill } from '../lib/
 import { whenSheetFree } from '../lib/sheet-busy';
 import { runDerivedFill } from './derived-fill';
 import { LOOKUP_FILLING, lookupKind } from './lookup-kind';
+import { lookupFillStarted } from './lookup-fill-changes';
 import { resumeFillsBackFromTrash } from './derived-fill-parked';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
 import type { RestoreFail } from './trash-restore';
@@ -67,6 +68,7 @@ export function startRestored(r: Restarted): void {
   if (r.sheets.length === 0 && r.lookups.length === 0) return;
   setImmediate(() => {
     for (const l of r.lookups) {
+      lookupFillStarted(l.id);
       whenSheetFree(l.sheet_id, LOOKUP_FILLING, () => runDerivedFill(lookupKind, l.id))
         .catch(err => console.error(`Looking up again on sheet ${l.sheet_id} failed:`, err));
     }

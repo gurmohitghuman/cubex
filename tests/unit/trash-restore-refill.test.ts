@@ -4,18 +4,22 @@
 // restored in the same request is refused as busy, even one restored after
 // another sheet's batch (whose slices let other work in). And every lookup
 // into the restored sheet whose fill failed while it was in the trash fills
-// again, two on one sheet one after another.
+// again, two on one sheet one after another. A lookup reading a formula column
+// that the same restore resumes waits for it, then fills.
 import assert from 'node:assert/strict'
-import { refillKit, IN_TRASH } from './trash-refill-kit'
+import { IN_TRASH } from './trash-refill-kit'
+import { lookupWaitKit } from './lookup-wait-kit'
 import actionsMod from '../../server/src/services/trash-actions'
 import fillMod from '../../server/src/services/derived-fill'
 import kindMod from '../../server/src/services/lookup-kind'
 import busyMod from '../../server/src/lib/sheet-busy'
+import formulaKindMod from '../../server/src/services/formula-kind'
 const { restoreFromTrash } = actionsMod as typeof import('../../server/src/services/trash-actions')
 const { derivedFillWait, resumeDerivedFills } = fillMod as typeof import('../../server/src/services/derived-fill')
 const { lookupKind } = kindMod as typeof import('../../server/src/services/lookup-kind')
-const { sheetBusyWith } = busyMod as typeof import('../../server/src/lib/sheet-busy')
-const k = refillKit('trash-restore-refill')
+const { sheetBusyWith, withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
+const { formulaKind, FORMULA_FILLING } = formulaKindMod as typeof import('../../server/src/services/formula-kind')
+const k = lookupWaitKit('trash-restore-refill')
 const { uid, ok, done, idle, del, place, trash, cells, statusOf, until, lookup, refilling, failedOnTrash } = k
 console.error = () => {}
 
@@ -78,6 +82,32 @@ await ok('two lookups on one sheet that failed while the sheet they read was in 
   // The restored row is looked up in the same fill.
   assert.deepEqual(cells(a, 'Found'), ['Yes', 'Yes', 'Yes'])
   assert.ok(cells(a, 'Count').every(c => c !== undefined && c !== ''), JSON.stringify(cells(a, 'Count')))
+})
+
+await ok('a lookup on a restored table reading a formula column there that the same restore resumes waits for '
+  + "it, then fills (it doesn't fail)", async () => {
+  const p = place()
+  const o = k.fixture(3, ['Email', 'Name'], p.table)
+  const fid = await k.formula(o, '-v1')
+  const id = await lookup(p.sid, o, 'Who', 'value', 'F')
+  // Both fill again when the table goes to the trash, and both are parked there.
+  k.refillFormula(fid, '-v1', '-v2')
+  k.fillingFrom(id)
+  const item = trash('table', p)
+  resumeDerivedFills(formulaKind)
+  resumeDerivedFills(lookupKind)
+  await until('both are parked', () => derivedFillWait(fid) === IN_TRASH && derivedFillWait(id) === IN_TRASH)
+  // The formula's sheet taken for a moment (as by another fill), so the lookup surely looks first.
+  let release!: () => void
+  const held = withSheetBusy(o, FORMULA_FILLING, () => new Promise<void>(r => { release = r }))
+  const out = await restoreFromTrash(uid, [item])
+  assert.ok(out[0].restored, JSON.stringify(out[0]))
+  await until('the lookup waits for the formula', () =>
+    derivedFillWait(id) === `Waits for "F" in "${k.sheetName(o)}" to finish filling.`)
+  release()
+  await held
+  await until('the lookup is done', () => statusOf(p.sid, 'Who') === 'done')
+  assert.deepEqual(cells(p.sid, 'Who'), ['N0-v2', 'N1-v2', 'N2-v2'])
 })
 
 done()

@@ -42,6 +42,8 @@ test('Lookup from the Add Column dialog and the column menu', async ({ page, con
   await expect(page.getByTestId('lookup-preview')).toContainText('Robots', { timeout: 10_000 })
   await expect(page.getByTestId('lookup-preview')).toContainText('Energy')
   await expect(page.getByTestId('lookup-autorun')).toBeChecked()
+  // It names the menu item as the menu does.
+  await expect(form).toContainText('Use Look up every row again in its menu when they should.')
   await page.screenshot({ path: `${SHOTS}/1-lookup-dialog.png` })
   // Contains says it can take minutes on very large sheets.
   await choose(form.getByTestId('lookup-match'), 'contains')
