@@ -126,11 +126,12 @@ test('pausing while a row waits to retry stops it; resume carries on; cancel sen
 test('the SSRF guard still refuses loopback, and never retries it', async () => {
   for (const url of [`http://127.0.0.1:${rx.port}/flaky`, `http://localhost:${rx.port}/flaky`]) {
     const sheetId = await sheetWith('Name\nAda\n')
-    const before = rx.hits.length
+    // Were it let through, the request would reach /flaky (counting every path would count other specs' too).
+    const before = rx.hitsOn('/flaky').length
     const r = await run(sheetId, { url })
     await waitForTerminal(v1, `/api/v1/http-runs/${r.run_id}`)
     const [res] = await results(r.run_id)
     expect(res.error_message).toMatch(/private\/internal address/)
-    expect(rx.hits.length).toBe(before)
+    expect(rx.hitsOn('/flaky').length).toBe(before)
   }
 })
