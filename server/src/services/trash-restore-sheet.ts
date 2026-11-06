@@ -3,13 +3,15 @@
 // A sheet goes back as its table's last tab, under its name, or "<name>
 // (restored)" when a sheet of the table took the name meanwhile (a table the
 // same among tables); a sheet whose table is in the trash waits for the table.
-// Lookups that look in it start again. One small transaction: nothing moves.
+// Lookups that look in it start again, and so do its own fills the trash
+// stopped. One small transaction: nothing moves.
 import { db } from '../lib/db';
 import { MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { logSheetChange } from '../lib/change-log';
 import { lookupsFailedOnTrash, restartLookupsInto } from '../lib/trash/lookups';
 import { withoutChangeLog } from '../lib/change-log';
 import { lookupInputOf, startLookupColumn } from './lookup-column';
+import { resumeFillsBackFromTrash } from './derived-fill-parked';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
 import type { RestoreFail } from './trash-restore';
 
@@ -66,19 +68,23 @@ function restoreSheet(userId: string, item: TrashItem): { ok: SheetRestored } | 
     out = { trash_id: item.id, kind: 'sheet', table_id: item.table_id, sheet_id: sheetId, name,
       renamed: name !== sheet.name, state: 'restored' };
   }).immediate();
-  if (out) refillLookups(userId, [sheetId]);
+  if (out) refill(userId, [sheetId]);
   return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted.' };
 }
 
-// Lookups whose fill stopped while the sheet was in the trash look up again,
-// in the background, as "Look up again" would (no change-log line of their own).
-function refillLookups(userId: string, sheetIds: string[]): void {
+// Lookups into these sheets whose fill stopped while they were in the trash
+// look up again, in the background, as "Look up again" would (no change-log
+// line of their own). Then the sheets' own clean, formula and lookup fills the
+// trash parked go on (derived-fill-parked.ts), each once its sheet is free: a
+// lookup started here holds its sheet first.
+function refill(userId: string, sheetIds: string[]): void {
   for (const rec of lookupsFailedOnTrash(sheetIds, userId)) {
     const failed = (why: unknown) => console.error(`Looking up "${rec.column_name}" again failed:`, why);
     withoutChangeLog(() => startLookupColumn(userId, rec.sheet_id, lookupInputOf(rec)))
       .then(out => { if ('fail' in out) failed(out.message); })
       .catch(failed);
   }
+  resumeFillsBackFromTrash(sheetIds);
 }
 
 function restoreTable(userId: string, item: TrashItem): { ok: SheetRestored } | RestoreFail {
@@ -104,6 +110,6 @@ function restoreTable(userId: string, item: TrashItem): { ok: SheetRestored } | 
     out = { trash_id: item.id, kind: 'table', table_id: item.table_id, sheet_id: null, name,
       renamed: name !== table.name, state: 'restored' };
   }).immediate();
-  if (out) refillLookups(userId, sheets);
+  if (out) refill(userId, sheets);
   return out ? { ok: out } : { fail: 'conflict', message: 'This is being deleted.' };
 }

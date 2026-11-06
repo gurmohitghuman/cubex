@@ -10,9 +10,9 @@
 // other sheet is sorting) ends the attempt with the column still filling and
 // the cursor kept: the sheet is free meanwhile, and the fill takes it again
 // once the pass can go on. The sheet can go to the trash meanwhile: the fill
-// then writes nothing and waits for it to come back (backFromTrash). Every
-// read shows the column as processing until the fill is done
-// (lib/field-fill-columns.ts).
+// then writes nothing and is parked until a restore starts it again
+// (derived-fill-parked.ts). Every read shows the column as processing until
+// the fill is done (lib/field-fill-columns.ts).
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS, LOOKUP_WAIT_POLL_MS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
@@ -23,20 +23,19 @@ import { markAutorunInputs } from '../lib/autorun-mark';
 import { redactSecrets } from '../lib/redact';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import type { DerivedKind, DerivedRecord, DerivedWait } from './derived-kind';
+import { IN_TRASH_NOTE, isParked, parkFill } from './derived-fill-parked';
 import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
 
 const FILL_ATTEMPTS = 5;
 
-// A fill whose sheet is in the trash (it went there while a lookup waited with
-// the sheet free, or before a restart): it goes on once the sheet is back, and
-// ends with it when the trash deletes it (its record goes with the sheet).
-const backFromTrash = (job: DerivedRecord): DerivedWait => ({
-  note: 'Waits for its sheet to come back from the trash.',
-  ready: () => !!verifySheetOwnership(job.sheet_id, job.user_id),
-});
+const TRASHED = 'trashed'; // its sheet is in the trash: parked (derived-fill-parked.ts)
 
 // Returns what the pass waits for when it has to stop before the end, else null.
-async function work<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): Promise<DerivedWait | null> {
+async function work<R extends DerivedRecord>(
+  kind: DerivedKind<R>, job: R,
+): Promise<DerivedWait | typeof TRASHED | null> {
+  // Before the pass opens (a formula worker, a lookup's index) and the rows are read.
+  if (!verifySheetOwnership(job.sheet_id, job.user_id)) return TRASHED;
   const pass = await kind.open(job, 'fill');
   if ('error' in pass) {
     finishFill(kind, job, 'failed', pass.error);
@@ -81,7 +80,7 @@ async function work<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): Prom
         if (next > at) kind.advance(job, rowIds[next - 1], counts);
         page = pageAfter(page, rows.length, counts.done);
       }).immediate();
-      if (trashed) return backFromTrash(job);
+      if (trashed) return TRASHED;
       if (stopped) return null;
       const failure = pass.failure();
       if (failure) {
@@ -114,7 +113,23 @@ function finishFill<R extends DerivedRecord>(
 
 // Fills waiting for their pass to go on: what each waits for (the column's view says so).
 const waits = new Map<string, DerivedWait>();
-export const derivedFillWait = (id: string): string | null => waits.get(id)?.note ?? null;
+export const derivedFillWait = (id: string): string | null =>
+  waits.get(id)?.note ?? (isParked(id) ? IN_TRASH_NOTE : null);
+
+function afterWork<R extends DerivedRecord>(
+  kind: DerivedKind<R>, job: R, wait: DerivedWait | typeof TRASHED | null,
+): void {
+  if (wait === TRASHED) {
+    const filling = () => kind.load(job.id)?.fill_status === 'filling';
+    parkFill(job.id, { sheetId: job.sheet_id, filling, resume: () => goOn(kind, job) });
+  } else if (wait) resumeWhenReady(kind, job, wait);
+}
+
+// Takes the sheet as soon as it is free and goes on with the fill.
+function goOn<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): void {
+  whenSheetFree(job.sheet_id, kind.busy, () => runDerivedFill(kind, job.id))
+    .catch(err => console.error(`Resuming the ${kind.noun} fill on sheet ${job.sheet_id} failed:`, err));
+}
 
 // Takes the sheet again once the pass can go on (polls; one waiter per fill).
 function resumeWhenReady<R extends DerivedRecord>(kind: DerivedKind<R>, job: R, wait: DerivedWait): void {
@@ -132,8 +147,7 @@ function resumeWhenReady<R extends DerivedRecord>(kind: DerivedKind<R>, job: R, 
     }
     if (!go) { setTimeout(poll, LOOKUP_WAIT_POLL_MS).unref?.(); return; }
     waits.delete(job.id);
-    whenSheetFree(job.sheet_id, kind.busy, () => runDerivedFill(kind, job.id))
-      .catch(err => console.error(`Resuming the ${kind.noun} fill on sheet ${job.sheet_id} failed:`, err));
+    goOn(kind, job);
   };
   setTimeout(poll, LOOKUP_WAIT_POLL_MS).unref?.();
 }
@@ -143,8 +157,7 @@ export async function runDerivedFill<R extends DerivedRecord>(kind: DerivedKind<
   const job = kind.load(id);
   if (!job || job.fill_status !== 'filling') return;
   try {
-    const wait = await work(kind, job);
-    if (wait) resumeWhenReady(kind, job, wait);
+    afterWork(kind, job, await work(kind, job));
   } catch (err) {
     console.error(`Filling ${kind.noun} "${job.column_name}" on sheet ${job.sheet_id} failed, retrying:`, err);
     let attempts = 1;
@@ -152,8 +165,7 @@ export async function runDerivedFill<R extends DerivedRecord>(kind: DerivedKind<
       const again = kind.load(id);
       if (!again || again.fill_status !== 'filling') return;
       try {
-        const wait = await work(kind, again);
-        if (wait) resumeWhenReady(kind, again, wait);
+        afterWork(kind, again, await work(kind, again));
       } catch (e) {
         if (++attempts < FILL_ATTEMPTS) throw e;
         console.error(`Filling ${kind.noun} "${job.column_name}" on sheet ${job.sheet_id} gave up:`, e);

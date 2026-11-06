@@ -10,7 +10,7 @@
 // (lib/sheet-busy.ts) until the run is queued, so no sort, import or column
 // rewrite moves the rows meanwhile.
 import { db } from '../lib/db';
-import { continueInBackground, withSheetBusy } from '../lib/sheet-busy';
+import { continueInBackground, sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { seedProcessingPlaceholders } from '../lib/placeholder-cells';
 import { seedPlaceholdersByRule, type RuleSeed } from '../lib/placeholder-rule-seed';
 import { clearRunPlaceholders, type RunKind } from '../lib/run-placeholders';
@@ -19,22 +19,18 @@ import type { RunFail } from './run-shared';
 
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
 
-// Whether the sheet is out of the trash (its table too: deleting a table marks
-// its sheets). The caller checked it's the user's before waiting.
-const sheetLive = (sheetId: string): boolean =>
-  !!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND trash_id IS NULL').get(sheetId);
-
 // Runs a start as the sheet's one heavy operation, or fails with the reason
 // the sheet is busy. A start checks its sheet, then may wait (the model list,
 // a search plan, treg's prices, auto-run's pick) before it gets here: a sheet
-// deleted meanwhile takes no run. Once held, it can't be deleted
-// (trash-sheets.ts refuses a busy sheet).
-export async function asRunStart<T extends object>(sheetId: string, work: () => Promise<T>): Promise<T | RunFail> {
-  const outcome = await withSheetBusy(sheetId, 'starting a run', async (): Promise<T | RunFail> =>
-    (sheetLive(sheetId) ? work() : { fail: 'not_found', message: 'Sheet not found' }));
+// deleted meanwhile, alone or with its table, takes no run (withLiveSheetBusy).
+export async function asRunStart<T extends object>(
+  sheetId: string, userId: string, work: () => Promise<T>,
+): Promise<T | RunFail> {
+  const outcome = await withLiveSheetBusy(sheetId, userId, 'starting a run', work);
+  if (sheetGone(outcome)) return { fail: 'not_found', message: 'Sheet not found' };
   return 'busy' in outcome && typeof outcome.busy === 'string'
     ? { fail: 'conflict', message: outcome.busy }
-    : outcome as T | RunFail;
+    : outcome as T;
 }
 
 // How many rows the sheet has and its last row_index, from the index alone.

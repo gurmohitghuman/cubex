@@ -102,7 +102,7 @@ export async function rerunAiMultiColumn(
   if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 
   const runId = uuidv4();
-  return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<RerunOutcome> => {
     // Modes read the status cell: ❌ errored, blank never run, ⏳ unfinished.
     const targets = await resolveRerunTargets(p.sheetId, userId, statusColumn, p.mode ?? DEFAULT_AI_RERUN_MODE, p,
       p.recheckKeptOut ? rule.ok : null);

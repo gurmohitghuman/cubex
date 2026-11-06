@@ -2,9 +2,9 @@
 // refuse one in the trash, deleted alone or with its table: a one-row update
 // by row id (PATCH /api/v1/rows/:rowId, MCP update_cells), a structured AI
 // run's rerun by run id, a run start whose sheet went to the trash while it
-// waited (asRunStart), auto-run's start when the sheet went while the tick
-// picked its rows, and a waterfall dry run when it went while the steps were
-// built. Each writes again once the sheet is restored.
+// waited (asRunStart, whose check is the account's), auto-run's start when the
+// sheet went while the tick picked its rows, and a waterfall dry run when it
+// went while the steps were built. Each writes again once the sheet is restored.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 
@@ -83,12 +83,12 @@ for (const [how, words] of HOWS) {
     const p = place()
     const id = trash(how, p)
     let ran = false
-    const out = await asRunStart(p.sid, async () => { ran = true; return { started: true } })
+    const out = await asRunStart(p.sid, uid, async () => { ran = true; return { started: true } })
     assert.deepEqual(out, { fail: 'not_found', message: 'Sheet not found' })
     assert.equal(ran, false, 'the start never ran')
     assert.equal(sheetBusyWith(p.sid), null, 'the sheet is free again')
     restore(id)
-    assert.deepEqual(await asRunStart(p.sid, async () => ({ started: true })), { started: true })
+    assert.deepEqual(await asRunStart(p.sid, uid, async () => ({ started: true })), { started: true })
   })
 
   await ok(`auto-run starts no run on a sheet ${words} while its tick picked the rows`, async () => {
@@ -126,6 +126,15 @@ for (const [how, words] of HOWS) {
     assert.equal(runs(), 0, 'no run was made')
   })
 }
+
+await ok("a run start's check once it holds the sheet is the account's: another id takes no run", async () => {
+  const p = place()
+  let ran = false
+  const out = await asRunStart(p.sid, uuid(), async () => { ran = true; return { started: true } })
+  assert.deepEqual(out, { fail: 'not_found', message: 'Sheet not found' })
+  assert.equal(ran, false, 'the start never ran')
+  assert.equal(sheetBusyWith(p.sid), null, 'the sheet is free again')
+})
 
 await ok('a row nobody has, and a row of a live sheet, answer as before', () => {
   assert.deepEqual(patchRowById(uuid(), uid, { Name: 'x' }), { fail: 'not_found' })
