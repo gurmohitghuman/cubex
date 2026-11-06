@@ -12,9 +12,9 @@ import { scanFiltered } from '../lib/filtered-scan';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 import { prepareWhere, sheetRunColumns } from './row-filter';
 import { withView } from './view-read';
-import { checkPickedQuery, validateQuery, type RowQuery } from './row-query-input';
+import { checkMaxChars, checkPickedQuery, validateQuery, type RowQuery } from './row-query-input';
 import { aggregateRows } from './row-aggregate';
-import { shapeRows, versionsOf, type PageRow, type Versions } from './row-project';
+import { cutRows, shapeRows, versionsOf, type PageRow, type Versions } from './row-project';
 import { readRowsById } from './rows-by-id';
 import { readRowsSince } from './rows-since';
 import type { QueryFail, RowQueryResult } from './row-query-result';
@@ -61,7 +61,7 @@ function prepareQuery(
 // row_ids and updated_since are reads of their own (services/rows-by-id.ts,
 // rows-since.ts), refused with what they don't take before anything is read.
 export async function queryRows(sheetId: string, userId: string, query: RowQuery): Promise<RowQueryResult> {
-  const picked = checkPickedQuery(query);
+  const picked = checkMaxChars(query.maxCharsPerCell) ?? checkPickedQuery(query);
   if (picked) return { fail: 'invalid', error: picked };
   if (query.rowIds) return readRowsById(sheetId, userId, query);
   if (query.updatedSince !== undefined) return readRowsSince(sheetId, userId, query);
@@ -110,7 +110,9 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
     return { ok: { rows: page.map(r => ({ id: r.id, index: r.row_index })), next_cursor, ...versions } };
   }
   const runs = q.includeStatus ? prep.runColumns ?? sheetRunColumns(sheetId, userId, columns) : null;
-  return { ok: { rows: shapeRows(sheetId, userId, page, q, runs), next_cursor, ...versions } };
+  const rows = shapeRows(sheetId, userId, page, q, runs);
+  const cut = cutRows(rows, q, runs);
+  return { ok: { rows, ...(cut && { truncated_cells: cut }), next_cursor, ...versions } };
 }
 
 // group_by / aggregates: the groups of the rows the `where` and view pass,

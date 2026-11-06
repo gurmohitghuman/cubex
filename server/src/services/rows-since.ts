@@ -27,7 +27,7 @@ import { API_V1_DEFAULT_ROWS_PAGE } from '../lib/api-v1-constants';
 import { decodeSinceCursor, encodeSinceCursor, isoTime, parseSinceTime, type SinceCursor } from '../lib/row-since';
 import { validateQuery, type RowQuery } from './row-query-input';
 import { sheetRunColumns } from './row-filter';
-import { shapeRows, versionsOf, type PageRow } from './row-project';
+import { cutRows, shapeRows, versionsOf, type PageRow } from './row-project';
 import type { RowQueryResult } from './row-query-result';
 
 type SinceRow = PageRow & { rid: number; updated_at: string };
@@ -69,9 +69,11 @@ export function readRowsSince(sheetId: string, userId: string, q: RowQuery): Row
     const runs = q.includeStatus ? sheetRunColumns(sheetId, userId, columns) : null;
     const rows = shapeRows(sheetId, userId, page, q, runs, { stored: true })
       .map((r, i) => ({ id: r.id, index: r.index, updated_at: isoTime(page[i].updated_at), data: r.data }));
+    const cut = cutRows(rows, q, runs);
     // The columns read that are filling now (with picks: the columns they read).
     const filling = fillingColumns(sheetId, userId).filter(c => !q.columns || q.columns.includes(c));
-    return { ok: { rows, next_cursor, as_of: isoTime(walk.asOf), filling, ...versions } };
+    return { ok: { rows, ...(cut && { truncated_cells: cut }), next_cursor, as_of: isoTime(walk.asOf), filling,
+      ...versions } };
   })();
 }
 
