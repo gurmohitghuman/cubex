@@ -4,7 +4,8 @@
 import { z } from 'zod';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
-  API_V1_MAX_ROWS_PAGE, API_V1_DEFAULT_ROWS_PAGE, IDEMPOTENT_WRITE_KEY_MAX_CHARS,
+  API_V1_MAX_ROWS_PAGE, API_V1_DEFAULT_ROWS_PAGE, IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_KEYS_MAX,
+  IDEMPOTENT_WRITE_ROW_BYTES,
 } from '../lib/api-v1-constants';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { MAX_VIEW_DESCRIPTION_CHARS, MAX_VIEW_NAME_CHARS } from '../lib/constants-filters';
@@ -18,10 +19,13 @@ const cells = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(),
 const retryKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS);
 const retryHeaders = z.object({
   'Idempotency-Key': retryKey.optional().describe('Or idempotency_key in the body. The same key and arguments '
-    + 'within 24 hours answer as the first call did (replayed: true) and write nothing; other arguments get 409.'),
+    + 'within 24 hours answer as the first call did (replayed: true) and write nothing; other arguments get 409. '
+    + `An account keeps its newest ${IDEMPOTENT_WRITE_KEYS_MAX.toLocaleString('en-US')} row-write keys, so past `
+    + 'that an older key is forgotten sooner.'),
 });
 const retryBody = { idempotency_key: retryKey.optional().describe('Or the Idempotency-Key header.') };
-const replay = 'A retry with the same idempotency key and arguments: the first answer again, replayed: true.';
+const replay = 'A retry with the same idempotency key and arguments answers as the first call did, with '
+  + 'replayed: true.';
 const rowsPage = z.object({
   limit: z.number().int().min(1).max(API_V1_MAX_ROWS_PAGE).optional()
     .describe(`Rows per page, 1 to ${API_V1_MAX_ROWS_PAGE}. Default ${API_V1_DEFAULT_ROWS_PAGE}.`),
@@ -65,7 +69,7 @@ export const rowRoutes = (): RouteDoc[] => [
     }),
     responses: {
       201: 'The new stable row ids, in order, and the auto-runs that will fill them.',
-      200: `${replay} Nothing is added.`,
+      200: `${replay} Nothing is added, and auto_run is left out.`,
     },
   }),
   op({
@@ -73,7 +77,10 @@ export const rowRoutes = (): RouteDoc[] => [
     summary: 'Set cells on one row.',
     headers: retryHeaders,
     body: z.object({ data: cells, ...retryBody }),
-    responses: { 200: `The row: its id, index and cells. ${replay}` },
+    responses: {
+      200: `The row: its id, index and cells. ${replay} A replay leaves out cells over `
+        + `${IDEMPOTENT_WRITE_ROW_BYTES / 1024} KB (data_left_out: true): read the row to see them.`,
+    },
   }),
   op({
     method: 'post', path: '/sheets/{id}/rows/update', operationId: 'updateRows', tag: 'rows', scope: 'write',

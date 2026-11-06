@@ -33,10 +33,12 @@ const controls = (): RouteDoc[] => RUN_KINDS.flatMap(({ prefix, name, what }) =>
     summary: `Resume ${what}. Answers its status.`,
     ...(prefix === 'ai-runs' ? {
       body: z.object({
-        spend_limit_usd: aiSpendLimit.nullable().optional().describe('A higher hard spend limit in USD for a run '
-          + 'that paused at its own (pause_reason spend_limit). It must leave room for what the run spent, calls '
-          + 'cut off that may still be billed and the next row: a lower one is refused (400) with the least that '
-          + "lets it go on. Left out or null, the run keeps its limit."),
+        spend_limit_usd: aiSpendLimit.nullable().optional().describe('A new hard spend limit in USD for a paused '
+          + 'AI run. For one that paused at its limit (pause_reason spend_limit) it must be above that limit and '
+          + 'leave room for what the run spent, calls cut off that may still be billed and the next row; on a run '
+          + 'paused another way it adds or changes the limit and must be above what the run spent and its cut-off '
+          + 'calls. A lower one is refused (400) with the least that lets it go on. Left out or null, the run keeps '
+          + 'its limit.'),
       }),
     } : {}),
     ...(prefix === 'http-runs' ? {
@@ -77,9 +79,9 @@ export const runControlRoutes = (): RouteDoc[] => [
       concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
         .describe(`Rows at once, 1 to ${MAX_AI_CONCURRENCY}. Default: the run's own.`),
       webhook_id: webhookId,
-      spend_limit_usd: aiSpendLimit.optional().describe("The new run's hard spend limit in USD. Before each row "
-        + "it checks what the run spent, calls cut off and that row's most at the model's listed prices; with no "
-        + 'room left the run pauses (pause_reason spend_limit).'),
+      spend_limit_usd: aiSpendLimit.nullable().optional().describe("The new run's hard spend limit in USD. "
+        + "Before each row it checks what the run spent, calls cut off and that row's most at the model's listed "
+        + 'prices; with no room left the run pauses (pause_reason spend_limit). Left out or null: no limit.'),
     }),
     responses: rerun,
   }),

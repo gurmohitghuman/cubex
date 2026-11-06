@@ -2,8 +2,7 @@
 // results, models, and "Only run if" rules (api-v1-runs.ts, api-v1-run-reads.ts,
 // api-v1-run-conditions.ts).
 import { z } from 'zod';
-import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
-import { SAVED_KEYS_LISTED } from '../lib/api-v1-constants';
+import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE, SAVED_KEYS_LISTED } from '../lib/api-v1-constants';
 import { RUN_LIST_DEFAULT, RUN_LIST_MAX } from '../services/run-list';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
@@ -70,7 +69,8 @@ export const runRoutes = (): RouteDoc[] => [
     method: 'get', path: '/saved-keys', operationId: 'listSavedKeys', tag: 'runs', scope: 'read',
     summary: 'The saved API keys by name and where each is used (columns and setups), never their values.',
     description: `As MCP's list_saved_keys: at most ${SAVED_KEYS_LISTED} keys a call, by name; pass next_after `
-      + 'as after for more. Using a key in a request ({{name}}) still needs the secrets scope.',
+      + 'as after for more (name or after, not both). Using a key in a request ({{name}}) still needs the secrets '
+      + 'scope.',
     query: z.object({
       name: z.string().min(1).optional().describe('Just this key (any case), with more of the places it is used.'),
       after: z.string().min(1).optional().describe('next_after from the previous page.'),
