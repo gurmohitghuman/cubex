@@ -9,12 +9,13 @@
 // stops the pass (a formula too slow). A pass that has to wait (a lookup whose
 // other sheet is sorting) ends the attempt with the column still filling and
 // the cursor kept: the sheet is free meanwhile, and the fill takes it again
-// once the pass can go on. The sheet can go to the trash meanwhile: the fill
-// then writes nothing and is parked until a restore starts it again
-// (derived-fill-parked.ts). Every read shows the column as processing until
-// the fill is done (lib/field-fill-columns.ts).
+// once the pass can go on (derived-fill-wait.ts). The sheet can go to the trash
+// meanwhile: the fill then writes nothing and is parked until a restore starts
+// it again (derived-fill-parked.ts). Every read shows the column as processing
+// until the fill is done (lib/field-fill-columns.ts); its end wakes the fills
+// waiting for one on its sheet.
 import { db } from '../lib/db';
-import { HEAVY_SLICE_ROWS, LOOKUP_WAIT_POLL_MS } from '../lib/constants';
+import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { sheetRowIds } from '../lib/row-order';
 import { yieldToRequests } from '../lib/slices';
@@ -23,7 +24,8 @@ import { markAutorunInputs } from '../lib/autorun-mark';
 import { redactSecrets } from '../lib/redact';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import type { DerivedKind, DerivedRecord, DerivedWait } from './derived-kind';
-import { IN_TRASH_NOTE, isParked, parkFill } from './derived-fill-parked';
+import { parkFill } from './derived-fill-parked';
+import { waitThenGoOn, wakeFillsWaitingOn } from './derived-fill-wait';
 import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
 
 const FILL_ATTEMPTS = 5;
@@ -109,47 +111,27 @@ function finishFill<R extends DerivedRecord>(
     db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
   }).immediate();
+  wakeFillsWaitingOn(job.sheet_id);
 }
 
-// Fills waiting for their pass to go on: what each waits for (the column's view says so).
-const waits = new Map<string, DerivedWait>();
-export const derivedFillWait = (id: string): string | null =>
-  waits.get(id)?.note ?? (isParked(id) ? IN_TRASH_NOTE : null);
+export { derivedFillWait } from './derived-fill-wait';
 
 function afterWork<R extends DerivedRecord>(
   kind: DerivedKind<R>, job: R, wait: DerivedWait | typeof TRASHED | null,
 ): void {
-  if (wait === TRASHED) {
-    const filling = () => kind.load(job.id)?.fill_status === 'filling';
-    parkFill(job.id, { sheetId: job.sheet_id, filling, resume: () => goOn(kind, job) });
-  } else if (wait) resumeWhenReady(kind, job, wait);
+  if (!wait) return;
+  const filling = () => kind.load(job.id)?.fill_status === 'filling';
+  if (wait === TRASHED) parkFill(job.id, { sheetId: job.sheet_id, filling, resume: () => goOn(kind, job) });
+  else {
+    const label = `the ${kind.noun} fill on sheet ${job.sheet_id}`;
+    waitThenGoOn(job.id, { wait, filling, goOn: () => goOn(kind, job), label });
+  }
 }
 
 // Takes the sheet as soon as it is free and goes on with the fill.
 function goOn<R extends DerivedRecord>(kind: DerivedKind<R>, job: R): void {
   whenSheetFree(job.sheet_id, kind.busy, () => runDerivedFill(kind, job.id))
     .catch(err => console.error(`Resuming the ${kind.noun} fill on sheet ${job.sheet_id} failed:`, err));
-}
-
-// Takes the sheet again once the pass can go on (polls; one waiter per fill).
-function resumeWhenReady<R extends DerivedRecord>(kind: DerivedKind<R>, job: R, wait: DerivedWait): void {
-  if (waits.has(job.id)) { waits.set(job.id, wait); return; }
-  waits.set(job.id, wait);
-  const poll = () => {
-    let go: boolean;
-    try {
-      const still = kind.load(job.id);
-      if (!still || still.fill_status !== 'filling') { waits.delete(job.id); return; }
-      go = waits.get(job.id)!.ready();
-    } catch (err) {
-      console.error(`Checking whether the ${kind.noun} fill on sheet ${job.sheet_id} can go on failed:`, err);
-      go = false;
-    }
-    if (!go) { setTimeout(poll, LOOKUP_WAIT_POLL_MS).unref?.(); return; }
-    waits.delete(job.id);
-    goOn(kind, job);
-  };
-  setTimeout(poll, LOOKUP_WAIT_POLL_MS).unref?.();
 }
 
 // Runs (or resumes) the fill as the sheet's heavy operation; call inside it.

@@ -24,7 +24,8 @@ import {
 } from '../lib/lookup-columns';
 import { runDerivedFill } from './derived-fill';
 import { setDerivedAutorun } from './derived-autorun';
-import { LOOKUP_FILLING, lookupKind, readsFilling } from './lookup-kind';
+import { LOOKUP_FILLING, lookupKind } from './lookup-kind';
+import { lookupWaitLoop, startLoopMessage, type LookupNode } from './lookup-fill-wait';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
 import type { RunFail } from './run-shared';
 import { logSheetChange } from '../lib/change-log';
@@ -154,17 +155,22 @@ function placeProblem(sheetId: string, userId: string, s: LookupSetup, columns: 
   return null;
 }
 
-// A column it reads in the other sheet that a run or a fill is writing now.
+// A column it reads in the other sheet that a run is writing now, or lookups
+// filling there that would wait for this one in a loop. A fill there writing a
+// column it reads isn't refused: the lookup's fill waits for it (lookup-fill-wait.ts).
 function otherStillFilling(userId: string, sheetId: string, s: LookupSetup): RunFail | null {
-  const filling = readsFilling({
-    user_id: userId, sheet_id: sheetId, other_sheet_id: s.otherSheetId, match_column: s.matchColumn,
-    return_columns: s.returnColumns ? JSON.stringify(s.returnColumns) : null,
-  } as LookupColumnRow);
-  if (!filling) return null;
-  return {
-    fail: 'conflict',
-    message: `"${filling.column}" in "${s.otherName}" is still being filled. Look up once it's done.`,
+  const reads = [s.matchColumn, ...(s.returnColumns ?? [])];
+  const runs = getLockedRunColumns(s.otherSheetId, userId, { paused: false });
+  const byRun = reads.find(c => runs.has(c));
+  if (byRun) {
+    const message = `"${byRun}" in "${s.otherName}" is still being filled. Look up once it's done.`;
+    return { fail: 'conflict', message };
+  }
+  const from: LookupNode = {
+    id: s.existing?.id ?? null, userId, sheetId, column: s.column!, otherSheetId: s.otherSheetId, reads,
   };
+  const loop = lookupWaitLoop(from);
+  return loop ? { fail: 'conflict', message: startLoopMessage(from, loop) } : null;
 }
 
 export type LookupStart = { ok: { id: string; column: string; created: boolean } } | RunFail;

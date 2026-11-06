@@ -7,18 +7,17 @@
 // written there since (a few rows, typically), so every answer matches that
 // sheet as it is when the row is written. The pass also waits (derived-fill.ts
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
-// rewriting a column, and, for a fill, while a run is filling a column it
-// reads (not a paused one). A lookup whose other sheet or column is gone
-// (`broken`), whose source column isn't in this sheet any more, or a column it
-// reads that starts filling again mid-fill, stops the pass with that message.
-// Over 200 lines: the kind and its pass are one piece (check() and open() guard the same record).
+// rewriting a column, and, for a fill, while a run (not a paused one) or a
+// fill there is filling a column it reads (lookup-fill-wait.ts: after a fill
+// it starts over from the first row if it had written some). A lookup whose
+// other sheet or column is gone (`broken`), whose source column isn't in this
+// sheet any more, or that would wait in a loop of lookups waiting for each
+// other, stops the pass with that message.
 import { db } from '../lib/db';
 import {
   DERIVED_SLICE_CHARS, LOOKUP_CACHE_ENTRIES, LOOKUP_FOLLOW_MAINTAIN_MS, LOOKUP_STEP_ROUND_MS, LOOKUP_STEP_ROWS,
 } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { getLockedRunColumns } from '../lib/run-locked-columns';
-import { fillingColumns } from '../lib/field-fill-columns';
 import { lookupValue } from '../lib/lookup/normalize';
 import {
   loadLookupColumn, lookupColumnFor, lookupReturnColumns, type LookupColumnRow,
@@ -32,27 +31,14 @@ import { LOOKUP_FILLING, lookupSheetBlocked } from './lookup-blocked';
 import { keepMaintaining, maintainLookupInBackground } from './lookup-host';
 import { matchContains, matchEquals, type LookupMatches } from './lookup-probe';
 import { lookupAnswer, lookupNeed, type LookupAsk } from './lookup-answer';
+import { failLookupLoop, fillWait, lookupWaitLoop, nodeOf, readsFilling, startOver } from './lookup-fill-wait';
 
 export { LOOKUP_FILLING };
+export { lookupReads, readsFilling } from './lookup-fill-wait';
 
 export function otherSheetName(sheetId: string, userId: string): string | null {
   return (db.prepare('SELECT name FROM sheets WHERE id = ? AND user_id = ?').pluck().get(sheetId, userId) as
     string | undefined) ?? null;
-}
-
-// The other sheet's columns a lookup reads: the one it matches and the ones it returns.
-export const lookupReads = (rec: LookupColumnRow): string[] => [rec.match_column, ...(lookupReturnColumns(rec) ?? [])];
-
-// A column it reads that something is filling now: a run, or a derived column's fill. Not a paused
-// run: one can stay paused for days, so a fill doesn't wait for it (a waterfall's lookup step doesn't).
-export function readsFilling(rec: LookupColumnRow): { column: string; byRun: boolean } | null {
-  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false });
-  const fills = new Set(fillingColumns(rec.other_sheet_id, rec.user_id));
-  for (const c of lookupReads(rec)) {
-    if (runs.has(c)) return { column: c, byRun: true };
-    if (fills.has(c)) return { column: c, byRun: false };
-  }
-  return null;
 }
 
 export const askOf = (rec: LookupColumnRow): LookupAsk => ({
@@ -82,6 +68,7 @@ function openLookupPass(first: LookupColumnRow, use: DerivedUse): DerivedPass {
   // The record again (renames there rewrite it), and whether it can go on.
   function check(): boolean {
     wait = null;
+    if (failed) return false;
     rec = loadLookupColumn(first.id) ?? rec;
     if (rec.broken) { failed = rec.broken; return false; }
     const blocked = lookupSheetBlocked(other);
@@ -96,7 +83,12 @@ function openLookupPass(first: LookupColumnRow, use: DerivedUse): DerivedPass {
       return false;
     }
     if (filling) {
-      failed = `"${filling.column}" in "${name()}" started filling again. Look up again once it's done.`;
+      const loop = lookupWaitLoop(nodeOf(rec));
+      if (loop) failed = failLookupLoop(rec, loop);
+      else {
+        startOver(rec);
+        wait = fillWait(rec, filling.column, name());
+      }
       return false;
     }
     return true;

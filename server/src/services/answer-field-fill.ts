@@ -22,6 +22,7 @@ import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-helpers';
 import { runInSlices, yieldToRequests } from '../lib/slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
+import { wakeFillsWaitingOn } from './derived-fill-wait';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
 import { statusColumnRuns, type ColumnRunRef } from './answer-runs';
 import { markAutorunInputs } from '../lib/autorun-mark';
@@ -173,6 +174,8 @@ function finishJob(job: FieldJob, status: 'done' | 'failed', error: string | nul
     db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
   }).immediate();
+  // Lookups waiting for a column of this sheet to finish filling look now.
+  wakeFillsWaitingOn(job.sheet_id);
 }
 
 // Runs (or resumes) the job as the sheet's heavy operation; call inside it.
