@@ -7,6 +7,7 @@ import { db } from '../lib/db';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
 import { rulePasses, type RuleNode } from '../lib/run-condition';
+import { pickedCells } from '../lib/row-cell';
 
 const PAGE_ROWS = 10_000;
 
@@ -34,8 +35,7 @@ export async function scanRule(args: {
     for (const r of rows) {
       const rowIndex = r[0] as number;
       if (inTargets && !inTargets.has(rowIndex)) continue;
-      const values: Record<string, string> = {};
-      columns.forEach((c, i) => { values[c] = r[i + 1] == null ? '' : String(r[i + 1]); });
+      const values = pickedCells(columns, r, 1);
       const passes = rulePasses(tree, values);
       out.considered++;
       if (passes) {

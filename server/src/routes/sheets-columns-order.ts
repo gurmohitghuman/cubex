@@ -25,6 +25,8 @@ router.put('/:id/columns/:columnName', async (req: AuthRequest, res) => {
       switch (result.fail) {
         case 'column_not_found':
           return res.status(404).json({ error: `Column "${columnName}" not found in this sheet` });
+        case 'sheet_not_found':
+          return res.status(404).json({ error: result.error });
         case 'active_run':
         case 'busy':
           return res.status(409).json({ error: result.error });

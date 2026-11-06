@@ -130,7 +130,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
 
   // Cap check + mutation in ONE immediate() txn — otherwise two concurrent
   // starts could both pass the cap check and both insert new columns.
-  return asRunStart(p.sheetId, async (): Promise<AiRunStartOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<AiRunStartOutcome> => {
     let capExceeded = false;
     let capColsNeeded = 0;
     let promotedRows: number[] = [];

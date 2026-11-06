@@ -20,7 +20,7 @@ import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
 import { validateCsvImport } from '../lib/csv-import-validate';
 import type { ScannedCsv } from '../lib/csv-import-parse';
-import { withSheetBusy, nextRowIndex } from '../lib/sheet-busy';
+import { nextRowIndex, sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { yieldToRequests } from '../lib/slices';
 import { abortRunsForSheets } from './run-control';
 import { isPristineSeedSheet } from './transfer-seed';
@@ -52,9 +52,12 @@ export type CsvImportOutcome =
       rowsKept: number;
     } }
   | { fail: 'validation' | 'busy'; error: string }
+  // The sheet went to the trash while the file uploaded or was scanned: nothing was imported.
+  | { fail: 'sheet_not_found'; error: string }
   | { fail: 'locked'; columns: string[] };
 
-// Caller has already verified sheet ownership and scanned the CSV.
+// Caller has already verified sheet ownership and scanned the CSV; the sheet is
+// checked again once held (withLiveSheetBusy).
 // opts.bumpDataVersion: v1 and MCP signal open tabs via the change poll.
 // Replace mode always bumps row_generation, because it reuses row_index
 // 0,1,2… for entirely different logical rows.
@@ -86,7 +89,7 @@ export async function importCsv(
     if (hit.length > 0) return { fail: 'locked', columns: hit };
   }
 
-  const outcome = await withSheetBusy(sheetId, 'importing', async reserve => {
+  const outcome = await withLiveSheetBusy(sheetId, userId, 'importing', async reserve => {
     // An earlier import whose clean-up failed left its journal: finish that
     // first (lib/import-undo.ts), so this one starts from a whole sheet.
     const leftover = db.prepare('SELECT * FROM import_jobs WHERE sheet_id = ?').get(sheetId) as ImportJob | undefined;
@@ -119,7 +122,7 @@ export async function importCsv(
         }
         startingRow = nextRowIndex(sheetId, userId);
         return journal(sheetId, userId, false, startingRow, startingRow + rowCount, csvColumns);
-      })();
+      }).immediate();
     }
     reserve(job.end_row);
     let replaced: { trashId: number | null; moved: number } | null = null;
@@ -203,7 +206,7 @@ export async function importCsv(
         }
         db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(sheetId);
         if (firstRid !== null) dedupeQueued = queueImportedRows(sheetId, userId, firstRid, lastRid!, csvColumns);
-      })();
+      }).immediate();
 
       logImport(sheetId, userId, next - startingRow, replaced);
       const autoDedupe = dedupeQueued
@@ -224,6 +227,7 @@ export async function importCsv(
       throw error;
     }
   });
+  if (sheetGone(outcome)) return { fail: 'sheet_not_found', error: 'Sheet not found' };
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
 }
 

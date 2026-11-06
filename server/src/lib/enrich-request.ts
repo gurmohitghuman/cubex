@@ -6,6 +6,7 @@
 // enrichments only read columns, never saved API keys.
 import { createHash } from 'node:crypto';
 import { normalizeColumnName } from './prompt';
+import { cellOf } from './row-cell';
 import { cleanDomain, DOMAIN_INPUT_NAMES } from './enrich-input-clean';
 import { setAvailable } from './enrich-accepts';
 import { TREG_TOOL_ID_PATTERN } from './constants';
@@ -42,7 +43,7 @@ export function fillTemplate(
     const norm = normalizeColumnName(name);
     const col = columns.find(c => c.toLowerCase() === lower) ?? columns.find(c => normalizeColumnName(c) === norm);
     if (col === undefined) { miss.name ??= name; return ''; }
-    return row[col] ?? '';
+    return cellOf(row, col);
   });
   return miss.name !== null ? { unknown: miss.name } : { value };
 }

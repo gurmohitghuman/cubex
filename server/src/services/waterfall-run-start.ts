@@ -77,7 +77,7 @@ export async function startWaterfallRun(
   const placeholderColumns = [p.resultColumn,
     ...p.outputs.filter(o => o.jsonPath === ANSWERED_BY_PATH).map(o => o.columnName)];
 
-  return asRunStart(sheetId, async (): Promise<WaterfallStartOutcome> => {
+  return asRunStart(sheetId, userId, async (): Promise<WaterfallStartOutcome> => {
     let capNeeded = -1, raced: string | null = null;
     db.transaction(() => {
       const current = new Set(getSheetColumns(sheetId, userId, false));

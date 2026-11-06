@@ -28,10 +28,12 @@ import parseMod from '../../server/src/lib/csv-import-parse'
 import busyMod from '../../server/src/lib/sheet-busy'
 import storeMod from '../../server/src/lib/auto-dedupe/store'
 import constMod from '../../server/src/lib/constants-dedupe'
+import type { DedupeMatch } from '../../server/src/lib/dedupe/key'
 import { v4 as uuid } from 'uuid'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { setAutoDedupe, autoDedupeView } = settingMod as typeof import('../../server/src/services/auto-dedupe-setting')
+const { setAutoDedupe, autoDedupeView, insertAutoDedupeSetting } =
+  settingMod as typeof import('../../server/src/services/auto-dedupe-setting')
 const { maintainAutoDedupeSheet, buildStep, drainStep } =
   indexMod as typeof import('../../server/src/services/auto-dedupe-index')
 const { runChecks } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
@@ -82,6 +84,15 @@ function on(s: string, args: Record<string, unknown>) {
   assert.ok('ok' in out, JSON.stringify(out))
   return out.ok
 }
+// The setting setAutoDedupe makes (building, keep oldest), without the background driver
+// it starts (auto-dedupe-checks.ts). The driver waits for the lookup worker to start, then
+// builds the keys on the worker's thread, at a moment that depends on the machine. A
+// scenario that takes every key step itself makes its setting this way, or the driver may
+// build the keys before it does (or finish a build it set up for its own step).
+function quietSetting(s: string, column: string, match: DedupeMatch) {
+  insertAutoDedupeSetting(uid, s, column, match, null, 'oldest')
+  assert.equal(autoDedupeView(s, uid)!.state, 'building')
+}
 const idle = async (s: string) => { while (sheetBusyWith(s)) await new Promise(r => setTimeout(r, 5)) }
 
 async function main() {
@@ -103,7 +114,7 @@ async function main() {
 
   await ok('a sheet in the trash: no checks, no key build; restored, they go through', async () => {
     const S = sheet('Trashed', ['Email'], Array.from({ length: 30 }, (_, i) => ({ Email: `u${i}@x.com` })))
-    assert.equal(on(S, { column: 'Email', match: 'email' }).state, 'building')
+    quietSetting(S, 'Email', 'email')
     const out = appendRows(S, uid, [{ Email: 'u3@x.com' }])
     assert.ok('ok' in out && out.ok.deduped!.waiting === 1)
     const t = trashSheet(uid, tid, S)
@@ -219,7 +230,7 @@ async function main() {
 
   await ok('a build or drain step that read the setting before a rename stops: no key is lost', async () => {
     const K = sheet('Rename', ['Email'], Array.from({ length: 10 }, (_, i) => ({ Email: `k${i}@x.com` })))
-    on(K, { column: 'Email', match: 'email' })
+    quietSetting(K, 'Email', 'email')
     await ready(K)
     assert.equal(keyCount(K), 10)
     const stale = autoDedupeOf(K, uid)!

@@ -52,7 +52,7 @@ export async function trashRowRange(
   await runInCheckpointedSlices(() => {
     const rowids = slice.all(sheetId, userId, first, end, TRASH_SLICE_ROWS) as number[];
     if (rowids.length === 0) return false;
-    db.transaction(() => { moved += removeRows(sheetId, userId, { rowids }, item, false).count; })();
+    db.transaction(() => { moved += removeRows(sheetId, userId, { rowids }, item, false).count; }).immediate();
     return true;
   });
   if (item === null) return { trashId: null, moved };
@@ -60,6 +60,6 @@ export async function trashRowRange(
   db.transaction(() => {
     kept = !dropIfEmpty(item);
     if (kept) sealBatch(item, sheetId, userId);
-  })();
+  }).immediate();
   return { trashId: kept ? item : null, moved };
 }

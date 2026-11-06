@@ -126,7 +126,7 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
 
   const newRunId = uuidv4();
 
-  return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<RerunOutcome> => {
     // Resolve target rows — always intersect with real row_index values so we
     // never write to (or bill for) rows that don't exist. Read in pages.
     const targets = await resolveRerunTargets(p.sheetId, userId, cleanMaster, p.mode ?? 'all', p,

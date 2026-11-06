@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto'
 import { authedApi, seedSheet, importCsv } from './helpers'
 import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
 import { call, mcpClient } from './helpers-mcp'
-import { Receiver, type Hit } from './helpers-receiver'
+import { Receiver, deleteRunWebhooks, type Hit } from './helpers-receiver'
 
 // "Run finished" webhooks over /api/v1 and MCP, delivered to a local receiver
 // through the real outbound path (the SSRF guard included,
@@ -21,16 +21,19 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(async () => {
   await rx.start()
   api = await authedApi()
-  for (const h of (await (await api.get('/api/settings/run-webhooks')).json()).webhooks) {
-    await api.delete(`/api/settings/run-webhooks/${h.id}`)
-  }
+  await deleteRunWebhooks(api)
   v1 = await bearer(await makeToken(api, ['read', 'write', 'run'], 'run webhooks spec'))
   readOnly = await bearer(await makeToken(api, ['read'], 'run webhooks read spec'))
   writeOnly = await bearer(await makeToken(api, ['read', 'write'], 'run webhooks write spec'))
   rx.on('/data', { status: 200, body: '{"ok":"yes"}' })
 })
+// Its webhooks go before its receiver does: one left would send each later spec's run notices to that spec's.
 test.afterAll(async () => {
-  await rx.stop(); await v1?.dispose(); await readOnly?.dispose(); await writeOnly?.dispose()
+  try {
+    if (api) await deleteRunWebhooks(api)
+  } finally {
+    await rx.stop(); await v1?.dispose(); await readOnly?.dispose(); await writeOnly?.dispose()
+  }
 })
 
 const signed = (secret: string, hit: Hit) =>

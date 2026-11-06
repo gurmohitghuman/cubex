@@ -21,7 +21,6 @@ import type { QueryFail, RowQueryResult } from './row-query-result';
 
 export type { WhereItem } from '../lib/row-filter/where';
 export { parseRowQueryBody, type RowQuery } from './row-query-input';
-export { cellOf } from './row-project';
 export type { RowQueryResult } from './row-query-result';
 
 // The fences, the query's columns and its `where`, checked before any row is read.

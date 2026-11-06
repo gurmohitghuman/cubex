@@ -9,8 +9,9 @@
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
 // rewriting a column, and, for a fill, while a run is filling a column it
 // reads (not a paused one). A lookup whose other sheet or column is gone
-// (`broken`), or a column it reads that starts filling again mid-fill, stops
-// the pass with that message.
+// (`broken`), whose source column isn't in this sheet any more, or a column it
+// reads that starts filling again mid-fill, stops the pass with that message.
+// Over 200 lines: the kind and its pass are one piece (check() and open() guard the same record).
 import { db } from '../lib/db';
 import {
   DERIVED_SLICE_CHARS, LOOKUP_CACHE_ENTRIES, LOOKUP_FOLLOW_MAINTAIN_MS, LOOKUP_STEP_ROUND_MS, LOOKUP_STEP_ROWS,
@@ -189,6 +190,10 @@ export const lookupKind: DerivedKind<LookupColumnRow> = {
   async open(rec, use) {
     if (rec.broken) return { error: rec.broken };
     if (!otherSheetName(rec.other_sheet_id, rec.user_id)) return { error: 'The sheet it looks in is gone.' };
+    // As start checks (a restore fills it again without start): a missing one reads empty in every row.
+    if (!getSheetColumns(rec.sheet_id, rec.user_id, false).includes(rec.source_column)) {
+      return { error: `"${rec.source_column}", the column it looks up, isn't in this sheet anymore.` };
+    }
     return openLookupPass(rec, use);
   },
   advance(rec, cursor, counts) {

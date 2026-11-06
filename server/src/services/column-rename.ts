@@ -6,7 +6,7 @@
 // Over 200 lines: one rename with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
-import { withSheetBusy } from '../lib/sheet-busy';
+import { sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { copyColumnKey, recordPurge, forgetPurge } from '../lib/column-purge';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
@@ -34,13 +34,16 @@ import { renameSetupVersionRefs } from './setup-version-rename';
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
   | { fail: 'column_not_found' }
+  // The sheet went to the trash while the rename was checked (a formula's check waits on its worker).
+  | { fail: 'sheet_not_found'; error: string }
   | { fail: 'invalid'; error: string }
   | { fail: 'collision'; error: string }
   | { fail: 'active_run' | 'busy'; error: string };
 
-// Caller has already verified sheet ownership and that rawNewName is a
-// non-empty string. opts.bumpDataVersion: v1 signals open tabs via the change
-// poll; the UI route keeps its historical touch-only behavior.
+// Caller has already verified sheet ownership (checked again once the sheet is
+// held: withLiveSheetBusy) and that rawNewName is a non-empty string.
+// opts.bumpDataVersion: v1 signals open tabs via the change poll; the UI route
+// keeps its historical touch-only behavior.
 export async function renameSheetColumn(
   sheetId: string,
   userId: string,
@@ -146,7 +149,7 @@ export async function renameSheetColumn(
   // between requests, and the sheet is busy throughout (lib/sheet-busy.ts). A
   // restart mid-way finishes the strip (lib/column-purge.ts): the partial
   // copies before the switch, the old keys after it.
-  const outcome = await withSheetBusy(sheetId, 'renaming a column', async () => {
+  const outcome = await withLiveSheetBusy(sheetId, userId, 'renaming a column', async () => {
     // A column change a failure left half-done is finished first.
     await finishRunRewrites(sheetId);
     recordPurge(sheetId, userId, trimmedNew);
@@ -163,12 +166,13 @@ export async function renameSheetColumn(
       }
       forgetPurge(sheetId, trimmedNew);
       recordPurge(sheetId, userId, columnName);
-    })();
+    }).immediate();
     await finishColumnChange(sheetId, userId, columnName);
     logSheetChange(sheetId, userId, 'column_renamed', `Renamed the column "${columnName}" to "${trimmedNew}"`,
       { column: trimmedNew, detail: { from: columnName, to: trimmedNew } });
     return { ok: true as const, newName: trimmedNew };
   });
+  if (sheetGone(outcome)) return { fail: 'sheet_not_found', error: 'Sheet not found' };
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
 }
 

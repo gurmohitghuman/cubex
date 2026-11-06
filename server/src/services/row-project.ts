@@ -5,6 +5,7 @@
 // include_status run columns as {status, value, error}.
 import { db } from '../lib/db';
 import { parseRowData } from '../lib/sql-helpers';
+import { cellOf } from '../lib/row-cell';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { pickName, pickValue } from '../lib/row-select/paths';
@@ -21,12 +22,6 @@ export type Versions = { data_version: number; row_generation: number };
 export const versionsOf = (sheetId: string, userId: string) => db.prepare(
   'SELECT data_version, row_generation FROM sheets WHERE id = ? AND user_id = ?',
 ).get(sheetId, userId) as Versions | undefined;
-
-// Own-property cell read: row data is plain JSON.parse output, so a sparse
-// row's missing "constructor"/"toString" cell would otherwise resolve to the
-// inherited prototype member (non-empty to filters, dropped by stringify).
-export const cellOf = (data: Record<string, string>, column: string): string =>
-  Object.prototype.hasOwnProperty.call(data, column) ? data[column] ?? '' : '';
 
 // runs: the sheet's run columns when include_status asked, else null.
 // errors: row id → state column → the full error text its run recorded
