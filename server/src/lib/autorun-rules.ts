@@ -13,6 +13,7 @@ import { ruleColumns, type RuleNode } from './run-condition';
 import { isWaterfallConfig } from './waterfall/config';
 import { waterfallRowCanRun } from './waterfall/rows';
 import { resolveColumn } from './waterfall/inputs';
+import { cellOf } from './row-cell';
 
 export type AutorunKind = 'enrichment' | 'http' | 'waterfall' | 'clean' | 'formula' | 'lookup';
 
@@ -117,11 +118,9 @@ export type CandidateVerdict = 'take' | 'done' | 'waiting';
 // filling it (⏳), its run found nothing (⏭️) or failed (❌), or its rows are
 // being added elsewhere (➕). Those are Cubex's words, not data, so they never
 // count as an input (an HTTP column must not send "❌ Error" as a lead).
-const settled = (data: Record<string, string>): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data)) out[k] = holdsRunMarker(v ?? '') ? '' : v;
-  return out;
-};
+// Object.fromEntries defines each key, so a "__proto__" column keeps its cell.
+const settled = (data: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(data).map(([k, v]) => [k, holdsRunMarker(v ?? '') ? '' : v]));
 
 export function candidateVerdict(
   data: Record<string, string>, p: CandidatePlan, failedCounts: boolean,
@@ -134,7 +133,7 @@ export function candidateVerdict(
   // A waterfall takes a row once some step has its inputs.
   if (isWaterfallConfig(p.config)) return waterfallRowCanRun(p.config, live, p.columns) ? 'take' : 'waiting';
   if (!isEnrichmentConfig(p.config)) {
-    return p.requestCols.every(c => trimBlank(live[c] ?? '') !== '') ? 'take' : 'waiting';
+    return p.requestCols.every(c => trimBlank(cellOf(live, c)) !== '') ? 'take' : 'waiting';
   }
   const e = p.config.enrichment;
   const built = buildRequest(e.toolSnapshot, inputTemplates(p.config), live, {

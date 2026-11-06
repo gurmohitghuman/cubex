@@ -5,6 +5,7 @@
 // read.
 import { db } from '../lib/db';
 import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
+import { cellOf } from '../lib/row-cell';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { pickName, pickValue } from '../lib/row-select/paths';
@@ -24,12 +25,6 @@ type PageRow = { id: string; row_index: number; data: string };
 // busy: a heavy operation holds the sheet (aggregates wait for it; REST answers 409).
 type QueryFail = { fail: 'invalid' | 'version_conflict' | 'busy'; error: string };
 export type RowQueryResult = { ok: Record<string, unknown> } | QueryFail;
-
-// Own-property cell read: row data is plain JSON.parse output, so a sparse
-// row's missing "constructor"/"toString" cell would otherwise resolve to the
-// inherited prototype member (non-empty to filters, dropped by stringify).
-export const cellOf = (data: Record<string, string>, column: string): string =>
-  Object.prototype.hasOwnProperty.call(data, column) ? data[column] ?? '' : '';
 
 type Versions = { data_version: number; row_generation: number };
 const versionsOf = (sheetId: string, userId: string) => db.prepare(

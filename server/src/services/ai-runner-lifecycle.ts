@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { getSheetColumns } from '../lib/sql-helpers';
 import { redactSecrets, redactError } from '../lib/redact';
 import { getOpenRouterClient } from './openrouter';
 import { processRow } from './ai-row';
@@ -41,6 +42,10 @@ export const dispatchRows = async (
   controller: AbortController,
 ): Promise<LoopEnd | null> => {
   const openai = await getOpenRouterClient(run.user_id);
+  // The sheet's columns, read once for the run: a listed column a row holds no
+  // value for reads as empty in its prompt (lib/prompt.ts processPromptTemplate).
+  // The columns a prompt reads can't be renamed or deleted while it runs.
+  const columns = getSheetColumns(run.sheet_id, run.user_id, false);
   const concurrency = run.concurrency || 5;
   const out = new Set<Promise<void>>();
   const pool = slotWaiter();
@@ -76,7 +81,7 @@ export const dispatchRows = async (
         break;
       }
 
-      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration)
+      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
         .then(outcome => {
           breaker.record(outcome);
           const tripped = breaker.tripped;
