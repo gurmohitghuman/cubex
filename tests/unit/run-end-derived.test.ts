@@ -1,11 +1,14 @@
 // A run that ends early (cancelled, failed in its worker, or failed to start)
 // clears the ⏳ cells it left (lib/placeholder-cells.ts), and the answer those
 // cells held before it is gone: clean and formula columns reading them work
-// those rows out again. Exactly the cleared rows are queued (a row holding a
-// real result isn't), the follow-up is told at once, and no auto-run that
-// costs or sends requests hears of it (one reading the answer, one reading the
+// those rows out again, and a formula reading that formula follows it. Exactly
+// the cleared rows are queued (a row holding a real result isn't). A clear in
+// the API process tells the follow-ups at once; a worker's (a failed run) has
+// no one to tell, so the auto-run sweep works them out. No auto-run that costs
+// or sends requests hears of it (one reading the answer, one reading each
 // formula). Each way a run ends early is driven through the code that ends it.
-// Last, the follow-up runs by itself, as in the server, with no tick by hand.
+// Last, the follow-ups run by themselves, as in the server, with no tick by hand.
+// Over 200 lines: one scene driven through every way a run ends early, and the checks they share.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -24,6 +27,7 @@ import fillMod from '../../server/src/services/derived-fill'
 import cleanMod from '../../server/src/services/clean-column'
 import followMod from '../../server/src/services/derived-follow'
 import entryMod from '../../server/src/services/autorun-entry'
+import loopMod from '../../server/src/services/autorun-loop'
 const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { markFailed } = aiEndMod as typeof import('../../server/src/services/ai-runner-lifecycle')
 const { failHTTPRun } = httpEndMod as typeof import('../../server/src/services/http-runner-finalize')
@@ -38,7 +42,8 @@ const { formulaKind } = formulaKindMod as typeof import('../../server/src/servic
 const { waitForDerivedFill } = fillMod as typeof import('../../server/src/services/derived-fill')
 const { startCleanColumn } = cleanMod as typeof import('../../server/src/services/clean-column')
 const { derivedFollowTick, kickDerivedFollow } = followMod as typeof import('../../server/src/services/derived-follow')
-const { entryFor } = entryMod as typeof import('../../server/src/services/autorun-entry')
+const { entryFor, loadEntry } = entryMod as typeof import('../../server/src/services/autorun-entry')
+const { autorunTick } = loopMod as typeof import('../../server/src/services/autorun-loop')
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('run-end-derived')
 console.error = () => {}
 
@@ -49,7 +54,8 @@ const NAME = { ai: 'an AI', http: 'an HTTP' } as const
 const FORMULA = '{{Answer}} ? "has " + {{Answer}} : "empty"'
 // Which follow-ups were told (lib/autorun-kick.ts); the last test lets them run on their own.
 const told = new Set<string>()
-onFollowQueued(id => { told.add(id) })
+const tell = (id: string) => { told.add(id) }
+onFollowQueued(tell)
 
 const until = async (what: string, cond: () => boolean, ms = 15_000) => {
   for (const end = Date.now() + ms; !cond();) {
@@ -64,18 +70,22 @@ const queued = (entryId: string) => db.prepare('SELECT row_id FROM autorun_pendi
 const tick = async (sid: string, column: string) => { await derivedFollowTick(entryFor(sid, uid, column)!) }
 const runOf = (kind: Kind, id: string) => db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ?`).get(id) as any
 
-// Answers from an earlier run in Answer; a formula and a clean column reading it, worked out; an HTTP API
-// auto-run reading Answer and an enrichment auto-run reading the formula (both paid or sending requests).
+// Answers from an earlier run in Answer; a formula (F) and a clean column reading it and a formula reading F
+// (F2), worked out; an HTTP API auto-run reading Answer and enrichment auto-runs reading F and F2 (paid or
+// sending requests).
 async function scene() {
   const sid = sheet([{ Name: 'ada', Answer: 'Old A' }, { Name: 'bob', Answer: 'Old B' },
-    { Name: 'cy', Answer: 'Old C' }], ['Name', 'Answer', 'Status', 'Hook', 'Enriched'])
-  const f = await startFormulaColumn(uid, sid, { column: 'F', formula: FORMULA })
-  assert.ok('ok' in f, JSON.stringify(f))
-  await waitForDerivedFill(formulaKind, f.ok.id, 30_000)
+    { Name: 'cy', Answer: 'Old C' }], ['Name', 'Answer', 'Status', 'Hook', 'Enriched', 'Enriched 2'])
+  for (const [column, formula] of [['F', FORMULA], ['F2', '{{F}}.toUpperCase()']]) {
+    const f = await startFormulaColumn(uid, sid, { column, formula })
+    assert.ok('ok' in f, JSON.stringify(f))
+    await waitForDerivedFill(formulaKind, f.ok.id, 30_000)
+  }
   const c = await startCleanColumn(uid, sid, { source: 'Answer', cleaner: 'lowercase', column: 'Low' })
   assert.ok('ok' in c, JSON.stringify(c))
   await idle(sid)
   assert.deepEqual(cells(sid, 'F'), ['has Old A', 'has Old B', 'has Old C'])
+  assert.deepEqual(cells(sid, 'F2'), ['HAS OLD A', 'HAS OLD B', 'HAS OLD C'])
   assert.deepEqual(cells(sid, 'Low'), ['old a', 'old b', 'old c'])
   const paid = (status: string, kind: string, input: string) => {
     const id = uuid()
@@ -83,7 +93,8 @@ async function scene() {
       VALUES (?,?,?,?,?,?)`).run(id, uid, sid, status, kind, JSON.stringify([input]))
     return id
   }
-  return { sid, paid: [paid('Hook', 'http', 'Answer'), paid('Enriched', 'enrichment', 'F')] }
+  return { sid, paid: [paid('Hook', 'http', 'Answer'), paid('Enriched', 'enrichment', 'F'),
+    paid('Enriched 2', 'enrichment', 'F2')] }
 }
 
 // A run on Answer (an HTTP run's extracted column; its status column is Status), as the worker has it.
@@ -113,26 +124,36 @@ async function runGoing(kind: Kind, sid: string): Promise<string> {
     writeRunCells({ kind, id }, sid, uid, 0, result)
     markAutorunInputs(sid, uid, result.map(([c]) => c), { indexes: [0] })
   })()
-  await tick(sid, 'F'); await tick(sid, 'Low')
+  await tick(sid, 'F'); await tick(sid, 'Low'); await tick(sid, 'F2')
   assert.deepEqual(cells(sid, 'F'), ['has New A', 'has Old B', 'has Old C'], 'seeding queues nothing')
+  assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'HAS OLD B', 'HAS OLD C'])
   db.prepare('DELETE FROM autorun_pending').run()
   return id
 }
 
-// After the run ended early: what was queued and told, then the follow-ups run by hand.
-async function followsUp(sid: string, paid: string[], firstRow: string) {
-  const [f, low] = [entryFor(sid, uid, 'F')!.id, entryFor(sid, uid, 'Low')!.id]
+// After the run ended early: what was queued and told, then the follow-ups run by hand, as a kick or the
+// auto-run sweep runs them (services/autorun-loop.ts), F2 after F.
+async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kick' | 'sweep' = 'kick') {
+  const [f, low, f2] = ['F', 'Low', 'F2'].map(c => entryFor(sid, uid, c)!.id)
   const ids = rowIdsOf(sid)
-  const seen = { f: queued(f), low: queued(low), paid: paid.map(queued), told: [f, low].map(id => told.has(id)) }
-  await tick(sid, 'F'); await tick(sid, 'Low')
+  const seen = { f: queued(f), low: queued(low), f2: queued(f2), paid: paid.map(queued),
+    told: [f, low].map(id => told.has(id)) }
+  const follow = (id: string) => (by === 'sweep' ? autorunTick(id) : derivedFollowTick(loadEntry(id)!))
+  await follow(f); await follow(low)
+  const chained = queued(f2)
+  await follow(f2)
   assert.deepEqual(cells(sid, 'Answer'), [firstRow, '', ''])
   assert.deepEqual(cells(sid, 'F'), [`has ${firstRow}`, 'empty', 'empty'])
   assert.deepEqual(cells(sid, 'Low'), [firstRow.toLowerCase(), '', ''])
+  assert.deepEqual(cells(sid, 'F2'), [`HAS ${firstRow.toUpperCase()}`, 'EMPTY', 'EMPTY'])
   assert.deepEqual(seen.f, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the formula')
   assert.deepEqual(seen.low, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the clean column')
-  assert.deepEqual(seen.paid, [[], []], 'no paid auto-run was queued')
-  assert.deepEqual(seen.told, [true, true], 'the follow-ups were told at once')
-  assert.deepEqual(paid.map(queued), [[], []], 'the formula\'s own writes reach no paid auto-run either')
+  assert.deepEqual(seen.f2, [], 'F2 reads F, not the cleared column')
+  assert.deepEqual(chained, [ids[1], ids[2]].sort(), 'what F wrote is queued for F2')
+  assert.deepEqual(seen.paid, [[], [], []], 'no paid auto-run was queued')
+  assert.deepEqual(seen.told, by === 'kick' ? [true, true] : [false, false],
+    by === 'kick' ? 'the follow-ups were told at once' : 'a worker tells no one: the sweep finds the rows')
+  assert.deepEqual(paid.map(queued), [[], [], []], 'the formulas\' own writes reach no paid auto-run either')
 }
 
 for (const kind of ['ai', 'http'] as const) {
@@ -145,15 +166,19 @@ for (const kind of ['ai', 'http'] as const) {
     await followsUp(sid, paid, 'New A')
   })
 
-  await ok(`${NAME[kind]} run its worker failed: the same`, async () => {
+  await ok(`${NAME[kind]} run its worker failed: the same, worked out by the auto-run sweep`, async () => {
     const { sid, paid } = await scene()
     const id = await runGoing(kind, sid)
     told.clear()
-    if (kind === 'ai') await markFailed(id, GEN, runOf(kind, id), 'the model went away')
-    else await failHTTPRun(runOf(kind, id), id, GEN, new Error('the API went away'))
+    // A run worker is another thread, where no follow-up is told (lib/autorun-kick.ts).
+    onFollowQueued(() => {})
+    try {
+      if (kind === 'ai') await markFailed(id, GEN, runOf(kind, id), 'the model went away')
+      else await failHTTPRun(runOf(kind, id), id, GEN, new Error('the API went away'))
+    } finally { onFollowQueued(tell) }
     assert.equal(runOf(kind, id).status, 'failed')
     assert.equal(runOf(kind, id).placeholder_work, null)
-    await followsUp(sid, paid, 'New A')
+    await followsUp(sid, paid, 'New A', 'sweep')
   })
 
   await ok(`${NAME[kind]} rerun of rows 1 and 2 that failed to start: the same; row 0 was never in it`, async () => {
@@ -172,7 +197,7 @@ for (const kind of ['ai', 'http'] as const) {
   })
 }
 
-await ok('in the server the follow-up runs by itself after a cancel, no tick by hand', async () => {
+await ok('in the server the follow-ups run by themselves after a cancel, no tick by hand', async () => {
   const { sid } = await scene()
   const id = await runGoing('http', sid)
   onFollowQueued(kickDerivedFollow)
@@ -181,6 +206,8 @@ await ok('in the server the follow-up runs by itself after a cancel, no tick by 
     JSON.stringify(cells(sid, 'F')) === JSON.stringify(['has New A', 'empty', 'empty']), 5_000)
   await until('the clean column followed', () =>
     JSON.stringify(cells(sid, 'Low')) === JSON.stringify(['new a', '', '']), 5_000)
+  await until('the formula reading the formula followed', () =>
+    JSON.stringify(cells(sid, 'F2')) === JSON.stringify(['HAS NEW A', 'EMPTY', 'EMPTY']), 5_000)
 })
 
 done()

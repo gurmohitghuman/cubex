@@ -3,7 +3,8 @@ import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
-import { markDerivedInputs } from './autorun-mark';
+import { derivedReaderCount, markDerivedInputs } from './autorun-mark';
+import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_MIN_SLICE_ROWS } from './constants';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -25,6 +26,10 @@ export { PLACEHOLDER };
 // aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts). Queuing
 // tells them at once in the API process (lib/autorun-kick.ts); a run worker's
 // clear (a failed run) waits for the auto-run sweep, as its other writes do.
+// That queuing is most of a slice's work (on rows with random ids, a page
+// written per queued row), so slices shrink with the columns reading these,
+// counted once up front (lib/constants.ts): with none, a slice is
+// HEAVY_SLICE_ROWS rows, as for every other heavy job.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void,
 ): Promise<void> {
@@ -39,6 +44,8 @@ export async function clearProcessingPlaceholders(
   ).pluck();
   const setArgs = paths.flatMap(p => [p, p, p]);
   const rowIds = await sheetRowIds(sheetId, userId);
+  const readers = derivedReaderCount(sheetId, userId, columnNames);
+  const sliceRows = Math.max(PLACEHOLDER_CLEAR_MIN_SLICE_ROWS, Math.floor(HEAVY_SLICE_ROWS / (1 + readers)));
   await eachRowIdSlice(rowIds, ids => {
     // The clear and its queuing commit together, the write lock taken up front.
     db.transaction(() => {
@@ -46,7 +53,7 @@ export async function clearProcessingPlaceholders(
       if (cleared.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: cleared });
     }).immediate();
     afterSlice?.();
-  });
+  }, sliceRows);
   db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
 }
 

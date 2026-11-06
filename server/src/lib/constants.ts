@@ -96,6 +96,14 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
+// for every clean, formula and lookup column reading the run's columns, in the
+// same transaction, so its slices hold HEAVY_SLICE_ROWS / (1 + those columns)
+// rows, never fewer than this: a column many formulas read still clears in a
+// bounded number of slices. On rows with random ids each queued row writes its
+// own page: at 200,000 rows with 3 formulas, slices of 1,250 rows still take
+// about 110 ms (the longest 180 ms), where 5,000-row ones took 230 to 480 ms.
+export const PLACEHOLDER_CLEAR_MIN_SLICE_ROWS = 250;
 // A journaled heavy job (a sort, a CSV import's clean-up) that fails half-way
 // keeps its sheet busy and is retried in the background, waiting this long
 // before the first retry and doubling up to the cap (lib/sheet-busy.ts).

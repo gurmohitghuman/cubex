@@ -69,9 +69,13 @@ test('a formula reading a cancelled run\'s answers follows the cleared cells', a
   } finally {
     release()
   }
-  // The answers held back are dropped, not written.
+  // The answers held back are dropped, not written. settled() returns once the receiver has answered, maybe
+  // before the worker read those answers: watch the cells for 2 s more, failing on the first other value.
   await rx.settled()
-  expect(await column(api, sheetId, 'Who')).toEqual(['', '', ''])
-  expect(await column(api, sheetId, 'Seen')).toEqual(['nobody', 'nobody', 'nobody'])
+  for (const end = Date.now() + 2_000; Date.now() < end;) {
+    expect(await column(api, sheetId, 'Who')).toEqual(['', '', ''])
+    expect(await column(api, sheetId, 'Seen')).toEqual(['nobody', 'nobody', 'nobody'])
+    await new Promise(r => setTimeout(r, 200))
+  }
   await api.dispose()
 })
