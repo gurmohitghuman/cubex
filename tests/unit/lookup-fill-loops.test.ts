@@ -2,7 +2,8 @@
 // next one is filling, back to the first) fail, each saying which columns of
 // which sheets, instead of waiting forever: two of them, three, and one held
 // before its fill (as when it waits for its sheet) while the other, which
-// reads it, looks (its end is counted for its column, as a fill's is).
+// reads it, looks (its end counts for a lookup reading its column, as a
+// fill's does).
 // Looked up again one at a time, they fill. Starting one that would wait for
 // a fill that itself waits for it is refused, and that one goes on. The
 // updates touch only the lookup's own user's record.
@@ -12,11 +13,11 @@ import colMod from '../../server/src/services/lookup-column'
 import fillMod from '../../server/src/services/derived-fill'
 import kindMod from '../../server/src/services/lookup-kind'
 import busyMod from '../../server/src/lib/sheet-busy'
-import waitMod from '../../server/src/services/derived-fill-wait'
+import changesMod from '../../server/src/services/lookup-fill-changes'
 import fillWaitMod from '../../server/src/services/lookup-fill-wait'
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
-const { fillsEnded } = waitMod as typeof import('../../server/src/services/derived-fill-wait')
-const { failLookupLoop, startOver } = fillWaitMod as typeof import('../../server/src/services/lookup-fill-wait')
+const { readsChangedUnseen, startOver } = changesMod as typeof import('../../server/src/services/lookup-fill-changes')
+const { failLookupLoop } = fillWaitMod as typeof import('../../server/src/services/lookup-fill-wait')
 const { runDerivedFill } = fillMod as typeof import('../../server/src/services/derived-fill')
 const { lookupKind, LOOKUP_FILLING } = kindMod as typeof import('../../server/src/services/lookup-kind')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
@@ -88,10 +89,14 @@ await ok("a lookup whose fill is held while the one reading it looks: both fail,
     // L0's fill can't start yet (its sheet is taken); L1, reading L0, looks first.
     let release!: () => void
     const held = withSheetBusy(s[0], LOOKUP_FILLING, () => new Promise<void>(r => { release = r }))
-    const ended = fillsEnded(s[0], cols[0])
+    // A lookup reading L0's column took its look.
+    const p = k.probe(s[0])
+    assert.equal(readsChangedUnseen(p, [cols[0]]), null)
     void withSheetBusy(s[1], LOOKUP_FILLING, () => runDerivedFill(lookupKind, ids[1]))
     await until('both fail', () => ids.every(id => rec(id)!.fill_status === 'failed'))
-    assert.equal(fillsEnded(s[0], cols[0]), ended + 1, "the held one's fill ended: a lookup reading it can tell")
+    assert.deepEqual(readsChangedUnseen({ ...p, fill_cursor: 1 }, [cols[0]]), { column: cols[0] },
+      "the held one's fill ended: a lookup reading it can tell")
+    db.prepare("UPDATE lookup_columns SET fill_status = 'done' WHERE id = ?").run(p.id)
     release()
     await held
     await withSheetBusy(s[0], LOOKUP_FILLING, () => runDerivedFill(lookupKind, ids[0]))

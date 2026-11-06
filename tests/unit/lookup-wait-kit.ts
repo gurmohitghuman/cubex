@@ -3,8 +3,8 @@
 // lookup-fill-lists): the trash refill kit's sheets and lookups (3 rows each,
 // Email u0..u2@a.com, Name N0..N2), a formula column on the other sheet whose
 // next fill runs only when the test says so, a lookup set to fill again as a
-// restart or a restore finds it, runs held open, and a lookup's fill one row
-// a slice.
+// restart or a restore finds it, runs held open or paused, a lookup's fill
+// one row a slice, and a lookup record that only looks.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { refillKit } from './trash-refill-kit'
@@ -71,11 +71,14 @@ export function lookupWaitKit(name: string) {
     WHERE id = ?`).run(id)
   const runNote = (sid: string, column: string) =>
     `Waiting for a run to finish filling "${column}" in "${sheetName(sid)}".`
-  // The lookup's fill one row a slice (as a big sheet's time budget cuts them); after() once, inside the
-  // transaction that wrote its first row.
-  const oneRowASlice = (id: string, after: () => void) => {
+  // A paused run going on again, as a resume does (run-lifecycle.ts): pending, its worker_generation moved.
+  const resumeRun = (id: string) => db.prepare(`UPDATE http_runs SET status = 'pending',
+    worker_generation = worker_generation + 1 WHERE id = ? AND status = 'paused'`).run(id)
+  // The lookup's fill one row a slice (as a big sheet's time budget cuts them); after(n) inside the
+  // transaction that wrote a row, for the first `times` rows it writes (n: 1, 2…).
+  const oneRowASlice = (id: string, after: (n: number) => void, times = 1) => {
     const open = lookupKind.open, advance = lookupKind.advance
-    let fired = false
+    let fired = 0
     lookupKind.open = async (r, use) => {
       const pass = await open.call(lookupKind, r, use)
       if (r.id !== id || 'error' in pass) return pass
@@ -83,10 +86,19 @@ export function lookupWaitKit(name: string) {
     }
     lookupKind.advance = (r, cursor, counts) => {
       advance.call(lookupKind, r, cursor, counts)
-      if (r.id === id && !fired) { fired = true; after() }
+      if (r.id === id && fired < times) after(++fired)
     }
     return { restore: () => { lookupKind.open = open; lookupKind.advance = advance } }
   }
+  // A lookup's record filling on a sheet of its own (it fills nothing: tests ask readsChangedUnseen for
+  // it), looking in otherSheetId.
+  const probe = (otherSheetId: string) => {
+    const id = uuid(), sid = k.place().sid
+    db.prepare(`INSERT INTO lookup_columns (id, user_id, sheet_id, column_name, source_column, other_sheet_id,
+      match_column, match_mode, returns, fill_status) VALUES (?, ?, ?, 'P', 'Email', ?, 'Email', 'equals', 'count',
+      'filling')`).run(id, uid, sid, otherSheetId)
+    return { id, user_id: uid, other_sheet_id: otherSheetId, fill_cursor: 0 }
+  }
   return { ...k, sheetName, formula, refillFormula, fillF, fillingFrom, resumeLookups, rec, rowids, setCells,
-    httpRun, endRun, runNote, oneRowASlice }
+    httpRun, endRun, resumeRun, runNote, oneRowASlice, probe }
 }

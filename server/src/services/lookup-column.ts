@@ -26,6 +26,7 @@ import { runDerivedFill } from './derived-fill';
 import { setDerivedAutorun } from './derived-autorun';
 import { LOOKUP_FILLING, lookupKind } from './lookup-kind';
 import { lookupWaitLoop, readsOf, startLoopMessage, type LookupNode } from './lookup-fill-wait';
+import { lookupFillStarted } from './lookup-fill-changes';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
 import type { RunFail } from './run-shared';
 import { logSheetChange } from '../lib/change-log';
@@ -221,7 +222,11 @@ export async function startLookupColumn(
         } });
       return { ok: { id, column, created } };
     }).immediate();
-    if ('ok' in result) continueInBackground(sheetId, LOOKUP_FILLING, () => runDerivedFill(lookupKind, result.ok.id));
+    if ('ok' in result) {
+      // A new fill: no start overs yet, and no note from the last one.
+      lookupFillStarted(result.ok.id);
+      continueInBackground(sheetId, LOOKUP_FILLING, () => runDerivedFill(lookupKind, result.ok.id));
+    }
     return result;
   });
   return 'busy' in out && typeof out.busy === 'string' ? { fail: 'conflict', message: out.busy } : out as LookupStart;

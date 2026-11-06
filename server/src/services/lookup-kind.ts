@@ -9,11 +9,11 @@
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
 // rewriting a column, and, for a fill, while a run (not a paused one) or a
 // fill there is filling a column it reads; a fill with rows written starts
-// over from the first row after one, or after one it didn't see
-// (lookup-fill-wait.ts fillHold). A lookup whose other sheet or column is
-// gone (`broken`), whose source column isn't in this sheet any more, or that
-// would wait in a loop of lookups waiting for each other, stops the pass with
-// that message.
+// over from the first row after one, or after a change it didn't see, a few
+// times at most (lookup-fill-wait.ts fillHold). A lookup whose other sheet or
+// column is gone (`broken`), whose source column isn't in this sheet any
+// more, or that would wait in a loop of lookups waiting for each other, stops
+// the pass with that message.
 import { db } from '../lib/db';
 import {
   DERIVED_SLICE_CHARS, LOOKUP_CACHE_ENTRIES, LOOKUP_FOLLOW_MAINTAIN_MS, LOOKUP_STEP_ROUND_MS, LOOKUP_STEP_ROWS,
@@ -33,7 +33,6 @@ import { keepMaintaining, maintainLookupInBackground } from './lookup-host';
 import { matchContains, matchEquals, type LookupMatches } from './lookup-probe';
 import { lookupAnswer, lookupNeed, type LookupAsk } from './lookup-answer';
 import { fillHold } from './lookup-fill-wait';
-import { advancedTo } from './lookup-fill-changes';
 
 export { LOOKUP_FILLING };
 export { lookupReads, readsFilling } from './lookup-fill-wait';
@@ -181,6 +180,5 @@ export const lookupKind: DerivedKind<LookupColumnRow> = {
       error_rows = error_rows + ?, first_error = COALESCE(first_error, ?), updated_at = datetime('now')
       WHERE id = ? AND user_id = ? AND fill_status = 'filling'`)
       .run(cursor, counts.filled, counts.flagged, counts.firstFlag, rec.id, rec.user_id);
-    advancedTo(rec.id, cursor);
   },
 };

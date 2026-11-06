@@ -5,6 +5,7 @@ import { useLookupForm } from './useLookupForm'
 import { LookupReturnsFields } from './LookupReturnsFields'
 import { LookupPreview } from './LookupPreview'
 import { Select } from '@/components/ui/Select'
+import { lookupNotes } from './lookup-copy'
 
 interface Props {
   sheetId: string
@@ -141,21 +142,9 @@ export const LookupColumnForm: React.FC<Props> = ({ sheetId, columns, editing, o
   )
 }
 
-// Edit lookup: why it stopped (the other sheet or a column gone, a failed
-// fill), the first row that showed an error, what a fill waits for, a paused
-// run there it didn't wait for, and why auto-run is paused.
+// Edit lookup's notes (lookup-copy.ts lookupNotes), in amber.
 const LookupStatus: React.FC<{ view: LookupColumnView }> = ({ view }) => {
-  const notes = [
-    view.broken ? `${view.broken} Pick the sheet and columns again.` : null,
-    view.status === 'failed' && !view.broken ? `It stopped${view.error ? `: ${view.error}` : '.'}` : null,
-    view.status === 'filling' && view.waiting ? view.waiting : null,
-    view.pausedRun,
-    view.status === 'done' && view.errorRows > 0
-      ? `${view.errorRows === 1 ? '1 row shows' : `${view.errorRows} rows show`} an error.`
-        + (view.firstError ? ` The first: ${view.firstError}` : '')
-      : null,
-    view.autoRunNote ? `Auto-run is paused: ${view.autoRunNote}` : null,
-  ].filter((n): n is string => !!n)
+  const notes = lookupNotes(view)
   if (notes.length === 0) return null
   return (
     <div className="border border-amber-300 bg-amber-50 px-3 py-2 space-y-1" data-testid="lookup-status">

@@ -3,7 +3,8 @@
 // counts in the loop check (starting one that would close a loop through it,
 // even as a new column, or starting it again where it would, is refused). Stored answers filling a column there
 // hold only that column: a lookup reading other columns goes on, one reading
-// it waits for it, and goes on when it ends.
+// it waits for it, and goes on when it ends. A column added there while it
+// waits isn't a change: it goes on where it was.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { lookupWaitKit } from './lookup-wait-kit'
@@ -19,7 +20,7 @@ const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-b
 const { FIELD_FILLING } = fieldMod as typeof import('../../server/src/lib/field-fill-columns')
 const k = lookupWaitKit('lookup-fill-lists')
 const { db, uid, ok, done, place, cells, statusOf, until, lookup, sheetName, formula, refillFormula, fillF,
-  fillingFrom, resumeLookups, setCells } = k
+  fillingFrom, resumeLookups, setCells, httpRun, endRun, runNote, oneRowASlice } = k
 const rec = (sid: string, column: string) =>
   db.prepare('SELECT id FROM lookup_columns WHERE sheet_id = ? AND column_name = ?').pluck().get(sid, column) as string
 console.error = () => {}
@@ -93,6 +94,26 @@ await ok('stored answers filling a column: a lookup reading another column goes 
     await until('Got is done', () => statusOf(a, 'Got') === 'done')
     assert.deepEqual(cells(a, 'Who'), ['N0', 'N1', 'N2'])
     assert.deepEqual(cells(a, 'Got'), ['F0', 'F1', 'F2'])
+  })
+
+await ok('a column added there while a list of every column waits for an auto-run batch run: it goes on where it was',
+  async () => {
+    const a = place().sid, o = place().sid
+    const id = await lookup(a, o, 'All', 'list')
+    let batch = ''
+    const slow = oneRowASlice(id, () => { batch = httpRun(o, 'Email', true) })
+    try {
+      const out = await startLookupColumn(uid, a, { column: 'All', sourceColumn: 'Email', otherSheetId: o,
+        matchColumn: 'Email', returns: 'list' })
+      assert.ok('ok' in out, JSON.stringify(out))
+      await until('it waits for the batch run', () => derivedFillWait(id) === runNote(o, 'Email'))
+      db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(JSON.stringify(['Email', 'Name', 'Added']), o)
+      endRun(batch)
+      await until('it is done', () => statusOf(a, 'All') === 'done')
+    } finally { slow.restore() }
+    // The first row was looked up before Added was there; the others list it.
+    assert.deepEqual(cells(a, 'All').map(c => Object.keys(JSON.parse(c ?? '[]')[0] ?? {}).join()),
+      ['Email,Name', 'Email,Name,Added', 'Email,Name,Added'])
   })
 
 done()

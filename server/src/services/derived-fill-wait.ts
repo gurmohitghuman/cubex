@@ -9,6 +9,7 @@
 import { LOOKUP_WAIT_POLL_MS } from '../lib/constants';
 import type { DerivedWait } from './derived-kind';
 import { IN_TRASH_NOTE, isParked } from './derived-fill-parked';
+import { countFillEnd, forgetEndedLookupFills } from './lookup-fill-changes';
 
 interface Waiter {
   wait: DerivedWait;
@@ -27,7 +28,8 @@ function look(id: string, w: Waiter): void {
   if (waiters.get(id) !== w) return;
   let go: boolean;
   try {
-    if (!w.filling()) { waiters.delete(id); return; }
+    // Its record isn't filling any more (ended, or deleted): a lookup's entries go too.
+    if (!w.filling()) { waiters.delete(id); forgetEndedLookupFills(); return; }
     go = w.wait.ready();
   } catch (err) {
     console.error(`Checking whether ${w.label} can go on failed:`, err);
@@ -57,15 +59,10 @@ export function wakeFillsWaitingOn(sheetId: string): void {
   for (const [id, w] of waiters) if (w.wait.wakeOn === sheetId) lookIn(id, w, 0);
 }
 
-// Fills of each column that ended in this process (sheet, column), done or
-// failed: a lookup reading that column tells from them whether one started
-// and ended while it wasn't looking (lookup-fill-changes.ts).
-const ended = new Map<string, number>();
-const endKey = (sheetId: string, column: string) => `${sheetId}\u0000${column}`;
-export const fillsEnded = (sheetId: string, column: string): number => ended.get(endKey(sheetId, column)) ?? 0;
-
-// A fill of this column ended: counted, and the fills waiting for one on its sheet look now.
+// A fill of this column ended (or an undo of a run that wrote it): a lookup
+// reading it counts it (lookup-fill-changes.ts), and the fills waiting for
+// one on its sheet look now.
 export function fillEnded(sheetId: string, column: string): void {
-  ended.set(endKey(sheetId, column), fillsEnded(sheetId, column) + 1);
+  countFillEnd(sheetId, column);
   wakeFillsWaitingOn(sheetId);
 }

@@ -4,15 +4,17 @@
 // and looks every row up again from the first if it had written some, so
 // every row comes from one version of those values (lookups are free: that
 // costs only time): when it starts waiting, and when it would go on after
-// something it didn't see started and ended (lookup-fill-changes.ts). The one
-// exception is a run auto-run started for a batch of rows: a sheet fed by
-// webhooks starts one per batch, and starting over after each could never
-// finish, so after one it goes on where it was. The wait is durable: the
-// record stays filling, and a restart resumes the fill, which waits again or
-// goes on. It goes on as soon as a fill there ends (derived-fill-wait.ts
-// wakeOn). Lookups that would wait for each other in a loop (each reads a
-// column the next one fills, back to the first) never could: they all fail,
-// naming each column and sheet, and start refuses to close such a loop.
+// something it didn't see changed what it reads (lookup-fill-changes.ts, which
+// also stops the start overs after a few). The one exception is a run
+// auto-run started for the rows it takes (new rows, and older ones not run
+// yet): a sheet fed by webhooks starts one per batch, and starting over after
+// each could never finish, so after one it goes on where it was. The wait is
+// durable: the record stays filling, and a restart resumes the fill, which
+// waits again, or starts over if it had written rows. It goes on as soon as a
+// fill there ends (derived-fill-wait.ts wakeOn). Lookups that would wait for
+// each other in a loop (each reads a column the next one fills, back to the
+// first) never could: they all fail, naming each column and sheet, and start
+// refuses to close such a loop.
 import { db } from '../lib/db';
 import { LOOKUP_FILL_WAIT_POLL_MS } from '../lib/constants';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
@@ -23,7 +25,7 @@ import {
 } from '../lib/lookup-columns';
 import type { DerivedWait } from './derived-kind';
 import { fillEnded } from './derived-fill-wait';
-import { readsChangedUnseen } from './lookup-fill-changes';
+import { readsChangedUnseen, startOverFor } from './lookup-fill-changes';
 
 type ReadsRec = Pick<LookupColumnRow, 'match_column' | 'returns' | 'return_columns' | 'other_sheet_id' | 'user_id'>;
 
@@ -40,8 +42,9 @@ export function readsOf(
 export const lookupReads = (rec: ReadsRec): string[] =>
   readsOf(rec.match_column, rec.returns, lookupReturnColumns(rec), rec.other_sheet_id, rec.user_id);
 
-// Whether it reads this column of the other sheet (a list of every column: also one being added).
-function readsColumn(rec: ReadsRec, column: string): boolean {
+// Whether it reads this column of the other sheet, or would once it's there (a list of every column
+// reads any column: also one being added).
+function wouldRead(rec: ReadsRec, column: string): boolean {
   const returned = lookupReturnColumns(rec);
   return rec.match_column === column || (rec.returns === 'list' && returned === null) || !!returned?.includes(column);
 }
@@ -71,21 +74,27 @@ export function fillHold(
   const reads = lookupReads(rec);
   const filling = readsFilling(rec, reads);
   if (filling?.byRun) {
-    if (!filling.batch) startOver(rec);
+    const { batch } = filling;
+    if (!batch) startOverFor(rec, { column: filling.column }, name());
     return { wait: {
       note: `Waiting for a run to finish filling "${filling.column}" in "${name()}".`,
-      ready: () => !readsFilling(loadLookupColumn(rec.id) ?? rec)?.byRun,
+      // After an auto-run batch run it goes on where it was; once a run that isn't one holds a column
+      // it reads, it looks again at once, and starts over.
+      ready: () => {
+        const now = readsFilling(loadLookupColumn(rec.id) ?? rec);
+        return !now?.byRun || (batch && !now.batch);
+      },
     } };
   }
   if (filling) {
     const loop = lookupWaitLoop(nodeOf(rec, reads));
     if (loop) return { failed: failLookupLoop(rec, loop) };
-    startOver(rec);
+    startOverFor(rec, { column: filling.column }, name());
     return { wait: fillWait(rec, filling.column, name()) };
   }
-  if (!readsChangedUnseen(rec, reads)) return null;
+  const change = readsChangedUnseen(rec, reads);
+  if (!change || !startOverFor(rec, change, name())) return null;
   // Its cursor is back at the first row: the fill takes its sheet again and starts there.
-  startOver(rec);
   return { wait: { note: `Looks every row up again: what it reads in "${name()}" changed.`, ready: () => true,
     pollMs: 0 } };
 }
@@ -113,7 +122,7 @@ export function lookupWaitLoop(from: LookupNode): LookupColumnRow[] | null {
       if (seen.has(next.id)) continue;
       seen.add(next.id);
       const loop = [...path, next];
-      if (next.other_sheet_id === from.sheetId && readsColumn(next, from.column)) return loop;
+      if (next.other_sheet_id === from.sheetId && wouldRead(next, from.column)) return loop;
       const found = walk(nodeOf(next), loop);
       if (found) return found;
     }
@@ -166,14 +175,6 @@ export function failLookupLoop(rec: LookupColumnRow, others: LookupColumnRow[]):
   // Their fills ended: counted (a lookup reading one of their columns starts over), and the fills waiting look.
   for (const l of ended) fillEnded(l.sheetId, l.column);
   return told(0);
-}
-
-// Rows it wrote before a column it reads started changing came from the values before: once it goes
-// on, the fill looks every row up again from the first (the cursor is the record's, so a restart does too).
-export function startOver(rec: LookupColumnRow): void {
-  db.prepare(`UPDATE lookup_columns SET fill_cursor = 0, filled_rows = 0, error_rows = 0, first_error = NULL,
-      updated_at = datetime('now')
-    WHERE id = ? AND user_id = ? AND fill_status = 'filling' AND fill_cursor > 0`).run(rec.id, rec.user_id);
 }
 
 // The wait for a fill of a column it reads. Ready once no fill holds what it reads (a run there it
