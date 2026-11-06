@@ -4,7 +4,6 @@
 // words lookup_sheet_delete writes).
 import { db } from '../db';
 import { followQueued } from '../autorun-kick';
-import type { LookupColumnRow } from '../lookup-columns';
 
 const IN_TRASH = '" it looks in is in the trash.';
 
@@ -12,7 +11,7 @@ export const trashedLookupMessage = (sheetName: string): string => `The sheet "$
 
 // The lookups the trash stopped (and only those) look up again: their record,
 // and an auto-run that paused on the message, whose rows then follow again.
-// A fill that failed on it is the caller's to start again (trash-restore-sheet.ts).
+// A fill that failed on it fills again (lookupsFillAgain).
 export function restartLookupsInto(sheetIds: string[]): void {
   const ids = JSON.stringify(sheetIds);
   db.prepare(`UPDATE lookup_columns SET broken = NULL, updated_at = datetime('now')
@@ -29,17 +28,30 @@ export function restartLookupsInto(sheetIds: string[]): void {
   setImmediate(() => { for (const id of paused) followQueued(id); });
 }
 
-// Lookups into these sheets whose fill failed because the sheet was in the trash.
-export function lookupsFailedOnTrash(sheetIds: string[], userId: string): LookupColumnRow[] {
-  return db.prepare(`SELECT * FROM lookup_columns WHERE other_sheet_id IN (SELECT value FROM json_each(?))
-    AND user_id = ? AND fill_status = 'failed' AND instr(error_message, ?) > 0`)
-    .all(JSON.stringify(sheetIds), userId, IN_TRASH) as LookupColumnRow[];
-}
+export interface LookupRefill { id: string; sheet_id: string }
 
-// One of them as it is now, while it still is (not edited, started again or deleted since).
-export const lookupStillFailedOnTrash = (id: string, userId: string): LookupColumnRow | undefined =>
-  db.prepare(`SELECT * FROM lookup_columns WHERE id = ? AND user_id = ? AND fill_status = 'failed'
-    AND instr(error_message, ?) > 0`).get(id, userId, IN_TRASH) as LookupColumnRow | undefined;
+// Inside the restoring transaction (after the sheets are live and
+// restartLookupsInto ran): every lookup whose fill failed because the sheet it
+// looks in was in the trash, and that can read it again, fills again from the
+// top, as "Look up again" would: those looking in these sheets, and those on
+// them whose other sheet is live. Not one that is broken for another reason.
+// Open tabs show them processing. Durable: the caller starts them after the
+// request (trash-restore-sheet.ts), and a restart before that resumes them as
+// it does every fill.
+export function lookupsFillAgain(sheetIds: string[], userId: string): LookupRefill[] {
+  const ids = JSON.stringify(sheetIds);
+  const refills = db.prepare(`UPDATE lookup_columns SET fill_status = 'filling', fill_cursor = 0, filled_rows = 0,
+      error_rows = 0, first_error = NULL, error_message = NULL, updated_at = datetime('now')
+    WHERE user_id = ? AND fill_status = 'failed' AND broken IS NULL AND substr(error_message, -?) = ?
+      AND (other_sheet_id IN (SELECT value FROM json_each(?)) OR sheet_id IN (SELECT value FROM json_each(?)))
+      AND EXISTS (SELECT 1 FROM sheets s WHERE s.id = lookup_columns.other_sheet_id AND s.user_id = ?
+        AND s.trash_id IS NULL)
+    RETURNING id, sheet_id`).all(userId, IN_TRASH.length, IN_TRASH, ids, ids, userId) as LookupRefill[];
+  db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+    WHERE id IN (SELECT value FROM json_each(?)) AND user_id = ?`)
+    .run(JSON.stringify([...new Set(refills.map(r => r.sheet_id))]), userId);
+  return refills;
+}
 
 // Gone for good: the message says so, and the keys of the sheet's looked-up
 // columns go (their own trigger purges them in slices) before its rows do,
