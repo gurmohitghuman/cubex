@@ -2,7 +2,7 @@
 // and stopping every run on a sheet (api-v1-run-control.ts, api-v1-run-undo.ts,
 // api-v1-sheet-ops.ts).
 import { z } from 'zod';
-import { HTTP_MAX_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { HTTP_MAX_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET, RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { MAX_AI_CONCURRENCY } from '../lib/constants-ai';
 import { AI_RERUN_MODES } from '../services/ai-rerun-modes';
 import { op, type RouteDoc } from './route-doc';
@@ -19,6 +19,8 @@ const firstRows = z.number().int().min(1).max(MAX_FIRST_ROWS)
 const modes = z.enum(AI_RERUN_MODES as [string, ...string[]]);
 const webhookId = z.string().optional().describe('A run webhook to tell when the new run finishes.');
 const spendLimit = z.number().positive().describe('Enrichment and waterfall runs only: the run limit in USD.');
+// An AI run's hard spend limit (lib/cost-ceiling.ts usdLimitOf).
+const aiSpendLimit = z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD);
 const rerun = { 202: 'The new run: its run_id and how many rows it takes.' };
 
 const controls = (): RouteDoc[] => RUN_KINDS.flatMap(({ prefix, name, what }) => [
@@ -29,6 +31,14 @@ const controls = (): RouteDoc[] => RUN_KINDS.flatMap(({ prefix, name, what }) =>
   op({
     method: 'post', path: `/${prefix}/{id}/resume`, operationId: `resume${name}Run`, tag: 'control', scope: 'run',
     summary: `Resume ${what}. Answers its status.`,
+    ...(prefix === 'ai-runs' ? {
+      body: z.object({
+        spend_limit_usd: aiSpendLimit.nullable().optional().describe('A higher hard spend limit in USD for a run '
+          + 'that paused at its own (pause_reason spend_limit). It must leave room for what the run spent, calls '
+          + 'cut off that may still be billed and the next row: a lower one is refused (400) with the least that '
+          + "lets it go on. Left out or null, the run keeps its limit."),
+      }),
+    } : {}),
     ...(prefix === 'http-runs' ? {
       body: z.object({
         spend_limit_usd: spendLimit.nullable().optional().describe('Enrichment and waterfall runs only: a new run '
@@ -67,6 +77,9 @@ export const runControlRoutes = (): RouteDoc[] => [
       concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
         .describe(`Rows at once, 1 to ${MAX_AI_CONCURRENCY}. Default: the run's own.`),
       webhook_id: webhookId,
+      spend_limit_usd: aiSpendLimit.optional().describe("The new run's hard spend limit in USD. Before each row "
+        + "it checks what the run spent, calls cut off and that row's most at the model's listed prices; with no "
+        + 'room left the run pauses (pause_reason spend_limit).'),
     }),
     responses: rerun,
   }),
