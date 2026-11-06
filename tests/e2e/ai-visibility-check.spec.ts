@@ -1,6 +1,6 @@
 import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi, makeAccessToken, BASE } from './helpers'
-import { freshTreg, rowsOf, waitRun } from './helpers-enrich'
+import { freshTreg, readDb, rowsOf, waitRun } from './helpers-enrich'
 import { mockTreg, setTregKey } from './helpers-treg'
 import { waitAdded } from './helpers-list'
 import { call, callError, mcpClient } from './helpers-mcp'
@@ -29,6 +29,13 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: str
     await new Promise(r => setTimeout(r, 300))
   }
 }
+
+// Rows still queued for one of the sheet's clean, formula or lookup columns to follow what was written in them
+// (services/derived-follow.ts). An answer and the rows it queues are written together, and so are a formula's
+// cell and the row leaving its queue: with none left, each of their cells is worked out from its row as it is.
+const unfollowed = (sheetId: string): number => readDb(db => db.prepare(`SELECT COUNT(*) FROM autorun_pending p
+  JOIN autorun_columns a ON a.id = p.autorun_id
+  WHERE a.sheet_id = ? AND a.enabled = 1 AND a.kind IN ('clean', 'formula', 'lookup')`).pluck().get(sheetId))
 
 // A table asked once, every formula filled. Named by follows each engine's answer as it lands, so it reads
 // "1 of 1" for a moment before "1 of 2": wait until it counts every engine asked, or a check started right
@@ -84,8 +91,13 @@ test('check again from the guide: the answers kept, the change since then', asyn
   const table = await (await api.get(`/api/tables/${v.tableId}`)).json()
   const sheets = table.sheets as Array<{ id: string; name: string }>
   expect(sheets.map(s => s.name)).toEqual(['Questions', `Questions ${day}`, 'Cited sites', `Cited sites ${day}`])
-  const now = await until(() => rowsOf(api, v.questionsSheetId),
-    r => r.every(x => x[`Change since ${day}`] === 'Up 1'), 'the change column')
+  // Change since says Up 1 once Gemini's new answer is in, but Named by follows the same answers on its own turn,
+  // so it can still count them as they were a moment ago ("3 of 3") or, having followed none yet, as before the
+  // check ("2 of 4"). Read the rows once every formula column has followed every answer written.
+  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => x[`Change since ${day}`] === 'Up 1'),
+    'the change column')
+  await until(async () => unfollowed(v.questionsSheetId), n => n === 0, 'the formula columns')
+  const now = await rowsOf(api, v.questionsSheetId)
   expect(now.map(r => [r['Named by'], r[`Named by on ${day}`]])).toEqual([['3 of 4', '2 of 4'], ['3 of 4', '2 of 4']])
   const kept = await rowsOf(api, sheets[1].id)
   expect(kept.map(r => r['Named by'])).toEqual(['2 of 4', '2 of 4'])
@@ -166,6 +178,9 @@ test('a check that can\'t ask stops, and the next one picks it up without copyin
   for (const r of done.check.runs) await waitRun(api, r.runId, ['completed'])
   const sheet = await (await api.get(`/api/sheets/${v.questionsSheetId}`)).json()
   expect(sheet.data.columns.filter((c: string) => c.startsWith('Change since'))).toEqual([`Change since ${day}`])
-  await until(() => rowsOf(api, v.questionsSheetId), r => r[0][`Change since ${day}`] === 'Same', 'the change')
+  // Change since read Same from the first answers when the stopped check added it: wait until it has followed
+  // the new ones.
+  await until(async () => unfollowed(v.questionsSheetId), n => n === 0, 'the formula columns')
+  expect((await rowsOf(api, v.questionsSheetId))[0][`Change since ${day}`]).toBe('Same')
   await api.dispose()
 })
