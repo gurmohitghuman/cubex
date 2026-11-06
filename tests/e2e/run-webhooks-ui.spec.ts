@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
-import { Receiver } from './helpers-receiver'
+import { Receiver, deleteRunWebhooks } from './helpers-receiver'
 
 // Settings, Run webhooks in the app: add one, its secret shown once, a test
 // notice delivered to a local receiver (tests/e2e/net-shim.cjs) and the log; a
@@ -14,13 +14,14 @@ test.beforeAll(async () => {
   await rx.start()
   rx.on('/ui-hook', { status: 200 })
 })
-test.afterAll(async () => { await rx.stop() })
+// The webhook it adds goes before its receiver does: left, it would send later specs' run notices to theirs.
+test.afterAll(async () => {
+  try { await deleteRunWebhooks(await authedApi()) } finally { await rx.stop() }
+})
 
 test('Settings, Run webhooks: add one, its secret shown once, a test, the log', async ({ page, context }) => {
   const api = await authedApi()
-  for (const h of (await (await api.get('/api/settings/run-webhooks')).json()).webhooks) {
-    await api.delete(`/api/settings/run-webhooks/${h.id}`)
-  }
+  await deleteRunWebhooks(api)
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/settings/run-webhooks`)
   await expect(page.getByRole('heading', { name: 'Run webhooks', exact: true })).toBeVisible()

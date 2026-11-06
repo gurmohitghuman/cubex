@@ -167,7 +167,7 @@ export async function renameSheetColumn(
       }
       forgetPurge(sheetId, trimmedNew);
       recordPurge(sheetId, userId, columnName);
-    })();
+    }).immediate();
     // A lookup looking here counts this column's fill ends, and its note names it, as it's called now.
     columnRenamedForLookups(sheetId, userId, columnName, trimmedNew);
     await finishColumnChange(sheetId, userId, columnName);

@@ -63,7 +63,7 @@ export function scheduleColumnRepair(sheetId: string, userId: string): void {
       appendColumnsToOrder(sheetId, userId, unlisted);
       // Open tabs re-read the sheet on a data_version change, so they show it too.
       db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
-    })();
+    }).immediate();
   };
   setImmediate(step);
 }

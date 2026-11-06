@@ -1,9 +1,8 @@
-// estimate_only (dry-run cost) for run_ai_column / run_http_enrichment. PURE
-// READ — no columns, placeholders, drafts, runs, or DB writes of any kind (risk
-// A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
-// AI (an honest low/high, "actual depends on usage"),
-// web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
-import { verifySheetOwnership } from '../lib/sql-helpers';
+// estimate_only (dry-run cost) for run_ai_column / run_http_enrichment. PURE READ — no columns,
+// placeholders, drafts, runs, or DB writes of any kind (risk A1: never call startAiRun/startHttpRun
+// from here). Returns a priced RANGE for AI (an honest low/high, "actual depends on usage"), web
+// search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -102,7 +101,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const instructionTokens = input.outputColumns
     ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
   const fixedTokens = sysTokens + instructionTokens;
-  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d)) + fixedTokens);
+  const columns = getSheetColumns(input.sheetId, userId, false);
+  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d, columns)) + fixedTokens);
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
@@ -125,9 +125,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
     : { low: avgInputTokens + extra.low, high: avgInputTokens + extra.high };
   const fees = usesWeb ? webFeesPerRow(w.work) : null;
 
-  // Pricing: stale cache is fine for a cost hint. Missing model / fetch failure
-  // -> pricing_available:false, cost null (never a hard error — the estimate is
-  // advisory).
+  // Pricing: stale cache is fine for a cost hint. Missing model / fetch failure ->
+  // pricing_available:false, cost null (never a hard error — the estimate is advisory).
   let pricingAvailable = false;
   let row: Range | null = null;
   if (model) {

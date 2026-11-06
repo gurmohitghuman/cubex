@@ -98,6 +98,17 @@ const MATCH_WORDS: Record<DedupeMatch, string> = {
   company: 'as a company name', person_name: "as a person's name",
 };
 
+// A new setting's row, its keys still to build (build_cursor starts at 0).
+// Returns its id. The caller holds the write txn and has dropped any old one.
+export function insertAutoDedupeSetting(
+  userId: string, sheetId: string, column: string, match: DedupeMatch, phoneCountry: string | null,
+  keep: AutoDedupeKeep,
+): number | bigint {
+  return db.prepare(`INSERT INTO auto_dedupe (user_id, sheet_id, column_name, path, match, phone_country, keep)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(userId, sheetId, column, jsonPath(column), match, phoneCountry, keep)
+    .lastInsertRowid;
+}
+
 // Turns it on, or changes it. A field left out keeps what the setting has
 // (a new setting: match text, keep oldest): phone_country too, while the
 // column and the match stay the same (null clears it).
@@ -140,9 +151,7 @@ export function setAutoDedupe(
       return;
     }
     if (now) db.prepare('DELETE FROM auto_dedupe WHERE id = ?').run(now.id);
-    const id = db.prepare(`INSERT INTO auto_dedupe (user_id, sheet_id, column_name, path, match, phone_country, keep)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(userId, sheetId, key.column, jsonPath(key.column), key.match, country, keep)
-      .lastInsertRowid;
+    const id = insertAutoDedupeSetting(userId, sheetId, key.column, key.match, country, keep);
     // Checks that were waiting are made under the new match once it is built;
     // on another column they go (its rows weren't checked on arrival either).
     if (now && now.column_name === key.column) {
