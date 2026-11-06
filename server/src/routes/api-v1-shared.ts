@@ -11,6 +11,7 @@ export function failResponse(res: express.Response, f: TxnFail) {
   const status =
     f.fail === 'locked' || f.fail === 'active_run' || f.fail === 'protected_columns' || f.fail === 'busy' ? 409
     : f.fail === 'not_found' ? 404
+    : f.fail === 'sheet_not_found' ? 404
     : 400;
   const body: Record<string, unknown> = { error: txnFailMessage(f, MAX_ROWS_PER_SHEET) };
   if (f.fail === 'unknown_columns') body.unknownColumns = f.columns;
