@@ -83,25 +83,28 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ apiKeys, reloadA
           ) : (
             <div className="space-y-3">
               {apiKeys.map((apiKey) => (
-                <div key={apiKey.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center space-x-3">
+                <div key={apiKey.id}
+                  className="flex items-center justify-between gap-3 p-4 border border-gray-200 rounded-lg">
+                  {/* min-w-0 + truncate: a long name (up to 200 characters, older ones longer) ends in an
+                      ellipsis inside the card instead of pushing the buttons off it. */}
+                  <div className="flex items-center space-x-3 min-w-0">
                     <div className="bg-gray-100 p-2 rounded-sm"><Key className="h-4 w-4 text-gray-600" /></div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center space-x-2">
-                        <span className="font-medium text-gray-900">{apiKey.name}</span>
-                        <span className={`px-2 py-1 text-xs ${
+                        <span className="font-medium text-gray-900 truncate" title={apiKey.name}>{apiKey.name}</span>
+                        <span className={`px-2 py-1 text-xs shrink-0 ${
                           apiKey.key_type === 'bearer' ? 'bg-cube-black text-white' :
                           apiKey.key_type === 'api_key' ? 'bg-white text-cube-black border border-cube-black' :
                           'bg-gray-100 text-cube-black'
                         }`}>{apiKey.key_type}</span>
                       </div>
                       {apiKey.description && <p className="text-sm text-gray-500">{apiKey.description}</p>}
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-400 truncate" title={`/${apiKey.name}`}>
                         Reference: <code className="bg-gray-100 px-1 rounded">/{apiKey.name}</code>
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 shrink-0">
                     <button onClick={() => setEditing(apiKey)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Edit API key">
                       <Edit3 className="h-4 w-4" />
                     </button>

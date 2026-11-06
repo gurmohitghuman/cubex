@@ -131,9 +131,12 @@ export const SavedKeysPicker: React.FC<Props> = ({
       )}
 
       {selectedKeyName && (
-        <p className="text-xs text-gray-500 flex items-center gap-1">
+        // A long name (up to 200 characters, older ones longer) ends in an ellipsis; the button stays in view.
+        <p className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
           <Key className="h-3 w-3" />
-          Using saved key: <span className="font-medium text-gray-700">{selectedKeyName}</span>
+          Using saved key: <span className="font-medium text-gray-700 truncate" title={selectedKeyName}>
+            {selectedKeyName}
+          </span>
           <button type="button" onClick={() => setSelectedKeyName('')} className="ml-2 underline">Use a different key</button>
         </p>
       )}

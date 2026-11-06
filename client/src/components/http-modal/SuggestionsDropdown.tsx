@@ -33,7 +33,10 @@ export const SuggestionsDropdown: React.FC<Props> = ({
             <button
               key={item.type === 'api_key' ? `key-${item.name}` : `col-${item.name}`}
               onClick={() => onSelect(item.reference)}
-              className={`w-full text-left px-3 py-2 text-sm ${idx === activeIndex ? 'bg-cube-black text-white' : 'hover:bg-gray-100'}`}
+              // truncate: a long saved key name (up to 200 characters) ends in an ellipsis on one line.
+              title={item.reference}
+              className={`w-full text-left px-3 py-2 text-sm truncate ${
+                idx === activeIndex ? 'bg-cube-black text-white' : 'hover:bg-gray-100'}`}
             >
               {item.type === 'api_key' ? (
                 <>

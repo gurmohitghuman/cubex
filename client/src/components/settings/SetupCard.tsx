@@ -35,7 +35,8 @@ export const SetupCard: React.FC<{
         </li>
       ))}
     </ol>
-    <p className="mt-2 text-xs text-gray-500">
+    {/* overflow-wrap: a long saved key name (up to 200 characters, no spaces) wraps inside the card. */}
+    <p className="mt-2 text-xs text-gray-500 [overflow-wrap:anywhere]">
       Needs {s.inputs.length ? s.inputs.join(', ') : 'no columns'}
       {s.keys.length > 0 && <> · Uses saved {s.keys.length === 1 ? 'key' : 'keys'} {s.keys.join(', ')}</>}
       {s.use_count > 0 && <> · Used {plural(s.use_count, 'time')}</>}
