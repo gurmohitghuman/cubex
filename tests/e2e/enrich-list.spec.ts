@@ -81,10 +81,13 @@ test('People at a company: test, pick the fields, add the rows, run the rest', a
   const dest = tables.sheets.find((s: { name: string }) => s.name === 'People')
   const people = await destRows(api, dest.id)
   expect(people).toHaveLength(28)
+  // A source row's people land when that row finishes, not in source order:
+  // Stripe's are found by the copied Website (its input as typed).
+  const stripe = people.filter(p => p.Website === 'https://stripe.com')
+  expect(stripe).toHaveLength(4)
   // The copied column (the mapped input) and the three kept fields, under their names.
-  expect(Object.keys(people[0]).sort()).toEqual(['Employee LinkedIn', 'First name', 'Title', 'Website'])
-  expect(people[0].Website).toBe('https://stripe.com')
-  expect(people[0]['First name']).toBe('Ada')
+  expect(Object.keys(stripe[0]).sort()).toEqual(['Employee LinkedIn', 'First name', 'Title', 'Website'])
+  expect(stripe[0]['First name']).toBe('Ada')
 })
 
 test('the destination waits while rows are added; its tab shows a dot', async ({ page, context }) => {
