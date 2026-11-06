@@ -23,7 +23,9 @@ const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { sheetBusyWith } = busyMod as typeof import('../../server/src/lib/sheet-busy')
 
 const SENT = 0, BLOCKED = 1, LOCKED = 2, COMMITTED = 3
-const ANSWER_MS = 10_000
+// This thread waits ANSWER_MS for the rival's answer, the rival LOCK_WAIT_MS for the write lock, and settled()
+// SETTLE_MS for the rival's commit: longer, so a rival that gave up fails the test with its own error.
+const ANSWER_MS = 10_000, LOCK_WAIT_MS = 10_000, SETTLE_MS = 15_000
 
 const RIVAL = `
 const { parentPort, workerData } = require('node:worker_threads')
@@ -37,7 +39,7 @@ parentPort.on('message', hold => {
   try { db.exec('BEGIN IMMEDIATE') } catch (e) {
     if (e.code !== 'SQLITE_BUSY') throw e
     tell(${BLOCKED})
-    db.pragma('busy_timeout = 10000')
+    db.pragma('busy_timeout = ${LOCK_WAIT_MS}')
     db.exec('BEGIN IMMEDIATE')
   }
   insert.run()
@@ -61,13 +63,19 @@ export async function rivalKit() {
   Atomics.store(state, 0, COMMITTED)
   const driver = createRequire(import.meta.url).resolve('better-sqlite3')
   const worker = new Worker(RIVAL, { eval: true, workerData: { path: db.name, driver, state: state.buffer } })
+  // A rival that errors or exits (its wait for the write lock ran out, say) fails the test instead of hanging it.
+  // (A SQLite error reaches this thread as a plain object holding only its code.)
+  let dead: string | null = null
   await new Promise<void>((resolve, reject) => {
     worker.once('message', () => resolve())
-    worker.once('error', reject)
+    worker.on('error', e => { dead ??= (e as { code?: string }).code ?? String(e); reject(new Error(dead!)) })
+    worker.on('exit', code => { dead ??= `it exited with code ${code}`; reject(new Error(dead)) })
   })
+  const alive = () => { if (dead) assert.fail(`the rival connection is gone: ${dead}`) }
   let armed: { when: Trigger; shot: Shot } | null = null
 
   const fire = (hold: number): Shot['outcome'] => {
+    alive()
     Atomics.store(state, 0, SENT)
     worker.postMessage(hold)
     const until = Date.now() + ANSWER_MS
@@ -109,7 +117,12 @@ export async function rivalKit() {
     disarm() { armed = null },
     // Until the rival's last write is in (it may be waiting for this thread).
     async settled() {
-      while (Atomics.load(state, 0) !== COMMITTED) await new Promise(r => setTimeout(r, 5))
+      const until = Date.now() + SETTLE_MS
+      while (Atomics.load(state, 0) !== COMMITTED) {
+        alive()
+        assert.ok(Date.now() < until, `the rival connection didn't commit within ${SETTLE_MS} ms`)
+        await new Promise(r => setTimeout(r, 5))
+      }
     },
     writes,
     stop: () => worker.terminate(),

@@ -86,7 +86,8 @@ await ok("a CSV replace whose last step meets another connection's commit still 
 
 await ok("an append import meeting another connection's commit still lands", async () => {
   const S = sheet(['Email'], [{ Email: 'p@x.com' }, { Email: 'q@x.com' }])
-  const shot = rival.arm({ inTx: true })
+  // Its first read: whether the sheet is still a new one's blank starter rows.
+  const shot = rival.arm({ inTx: true, sql: /^SELECT column_order FROM sheets WHERE id = \? AND user_id = \?$/ })
   const out = await attempt(async () => importCsv(S, uid, await scanCsvText('Email\nr@x.com\n'), false))
   await idle(S)
   await rival.settled()

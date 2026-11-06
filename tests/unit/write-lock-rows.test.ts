@@ -35,10 +35,12 @@ const emails = (...list: string[]) => list.map(Email => ({ Email }))
 const ids = (s: string) => db.prepare('SELECT id FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck()
   .all(s) as string[]
 const threw = (out: object) => ('threw' in out ? `failed with ${(out as { threw: string }).threw}` : '')
+// Each trigger fires on its target transaction's first read, so a transaction before it can't take the shot.
+const columnList = /^SELECT column_order FROM sheets WHERE id = \? AND user_id = \?$/
 
 await ok("append_rows meeting another connection's commit adds its rows", async () => {
   const S = sheet(['Email'], emails('a@x.com'))
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: columnList })
   const out = await attempt(() => appendRows(S, uid, emails('b@x.com', 'c@x.com')))
   await rival.settled()
   assert.ok('value' in out && 'ok' in out.value, `append_rows ${threw(out)}`)
@@ -48,7 +50,7 @@ await ok("append_rows meeting another connection's commit adds its rows", async 
 
 await ok("delete_rows meeting another connection's commit deletes its rows", async () => {
   const S = sheet(['Email'], emails('a@x.com', 'b@x.com', 'c@x.com'))
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: /^SELECT 1 FROM ai_runs WHERE sheet_id = \? AND user_id = \? AND status/ })
   const out = await attempt(() => deleteRowsByIds(S, uid, ids(S).slice(0, 2)))
   await rival.settled()
   assert.ok('value' in out && 'ok' in out.value, `delete_rows ${threw(out)}`)
@@ -83,7 +85,7 @@ await ok("removing duplicates meeting another connection's commit removes them",
 
 await ok("a new webhook meeting another connection's commit gets its column", async () => {
   const S = sheet(['Email'], emails('a@x.com'))
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: columnList })
   const out = await attempt(() => createSourceWithColumn(S, uid, 'Signups'))
   await rival.settled()
   assert.ok('value' in out, `the webhook ${threw(out)}`)
@@ -92,7 +94,7 @@ await ok("a new webhook meeting another connection's commit gets its column", as
 })
 
 await ok("saving a pasted cURL command's keys meeting another connection's commit saves them", async () => {
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: /^SELECT name, key_value_encrypted FROM api_keys WHERE user_id = \?/ })
   const out = await attempt(() => saveImportedKeys(uid, [], [
     { name: 'SERVICE_TOKEN', value: 'v-123', key_type: 'bearer', description: '' },
   ]))
@@ -104,7 +106,7 @@ await ok("saving a pasted cURL command's keys meeting another connection's commi
 
 await ok("the column registry's repair meeting another connection's commit lists the column", async () => {
   const S = sheet(['Email'], [{ Email: 'a@x.com', Ghost: 'g' }])
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: columnList })
   scheduleColumnRepair(S, uid)
   const until = Date.now() + 2_000
   while (!order(S).includes('Ghost') && Date.now() < until) await new Promise(r => setTimeout(r, 5))
@@ -119,7 +121,7 @@ await ok("deleting rows in the grid meeting another connection's commit deletes 
   const rowGeneration = db.prepare('SELECT row_generation FROM sheets WHERE id = ?').pluck().get(S)
   const res = { code: 200, body: null as unknown,
     status(c: number) { this.code = c; return this }, json(b: unknown) { this.body = b; return this } }
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: /^SELECT table_id, column_order, row_generation FROM sheets WHERE id/ })
   bulkDelete({ params: { id: S }, body: { rowIndices: [0, 2], rowGeneration }, userId: uid }, res)
   await rival.settled()
   assert.equal(res.code, 200, `the delete answered ${res.code} ${JSON.stringify(res.body)}`)
@@ -130,7 +132,7 @@ await ok("deleting rows in the grid meeting another connection's commit deletes 
 // Last: it needs a fresh install, so the account (and all of the above) goes.
 await ok("first-run setup meeting another connection's commit creates the account", async () => {
   db.prepare('DELETE FROM users').run()
-  const shot = rival.arm({ inTx: true })
+  const shot = rival.arm({ inTx: true, sql: /^SELECT 1 FROM users LIMIT 1$/ })
   const out = await attempt(() => createAccount('not-a-real-hash'))
   await rival.settled()
   assert.ok('value' in out && typeof out.value === 'string', `setup ${threw(out)}`)
