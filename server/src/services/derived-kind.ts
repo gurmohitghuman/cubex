@@ -40,7 +40,10 @@ export interface DerivedPass {
   dispose(): void;
 }
 
-export interface DerivedWait { note: string; ready: () => boolean }
+// note: what it waits for (the column's view says so). ready(): it can go on;
+// looked at every pollMs (default LOOKUP_WAIT_POLL_MS), and at once when a fill
+// on the wakeOn sheet ends (derived-fill-wait.ts).
+export interface DerivedWait { note: string; ready: () => boolean; wakeOn?: string; pollMs?: number }
 
 // What a pass is for: a fill goes until done; auto-run's tick and a preview are short.
 export type DerivedUse = 'fill' | 'follow' | 'preview';

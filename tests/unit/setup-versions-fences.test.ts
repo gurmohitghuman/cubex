@@ -120,6 +120,8 @@ await check('a clean, formula or lookup column still filling refuses a restore, 
     const out = await restore(B, v)
     assert.ok('fail' in out && out.fail === 'conflict', JSON.stringify(out))
     assert.match(out.message, new RegExp(`^"${column}" is still being filled`))
+    assert.equal(out.message, `"${column}" is still being filled (a lookup's fill may be waiting for the sheet it `
+      + 'looks in or a column there). Let it finish, then restore.')
     db.prepare(`UPDATE ${table} SET fill_status = 'done' WHERE sheet_id = ?`).run(B)
   }
   const dry = await restore(B, v, true)
