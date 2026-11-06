@@ -1,45 +1,101 @@
 // A lookup's fill and the columns it reads in the other sheet that something
-// is filling. A run (not a paused one) it waits for, then goes on where it
-// was. A fill there (a clean, formula or lookup column, or answers added as a
-// column) it waits for too, then looks every row up again from the first if
-// it had written some, so every row comes from one version of those values
-// (lookups are free: that costs only time). The wait is durable: the record
-// stays filling, and a restart resumes the fill, which waits again or goes on.
-// It goes on as soon as a fill there ends (derived-fill-wait.ts wakeOn).
-// Lookups that would wait for each other in a loop (each reads a column the
-// next one fills, back to the first) never could: they all fail, naming each
-// column and sheet, and start refuses to close such a loop.
+// is filling: a run (not a paused one), or a fill there (a clean, formula or
+// lookup column, or stored answers added as a column). It waits for either,
+// and looks every row up again from the first if it had written some, so
+// every row comes from one version of those values (lookups are free: that
+// costs only time): when it starts waiting, and when it would go on after
+// something it didn't see started and ended (lookup-fill-changes.ts). The one
+// exception is a run auto-run started for a batch of rows: a sheet fed by
+// webhooks starts one per batch, and starting over after each could never
+// finish, so after one it goes on where it was. The wait is durable: the
+// record stays filling, and a restart resumes the fill, which waits again or
+// goes on. It goes on as soon as a fill there ends (derived-fill-wait.ts
+// wakeOn). Lookups that would wait for each other in a loop (each reads a
+// column the next one fills, back to the first) never could: they all fail,
+// naming each column and sheet, and start refuses to close such a loop.
 import { db } from '../lib/db';
 import { LOOKUP_FILL_WAIT_POLL_MS } from '../lib/constants';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
 import { fillingColumns } from '../lib/field-fill-columns';
-import { loadLookupColumn, lookupReturnColumns, type LookupColumnRow } from '../lib/lookup-columns';
+import { getSheetColumns } from '../lib/sql-helpers';
+import {
+  loadLookupColumn, lookupReturnColumns, type LookupColumnRow, type LookupReturns,
+} from '../lib/lookup-columns';
 import type { DerivedWait } from './derived-kind';
-import { wakeFillsWaitingOn } from './derived-fill-wait';
+import { fillEnded } from './derived-fill-wait';
+import { readsChangedUnseen } from './lookup-fill-changes';
 
-// The other sheet's columns a lookup reads: the one it matches and the ones it returns.
-export const lookupReads = (rec: Pick<LookupColumnRow, 'match_column' | 'return_columns'>): string[] =>
-  [rec.match_column, ...(lookupReturnColumns(rec) ?? [])];
+type ReadsRec = Pick<LookupColumnRow, 'match_column' | 'returns' | 'return_columns' | 'other_sheet_id' | 'user_id'>;
 
-// A column it reads that something is filling now: a run, or a fill. Not a paused run: one can stay
-// paused for days, so a fill doesn't wait for it (a waterfall's lookup step doesn't).
-export function readsFilling(rec: LookupColumnRow): { column: string; byRun: boolean } | null {
-  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false });
-  const fills = new Set(fillingColumns(rec.other_sheet_id, rec.user_id));
-  for (const c of lookupReads(rec)) {
-    if (runs.has(c)) return { column: c, byRun: true };
-    if (fills.has(c)) return { column: c, byRun: false };
+// The other sheet's columns a lookup reads: the one it matches and the ones it returns (a list of
+// every column: each of them).
+export function readsOf(
+  match: string, returns: LookupReturns, returned: string[] | null, otherSheetId: string, userId: string,
+): string[] {
+  if (returns === 'list' && returned === null) {
+    return [...new Set([match, ...getSheetColumns(otherSheetId, userId, false)])];
   }
-  return null;
+  return [match, ...(returned ?? [])];
+}
+export const lookupReads = (rec: ReadsRec): string[] =>
+  readsOf(rec.match_column, rec.returns, lookupReturnColumns(rec), rec.other_sheet_id, rec.user_id);
+
+// Whether it reads this column of the other sheet (a list of every column: also one being added).
+function readsColumn(rec: ReadsRec, column: string): boolean {
+  const returned = lookupReturnColumns(rec);
+  return rec.match_column === column || (rec.returns === 'list' && returned === null) || !!returned?.includes(column);
+}
+
+// A column it reads that something is filling now: a run (batch: only auto-run's batch runs hold it), or a
+// fill. Not a paused run: one can stay paused for days, so a fill doesn't wait for it (a waterfall's lookup
+// step doesn't).
+export function readsFilling(
+  rec: LookupColumnRow, reads = lookupReads(rec),
+): { column: string; byRun: boolean; batch: boolean } | null {
+  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false });
+  if (runs.size > 0) {
+    const others = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false, autorun: false });
+    const column = reads.find(c => others.has(c)) ?? reads.find(c => runs.has(c));
+    if (column) return { column, byRun: true, batch: !others.has(column) };
+  }
+  const fills = new Set(fillingColumns(rec.other_sheet_id, rec.user_id));
+  const column = reads.find(c => fills.has(c));
+  return column ? { column, byRun: false, batch: false } : null;
+}
+
+// A fill's look at what it reads (lookup-kind.ts), the other sheet free to read: null when it can go on,
+// else what it waits for, or why it fails (a loop). name(): the other sheet's name now.
+export function fillHold(
+  rec: LookupColumnRow, name: () => string,
+): { wait: DerivedWait } | { failed: string } | null {
+  const reads = lookupReads(rec);
+  const filling = readsFilling(rec, reads);
+  if (filling?.byRun) {
+    if (!filling.batch) startOver(rec);
+    return { wait: {
+      note: `Waiting for a run to finish filling "${filling.column}" in "${name()}".`,
+      ready: () => !readsFilling(loadLookupColumn(rec.id) ?? rec)?.byRun,
+    } };
+  }
+  if (filling) {
+    const loop = lookupWaitLoop(nodeOf(rec, reads));
+    if (loop) return { failed: failLookupLoop(rec, loop) };
+    startOver(rec);
+    return { wait: fillWait(rec, filling.column, name()) };
+  }
+  if (!readsChangedUnseen(rec, reads)) return null;
+  // Its cursor is back at the first row: the fill takes its sheet again and starts there.
+  startOver(rec);
+  return { wait: { note: `Looks every row up again: what it reads in "${name()}" changed.`, ready: () => true,
+    pollMs: 0 } };
 }
 
 // A lookup as the loop check sees it (start: id null for one not saved yet).
 export interface LookupNode {
   id: string | null; userId: string; sheetId: string; column: string; otherSheetId: string; reads: string[];
 }
-export const nodeOf = (r: LookupColumnRow): LookupNode => ({
-  id: r.id, userId: r.user_id, sheetId: r.sheet_id, column: r.column_name, otherSheetId: r.other_sheet_id,
-  reads: lookupReads(r),
+export const nodeOf = (r: LookupColumnRow, reads = lookupReads(r)): LookupNode => ({
+  id: r.id, userId: r.user_id, sheetId: r.sheet_id, column: r.column_name, otherSheetId: r.other_sheet_id, reads,
 });
 
 // Lookups filling one of these columns of a sheet (a broken one stops at its next look: it isn't a wait).
@@ -57,7 +113,7 @@ export function lookupWaitLoop(from: LookupNode): LookupColumnRow[] | null {
       if (seen.has(next.id)) continue;
       seen.add(next.id);
       const loop = [...path, next];
-      if (next.other_sheet_id === from.sheetId && lookupReads(next).includes(from.column)) return loop;
+      if (next.other_sheet_id === from.sheetId && readsColumn(next, from.column)) return loop;
       const found = walk(nodeOf(next), loop);
       if (found) return found;
     }
@@ -75,7 +131,7 @@ const sheetName = (sheetId: string, userId: string): string =>
 // '"A" in "S1" waits for "B" in "S2" to finish filling, "B" in "S2" for "C" in "S3", and "C" in "S3" for "A" in "S1"'
 function loopWords(loop: Named[], verb: string): string {
   const first = `${at(loop[0])} ${verb} for ${at(loop[1])} to finish filling`;
-  if (loop.length === 2) return `${first}, and ${at(loop[1])} waits for ${at(loop[0])}`;
+  if (loop.length === 2) return `${first}, and ${at(loop[1])} ${verb} for ${at(loop[0])}`;
   const rest = loop.slice(1).map((n, i) => `${at(n)} for ${at(loop[(i + 2) % loop.length])}`);
   return `${first}, ${rest.slice(0, -1).join(', ')}, and ${rest[rest.length - 1]}`;
 }
@@ -98,25 +154,26 @@ export function failLookupLoop(rec: LookupColumnRow, others: LookupColumnRow[]):
   const told = (i: number) => `${loopWords([...loop.slice(i), ...loop.slice(0, i)], 'waits')}: `
     + `${loop.length === 2 ? 'neither' : 'none of them'} can finish. Look them up again one at a time.`;
   const fail = db.prepare(`UPDATE lookup_columns SET fill_status = 'failed', error_message = ?,
-    updated_at = datetime('now') WHERE id = ? AND fill_status = 'filling'`);
+    updated_at = datetime('now') WHERE id = ? AND user_id = ? AND fill_status = 'filling'`);
   const reload = db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
     WHERE id = ? AND user_id = ?`);
-  const ended: string[] = [];
+  const ended: typeof loop = [];
   db.transaction(() => {
     loop.forEach((l, i) => {
-      if (i > 0 && fail.run(told(i), l.id).changes > 0) { reload.run(l.sheetId, l.userId); ended.push(l.sheetId); }
+      if (i > 0 && fail.run(told(i), l.id, l.userId).changes > 0) { reload.run(l.sheetId, l.userId); ended.push(l); }
     });
   }).immediate();
-  setImmediate(() => { for (const s of ended) wakeFillsWaitingOn(s); });
+  // Their fills ended: counted (a lookup reading one of their columns starts over), and the fills waiting look.
+  for (const l of ended) fillEnded(l.sheetId, l.column);
   return told(0);
 }
 
-// Rows it wrote before a column it reads started filling came from the values before: once it goes
+// Rows it wrote before a column it reads started changing came from the values before: once it goes
 // on, the fill looks every row up again from the first (the cursor is the record's, so a restart does too).
 export function startOver(rec: LookupColumnRow): void {
   db.prepare(`UPDATE lookup_columns SET fill_cursor = 0, filled_rows = 0, error_rows = 0, first_error = NULL,
       updated_at = datetime('now')
-    WHERE id = ? AND fill_status = 'filling' AND fill_cursor > 0`).run(rec.id);
+    WHERE id = ? AND user_id = ? AND fill_status = 'filling' AND fill_cursor > 0`).run(rec.id, rec.user_id);
 }
 
 // The wait for a fill of a column it reads. Ready once no fill holds what it reads (a run there it

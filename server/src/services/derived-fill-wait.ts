@@ -56,3 +56,16 @@ export function waitThenGoOn(id: string, w: Omit<Waiter, 'timer'>): void {
 export function wakeFillsWaitingOn(sheetId: string): void {
   for (const [id, w] of waiters) if (w.wait.wakeOn === sheetId) lookIn(id, w, 0);
 }
+
+// Fills of each column that ended in this process (sheet, column), done or
+// failed: a lookup reading that column tells from them whether one started
+// and ended while it wasn't looking (lookup-fill-changes.ts).
+const ended = new Map<string, number>();
+const endKey = (sheetId: string, column: string) => `${sheetId}\u0000${column}`;
+export const fillsEnded = (sheetId: string, column: string): number => ended.get(endKey(sheetId, column)) ?? 0;
+
+// A fill of this column ended: counted, and the fills waiting for one on its sheet look now.
+export function fillEnded(sheetId: string, column: string): void {
+  ended.set(endKey(sheetId, column), fillsEnded(sheetId, column) + 1);
+  wakeFillsWaitingOn(sheetId);
+}

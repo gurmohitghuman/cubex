@@ -2,21 +2,27 @@
 // next one is filling, back to the first) fail, each saying which columns of
 // which sheets, instead of waiting forever: two of them, three, and one held
 // before its fill (as when it waits for its sheet) while the other, which
-// reads it, looks. Looked up again one at a time, they fill. Starting one that
-// would wait for a fill that itself waits for it is refused, and that one goes
-// on.
+// reads it, looks (its end is counted for its column, as a fill's is).
+// Looked up again one at a time, they fill. Starting one that would wait for
+// a fill that itself waits for it is refused, and that one goes on. The
+// updates touch only the lookup's own user's record.
 import assert from 'node:assert/strict'
 import { lookupWaitKit } from './lookup-wait-kit'
 import colMod from '../../server/src/services/lookup-column'
 import fillMod from '../../server/src/services/derived-fill'
 import kindMod from '../../server/src/services/lookup-kind'
 import busyMod from '../../server/src/lib/sheet-busy'
+import waitMod from '../../server/src/services/derived-fill-wait'
+import fillWaitMod from '../../server/src/services/lookup-fill-wait'
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
+const { fillsEnded } = waitMod as typeof import('../../server/src/services/derived-fill-wait')
+const { failLookupLoop, startOver } = fillWaitMod as typeof import('../../server/src/services/lookup-fill-wait')
 const { runDerivedFill } = fillMod as typeof import('../../server/src/services/derived-fill')
 const { lookupKind, LOOKUP_FILLING } = kindMod as typeof import('../../server/src/services/lookup-kind')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
 const k = lookupWaitKit('lookup-fill-loops')
-const { uid, ok, done, idle, place, cells, statusOf, until, lookup, sheetName, fillingFrom, resumeLookups, rec } = k
+const { db, uid, ok, done, idle, place, cells, statusOf, until, lookup, sheetName, fillingFrom, resumeLookups, rec,
+  rowids } = k
 console.error = () => {}
 
 const input = (column: string, other: string, returnColumn: string) => ({
@@ -82,8 +88,10 @@ await ok("a lookup whose fill is held while the one reading it looks: both fail,
     // L0's fill can't start yet (its sheet is taken); L1, reading L0, looks first.
     let release!: () => void
     const held = withSheetBusy(s[0], LOOKUP_FILLING, () => new Promise<void>(r => { release = r }))
+    const ended = fillsEnded(s[0], cols[0])
     void withSheetBusy(s[1], LOOKUP_FILLING, () => runDerivedFill(lookupKind, ids[1]))
     await until('both fail', () => ids.every(id => rec(id)!.fill_status === 'failed'))
+    assert.equal(fillsEnded(s[0], cols[0]), ended + 1, "the held one's fill ended: a lookup reading it can tell")
     release()
     await held
     await withSheetBusy(s[0], LOOKUP_FILLING, () => runDerivedFill(lookupKind, ids[0]))
@@ -99,7 +107,7 @@ await ok('looking up again one that would wait for a fill that itself waits for 
     const out = await startLookupColumn(uid, s[0], input(cols[0], s[1], cols[1]))
     assert.ok('fail' in out && out.fail === 'conflict', JSON.stringify(out))
     assert.equal(out.message, `${at(s[0], cols[0])} would wait for ${at(s[1], cols[1])} to finish filling, and `
-      + `${at(s[1], cols[1])} waits for ${at(s[0], cols[0])}: neither could finish. `
+      + `${at(s[1], cols[1])} would wait for ${at(s[0], cols[0])}: neither could finish. `
       + `Look up once ${at(s[1], cols[1])} is done.`)
     assert.equal(rec(ids[0])!.fill_status, 'done', 'nothing changed')
     resumeLookups()
@@ -110,5 +118,19 @@ await ok('looking up again one that would wait for a fill that itself waits for 
     await until('L0 is done', () => statusOf(s[0], cols[0]) === 'done')
     await idle(s[0])
   })
+
+await ok("starting over and failing in a loop touch only the lookup's own user's record", async () => {
+  const s = [place().sid, place().sid]
+  const id = await lookup(s[0], s[1], 'Who', 'value', 'Name')
+  fillingFrom(id, rowids(s[0])[1], 2)
+  const r = rec(id)!, other = { ...r, user_id: 'someone else' }
+  startOver(other)
+  assert.equal(rec(id)!.fill_cursor, rowids(s[0])[1])
+  failLookupLoop(other, [other])
+  assert.equal(rec(id)!.fill_status, 'filling')
+  startOver(r)
+  assert.equal(rec(id)!.fill_cursor, 0)
+  db.prepare("UPDATE lookup_columns SET fill_status = 'done' WHERE id = ?").run(id)
+})
 
 done()

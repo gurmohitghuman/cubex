@@ -25,7 +25,7 @@ import {
 import { runDerivedFill } from './derived-fill';
 import { setDerivedAutorun } from './derived-autorun';
 import { LOOKUP_FILLING, lookupKind } from './lookup-kind';
-import { lookupWaitLoop, startLoopMessage, type LookupNode } from './lookup-fill-wait';
+import { lookupWaitLoop, readsOf, startLoopMessage, type LookupNode } from './lookup-fill-wait';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
 import type { RunFail } from './run-shared';
 import { logSheetChange } from '../lib/change-log';
@@ -155,17 +155,18 @@ function placeProblem(sheetId: string, userId: string, s: LookupSetup, columns: 
   return null;
 }
 
-// A column it reads in the other sheet that a run is writing now, or lookups
-// filling there that would wait for this one in a loop. A fill there writing a
-// column it reads isn't refused: the lookup's fill waits for it (lookup-fill-wait.ts).
+// A column it reads in the other sheet that a run is writing now (a list of
+// every column: its match column only), or lookups filling there that would
+// wait for this one in a loop. A fill there writing a column it reads isn't
+// refused: the lookup's fill waits for it (lookup-fill-wait.ts).
 function otherStillFilling(userId: string, sheetId: string, s: LookupSetup): RunFail | null {
-  const reads = [s.matchColumn, ...(s.returnColumns ?? [])];
   const runs = getLockedRunColumns(s.otherSheetId, userId, { paused: false });
-  const byRun = reads.find(c => runs.has(c));
+  const byRun = [s.matchColumn, ...(s.returnColumns ?? [])].find(c => runs.has(c));
   if (byRun) {
     const message = `"${byRun}" in "${s.otherName}" is still being filled. Look up once it's done.`;
     return { fail: 'conflict', message };
   }
+  const reads = readsOf(s.matchColumn, s.returns, s.returnColumns, s.otherSheetId, userId);
   const from: LookupNode = {
     id: s.existing?.id ?? null, userId, sheetId, column: s.column!, otherSheetId: s.otherSheetId, reads,
   };

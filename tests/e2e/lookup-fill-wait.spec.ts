@@ -8,10 +8,10 @@ import { seedLookupSheets } from './helpers-lookup'
 // the formula is done. Nobody clicks "Look up every row again".
 
 // Blank rows under Companies (added 1,000 at a time, the most one request adds), each taking the
-// formula 15 ms (under its per-row limit), so its fill (about 45 s) outlasts REST's 10 s answer and
-// the page's check by far.
-const SLOW_BATCHES = 3
-const FORMULA = '(() => { const t = Date.now() + 15; while (Date.now() < t) {} '
+// formula 4 to 5 ms (a tenth of its 50 ms per-row limit, so a loaded machine doesn't fail the fill), so
+// its fill (at least 48 s) outlasts REST's 10 s answer and the page's check by far.
+const SLOW_BATCHES = 12
+const FORMULA = '(() => { const t = Date.now() + 5; while (Date.now() < t) {} '
   + 'return {{Industry}} ? {{Industry}} + "!" : "" })()'
 const NOTE = 'Waits for "Sector" in "Companies" to finish filling.'
 

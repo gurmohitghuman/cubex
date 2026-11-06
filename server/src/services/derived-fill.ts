@@ -25,7 +25,7 @@ import { redactSecrets } from '../lib/redact';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import type { DerivedKind, DerivedRecord, DerivedWait } from './derived-kind';
 import { parkFill } from './derived-fill-parked';
-import { waitThenGoOn, wakeFillsWaitingOn } from './derived-fill-wait';
+import { fillEnded, waitThenGoOn } from './derived-fill-wait';
 import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
 
 const FILL_ATTEMPTS = 5;
@@ -111,7 +111,7 @@ function finishFill<R extends DerivedRecord>(
     db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
   }).immediate();
-  wakeFillsWaitingOn(job.sheet_id);
+  fillEnded(job.sheet_id, job.column_name);
 }
 
 export { derivedFillWait } from './derived-fill-wait';

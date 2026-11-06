@@ -8,11 +8,12 @@
 // sheet as it is when the row is written. The pass also waits (derived-fill.ts
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
 // rewriting a column, and, for a fill, while a run (not a paused one) or a
-// fill there is filling a column it reads (lookup-fill-wait.ts: after a fill
-// it starts over from the first row if it had written some). A lookup whose
-// other sheet or column is gone (`broken`), whose source column isn't in this
-// sheet any more, or that would wait in a loop of lookups waiting for each
-// other, stops the pass with that message.
+// fill there is filling a column it reads; a fill with rows written starts
+// over from the first row after one, or after one it didn't see
+// (lookup-fill-wait.ts fillHold). A lookup whose other sheet or column is
+// gone (`broken`), whose source column isn't in this sheet any more, or that
+// would wait in a loop of lookups waiting for each other, stops the pass with
+// that message.
 import { db } from '../lib/db';
 import {
   DERIVED_SLICE_CHARS, LOOKUP_CACHE_ENTRIES, LOOKUP_FOLLOW_MAINTAIN_MS, LOOKUP_STEP_ROUND_MS, LOOKUP_STEP_ROWS,
@@ -31,7 +32,8 @@ import { LOOKUP_FILLING, lookupSheetBlocked } from './lookup-blocked';
 import { keepMaintaining, maintainLookupInBackground } from './lookup-host';
 import { matchContains, matchEquals, type LookupMatches } from './lookup-probe';
 import { lookupAnswer, lookupNeed, type LookupAsk } from './lookup-answer';
-import { failLookupLoop, fillWait, lookupWaitLoop, nodeOf, readsFilling, startOver } from './lookup-fill-wait';
+import { fillHold } from './lookup-fill-wait';
+import { advancedTo } from './lookup-fill-changes';
 
 export { LOOKUP_FILLING };
 export { lookupReads, readsFilling } from './lookup-fill-wait';
@@ -74,24 +76,10 @@ function openLookupPass(first: LookupColumnRow, use: DerivedUse): DerivedPass {
     const blocked = lookupSheetBlocked(other);
     if (blocked) { wait = blockedWait(blocked); return false; }
     if (use !== 'fill') return true;
-    const filling = readsFilling(rec);
-    if (filling?.byRun) {
-      wait = {
-        note: `Waiting for a run to finish filling "${filling.column}" in "${name()}".`,
-        ready: () => !readsFilling(loadLookupColumn(first.id) ?? rec)?.byRun,
-      };
-      return false;
-    }
-    if (filling) {
-      const loop = lookupWaitLoop(nodeOf(rec));
-      if (loop) failed = failLookupLoop(rec, loop);
-      else {
-        startOver(rec);
-        wait = fillWait(rec, filling.column, name());
-      }
-      return false;
-    }
-    return true;
+    const held = fillHold(rec, name);
+    if (held && 'failed' in held) failed = held.failed;
+    else if (held) wait = held.wait;
+    return !held;
   }
 
   return {
@@ -193,5 +181,6 @@ export const lookupKind: DerivedKind<LookupColumnRow> = {
       error_rows = error_rows + ?, first_error = COALESCE(first_error, ?), updated_at = datetime('now')
       WHERE id = ? AND user_id = ? AND fill_status = 'filling'`)
       .run(cursor, counts.filled, counts.flagged, counts.firstFlag, rec.id, rec.user_id);
+    advancedTo(rec.id, cursor);
   },
 };

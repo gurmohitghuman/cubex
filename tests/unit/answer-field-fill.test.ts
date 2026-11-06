@@ -2,12 +2,15 @@
 // throwaway DB: the new column is linked to every run of the status column,
 // each row takes the newest run that answered it (completed or failed; a
 // pending result leaves it to an older run), rows no run answered stay empty,
-// and a fill resumed from its saved cursor ends the same way.
+// a fill resumed from its saved cursor ends the same way, and its end is
+// counted for the column.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import fillMod from '../../server/src/services/answer-field-fill'
+import waitMod from '../../server/src/services/derived-fill-wait'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
+const { fillsEnded } = waitMod as typeof import('../../server/src/services/derived-fill-wait')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { runFieldJob } = fillMod as typeof import('../../server/src/services/answer-field-fill')
 
@@ -72,6 +75,8 @@ async function main() {
   const done = db.prepare('SELECT status, stage FROM enrichment_field_jobs WHERE id = ?').get(first) as
     { status: string; stage: string }
   check('the job is done', done.status === 'done' && done.stage === 'fill')
+  // A lookup reading the column tells from this that it filled (lookup-fill-changes.ts).
+  check('its end is counted for the column', fillsEnded(sheetId, 'Title') === 1)
 
   // A restart after the newest run was filled: the rest goes on from the cursor.
   db.prepare(`UPDATE rows SET data = json_remove(data, '$.Title') WHERE sheet_id = ?`).run(sheetId)

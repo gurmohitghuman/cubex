@@ -1,9 +1,12 @@
 // Shared by the tests of a lookup waiting for a column it reads to finish
-// filling (lookup-fill-waits, lookup-fill-loops): the trash refill kit's
-// sheets and lookups (3 rows each, Email u0..u2@a.com, Name N0..N2), a formula
-// column on the other sheet whose next fill runs only when the test says so,
-// and a lookup set to fill again as a restart or a restore finds it.
+// filling (lookup-fill-waits, lookup-fill-loops, lookup-fill-changes,
+// lookup-fill-lists): the trash refill kit's sheets and lookups (3 rows each,
+// Email u0..u2@a.com, Name N0..N2), a formula column on the other sheet whose
+// next fill runs only when the test says so, a lookup set to fill again as a
+// restart or a restore finds it, runs held open, and a lookup's fill one row
+// a slice.
 import assert from 'node:assert/strict'
+import { v4 as uuid } from 'uuid'
 import { refillKit } from './trash-refill-kit'
 import formulaMod from '../../server/src/services/formula-column'
 import formulaKindMod from '../../server/src/services/formula-kind'
@@ -57,5 +60,33 @@ export function lookupWaitKit(name: string) {
         .run(`$."${col}"`, values[i], r.id)
     })
   }
-  return { ...k, sheetName, formula, refillFormula, fillF, fillingFrom, resumeLookups, rec, rowids, setCells }
+  // An HTTP run writing `column` of sid, running until endRun (batch: one auto-run started for new rows).
+  const httpRun = (sid: string, column: string, batch: boolean, status = 'running') => {
+    const id = uuid()
+    db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, status, master_column_name, autorun_id)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(id, sid, uid, status, column, batch ? uuid() : null)
+    return id
+  }
+  const endRun = (id: string) => db.prepare(`UPDATE http_runs SET status = 'completed', updated_at = datetime('now')
+    WHERE id = ?`).run(id)
+  const runNote = (sid: string, column: string) =>
+    `Waiting for a run to finish filling "${column}" in "${sheetName(sid)}".`
+  // The lookup's fill one row a slice (as a big sheet's time budget cuts them); after() once, inside the
+  // transaction that wrote its first row.
+  const oneRowASlice = (id: string, after: () => void) => {
+    const open = lookupKind.open, advance = lookupKind.advance
+    let fired = false
+    lookupKind.open = async (r, use) => {
+      const pass = await open.call(lookupKind, r, use)
+      if (r.id !== id || 'error' in pass) return pass
+      return { ...pass, compute: (rows, budgetMs) => pass.compute(rows.slice(0, 1), budgetMs) }
+    }
+    lookupKind.advance = (r, cursor, counts) => {
+      advance.call(lookupKind, r, cursor, counts)
+      if (r.id === id && !fired) { fired = true; after() }
+    }
+    return { restore: () => { lookupKind.open = open; lookupKind.advance = advance } }
+  }
+  return { ...k, sheetName, formula, refillFormula, fillF, fillingFrom, resumeLookups, rec, rowids, setCells,
+    httpRun, endRun, runNote, oneRowASlice }
 }

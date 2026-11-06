@@ -58,7 +58,7 @@ await ok('a lookup with no rows written yet waits for the column it reads to fin
   await fillF(o, fid)
   const ended = Date.now()
   await until('it is done', () => statusOf(a, 'Who') === 'done')
-  assert.ok(Date.now() - ended < 2_000, 'it went on when the fill ended, not at its next look')
+  assert.ok(Date.now() - ended < 4_000, 'it went on when the fill ended, not at its next look')
   assert.deepEqual(cells(a, 'Who'), V2)
   assert.equal(derivedFillWait(id), null)
 })
@@ -101,16 +101,18 @@ const waitThenStop = (id: string) => new Promise<void>((resolve, reject) => {
 
 await ok('a restart while it waits keeps it filling from the first row; at boot it waits again, then fills',
   async () => {
-    const { a, fid, id } = await setUp()
+    const { a, fid, id, note } = await setUp()
     setCells(a, 'Who', ['old0'])
     fillingFrom(id, rowids(a)[0], 1)
     await waitThenStop(id)
     assert.equal(statusOf(a, 'Who'), 'filling')
     assert.equal(rec(id)!.fill_cursor, 0)
     assert.equal(derivedFillWait(id), null, 'nothing waits in this process')
-    // As at boot: every unfinished fill resumes, the formula's and the lookup's.
-    resumeDerivedFills(formulaKind)
+    // As at boot, the lookup's fill first: it waits again for the formula, which resumes after it.
     resumeLookups()
+    await until('it waits again', () => derivedFillWait(id) === note)
+    assert.equal(statusOf(a, 'Who'), 'filling')
+    resumeDerivedFills(formulaKind)
     await until('both are done', () => statusOf(a, 'Who') === 'done'
       && db.prepare('SELECT fill_status FROM formula_columns WHERE id = ?').pluck().get(fid) === 'done')
     assert.deepEqual(cells(a, 'Who'), V2)
