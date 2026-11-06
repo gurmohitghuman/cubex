@@ -10,7 +10,7 @@ import { resolveRerunTargets } from './ai-rerun-modes';
 import { rerunEnrichmentColumn } from './enrich-rerun';
 import { columnRunNow, derivedFollows } from './setup-step-again';
 import { storedRule } from './run-rule';
-import { aiEstimate, round, type StepEstimate } from './setup-estimate';
+import { aiEstimate, round, rowMostOf, type StepEstimate } from './setup-estimate';
 
 const DONE = 'Every row is done already: nothing to run.';
 const RUN_NOW = {
@@ -62,6 +62,7 @@ export async function estimateAgain(
   const cost = out.ok.estimated_cost_usd;
   return {
     ...base, rows: out.ok.rows_to_process, low_usd: cost ? round(cost.low) : null,
-    high_usd: cost ? round(cost.high) : null, note: notes(!cost && 'No price is known for its model.', running),
+    high_usd: cost ? round(cost.high) : null, row_most_usd: cost ? rowMostOf(out.ok) : null,
+    note: notes(!cost && 'No price is known for its model.', running),
   };
 }

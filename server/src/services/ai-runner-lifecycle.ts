@@ -1,3 +1,4 @@
+// Over 200 lines: the shared row loop and the transitions it ends in, kept together.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { redactSecrets, redactError } from '../lib/redact';
@@ -10,9 +11,10 @@ import {
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
 import { spendCapRefusal } from './token-spend';
 import { RUN_BREAKER_FAILURES } from '../lib/constants';
-import { brakeMessage, RunBreaker } from '../lib/run-breaker';
-import { isStorageFailure } from '../lib/storage-failure';
+import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
+import { isBusyLock, isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
+import { openSpendGate, type GateAnswer } from './ai-spend-gate';
 
 // Lifecycle + dispatch helpers shared by processAIRun / processAIRerun
 // (ai-runner.ts). Split out so the orchestration entry points stay readable and
@@ -29,7 +31,10 @@ import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from 
 // again on resume), and answers 'token_cap' so the runner pauses it. Rows
 // failing in a row on the provider's side (lib/run-breaker.ts) end it the same
 // way ('provider_errors'), and so does a database that can't be written
-// ('storage'): each row is paid before its result is written.
+// ('storage'): each row is paid before its result is written. A run with its
+// own spend limit starts a row only while the row's most fits under it, and
+// answers 'spend_limit' when it can't (services/ai-spend-gate.ts); a database
+// busy with another writer then only makes the row wait.
 // A stop (pause, cancel, a resume taking over) starts no more rows; the calls
 // out finish, within their deadline, and count (each is paid: cancelled, what
 // it cost would be lost). A full pool beats updated_at while it waits.
@@ -61,6 +66,17 @@ export const dispatchRows = async (
   );
   // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
   const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
+  const gate = await openSpendGate(run, myGeneration, columns);
+  // Room for the row under the run's limit; null: a database that can't be written (end is set).
+  // Busy with another writer past busy_timeout: the row waits and asks again.
+  const admit = (row: SheetRow): GateAnswer | null => {
+    try { return gate!.admit(row); } catch (error) {
+      if (isBusyLock(error)) return { wait: true };
+      if (!isStorageFailure(error)) throw error;
+      ended(error);
+      return null;
+    }
+  };
   const wait = async () => {
     await pool.settledOrTick();
     try { beat(); } catch (error) { ended(error); }
@@ -80,9 +96,30 @@ export const dispatchRows = async (
         end = { reason: 'token_cap', message: null };
         break;
       }
+      // Its own spend limit: wait while only rows out are in the way, pause when spending alone is.
+      let held = 0;
+      if (gate) {
+        let room = admit(row);
+        while (room && 'wait' in room) {
+          await wait();
+          if (shouldStop(runId, myGeneration)) break rowLoop;
+          if (end) { rowsLeft = true; break rowLoop; }
+          room = admit(row);
+        }
+        if (!room) break;
+        // This row didn't start: rows are left, whatever the reason (a brake's end needs that too).
+        if ('pause' in room) {
+          end = { reason: room.reason ?? 'spend_limit', message: room.pause };
+          rowsLeft = true;
+          break;
+        }
+        held = room.start;
+      }
 
+      let settledAs: RowOutcome | null = null;
       const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
         .then(outcome => {
+          settledAs = outcome;
           breaker.record(outcome);
           const tripped = breaker.tripped;
           if (tripped && !end) end = { reason: 'provider_errors', message: brakeMessage(tripped, false) };
@@ -101,21 +138,24 @@ export const dispatchRows = async (
           if (isStorageFailure(error)) { ended(error); return; }
           console.error(`Error processing row ${row.rowIndex}:`, redactError(error));
         })
-        .finally(() => { out.delete(promise); pool.settled(); });
+        // Its hold goes back once its cost is in the run's usage record (written with the row).
+        .finally(() => { gate?.settle(held, settledAs); out.delete(promise); pool.settled(); });
       out.add(promise);
     }
   } finally {
     // The rows still out finish, beating as they go.
     while (out.size > 0) await wait();
+    gate?.close();
   }
   // The provider failed the last rows: nothing is left to hold back, so the run ends as usual.
   if (end?.reason === 'provider_errors' && !rowsLeft) return null;
   return end;
 };
 
-// The run paused itself (the token's spend cap, its provider failing, a
-// database that can't be written: lib/run-pool.ts). A resume of a token_cap
-// pause is refused until the cap is raised (run-lifecycle.ts).
+// The run paused itself (the token's spend cap, its own spend limit, its
+// provider failing, a database that can't be written: lib/run-pool.ts). A
+// resume of a token_cap pause is refused until the cap is raised
+// (run-lifecycle.ts); a spend_limit one goes on with a higher limit.
 export const pauseAt = (runId: string, myGeneration: number, end: LoopEnd): void =>
   pauseItself('ai_runs', runId, myGeneration, end);
 

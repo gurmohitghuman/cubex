@@ -12,6 +12,7 @@ import { AiRerunMode, type RerunMode } from './ai-rerun-modes';
 import { rerunHttpColumn } from './http-run-rerun';
 import { resolveRowIdsToIndexes } from './run-shared';
 import { isWaterfallRun } from './waterfall-agent-control';
+import { usdLimitOf } from '../lib/cost-ceiling';
 
 // Names the latest run, so a caller with no run list can go straight to it.
 const superseded = (latestId: string): string =>
@@ -29,7 +30,10 @@ function resolveTargets(
 
 export async function rerunAiRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: AiRerunMode; concurrency?: number; firstRows?: number } = {},
+  opts: {
+    rowIds?: string[]; mode?: AiRerunMode; concurrency?: number; firstRows?: number; spendLimitUsd?: number | null;
+  }
+    = {},
 ): Promise<RerunOutcome> {
   const run = db.prepare(
     'SELECT id, sheet_id, column_name, output_columns FROM ai_runs WHERE id = ? AND user_id = ?',
@@ -52,13 +56,15 @@ export async function rerunAiRunById(
 
   const t = resolveTargets(run.sheet_id, userId, opts.rowIds);
   if ('error' in t) return { fail: 'bad_request', message: t.error };
+  const limit = usdLimitOf(opts.spendLimitUsd, 'spend_limit_usd');
+  if ('error' in limit) return { fail: 'bad_request', message: limit.error };
 
   // A structured run reruns as itself: its status column is its anchor, so
   // there is no name to strip or guess.
   if (run.output_columns) {
     return rerunAiMultiColumn(userId, {
       sheetId: run.sheet_id, baseColumnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
-      concurrency: opts.concurrency, firstRows: opts.firstRows,
+      concurrency: opts.concurrency, firstRows: opts.firstRows, spendLimitUsd: opts.spendLimitUsd,
     }, run.column_name);
   }
   // The run's exact column wins (one renamed without its " (Output)" ends,
@@ -67,7 +73,7 @@ export async function rerunAiRunById(
   const baseColumnName = run.column_name.replace(/ \(Output\)$/, '');
   return rerunAiColumn(userId, {
     sheetId: run.sheet_id, baseColumnName, columnName: run.column_name, rowIndices: t.indexes, mode: opts.mode,
-    concurrency: opts.concurrency, firstRows: opts.firstRows,
+    concurrency: opts.concurrency, firstRows: opts.firstRows, spendLimitUsd: opts.spendLimitUsd,
   });
 }
 

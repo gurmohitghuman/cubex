@@ -140,7 +140,10 @@ export async function buildEnrichmentConfig(
         ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick), defaultMaxCostPerRow(verify, { given: ['email'] }))
         : defaultMaxCostPerRow(tool, pick));
   }
-  const spendLimit = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
+  const sized = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
+  // Under a setup's ceiling: no more than what is left of it (services/setup-ceiling.ts).
+  const ceiling = input.spendCeilingUsd ?? null;
+  const spendLimit = sized !== null && ceiling !== null ? Math.min(sized, round6(ceiling)) : sized;
   // A micro of slack: a quoted limit is the estimate rounded to 6 decimals.
   if (cap !== null && spendLimit !== null && spendLimit + 1e-6 < cap) {
     return bad(`The run limit ($${spendLimit}) is below the max per row ($${cap}), so no row could run. `

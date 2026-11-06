@@ -13,7 +13,8 @@ import { savedKeyNames } from './saved-keys';
 import { planOf, type SetupRunRow } from './setup-run-store';
 import type { RunFail } from './run-shared';
 
-export type ApplyFail = RunFail & { missing?: string[]; taken?: string[] };
+// estimate: set on 'over_ceiling', the estimate the ceiling refused.
+export type ApplyFail = RunFail & { missing?: string[]; taken?: string[]; estimate?: object };
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
 const list = (names: string[]) => names.map(n => `"${n}"`).join(', ');

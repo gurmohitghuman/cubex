@@ -93,3 +93,9 @@ export function runSearchConfig(run: {
     maxPerRow: run.web_search_max_per_row ?? null,
   };
 }
+
+// The system message a single-column row with web tools gets (its spend limit counts it: ai-spend-gate.ts).
+export const WEB_SYSTEM_MESSAGE = 'You are a helpful AI assistant. You can reference and analyze information from '
+  + 'web search results and fetched pages when provided. Use that context to provide accurate, up-to-date '
+  + 'information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When '
+  + 'you cite sources, prefer plain URLs over markdown links.';

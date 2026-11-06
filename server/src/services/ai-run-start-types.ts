@@ -30,6 +30,8 @@ export interface AiRunStartParams {
   search?: SearchOptions | null;
   // "Only run if" rule text (lib/run-condition.ts); empty/undefined = every row.
   runIf?: string | null;
+  // The run's hard spend limit in USD (services/ai-spend-gate.ts); null/undefined: none.
+  spendLimitUsd?: number | null;
 }
 
 export type AiRunStartOutcome =
