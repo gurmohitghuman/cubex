@@ -116,7 +116,8 @@ export const LookupColumnForm: React.FC<Props> = ({ sheetId, columns, editing, o
       )}
       <LookupPreview state={f.preview} ready={f.ready} />
       <p className="text-xs text-gray-500">
-        Changes in the other sheet don&apos;t update this column. Use Look up again in its menu when they should.
+        Changes in the other sheet don&apos;t update this column. Use Look up every row again in its menu when
+        they should.
       </p>
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={f.autoRun} onChange={e => f.setAutoRun(e.target.checked)}

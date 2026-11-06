@@ -3,9 +3,11 @@
 // again from the first: a formula column it reads that filled again while it
 // waited for an auto-run batch run, a run (not auto-run) that started and
 // ended meanwhile, a paused run that went on (found at the next look, or
-// ending the batch wait at once), a run whose rowid a purge freed, and a
-// restart, which starts over whatever changed. What it keeps goes once its
-// fill ends or the lookup is deleted.
+// ending the batch wait at once; a cancel isn't a change), a run whose rowid a
+// purge elsewhere freed, and a restart, which starts over whatever changed.
+// What it keeps goes once its fill ends or the lookup is deleted, and is found
+// only under its own user.
+// Over 200 lines: the cases of one check (runs, purges, a restart, what it keeps) share their scenes.
 import assert from 'node:assert/strict'
 import { lookupWaitKit } from './lookup-wait-kit'
 import fillMod from '../../server/src/services/derived-fill'
@@ -13,12 +15,14 @@ import colMod from '../../server/src/services/lookup-column'
 import changesMod from '../../server/src/services/lookup-fill-changes'
 import waitMod from '../../server/src/services/derived-fill-wait'
 import deleteMod from '../../server/src/services/column-delete'
+import lifecycleMod from '../../server/src/services/run-lifecycle'
 const { derivedFillWait } = fillMod as typeof import('../../server/src/services/derived-fill')
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
 const { readsChangedUnseen, lookupFillsKept } =
   changesMod as typeof import('../../server/src/services/lookup-fill-changes')
 const { fillEnded } = waitMod as typeof import('../../server/src/services/derived-fill-wait')
 const { deleteSheetColumn } = deleteMod as typeof import('../../server/src/services/column-delete')
+const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const k = lookupWaitKit('lookup-fill-changes')
 const { db, uid, ok, done, place, cells, statusOf, until, lookup, formula, refillFormula, fillF, fillingFrom,
   resumeLookups, rec, rowids, setCells, httpRun, endRun, resumeRun, runNote, oneRowASlice, probe } = k
@@ -106,13 +110,29 @@ await ok('a paused run on a column it reads that goes on while it waits for an a
   assert.deepEqual(cells(a, 'Who'), M)
 })
 
-// `o` with an older run on Name, the newest run row (on `o`, or on another sheet), and a lookup's record
-// looking in `o` that took its look; look(): its next look, with rows written.
+await ok('a paused run on a column it reads cancelled while it waits for an auto-run batch run: it goes on where '
+  + 'it was', async () => {
+  const a = place().sid, o = place().sid
+  const id = await lookup(a, o, 'Who', 'value', 'Name')
+  const paused = httpRun(o, 'Name', false, 'paused')
+  const { run, slow } = await waitsForABatch(a, o, id, 'Name')
+  try {
+    assert.deepEqual(await cancelRun('http', paused, uid), { ok: true })
+    // An edit isn't a change it starts over for: the rows after its first show it.
+    setCells(o, 'Name', M)
+    endRun(run)
+    await until('it is done', () => statusOf(a, 'Who') === 'done')
+  } finally { slow.restore() }
+  assert.deepEqual(cells(a, 'Who'), ['N0', 'M1', 'M2'])
+})
+
+// `o` with an older run on Name, the newest run row on another sheet, and a lookup's record looking in `o`
+// that took its look; look(): its next look, with rows written.
 const READS = ['Email', 'Name']
-const scene = (own: boolean) => {
+const scene = () => {
   const o = place().sid, elsewhere = place().sid
   httpRun(o, 'Name', false, 'completed')
-  const newest = httpRun(own ? o : elsewhere, 'Other', false, 'completed')
+  const newest = httpRun(elsewhere, 'Other', false, 'completed')
   const p = probe(o)
   assert.equal(readsChangedUnseen(p, READS), null)
   const look = () => readsChangedUnseen({ ...p, fill_cursor: 1 }, READS)
@@ -122,19 +142,17 @@ const scene = (own: boolean) => {
 const rowidOf = (run: string) => db.prepare('SELECT rowid FROM http_runs WHERE id = ?').pluck().get(run) as number
 const purge = (run: string) => db.prepare('DELETE FROM http_runs WHERE id = ?').run(run)
 
-await ok("a run that took the rowid a purge freed is still seen; a purge alone isn't a change", async () => {
-  for (const own of [false, true]) {
-    const s = scene(own)
-    const at = rowidOf(s.newest)
-    purge(s.newest)
-    assert.equal(rowidOf(httpRun(s.o, 'Name', false, 'completed')), at, 'the rowid is taken again')
-    assert.deepEqual(s.look(), { column: 'Name' }, own ? "the sheet's own newest run" : 'the newest elsewhere')
-    s.finish()
-  }
-  const s = scene(false)
+await ok("a run that took the rowid a purge elsewhere freed is still seen; a purge alone isn't a change", async () => {
+  const s = scene()
+  const at = rowidOf(s.newest)
   purge(s.newest)
-  assert.equal(s.look(), null, 'a purge elsewhere alone')
+  assert.equal(rowidOf(httpRun(s.o, 'Name', false, 'completed')), at, 'the rowid is taken again')
+  assert.deepEqual(s.look(), { column: 'Name' })
   s.finish()
+  const alone = scene()
+  purge(alone.newest)
+  assert.equal(alone.look(), null, 'a purge elsewhere alone')
+  alone.finish()
 })
 
 // As a restart finds it: rows 1 and 2 written, the cursor past them; nothing in this process saw them written.
@@ -172,6 +190,12 @@ await ok('a fill that ended, or a lookup deleted, loses what it kept, and its sh
     assert.ok(!kept().sheets.includes(o))
     fillEnded(o, 'Name')
     assert.ok(!kept().sheets.includes(o), 'nothing looks there: not counted')
+    // A lookup is found only under its own user: asked about under another, it's not filling there.
+    const elsewhere = probe(o)
+    assert.equal(readsChangedUnseen({ ...elsewhere, user_id: 'another-user' }, READS), null)
+    fillEnded(place().sid, 'Name')
+    assert.ok(!kept().lookups.includes(elsewhere.id), 'forgotten')
+    db.prepare("UPDATE lookup_columns SET fill_status = 'done' WHERE id = ?").run(elsewhere.id)
   })
 
 await ok('a lookup deleted while it waits loses what it kept once its wait sees it gone', async () => {

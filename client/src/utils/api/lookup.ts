@@ -29,7 +29,7 @@ export interface LookupColumnView {
   // A paused run in the other sheet hasn't finished a column it reads: its ⏳ rows read as empty.
   pausedRun: string | null
   // A column there kept changing while it filled, and after starting over 3 times it went on: rows
-  // looked up before the last change may hold older values ("Look up again" redoes them).
+  // looked up before the last change may hold older values ("Look up every row again" redoes them).
   keptChanging: string | null
   filledRows: number
   errorRows: number

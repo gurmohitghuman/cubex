@@ -44,7 +44,7 @@ export function lookupColumnView(r: LookupColumnRow): LookupColumnView {
     autoRun: entry?.enabled === 1,
     autoRunNote: entry?.enabled === 1 && entry.paused_reason ? entry.paused_message : null,
     status: r.fill_status, waiting: r.fill_status === 'filling' ? derivedFillWait(r.id) : null,
-    pausedRun: pausedRunNote(r, other?.sheet ?? null), keptChanging: keptChangingNote(r.id),
+    pausedRun: pausedRunNote(r, other?.sheet ?? null), keptChanging: keptChangingNote(r),
     filledRows: r.filled_rows, errorRows: r.error_rows, firstError: r.first_error, error: r.error_message,
     broken: r.broken,
   };

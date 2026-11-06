@@ -6,7 +6,7 @@ import { lookupHeaderTip, lookupNotes } from '../../client/src/components/lookup
 import type { LookupColumnView } from '../../client/src/utils/api/lookup'
 
 const NOTE = '"Name" in "People" kept changing, so rows looked up before its last change may hold older values. '
-  + 'Look up again to redo them.'
+  + 'Look up every row again to redo them.'
 const view = (o: Partial<LookupColumnView>): LookupColumnView => ({
   column: 'Who', sourceColumn: 'Email', otherSheetId: 's', otherSheet: 'People', otherTable: 'T',
   matchColumn: 'Email', match: 'equals', returns: 'value', returnColumns: ['Name'], limit: 10, autoRun: true,
@@ -19,5 +19,6 @@ assert.equal(lookupHeaderTip(view({ keptChanging: NOTE })).text, `Looks up Email
 assert.equal(lookupHeaderTip(view({ status: 'filling', keptChanging: NOTE })).text,
   `Looks up Email in People › Email · Looking up now · ${NOTE}`)
 assert.deepEqual(lookupNotes(view({})), [])
-assert.deepEqual(lookupNotes(view({ keptChanging: NOTE, autoRunNote: 'Paused.' })), [NOTE, 'Auto-run is paused: Paused.'])
+assert.deepEqual(lookupNotes(view({ keptChanging: NOTE, autoRunNote: 'Paused.' })),
+  [NOTE, 'Auto-run is paused: Paused.'])
 console.log('All lookup-copy-client assertions passed.')

@@ -75,7 +75,7 @@ export function fillHold(
   const filling = readsFilling(rec, reads);
   if (filling?.byRun) {
     const { batch } = filling;
-    if (!batch) startOverFor(rec, { column: filling.column }, name());
+    if (!batch) startOverFor(rec, { column: filling.column });
     return { wait: {
       note: `Waiting for a run to finish filling "${filling.column}" in "${name()}".`,
       // After an auto-run batch run it goes on where it was; once a run that isn't one holds a column
@@ -89,11 +89,11 @@ export function fillHold(
   if (filling) {
     const loop = lookupWaitLoop(nodeOf(rec, reads));
     if (loop) return { failed: failLookupLoop(rec, loop) };
-    startOverFor(rec, { column: filling.column }, name());
+    startOverFor(rec, { column: filling.column });
     return { wait: fillWait(rec, filling.column, name()) };
   }
   const change = readsChangedUnseen(rec, reads);
-  if (!change || !startOverFor(rec, change, name())) return null;
+  if (!change || !startOverFor(rec, change)) return null;
   // Its cursor is back at the first row: the fill takes its sheet again and starts there.
   return { wait: { note: `Looks every row up again: what it reads in "${name()}" changed.`, ready: () => true,
     pollMs: 0 } };
