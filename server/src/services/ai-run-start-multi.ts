@@ -126,14 +126,15 @@ export async function startAiMultiRun(
       id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?)
+      web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
+      spend_limit_usd
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Cap check + run row + column_order append in ONE immediate txn (two
   // concurrent starts must not both pass the cap and both create columns).
   // All-or-nothing: a run that would cross the cap creates NOTHING (risk B2).
-  return asRunStart(p.sheetId, async (): Promise<AiRunStartOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<AiRunStartOutcome> => {
     let capExceeded = false;
     let capColsNeeded = 0;
     db.transaction(() => {
@@ -147,7 +148,7 @@ export async function startAiMultiRun(
         targetCount, targets ? JSON.stringify(targets) : null,
         JSON.stringify(specs), statusColumn, dataColumn,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
-        rule.ok?.rule ?? null, actorTokenId(),
+        rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();

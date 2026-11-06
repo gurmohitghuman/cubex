@@ -104,12 +104,13 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     expect(dry.dry_run).toBe(true)
     expect((await details(sheetId)).has('Domain')).toBe(false)
 
-    const hitsBefore = rx.hits.length
+    // The Call column's requests go to /v1; another spec's leftovers may reach other paths.
+    const hitsBefore = rx.hitsOn('/v1').length
     const done = await call(client, 'restore_setup_version', { sheet_id: sheetId, version_id: version.id,
       dry_run: false })
     expect(done.saved_before).toMatchObject({ name: 'Before restoring: Launch', auto: true })
     expect(done.message).toMatch(/^Restored\. 1 column added back \(empty\), 3 columns set up as they were\. /)
-    expect(rx.hits.length).toBe(hitsBefore)
+    expect(rx.hitsOn('/v1').length).toBe(hitsBefore)
     const d = await details(sheetId)
     expect(d.get('Domain')).toMatchObject({ kind: 'formula' })
     expect(d.get('Fit (Output)').fill).toMatchObject({ run_status: 'restored', prompt: 'Is /name a fit?' })

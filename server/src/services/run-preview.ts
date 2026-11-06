@@ -4,7 +4,7 @@
 // check. Spends real AI credits (bounded to PREVIEW_MAX_ROWS) but persists
 // NOTHING: no column, no draft, no run row (spec item 4). A later full run
 // re-bills these rows (reuse is a deferred optimization).
-import { verifySheetOwnership } from '../lib/sql-helpers';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { db } from '../lib/db';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { resolveAiModel, NO_MODEL_ERROR } from '../lib/ai-model-resolve';
@@ -130,8 +130,10 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   try { openai = await getOpenRouterClient(userId); } catch {
     return { fail: 'bad_request', message: 'No OpenRouter API key is saved, so there is nothing to preview with. Add one in Settings → AI.' };
   }
+  // Read once for the preview: a listed column a row holds no value for reads as empty.
+  const columns = getSheetColumns(input.sheetId, userId, false);
   const results = await Promise.all(sample.map(row => processOneRow(row, openai, {
-    prompt: input.prompt, promptSuffix: instruction, systemPrompt: input.systemPrompt, model,
+    prompt: input.prompt, columns, promptSuffix: instruction, systemPrompt: input.systemPrompt, model,
     safeTemperature: 0.7, maxChars: input.maxChars ?? undefined,
     search: planned.ok, useWebFetch: web.fetch,
     // Structured preview parses JSON below — keep the text verbatim, exactly as

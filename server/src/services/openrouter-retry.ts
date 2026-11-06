@@ -22,9 +22,15 @@ import {
 // Empirically verified (openai@4.104.0 + httpAgent → node-fetch shim): a
 // server-side RST surfaces as APIConnectionError with cause.code === 'ECONNRESET'
 // directly on the cause (a FetchError), not nested deeper.
+// A reset that came late (ai-row-outcome.ts timedTries marks it) may follow a
+// billed answer: it is never tried again, so one row's hold is never billed twice.
+const lateResets = new WeakSet<object>();
+export const markLateReset = (error: object): void => { lateResets.add(error); };
+
 function isStaleSocketError(error: unknown): boolean {
   if (!(error instanceof APIConnectionError)) return false;
   if (error instanceof APIConnectionTimeoutError) return false;
+  if (lateResets.has(error)) return false;
   return (error as { cause?: { code?: string } }).cause?.code === 'ECONNRESET';
 }
 

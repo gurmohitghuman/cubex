@@ -74,7 +74,9 @@ export interface TrimmedModel {
   name: string;
   description?: string;
   context_length: number;
-  pricing: { prompt: string; completion: string };
+  // request / internal_reasoning: a per-request fee and a reasoning token's
+  // price, kept only when the model has one (an AI run's spend limit counts them).
+  pricing: { prompt: string; completion: string; request?: string; internal_reasoning?: string };
 }
 
 // Module-level cache, shared across requests. The 5-min TTL keeps the upstream
@@ -109,6 +111,10 @@ export function modelTakesTemperature(model: string): boolean | null {
   return !modelsCache.noTemperature.has(model);
 }
 
+// A fee kept in the trimmed list: listed and not 0. A negative one (the price
+// varies) is kept too, so an AI run's spend limit reads it as no listed price.
+const listedFee = (v: unknown): boolean => v !== undefined && v !== null && v !== '' && Number(v) !== 0;
+
 async function readModels(now: number): Promise<ModelsResult> {
   let result: FetchResult<{ data: any[] }>;
   try {
@@ -134,7 +140,12 @@ async function readModels(now: number): Promise<ModelsResult> {
       name: m.name || m.id,
       description: m.description || undefined,
       context_length: typeof m.context_length === 'number' ? m.context_length : 0,
-      pricing: { prompt: m.pricing?.prompt || '0', completion: m.pricing?.completion || '0' },
+      pricing: {
+        prompt: m.pricing?.prompt || '0', completion: m.pricing?.completion || '0',
+        ...(listedFee(m.pricing?.request) ? { request: String(m.pricing.request) } : {}),
+        ...(listedFee(m.pricing?.internal_reasoning)
+          ? { internal_reasoning: String(m.pricing.internal_reasoning) } : {}),
+      },
     }));
 
   const noTemperature = new Set<string>(result.body.data

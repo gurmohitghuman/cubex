@@ -1,8 +1,10 @@
 // The body of a "use this setup" request, checked: the app sends camelCase,
 // /api/v1 and MCP snake_case. MCP leaves estimate_only on unless it's false
 // (a setup can start many paid runs); the app and REST say which they want.
+// max_cost_usd / allow_unpriced: the ceiling (lib/cost-ceiling.ts).
 import type { ApplyInput } from './setup-apply';
 import type { RunFail } from './run-shared';
+import { CAMEL, ceilingArgsOf } from '../lib/cost-ceiling';
 
 const isMap = (v: unknown): v is Record<string, string> => v !== null && typeof v === 'object' && !Array.isArray(v)
   && Object.values(v).every(x => typeof x === 'string');
@@ -20,6 +22,9 @@ export function applyInputOf(b: Record<string, unknown>, from: 'app' | 'v1' | 'm
   if (estimate !== undefined && typeof estimate !== 'boolean') return bad('estimate_only must be true or false.');
   const hook = field('webhookId', 'webhook_id');
   if (hook !== undefined && hook !== null && typeof hook !== 'string') return bad('webhook_id must be a string.');
+  const ceiling = ceilingArgsOf(field('maxCostUsd', 'max_cost_usd'), field('allowUnpriced', 'allow_unpriced'),
+    from === 'app' ? CAMEL : undefined);
+  if ('error' in ceiling) return bad(ceiling.error);
   return {
     inputs: (field('inputs', 'inputs') ?? undefined) as Record<string, string> | undefined,
     names: (field('names', 'names') ?? undefined) as Record<string, string> | undefined,
@@ -27,5 +32,6 @@ export function applyInputOf(b: Record<string, unknown>, from: 'app' | 'v1' | 'm
     firstRows: (first ?? null) as number | null,
     estimateOnly: from === 'mcp' ? estimate !== false : estimate === true,
     webhookId: typeof hook === 'string' ? hook : null,
+    ...ceiling,
   };
 }

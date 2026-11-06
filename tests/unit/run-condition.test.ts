@@ -38,6 +38,13 @@ assert.equal(passes('{{Employees}} is 50', { Employees: '50.0' }), true)
 assert.equal(passes('{{Employees}} is "50"', { Employees: '50.0' }), false)
 // A missing cell is empty; a run's own words read as empty too.
 assert.equal(passes('{{Notes}} is empty', {}), true)
+// Also for a column named like a member every object inherits: a row without
+// its key (rows.data is JSON.parse output) reads as empty, not the inherited function.
+const inherited = (rule: string, data: string) =>
+  rulePasses(checkRule(rule, ['constructor', 'toString']).tree, JSON.parse(data) as Record<string, string>)
+assert.equal(inherited('{{constructor}} is empty', '{}'), true)
+assert.equal(inherited('{{toString}} is empty AND NOT ({{constructor}} contains "native")', '{}'), true)
+assert.equal(inherited('{{constructor}} is "x"', '{"constructor":"x"}'), true)
 const markers = ['⏳ Processing...', '❌ Timed out', '⏭️ Not found', '⏭️ Condition not met', '➕ 3 rows']
 for (const marker of markers) {
   assert.equal(passes('{{Company Fit (Output)}} is not empty', { 'Company Fit (Output)': marker }), false, marker)

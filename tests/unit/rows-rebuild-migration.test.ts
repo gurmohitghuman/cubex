@@ -48,7 +48,9 @@ ok('the webhook delivery still points at its row', () => assert.equal(
   (db.prepare('SELECT row_id FROM webhook_deliveries').get() as { row_id: string | null }).row_id, linkedRow))
 ok('one unique index on (sheet_id, user_id, row_index), the old indexes gone', () => {
   const idx = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'rows'").all() as Array<{ name: string; sql: string | null }>
-  assert.deepEqual(idx.map(i => i.name).sort(), ['sqlite_autoindex_rows_1', 'sqlite_autoindex_rows_2'])
+  // Plus migration 050's (sheet_id, updated_at), for reads of rows changed since a time.
+  assert.deepEqual(idx.map(i => i.name).sort(), ['idx_rows_sheet_updated', 'sqlite_autoindex_rows_1',
+    'sqlite_autoindex_rows_2'])
   const cols = (name: string) => (db.prepare(`PRAGMA index_info('${name}')`).all() as Array<{ name: string }>).map(c => c.name)
   assert.deepEqual(cols('sqlite_autoindex_rows_2'), ['sheet_id', 'user_id', 'row_index'])
 })

@@ -15,6 +15,7 @@ import { PLACEHOLDER } from './placeholder-cells';
 import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
 import { journalSeed, type RunRef } from './run-undo/journal';
+import { pickedCells } from './row-cell';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
 
@@ -26,11 +27,11 @@ export async function seedPlaceholdersByRule(args: {
 }): Promise<{ notMet: number } | null> {
   const { run: runRef, sheetId, userId, columns, rule, live } = args;
   const paths = columns.map(jsonPath);
-  const run = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const run = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')}),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const others = columns.filter(c => c !== rule.markColumn).map(jsonPath);
-  const keepOut = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?${others.map(() => ", ?, ''").join('')})
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const keepOut = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?${others.map(() => ", ?, ''").join('')}),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const picks = rule.columns.map(() => ', json_extract(data, ?)').join('');
   const read = db.prepare(`SELECT rowid, row_index, json_extract(data, ?)${picks}
     FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`).raw();
@@ -45,9 +46,7 @@ export async function seedPlaceholdersByRule(args: {
     const pass: number[] = [], mark: number[] = [];
     for (const r of read.all(...readPaths, ids, sheetId, userId) as unknown[][]) {
       if (skip.has(r[1] as number)) continue;
-      const values: Record<string, string> = {};
-      rule.columns.forEach((c, i) => { values[c] = r[i + 3] == null ? '' : String(r[i + 3]); });
-      if (rulePasses(rule.tree, values)) { pass.push(r[0] as number); continue; }
+      if (rulePasses(rule.tree, pickedCells(rule.columns, r, 3))) { pass.push(r[0] as number); continue; }
       notMet++;
       const main = r[2] == null ? '' : String(r[2]);
       // A row kept out already keeps its mark: no write (a big sheet's rule may keep most rows out).

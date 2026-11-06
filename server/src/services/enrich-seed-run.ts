@@ -70,10 +70,10 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
   const paths = job.columns.map(jsonPath);
   // The status column (the run's first) of a row "Only run if" keeps out.
   const markPath = jsonPath(job.columns[0]);
-  const mark = db.prepare(`UPDATE rows SET data = json_set(data, ?, '${CONDITION_NOT_MET}')
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
-  const set = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')})
-    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const mark = db.prepare(`UPDATE rows SET data = json_set(data, ?, '${CONDITION_NOT_MET}'),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const set = db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => `, ?, '${PLACEHOLDER}'`).join('')}),
+    updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
   const stale = job.plan.stale ?? null;
   const read = db.prepare(`SELECT rowid AS id, data, ${staleFlag(stale)} AS stale FROM rows
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?${job.rowFilter.clause}`);

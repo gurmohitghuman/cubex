@@ -4,6 +4,8 @@
 import { parseWhere, type WhereItem } from '../lib/row-filter/where';
 import { parseColumns, type ColumnPick } from '../lib/row-select/paths';
 import { checkAggregate, parseAggregate, type AggregateSpec } from '../lib/row-aggregate/spec';
+import { SINCE_FORMAT_HELP } from '../lib/row-since';
+import { ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 
 export interface RowQuery {
   after: number;
@@ -29,6 +31,15 @@ export interface RowQuery {
   // Set by view-read.ts withView, never parsed from a request: the view's own
   // filter inside `where` (row-filter.ts prepareWhere's `saved`).
   viewWhere?: WhereItem[];
+  // Exactly these rows, by stable id, in this order (services/rows-by-id.ts).
+  rowIds?: string[];
+  // Rows whose cells changed at or after this time, as asked (services/rows-since.ts
+  // reads it), and the text cursor of that walk.
+  updatedSince?: string;
+  sinceCursor?: string;
+  // Set by MCP, never parsed from a request: a read by id stops adding rows past
+  // about this many characters and lists the rest in unread_ids.
+  maxChars?: number;
 }
 
 export function parseRowQueryBody(
@@ -37,7 +48,17 @@ export function parseRowQueryBody(
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'Request body must be an object.' };
   const b = body as Record<string, unknown>;
   const int = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
-  if (b.cursor !== undefined && !int(b.cursor)) return { error: 'cursor must be a non-negative integer.' };
+  // A text cursor is an updated_since walk's (checked with it, in checkPickedQuery).
+  // A string of digits is a row index sent as text: refused, as before text
+  // cursors existed (MCP reads it as the number: mcp/tools-read.ts).
+  const textCursor = typeof b.cursor === 'string' && b.cursor !== '' && !/^\s*\d+\s*$/.test(b.cursor);
+  if (b.cursor !== undefined && !int(b.cursor) && !textCursor) {
+    return { error: 'cursor must be a non-negative integer, or the next_cursor of an updated_since read.' };
+  }
+  if (b.row_ids !== undefined && (!Array.isArray(b.row_ids) || !b.row_ids.every(id => typeof id === 'string'))) {
+    return { error: 'row_ids must be a list of row ids.' };
+  }
+  if (b.updated_since !== undefined && typeof b.updated_since !== 'string') return { error: SINCE_FORMAT_HELP };
   if (b.limit !== undefined && (!int(b.limit) || b.limit === 0 || (b.limit as number) > maxLimit)) {
     return { error: `limit must be an integer from 1 to ${maxLimit}.` };
   }
@@ -74,7 +95,10 @@ export function parseRowQueryBody(
     return { error: 'Invalid expected_view_version.' };
   }
   return { query: {
-    after: (b.cursor as number | undefined) ?? -1,
+    after: typeof b.cursor === 'number' ? b.cursor : -1,
+    ...(typeof b.cursor === 'string' ? { sinceCursor: b.cursor } : {}),
+    ...(b.row_ids !== undefined ? { rowIds: b.row_ids as string[] } : {}),
+    ...(b.updated_since !== undefined ? { updatedSince: b.updated_since as string } : {}),
     limit: b.limit as number | undefined,
     columns: columns?.names,
     ...(columns?.picks ? { picks: columns.picks } : {}),
@@ -108,5 +132,38 @@ export function validateQuery(columns: string[], q: RowQuery): string | null {
     return 'count mode does not accept cursor, limit, or columns';
   }
   if (q.includeStatus && q.returnMode !== 'rows') return 'include_status works with return_mode rows only';
+  return null;
+}
+
+// row_ids and updated_since: what each reads with, checked before anything is
+// read. null = fine. A read by id names its rows, so it takes no filter, view,
+// paging, limit or groups; a read by time pages with its own text cursor and
+// `limit`. Neither takes the paging fences (expected_*): ids don't move, and
+// rows changing during a walk by time is what it reads.
+export function checkPickedQuery(q: RowQuery): string | null {
+  const ids = q.rowIds !== undefined, since = q.updatedSince !== undefined;
+  if (!ids && !since) {
+    return q.sinceCursor === undefined ? null
+      : 'This cursor is the next_cursor of an updated_since read: send it with the same updated_since.';
+  }
+  if (ids && since) return 'row_ids and updated_since are two different reads: pass one of them.';
+  const fenced = q.expectedDataVersion !== undefined || q.expectedRowGeneration !== undefined
+    || q.expectedViewVersion !== undefined;
+  const extra = [
+    (q.where?.length ?? 0) > 0 && 'where', q.view !== undefined && 'view',
+    q.aggregate && 'group_by and aggregates', q.returnMode !== 'rows' && 'return_mode (it returns rows)',
+    fenced && 'expected_data_version, expected_row_generation and expected_view_version',
+    ids && (q.after >= 0 || q.sinceCursor !== undefined) && 'cursor', ids && q.limit !== undefined && 'limit',
+    since && q.after >= 0 && 'a number cursor (pass next_cursor as it came)',
+  ].filter((x): x is string => typeof x === 'string');
+  if (ids) {
+    const rowIds = q.rowIds!;
+    if (rowIds.length === 0 || rowIds.length > ROWS_BY_ID_MAX) return `row_ids takes 1 to ${ROWS_BY_ID_MAX} row ids.`;
+    if (rowIds.some(id => typeof id !== 'string' || id === '')) return 'row_ids must be a list of row ids.';
+    if (new Set(rowIds).size !== rowIds.length) return 'row_ids must not name a row twice.';
+    if (extra.length) return `row_ids reads exactly the rows it names: leave out ${extra.join(', ')}.`;
+    return null;
+  }
+  if (extra.length) return `updated_since reads rows by when they changed: leave out ${extra.join(', ')}.`;
   return null;
 }

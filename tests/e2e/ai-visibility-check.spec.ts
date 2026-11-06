@@ -1,6 +1,6 @@
 import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi, makeAccessToken, BASE } from './helpers'
-import { freshTreg, rowsOf, waitRun } from './helpers-enrich'
+import { freshTreg, readDb, rowsOf, waitRun } from './helpers-enrich'
 import { mockTreg, setTregKey } from './helpers-treg'
 import { waitAdded } from './helpers-list'
 import { call, callError, mcpClient } from './helpers-mcp'
@@ -30,7 +30,17 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: str
   }
 }
 
-// A table asked once, every formula filled.
+// Rows still queued for one of the sheet's clean, formula or lookup columns to follow what was written in them
+// (services/derived-follow.ts). An answer and the rows it queues are written together, and so are a formula's
+// cell and the row leaving its queue. A run's start puts ⏳ in its cells without queuing any, so only once every
+// run writing to the sheet has completed does none queued mean each of their cells is worked out from its row.
+const unfollowed = (sheetId: string): number => readDb(db => db.prepare(`SELECT COUNT(*) FROM autorun_pending p
+  JOIN autorun_columns a ON a.id = p.autorun_id
+  WHERE a.sheet_id = ? AND a.enabled = 1 AND a.kind IN ('clean', 'formula', 'lookup')`).pluck().get(sheetId))
+
+// A table asked once, every formula filled. Named by follows each engine's answer as it lands, so it reads
+// "1 of 1" for a moment before "1 of 2": wait until it counts every engine asked, or a check started right
+// after keeps that passing count and its Change since stays blank (the engines that answered differ).
 async function asked(api: APIRequestContext, input: Record<string, unknown> = INPUT) {
   const res = await api.post('/api/ai-visibility', { data: input })
   expect(res.ok(), await res.text()).toBeTruthy()
@@ -38,7 +48,9 @@ async function asked(api: APIRequestContext, input: Record<string, unknown> = IN
   const started = await (await api.post(`/api/ai-visibility/${v.id}/ask`, { data: {} })).json()
   for (const s of started.started) await waitRun(api, s.runId, ['completed'])
   await waitAdded(v.questionsSheetId)
-  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => x['Named by']), 'first answers')
+  const all = ` of ${started.started.length}`
+  await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => String(x['Named by']).endsWith(all)),
+    'first answers')
   return v
 }
 
@@ -50,7 +62,11 @@ test('check again from the guide: the answers kept, the change since then', asyn
   const v = await asked(api)
   expect((await rowsOf(api, v.questionsSheetId)).map(r => r['Named by'])).toEqual(['2 of 4', '2 of 4'])
 
-  const est = await (await api.post(`/api/ai-visibility/${v.id}/check`, { data: { estimateOnly: true } })).json()
+  // The app names the copies by the day where the browser is (it sends its time zone), so ask with the same
+  // one: without it the day is UTC's, another date between midnight here and midnight in UTC.
+  const timeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const est = await (await api.post(`/api/ai-visibility/${v.id}/check`, { data: { estimateOnly: true, timeZone } }))
+    .json()
   const day = est.plan.label
   expect(est.plan).toMatchObject({ soon: true, days: 0, questions: 2, names: {
     questionsCopy: `Questions ${day}`, sitesCopy: `Cited sites ${day}`, namedBy: `Named by on ${day}`,
@@ -76,8 +92,17 @@ test('check again from the guide: the answers kept, the change since then', asyn
   const table = await (await api.get(`/api/tables/${v.tableId}`)).json()
   const sheets = table.sheets as Array<{ id: string; name: string }>
   expect(sheets.map(s => s.name)).toEqual(['Questions', `Questions ${day}`, 'Cited sites', `Cited sites ${day}`])
-  const now = await until(() => rowsOf(api, v.questionsSheetId),
-    r => r.every(x => x[`Change since ${day}`] === 'Up 1'), 'the change column')
+  // Change since and Named by follow the answers on their own turns, and an engine's start puts ⏳ in its answers
+  // without either following that: Change since can say Up 1 while Named by, having followed none yet, counts as
+  // before the check ("2 of 4"), or counts three answers while Perplexity's is still ⏳ ("3 of 3"). Read the rows
+  // once the check's runs have all completed and every formula column has followed what they wrote.
+  const check = await until(async () => (await (await api.get(`/api/sheets/${v.questionsSheetId}`)).json())
+    .data.aiVisibility.checks[0], c => c?.stage === 'done', 'the check')
+  expect(check.runs).toHaveLength(4)
+  for (const r of check.runs) await waitRun(api, r.runId, ['completed'])
+  await until(async () => unfollowed(v.questionsSheetId), n => n === 0, 'the formula columns')
+  const now = await rowsOf(api, v.questionsSheetId)
+  expect(now.map(r => r[`Change since ${day}`])).toEqual(['Up 1', 'Up 1'])
   expect(now.map(r => [r['Named by'], r[`Named by on ${day}`]])).toEqual([['3 of 4', '2 of 4'], ['3 of 4', '2 of 4']])
   const kept = await rowsOf(api, sheets[1].id)
   expect(kept.map(r => r['Named by'])).toEqual(['2 of 4', '2 of 4'])
@@ -158,6 +183,9 @@ test('a check that can\'t ask stops, and the next one picks it up without copyin
   for (const r of done.check.runs) await waitRun(api, r.runId, ['completed'])
   const sheet = await (await api.get(`/api/sheets/${v.questionsSheetId}`)).json()
   expect(sheet.data.columns.filter((c: string) => c.startsWith('Change since'))).toEqual([`Change since ${day}`])
-  await until(() => rowsOf(api, v.questionsSheetId), r => r[0][`Change since ${day}`] === 'Same', 'the change')
+  // Change since read Same from the first answers when the stopped check added it: wait until it has followed
+  // the new ones.
+  await until(async () => unfollowed(v.questionsSheetId), n => n === 0, 'the formula columns')
+  expect((await rowsOf(api, v.questionsSheetId))[0][`Change since ${day}`]).toBe('Same')
   await api.dispose()
 })

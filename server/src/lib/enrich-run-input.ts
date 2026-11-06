@@ -36,6 +36,9 @@ export interface EnrichRunInput {
   runIf: string | null;
   maxCostPerRowUsd: number | null;
   spendLimitUsd: number | null;
+  // The most the run limit may be (a setup's ceiling, what is left of it:
+  // services/setup-ceiling.ts); the limit is the lower of it and its own. Never stored.
+  spendCeilingUsd?: number | null;
   // Rows at once (1..HTTP_MAX_CONCURRENCY); null: ENRICH_DEFAULT_CONCURRENCY.
   concurrency: number | null;
   fresh: boolean;
@@ -213,6 +216,7 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
 export interface RerunInput {
   column: string; rows: EnrichRunInput['rows']; estimateOnly: boolean;
   spendLimitUsd: number | null; rowGeneration: number | null; concurrency?: number | null; callAgain?: boolean;
+  spendCeilingUsd?: number | null;  // as EnrichRunInput's
 }
 
 export function parseRerunInput(body: unknown): { ok: RerunInput } | { error: string } {

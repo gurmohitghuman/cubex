@@ -2,12 +2,15 @@
 // throwaway DB: the new column is linked to every run of the status column,
 // each row takes the newest run that answered it (completed or failed; a
 // pending result leaves it to an older run), rows no run answered stay empty,
-// and a fill resumed from its saved cursor ends the same way.
+// a fill resumed from its saved cursor ends the same way, and a lookup reading
+// the column tells from its end that it filled.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import fillMod from '../../server/src/services/answer-field-fill'
+import changesMod from '../../server/src/services/lookup-fill-changes'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
+const { readsChangedUnseen } = changesMod as typeof import('../../server/src/services/lookup-fill-changes')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { runFieldJob } = fillMod as typeof import('../../server/src/services/answer-field-fill')
 
@@ -62,6 +65,12 @@ async function main() {
   answer(fresh, 1, 'new1')
   answer(fresh, 3, 'new3')
 
+  // A lookup filling from this sheet that reads Title took its look.
+  const probe = { id: uuid(), user_id: uid, other_sheet_id: sheetId, fill_cursor: 0 }
+  db.prepare(`INSERT INTO lookup_columns (id, user_id, sheet_id, column_name, source_column, other_sheet_id,
+    match_column, match_mode, returns, fill_status) VALUES (?, ?, ?, 'P', 'Name', ?, 'Name', 'equals', 'count',
+    'filling')`).run(probe.id, uid, sheetId, sheetId)
+  check('the lookup looks', readsChangedUnseen(probe, ['Title']) === null)
   const first = job()
   await runFieldJob(first)
   const want = ['old0', 'new1', 'mid2', 'new3', 'old4', 'old5', '']
@@ -72,6 +81,9 @@ async function main() {
   const done = db.prepare('SELECT status, stage FROM enrichment_field_jobs WHERE id = ?').get(first) as
     { status: string; stage: string }
   check('the job is done', done.status === 'done' && done.stage === 'fill')
+  // A lookup reading the column tells from this that it filled (lookup-fill-changes.ts).
+  const seen = readsChangedUnseen({ ...probe, fill_cursor: 1 }, ['Title'])
+  check('a lookup reading the column tells it filled', JSON.stringify(seen) === '{"column":"Title"}')
 
   // A restart after the newest run was filled: the rest goes on from the cursor.
   db.prepare(`UPDATE rows SET data = json_remove(data, '$.Title') WHERE sheet_id = ?`).run(sheetId)

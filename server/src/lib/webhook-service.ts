@@ -114,7 +114,7 @@ export function createSourceWithColumn(
          (id, user_id, sheet_id, token_hash, token_ciphertext, name, raw_column_name)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, userId, sheetId, tok.tokenHash, tok.tokenCiphertext, desiredName, rawColumnName);
-  })();
+  }).immediate();
 
   const source = db.prepare('SELECT * FROM webhook_sources WHERE id = ?').get(id) as WebhookSourceFull;
   return { source, secret: tok.secret };

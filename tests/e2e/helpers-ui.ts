@@ -23,9 +23,14 @@ export async function choose(target: Locator, value: string | { label: string })
 // The value a dropdown holds (what toHaveValue read on the browser's).
 export const valueOf = (target: Locator) => target.getAttribute('data-value')
 
+// The toolbar's menus fade out when they close (about 150 ms), and a click on a menu's button while one is
+// still fading out opens nothing: wait until none is left before opening the next (after Escape, say).
+const noMenuOpen = (page: Page) => expect(page.getByRole('menu')).toHaveCount(0)
+
 // Opens a kind of column from the arrow beside AI Column ("Enrichment", "Waterfall", "HTTP API",
 // "Clean data", "Formula", "Lookup", "AI Column").
 export async function openColumnType(page: Page, name: string): Promise<void> {
+  await noMenuOpen(page)
   await page.getByTestId('column-types-menu').click()
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
 }
@@ -33,6 +38,7 @@ export async function openColumnType(page: Page, name: string): Promise<void> {
 // An entry of the Data menu ("Import CSV", "Export", "Export this view", "Export whole sheet",
 // "Webhook", "Remove duplicates").
 export async function openDataMenu(page: Page, entry: string): Promise<void> {
+  await noMenuOpen(page)
   await page.getByTestId('data-menu').click()
   await page.getByRole('menuitem', { name: new RegExp(`^${entry}`) }).click()
 }
@@ -40,6 +46,7 @@ export async function openDataMenu(page: Page, entry: string): Promise<void> {
 // An entry of the ⋯ menu ("Use a setup…", "Save columns as a setup…", "This sheet's setup versions…",
 // "Manage setups", "Usage", "History").
 export async function openMoreMenu(page: Page, entry: string): Promise<void> {
+  await noMenuOpen(page)
   await page.getByTestId('more-menu').click()
   await page.getByRole('menuitem', { name: new RegExp(`^${entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })
     .click()

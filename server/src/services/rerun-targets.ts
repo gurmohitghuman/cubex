@@ -15,6 +15,7 @@ import { yieldToRequests } from '../lib/slices';
 import { existingRowIndexes } from '../lib/run-rows';
 import { rulePasses, type CheckedRule } from '../lib/run-condition';
 import { FAILED_MARK, RUNNING_MARK, isConditionNotMet } from '../lib/run-markers';
+import { pickedCells } from '../lib/row-cell';
 import type { RunFail } from './run-shared';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 
@@ -43,9 +44,7 @@ async function eachTarget(
   const passes = (r: unknown[]): boolean => {
     if (!keep(r[1], !!stale && r[flag] === 1)) return false;
     if (!keptOut || !isConditionNotMet(r[1] == null ? '' : String(r[1]))) return true;
-    const values: Record<string, string> = {};
-    ruleCols.forEach((c, i) => { values[c] = r[i + 2] == null ? '' : String(r[i + 2]); });
-    return rulePasses(keptOut.tree, values);
+    return rulePasses(keptOut.tree, pickedCells(ruleCols, r, 2));
   };
   const each = (rows: unknown[][]) => { for (const r of rows) if (passes(r)) take(r[0] as number); };
   if (scope.firstRows !== undefined) {

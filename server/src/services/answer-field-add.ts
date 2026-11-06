@@ -23,6 +23,7 @@ import {
 } from './answer-runs';
 import { columnRunActive } from './autorun-entry';
 import { runFieldJob } from './answer-field-fill';
+import { FIELD_FILLING } from '../lib/field-fill-columns';
 import type { RunFail } from './run-shared';
 import { isWaterfallConfig } from '../lib/waterfall/config';
 import { logSheetChange } from '../lib/change-log';
@@ -148,7 +149,7 @@ export async function addAnswerField(
         WHERE id = ? AND user_id = ?`).run(sheetId, userId);
     }).immediate();
     if (problem) return problem;
-    continueInBackground(sheetId, 'filling a column', () => runFieldJob(jobId));
+    continueInBackground(sheetId, FIELD_FILLING, () => runFieldJob(jobId));
     logSheetChange(sheetId, userId, 'answer_field',
       `Added the column "${name}" from the answers of "${owner.statusColumn}"`,
       { column: name, detail: { from_column: owner.statusColumn } });

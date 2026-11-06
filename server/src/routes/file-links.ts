@@ -86,6 +86,8 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   // the link may try again.
   const kept = result.fail === 'busy' && releaseFileLink(link);
   if (result.fail === 'aborted' || res.destroyed) return; // the client is gone
+  // The sheet went to the trash while the file uploaded: nothing was imported.
+  if (result.fail === 'sheet_not_found') return void res.status(404).json({ error: `Sheet not found.${usedUp}` });
   if (result.fail === 'busy') {
     return void res.status(409).json({ error: result.error + (kept ? stillWorks : usedUp), busy: true });
   }

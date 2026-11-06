@@ -6,6 +6,7 @@ import { aiMaxTokens } from '../lib/constants';
 import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice } from '../lib/ai-cost';
 import { inFlightCheck, type InFlight } from '../lib/ai-in-flight';
+import { priceModelId } from '../lib/ai-spend-limit';
 import { readOpenRouterBalance } from './openrouter-balance';
 
 export async function inFlightFor(
@@ -13,7 +14,7 @@ export async function inFlightFor(
 ): Promise<InFlight | null> {
   if (!model) return null;
   const result = await fetchModels(Date.now());
-  const m = (result.ok ? result.models : result.stale)?.find(x => x.id === model);
+  const m = (result.ok ? result.models : result.stale)?.find(x => x.id === priceModelId(model));
   if (!m) return null;
   const balance = await readOpenRouterBalance(userId);
   return inFlightCheck({

@@ -128,3 +128,52 @@ test('MCP: delete_rows, remove_duplicates and manage_sheet go to the trash; rest
       c.action === 'sheet_restored' && c.by === 'the token "e2e trash mcp" (MCP)')).toBeTruthy()
     await client.close()
   })
+
+test('a row of a deleted sheet (alone or with its table) cannot be changed by its id until the sheet is back',
+  async () => {
+    const api = await authedApi()
+    const { tableId, sheetId } = await seedSheet(api, 2)
+    await api.post(`/api/tables/${tableId}/sheets`, { data: { name: 'Spare' } })
+    const token = await makeAccessToken(api, ['read', 'write'], 'e2e trash row update')
+    const v1 = await bearer(token)
+    const client = await mcpClient(token, 'e2e trash row update')
+    const [row] = await rowsOf(v1, sheetId)
+    const change = { val: 'changed' }
+    const refused = async () => {
+      const patch = await v1.patch(`/api/v1/rows/${row.id}`, { data: { data: change } })
+      expect(patch.status()).toBe(404)
+      expect(await patch.json()).toEqual({ error: 'Sheet not found' })
+      // As the sheet-addressed forms answer: the many-row update, and MCP with or without sheet_id.
+      const many = await v1.post(`/api/v1/sheets/${sheetId}/rows/update`,
+        { data: { updates: [{ row_id: row.id, data: change }] } })
+      expect(many.status()).toBe(404)
+      expect(await many.json()).toEqual({ error: 'Sheet not found' })
+      expect(await callError(client, 'update_cells', { row_id: row.id, data: change })).toBe('Sheet not found')
+      expect(await callError(client, 'update_cells', { row_id: row.id, sheet_id: sheetId, data: change }))
+        .toBe('Sheet not found')
+    }
+    const restore = async (id: number) => {
+      const out = await (await api.post('/api/trash/restore', { data: { ids: [id] } })).json()
+      expect(out.results[0].restored).toMatchObject({ state: 'restored' })
+    }
+
+    const gone = await api.delete(`/api/tables/${tableId}/sheets/${sheetId}`)
+    expect(gone.status(), await gone.text()).toBe(200)
+    await refused()
+    await restore((await gone.json()).trash.id)
+    expect((await rowsOf(v1, sheetId))[0]).toEqual(row)
+
+    const tableGone = await api.delete(`/api/tables/${tableId}`)
+    expect(tableGone.status(), await tableGone.text()).toBe(200)
+    await refused()
+    await restore((await tableGone.json()).trash.id)
+    expect((await rowsOf(v1, sheetId))[0]).toEqual(row)
+
+    const back = await v1.patch(`/api/v1/rows/${row.id}`, { data: { data: change } })
+    expect(back.status(), await back.text()).toBe(200)
+    expect((await back.json()).data).toEqual(change)
+    expect((await call(client, 'update_cells', { row_id: row.id, data: { val: 'again' } })).data)
+      .toEqual({ val: 'again' })
+    await client.close()
+    await v1.dispose()
+  })

@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
+import { pauseRun, cancelRun } from '../services/run-lifecycle';
+import { resumeAiRun } from '../services/ai-run-limit';
 
 // Thin wrappers over services/run-lifecycle.ts (shared with /api/v1 and the
 // MCP control_run tool), preserving the historical UI status codes: pause and
@@ -24,11 +25,15 @@ router.post('/runs/:id/pause', (req: AuthRequest, res) => {
 router.post('/runs/:id/resume', async (req: AuthRequest, res) => {
   try {
     // Cookie/UI caller is the account owner: full authority to resolve keys.
-    const result = await resumeRun('ai', req.params.id, req.userId!, true);
+    // { spendLimitUsd? } raises (or sets) the run's spend limit (services/ai-run-limit.ts).
+    const limit = (req.body as { spendLimitUsd?: unknown } | undefined)?.spendLimitUsd;
+    const result = await resumeAiRun(req.params.id, req.userId!, limit, true, 'spendLimitUsd');
     if ('fail' in result) {
       if (result.fail === 'conflict') return res.status(409).json({ error: 'Run is no longer paused' });
       if (result.fail === 'spend_cap') return res.status(403).json({ error: result.message });
-      if (result.fail === 'model_gone') return res.status(400).json({ error: result.message });
+      if (result.fail === 'model_gone' || result.fail === 'bad_request') {
+        return res.status(400).json({ error: result.message });
+      }
       return res.status(400).json({ error: 'Run is not paused' });
     }
     res.json({ message: 'AI run resumed' });

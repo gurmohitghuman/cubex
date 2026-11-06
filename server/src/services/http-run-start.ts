@@ -114,7 +114,7 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   // Cap check + mutation in ONE immediate-mode transaction — two concurrent
   // starts could otherwise both pass the cap check and both insert their full
   // set of master+extracted columns.
-  return asRunStart(p.sheetId, async (): Promise<HttpRunStartOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<HttpRunStartOutcome> => {
     let capExceededCount = -1;
     db.transaction(() => {
       const { columns: currentCols } = countColumnsAndRows(p.sheetId, userId);
