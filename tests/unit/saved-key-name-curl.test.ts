@@ -5,7 +5,7 @@
 // dialog and from an agent's save_keys. Saving a new key from a paste is held
 // to CURL_KEY_NAME_MAX (a 65-character name is refused, nothing saved), and the
 // write itself refuses a name over API_KEY_NAME_MAX, dry run or not, rolling
-// back the keys before it.
+// back the keys before it, and one with characters Settings refuses.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -97,6 +97,17 @@ ok(`the write refuses a key name over ${API_KEY_NAME_MAX} characters, dry run or
   assert.deepEqual(names(), now)
   assert.deepEqual(saveImportedKeys(uid, [], [key(AT_CAP)]), { ok: [AT_CAP] })
   assert.deepEqual(names(), [...now, AT_CAP].sort())
+})
+
+ok('the write refuses a key name with characters Settings refuses, dry run or not', () => {
+  const key = { name: 'a}}x{{b', value: 'v'.repeat(20), key_type: 'api_key' as const, description: '' }
+  const settings = validateSavedKey({ name: key.name, key_type: 'bearer', key_value: key.value })
+  assert.match(String(settings), /can only contain letters, numbers, underscores, and hyphens/)
+  const refused = { fail: 'bad_request', message: settings }
+  const now = names()
+  assert.deepEqual(saveImportedKeys(uid, [], [key], true), refused)
+  assert.deepEqual(saveImportedKeys(uid, [], [key]), refused)
+  assert.deepEqual(names(), now)
 })
 
 if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }

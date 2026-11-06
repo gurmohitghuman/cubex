@@ -12,6 +12,7 @@ export type SavedKeyType = 'bearer' | 'api_key' | 'custom';
 export interface SavedKeyInput { name: string; key_type: SavedKeyType; key_value: string; description: string | null }
 const PUBLIC_COLUMNS = 'id, name, key_type, description, created_at, updated_at';
 const NAME_TOO_LONG = `API key name can be at most ${API_KEY_NAME_MAX} characters`;
+const NAME_CHARS = 'API key name can only contain letters, numbers, underscores, and hyphens';
 
 // A Settings form body, checked: the input to save, or what's wrong with it.
 // currentName: the key's name when an existing key is edited. Only creating a
@@ -23,9 +24,7 @@ export function validateSavedKey(body: Record<string, unknown>, currentName?: st
   if (typeof name !== 'string' || !name.trim()) return 'API key name is required';
   const trimmedName = name.trim();
   if (trimmedName.length > API_KEY_NAME_MAX && trimmedName !== currentName) return NAME_TOO_LONG;
-  if (!API_KEY_NAME_PATTERN.test(trimmedName)) {
-    return 'API key name can only contain letters, numbers, underscores, and hyphens';
-  }
+  if (!API_KEY_NAME_PATTERN.test(trimmedName)) return NAME_CHARS;
   if (typeof key_type !== 'string' || !['bearer', 'api_key', 'custom'].includes(key_type)) {
     return 'Invalid key type. Must be bearer, api_key, or custom';
   }
@@ -88,7 +87,7 @@ export interface ImportedKey { name: string; value: string; key_type: SavedKeyTy
 // hold the same value (a retry): that key is reused. A name that holds another
 // value, that differs from a saved key's name only in case, or that a column of
 // this sheet answers to (a column would be read instead of the key) is refused,
-// and so is a name over API_KEY_NAME_MAX, whatever the caller checked before.
+// and so is a name over API_KEY_NAME_MAX or outside API_KEY_NAME_PATTERN, whatever the caller checked before.
 // dryRun runs every check and writes nothing.
 export function saveImportedKeys(
   userId: string, columns: string[], keys: ImportedKey[], dryRun = false,
@@ -111,6 +110,7 @@ function saveOne(
   userId: string, columns: string[], k: ImportedKey, batch: Map<string, string>, dryRun: boolean,
 ): string {
   if (k.name.length > API_KEY_NAME_MAX) throw new KeyRefused(NAME_TOO_LONG, 'bad_request');
+  if (!API_KEY_NAME_PATTERN.test(k.name)) throw new KeyRefused(NAME_CHARS, 'bad_request');
   if (columns.some(c => templateTokenIs(k.name, c))) {
     throw new KeyRefused(`"${k.name}" is also a column in this sheet. Choose another name for the key.`);
   }

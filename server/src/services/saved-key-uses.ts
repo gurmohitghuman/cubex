@@ -111,8 +111,10 @@ export function listSavedKeys(
   let wanted: KeyRow[];
   let nextAfter: string | undefined;
   if (name !== undefined) {
+    const want = name.toLowerCase(); // once: name can be as long as a request body
+    // Saved names are ASCII (API_KEY_NAME_PATTERN), so lowercasing keeps their length.
     wanted = (db.prepare('SELECT name, created_at, updated_at FROM api_keys WHERE user_id = ? ORDER BY name')
-      .all(userId) as KeyRow[]).filter(k => k.name.toLowerCase() === name.toLowerCase());
+      .all(userId) as KeyRow[]).filter(k => k.name.length === want.length && k.name.toLowerCase() === want);
     if (wanted.length === 0) {
       return { fail: 'not_found', message: `There's no saved key named "${name.slice(0, 64)}".` };
     }
