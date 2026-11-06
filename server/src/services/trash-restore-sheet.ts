@@ -3,8 +3,10 @@
 // A sheet goes back as its table's last tab, under its name, or "<name>
 // (restored)" when a sheet of the table took the name meanwhile (a table the
 // same among tables); a sheet whose table is in the trash waits for the table.
-// Lookups that look in it fill again, and so do its own fills the trash
-// stopped, after the request (startRestored). One small transaction: nothing moves.
+// Lookups whose fill failed while the sheet they look in was in the trash fill
+// again (those that look in it, and those on it whose other sheet is live), and
+// so do its own fills the trash stopped, after the request (startRestored). One
+// small transaction: nothing moves.
 import { db } from '../lib/db';
 import { MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { logSheetChange } from '../lib/change-log';

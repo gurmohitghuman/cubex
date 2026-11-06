@@ -9,8 +9,8 @@
 // frees this sheet meanwhile) while the other sheet is sorting, importing or
 // rewriting a column, and, for a fill, while a run is filling a column it
 // reads (not a paused one). A lookup whose other sheet or column is gone
-// (`broken`), or a column it reads that starts filling again mid-fill, stops
-// the pass with that message.
+// (`broken`), whose source column isn't in this sheet any more, or a column it
+// reads that starts filling again mid-fill, stops the pass with that message.
 // Over 200 lines: the kind and its pass are one piece (check() and open() guard the same record).
 import { db } from '../lib/db';
 import {
