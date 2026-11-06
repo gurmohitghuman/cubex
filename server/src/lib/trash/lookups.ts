@@ -36,6 +36,11 @@ export function lookupsFailedOnTrash(sheetIds: string[], userId: string): Lookup
     .all(JSON.stringify(sheetIds), userId, IN_TRASH) as LookupColumnRow[];
 }
 
+// One of them as it is now, while it still is (not edited, started again or deleted since).
+export const lookupStillFailedOnTrash = (id: string, userId: string): LookupColumnRow | undefined =>
+  db.prepare(`SELECT * FROM lookup_columns WHERE id = ? AND user_id = ? AND fill_status = 'failed'
+    AND instr(error_message, ?) > 0`).get(id, userId, IN_TRASH) as LookupColumnRow | undefined;
+
 // Gone for good: the message says so, and the keys of the sheet's looked-up
 // columns go (their own trigger purges them in slices) before its rows do,
 // so deleting the rows logs nothing.

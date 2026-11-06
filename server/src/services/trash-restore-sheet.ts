@@ -6,10 +6,12 @@
 // Lookups that look in it start again, and so do its own fills the trash
 // stopped. One small transaction: nothing moves.
 import { db } from '../lib/db';
-import { MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
+import { HEAVY_JOB_RETRY_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { logSheetChange } from '../lib/change-log';
-import { lookupsFailedOnTrash, restartLookupsInto } from '../lib/trash/lookups';
+import { lookupsFailedOnTrash, lookupStillFailedOnTrash, restartLookupsInto } from '../lib/trash/lookups';
 import { withoutChangeLog } from '../lib/change-log';
+import { isBusyMessage } from '../lib/sheet-busy';
+import type { LookupColumnRow } from '../lib/lookup-columns';
 import { lookupInputOf, startLookupColumn } from './lookup-column';
 import { resumeFillsBackFromTrash } from './derived-fill-parked';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
@@ -74,17 +76,38 @@ function restoreSheet(userId: string, item: TrashItem): { ok: SheetRestored } | 
 
 // Lookups into these sheets whose fill stopped while they were in the trash
 // look up again, in the background, as "Look up again" would (no change-log
-// line of their own). Then the sheets' own clean, formula and lookup fills the
-// trash parked go on (derived-fill-parked.ts), each once its sheet is free: a
-// lookup started here holds its sheet first.
+// line of their own), those of one sheet one after another. Then the sheets'
+// own clean, formula and lookup fills the trash parked go on
+// (derived-fill-parked.ts), each once its sheet is free: a lookup started here
+// holds its sheet first.
 function refill(userId: string, sheetIds: string[]): void {
+  const bySheet = new Map<string, LookupColumnRow[]>();
   for (const rec of lookupsFailedOnTrash(sheetIds, userId)) {
-    const failed = (why: unknown) => console.error(`Looking up "${rec.column_name}" again failed:`, why);
-    withoutChangeLog(() => startLookupColumn(userId, rec.sheet_id, lookupInputOf(rec)))
-      .then(out => { if ('fail' in out) failed(out.message); })
-      .catch(failed);
+    bySheet.set(rec.sheet_id, [...(bySheet.get(rec.sheet_id) ?? []), rec]);
+  }
+  for (const recs of bySheet.values()) {
+    lookUpAgain(userId, recs).catch(err => console.error('Looking up again failed:', err));
   }
   resumeFillsBackFromTrash(sheetIds);
+}
+
+// One sheet's lookups one after another: a start holds the sheet until its fill
+// is done, so the next waits for the sheet to be free, read again each time
+// (one edited, started again or deleted meanwhile is left alone). The first
+// takes the sheet before this returns.
+async function lookUpAgain(userId: string, recs: LookupColumnRow[]): Promise<void> {
+  for (const { id } of recs) {
+    for (;;) {
+      const rec = lookupStillFailedOnTrash(id, userId);
+      if (!rec) break;
+      const failed = (why: unknown) => console.error(`Looking up "${rec.column_name}" again failed:`, why);
+      const out = await withoutChangeLog(() => startLookupColumn(userId, rec.sheet_id, lookupInputOf(rec)))
+        .catch((err: unknown) => { failed(err); return null; });
+      if (!out || 'ok' in out) break;
+      if (!isBusyMessage(out.message)) { failed(out.message); break; }
+      await new Promise(resolve => setTimeout(resolve, HEAVY_JOB_RETRY_MS));
+    }
+  }
 }
 
 function restoreTable(userId: string, item: TrashItem): { ok: SheetRestored } | RestoreFail {

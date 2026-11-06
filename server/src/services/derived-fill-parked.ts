@@ -16,11 +16,14 @@ export function parkFill(id: string, fill: Parked): void {
 
 export const isParked = (id: string): boolean => parked.has(id);
 
-// The fills parked on these sheets go on, once they are restored.
+// The fills parked on these sheets go on, once they are restored: after the
+// request that restored them, so a batch of its rows restored next in it
+// (trash-actions.ts) isn't refused as busy, and a lookup the restore started
+// takes its sheet first. Each then takes its sheet once it is free.
 export function resumeFillsBackFromTrash(sheetIds: string[]): void {
   for (const [id, p] of parked) {
     if (!sheetIds.includes(p.sheetId)) continue;
     parked.delete(id);
-    p.resume();
+    setImmediate(() => p.resume());
   }
 }

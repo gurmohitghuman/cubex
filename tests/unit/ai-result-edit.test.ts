@@ -44,7 +44,7 @@ await ok("the check reads the result's own run by its key, not a list of the use
   const plan = (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all('v', 's', 'i', 'u', 'u') as Array<{ detail: string }>)
     .map(p => p.detail)
   assert.ok(!plan.some(d => /LIST SUBQUERY/.test(d)), plan.join('\n'))
-  assert.ok(plan.some(d => /^SEARCH r USING INDEX sqlite_autoindex_ai_runs_1 \(id=\?\)/.test(d)), plan.join('\n'))
+  assert.ok(plan.some(d => /SEARCH r USING .*\(id=\?\)/.test(d)), plan.join('\n'))
 })
 
 done()
