@@ -20,7 +20,7 @@ export function createAccount(passwordHash: string): string | null {
     db.prepare('INSERT INTO users (id, password_hash) VALUES (?, ?)').run(id, passwordHash);
     db.prepare('INSERT INTO settings (id, user_id) VALUES (?, ?)').run(uuidv4(), id);
     return id;
-  })();
+  }).immediate();
 }
 
 // INITIAL_PASSWORD creates the account at boot, before the server accepts any

@@ -163,7 +163,7 @@ export async function renameSheetColumn(
       }
       forgetPurge(sheetId, trimmedNew);
       recordPurge(sheetId, userId, columnName);
-    })();
+    }).immediate();
     await finishColumnChange(sheetId, userId, columnName);
     logSheetChange(sheetId, userId, 'column_renamed', `Renamed the column "${columnName}" to "${trimmedNew}"`,
       { column: trimmedNew, detail: { from: columnName, to: trimmedNew } });
