@@ -102,9 +102,9 @@ export function computeConfigHash(c: DraftConfig): string {
 
 // Hash the INTERPOLATED prompt: it embeds exactly the referenced cells' values,
 // so an edit to a referenced cell (and only a referenced cell) changes the hash.
-// Uses the same processPromptTemplate as both runners — no drift.
-export function computeInputHash(prompt: string, rowData: Record<string, string>): string {
-  return sha256(processPromptTemplate(prompt, rowData));
+// Uses the same processPromptTemplate and sheet columns as both runners — no drift.
+export function computeInputHash(prompt: string, rowData: Record<string, string>, columns: readonly string[]): string {
+  return sha256(processPromptTemplate(prompt, rowData, columns));
 }
 
 interface DraftDbRow {

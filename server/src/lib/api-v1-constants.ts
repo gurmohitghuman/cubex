@@ -19,6 +19,11 @@ export const API_V1_MAX_ROWS_PAGE = 500;
 // The MCP read_rows tool is tighter still — its results land verbatim in an
 // agent's context window (design doc §4).
 export const MCP_MAX_ROWS_PAGE = 100;
+// read_rows / rows/query `row_ids`: the most rows one read names (services/rows-by-id.ts).
+export const ROWS_BY_ID_MAX = 1000;
+// Over MCP a read by id keeps rows up to about this many characters and lists
+// the rest in unread_ids, as export_csv does (MCP_EXPORT_MAX_CHARS below).
+export const MCP_ROWS_BY_ID_MAX_CHARS = 40_000;
 
 // Batch caps per call. The rows-per-sheet cap still governs on top; these
 // bound single-call transaction size (writer-lock hold time).

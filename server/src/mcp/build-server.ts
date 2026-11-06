@@ -93,6 +93,14 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'inside them.' + capToolNote(ctx.spend ?? null, true),
     },
   );
+  registerAllTools(server, ctx);
+  return server;
+}
+
+// Every tool, in order. The OpenAPI document (server/src/openapi/tool-schemas.ts)
+// also calls it, on a stand-in server, to read the tools' input schemas; it
+// passes efficientRows true so the flag-gated tools' schemas are there too.
+export function registerAllTools(server: McpServer, ctx: McpAuthCtx, efficientRows = MCP_EFFICIENT_ROWS_ENABLED) {
   registerReadTools(server, ctx);
   registerRowTools(server, ctx);
   registerColumnTools(server, ctx);
@@ -123,9 +131,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
   registerSavedKeyTools(server, ctx);
-  if (MCP_EFFICIENT_ROWS_ENABLED) {
+  if (efficientRows) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);
   }
-  return server;
 }

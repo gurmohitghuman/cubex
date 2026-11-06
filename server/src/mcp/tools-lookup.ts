@@ -28,7 +28,17 @@ export function registerLookupTool(server: McpServer, ctx: McpAuthCtx): void {
       + '(broken says why). Writes into column, always a new column (naming a lookup column already there '
       + 'changes it); never the sheet itself. preview:true shows the first rows with their results and writes '
       + 'nothing. Waits for the fill up to 10 seconds; a bigger sheet returns status "filling" (contains on very '
-      + 'large sheets can take minutes).',
+      + 'large sheets can take minutes). Refused while a run fills match_column or a column it returns by name. A '
+      + 'fill going waits ("waiting" says so) for a run (a rerun of chosen rows too), or a clean, formula, lookup '
+      + 'or stored-answers column, filling a column it reads (a list of every column reads all of them), then '
+      + 'goes on by itself, looking every row up again if it had written some, so no row mixes old and new values. '
+      + 'It also does that after an undo_run there, after that sheet is sorted, replaced by an import or has '
+      + 'duplicates removed, after a column it reads there is renamed (or deleted, for a list of every column), '
+      + 'after such a run or fill (or a paused run going on) it didn\'t see while it waited, and after a restart. '
+      + 'Exception: after a run auto-run started for the rows it takes (new rows, and older ones not run yet) it '
+      + 'goes on where it was. At most 3 times a fill: then it goes on where it was, and kept_changing names what '
+      + 'kept changing (rows looked up before may hold older values; call again to redo them). Lookups that would '
+      + 'wait for each other in a loop fail, naming each column.',
     inputSchema: z.object({
       sheet_id: z.string().describe('The sheet that gets the lookup column'),
       column: z.string().optional().describe('The lookup column to write; required unless preview is true'),

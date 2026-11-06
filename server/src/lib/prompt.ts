@@ -77,17 +77,34 @@ export function unknownRefsMessage(unknown: Array<{ ref: string; suggestion?: st
 }
 
 // Substitute /column tokens in a prompt with this row's actual cell values.
-// Falls back to "[MISSING: /tokenName]" when a referenced column isn't in the row.
+// `columns` is the sheet's column list (column_order), read once per run,
+// batch or preview, never per row. A row holds only the keys it has values for,
+// so a listed column the row has no key for is an empty cell and reads as ''.
+// Only a token that names no column at all becomes "[MISSING: /tokenName]".
+// The same steps as matchPromptColumn, each on the row's keys, then on the list:
+// a name matching ignoring case wins over a normalized one, so with both
+// "Company Name" and "company_name" listed, /company_name reads company_name
+// even on a row that has no key for it. A row holding every listed key matches
+// its own keys at each step, so its runs, resumes and draft fingerprint
+// (lib/ai-drafts.ts) are what they were before the list was passed in.
 //
 // Single-pass callback replacement, deliberately: each occurrence is judged at
 // its own position (the same token can be a real reference in one spot and part
 // of a URL elsewhere in the prompt), and the callback's return value is taken
 // literally — so cell values containing $&, $', $$ etc. can't be expanded as
 // replacement patterns by String.replace.
-export function processPromptTemplate(prompt: string, rowData: Record<string, string>): string {
+export function processPromptTemplate(
+  prompt: string, rowData: Record<string, string>, columns: readonly string[],
+): string {
+  const own = Object.keys(rowData);
   return prompt.replace(COLUMN_REF_PATTERN, (token, columnRef: string) => {
-    const matchingColumn = matchPromptColumn(columnRef, Object.keys(rowData));
-    if (matchingColumn) return rowData[matchingColumn] || '';
+    const lower = columnRef.toLowerCase();
+    const exact = own.find(c => c.toLowerCase() === lower);
+    if (exact !== undefined) return rowData[exact] || '';
+    if (columns.some(c => c.toLowerCase() === lower)) return '';
+    const normalized = own.find(c => normalizeColumnName(c) === columnRef);
+    if (normalized !== undefined) return rowData[normalized] || '';
+    if (columns.some(c => normalizeColumnName(c) === columnRef)) return '';
     return `[MISSING: ${token}]`;
   });
 }

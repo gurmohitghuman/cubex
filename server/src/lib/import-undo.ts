@@ -106,7 +106,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
       .run(job.sheet_id, job.user_id);
     db.prepare('DELETE FROM import_jobs WHERE sheet_id = ?').run(job.sheet_id);
-  })();
+  }).immediate();
 }
 
 // undoImport, and if that fails too, keep the sheet busy and retry it in the

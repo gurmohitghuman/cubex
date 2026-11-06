@@ -8,6 +8,7 @@ import type { Response } from 'express';
 import { db } from './db';
 import { parseRowData } from './sql-helpers';
 import { escapeCsvCell } from './csv-safety';
+import { cellOf } from './row-cell';
 import { yieldToRequests } from './slices';
 import type { CompiledFilter } from './row-filter/sql';
 
@@ -17,9 +18,11 @@ export interface SheetExportPlan { sheetName: string; columns: string[]; filter?
 
 const EXPORT_PAGE_ROWS = 5_000;
 
-// One row as a CSV line, escaped the same way in every export.
+// One row as a CSV line, escaped the same way in every export. A row without a
+// column's key has an empty cell there, also for a column named like a member
+// every object inherits ("constructor"), whose inherited value must not be read.
 export const csvLine = (columns: string[], data: Record<string, string>): string =>
-  columns.map(col => escapeCsvCell(data[col] ?? '')).join(',');
+  columns.map(col => escapeCsvCell(cellOf(data, col))).join(',');
 
 // The sheet's row data in row order, EXPORT_PAGE_ROWS rows at a time,
 // yielding to other requests between pages, until `apply` returns false. With

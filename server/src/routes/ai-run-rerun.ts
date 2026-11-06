@@ -5,6 +5,7 @@ import { rerunAiColumn } from '../services/ai-run-rerun';
 import { AI_RERUN_MODES, type AiRerunMode } from '../services/ai-rerun-modes';
 import { runFailHttpStatus } from '../services/run-shared';
 import { rerunRowGenerationConflict } from './rerun-row-generation';
+import { usdLimitOf } from '../lib/cost-ceiling';
 
 // Thin wrapper over services/ai-run-rerun.ts (shared with /api/v1 and MCP).
 const router = express.Router();
@@ -63,6 +64,9 @@ router.post('/rerun', async (req: AuthRequest, res) => {
     const first = parseFirstRows((req.body as { firstRows?: unknown }).firstRows, 'firstRows',
       !!parsed.rowIndices?.length);
     if ('error' in first) return res.status(400).json({ error: first.error });
+    // Optional: the new run's hard spend limit in dollars (services/ai-spend-gate.ts).
+    const limit = usdLimitOf((req.body as { spendLimitUsd?: unknown }).spendLimitUsd, 'spendLimitUsd');
+    if ('error' in limit) return res.status(400).json({ error: limit.error });
 
     // Optional row_generation fence (migration 021): "Run Selected Rows" targets
     // by row_index, so a sort/CSV-replace elsewhere between the user's selection
@@ -79,6 +83,7 @@ router.post('/rerun', async (req: AuthRequest, res) => {
       sheetId, baseColumnName, columnName, rowIndices: parsed.rowIndices, firstRows: first.firstRows,
       // The first rows without a mode: every one of them, as on /api/v1 and MCP.
       mode: (mode ?? (first.firstRows ? 'all' : undefined)) as AiRerunMode | undefined,
+      spendLimitUsd: limit.value,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
 

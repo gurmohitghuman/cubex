@@ -10,7 +10,7 @@ import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
-import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
+import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
@@ -43,6 +43,8 @@ export async function rerunAiMultiColumn(
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
+  // A rerun by run id (run-rerun-by-id.ts) comes here with no sheet checked.
+  if (!verifySheetOwnership(p.sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
 
   const latest = db.prepare(`
     SELECT * FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND column_name = ?
@@ -100,7 +102,7 @@ export async function rerunAiMultiColumn(
   if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 
   const runId = uuidv4();
-  return asRunStart(p.sheetId, async (): Promise<RerunOutcome> => {
+  return asRunStart(p.sheetId, userId, async (): Promise<RerunOutcome> => {
     // Modes read the status cell: ❌ errored, blank never run, ⏳ unfinished.
     const targets = await resolveRerunTargets(p.sheetId, userId, statusColumn, p.mode ?? DEFAULT_AI_RERUN_MODE, p,
       p.recheckKeptOut ? rule.ok : null);
@@ -117,15 +119,16 @@ export async function rerunAiMultiColumn(
           id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows,
           processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
-          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?)
+          web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
+          spend_limit_usd
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         runId, p.sheetId, userId, statusColumn, latest.prompt, latest.system_prompt, model, latest.temperature,
         latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, concurrency.value,
         targets.length, JSON.stringify(targets), JSON.stringify(specs), statusColumn, dataColumn,
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
         latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
-        actorTokenId(),
+        actorTokenId(), p.spendLimitUsd ?? null,
       );
     }).immediate();
     if (capExceeded) return {

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db } from './db';
+import { verifySheetOwnership } from './sql-helpers';
 import { HEAVY_JOB_RETRY_MAX_MS, HEAVY_JOB_RETRY_MS } from './constants';
 
 // One heavy operation per sheet at a time: sort, CSV import, column rename or
@@ -64,6 +65,21 @@ export async function withSheetBusy<T>(
     void settle(sheetId, entry);
   }
 }
+
+// withSheetBusy for a change that checked its sheet, then waited (an upload, a
+// scan, a check, a worker) before it gets here: the sheet may have gone to the
+// trash meanwhile. Checked again first thing once held, it takes no change
+// ({ sheetGone }). It stays live until `work` returns: the trash refuses a busy
+// sheet (trash-sheets.ts).
+export async function withLiveSheetBusy<T>(
+  sheetId: string, userId: string, what: string,
+  work: (reserve: (floor: number) => void) => Promise<T>,
+): Promise<T | { busy: string } | { sheetGone: true }> {
+  return withSheetBusy(sheetId, what, async (reserve): Promise<T | { sheetGone: true }> =>
+    (verifySheetOwnership(sheetId, userId) ? work(reserve) : { sheetGone: true }));
+}
+export const sheetGone = (outcome: object): outcome is { sheetGone: true } =>
+  'sheetGone' in outcome && outcome.sheetGone === true;
 
 // Runs what `work` left for after it returned, then releases the sheet (or
 // keeps retrying a failed job). With nothing left, it releases synchronously.

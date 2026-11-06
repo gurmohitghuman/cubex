@@ -89,7 +89,10 @@ function settled(
 
 export async function startAgainStep(
   userId: string, sheetId: string, step: SetupStep,
-  opts: { rowIndexes: number[] | null; allowSecrets: boolean; autoRun: boolean; refill: boolean },
+  opts: {
+    rowIndexes: number[] | null; allowSecrets: boolean; autoRun: boolean; refill: boolean;
+    spendLimitUsd?: number | null;  // what is left of the setup's ceiling (setup-ceiling.ts)
+  },
 ): Promise<AgainStart> {
   const main = mainColumn(step);
   const scope = opts.rowIndexes ? { withinRows: opts.rowIndexes } : {};
@@ -101,7 +104,7 @@ export async function startAgainStep(
       const stop = blocked(now(), main);
       if (stop) return stop;
       return settled('ai', await rerunAiColumn(userId, { sheetId, baseColumnName: step.name, columnName: main,
-        mode: 'empty', recheckKeptOut: true, ...scope }), now, main);
+        mode: 'empty', recheckKeptOut: true, ...scope, spendLimitUsd: opts.spendLimitUsd }), now, main);
     }
     case 'http': {
       const now = () => columnRunNow(sheetId, userId, 'http', main);
@@ -115,7 +118,8 @@ export async function startAgainStep(
       const stop = blocked(now(), main);
       if (stop) return stop;
       const out = await rerunEnrichmentColumn(userId, sheetId, {
-        column: main, estimateOnly: false, spendLimitUsd: null, rowGeneration: null,
+        column: main, estimateOnly: false, spendLimitUsd: null, spendCeilingUsd: opts.spendLimitUsd,
+        rowGeneration: null,
         rows: opts.rowIndexes
           ? { mode: 'selected', status: 'not_enriched', test: null, rowIndexes: opts.rowIndexes }
           : { mode: 'all', status: 'not_enriched', test: null, rowIndexes: null },

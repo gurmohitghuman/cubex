@@ -234,7 +234,8 @@ async function main() {
   // --- A preview's billed call that failed, and an AI helper on the user's own provider key ----
   reply = { content: '', usage: { prompt_tokens: 10, completion_tokens: 900, cost: 0.003 } }
   const empty = await processOneRow({ rowIndex: 0, data: { Name: 'x' } }, client, {
-    prompt: 'Say hi to /name', model: 'test/model', safeTemperature: 0.7, search: null, useWebFetch: false,
+    prompt: 'Say hi to /name', columns: ['Name'], model: 'test/model', safeTemperature: 0.7, search: null,
+    useWebFetch: false,
   })
   check('a preview row whose billed call came back empty is an error that still carries its cost',
     !!empty.error && empty.costUsd === 0.003)

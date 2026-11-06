@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { db } from '../lib/db';
-import { MCP_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
+import { MCP_MAX_ROWS_PAGE, MCP_ROWS_BY_ID_MAX_CHARS, ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
@@ -48,7 +48,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'filling_columns lists columns still '
         + 'filling (add_enrichment_field, clean_column, formula_column, lookup_column): their cells read '
         + '"⏳ Processing..." until done. clean_columns, formula_columns and lookup_columns give each such '
-        + 'column\'s setup and auto-run (a lookup column\'s broken says why it stopped). '
+        + 'column\'s setup and auto-run (a lookup column\'s broken says why it stopped, and kept_changing why '
+        + 'rows it looked up may hold older values). '
         + 'active_runs lists the AI, HTTP and enrichment runs working on the sheet now (run_type, run_id, '
         + 'status, the column it fills, auto_run when an auto-run started it), and active_setup_runs the setups '
         + 'being used on it; control_run with action cancel_all stops them all. views lists the saved views (name, '
@@ -110,10 +111,25 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'return_mode count says how many without reading them. include_status returns each run column\'s cell as '
         + '{status, value, error}, so you never parse ❌ / ⏭️ / ⏳ yourself. '
         + 'PROFILE OR SUM UP without reading rows: group_by and aggregates answer counts, sums and averages per '
-        + 'value (top values of a column: group_by:["Industry"]). columns can take one value out of a JSON cell.',
+        + 'value (top values of a column: group_by:["Industry"]). columns can take one value out of a JSON cell. '
+        + `BY ID: row_ids (1 to ${ROWS_BY_ID_MAX}) returns exactly those rows in the order given, each with its `
+        + 'updated_at, and missing: the ids that are no row of this sheet (deleted ones included: list_trash). '
+        + 'Prefer it to re-read rows you know, such as the rows a run just touched. With include_status a failed '
+        + 'cell\'s error is the full message its run recorded when Cubex finds it within its budget (on a '
+        + 'column with thousands of runs it often doesn\'t), otherwise the cell\'s own words. It takes columns and '
+        + 'include_status only. Rows stop at about 40,000 characters: ask again with unread_ids. '
+        + 'CHANGED SINCE: updated_since (UTC, 2026-11-05T10:00:00Z) returns the rows whose cells changed at or after '
+        + 'that second, oldest change first, each with its updated_at, cells as stored; page with limit and cursor = '
+        + 'next_cursor (text). filling lists columns being filled again (their changed rows come in a later read). '
+        + 'Prefer it to keep a copy up to date: when next_cursor is null, pass as_of as the next updated_since and '
+        + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
+        + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor.',
       inputSchema: {
         sheet_id: z.string(),
-        cursor: z.number().int().min(0).optional().describe('index of the last row already received'),
+        // Digits sent as text are the number cursor (a model often quotes it).
+        cursor: z.preprocess(v => (typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v.trim()) : v),
+          z.union([z.number().int().min(0), z.string().min(1)])).optional()
+          .describe('index of the last row already received, or the next_cursor (text) of an updated_since read'),
         limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional(),
         columns: columnsSchema.optional(),
         where: whereSchema.optional(),
@@ -129,26 +145,35 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         view: z.string().min(1).optional().describe(VIEW_HELP),
         expected_view_version: z.string().optional()
           .describe('REQUIRED when paging through a view (view + cursor). Echo view_version from the previous page.'),
+        row_ids: z.array(z.string()).min(1).max(ROWS_BY_ID_MAX).optional()
+          .describe('Read exactly these rows by their stable ids, in this order'),
+        updated_since: z.string().optional()
+          .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
-      expected_row_generation, view, expected_view_version, group_by, aggregates,
+      expected_row_generation, view, expected_view_version, group_by, aggregates, row_ids, updated_since,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
-      if (!columns && !where && !view && !return_mode && !group_by && !aggregates
+      const after = typeof cursor === 'number' ? cursor : -1;
+      const byIdOrTime = row_ids !== undefined || updated_since !== undefined || typeof cursor === 'string';
+      if (!columns && !where && !view && !return_mode && !group_by && !aggregates && !byIdOrTime
         && expected_data_version === undefined && expected_row_generation === undefined) {
         const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
-        return ok(readRowsPage(sheet_id, ctx.userId, cursor ?? -1, pageSize, include_status === true));
+        return ok(readRowsPage(sheet_id, ctx.userId, after, pageSize, include_status === true));
       }
       const picked = columns ? parseColumns(columns) : undefined;
       if (picked && 'error' in picked) return err(picked.error);
       const aggregate = parseAggregate(group_by, aggregates);
       if ('error' in aggregate) return err(aggregate.error);
       const result = await queryRows(sheet_id, ctx.userId, {
-        after: cursor ?? -1,
+        after,
+        ...(typeof cursor === 'string' ? { sinceCursor: cursor } : {}),
+        ...(row_ids !== undefined ? { rowIds: row_ids, maxChars: MCP_ROWS_BY_ID_MAX_CHARS } : {}),
+        ...(updated_since !== undefined ? { updatedSince: updated_since } : {}),
         limit,
         columns: picked?.names,
         ...(picked?.picks ? { picks: picked.picks } : {}),

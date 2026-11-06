@@ -12,7 +12,7 @@
 import { db } from '../lib/db';
 import { SETUP_SWEEP_MS } from '../lib/constants-setups';
 import { isBusyMessage, sheetHeld } from '../lib/sheet-busy';
-import { mainColumn, type SetupStep } from '../lib/setups/spec';
+import { mainColumn } from '../lib/setups/spec';
 import { startSetupStep } from './setup-step-start';
 import { startAgainStep } from './setup-step-again';
 import { saveAutorunSettings } from './autorun-settings';
@@ -24,7 +24,7 @@ import {
 } from './setup-run-store';
 import { withoutChangeLog } from '../lib/change-log';
 import { currentActor, runAs } from '../lib/actor';
-import { actorSpendRefusal } from './token-spend';
+import { stepGate } from './setup-ceiling';
 
 async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
   const plan = planOf(r), modes = modesOf(plan);
@@ -47,33 +47,27 @@ async function finish(r: SetupRunRow, steps: StepRecord[]): Promise<void> {
 const waitingAgain = (refill: boolean): StepRecord =>
   (refill ? { state: 'waiting', refill: true } : { state: 'waiting' });
 
-// A step that spends (AI, enrichment) spends for the setup's token, which
-// advanceSetupRun runs it as: at that token's spend cap it doesn't start (it
-// would write its placeholders across the sheet only to pause). Clean, formula
-// and plain HTTP API steps cost nothing here.
-const capRefusal = (r: SetupRunRow, step: SetupStep): string | null =>
-  (step.kind === 'ai' || step.kind === 'enrichment'
-    ? actorSpendRefusal(r.user_id, step.kind === 'enrichment' ? step.maxCostPerRowUsd : null) : null);
-
 // Starts step i (marked 'starting' first, so a restart adopts what it made).
 // 'waiting': not this round; 'running' or 'done': it moved on; 'ended': the
 // setup failed, or was paused or stopped meanwhile, or paused at its token's
-// spend cap (the step still waiting, its running runs paused; resumed once
-// the cap is raised, it goes on).
+// spend cap or its ceiling (setup-ceiling.ts: the step still waiting, its
+// running runs paused; resumed once the cap is raised, it goes on). A step
+// that spends (AI, enrichment) spends for the setup's token, which
+// advanceSetupRun runs it as, and starts with what is left of the ceiling.
 async function startStep(
   r: SetupRunRow, i: number, steps: StepRecord[],
 ): Promise<'waiting' | 'running' | 'done' | 'ended'> {
   const plan = planOf(r), step = plan.spec.steps[i], main = mainColumn(step);
-  const capped = capRefusal(r, step);
-  if (capped) {
+  const gate = stepGate(r, i, steps);
+  if ('refused' in gate) {
     saveSteps(r.id, steps);
-    if (setStatus(r.id, 'paused', `"${main}" didn't start: ${capped}`)) holdPaused(loadSetupRun(r.id)!);
+    if (setStatus(r.id, 'paused', `"${main}" didn't start: ${gate.refused}`)) holdPaused(loadSetupRun(r.id)!);
     return 'ended';
   }
   const refill = !!steps[i].refill;
   steps[i] = refill ? { state: 'starting', refill: true } : { state: 'starting' };
   saveSteps(r.id, steps);
-  const opts = { rowIndexes: rowIndexes(r), allowSecrets: !!r.allow_secrets };
+  const opts = { rowIndexes: rowIndexes(r), allowSecrets: !!r.allow_secrets, spendLimitUsd: gate.limitUsd };
   const out = modesOf(plan)[i] === 'again'
     ? await startAgainStep(r.user_id, r.sheet_id, step, { ...opts, autoRun: !!r.auto_run, refill })
     : await startSetupStep(r.user_id, r.sheet_id, step, opts);

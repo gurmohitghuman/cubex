@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
+import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
@@ -30,7 +31,14 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'that name the step can\'t carry on. models picks the model of a new AI step. '
       + `first_rows tests it on the top rows (1 to ${MAX_SETUP_TEST_ROWS}); auto-run is turned on only after a `
       + 'run on every row. Returns a setup_run with each step\'s run_id (get_run_status works on those); follow '
-      + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope.'
+      + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope. '
+      + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end, plus '
+      + "one row's most for each AI step (row_most_usd: the most of its sampled rows, the room its spend limit "
+      + 'keeps for the next row), is '
+      + 'above it, or when a step has no known price unless allow_unpriced is true; with estimate_only the '
+      + 'estimate says over_ceiling and ceiling_problem instead. Once started, each AI step gets a hard spend '
+      + 'limit and each enrichment step a run limit no higher than what is left of the ceiling (less what the '
+      + 'steps not started yet need), so they pause there; a step with no known price runs without one.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string(),
@@ -42,6 +50,10 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
       webhook_id: z.string().optional().describe(
         'A run webhook (list_run_webhooks) to notify when the setup finishes, signed; poll get_setup_run anyway'),
+      max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
+        .describe('Refuse to start when the estimate could cost more than this many dollars in all'),
+      allow_unpriced: lenientBoolean().optional()
+        .describe('With max_cost_usd: start even when a step has no known price (default false)'),
     }).strict(),
   }, async ({ sheet_id, setup_id, ...a }) => {
     const denied = missingScope(ctx, 'run');
@@ -51,7 +63,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     const out = await applySetup(ctx.userId, sheet_id, setup_id, input, { hasSecretsScope: ctx.scopes.has('secrets') });
     if ('fail' in out) {
       const extra = out.missing ? ` Inputs without a column: ${out.missing.join(', ')}.`
-        : out.taken ? ` Names already taken: ${out.taken.join(', ')}.` : '';
+        : out.taken ? ` Names already taken: ${out.taken.join(', ')}.`
+        : out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : '';
       return err(out.message + extra);
     }
     return ok(out.ok);
@@ -79,7 +92,9 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
   registerTool(server, 'control_setup_run', {
     description:
       'Pause, resume or cancel a setup being used on a sheet: the runs of the steps working now follow, and no '
-      + 'further step starts. Cancelling keeps the columns and values made so far.',
+      + 'further step starts. Cancelling keeps the columns and values made so far. Resume is refused while a '
+      + "step's AI run is paused at its spend limit (pause_reason spend_limit), which a setup can't raise: cancel "
+      + 'it and call apply_setup again with a higher max_cost_usd, which carries on where it stopped.',
     inputSchema: z.object({ setup_run_id: z.string(), action: z.enum(['pause', 'resume', 'cancel']) }).strict(),
   }, async ({ setup_run_id, action }) => {
     const denied = missingScope(ctx, 'run');

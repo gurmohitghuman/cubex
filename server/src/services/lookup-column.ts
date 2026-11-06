@@ -24,7 +24,9 @@ import {
 } from '../lib/lookup-columns';
 import { runDerivedFill } from './derived-fill';
 import { setDerivedAutorun } from './derived-autorun';
-import { LOOKUP_FILLING, lookupKind, readsFilling } from './lookup-kind';
+import { LOOKUP_FILLING, lookupKind } from './lookup-kind';
+import { lookupWaitLoop, readsOf, startLoopMessage, type LookupNode } from './lookup-fill-wait';
+import { lookupFillStarted } from './lookup-fill-changes';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
 import type { RunFail } from './run-shared';
 import { logSheetChange } from '../lib/change-log';
@@ -154,17 +156,23 @@ function placeProblem(sheetId: string, userId: string, s: LookupSetup, columns: 
   return null;
 }
 
-// A column it reads in the other sheet that a run or a fill is writing now.
+// A column it reads in the other sheet that a run is writing now (a list of
+// every column: its match column only), or lookups filling there that would
+// wait for this one in a loop. A fill there writing a column it reads isn't
+// refused: the lookup's fill waits for it (lookup-fill-wait.ts).
 function otherStillFilling(userId: string, sheetId: string, s: LookupSetup): RunFail | null {
-  const filling = readsFilling({
-    user_id: userId, sheet_id: sheetId, other_sheet_id: s.otherSheetId, match_column: s.matchColumn,
-    return_columns: s.returnColumns ? JSON.stringify(s.returnColumns) : null,
-  } as LookupColumnRow);
-  if (!filling) return null;
-  return {
-    fail: 'conflict',
-    message: `"${filling.column}" in "${s.otherName}" is still being filled. Look up once it's done.`,
+  const runs = getLockedRunColumns(s.otherSheetId, userId, { paused: false });
+  const byRun = [s.matchColumn, ...(s.returnColumns ?? [])].find(c => runs.has(c));
+  if (byRun) {
+    const message = `"${byRun}" in "${s.otherName}" is still being filled. Look up once it's done.`;
+    return { fail: 'conflict', message };
+  }
+  const reads = readsOf(s.matchColumn, s.returns, s.returnColumns, s.otherSheetId, userId);
+  const from: LookupNode = {
+    id: s.existing?.id ?? null, userId, sheetId, column: s.column!, otherSheetId: s.otherSheetId, reads,
   };
+  const loop = lookupWaitLoop(from);
+  return loop ? { fail: 'conflict', message: startLoopMessage(from, loop) } : null;
 }
 
 export type LookupStart = { ok: { id: string; column: string; created: boolean } } | RunFail;
@@ -214,7 +222,11 @@ export async function startLookupColumn(
         } });
       return { ok: { id, column, created } };
     }).immediate();
-    if ('ok' in result) continueInBackground(sheetId, LOOKUP_FILLING, () => runDerivedFill(lookupKind, result.ok.id));
+    if ('ok' in result) {
+      // A new fill: no start overs yet, and no note from the last one.
+      lookupFillStarted(result.ok.id);
+      continueInBackground(sheetId, LOOKUP_FILLING, () => runDerivedFill(lookupKind, result.ok.id));
+    }
     return result;
   });
   return 'busy' in out && typeof out.busy === 'string' ? { fail: 'conflict', message: out.busy } : out as LookupStart;

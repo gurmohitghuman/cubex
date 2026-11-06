@@ -22,12 +22,13 @@ import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-helpers';
 import { runInSlices, yieldToRequests } from '../lib/slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
+import { fillEnded } from './derived-fill-wait';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
 import { statusColumnRuns, type ColumnRunRef } from './answer-runs';
 import { markAutorunInputs } from '../lib/autorun-mark';
+import { FIELD_FILLING as FILLING } from '../lib/field-fill-columns';
 
 export { FILL_PLACEHOLDER, fillingColumns } from '../lib/field-fill-columns';
-const FILLING = 'filling a column';
 const FILL_ATTEMPTS = 5;
 const LINK_BATCH = 200;
 
@@ -118,7 +119,7 @@ async function rebuildTaken(job: FieldJob, runs: ColumnRunRef[], taken: RowSet):
 async function fill(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
   const taken = new RowSet();
   if (job.run_pos > 0 || job.row_cursor > -1) await rebuildTaken(job, runs, taken);
-  const write = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?)
+  const write = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now')
     WHERE sheet_id = ? AND user_id = ? AND row_index = ?`);
   const move = db.prepare(`UPDATE enrichment_field_jobs SET run_pos = ?, row_cursor = ?,
     updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`);
@@ -173,6 +174,8 @@ function finishJob(job: FieldJob, status: 'done' | 'failed', error: string | nul
     db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
   }).immediate();
+  // Lookups waiting for a column of this sheet to finish filling look now.
+  fillEnded(job.sheet_id, job.column_name);
 }
 
 // Runs (or resumes) the job as the sheet's heavy operation; call inside it.
