@@ -3,6 +3,7 @@ import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
+import { markDerivedInputs } from './autorun-mark';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -18,6 +19,12 @@ export { PLACEHOLDER };
 // Real results written just before a cancel are left untouched. Rows go in
 // storage order (lib/row-order.ts); `afterSlice` runs after each slice (a
 // progress heartbeat). Open grids reload when it's done (data_version).
+// The answer the placeholder covered is gone, so clean, formula and lookup
+// columns reading these columns work the cleared rows out again: queued in the
+// slice's transaction, by the rowids it changed (rows holding a real result
+// aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts). Queuing
+// tells them at once in the API process (lib/autorun-kick.ts); a run worker's
+// clear (a failed run) waits for the auto-run sweep, as its other writes do.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void,
 ): Promise<void> {
@@ -28,12 +35,16 @@ export async function clearProcessingPlaceholders(
     'UPDATE rows SET data = json_replace(data, ' + paths.map(() => keepOrClear).join(', ') + ')' +
     ", updated_at = datetime('now')" +
     ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND (' +
-    paths.map(() => `json_extract(data, ?) = '${PLACEHOLDER}'`).join(' OR ') + ')',
-  );
+    paths.map(() => `json_extract(data, ?) = '${PLACEHOLDER}'`).join(' OR ') + ') RETURNING rowid',
+  ).pluck();
   const setArgs = paths.flatMap(p => [p, p, p]);
   const rowIds = await sheetRowIds(sheetId, userId);
   await eachRowIdSlice(rowIds, ids => {
-    clear.run(...setArgs, ids, sheetId, userId, ...paths);
+    // The clear and its queuing commit together, the write lock taken up front.
+    db.transaction(() => {
+      const cleared = clear.all(...setArgs, ids, sheetId, userId, ...paths) as number[];
+      if (cleared.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: cleared });
+    }).immediate();
     afterSlice?.();
   });
   db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);

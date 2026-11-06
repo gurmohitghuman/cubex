@@ -137,7 +137,7 @@ Deleted rows, sheets and tables go to the trash for the days set in Settings (30
 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
-Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background.
+Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background. A run that fails or can't start clears its leftover cells too. Clean, formula and lookup columns that read a cleared cell then work it out again. That's free: nothing that costs or sends requests runs.
 
 ## Retrying row writes
 
