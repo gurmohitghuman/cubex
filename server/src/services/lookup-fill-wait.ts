@@ -1,5 +1,6 @@
 // A lookup's fill and the columns it reads in the other sheet that something
-// is filling: a run (not a paused one), or a fill there (a clean, formula or
+// is filling: a run (not a paused one; one that ended, until its ⏳ cells are
+// back to what they held before it), or a fill there (a clean, formula or
 // lookup column, or stored answers added as a column). It waits for either,
 // and looks every row up again from the first if it had written some, so
 // every row comes from one version of those values (lookups are free: that
@@ -51,13 +52,15 @@ function wouldRead(rec: ReadsRec, column: string): boolean {
 
 // A column it reads that something is filling now: a run (batch: only auto-run's batch runs hold it), or a
 // fill. Not a paused run: one can stay paused for days, so a fill doesn't wait for it (a waterfall's lookup
-// step doesn't).
+// step doesn't). A run that ended (cancelled or failed) holds its columns until its clear has put their ⏳
+// cells back (as an undo of a run does, services/run-undo.ts): rows read meanwhile would mix both.
 export function readsFilling(
   rec: LookupColumnRow, reads = lookupReads(rec),
 ): { column: string; byRun: boolean; batch: boolean } | null {
-  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false });
+  const runs = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false, clearing: true });
   if (runs.size > 0) {
-    const others = getLockedRunColumns(rec.other_sheet_id, rec.user_id, { paused: false, autorun: false });
+    const others = getLockedRunColumns(rec.other_sheet_id, rec.user_id,
+      { paused: false, autorun: false, clearing: true });
     const column = reads.find(c => others.has(c)) ?? reads.find(c => runs.has(c));
     if (column) return { column, byRun: true, batch: !others.has(column) };
   }

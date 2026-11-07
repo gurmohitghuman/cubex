@@ -2,6 +2,7 @@ import { db } from './db';
 import { aiRunDataColumn } from './ai-data-column';
 import { jsonPath } from './sql-rows';
 import { clearProcessingPlaceholders } from './placeholder-cells';
+import { dropUnusedJournal } from './run-undo/unused';
 
 // True if a row this run was supposed to process is GENUINELY unfinished: its
 // placeholder column still holds '⏳ Processing...' AND there's no result row for
@@ -119,6 +120,7 @@ const RUN_TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
 // holding ⏳ is at a row the run never reached: it gets back what it held
 // before the run, from the run's undo journal, else ''
 // (lib/placeholder-cells.ts); rows the run answered keep their new values.
+// A run that wrote no row then leaves nothing to undo (lib/run-undo/unused.ts).
 // Works in slices; safe to call twice (a cell put back no longer holds ⏳).
 export async function clearRunPlaceholders(kind: RunKind, runId: string): Promise<void> {
   const table = RUN_TABLE[kind];
@@ -131,6 +133,8 @@ export async function clearRunPlaceholders(kind: RunKind, runId: string): Promis
   const beat = db.prepare(`UPDATE ${table} SET updated_at = datetime('now') WHERE id = ?`);
   const heartbeat = () => { beat.run(runId); };
   await clearProcessingPlaceholders(run.sheet_id, run.user_id, columns, heartbeat, { kind, id: runId });
+  // Before the mark goes, so no undo can take a journal that is about to go.
+  await dropUnusedJournal({ kind, id: runId }, run.user_id);
   db.prepare(`UPDATE ${table} SET placeholder_work = NULL WHERE id = ? AND placeholder_work = 'clearing'`).run(runId);
 }
 

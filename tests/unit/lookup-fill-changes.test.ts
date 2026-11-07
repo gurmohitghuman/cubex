@@ -2,8 +2,9 @@
 // what it reads changed while it wasn't looking, and then looks every row up
 // again from the first: a formula column it reads that filled again while it
 // waited for an auto-run batch run, a run (not auto-run) that started and
-// ended meanwhile, a paused run that went on (found at the next look, or
-// ending the batch wait at once; a cancel isn't a change), a run whose rowid a
+// ended meanwhile, a paused run that went on or was cancelled (found at the
+// next look, or ending the batch wait at once: a cancel's clear puts its ⏳
+// cells back to what they held before the run), a run whose rowid a
 // purge elsewhere freed, and a restart, which starts over whatever changed.
 // What it keeps goes once its fill ends or the lookup is deleted, and is found
 // only under its own user.
@@ -110,21 +111,21 @@ await ok('a paused run on a column it reads that goes on while it waits for an a
   assert.deepEqual(cells(a, 'Who'), M)
 })
 
-await ok('a paused run on a column it reads cancelled while it waits for an auto-run batch run: it goes on where '
-  + 'it was', async () => {
-  const a = place().sid, o = place().sid
-  const id = await lookup(a, o, 'Who', 'value', 'Name')
-  const paused = httpRun(o, 'Name', false, 'paused')
-  const { run, slow } = await waitsForABatch(a, o, id, 'Name')
-  try {
-    assert.deepEqual(await cancelRun('http', paused, uid), { ok: true })
-    // An edit isn't a change it starts over for: the rows after its first show it.
-    setCells(o, 'Name', M)
-    endRun(run)
-    await until('it is done', () => statusOf(a, 'Who') === 'done')
-  } finally { slow.restore() }
-  assert.deepEqual(cells(a, 'Who'), ['N0', 'M1', 'M2'])
-})
+await ok('a paused run on a column it reads cancelled while it waits for an auto-run batch run: every row again',
+  async () => {
+    const a = place().sid, o = place().sid
+    const id = await lookup(a, o, 'Who', 'value', 'Name')
+    const paused = httpRun(o, 'Name', false, 'paused')
+    const { run, slow } = await waitsForABatch(a, o, id, 'Name')
+    try {
+      assert.deepEqual(await cancelRun('http', paused, uid), { ok: true })
+      // Its clear may put Name's cells back: the row it wrote first is looked up again too.
+      setCells(o, 'Name', M)
+      endRun(run)
+      await until('it is done', () => statusOf(a, 'Who') === 'done')
+    } finally { slow.restore() }
+    assert.deepEqual(cells(a, 'Who'), M)
+  })
 
 // `o` with an older run on Name, the newest run row on another sheet, and a lookup's record looking in `o`
 // that took its look; look(): its next look, with rows written.

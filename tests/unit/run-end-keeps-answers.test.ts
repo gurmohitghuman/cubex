@@ -24,6 +24,7 @@ import followMod from '../../server/src/services/derived-follow'
 import entryMod from '../../server/src/services/autorun-entry'
 import undoMod from '../../server/src/services/run-undo'
 import printMod from '../../server/src/lib/run-undo/print'
+import idMod from '../../server/src/lib/ordered-id'
 const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { seedThenEnqueue } = seedRunMod as typeof import('../../server/src/services/run-seed')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
@@ -37,6 +38,7 @@ const { derivedFollowTick } = followMod as typeof import('../../server/src/servi
 const { entryFor } = entryMod as typeof import('../../server/src/services/autorun-entry')
 const { undoRun } = undoMod as typeof import('../../server/src/services/run-undo')
 const { oldValueOf, isEmptyCell, isListWords } = printMod as typeof import('../../server/src/lib/run-undo/print')
+const { orderedUuid } = idMod as typeof import('../../server/src/lib/ordered-id')
 const { db, uid, ok, done, idle, sheet, edit, journal } = undoKit('run-end-keeps-answers')
 console.error = () => {}
 
@@ -168,14 +170,22 @@ await ok('what goes back is what print.ts would put back: never empty, a ⏳ or 
 
 await ok('a rowid a newer row took, a cell edited during the run, a clear without its run', async () => {
   const sid = sheet([{ Answer: 'Old 0' }, { Answer: 'Old 1' }, { Answer: 'Old 2' }], ['Answer'])
+  // Row ids as the app makes them (time-ordered), the newer row's more than 65.5 s after the others'.
+  const made = Date.now()
+  for (const rid of db.prepare('SELECT rowid FROM rows WHERE sheet_id = ?').pluck().all(sid) as number[]) {
+    db.prepare('UPDATE rows SET id = ? WHERE rowid = ?').run(orderedUuid(made), rid)
+  }
   const id = insertRun('ai', sid, ['Answer'])
   await seed('ai', id, sid, ['Answer'])
   edit(sid, 1, 'Answer', 'typed')
   // Row 2 deleted; a newer row takes its rowid, holding ⏳: the journal's record was the old row's.
   const rid = db.prepare('SELECT rowid FROM rows WHERE sheet_id = ? AND row_index = 2').pluck().get(sid) as number
+  const was = db.prepare('SELECT id FROM rows WHERE rowid = ?').pluck().get(rid) as string
   db.prepare('DELETE FROM rows WHERE rowid = ?').run(rid)
+  const newer = orderedUuid(made + 66_000)
+  assert.notEqual(newer.slice(0, 8), was.slice(0, 8))
   db.prepare('INSERT INTO rows (rowid,id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,2,?)')
-    .run(rid, uuid(), sid, uid, JSON.stringify({ Answer: PLACEHOLDER }))
+    .run(rid, newer, sid, uid, JSON.stringify({ Answer: PLACEHOLDER }))
   await cancel('ai', id)
   assert.deepEqual(values(sid, 'Answer'), ['Old 0', 'typed', ''])
   // Without the run (no caller passes one but a run's end), a ⏳ becomes '' though a journal kept its value.

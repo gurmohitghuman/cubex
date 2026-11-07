@@ -151,6 +151,9 @@ export const UNDO_WAIT_ROWS = 20_000;
 export const UNDO_DROP_SLICE_ROWS = 5_000;
 // An undo that fails this many times in a row stops (the run can be undone again).
 export const UNDO_RETRY_MAX = 5;
+// A run that ended before it wrote a row drops its journal (lib/run-undo/unused.ts): it first reads the
+// journal this many rows a turn, to be sure it holds nothing but the run's ⏳.
+export const UNDO_EMPTY_CHECK_ROWS = 20_000;
 
 // HTTP API defaults
 export const HTTP_REQUEST_TIMEOUT_MS = 30000;

@@ -2,8 +2,9 @@
 // a fill with rows written would go on: then it looks every row up again from the first, so every row comes
 // from one version of those values (lookups are free: a start over costs only time). A change: a fill of a
 // column it reads ended (a clean, formula or lookup column, stored answers added as a column, a run's undo:
-// fillEnded counts them here, a rename carrying the count), a run writing one started (a new run row) or a
-// paused one went on (its worker_generation moved), a column it read is gone there (renamed or deleted; one
+// fillEnded counts them here, a rename carrying the count), a run writing one started (a new run row), a
+// paused one went on (its worker_generation moved) or ended (cancelled: its clear puts the ⏳ cells back to
+// what they held before it, lib/run-undo/clear-back.ts), a column it read is gone there (renamed or deleted; one
 // added isn't a change), or that sheet's rows moved (row_generation: a sort, a replace by an import or its
 // undo, removing duplicates). Not an auto-run batch run, nor a set-up-only one (lookup-fill-wait.ts). Nothing
 // is missed in this process (renaming a column a value lookup reads starts it over for nothing); a fill it
@@ -95,14 +96,14 @@ function runSince(rec: Rec, reads: string[], was: Base): string | undefined {
     }
   }
   if (was.paused.size === 0) return undefined;
-  // Only a resume takes a run on from paused, and it moves the run's worker_generation. A cancel doesn't
-  // count: it clears the ⏳ cells, which read as empty before too.
+  // Only a resume takes a run on from paused, and it moves the run's worker_generation. A cancel ends it:
+  // its clear puts the ⏳ cells (read as empty while it was paused) back to what they held before it.
   for (const t of TABLES) {
-    for (const r of db.prepare(`SELECT id, worker_generation AS gen FROM ${t}
+    for (const r of db.prepare(`SELECT id, worker_generation AS gen, status FROM ${t}
       WHERE id IN (SELECT value FROM json_each(?)) AND user_id = ?`)
-      .all(JSON.stringify([...was.paused.keys()]), rec.user_id) as RunRow[]) {
+      .all(JSON.stringify([...was.paused.keys()]), rec.user_id) as Array<RunRow & { status: string }>) {
       const p = was.paused.get(r.id)!;
-      if (r.gen !== p.gen) return p.column;
+      if (r.gen !== p.gen || r.status !== 'paused') return p.column;
     }
   }
   return undefined;

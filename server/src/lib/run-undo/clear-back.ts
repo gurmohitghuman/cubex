@@ -12,6 +12,12 @@
 // (print.ts: isEmptyCell, oldValueOf, isListWords; nothing would ever replace
 // those). Done in SQL inside the clear's own UPDATE: one lookup by the
 // journal rows' primary key per cell that still holds ⏳, none for the rest.
+// The ref is the first 8 characters of rows.id, as an undo checks it
+// (restore.ts, since migration 041). Row ids start with their millisecond
+// clock (lib/ordered-id.ts), so it surely tells a newer row from the deleted
+// one only when they were made more than about 65 s apart; one made sooner
+// (a rowid is handed out again only once its row is deleted) may be taken
+// for it.
 import { db } from '../db';
 import { BLANK_CHARS, LIST_MARK, PLACEHOLDER } from '../run-markers';
 import type { RunRef } from './journal';
