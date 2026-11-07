@@ -108,6 +108,20 @@ export const HEAVY_SLICE_ROWS = 5_000;
 // on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
 // With none, slices stay HEAVY_SLICE_ROWS rows, with no checkpoint.
 export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
+// A cancelled or failed run's clear puts each ⏳ cell back to what its undo
+// journal kept (lib/run-undo/clear-back.ts): one journal lookup per cell, about
+// as costly as the rest of that row's clear. With K columns put back a slice
+// holds at most this many / (1 + K) rows (3,500 at 1, 2,333 at 2), and no more
+// than the queue budget above when columns read them.
+// Measured at 200,000 rows on random ids, none reading them: slices of 5,000
+// rows went from a median 20 ms to 30 ms with one column put back (up to 201
+// ms with SQLite's own checkpoint inside). Sized so: a median 21 ms, the
+// longest 53 to 90 ms, as the clear that empties cells (56 to 104 ms); the
+// whole clear 1.4 to 1.6 s (1.0 to 1.2 s). Two columns: the longest 56 to 67
+// ms, once 296 ms (58 to 94 ms), 2.1 to 2.5 s (1.2 to 1.3 s). The longest are
+// commits SQLite checkpoints in. With 3 formulas reading the column the queue
+// budget holds slices to 500 rows, as before (up to 41 ms, 22 to 25 s).
+export const PLACEHOLDER_CLEAR_BACK_ROWS = 7_000;
 // A journaled heavy job (a sort, a CSV import's clean-up) that fails half-way
 // keeps its sheet busy and is retried in the background, waiting this long
 // before the first retry and doubling up to the cap (lib/sheet-busy.ts).
@@ -137,6 +151,12 @@ export const UNDO_WAIT_ROWS = 20_000;
 export const UNDO_DROP_SLICE_ROWS = 5_000;
 // An undo that fails this many times in a row stops (the run can be undone again).
 export const UNDO_RETRY_MAX = 5;
+// A run that ended before it wrote a row drops its journal (lib/run-undo/unused.ts): it first reads the
+// journal, to be sure it holds nothing but the run's ⏳, this many / (1 + its columns) rows a turn (a turn
+// checks each row's cell of every column). Measured at 200,000 rows: a turn of 20,000 rows took up to 26 ms
+// with 2 columns, 89 ms with 10 and 166 ms with 20; sized so, up to 22 ms whatever the columns, the whole
+// check as long as before (0.2 s with 2 columns, 0.8 s with 10, 1.6 s with 20).
+export const UNDO_EMPTY_CHECK_ROWS = 20_000;
 
 // HTTP API defaults
 export const HTTP_REQUEST_TIMEOUT_MS = 30000;

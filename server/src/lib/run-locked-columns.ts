@@ -21,27 +21,49 @@ import { db } from './db';
 // wait for the run asks (a lookup fill), since a run can stay paused for days.
 // `autorun: false` leaves auto-run's batch runs out (a lookup fill goes on
 // after one, where it starts over after any other run).
-export function getLockedRunColumns(
-  sheetId: string, userId: string, opts: { paused?: boolean; autorun?: boolean } = {},
-): Set<string> {
-  const locked = new Set<string>();
-  // The literal list keeps the partial active-run index (migration 014) usable.
+// `clearing: true` adds runs that ended (cancelled or failed) and are still
+// clearing their ⏳ cells (placeholder_work set, in whichever thread clears
+// them): each such cell gets back what it held before the run
+// (lib/run-undo/clear-back.ts), so a reader waiting for a run's values (a
+// lookup fill) waits for that too.
+export function getLockedRunColumns(sheetId: string, userId: string, opts: RunHoldOpts = {}): Set<string> {
+  return new Set(runHeldColumns(sheetId, userId, opts).keys());
+}
+
+type RunHoldOpts = { paused?: boolean; autorun?: boolean; clearing?: boolean };
+// How a run holds a column: going (pending, running or paused), or only clearing
+// its ⏳ cells after it stopped or failed (when no run going holds it too).
+export type RunHold = 'going' | 'clearing';
+
+// The same columns, each with how it is held, from the same two queries.
+export function runHeldColumns(sheetId: string, userId: string, opts: RunHoldOpts = {}): Map<string, RunHold> {
+  const held = new Map<string, RunHold>();
+  const add = (going: number, write: (cols: Set<string>) => void) => {
+    const cols = new Set<string>();
+    write(cols);
+    for (const c of cols) if (going || !held.has(c)) held.set(c, going ? 'going' : 'clearing');
+  };
+  // The literal lists keep the partial active-run index (migration 014) usable.
   const paused = opts.paused === false ? 0 : 1;
+  const active = opts.clearing
+    ? "(status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)"
+    : "status IN ('pending','running','paused')";
+  const going = "status IN ('pending','running','paused') AS going";
 
   const aiRuns = db.prepare(`
-    SELECT column_name, output_columns, data_column FROM ai_runs
-    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
-  `).all(sheetId, userId, paused) as AiRunWrites[];
-  for (const r of aiRuns) addAiRunColumns(r, locked);
+    SELECT column_name, output_columns, data_column, ${going} FROM ai_runs
+    WHERE sheet_id = ? AND user_id = ? AND ${active} AND (? = 1 OR status <> 'paused')
+  `).all(sheetId, userId, paused) as Array<AiRunWrites & { going: number }>;
+  for (const r of aiRuns) add(r.going, cols => addAiRunColumns(r, cols));
 
   const httpRuns = db.prepare(`
-    SELECT config, master_column_name FROM http_runs
-    WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
+    SELECT config, master_column_name, ${going} FROM http_runs
+    WHERE sheet_id = ? AND user_id = ? AND ${active} AND (? = 1 OR status <> 'paused')
       AND (? = 1 OR autorun_id IS NULL)
-  `).all(sheetId, userId, paused, opts.autorun === false ? 0 : 1) as HttpRunWrites[];
-  for (const r of httpRuns) addHttpRunColumns(r, locked);
+  `).all(sheetId, userId, paused, opts.autorun === false ? 0 : 1) as Array<HttpRunWrites & { going: number }>;
+  for (const r of httpRuns) add(r.going, cols => addHttpRunColumns(r, cols));
 
-  return locked;
+  return held;
 }
 
 export type AiRunWrites = { column_name: string; output_columns: string | null; data_column: string | null };

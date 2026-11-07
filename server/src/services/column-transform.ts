@@ -13,13 +13,13 @@ import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
-import { getLockedRunColumns } from '../routes/sheets-shared';
+import { runHeldColumns, type RunHold } from '../lib/run-locked-columns';
 import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import type { WhereItem } from '../lib/row-filter/where';
 import {
-  applyCellOp, applyTemplate, validateRegexPattern, type TransformOp,
+  applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
 import { markAutorunInputs } from '../lib/autorun-mark';
 
@@ -41,6 +41,12 @@ export type TransformOutcome =
   | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'budget'; error: string };
 
 class WriterBudgetError extends Error {}
+
+// Why a column a run holds can't be transformed now: a run still going on it, or one that stopped and is
+// putting back what its ⏳ cells held before it.
+const heldWords = (column: string, hold: RunHold): string => (hold === 'going'
+  ? `Column "${column}" is being written by a run that hasn't finished. Wait for it to finish (or stop it) first.`
+  : `Column "${column}" is getting back what it held before a stopped run. Try again in a moment.`);
 
 export function transformColumn(userId: string, p: TransformParams): TransformOutcome {
   if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(p.sheetId, userId)) {
@@ -82,17 +88,13 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
   const targetColumn = nameCheck.name;
   const targetExists = columns.includes(targetColumn);
 
-  // Never transform INTO a column an active run owns — the runner writes there.
-  const locked = getLockedRunColumns(p.sheetId, userId);
-  if (locked.has(targetColumn)) {
-    return { fail: 'locked', error: `Column "${targetColumn}" is being written by an active run. Stop it first.` };
-  }
-  if (p.sourceColumn && locked.has(p.sourceColumn)) {
-    return {
-      fail: 'locked',
-      error: `Column "${p.sourceColumn}" is being written by an active run. Stop it first.`,
-    };
-  }
+  // Never transform INTO or FROM a column an active run owns (the runner writes there), or one a stopped
+  // or failed run is still putting back (its ⏳ cells stay until its clear reaches them). A template reads
+  // every {{column}} it names; every other operation, its source column.
+  const held = runHeldColumns(p.sheetId, userId, { clearing: true });
+  const reads = p.operation === 'template' ? templateColumns(p.template!) : [];
+  const busy = [targetColumn, ...(p.sourceColumn ? [p.sourceColumn] : []), ...reads].find(c => held.has(c));
+  if (busy !== undefined) return { fail: 'locked', error: heldWords(busy, held.get(busy)!) };
 
   if (!targetExists) {
     // Creating a new column: case/token collision + cap (same as column-add).

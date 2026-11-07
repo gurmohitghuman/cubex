@@ -52,11 +52,14 @@ export function runOf(kind: UndoRunKind, runId: string, userId: string): RunInfo
   return r && r.user_id === userId && verifySheetOwnership(r.sheet_id, userId) ? r : null;
 }
 
+// A journal going before its time is a run's that wrote no row (lib/run-undo/unused.ts): no journal at all.
 export function journalOf(kind: UndoRunKind, runId: string, userId: string): Journal | null {
+  const old = `-${UNDO_KEEP_DAYS} days`;
   return (db.prepare(`SELECT id, columns, stamp_path, row_count, state, restored, skipped, gone, created_at,
       undone_at, created_at <= datetime('now', ?) AS expired
-    FROM run_undos WHERE run_kind = ? AND run_id = ? AND user_id = ?`)
-    .get(`-${UNDO_KEEP_DAYS} days`, kind, runId, userId) as Journal | undefined) ?? null;
+    FROM run_undos WHERE run_kind = ? AND run_id = ? AND user_id = ?
+      AND NOT (state = 'dropping' AND created_at > datetime('now', ?))`)
+    .get(old, kind, runId, userId, old) as Journal | undefined) ?? null;
 }
 
 export const journalColumns = (j: Journal): Array<string | null> => {

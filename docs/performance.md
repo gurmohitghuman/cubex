@@ -26,7 +26,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Export to CSV | 2.7 s | 0.04 s | 590 MB |
 | Receive a webhook (adds row 1,000,001) | 0.08 s | 0.04 s | 850 MB |
 | Start an HTTP run on every row | answers in 0.1 s; the run starts 2.8 s later (about 1 s more since a run keeps what it overwrites, so it can be undone) | 0.08 s | 890 MB |
-| Stop that run | answers in 0.03 s; leftover cells clear 3.2 s later | 0.04 s | 620 MB |
+| Stop that run | answers in 0.03 s; leftover cells get back what they held before the run, in the background (measured again below) | 0.04 s | 620 MB |
 | Start an enrichment with "Only run if" (158,000 rows match) | answers in about 1 s; the rows are ready 2.8 s later | 0.04 s | 440 MB |
 | Add a column from stored answers (900,000 answers over 20,000 auto-run runs) | 13 s | 0.17 s | 450 MB |
 | Rename an enrichment column with 20,000 runs | 6.9 s | 0.18 s | 495 MB |
@@ -104,6 +104,8 @@ Deleted rows go to the trash, a slice at a time. Measured with a script on the s
 | Restore those 990,000 rows | 55 s | 0.6 s |
 | Empty a batch of 990,000 rows from the trash | 9 s | 0.5 s |
 
+"Stop that run" was measured again with a script on a 4-core Linux server, once a stopped run's cells got back what they held before it: 1,000,000 rows of 10 columns, both of the run's columns holding an earlier answer in every row, stopped before any row ran. The stop answered in 0.02 to 0.03 s, and every cell had its earlier answer back 13.2 to 13.8 s later. On that server the clear that only emptied those cells took 8.3 s (3.2 s on the laptop above). No other request would have waited longer than 0.09 s (0.1 s when the clear only emptied them).
+
 Rows in the trash keep their space in the database until they leave it. The file doesn't shrink then: SQLite reuses the freed space for new rows.
 
 ### Undoing a run
@@ -118,6 +120,8 @@ Before a run writes a cell, it keeps what the cell held, so the run can be undon
 | Delete what it kept, once undone (in the background) | 1.2 s | 0.03 s |
 
 What a run keeps takes about 50 bytes a cell when the old values are short, more when they're long: 97 MB for this run. It's kept 7 days after the run starts, then deleted a slice at a time; an undone run's is deleted right away.
+
+A run that is cancelled or fails puts back, from what it kept, the cells of the rows it hadn't reached. Measured with a script on a sheet of 200,000 rows whose every row held an earlier answer, a run cancelled before it reached any row, 7 to 10 times each (in brackets: the same clear emptying those cells instead): putting one column back took 1.4 to 1.6 s in the background (1.0 to 1.2 s) and two columns 2.1 to 2.5 s (1.2 to 1.3 s), in slices of about 21 ms (19 to 25 ms). The longest slice of a clear was 53 to 90 ms for one column (56 to 104 ms) and 56 to 67 ms for two (58 to 94 ms), once 296 ms; each was a commit in which SQLite copied its log back into the database. With 3 formula columns reading the column it took 22 to 25 s, as before (22 s), in slices of up to 41 ms (39 ms) and checkpoints of up to 81 ms (66 ms).
 
 
 ### Setup versions

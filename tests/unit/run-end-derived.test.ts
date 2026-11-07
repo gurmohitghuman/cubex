@@ -1,8 +1,9 @@
 // A run that ends early (cancelled, failed in its worker, or failed to start)
-// clears the ⏳ cells it left (lib/placeholder-cells.ts), and the answer those
-// cells held before it is gone: clean and formula columns reading them work
-// those rows out again, and a formula reading that formula follows it. Exactly
-// the cleared rows are queued (a row holding a real result isn't). A clear in
+// clears the ⏳ cells it left (lib/placeholder-cells.ts), each back to the
+// answer it held before the run: clean and formula columns reading them work
+// those rows out again (saved again while the run went, they read the ⏳ as
+// empty), and a formula reading that formula follows it. Exactly the cleared
+// rows are queued (a row holding a real result isn't). A clear in
 // the API process tells the follow-ups at once; a worker's (a failed run) has
 // no one to tell, so the auto-run sweep works them out. No auto-run that costs
 // or sends requests hears of it (one reading the answer, one reading each
@@ -113,7 +114,8 @@ function insertRun(kind: Kind, sid: string, status: string, placeholderWork: str
 }
 const runColumns = (kind: Kind) => (kind === 'ai' ? ['Answer'] : ['Status', 'Answer'])
 
-// A run going: ⏳ on every row, row 0's real result written as a worker writes it (its follow-ups catch up).
+// A run going: ⏳ on every row, row 0's real result written as a worker writes it (its follow-ups catch up),
+// then F and Low saved again: they read the ⏳ in rows 1 and 2 as empty (F2 follows F).
 async function runGoing(kind: Kind, sid: string): Promise<string> {
   const id = insertRun(kind, sid, 'running', null)
   await seedProcessingPlaceholders({ run: { kind, id }, sheetId: sid, userId: uid, columns: runColumns(kind),
@@ -127,13 +129,25 @@ async function runGoing(kind: Kind, sid: string): Promise<string> {
   await tick(sid, 'F'); await tick(sid, 'Low'); await tick(sid, 'F2')
   assert.deepEqual(cells(sid, 'F'), ['has New A', 'has Old B', 'has Old C'], 'seeding queues nothing')
   assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'HAS OLD B', 'HAS OLD C'])
+  const f = await startFormulaColumn(uid, sid, { column: 'F', formula: FORMULA })
+  assert.ok('ok' in f, JSON.stringify(f))
+  await waitForDerivedFill(formulaKind, f.ok.id, 30_000)
+  const c = await startCleanColumn(uid, sid, { source: 'Answer', cleaner: 'lowercase', column: 'Low' })
+  assert.ok('ok' in c, JSON.stringify(c))
+  await idle(sid)
+  await tick(sid, 'F2')
+  assert.deepEqual(cells(sid, 'F'), ['has New A', 'empty', 'empty'])
+  assert.deepEqual(cells(sid, 'Low'), ['new a', '', ''])
+  assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'EMPTY', 'EMPTY'])
   db.prepare('DELETE FROM autorun_pending').run()
   return id
 }
 
 // After the run ended early: what was queued and told, then the follow-ups run by hand, as a kick or the
-// auto-run sweep runs them (services/autorun-loop.ts), F2 after F.
-async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kick' | 'sweep' = 'kick') {
+// auto-run sweep runs them (services/autorun-loop.ts), F2 after F. Rows 1 and 2 have their old answers
+// back; `refilled`: F had read their ⏳ as empty, so what it works out now changes, and F2 follows.
+async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kick' | 'sweep' = 'kick',
+  refilled = true) {
   const [f, low, f2] = ['F', 'Low', 'F2'].map(c => entryFor(sid, uid, c)!.id)
   const ids = rowIdsOf(sid)
   const seen = { f: queued(f), low: queued(low), f2: queued(f2), paid: paid.map(queued),
@@ -142,14 +156,14 @@ async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kic
   await follow(f); await follow(low)
   const chained = queued(f2)
   await follow(f2)
-  assert.deepEqual(cells(sid, 'Answer'), [firstRow, '', ''])
-  assert.deepEqual(cells(sid, 'F'), [`has ${firstRow}`, 'empty', 'empty'])
-  assert.deepEqual(cells(sid, 'Low'), [firstRow.toLowerCase(), '', ''])
-  assert.deepEqual(cells(sid, 'F2'), [`HAS ${firstRow.toUpperCase()}`, 'EMPTY', 'EMPTY'])
+  assert.deepEqual(cells(sid, 'Answer'), [firstRow, 'Old B', 'Old C'])
+  assert.deepEqual(cells(sid, 'F'), [`has ${firstRow}`, 'has Old B', 'has Old C'])
+  assert.deepEqual(cells(sid, 'Low'), [firstRow.toLowerCase(), 'old b', 'old c'])
+  assert.deepEqual(cells(sid, 'F2'), [`HAS ${firstRow.toUpperCase()}`, 'HAS OLD B', 'HAS OLD C'])
   assert.deepEqual(seen.f, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the formula')
   assert.deepEqual(seen.low, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the clean column')
   assert.deepEqual(seen.f2, [], 'F2 reads F, not the cleared column')
-  assert.deepEqual(chained, [ids[1], ids[2]].sort(), 'what F wrote is queued for F2')
+  assert.deepEqual(chained, refilled ? [ids[1], ids[2]].sort() : [], 'what F wrote (if anything) is queued for F2')
   assert.deepEqual(seen.paid, [[], [], []], 'no paid auto-run was queued')
   assert.deepEqual(seen.told, by === 'kick' ? [true, true] : [false, false],
     by === 'kick' ? 'the follow-ups were told at once' : 'a worker tells no one: the sweep finds the rows')
@@ -193,7 +207,7 @@ for (const kind of ['ai', 'http'] as const) {
     await until('the start failed and cleared its cells', () => runOf(kind, id).status === 'failed'
       && runOf(kind, id).placeholder_work === null)
     assert.match(runOf(kind, id).error_message, /could not start: the queue is down/)
-    await followsUp(sid, paid, 'Old A')
+    await followsUp(sid, paid, 'Old A', 'kick', false)
   })
 }
 
@@ -203,11 +217,11 @@ await ok('in the server the follow-ups run by themselves after a cancel, no tick
   onFollowQueued(kickDerivedFollow)
   assert.deepEqual(await cancelRun('http', id, uid), { ok: true })
   await until('the formula followed the cleared cells', () =>
-    JSON.stringify(cells(sid, 'F')) === JSON.stringify(['has New A', 'empty', 'empty']), 5_000)
+    JSON.stringify(cells(sid, 'F')) === JSON.stringify(['has New A', 'has Old B', 'has Old C']), 5_000)
   await until('the clean column followed', () =>
-    JSON.stringify(cells(sid, 'Low')) === JSON.stringify(['new a', '', '']), 5_000)
+    JSON.stringify(cells(sid, 'Low')) === JSON.stringify(['new a', 'old b', 'old c']), 5_000)
   await until('the formula reading the formula followed', () =>
-    JSON.stringify(cells(sid, 'F2')) === JSON.stringify(['HAS NEW A', 'EMPTY', 'EMPTY']), 5_000)
+    JSON.stringify(cells(sid, 'F2')) === JSON.stringify(['HAS NEW A', 'HAS OLD B', 'HAS OLD C']), 5_000)
 })
 
 done()
