@@ -1,6 +1,7 @@
 // Over 200 lines: the one streaming preview route, request to saved draft; its parsing and row runs live apart.
 import express from 'express';
 import { db } from '../lib/db';
+import { getSheetColumns } from '../lib/sql-helpers';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { AI_PREVIEW_CONCURRENCY } from '../lib/constants';
 import { parsePreviewRequest, previewErrorMessage } from './ai-preview-parse';
@@ -10,12 +11,12 @@ import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { samplePreviewRows } from '../lib/ai-preview-sample';
 import { checkRunRule } from '../services/run-rule';
 import {
-  upsertDraftConfig, saveDraftPreview, computeInputHash, draftConfigFrom, deleteDraft, type DraftPreviewRow,
+  upsertDraftConfig, saveDraftPreview, draftConfigFrom, deleteDraft, type DraftPreviewRow,
 } from '../lib/ai-drafts';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { getOpenRouterClient } from '../services/openrouter';
 import { planIfSearching } from '../services/web-search-catalog';
-import { processOneRow, structuredPreview } from './ai-preview-runner';
+import { previewDraftRow, processOneRow, structuredPreview } from './ai-preview-runner';
 import {
   acquirePreviewSlot, releasePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER,
 } from '../lib/ai-preview-concurrency';
@@ -85,9 +86,11 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // reuses no preview (services/ai-run-start-multi.ts), so it keeps no draft.
     const structured = parsed.outputColumns
       ? structuredPreview(parsed.outputColumns, useOpenRouterWebSearch || useWebFetch) : null;
+    // Read once for the preview: what each row's prompt and its draft fingerprint read.
+    const columns = getSheetColumns(sheetId, req.userId!, false);
     const args = {
-      prompt, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined, search: planned.ok,
-      useWebFetch, ...structured?.args,
+      prompt, columns, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined,
+      search: planned.ok, useWebFetch, ...structured?.args,
     };
 
     // Persist the draft CONFIG before streaming (survives close/reopen even if
@@ -144,8 +147,9 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // larger previewSize (up to 20) there are multiple chunks; chunk N+1 still waits
     // on the slowest row of chunk N, but within a chunk rows stream independently.
     // Results are also collected (indexed by previewIndex = display order) for the
-    // draft — the inputHash is computed HERE from the exact row data the model saw,
-    // so credit reuse can later refuse a row whose referenced cells changed.
+    // draft — the inputHash is computed HERE (previewDraftRow) from the exact row data
+    // and `args` the model's prompt was filled from, so credit reuse can later refuse a
+    // row whose referenced cells changed.
     const collected: DraftPreviewRow[] = [];
     const spent = noSpend();
     for (let i = 0; i < rows.length; i += AI_PREVIEW_CONCURRENCY) {
@@ -157,12 +161,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
         processOneRow(row, openai!, args).then(answer => {
           addCall(spent, answer, true);
           const result = structured ? structured.shape(answer) : answer;
-          collected[i + j] = {
-            rowIndex: result.rowIndex, value: result.value,
-            ...(result.error ? { error: result.error } : { inputHash: computeInputHash(prompt, row.data) }),
-            promptTokens: result.promptTokens, completionTokens: result.completionTokens,
-            costUsd: result.costUsd, searchQueries: result.searchQueries, webSearches: result.webSearches,
-          };
+          collected[i + j] = previewDraftRow(row, result, args);
           // Carry the server's INTENDED order (position in `rows`) so the client
           // renders in that order: rows stream out of order as they resolve.
           writeLine({ type: 'row', previewIndex: i + j, ...result });

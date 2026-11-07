@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db } from './db';
+import { verifySheetOwnership } from './sql-helpers';
 import { HEAVY_JOB_RETRY_MAX_MS, HEAVY_JOB_RETRY_MS } from './constants';
 
 // One heavy operation per sheet at a time: sort, CSV import, column rename or
@@ -64,6 +65,21 @@ export async function withSheetBusy<T>(
     void settle(sheetId, entry);
   }
 }
+
+// withSheetBusy for a change that checked its sheet, then waited (an upload, a
+// scan, a check, a worker) before it gets here: the sheet may have gone to the
+// trash meanwhile. Checked again first thing once held, it takes no change
+// ({ sheetGone }). It stays live until `work` returns: the trash refuses a busy
+// sheet (trash-sheets.ts).
+export async function withLiveSheetBusy<T>(
+  sheetId: string, userId: string, what: string,
+  work: (reserve: (floor: number) => void) => Promise<T>,
+): Promise<T | { busy: string } | { sheetGone: true }> {
+  return withSheetBusy(sheetId, what, async (reserve): Promise<T | { sheetGone: true }> =>
+    (verifySheetOwnership(sheetId, userId) ? work(reserve) : { sheetGone: true }));
+}
+export const sheetGone = (outcome: object): outcome is { sheetGone: true } =>
+  'sheetGone' in outcome && outcome.sheetGone === true;
 
 // Runs what `work` left for after it returned, then releases the sheet (or
 // keeps retrying a failed job). With nothing left, it releases synchronously.
@@ -137,12 +153,15 @@ export async function withSheetRead<T>(
 // while the sheet is busy, any change to it gets a 409 with the reason. Reads,
 // and the POSTs listed in `allowed` (appending rows lands above the reserved
 // range; a row query only reads), go through. An entry can be a pattern for a
-// path with an id in it.
-export function refuseChangesWhileBusy(allowed: Array<string | RegExp>) {
+// path with an id in it, or a test of the request (a keyed call that checks
+// for busy itself).
+export type BusyAllowed = string | RegExp | ((req: Request) => boolean);
+export function refuseChangesWhileBusy(allowed: BusyAllowed[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     const what = sheetBusyWith(req.params.id);
-    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path : a.test(req.path)));
+    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path
+      : a instanceof RegExp ? a.test(req.path) : a(req)));
     if (!what || (req.method === 'POST' && listed)) return next();
     res.status(409).json({ error: busyMessage(what), busy: true });
   };

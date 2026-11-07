@@ -14,7 +14,7 @@ import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
 import { getLockedRunColumns } from '../routes/sheets-shared';
-import { cellOf } from './row-selection';
+import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import type { WhereItem } from '../lib/row-filter/where';

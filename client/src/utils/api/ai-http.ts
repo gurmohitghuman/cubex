@@ -1,7 +1,7 @@
 import { api } from './client'
 import type { OutputColumnDraft } from '../../lib/output-columns'
 import type { AIDraft, AIPreview, AIResult, AIRun, HTTPPreview, HTTPResult, HTTPRun } from './types'
-import type { RowSearchQuery, RunSpend, SearchPlanResponse } from './types-search'
+import type { AiLimitView, RowSearchQuery, RunSpend, SearchPlanResponse } from './types-search'
 import { previewStream } from './ai-preview-stream'
 
 // Every consumer of these AI/HTTP helpers has its own catch block that surfaces a
@@ -57,6 +57,9 @@ export const aiAPI = {
   // spend: what the run has cost and searched so far.
   getRun: (id: string): Promise<{ run: AIRun; results: AIResult[]; spend?: RunSpend }> =>
     api.get(`/ai/runs/${id}`, noServerToast).then(res => res.data),
+  // A light read for the "Raise the spend limit" dialog: no results.
+  spendLimit: (id: string): Promise<AiLimitView> =>
+    api.get(`/ai/runs/${id}/spend-limit`, noServerToast).then(res => res.data),
 
   // The engine a model's searches would run on and its price, for the drawer's
   // web search options (server lib/web-search-plan.ts).
@@ -69,7 +72,9 @@ export const aiAPI = {
     api.get(`/ai/runs`, { params: { sheetId }, ...noServerToast }).then(res => res.data),
 
   pauseRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/pause`, null, noServerToast).then(() => {}),
-  resumeRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/resume`, null, noServerToast).then(() => {}),
+  // spendLimitUsd: a new spend limit, for a run that paused at its own (pause_reason spend_limit).
+  resumeRun: (id: string, spendLimitUsd?: number): Promise<void> => api.post(`/ai/runs/${id}/resume`,
+    spendLimitUsd === undefined ? null : { spendLimitUsd }, noServerToast).then(() => {}),
   cancelRun: (id: string): Promise<void> => api.post(`/ai/runs/${id}/cancel`, null, noServerToast).then(() => {}),
 
   // updateResult/commitResults were removed with the vestigial review step —

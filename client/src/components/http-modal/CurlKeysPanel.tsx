@@ -62,7 +62,9 @@ function KeyRow({ k, d, savedKeyNames, set }: {
           <span className="text-xs text-gray-500">needs a key{k.placeholder ? ` (${k.placeholder})` : ''}</span>
         )}
       </p>
-      {k.existingKey && <p className="text-xs text-gray-500">Already saved as {k.existingKey}.</p>}
+      {k.existingKey && (
+        <p className="text-xs text-gray-500 truncate" title={k.existingKey}>Already saved as {k.existingKey}.</p>
+      )}
       {option('save', 'Save it as a new key named', (
         <>
           <input className="input w-full" value={d.name} aria-label="New key name"

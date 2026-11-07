@@ -17,7 +17,7 @@ export interface LookupColumnRow {
   other_sheet_id: string; match_column: string; match_mode: LookupMatch; returns: LookupReturns;
   return_columns: string | null; list_limit: number; broken: string | null;
   fill_status: 'filling' | 'done' | 'failed'; fill_cursor: number; filled_rows: number; error_rows: number;
-  first_error: string | null; error_message: string | null;
+  first_error: string | null; error_message: string | null; updated_at: string;
 }
 
 // The other sheet's columns it returns: one for 'value'; for 'list', null = all of them.

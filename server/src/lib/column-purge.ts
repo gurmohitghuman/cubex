@@ -16,7 +16,7 @@ import { runInputPath } from './run-inputs/stale-sql';
 // the same tick this resolves (services/column-rename.ts does).
 export async function copyColumnKey(sheetId: string, userId: string, from: string, to: string): Promise<void> {
   const copy = db.prepare(`
-    UPDATE rows SET data = json_set(data, ?, json_extract(data, ?))
+    UPDATE rows SET data = json_set(data, ?, json_extract(data, ?)), updated_at = datetime('now')
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
       AND json_type(data, ?) IS NOT NULL
   `);
@@ -29,7 +29,7 @@ export async function copyColumnKey(sheetId: string, userId: string, from: strin
   // collected. Copy those last, synchronously: the caller switches the name in
   // the same tick, so no request can slip a row in between.
   db.prepare(`
-    UPDATE rows SET data = json_set(data, ?, json_extract(data, ?))
+    UPDATE rows SET data = json_set(data, ?, json_extract(data, ?)), updated_at = datetime('now')
     WHERE rowid > ? AND +sheet_id = ? AND +user_id = ? AND json_type(data, ?) IS NOT NULL
   `).run(toPath, fromPath, rowIds.length > 0 ? rowIds[rowIds.length - 1] : 0, sheetId, userId, fromPath);
 }
@@ -55,12 +55,13 @@ export function pendingPurges(sheetId: string): Set<string> {
 export async function purgeColumnKey(sheetId: string, userId: string, name: string): Promise<void> {
   const dead = db.prepare('SELECT key FROM run_input_purges WHERE sheet_id = ?').pluck().all(sheetId) as number[];
   const strip = dead.length === 0 ? db.prepare(`
-    UPDATE rows SET data = json_remove(data, ?)
+    UPDATE rows SET data = json_remove(data, ?), updated_at = datetime('now')
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
       AND json_type(data, ?) IS NOT NULL
   `) : db.prepare(`
     UPDATE rows SET data = json_remove(data, ?),
-      run_inputs = json_remove(run_inputs, ${dead.map(() => '?').join(', ')})
+      run_inputs = json_remove(run_inputs, ${dead.map(() => '?').join(', ')}),
+      updated_at = CASE WHEN json_type(data, ?) IS NOT NULL THEN datetime('now') ELSE updated_at END
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?
       AND (json_type(data, ?) IS NOT NULL OR (${dead.map(() => 'json_type(run_inputs, ?) IS NOT NULL').join(' OR ')}))
   `);
@@ -68,7 +69,8 @@ export async function purgeColumnKey(sheetId: string, userId: string, name: stri
   const path = jsonPath(name);
   const keys = dead.map(runInputPath);
   await eachRowIdSlice(await sheetRowIds(sheetId, userId), ids => {
-    strip.run(path, ...keys, ids, sheetId, userId, path, ...(dead.length ? keys : []));
+    if (dead.length === 0) strip.run(path, ids, sheetId, userId, path);
+    else strip.run(path, ...keys, path, ids, sheetId, userId, path, ...keys);
   });
   forgetPurge(sheetId, name);
   if (dead.length > 0) {

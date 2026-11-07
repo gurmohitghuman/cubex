@@ -132,3 +132,19 @@ A setup version holds how a sheet's columns are set up, never a cell, so saving,
 | Rename a column, with 1 or with 100 versions naming it (the rename itself moves every row's cell) | 3.3 s either way |
 
 A sheet keeps up to 100 versions, each at most 4 MB. At those limits (100 versions of 4 MB on the sheet and 100 more on another sheet, `SETUP_VERSIONS_PERF_MB=4 npm run test:unit -- setup-versions-fences`), listing them takes about 0.2 s (the counts are worked out in SQLite, no version is read whole into the server), and the versions' part of a column rename about 0.2 s when no version names the column (only the versions that can name it are read) and 0.9 s when all 100 do. Versions of a usual size take a millisecond or two.
+
+### Reading rows by id and rows changed since a time
+
+Measured with a script on a 4-core Linux server (AMD EPYC, 8 GB), on a sheet of 1,000,000 rows and 10 columns (a 970 MB database) whose rows came in as an import does, about 110,000 a second, with 20,000 rows edited later:
+
+| Action | Time |
+|---|---|
+| The upgrade that adds the index on when rows changed (migration 050) | 2.0 to 2.2 s (the index itself 1.6 s, 66 MB) |
+| A page of 100 changed rows (`updated_since`), from the start, 550,000 rows in (inside a second 110,000 rows share) or near the end | 0.75 to 1.1 ms |
+| The same with `include_status` | 1.3 to 2.1 ms |
+| A page of 500 (the REST limit) | 2.5 to 3.2 ms |
+| 1,000 rows by id (`row_ids`), spread over the sheet | 11 to 12 ms (17 ms with `include_status`) |
+| 1,000 failed rows by id with `include_status`, on a column with 20,000 runs, each row's failure in another run | 84 to 95 ms; 11 to 14 of the 1,000 rows got their run's full message, the rest the cell's words |
+| 1 to 1,000 failed rows by id with `include_status`, on a column with 60,000 runs and no result at those rows (a separate small database) | 54 to 94 ms (1.2 s before the look had a time limit) |
+
+Every page reads the index in order: no row outside the page is read and nothing is sorted. Finding a failed cell's full message looks through the column's runs from the newest, and stops after 2,000 lookups or 50 ms, so a read by id never holds the server longer than that for it; on a column with thousands of runs most failures come from older runs and keep the cell's words. The rest of those reads' time is reading the rows and, with `include_status`, the column's runs and their states (about 18 ms at 60,000 runs). Keeping that index up to date has a cost: rewriting every row of the sheet (as a run putting ⏳ in every row, a rename or a clean fill does) took 8.0 to 8.4 s without the index and 11.1 to 11.3 s with it, about a third longer, and the slowest slice of 5,000 rows went from 54 to 55 ms to 112 to 113 ms (two runs, measured with a script that rewrites every row in 5,000-row transactions).

@@ -7,7 +7,8 @@ import { createSavedKey, validateSavedKey } from '../services/saved-keys';
 const router = express.Router();
 router.use(authenticateToken);
 
-const validateApiKeyBody = (req: AuthRequest) => validateSavedKey((req.body ?? {}) as Record<string, unknown>);
+const validateApiKeyBody = (req: AuthRequest, currentName?: string) =>
+  validateSavedKey((req.body ?? {}) as Record<string, unknown>, currentName);
 
 router.get('/api-keys/suggestions', (req: AuthRequest, res) => {
   try {
@@ -52,11 +53,11 @@ router.post('/api-keys', (req: AuthRequest, res) => {
 router.put('/api-keys/:id', (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const v = validateApiKeyBody(req);
+    // Its name now: an edit that keeps a name saved before the length cap saves.
+    const existing = db.prepare('SELECT name FROM api_keys WHERE id = ? AND user_id = ?')
+      .get(id, req.userId!) as { name: string } | undefined;
+    const v = validateApiKeyBody(req, existing?.name);
     if (typeof v === 'string') return res.status(400).json({ error: v });
-
-    const existing = db.prepare('SELECT id FROM api_keys WHERE id = ? AND user_id = ?')
-      .get(id, req.userId!);
     if (!existing) return res.status(404).json({ error: 'API key not found' });
 
     const nameClash = db.prepare('SELECT id FROM api_keys WHERE name = ? AND id != ? AND user_id = ?')

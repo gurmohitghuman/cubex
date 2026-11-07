@@ -12,6 +12,7 @@ import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
 import { spendCapRefusal } from './token-spend';
+import { resumeLeastPart } from './ai-run-floor';
 
 export interface RunSummary {
   id: string;
@@ -53,8 +54,12 @@ export interface RunSummary {
   // not in total_rows; counted once the run has started).
   run_if?: string;
   condition_skipped_rows?: number;
-  // A run that paused itself: why, and what to do (token_cap, provider_errors,
-  // storage, stalled; an enrichment's own reasons are under enrichment).
+  // AI runs with a hard spend limit (migration 051): the limit, in USD, and
+  // while not finished the least a resume takes (services/ai-run-floor.ts).
+  spend_limit_usd?: number;
+  resume_least_usd?: number;
+  // A run that paused itself: why, and what to do (token_cap, spend_limit,
+  // provider_errors, storage, stalled; an enrichment's own reasons are under enrichment).
   pause_reason?: string;
   pause_message?: string | null;
   created_at: string;
@@ -100,9 +105,10 @@ function capPausePart(r: CapPaused) {
 }
 
 // An AI or HTTP API run that paused itself for a reason it stored the words
-// of (lib/run-pool.ts, services/stalled-runs.ts): its provider failing row
-// after row, a database that couldn't be written, a worker that kept stopping.
-const SELF_PAUSES = new Set(['provider_errors', 'storage', 'stalled']);
+// of (lib/run-pool.ts, services/stalled-runs.ts): an AI run's own spend
+// limit, its provider failing row after row, a database that couldn't be
+// written, a worker that kept stopping.
+const SELF_PAUSES = new Set(['spend_limit', 'provider_errors', 'storage', 'stalled']);
 function selfPausePart(r: { status: string; pause_reason?: string | null; error_message?: string | null }) {
   if (r.status !== 'paused' || !r.pause_reason || !SELF_PAUSES.has(r.pause_reason)) return {};
   return { pause_reason: r.pause_reason, pause_message: r.error_message ?? null };
@@ -121,6 +127,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     model: r.model, concurrency: r.concurrency,
     ...(outputs ? { output_columns: outputs } : {}), ...(data ? { data_column: data } : {}),
     ...(search ? { web_search: search } : {}),
+    ...(typeof r.spend_limit_usd === 'number' ? { spend_limit_usd: r.spend_limit_usd } : {}),
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...capPausePart(r), ...selfPausePart(r), ...aiRowOutcomes(r.id, r.user_id),
@@ -134,10 +141,12 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
     SELECT id, sheet_id, column_name, model, concurrency, status, processed_rows, total_rows, error_message,
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
-           run_if, condition_skipped_rows, pause_reason, access_token_id, user_id
+           run_if, condition_skipped_rows, pause_reason, access_token_id, user_id, spend_limit_usd,
+           spend_cut_off_micro, spend_next_row_micro
     FROM ai_runs WHERE id = ? AND user_id = ?
-  `).get(runId, userId);
-  return r ? aiRunSummaryFromRow(r) : null;
+  `).get(runId, userId) as any;
+  // One run's summary only (not list_runs): its least resume limit reads its usage record.
+  return r ? { ...aiRunSummaryFromRow(r), ...resumeLeastPart(runId, userId, r) } : null;
 }
 
 export function getHttpRunSummary(runId: string, userId: string): RunSummary | null {

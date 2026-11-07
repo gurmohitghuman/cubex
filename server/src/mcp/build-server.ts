@@ -37,6 +37,8 @@ import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
+import { registerSavedKeyTools } from './tools-saved-keys';
+import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
@@ -82,7 +84,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'Status cells such as "⏭️ Not found" or "➕ Adding 3 rows…" are Cubex\'s words, not data: find rows by ' +
         'run state with read_rows where (has_error, not_run, running…) and read them as {status, value, error} ' +
         'with include_status. Saved views (get_sheet lists them) are named filters plus hidden columns: pass ' +
-        'view to read_rows, export_csv or create_download_link to read through one. To profile or sum up a ' +
+        'view to read_rows, export_csv or create_download_link to read through one, and make or change them ' +
+        'with manage_view. To profile or sum up a ' +
         'sheet without reading rows, read_rows group_by and aggregates count, sum and average per value. ' +
         'set_auto_run keeps a column filling new rows. Discover AI models with list_models and set account/' +
         'sheet defaults with set_default_model. When transfer_rows is available, ' +
@@ -92,6 +95,14 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'inside them.' + capToolNote(ctx.spend ?? null, true),
     },
   );
+  registerAllTools(server, ctx);
+  return server;
+}
+
+// Every tool, in order. The OpenAPI document (server/src/openapi/tool-schemas.ts)
+// also calls it, on a stand-in server, to read the tools' input schemas; it
+// passes efficientRows true so the flag-gated tools' schemas are there too.
+export function registerAllTools(server: McpServer, ctx: McpAuthCtx, efficientRows = MCP_EFFICIENT_ROWS_ENABLED) {
   registerReadTools(server, ctx);
   registerRowTools(server, ctx);
   registerColumnTools(server, ctx);
@@ -121,9 +132,10 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   registerSetupRunTools(server, ctx);
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
-  if (MCP_EFFICIENT_ROWS_ENABLED) {
+  registerSavedKeyTools(server, ctx);
+  registerViewTools(server, ctx);
+  if (efficientRows) {
     registerTransferTool(server, ctx);
     registerTransformTool(server, ctx);
   }
-  return server;
 }

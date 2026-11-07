@@ -109,8 +109,10 @@ export async function startWaterfallDryRun(
   const config = dryConfig(walk, picked.rows.length, input.spendLimitUsd);
   const keys = keysProblem(userId, { config }, opts.hasSecretsScope);
   if ('fail' in keys) return keys;
-  // Nothing awaited between this check and the insert: a rename there can't land in between.
+  // Nothing awaited between these checks and the insert: a rename there can't land in between,
+  // nor can this sheet go to the trash (it may have while the steps were built).
   if (lookupStepsMoved(config, userId)) return { fail: 'conflict', message: LOOKUP_MOVED };
+  if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const runId = uuidv4();
   db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, master_column_name,
       target_rows, allow_secrets, access_token_id) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?, ?, ?)`)

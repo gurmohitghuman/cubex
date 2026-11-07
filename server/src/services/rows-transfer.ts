@@ -5,7 +5,7 @@ import {
   TRANSFER_MAX_ROWS, TRANSFER_MAX_STORED_BYTES, TRANSFER_MAX_WRITER_MS,
 } from '../lib/api-v1-constants';
 import { countRows, getSheetColumns } from '../lib/sql-helpers';
-import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
+import { bumpDataVersion, IDEMPOTENCY_CONFLICT_MESSAGE, sheetHasActiveRun } from './data-plane-shared';
 import { acquireTransferSlot, releaseTransferSlot } from './transfer-rate';
 import { scanTransferRows, type ScanSelection } from './transfer-selection';
 import { planTransferColumns, applyTransferColumnOrder } from './transfer-columns';
@@ -13,7 +13,7 @@ import { isPristineSeedSheet } from './transfer-seed';
 import {
   readTransferLedger, transferHashes, TransferRequest, TransferResult, writeTransferLedger,
 } from './transfer-ledger';
-import { cellOf } from './row-selection';
+import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
@@ -41,7 +41,7 @@ function executeTransfer(
   const hash = hashes[0];
   const replay = readTransferLedger(userId, request.idempotencyKey, hashes);
   if (replay) return 'conflict' in replay
-    ? { fail: 'conflict', error: 'Idempotency key was already used with different arguments.' }
+    ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
     : { ok: replay.replay, replayed: true };
   const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL');
   if (!owns.get(request.sourceSheetId, userId) || !owns.get(request.destinationSheetId, userId)) {
@@ -209,7 +209,7 @@ export function transferRows(userId: string, request: TransferRequest, surface: 
     if (error instanceof TransferBudgetError) return { fail: 'budget', error: error.message };
     const winner = readTransferLedger(userId, request.idempotencyKey, hashes);
     if (winner) return 'conflict' in winner
-      ? { fail: 'conflict', error: 'Idempotency key was already used with different arguments.' }
+      ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
       : { ok: winner.replay, replayed: true };
     throw error;
   } finally {

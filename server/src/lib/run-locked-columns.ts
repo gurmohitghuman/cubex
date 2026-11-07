@@ -19,7 +19,11 @@ import { db } from './db';
 //
 // `paused: false` leaves paused runs out: what a reader that would otherwise
 // wait for the run asks (a lookup fill), since a run can stay paused for days.
-export function getLockedRunColumns(sheetId: string, userId: string, opts: { paused?: boolean } = {}): Set<string> {
+// `autorun: false` leaves auto-run's batch runs out (a lookup fill goes on
+// after one, where it starts over after any other run).
+export function getLockedRunColumns(
+  sheetId: string, userId: string, opts: { paused?: boolean; autorun?: boolean } = {},
+): Set<string> {
   const locked = new Set<string>();
   // The literal list keeps the partial active-run index (migration 014) usable.
   const paused = opts.paused === false ? 0 : 1;
@@ -27,49 +31,58 @@ export function getLockedRunColumns(sheetId: string, userId: string, opts: { pau
   const aiRuns = db.prepare(`
     SELECT column_name, output_columns, data_column FROM ai_runs
     WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
-  `).all(sheetId, userId, paused) as
-    Array<{ column_name: string; output_columns: string | null; data_column: string | null }>;
-  for (const r of aiRuns) {
-    // column_name is the (Output) column (single-column) OR the status column
-    // (structured runs). Lock it either way.
-    locked.add(r.column_name);
-    if (r.output_columns) {
-      // Structured run: lock EVERY typed output column too — an edit to any of
-      // them mid-run would be clobbered by (or clobber) the runner's write.
-      try {
-        for (const s of JSON.parse(r.output_columns) as Array<{ columnName?: unknown }>) {
-          if (s && typeof s.columnName === 'string') locked.add(s.columnName);
-        }
-      } catch { /* malformed spec — the status column lock still holds */ }
-      // ...and its "(Data)" sources column when it uses a web tool (migration 006).
-      if (r.data_column) locked.add(r.data_column);
-    } else {
-      // Single-column: lock the (Data) sibling unconditionally — cheap, and
-      // simpler than working out whether this run writes one.
-      const dataCol = r.column_name.endsWith(' (Output)')
-        ? r.column_name.replace(/ \(Output\)$/, ' (Data)')
-        : `${r.column_name} (Data)`;
-      locked.add(dataCol);
-    }
-  }
+  `).all(sheetId, userId, paused) as AiRunWrites[];
+  for (const r of aiRuns) addAiRunColumns(r, locked);
 
   const httpRuns = db.prepare(`
     SELECT config, master_column_name FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND status IN ('pending','running','paused') AND (? = 1 OR status <> 'paused')
-  `).all(sheetId, userId, paused) as Array<{ config: string | null; master_column_name: string | null }>;
-  for (const r of httpRuns) {
-    if (r.master_column_name) locked.add(r.master_column_name);
-    if (!r.config) continue;
-    try {
-      const cfg = JSON.parse(r.config) as { responseMapping?: Array<{ columnName?: unknown }> };
-      for (const m of cfg.responseMapping ?? []) {
-        if (typeof m.columnName === 'string') locked.add(m.columnName);
-      }
-    } catch {
-      // Malformed config JSON shouldn't crash the edit path. A run with an
-      // unparseable config can't be writing meaningful columns anyway.
-    }
-  }
+      AND (? = 1 OR autorun_id IS NULL)
+  `).all(sheetId, userId, paused, opts.autorun === false ? 0 : 1) as HttpRunWrites[];
+  for (const r of httpRuns) addHttpRunColumns(r, locked);
 
   return locked;
+}
+
+export type AiRunWrites = { column_name: string; output_columns: string | null; data_column: string | null };
+export type HttpRunWrites = { config: string | null; master_column_name: string | null };
+
+// The columns an AI run writes.
+export function addAiRunColumns(r: AiRunWrites, locked: Set<string>): void {
+  // column_name is the (Output) column (single-column) OR the status column
+  // (structured runs). Lock it either way.
+  locked.add(r.column_name);
+  if (r.output_columns) {
+    // Structured run: lock EVERY typed output column too — an edit to any of
+    // them mid-run would be clobbered by (or clobber) the runner's write.
+    try {
+      for (const s of JSON.parse(r.output_columns) as Array<{ columnName?: unknown }>) {
+        if (s && typeof s.columnName === 'string') locked.add(s.columnName);
+      }
+    } catch { /* malformed spec — the status column lock still holds */ }
+    // ...and its "(Data)" sources column when it uses a web tool (migration 006).
+    if (r.data_column) locked.add(r.data_column);
+  } else {
+    // Single-column: lock the (Data) sibling unconditionally — cheap, and
+    // simpler than working out whether this run writes one.
+    const dataCol = r.column_name.endsWith(' (Output)')
+      ? r.column_name.replace(/ \(Output\)$/, ' (Data)')
+      : `${r.column_name} (Data)`;
+    locked.add(dataCol);
+  }
+}
+
+// The columns an HTTP run writes.
+export function addHttpRunColumns(r: HttpRunWrites, locked: Set<string>): void {
+  if (r.master_column_name) locked.add(r.master_column_name);
+  if (!r.config) return;
+  try {
+    const cfg = JSON.parse(r.config) as { responseMapping?: Array<{ columnName?: unknown }> };
+    for (const m of cfg.responseMapping ?? []) {
+      if (typeof m.columnName === 'string') locked.add(m.columnName);
+    }
+  } catch {
+    // Malformed config JSON shouldn't crash the edit path. A run with an
+    // unparseable config can't be writing meaningful columns anyway.
+  }
 }

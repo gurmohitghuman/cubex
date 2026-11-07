@@ -151,6 +151,7 @@ ran('a body key can\'t be left out; a key name must be letters, numbers, _ and -
   assert.throws(() => applyKeyChoices(draft, findings, { [findings[0].id]: { drop: true } }), /can't be left out/);
   assert.throws(() => applyKeyChoices(draft, findings, { [findings[0].id]: { save: 'my key' } }),
     /can't be a key name/);
+  assert.throws(() => applyKeyChoices(draft, findings, { [findings[0].id]: { use: 'a}}x{{b' } }), /can't be a key/);
 });
 
 ran('a reference that differs from a saved key only in case is rewritten to its exact name', () => {

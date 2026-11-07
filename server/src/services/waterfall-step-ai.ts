@@ -41,9 +41,12 @@ const SPEC = (w: WaterfallBlock) => [{
   description: `${RESULT_INFO[w.resultType].ask}, or null if you can't find it`,
 }];
 
-// The messages of one row's call (also what a preview shows).
+// The messages of one row's call (also what a preview shows). The prompt's
+// /words are the waterfall's inputs, and a row's inputs hold every one of them
+// (lib/waterfall/inputs.ts inputValues), so they are also the names it can read.
 export function aiMessages(w: WaterfallBlock, prompt: string, inputs: Record<string, string>) {
-  const user = `${processPromptTemplate(prompt, inputs)}\n\n${buildMultiOutputInstruction(SPEC(w))}`;
+  const filled = processPromptTemplate(prompt, inputs, Object.keys(inputs));
+  const user = `${filled}\n\n${buildMultiOutputInstruction(SPEC(w))}`;
   return [{ role: 'system' as const, content: SYSTEM }, { role: 'user' as const, content: user }];
 }
 

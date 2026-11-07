@@ -3,6 +3,7 @@ import { authedApi, BASE, makeAccessToken } from './helpers'
 import { mockTreg } from './helpers-treg'
 import { mcpClient, call, callError } from './helpers-mcp'
 import { sheetWith } from './helpers-setups'
+import { Receiver } from './helpers-receiver'
 import {
   expectSettledBilledOnce, freshTreg, rowsOf, runIdsOf, startRun, verifiedEmailRun, waitRun,
 } from './helpers-enrich'
@@ -13,8 +14,11 @@ import { autorunOf, autorunRuns, seedViaWebhook, setAutorun, sleep, waitAutorunA
 // still on; a read token can't. MCP: an auto-run's enrichment batch in flight
 // is listed and stopped with cancel_all, its auto-run pauses and new rows don't
 // set it off; the call already sent finishes and is billed once. App: "Stop
-// all" shows while a setup is paused between steps, then with a run too; one
-// click stops both and the toast says what it did.
+// all" shows for a paused setup with no run working, then with a run too; one
+// click stops both and the toast says what it did. The setup's first step asks
+// the spec's receiver, which holds its answers: the pause lands while the setup
+// still runs (it can't have ended first), and that step's run, paused with it,
+// is then stopped by hand, so the setup alone is left.
 
 const COL = 'Work email'
 const shots = process.env.E2E_SHOTS
@@ -33,6 +37,9 @@ async function pausedHttpRun(api: APIRequestContext, sheetId: string, column: st
 }
 
 test.describe.configure({ mode: 'serial' })
+const rx = new Receiver()
+test.beforeAll(() => rx.start())
+test.afterAll(() => rx.stop())
 test.afterEach(async () => { await mockTreg.set({ delayMs: 0 }) })
 
 test('REST and MCP stop every run on a sheet; auto-run pauses only where its batch stopped', async () => {
@@ -108,13 +115,28 @@ test('Stop all in the app: shown for a paused setup and a run, one click stops b
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'stop-all app'))
   const a = await sheetWith(api, null, [{ Website: 'acme.com' }])
-  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
-  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Domain}} + "!"' })
+  // Each site's short name, from the receiver (a POST: no answer is reused from the cache).
+  for (const site of ['acme', 'one', 'two', 'six']) {
+    rx.on(`/short/${site}.com`, { status: 200, body: JSON.stringify({ short: site }) })
+  }
+  const first = await call(client, 'run_http_enrichment', { sheet_id: a.sheetId, url: rx.url('/short/{{Website}}'),
+    method: 'POST', master_column_name: 'Short lookup',
+    response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })
+  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: first.run_id }))
+    .status, { timeout: 30_000 }).toBe('completed')
+  await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Short}} + "!"' })
   const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
   const b = await sheetWith(api, a.tableId, [{ Website: 'one.com' }, { Website: 'two.com' }, { Website: 'six.com' }])
+  const release = rx.hold()
   const run = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false }))
     .setup_run
-  expect((await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'pause' })).status).toBe('paused')
+  const paused = await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'pause' })
+  expect(paused.status).toBe('paused')
+  // Its first step's run, paused with it, stopped by hand: the setup alone is left, paused.
+  const stepRun = paused.steps.find((s: any) => s.column === 'Short lookup').run_id
+  expect((await api.post(`/api/http/jobs/${stepRun}/control`, { data: { action: 'cancel' } })).ok()).toBeTruthy()
+  release()
+  await rx.settled()
 
   await context.addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${b.tableId}/${b.sheetId}`)

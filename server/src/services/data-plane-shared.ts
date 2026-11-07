@@ -33,13 +33,18 @@ export function sheetHasActiveRun(sheetId: string, userId: string): boolean {
 // transactions are sync, so flows set a flag and map it to a response after the
 // txn returns (throwing would roll back AND lose the shape).
 export type TxnFail =
+  // A row addressed by its id whose sheet (or table) is in the trash: answered
+  // as the sheet-addressed forms answer that sheet (patchRowById).
+  | { fail: 'sheet_not_found' }
   | { fail: 'cap'; remaining: number }
   | { fail: 'unknown_columns'; columns: string[] }
   | { fail: 'locked'; columns: string[] }
   | { fail: 'protected_columns'; columns: string[] }
   | { fail: 'active_run' }
   | { fail: 'busy'; message: string }
-  | { fail: 'not_found' };
+  | { fail: 'not_found' }
+  // An idempotency key used before with other arguments (lib/write-idempotency.ts).
+  | { fail: 'idempotency_conflict' };
 
 // Validate incoming columns against existing structure (UPDATE-ONLY: unknown
 // column → error, never implicit creation) + run locks. Call INSIDE the write
@@ -97,10 +102,15 @@ export function parseCellMap(
   return { cells };
 }
 
+// The words run starts and transfer_rows use too.
+export const IDEMPOTENCY_CONFLICT_MESSAGE = 'Idempotency key was already used with different arguments.';
+
 // Human-readable message for a TxnFail — shared by v1 responses and MCP tool
 // errors so agents see identical wording on both surfaces.
 export function txnFailMessage(f: TxnFail, maxRows: number): string {
   switch (f.fail) {
+    case 'sheet_not_found':
+      return 'Sheet not found';
     case 'cap':
       return `Row limit reached (${maxRows} per sheet). You can add at most ${f.remaining} more.`;
     case 'unknown_columns':
@@ -115,5 +125,7 @@ export function txnFailMessage(f: TxnFail, maxRows: number): string {
       return f.message;
     case 'not_found':
       return 'Not found.';
+    case 'idempotency_conflict':
+      return IDEMPOTENCY_CONFLICT_MESSAGE;
   }
 }

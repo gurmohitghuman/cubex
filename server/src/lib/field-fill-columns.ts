@@ -7,6 +7,9 @@ import { db } from './db';
 
 export { FILL_PLACEHOLDER, overlayFilling } from './field-fill-overlay';
 
+// What the sheet is busy with while stored answers fill their column (it only writes that column's cells).
+export const FIELD_FILLING = 'filling a column';
+
 export function fillingColumns(sheetId: string, userId: string): string[] {
   return db.prepare(`SELECT column_name FROM enrichment_field_jobs
       WHERE sheet_id = ? AND user_id = ? AND status = 'running'

@@ -33,7 +33,12 @@ export const SuggestionsDropdown: React.FC<Props> = ({
             <button
               key={item.type === 'api_key' ? `key-${item.name}` : `col-${item.name}`}
               onClick={() => onSelect(item.reference)}
-              className={`w-full text-left px-3 py-2 text-sm ${idx === activeIndex ? 'bg-cube-black text-white' : 'hover:bg-gray-100'}`}
+              // A long saved key name (up to 200 characters) ends in an ellipsis on one line. A column row
+              // wraps, and a reference too long for the row breaks inside it instead of spilling out.
+              title={item.type === 'api_key' ? item.reference : undefined}
+              className={`w-full text-left px-3 py-2 text-sm ${
+                item.type === 'api_key' ? 'truncate' : 'break-words'} ${
+                idx === activeIndex ? 'bg-cube-black text-white' : 'hover:bg-gray-100'}`}
             >
               {item.type === 'api_key' ? (
                 <>
@@ -49,6 +54,7 @@ export const SuggestionsDropdown: React.FC<Props> = ({
               ) : (
                 <>
                   <span className={`font-mono ${idx === activeIndex ? 'text-white' : 'text-cube-black'}`}>{item.reference}</span>
+                  <wbr />
                   <span className={`ml-2 ${idx === activeIndex ? 'text-gray-300' : 'text-gray-500'}`}>({item.name})</span>
                 </>
               )}

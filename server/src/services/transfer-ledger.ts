@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
+import { forgetExpiredWriteKey, WRITE_KINDS_SQL } from '../lib/write-idempotency';
 import type { TransferSelection } from './transfer-selection';
 import type { AutoDedupeAnswer } from './auto-dedupe-answer';
 
@@ -82,10 +83,13 @@ export function transferRequestHash(request: Record<string, unknown>): string {
 
 // `hashes` = transferHashes() output: the current canonical hash plus any
 // accepted legacy encodings of the SAME wire request — an entry stored under
-// an older canonical form must replay, not conflict.
+// an older canonical form must replay, not conflict. A row write's key over a
+// day old is free again: deleted first, so the transfer records the key
+// (lib/write-idempotency.ts).
 export function readTransferLedger(
   userId: string, key: string, hashes: string[],
 ): { replay: TransferResult } | { conflict: true } | null {
+  forgetExpiredWriteKey(userId, key);
   const row = db.prepare(
     'SELECT request_hash, result_json FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = ?',
   ).get(userId, key) as { request_hash: string; result_json: string } | undefined;
@@ -104,7 +108,7 @@ export function writeTransferLedger(
   `).run(uuidv4(), userId, key, hash, JSON.stringify(result));
   db.prepare(`
     DELETE FROM data_operation_ledger WHERE id IN (
-      SELECT id FROM data_operation_ledger WHERE user_id = ?
+      SELECT id FROM data_operation_ledger WHERE user_id = ? AND operation_kind NOT IN (${WRITE_KINDS_SQL})
       ORDER BY created_at DESC LIMIT 25 OFFSET 1000
     )
   `).run(userId);

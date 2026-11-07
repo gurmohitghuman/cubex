@@ -115,6 +115,9 @@ export interface AIRun {
   run_if?: string | null
   condition_skipped_rows?: number | null
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
+  // Why it paused itself ('spend_limit': at its own spend limit, which Resume raises), and that limit.
+  pause_reason?: string | null
+  spend_limit_usd?: number | null
   total_rows: number
   processed_rows: number
   created_at: string

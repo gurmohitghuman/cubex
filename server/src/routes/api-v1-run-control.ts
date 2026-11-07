@@ -21,6 +21,8 @@ import {
 import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 import { parseFirstRows } from './ai-run-rerun';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
+import { resumeAiRun } from '../services/ai-run-limit';
+import { usdLimitOf } from '../lib/cost-ceiling';
 
 const router = express.Router();
 
@@ -58,16 +60,16 @@ function registerControls(prefix: string, kind: RunKind) {
     }
   });
 
-  // An enrichment run resumes with an optional new run limit ({spend_limit_usd})
-  // and concurrency ({concurrency}).
+  // An AI, enrichment or waterfall run resumes with an optional new run limit
+  // ({spend_limit_usd}); an enrichment run also with concurrency ({concurrency}).
   router.post(`/${prefix}/:id/resume`, requireScope('run'), async (req: TokenAuthRequest, res) => {
     try {
       const body = req.body as { spend_limit_usd?: unknown; concurrency?: unknown } | undefined;
       const limit = body?.spend_limit_usd;
       const enrichment = kind === 'http' && isEnrichmentRun(req.params.id, req.userId!);
       const waterfall = kind === 'http' && !enrichment && isWaterfallRun(req.params.id, req.userId!);
-      if (limit !== undefined && !enrichment && !waterfall) {
-        return res.status(400).json({ error: 'spend_limit_usd applies to enrichment and waterfall runs only.' });
+      if (limit !== undefined && !enrichment && !waterfall && kind !== 'ai') {
+        return res.status(400).json({ error: 'spend_limit_usd applies to AI, enrichment and waterfall runs only.' });
       }
       if (body?.concurrency !== undefined && !enrichment) {
         return res.status(400).json({ error: 'concurrency applies to resuming an enrichment run only.' });
@@ -76,8 +78,8 @@ function registerControls(prefix: string, kind: RunKind) {
       if (limit !== undefined && limit !== null && typeof limit !== 'number') {
         return res.status(400).json({ error: 'spend_limit_usd must be a number.' });
       }
-      const result = enrichment
-        ? await resumeEnrichmentRun(req.params.id, req.userId!, limit, body?.concurrency)
+      const result = kind === 'ai' ? await resumeAiRun(req.params.id, req.userId!, limit, secrets)
+        : enrichment ? await resumeEnrichmentRun(req.params.id, req.userId!, limit, body?.concurrency)
         : waterfall ? await resumeWaterfallRun(req.params.id, req.userId!, limit as number | null | undefined, secrets)
         : await resumeRun(kind, req.params.id, req.userId!, secrets);
       if ('fail' in result && result.fail === 'bad_request') return res.status(400).json({ error: result.message });
@@ -129,7 +131,8 @@ function hooked(req: TokenAuthRequest, b: { webhook_id?: unknown }, table: 'ai_r
   return { webhook_id: b.webhook_id };
 }
 
-// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode?, concurrency?, first_rows?, webhook_id? }. row_ids
+// POST /v1/ai-runs/:id/rerun — body { row_ids?, mode?, concurrency?, first_rows?, webhook_id?,
+// spend_limit_usd? (the new run's hard spend limit) }. row_ids
 // wins; mode is one of errored|empty|missing|all and REQUIRED without row_ids, as on MCP: a
 // default of 'missing' re-billed every empty row of the column (MCP dropped it
 // after a 10-row retry became a 9,675-row run). first_rows narrows to the
@@ -141,6 +144,7 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
   try {
     const body = (req.body ?? {}) as {
       row_ids?: unknown; mode?: unknown; concurrency?: unknown; first_rows?: unknown; webhook_id?: unknown;
+      spend_limit_usd?: unknown;
     };
     const p = parseRowIds(body.row_ids);
     if ('error' in p) return res.status(400).json({ error: p.error });
@@ -160,12 +164,14 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if (c !== undefined && (typeof c !== 'number' || !Number.isInteger(c) || c < 1 || c > MAX_AI_CONCURRENCY)) {
       return res.status(400).json({ error: `concurrency must be a whole number from 1 to ${MAX_AI_CONCURRENCY}.` });
     }
+    const limit = usdLimitOf(body.spend_limit_usd, 'spend_limit_usd');
+    if ('error' in limit) return res.status(400).json({ error: limit.error });
     if (refuseBadWebhook(req, res, body)) return;
     // A rerun is a run start: same per-token window as MCP's control_run.
     if (refuseRunStart(req, res)) return;
     const result = await rerunAiRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: (body.mode ?? (first.firstRows ? 'all' : undefined)) as AiRerunMode | undefined,
-      concurrency: c, firstRows: first.firstRows,
+      concurrency: c, firstRows: first.firstRows, spendLimitUsd: limit.value,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
     res.status(202).json({

@@ -24,6 +24,8 @@ export * from './constants-run-safety';
 export * from './constants-trash';
 // AI visibility tables, same split.
 export * from './constants-ai-visibility';
+// Cost ceilings and the AI run spend limit, same split.
+export * from './constants-spend';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes
@@ -46,6 +48,10 @@ export const RELAXED_COLUMN_NAME_PATTERN = /^(?=.*[A-Za-z0-9])[^"\\\x00-\x1F\x7F
 // columns get opaque col_xxxx colIds — so they're safe as data NAMES.)
 export const RESERVED_COLUMN_NAMES = new Set(['__rowIndex']);
 export const API_KEY_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+// Longest name a saved API key gets when it's saved or renamed (services/saved-keys.ts).
+// A longer name saved before the cap keeps working everywhere: it is used, listed,
+// paged and looked up by name as before.
+export const API_KEY_NAME_MAX = 200;
 
 // Password rules for the single account (lib/password.ts). The max stops a
 // huge body from tying up an argon2 hash.
@@ -90,6 +96,18 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
+// for every clean, formula and lookup column reading the run's columns, in the
+// same transaction; on rows with random ids each queued row writes a page of
+// its own. With R such columns a slice holds this many / (1 + R) rows (1,000
+// at 1, 500 at 3, still 10 on a full sheet of 200 columns), commits with
+// SQLite's own checkpoint off and is checkpointed in a turn of its own
+// (lib/slices.ts).
+// Measured at 200,000 rows with 3 formulas on random ids: slices up to 40 ms,
+// checkpoints up to 70 ms, the whole clear 23 to 25 s in the background. Left
+// on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
+// With none, slices stay HEAVY_SLICE_ROWS rows, with no checkpoint.
+export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
 // A journaled heavy job (a sort, a CSV import's clean-up) that fails half-way
 // keeps its sheet busy and is retried in the background, waiting this long
 // before the first retry and doubling up to the cap (lib/sheet-busy.ts).

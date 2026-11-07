@@ -6,6 +6,7 @@
 // OpenRouter's in-flight budget at its concurrency.
 import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice, roundUsd } from '../lib/ai-cost';
+import { rowPricesOf } from '../lib/ai-spend-limit';
 import type { PreviewRowResult } from '../routes/ai-preview-runner';
 import { inFlightFor } from './ai-in-flight';
 
@@ -26,7 +27,8 @@ export async function previewCosts(
   } else {
     const modelsResult = await fetchModels(Date.now());
     const m = (modelsResult.ok ? modelsResult.models : modelsResult.stale)?.find(x => x.id === model);
-    if (m && priced.length > 0) {
+    // A negative listed price (one that varies) is no price: the cost stays unknown, never $0.
+    if (m && rowPricesOf(m.pricing) && priced.length > 0) {
       const p = parseTokenPrice(m.pricing.prompt);
       const c = parseTokenPrice(m.pricing.completion);
       const total = priced.reduce((sum, r) => sum + (r.promptTokens ?? 0) * p + (r.completionTokens ?? 0) * c, 0);

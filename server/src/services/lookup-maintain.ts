@@ -20,7 +20,7 @@
 // Over 200 lines: the three steps share one key writer; split, they could drift.
 import { db } from '../lib/db';
 import { LOOKUP_STEP_MS, LOOKUP_STEP_ROWS } from '../lib/constants';
-import { yieldToRequests } from '../lib/slices';
+import { withoutAutoCheckpoint, yieldToRequests } from '../lib/slices';
 import { lookupKey, lookupText, lookupValue } from '../lib/lookup/normalize';
 import { lookupSourceState, sheetLookupSources, type LookupSource } from './lookup-source';
 import { addText, removeText } from './lookup-text';
@@ -29,13 +29,7 @@ import { addText, removeText } from './lookup-text';
 // step dirties about one index page per row, enough to trigger it): settleWal
 // copies the WAL back in a turn of its own after the step.
 export function lookupStep(work: () => void): void {
-  const auto = db.pragma('wal_autocheckpoint', { simple: true }) as number;
-  db.pragma('wal_autocheckpoint = 0');
-  try {
-    db.transaction(work).immediate();
-  } finally {
-    db.pragma(`wal_autocheckpoint = ${auto}`);
-  }
+  withoutAutoCheckpoint(() => db.transaction(work).immediate());
 }
 
 interface Current { i: number; v: unknown }

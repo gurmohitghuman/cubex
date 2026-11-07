@@ -37,11 +37,14 @@ import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
+import savedKeysV1 from './api-v1-saved-keys';
 import aiVisibilityV1 from './api-v1-ai-visibility';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
+import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import { actAs } from '../lib/actor';
 import { tokenSpendFor } from '../services/token-spend';
+import { openApiDocument } from '../openapi/document';
 
 const router = express.Router();
 router.use(authenticateAccessToken);
@@ -62,14 +65,8 @@ router.use(actAs(req => ({
 })));
 
 // Data plane (Phase 1): discovery, CRUD, reads, row/column mutations, sort, export.
-// Same busy-sheet rule as the UI routes (lib/sheet-busy.ts).
-// Stopping every run is allowed too: a run still writing its placeholders holds the sheet.
-router.use('/sheets/:id', refuseChangesWhileBusy([
-  '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
-  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
-  // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
-  /^\/setup-versions\/[^/]+\/restore$/,
-]));
+// Same busy-sheet rule as the UI routes (lib/sheet-busy.ts); what goes through: api-v1-shared.ts.
+router.use('/sheets/:id', refuseChangesWhileBusy(V1_SHEET_BUSY_ALLOWED));
 router.use(tablesV1);
 router.use(aiVisibilityV1);
 router.use(tableSheetsV1);
@@ -104,6 +101,8 @@ router.use(waterfallV1);
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
 router.use(usageV1);
 router.use(trashV1);
+// Saved API keys by name and where they're used, never a value (services/saved-key-uses.ts).
+router.use(savedKeysV1);
 
 // GET /api/v1/me — who am I, and what can this token do (its scopes, and its
 // spend cap with what is left). Lets a script or MCP client validate its
@@ -123,6 +122,17 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
   } catch (error) {
     console.error('GET /v1/me error:', error);
     res.status(500).json({ error: 'Failed to fetch account info' });
+  }
+});
+
+// GET /api/v1/openapi.json: this API described as OpenAPI 3.1 (server/src/openapi/),
+// for Postman, Swagger UI or a client generator. Any valid token may read it.
+router.get('/openapi.json', requireScope('read'), (_req, res) => {
+  try {
+    res.json(openApiDocument());
+  } catch (error) {
+    console.error('GET /v1/openapi.json error:', error);
+    res.status(500).json({ error: 'Failed to build the OpenAPI document' });
   }
 });
 

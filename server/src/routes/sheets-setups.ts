@@ -57,7 +57,7 @@ router.post('/:id/setups', (req: AuthRequest, res) => {
   }
 });
 
-// { inputs, names, models, firstRows, estimateOnly }: a price for using the
+// { inputs, names, models, firstRows, estimateOnly, maxCostUsd, allowUnpriced }: a price for using the
 // setup here (with the steps that carry a column of the sheet on), or its
 // start (201). A missing input or a name taken answers with `missing` or
 // `taken`, so the dialog can point at it.
@@ -67,7 +67,10 @@ router.post('/:id/setups/:setupId/apply', async (req: AuthRequest, res) => {
     if ('fail' in input) return res.status(400).json({ error: input.message });
     const out = await applySetup(req.userId!, req.params.id, req.params.setupId, input, { hasSecretsScope: true });
     if ('fail' in out) {
-      return res.status(runFailHttpStatus(out)).json({ error: out.message, missing: out.missing, taken: out.taken });
+      // Over the ceiling: 409 with the estimate it was checked against (over_ceiling: true).
+      const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+      return res.status(runFailHttpStatus(out))
+        .json({ error: out.message, missing: out.missing, taken: out.taken, ...over });
     }
     res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
   } catch (error) {

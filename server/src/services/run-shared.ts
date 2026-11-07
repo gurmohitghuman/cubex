@@ -2,6 +2,7 @@
 // and the surfaces that call them (UI routes, /api/v1, MCP tools).
 import { db } from '../lib/db';
 import { MCP_RUN_STARTS_PER_MIN } from '../lib/api-v1-constants';
+import { ROW_ID_RESOLVE_CHUNK } from '../lib/constants';
 import { makeRateWindow, tooManyMessage, type RateDecision } from '../lib/rate-window';
 import { spendCapRefusal } from './token-spend';
 
@@ -15,7 +16,8 @@ export type RunFailKind =
   | 'conflict'      // 409 — active run on the column, superseded run, CAS miss
   | 'forbidden'     // 403 — missing scope (e.g. 'secrets' for a key-referencing run)
   | 'cap'           // 400 — column cap
-  | 'upstream';     // 502 — a service Cubex reads can't answer now (treg's catalog)
+  | 'upstream'      // 502 — a service Cubex reads can't answer now (treg's catalog)
+  | 'over_ceiling'; // 409 — its estimate could pass max_cost_usd, or has no price (lib/cost-ceiling.ts)
 // field: the request field the failure is about (a new sheet's name: 'destName'),
 // so a form can show it in place. nothingToRun: no row is left for it to do (a
 // rerun of a column every row of which is done), which a setup counts as done.
@@ -23,21 +25,27 @@ export interface RunFail { fail: RunFailKind; message: string; field?: string; n
 
 export const runFailHttpStatus = (f: RunFail): number =>
   f.fail === 'not_found' ? 404
-  : f.fail === 'conflict' ? 409
+  : f.fail === 'conflict' || f.fail === 'over_ceiling' ? 409
   : f.fail === 'forbidden' ? 403
   : f.fail === 'upstream' ? 502
   : 400;
 
 // Resolve stable row ids → row_index for a run-target subset. Unknown ids are
 // an explicit error — an agent must not silently enrich fewer rows than asked.
+// The ids go in as one JSON array a chunk (SQLite takes at most 32,766 bound
+// values in a statement, and the surfaces take up to a sheet's rows), each id
+// looked up by the primary key.
 export function resolveRowIdsToIndexes(
   sheetId: string, userId: string, rowIds: string[],
 ): { indexes: number[] } | { error: string } {
   const unique = Array.from(new Set(rowIds));
-  const ph = unique.map(() => '?').join(',');
-  const found = db.prepare(
-    `SELECT id, row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND id IN (${ph})`,
-  ).all(sheetId, userId, ...unique) as Array<{ id: string; row_index: number }>;
+  const lookup = db.prepare(`SELECT r.id, r.row_index FROM json_each(?) AS j CROSS JOIN rows AS r ON r.id = j.value
+    WHERE r.sheet_id = ? AND r.user_id = ?`);
+  const found: Array<{ id: string; row_index: number }> = [];
+  for (let i = 0; i < unique.length; i += ROW_ID_RESOLVE_CHUNK) {
+    const chunk = JSON.stringify(unique.slice(i, i + ROW_ID_RESOLVE_CHUNK));
+    found.push(...lookup.all(chunk, sheetId, userId) as Array<{ id: string; row_index: number }>);
+  }
   if (found.length !== unique.length) {
     const known = new Set(found.map(r => r.id));
     const missing = unique.filter(id => !known.has(id));

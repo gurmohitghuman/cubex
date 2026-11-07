@@ -11,7 +11,7 @@
 // reloads instead. A restart finishes a journaled removal.
 import { db } from '../lib/db';
 import { countRows, getSheetColumns, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
-import { stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
+import { sheetGone, stayBusyToFinish, whenSheetFree, withLiveSheetBusy } from '../lib/sheet-busy';
 import { runInSlices } from '../lib/slices';
 import { autorunAfterRemoval } from '../lib/autorun-mark';
 import {
@@ -66,8 +66,10 @@ export async function removeDuplicates(
     }
     return { done: { ...report, removed: found.remove.length, rowsLeft: countRows(sheetId, userId), trashId } };
   };
-  // A check in progress is stopped, and the sheet taken before another can start.
-  const outcome = await afterDuplicateChecks(sheetId, () => withSheetBusy(sheetId, WHAT, work));
+  // A check in progress is stopped, and the sheet taken before another can start
+  // (and checked again: it may have gone to the trash while the check stopped).
+  const outcome = await afterDuplicateChecks(sheetId, () => withLiveSheetBusy(sheetId, userId, WHAT, work));
+  if (sheetGone(outcome)) return { fail: 'not_found', message: 'Sheet not found' };
   if ('busy' in outcome) return { fail: 'conflict', message: outcome.busy, busy: true };
   if ('blocked' in outcome) {
     return { fail: 'conflict', message: outcome.blocked.message, blockingRun: outcome.blocked.run };
@@ -103,7 +105,7 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
       if (checkpoint) { db.pragma('wal_checkpoint(PASSIVE)'); checkpoint = false; return true; }
       const next = nextDedupeChunk(job.sheet_id);
       if (!next) return false;
-      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item))();
+      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item)).immediate();
       checkpoint = true;
       return true;
     });
@@ -115,7 +117,7 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
       touchSheet(job.sheet_id, job.user_id);
       // Sealed after the fence: a restore compares the row_generation it keeps.
       if (item !== null && !dropIfEmpty(item)) { sealBatch(item, job.sheet_id, job.user_id); kept = item; }
-    })();
+    }).immediate();
     return kept;
   } catch (error) {
     stayBusyToFinish(job.sheet_id, WHAT, async () => {

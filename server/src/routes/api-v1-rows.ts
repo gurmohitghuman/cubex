@@ -1,9 +1,9 @@
 // /v1 row mutations — thin HTTP wrappers over services/rows-write.ts (shared
 // with the MCP tools). Semantics live there.
 import express from 'express';
-import { db } from '../lib/db';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
-import { parseCellMap, failResponse } from './api-v1-shared';
+import { parseCellMap, failResponse, rawIdempotencyKey } from './api-v1-shared';
 import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import {
@@ -11,19 +11,28 @@ import {
 } from '../lib/api-v1-constants';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
+import {
+  appendRowsKeyed, batchUpdateKeyed, idempotencyKeyOf, patchRowKeyed,
+} from '../services/rows-write-keyed';
 
 const router = express.Router();
 
-function ownsSheet(sheetId: string, userId: string): boolean {
-  return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
-}
+// An idempotency key in the body or the Idempotency-Key header, as run starts
+// take theirs (services/rows-write-keyed.ts): a retry replays the first answer.
+// With a key, the sheet is checked after the ledger, so a retry replays even
+// once the sheet is in the trash; without one, first, as before.
+const keyOf = (req: express.Request) => idempotencyKeyOf(rawIdempotencyKey(req));
+const NO_SHEET = { error: 'Sheet not found' };
 
-// POST /v1/sheets/:id/rows — append a batch. Body: { rows: [{data: {col: val}}] }.
-// The answer lists the auto-runs that will fill the new rows (auto_run).
+// POST /v1/sheets/:id/rows: append a batch. Body: { rows: [{data: {col: val}}], idempotency_key? }.
+// The answer lists the auto-runs that will fill the new rows (auto_run); a
+// replay (200) doesn't, as transfer_rows' doesn't.
 router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    const k = keyOf(req);
+    if ('error' in k) return res.status(400).json({ error: k.error });
+    if (!k.key && !verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
 
     const rawRows = (req.body as { rows?: unknown }).rows;
     if (!Array.isArray(rawRows) || rawRows.length === 0) {
@@ -39,6 +48,15 @@ router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequ
       parsedRows.push(p.cells);
     }
 
+    if (k.key) {
+      const keyed = appendRowsKeyed(sheetId, req.userId!, parsedRows, k.key, 'rest');
+      if ('fail' in keyed) return keyed.fail === 'sheet_not_found' ? res.status(404).json(NO_SHEET)
+        : failResponse(res, keyed);
+      if (keyed.replayed) return res.json({ ...keyed.ok.answer, replayed: true });
+      return res.status(201).json({
+        ...keyed.ok.answer, replayed: false, ...await appendAutorunNotice(req.userId!, sheetId, keyed.ok.kept),
+      });
+    }
     const result = appendRows(sheetId, req.userId!, parsedRows);
     if ('fail' in result) return failResponse(res, result);
     res.status(201).json({
@@ -52,11 +70,23 @@ router.post('/sheets/:id/rows', requireScope('write'), async (req: TokenAuthRequ
 });
 
 // PATCH /v1/rows/:rowId — update cells on ONE row by stable id.
-// Body: { data: {col: val|null} }; null clears to ''.
+// Body: { data: {col: val|null}, idempotency_key? }; null clears to ''.
 router.patch('/rows/:rowId', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
+    const k = keyOf(req);
+    if ('error' in k) return res.status(400).json({ error: k.error });
     const p = parseCellMap((req.body as { data?: unknown })?.data, API_V1_MAX_PATCH_CELLS);
     if ('error' in p) return res.status(400).json({ error: p.error });
+    if (k.key) {
+      const keyed = patchRowKeyed(req.params.rowId, req.userId!, p.cells, undefined, k.key, 'rest');
+      if ('fail' in keyed) {
+        if (keyed.fail === 'not_found' || keyed.fail === 'not_in_sheet') {
+          return res.status(404).json({ error: 'Row not found' });
+        }
+        return failResponse(res, keyed);
+      }
+      return res.json({ ...keyed.ok, replayed: keyed.replayed });
+    }
 
     const result = patchRowById(req.params.rowId, req.userId!, p.cells);
     if ('fail' in result) {
@@ -70,10 +100,14 @@ router.patch('/rows/:rowId', requireScope('write'), (req: TokenAuthRequest, res)
   }
 });
 
+// POST /v1/sheets/:id/rows/update: { updates: [{row_id, data}], idempotency_key? }, all or nothing.
+// With a key it passes the busy gate (api-v1-shared.ts): a replay answers, a write is refused after the ledger.
 router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    const k = keyOf(req);
+    if ('error' in k) return res.status(400).json({ error: k.error });
+    if (!k.key && !verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json(NO_SHEET);
     const updates = (req.body as { updates?: unknown }).updates;
     if (!Array.isArray(updates) || updates.length < 1 || updates.length > API_V1_MAX_BATCH_UPDATES) {
       return res.status(400).json({ error: `updates must contain 1-${API_V1_MAX_BATCH_UPDATES} entries` });
@@ -87,17 +121,19 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
       if ('error' in cells) return res.status(400).json({ error: cells.error });
       parsed.push({ rowId: update.row_id, cells: cells.cells });
     }
-    const result = batchUpdateRows(sheetId, req.userId!, parsed, 'rest');
+    const result = k.key ? batchUpdateKeyed(sheetId, req.userId!, parsed, k.key, 'rest')
+      : batchUpdateRows(sheetId, req.userId!, parsed, 'rest');
     if ('fail' in result) {
       if (result.fail === 'duplicate_rows') {
         return res.status(400).json({ error: 'updates must not contain duplicate row ids' });
       }
+      if (result.fail === 'sheet_not_found') return res.status(404).json(NO_SHEET);
       if (result.fail === 'not_found') {
         return res.status(404).json({ error: 'One or more rows were not found in the supplied sheet.' });
       }
       return failResponse(res, result);
     }
-    return res.json(result.ok);
+    return res.json(k.key && 'replayed' in result ? { ...result.ok, replayed: result.replayed } : result.ok);
   } catch (error) {
     console.error('POST /v1/sheets/:id/rows/update error:', error);
     return res.status(500).json({ error: 'Failed to update rows' });
@@ -108,7 +144,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
 router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
-    if (!ownsSheet(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    if (!verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
     const rawIds = (req.body as { row_ids?: unknown }).row_ids;
     if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.some(x => typeof x !== 'string')) {
       return res.status(400).json({ error: 'row_ids must be a non-empty array of row id strings' });

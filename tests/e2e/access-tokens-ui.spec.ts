@@ -31,6 +31,8 @@ test('settings UI: create → show-once → list → revoke', async ({ page, con
   await expect(page.getByRole('heading', { name: 'Create access token' })).toBeVisible()
   const checkboxes = page.locator('input[type="checkbox"]')
   await expect(checkboxes).toHaveCount(4)
+  // Read also lists saved API keys by name (list_saved_keys): the hint says so.
+  await expect(page.getByText("see saved API key names and where they're used, never their values")).toBeVisible()
   const [, , runBox, secretsBox] = await checkboxes.all()
   await secretsBox.check()
   await expect(page.getByText('A leaked token with this scope')).toBeVisible()

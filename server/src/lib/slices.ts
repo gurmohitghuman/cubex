@@ -24,6 +24,32 @@ export async function runInCheckpointedSlices(step: () => boolean): Promise<void
   }
 }
 
+// As runInCheckpointedSlices, for slices that may each dirty about as many
+// pages as SQLite's own checkpoint waits for (2,000, lib/db.ts), or more: that
+// one is off while a slice runs, so it never copies the WAL back inside the
+// slice's commit, and the last slice is checkpointed too, so the next commit,
+// whoever makes it, doesn't inherit its pages (lib/placeholder-cells.ts).
+export async function runInCheckpointedRowSlices(step: () => boolean): Promise<void> {
+  for (let more = true; more;) {
+    more = withoutAutoCheckpoint(step);
+    await yieldToRequests();
+    db.pragma('wal_checkpoint(PASSIVE)');
+    await yieldToRequests();
+  }
+}
+
+// Runs `work` (a transaction) with SQLite's own WAL checkpoint off, so its
+// commit can't run one; the caller checkpoints in a turn of its own.
+export function withoutAutoCheckpoint<T>(work: () => T): T {
+  const auto = db.pragma('wal_autocheckpoint', { simple: true }) as number;
+  db.pragma('wal_autocheckpoint = 0');
+  try {
+    return work();
+  } finally {
+    db.pragma(`wal_autocheckpoint = ${auto}`);
+  }
+}
+
 // Let requests that queued up meanwhile run before the next slice.
 export function yieldToRequests(): Promise<void> {
   return new Promise<void>(resolve => setImmediate(resolve));

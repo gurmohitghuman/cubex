@@ -59,6 +59,9 @@ db.pragma('secure_delete = ON');
 // with SQLITE_BUSY. Important now that worker threads (Sidequest jobs) can
 // hold the writer slot while the API process is also writing — under load,
 // a transient lock collision shouldn't bubble up as a 500 to the user.
+// It covers only a transaction's first lock, so a transaction that reads before it writes uses `.immediate()`:
+// a deferred one fails its first write at once (SQLITE_BUSY) when another connection wrote since its read
+// or holds the write lock.
 db.pragma('busy_timeout = 5000');
 // Page cache: keep ~64MB of pages in memory (negative means KB). Default is 2MB which is
 // way too small for the cell-per-cell model where a 50k×100 sheet has 5M rows.

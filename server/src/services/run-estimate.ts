@@ -1,9 +1,10 @@
+// Over 200 lines: one AI estimate, priced as a run's rows and its spend limit price them.
 // estimate_only (dry-run cost) for run_ai_column / run_http_enrichment. PURE
 // READ — no columns, placeholders, drafts, runs, or DB writes of any kind (risk
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
 // AI (an honest low/high, "actual depends on usage"),
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
-import { verifySheetOwnership } from '../lib/sql-helpers';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
 import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
@@ -11,6 +12,8 @@ import { resolveAiModel } from '../lib/ai-model-resolve';
 import { modelProblem } from '../lib/ai-model-check';
 import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '../lib/ai-cost';
+import { priceModelId, rowPricesOf } from '../lib/ai-spend-limit';
+import { rowMostUsd } from './run-estimate-most';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
 import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
 import type { SearchOptions } from '../lib/web-search-options';
@@ -47,6 +50,12 @@ export interface AiEstimate {
   // Tokens plus web fees.
   estimated_cost_usd: Range | null;
   per_row_usd: Range | null;
+  // The most one row can cost as the run's spend limit counts it before the row
+  // starts (its prompt at a token a byte, all the output it may write: the
+  // sampled row with the longest prompt). A limit needs room for one more row
+  // than it spends, so max_cost_usd must cover estimated_cost_usd.high plus
+  // this. null: no listed price.
+  row_most_usd: number | null;
   // Web search and fetch fees alone, for the whole run; null without web tools.
   web_fees_usd: Range | null;
   // With web search: the engine it runs on, its price, searches a row
@@ -102,7 +111,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const instructionTokens = input.outputColumns
     ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
   const fixedTokens = sysTokens + instructionTokens;
-  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d)) + fixedTokens);
+  const columns = getSheetColumns(input.sheetId, userId, false);
+  const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d, columns)) + fixedTokens);
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
@@ -128,20 +138,24 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   // Pricing: stale cache is fine for a cost hint. Missing model / fetch failure
   // -> pricing_available:false, cost null (never a hard error — the estimate is
   // advisory).
+  // A routing variant (":nitro", a preset) is priced as its model, as the run's spend limit prices it; a
+  // negative listed price (one that varies) is no price.
   let pricingAvailable = false;
   let row: Range | null = null;
+  let rowMost: number | null = null;
   if (model) {
     const result = await fetchModels(Date.now());
     const models = result.ok ? result.models : result.stale;
-    const m = models?.find(x => x.id === model);
-    if (m) {
+    const m = models?.find(x => x.id === priceModelId(model));
+    const prices = m ? rowPricesOf(m.pricing) : null;
+    if (prices) {
       pricingAvailable = true;
-      const p = parseTokenPrice(m.pricing.prompt);
-      const c = parseTokenPrice(m.pricing.completion);
+      const p = prices.prompt, c = parseTokenPrice(m!.pricing.completion);
       row = {
         low: rowCostUsd(inputTokens.low, out.range.low, p, c) + (fees?.low ?? 0),
         high: rowCostUsd(inputTokens.high, out.range.high, p, c) + (fees?.high ?? 0),
       };
+      rowMost = rowMostUsd(prices, model, input, w.plan, sample, columns);
     }
   }
   // A search price Cubex doesn't know (some providers' own search) would leave
@@ -183,6 +197,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       pricing_available: pricingAvailable,
       estimated_cost_usd: cost,
       per_row_usd: perRow,
+      row_most_usd: rowMost,
       web_fees_usd: fees ? { low: roundUsd(fees.low * count), high: roundUsd(fees.high * count) } : null,
       web_search: webSearchEstimate(w),
       basis,

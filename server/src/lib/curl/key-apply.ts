@@ -44,7 +44,9 @@ export function applyKeyChoices(
       continue;
     }
     const name = choiceName(c)!;
-    if (!KEY_NAME_RE.test(name) || name.length > CURL_KEY_NAME_MAX) {
+    // Every name keeps to the characters; only a new key's name to the length: a used one is a saved key's
+    // own name (prepareCurl checks), whatever its length.
+    if (!KEY_NAME_RE.test(name) || ('save' in c && name.length > CURL_KEY_NAME_MAX)) {
       throw new CurlError(`"${name.slice(0, 40)}" can't be a key name: use letters, numbers, _ and -.`);
     }
     if (f.field.at === 'auth') { auth = { insert: f.insert ?? '', name }; continue; }

@@ -50,7 +50,8 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults, spend }) => (
               access, then Resume. The cap is for the token&apos;s whole life, not a month.
             </p>
           )}
-          {currentRun.status === 'paused' && selfPaused(currentRun.pause_reason) && currentRun.error_message && (
+          {currentRun.status === 'paused' && (selfPaused(currentRun.pause_reason)
+            || currentRun.pause_reason === 'spend_limit') && currentRun.error_message && (
             <p className="mt-1 text-xs text-amber-800" data-testid="run-self-paused">{currentRun.error_message}</p>
           )}
           {spend && (spend.cost_usd !== null || spend.searches !== null) && (

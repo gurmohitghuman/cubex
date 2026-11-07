@@ -37,7 +37,12 @@ export interface AIRunRow {
   worker_generation: number;         // bumped on each resume; old workers exit on mismatch
   access_token_id?: string | null;   // whose spend cap it counts against (migration 042); null: the app's own
   pause_reason?: string | null;      // 'token_cap' when it paused itself at that cap; null for a person's pause
-  error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
+  // The run's hard spend limit in USD (migration 051, services/ai-spend-gate.ts); null: none.
+  spend_limit_usd?: number | null;
+  // Kept for that limit past a worker (migration 052): cut-off calls' most, the next row's most at its pause.
+  spend_cut_off_micro?: number;
+  spend_next_row_micro?: number | null;
+  error_message: string | null;     // run-level failure reason (migration 022); NULL unless failed
   created_at: string;
   updated_at: string;
 }

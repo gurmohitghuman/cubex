@@ -238,7 +238,7 @@ Click **+ Add Column** and choose **Lookup** to fill a new column from another s
 
 A match is **is exactly** (the whole value) or **contains** (the value anywhere inside the other cell, 3 characters or more). Capital letters (accented ones too) and spaces around the value don't matter. It's free: no AI, and nothing is sent anywhere. You see the first matches before you save it.
 
-Changes in the other sheet don't update the column; click **Look up every row again** in its menu when they should. A lookup waits while a run is filling a column it reads there. A paused run doesn't hold it: the rows that run hasn't reached read as empty, and the lookup says so while the run is paused; look every row up again once it's done. Auto-run is on by default, so new rows and rows whose value changes are looked up on their own. Renaming columns of the other sheet keeps the lookup working; if that sheet, or a column the lookup reads, is deleted, the column stops and its header says why.
+Changes in the other sheet don't update the column; click **Look up every row again** in its menu when they should. Starting a lookup while a run is filling the column it matches there, or a column it returns by name, is refused. A lookup already filling waits while a run (a rerun of chosen rows too), a clean, formula or lookup column, or a column added from stored answers is filling a column it reads there, then starts over from the first row, so every row comes from the same values. The one exception is a run auto-run started for the rows it takes (new rows, and older ones not run yet): after one, it goes on where it was. It also starts over after a run there is undone, after that sheet is sorted, replaced by an import or has duplicates removed, after a column it reads there is renamed (or deleted, for a lookup returning every column), when such a run or fill started and finished (or a paused run went on) while it waited for something else, and after a restart if it had looked up some rows already. It starts over at most 3 times in one fill for these changes (a restart doesn't count): after that it goes on where it was, and its header and **Edit lookup** say what kept changing, since rows looked up before its last change may hold older values. Look every row up again to redo them. That note stays after the fill ends, until you look up again or Cubex restarts. A lookup returning every column reads all of them. A paused run doesn't hold it: the rows that run hasn't reached read as empty, and the lookup says so while the run is paused; look every row up again once it's done. Auto-run is on by default, so new rows and rows whose value changes are looked up on their own. Renaming columns of the other sheet keeps the lookup working; if that sheet, or a column the lookup reads, is deleted, the column stops and its header says why.
 
 Lookups stay fast on big sheets: Cubex keeps an index of each column other sheets look up, built in the background the first time, so your sheet stays usable meanwhile. Contains on very large sheets can take a few minutes.
 
@@ -335,7 +335,7 @@ Then ask for the work in chat:
 
 Give each token only the scopes it needs, so an agent can be read-only:
 
-- `read`: list tables, read rows and check runs.
+- `read`: list tables, read rows and check runs. It also sees your saved API keys' names and where they're used, never their values.
 - `write`: also create and change tables, sheets, columns and rows.
 - `run`: also start, pause and re-run runs, which spend your OpenRouter credits and treg balance.
 - `secrets`: also start HTTP runs that use your saved API keys.
@@ -363,7 +363,7 @@ See the [plugin guide](docs/agent-plugin.md).
 | [Enrichments](docs/enrichments.md) | treg keys, jobs, costs and limits, auto-run, stored answers |
 | [Webhooks](docs/webhooks.md) | Setting one up, reaching it from outside, what it accepts, keeping it safe |
 | [Run webhooks](docs/run-webhooks.md) | A signed notice when a run finishes: setting one up, checking the signature, delivery and retries |
-| [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API |
+| [Agents and API](docs/mcp.md) | MCP setup for each agent, every tool, the REST API and its [OpenAPI document](docs/mcp.md#openapi-document) |
 | [Agent plugin](docs/agent-plugin.md) | The Cubex plugin for Claude Code, Codex and Cursor: setup from one prompt, and its skills |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, and the contributor agreement |
 

@@ -29,7 +29,8 @@ export const SetupPlanView: React.FC<{ plan: PlanState; picked: number }> = ({ p
       {keys.length > 0 && (
         <div>
           <p className="text-xs font-medium text-gray-700 mb-1">Uses these saved keys</p>
-          <p className="text-gray-800">
+          {/* A long saved key name (up to 200 characters, no spaces) wraps inside the box. */}
+          <p className="text-gray-800 [overflow-wrap:anywhere]">
             {keys.join(', ')} <span className="text-gray-500">(by name only; the keys themselves stay in
             Settings)</span>
           </p>
