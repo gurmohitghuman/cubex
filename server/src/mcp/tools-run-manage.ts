@@ -43,7 +43,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
     'control_run',
     {
       description:
-        'Pause, resume, or cancel an active run, or rerun a finished one. rerun starts a NEW run reusing the column\'s '
+        'Pause, resume, or cancel an active run, or rerun a finished one. A cancel keeps the answers the run wrote; '
+        + 'the rows it hadn\'t reached get back what they held before it. rerun starts a NEW run reusing the column\'s '
         + 'latest config and COSTS MONEY AGAIN — one AI call per targeted row. For an AI rerun you MUST pass either '
         + 'row_ids or mode (there is no default): mode "errored" re-runs only ❌ rows (the usual retry), "empty" only '
         + 'blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet, "out_of_date" only rows '

@@ -119,6 +119,8 @@ Before a run writes a cell, it keeps what the cell held, so the run can be undon
 
 What a run keeps takes about 50 bytes a cell when the old values are short, more when they're long: 97 MB for this run. It's kept 7 days after the run starts, then deleted a slice at a time; an undone run's is deleted right away.
 
+A run that is cancelled or fails puts back, from what it kept, the cells of the rows it hadn't reached. Measured with a script on a sheet of 200,000 rows whose every row held an earlier answer, a run cancelled before it reached any row, 7 to 10 times each (in brackets: the same clear emptying those cells instead): putting one column back took 1.4 to 1.6 s in the background (1.0 to 1.2 s) and two columns 2.1 to 2.5 s (1.2 to 1.3 s), in slices of about 21 ms (19 to 25 ms). The longest slice of a clear was 53 to 90 ms for one column (56 to 104 ms) and 56 to 67 ms for two (58 to 94 ms), once 296 ms; each was a commit in which SQLite copied its log back into the database. With 3 formula columns reading the column it took 22 to 25 s, as before (22 s), in slices of up to 41 ms (39 ms) and checkpoints of up to 81 ms (66 ms).
+
 
 ### Setup versions
 

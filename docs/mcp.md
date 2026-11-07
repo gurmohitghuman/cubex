@@ -107,7 +107,7 @@ Any other client that speaks MCP over Streamable HTTP works the same way: point 
 | `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. |
 | `get_run_results` | Per-row results and errors, to see why cells are blank or wrong. |
-| `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, rows whose result is out of date, all, or only the sheet's first rows with `first_rows`). `spend_limit_usd` raises the limit an AI, enrichment or waterfall run paused at, or sets a rerun's. `cancel_all` with a `sheet_id` stops every run and setup on that sheet at once. |
+| `control_run` | Pause, resume, cancel, or re-run (failed rows, empty rows, rows whose result is out of date, all, or only the sheet's first rows with `first_rows`). A cancelled run keeps the answers it wrote; the rows it hadn't reached get back what they held before it. `spend_limit_usd` raises the limit an AI, enrichment or waterfall run paused at, or sets a rerun's. `cancel_all` with a `sheet_id` stops every run and setup on that sheet at once. |
 | `undo_run` | Undo what a finished run wrote: its cells go back to what they held before it, cells changed since stay as they are, and nothing runs again or is billed. See [Undo a run](#undo-a-run). |
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit), and this token's spend cap with what is left (`access_token`). Costs nothing. |
@@ -137,7 +137,7 @@ Deleted rows, sheets and tables go to the trash for the days set in Settings (30
 
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
-Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; leftover cells clear in the background. A run that fails or can't start clears its leftover cells too. Clean, formula and lookup columns that read a cleared cell then work it out again. That's free: nothing that costs or sends requests runs.
+Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; its leftover ⏳ cells clear in the background. Rows the run already answered keep their new answers, and every row it hadn't reached gets back what its cells held before the run (an earlier answer comes back as it was; a cell that was empty stays empty). A run that fails or can't start does the same. Clean, formula and lookup columns that read one of those cells then work it out again. That's free: nothing that costs or sends requests runs.
 
 ## Retrying row writes
 
