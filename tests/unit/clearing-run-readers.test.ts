@@ -43,7 +43,7 @@ async function scene() {
 
 const PROMPT = 'Write one line about /Answer for /Name.'
 const READS = '/Answer reads "Answer", which a run that hasn\'t finished is still filling. '
-  + 'Wait for that run to finish (or stop it), then start this one.'
+  + 'Wait for that run to finish (or stop it), then try again.'
 const READS_BACK = '/Answer reads "Answer", which is getting back what it held before a stopped run. '
   + 'Try again in a moment.'
 

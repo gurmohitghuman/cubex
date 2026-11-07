@@ -12,7 +12,9 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
 import { estimateHttpRun } from './run-estimate-http';
-import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
+import {
+  bad, ledgerReplay, preamble, startWindow, type Fail, type TokenCaller, type TokenRunResult,
+} from './run-start-token';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
@@ -102,9 +104,13 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   const known = [...getSheetColumns(sheetId, c.userId, false), ...toSave];
   const templateError = httpTemplateError(config.requestConfig, known, c.userId);
   if (templateError) return bad(templateError);
-  // A column it reads that another run holds fails here too (lib/http-held-inputs.ts), as an AI estimate does.
-  const held = heldRequestInputError(sheetId, c.userId, config, (a.master_column_name as string | undefined) ?? '');
-  if (held) return { fail: 'conflict', message: held };
+  // A column it reads that another run holds (lib/http-held-inputs.ts): an estimate says so, as an AI estimate
+  // does; a start says so after the idempotency key's replay (a retry answers the run it started), before it
+  // takes a start slot.
+  const held = (): Fail | null => {
+    const words = heldRequestInputError(sheetId, c.userId, config, (a.master_column_name as string | undefined) ?? '');
+    return words ? { fail: 'conflict', message: words } : null;
+  };
   const estimateOnly = parseBooleanOption(a.estimate_only) === true;
   const curlProblem = curl && curlStartProblem(
     c.userId, sheetId, curl, config.responseMapping, a.master_column_name as string | undefined, config.runIf,
@@ -112,6 +118,8 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   );
   if (curlProblem) return curlProblem;
   if (estimateOnly) {
+    const refused = held();
+    if (refused) return refused;
     const est = await estimateHttpRun(c.userId, sheetId, pre.targetRowIndexes, runIf.ok);
     if ('fail' in est) return { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message };
     const curlPart = curl ? { keys_to_save: [...new Set(toSave)], notes: curl.plan.notes } : {};
@@ -131,6 +139,8 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   });
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
+  const refused = held();
+  if (refused) return refused;
   const limited = startWindow(c, false);
   if (limited) return limited;
   const saved = curl ? commitCurlKeys(c.userId, curl.plan, curl.prepared.keys) : { ok: [] as string[] };

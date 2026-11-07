@@ -19,6 +19,7 @@ import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../services/waterfall-agent-control';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
+import { rerunHeldInputRefusal } from '../lib/http-held-inputs';
 
 // An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
 // 'waterfall' reads and controls the same run, and refuses another kind so the
@@ -199,6 +200,9 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             + 're-bill EVERY row) or row_ids for a specific subset.',
           );
         }
+        // A request reading a column another run holds is refused before it takes a run-start slot.
+        const held = run_type === 'http' ? rerunHeldInputRefusal(run_id, ctx.userId) : null;
+        if (held) return err(held);
         // A plain HTTP rerun costs nothing here: only its run-start slot.
         const refused = takeRunStart(ctx.userId, ctx.tokenId, run_type === 'ai');
         if (refused) return err(startRefusalMessage(refused));

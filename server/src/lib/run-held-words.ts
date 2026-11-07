@@ -4,12 +4,12 @@
 // before it. One place, so every site says it the same way.
 import type { RunHold } from './run-locked-columns';
 
-// A start that would send a held column's cells (an AI prompt, an HTTP request).
+// A start, rerun, resume or preview that would send a held column's cells (an AI prompt, an HTTP request).
 // reader: what reads it, such as `/answer` or `The request`.
 export function heldReadWords(reader: string, column: string, hold: RunHold): string {
   return hold === 'going'
     ? `${reader} reads "${column}", which a run that hasn't finished is still filling. `
-      + 'Wait for that run to finish (or stop it), then start this one.'
+      + 'Wait for that run to finish (or stop it), then try again.'
     : `${reader} reads "${column}", which is getting back what it held before a stopped run. Try again in a moment.`;
 }
 

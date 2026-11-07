@@ -167,7 +167,7 @@ test('an HTTP API run (MCP) or preview (the app) reading {{Who}} while a rerun f
   const push = { sheet_id: sheetId, ...request, master_column_name: 'Push',
     response_mapping: [{ json_path: '$.ok', column_name: 'Pushed' }] }
   const GOING = 'The request reads "Who", which a run that hasn\'t finished is still filling. '
-    + 'Wait for that run to finish (or stop it), then start this one.'
+    + 'Wait for that run to finish (or stop it), then try again.'
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'held inputs'))
   const release = rx.hold(NAMES.map(n => `/held/${n}`))
   try {

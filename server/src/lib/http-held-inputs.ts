@@ -53,3 +53,19 @@ export function resumeHeldInputRefusal(kind: 'ai' | 'http', runId: string, userI
   if (isEnrichmentConfig(config) || isWaterfallConfig(config)) return null;
   return heldRequestInputError(run.sheet_id, userId, config, run.master_column_name ?? '');
 }
+
+// A rerun by run id (/api/v1 and MCP) asks first, so a refusal takes no run-start slot; rerunHttpColumn checks
+// again. Only for the column's newest run: an older one keeps its own refusal (superseded).
+export function rerunHeldInputRefusal(runId: string, userId: string): string | null {
+  const run = db.prepare('SELECT sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?')
+    .get(runId, userId) as { sheet_id: string; master_column_name: string | null } | undefined;
+  if (!run || !run.master_column_name) return null;
+  const latest = db.prepare(`SELECT id, config FROM http_runs WHERE sheet_id = ? AND user_id = ?
+    AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`)
+    .get(run.sheet_id, userId, run.master_column_name) as { id: string; config: string | null } | undefined;
+  if (!latest || latest.id !== runId || !latest.config) return null;
+  let config: HTTPAPIConfig;
+  try { config = JSON.parse(latest.config) as HTTPAPIConfig; } catch { return null; }
+  if (isEnrichmentConfig(config) || isWaterfallConfig(config)) return null;
+  return heldRequestInputError(run.sheet_id, userId, config, run.master_column_name);
+}

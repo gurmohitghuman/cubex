@@ -85,6 +85,8 @@ export async function controlSetupRun(
         return { fail: 'forbidden', message: out.message };
       }
       if ('fail' in out && out.fail === 'model_gone') return { fail: 'bad_request', message: out.message };
+      // A hold that began after the check above: the setup stays paused, as that step's run does.
+      if ('fail' in out && out.fail === 'held') return { fail: 'conflict', message: out.message };
     }
     // Its later steps spend for whom it was resumed for; a pause at the cap (setup-runner.ts) said why in
     // error_message, and that ends with the pause.

@@ -1,10 +1,13 @@
+// Over 200 lines: every HTTP path's case shares one stand-in API, queue and app, so they stay in one file.
 // An HTTP API request never goes out with another run's ⏳ cells (lib/http-held-inputs.ts). While a run is
 // filling a column the request reads, or a stopped run is still putting that column's cells back, a start
 // (the app's route; /api/v1 and MCP call the same service), a rerun, a resume and a preview are refused with
 // words naming the column: nothing is written or queued, and no request reaches the stand-in API. Once the
 // clear is done each goes through and its requests carry the answers put back. The stand-in is reached through
 // Cubex's real outbound path, SSRF guard included (tests/e2e/net-shim.cjs moves the connection to it); the job
-// queue only records, and each queued job is then run here, as the worker would.
+// queue only records, and each queued job is then run here, as the worker would. A run's own columns never
+// hold it up (a resume of a run whose request reads its own output column goes on), and a preview's mapping
+// isn't its own: it writes nothing (/api/v1 and MCP, and their run-start slots: http-held-inputs-token.test.ts).
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import path from 'node:path'
@@ -20,6 +23,7 @@ import placeholdersMod from '../../server/src/lib/run-placeholders'
 import rerunMod from '../../server/src/services/http-run-rerun'
 import lifecycleMod from '../../server/src/services/run-lifecycle'
 import runnerMod from '../../server/src/services/http-runner'
+import heldMod from '../../server/src/lib/run-locked-columns'
 import startRouterMod from '../../server/src/routes/http-run-start'
 import previewRouterMod from '../../server/src/routes/http-preview'
 import controlRouterMod from '../../server/src/routes/http-control'
@@ -29,6 +33,7 @@ const { clearRunPlaceholders } = placeholdersMod as typeof import('../../server/
 const { rerunHttpColumn } = rerunMod as typeof import('../../server/src/services/http-run-rerun')
 const { pauseRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { processHTTPRun } = runnerMod as typeof import('../../server/src/services/http-runner')
+const { runHeldColumns } = heldMod as typeof import('../../server/src/lib/run-locked-columns')
 const routers = [startRouterMod, previewRouterMod, controlRouterMod] as unknown as Array<{ default: express.Router }>
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('http-held-inputs')
 console.error = () => {}
@@ -84,7 +89,7 @@ const config = () => ({
 })
 const OLD = ['{"answer":"Old A","name":"ada"}', '{"answer":"Old B","name":"bob"}']
 const GOING = 'The request reads "Answer", which a run that hasn\'t finished is still filling. '
-  + 'Wait for that run to finish (or stop it), then start this one.'
+  + 'Wait for that run to finish (or stop it), then try again.'
 const BACK = 'The request reads "Answer", which is getting back what it held before a stopped run. '
   + 'Try again in a moment.'
 
@@ -150,8 +155,11 @@ await ok('a rerun whose stored request reads a column a run holds: refused, noth
   const sid = fresh()
   await startAsk(sid)
   const h = await hold(sid)
+  const runs = () => db.prepare('SELECT COUNT(*) FROM http_runs WHERE sheet_id = ?').pluck().get(sid)
+  assert.equal(runs(), 2, "Ask's run and the one holding Answer")
   const rerun = () => rerunHttpColumn(uid, { sheetId: sid, masterColumnName: 'Ask' })
   await refusedBoth(h, rerun, [{ fail: 'conflict', message: GOING }, { fail: 'conflict', message: BACK }])
+  assert.equal(runs(), 2, 'no run made')
   assert.deepEqual(cells(sid, 'Got'), ['yes', 'yes'], 'its cells untouched')
   await h.back()
   const from = { sent: sent.length, queued: queued.length }
@@ -181,12 +189,34 @@ await ok('a resume (the app\'s control route) of a paused run reading a column a
   assert.deepEqual(cells(sid, 'Got'), ['yes', 'yes'])
 })
 
-await ok('a preview reading a column a run holds: refused, nothing sent; after the clear it sends the answers '
-  + 'put back', async () => {
+await ok('a resume of a paused run whose request reads its own output column, which it holds itself: not '
+  + 'refused', async () => {
+  const sid = sheet([{ Name: 'ada', Got: 'Old A' }, { Name: 'bob', Got: 'Old B' }], ['Name', 'Ask', 'Got'])
+  const own = config()
+  own.requestConfig.body = '{"before":"{{Got}}","name":"{{Name}}"}'
+  const id = uuid()
+  db.prepare(`INSERT INTO http_runs (id,sheet_id,user_id,config,status,master_column_name)
+    VALUES (?,?,?,?,'paused','Ask')`).run(id, sid, uid, JSON.stringify(own))
+  await seedProcessingPlaceholders({ run: { kind: 'http', id }, sheetId: sid, userId: uid, columns: ['Ask', 'Got'],
+    targets: null, lastRow: 1, live: () => true })
+  assert.equal(runHeldColumns(sid, uid, { clearing: true }).get('Got'), 'going', 'Got is held, by this run')
+  const from = queued.length
+  assert.deepEqual(await post(`/api/http/jobs/${id}/control`, { action: 'resume' }),
+    { status: 200, body: { message: 'HTTP run resumed' } })
+  assert.deepEqual(queued.slice(from).map(q => [q.job, q.args[0]]), [['HTTPRunJob', id]])
+})
+
+await ok('a preview reading a column a run holds, also one mapping it: refused, nothing sent; after the clear '
+  + 'it sends the answers put back', async () => {
   const sid = fresh()
   const h = await hold(sid)
   const preview = () => post('/api/http/preview', { sheetId: sid, config: config() })
-  await refusedBoth(h, preview, [{ status: 409, body: { error: GOING } }, { status: 409, body: { error: BACK } }])
+  // Mapping the column it reads doesn't make it the preview's own: a preview writes nothing.
+  const mapping = [{ jsonPath: '$.ok', columnName: 'Answer' }]
+  const mapsIt = () => post('/api/http/preview', { sheetId: sid, config: { ...config(), responseMapping: mapping } })
+  const both = async () => [await preview(), await mapsIt()]
+  const going = { status: 409, body: { error: GOING } }, back = { status: 409, body: { error: BACK } }
+  await refusedBoth(h, both, [[going, going], [back, back]])
   await h.back()
   const from = sent.length
   const res = await preview()
