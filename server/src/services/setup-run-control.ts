@@ -22,6 +22,7 @@ import {
 import type { RunFail } from './run-shared';
 import { resumeTokenFor, spendCapRefusal } from './token-spend';
 import { setupResumeLimitRefusal } from './ai-run-limit';
+import { resumeHeldInputRefusal } from '../lib/http-held-inputs';
 
 export type SetupRunAction = 'pause' | 'resume' | 'cancel';
 
@@ -59,6 +60,9 @@ export async function controlSetupRun(
     const atLimit = runs.map(x => (x.kind === 'ai' ? setupResumeLimitRefusal(x.runId, userId) : null))
       .find(m => m !== null);
     if (atLimit) return { fail: 'conflict', message: atLimit };
+    // An HTTP API step whose request reads a column another run holds would send its ⏳ cells.
+    const held = runs.map(x => resumeHeldInputRefusal(x.kind, x.runId, userId)).find(m => m !== null);
+    if (held) return { fail: 'conflict', message: held };
     // Its steps spend for the token that applied it, or for a token that resumes it (it becomes that
     // token's, as each run it resumes does; the app takes a revoked token's over): that token's cap
     // counts. Every paused run is checked before any resumes, so a refusal leaves the setup as it was.
@@ -81,6 +85,8 @@ export async function controlSetupRun(
         return { fail: 'forbidden', message: out.message };
       }
       if ('fail' in out && out.fail === 'model_gone') return { fail: 'bad_request', message: out.message };
+      // A hold that began after the check above: the setup stays paused, as that step's run does.
+      if ('fail' in out && out.fail === 'held') return { fail: 'conflict', message: out.message };
     }
     // Its later steps spend for whom it was resumed for; a pause at the cap (setup-runner.ts) said why in
     // error_message, and that ends with the pause.

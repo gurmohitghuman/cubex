@@ -6,8 +6,10 @@
 // (services/column-transform.ts) refuses that column as its source, a column a
 // template names, or its target, so it never copies a ⏳. A running run is
 // named as before; a stopped one's words say its cells are getting back what
-// they held. Once the clear is done, both go through and read the answers put
-// back.
+// they held. transfer_rows (services/rows-transfer.ts) refuses a copied source
+// column a stopped run is still putting back, as it refuses a running run on
+// either sheet, so it never copies a ⏳ into another sheet. Once the clear is
+// done, all of them go through and read the answers put back.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -15,10 +17,12 @@ import cellsMod from '../../server/src/lib/placeholder-cells'
 import placeholdersMod from '../../server/src/lib/run-placeholders'
 import promptMod from '../../server/src/lib/prompt-ref-validate'
 import transformMod from '../../server/src/services/column-transform'
+import transferMod from '../../server/src/services/rows-transfer'
 const { seedProcessingPlaceholders, PLACEHOLDER } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { clearRunPlaceholders } = placeholdersMod as typeof import('../../server/src/lib/run-placeholders')
 const { unknownPromptRefsError } = promptMod as typeof import('../../server/src/lib/prompt-ref-validate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
+const { transferRows } = transferMod as typeof import('../../server/src/services/rows-transfer')
 const { db, uid, ok, done, sheet, cells } = undoKit('clearing-run-readers')
 console.error = () => {}
 
@@ -39,7 +43,7 @@ async function scene() {
 
 const PROMPT = 'Write one line about /Answer for /Name.'
 const READS = '/Answer reads "Answer", which a run that hasn\'t finished is still filling. '
-  + 'Wait for that run to finish (or stop it), then start this one.'
+  + 'Wait for that run to finish (or stop it), then try again.'
 const READS_BACK = '/Answer reads "Answer", which is getting back what it held before a stopped run. '
   + 'Try again in a moment.'
 
@@ -99,6 +103,32 @@ await ok('a template transform naming a column a run holds, going or putting its
   await clearRunPlaceholders('http', run)
   assert.deepEqual(copy(), { ok: { updated: 2, created_column: 'Copy' } })
   assert.deepEqual(cells(sid, 'Copy'), ['Was: Old A (ada)', 'Was: Old B (bob)'])
+})
+
+await ok('transfer_rows copying a column a run holds, going or putting its cells back: refused, nothing copied; '
+  + 'a transfer leaving that column out goes through; after the clear it copies the answers put back', async () => {
+  const { sid, run, stop } = await scene()
+  const dest = sheet([], []), other = sheet([], [])
+  let key = 0
+  const copy = (to: string, columns?: string[]) => transferRows(uid, { sourceSheetId: sid, destinationSheetId: to,
+    operation: 'copy', selection: { all: true }, columns, columnMode: 'create_missing', columnModeOmitted: false,
+    columnMapping: {}, idempotencyKey: `held-${++key}` })
+  const rowsIn = (s: string) => db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ?').pluck().get(s)
+  // A running run on either sheet is refused sheet-wide, before any column is looked at.
+  const SHEET_WIDE = 'Cannot transfer rows while either sheet has an active run.'
+  assert.deepEqual(copy(dest), { fail: 'active_run', error: SHEET_WIDE })
+  stop()
+  assert.deepEqual(copy(dest), { fail: 'active_run', error: BACK('Answer') })
+  assert.deepEqual(copy(dest, ['Answer']), { fail: 'active_run', error: BACK('Answer') })
+  assert.equal(rowsIn(dest), 0, 'nothing copied')
+  const nameOnly = copy(other, ['Name'])
+  assert.ok('ok' in nameOnly && nameOnly.ok.copied === 2, JSON.stringify(nameOnly))
+  assert.deepEqual(cells(other, 'Name'), ['ada', 'bob'])
+  await clearRunPlaceholders('http', run)
+  const out = copy(dest)
+  assert.ok('ok' in out && out.ok.copied === 2, JSON.stringify(out))
+  assert.deepEqual(cells(dest, 'Answer'), ['Old A', 'Old B'])
+  assert.deepEqual(cells(dest, 'Name'), ['ada', 'bob'])
 })
 
 done()

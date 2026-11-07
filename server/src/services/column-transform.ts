@@ -13,7 +13,8 @@ import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
-import { runHeldColumns, type RunHold } from '../lib/run-locked-columns';
+import { runHeldColumns } from '../lib/run-locked-columns';
+import { heldColumnWords } from '../lib/run-held-words';
 import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
@@ -41,12 +42,6 @@ export type TransformOutcome =
   | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'budget'; error: string };
 
 class WriterBudgetError extends Error {}
-
-// Why a column a run holds can't be transformed now: a run still going on it, or one that stopped and is
-// putting back what its ⏳ cells held before it.
-const heldWords = (column: string, hold: RunHold): string => (hold === 'going'
-  ? `Column "${column}" is being written by a run that hasn't finished. Wait for it to finish (or stop it) first.`
-  : `Column "${column}" is getting back what it held before a stopped run. Try again in a moment.`);
 
 export function transformColumn(userId: string, p: TransformParams): TransformOutcome {
   if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(p.sheetId, userId)) {
@@ -94,7 +89,7 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
   const held = runHeldColumns(p.sheetId, userId, { clearing: true });
   const reads = p.operation === 'template' ? templateColumns(p.template!) : [];
   const busy = [targetColumn, ...(p.sourceColumn ? [p.sourceColumn] : []), ...reads].find(c => held.has(c));
-  if (busy !== undefined) return { fail: 'locked', error: heldWords(busy, held.get(busy)!) };
+  if (busy !== undefined) return { fail: 'locked', error: heldColumnWords(busy, held.get(busy)!) };
 
   if (!targetExists) {
     // Creating a new column: case/token collision + cap (same as column-add).

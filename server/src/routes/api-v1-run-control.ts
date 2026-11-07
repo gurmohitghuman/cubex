@@ -23,6 +23,7 @@ import { parseFirstRows } from './ai-run-rerun';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeAiRun } from '../services/ai-run-limit';
 import { usdLimitOf } from '../lib/cost-ceiling';
+import { rerunHeldInputRefusal } from '../lib/http-held-inputs';
 
 const router = express.Router();
 
@@ -264,6 +265,9 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
     if (refuseBadWebhook(req, res, b)) return;
+    // A request reading a column another run holds is refused before it takes a run-start slot.
+    const held = rerunHeldInputRefusal(req.params.id, req.userId!);
+    if (held) return res.status(409).json({ error: held });
     if (refuseRunStart(req, res, false)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,

@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { buildRowsMapFromRows, verifySheetOwnership, getSheetColumns, type RowDB } from '../lib/sql-helpers';
 import { withSheetColumns } from '../lib/http-request-template';
 import { httpTemplateError } from '../lib/http-template-validate';
+import { heldRequestInputError } from '../lib/http-held-inputs';
 import { sendHTTPRequest, redactSecrets, type HTTPAPIConfig } from '../lib/http-request';
 import { extractMappedFields } from '../lib/http-extract-fields';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
@@ -40,6 +41,10 @@ router.post('/preview', authenticateToken, async (req: AuthRequest, res) => {
     const validation = validateHttpRunColumns(sheetId, req.userId!, responseMapping, undefined, false);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     responseMapping.forEach((m, i) => { m.columnName = validation.sanitizedMappingColumns![i]; });
+    // A preview sends real requests: none may carry another run's ⏳ cells (lib/http-held-inputs.ts). It
+    // writes nothing, so no column it maps is its own: a held column it maps and reads is still held.
+    const held = heldRequestInputError(sheetId, req.userId!, { ...config, responseMapping: [] }, '');
+    if (held) return res.status(409).json({ error: held });
 
     // Clamp previewSize. A raw config.previewSize of -1 would become LIMIT -1
     // (unlimited in SQLite) and fan the outbound HTTP calls across nearly the

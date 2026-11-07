@@ -101,7 +101,7 @@ function executeTransfer(
     request.sourceSheetId, request.destinationSheetId, userId,
     request.columnMapping, request.columnMode, pristine, request.columns,
   );
-  if ('error' in plan) return { fail: 'invalid', error: plan.error };
+  if ('error' in plan) return { fail: plan.held ? 'active_run' : 'invalid', error: plan.error };
   result.created_columns = plan.createdColumns;
   let storedBytes = 0;
   scanTransferRows(request.sourceSheetId, userId, found, rows => {

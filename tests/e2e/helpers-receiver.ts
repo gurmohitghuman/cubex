@@ -90,9 +90,15 @@ export class Receiver {
     })
   }
 
+  // close() waits for every connection to end, so a kept-alive one could hold it: they are all closed too.
   stop(): Promise<void> {
     this.gate?.release()
-    return new Promise(resolve => (this.server ? this.server.close(() => resolve()) : resolve()))
+    const server = this.server
+    if (!server) return Promise.resolve()
+    return new Promise(resolve => {
+      server.close(() => resolve())
+      server.closeAllConnections()
+    })
   }
 }
 

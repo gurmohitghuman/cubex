@@ -2,6 +2,8 @@ import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { getLockedRunColumns } from '../routes/sheets-shared';
+import { runHeldColumns } from '../lib/run-locked-columns';
+import { heldColumnWords } from '../lib/run-held-words';
 import { isWebhookRawColumn } from '../lib/webhook-columns';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
@@ -27,7 +29,7 @@ export function planTransferColumns(
   mode: 'require_existing' | 'create_missing',
   pristine: boolean,
   subset?: string[],
-): TransferColumnPlan | { error: string } {
+): TransferColumnPlan | { error: string; held?: true } {
   const sourceColumns = getSheetColumns(sourceSheetId, userId, false);
   const sourceSet = new Set(sourceColumns);
   if (subset) {
@@ -81,6 +83,11 @@ export function planTransferColumns(
     if (mode === 'require_existing') return { error: `Unknown destination column: ${column}` };
     newColumns.push(column);
   }
+  // A copied column a run holds in the source would copy its ⏳ cells for good: a run still going (the sheet-wide
+  // check in rows-transfer.ts answers that first), or a stopped one still putting back what they held.
+  const sourceHeld = runHeldColumns(sourceSheetId, userId, { clearing: true });
+  const heldSource = [...sourceToDestination.keys()].find(c => sourceHeld.has(c));
+  if (heldSource !== undefined) return { error: heldColumnWords(heldSource, sourceHeld.get(heldSource)!), held: true };
   const locked = getLockedRunColumns(destinationSheetId, userId);
   const lockedHits = destinationColumns.filter(c => locked.has(c));
   if (lockedHits.length) return { error: `An active run owns column(s): ${lockedHits.join(', ')}` };
