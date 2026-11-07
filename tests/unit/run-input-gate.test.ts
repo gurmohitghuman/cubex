@@ -14,6 +14,9 @@ import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
+// A run that parks is picked up again soon (lib/run-park.ts): read before the server's modules load.
+process.env.RUN_PARK_MS = '200'
+process.env.SIDEQUEST_POLL_MS = '50'
 
 // The stand-in: the API keeps each request's body and answers {"ok": "yes"} after `delayMs`; OpenRouter lists one
 // model and keeps each prompt.
@@ -164,8 +167,8 @@ await ok('a pause during the wait: the run stops with its rows ⏳ and nothing s
   assert.deepEqual(sent.slice(from), [body('Old A', 'ada'), body('New B', 'bob'), body('New C', 'cy')])
 })
 
-const RING = '"Got" waits for "Answer" to finish filling, and "Answer" waits for "Got": neither can finish. '
-  + 'Run them again one at a time.'
+const RING = '"Got" waits for "Answer" to finish filling, and "Answer" waits for "Got": neither could finish, so '
+  + 'this run, the newest, failed the rows that would wait. Run them again once "Answer" is filled.'
 await ok('a run whose request reads a column filled by a paused AI run that reads its own column: a ring, so its '
   + 'rows fail naming both columns, nothing is sent, and the run ends', async () => {
   const sid = fresh()
@@ -192,7 +195,13 @@ await ok('two running HTTP API runs whose requests read each other\'s columns: b
     await seed(sid, 'http', other, ['Answer'])
     const from = sent.length
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('the runs never ended')), 15_000))
-    await Promise.race([Promise.all([processHTTPRun(ask, 0), processHTTPRun(other, 0)]), timeout])
+    // A run that parks is run again after its delay, as its snoozed job would be.
+    const toEnd = async (id: string) => {
+      for (let parked = await processHTTPRun(id, 0); parked; parked = await processHTTPRun(id, 0)) {
+        await sleep(parked.parkMs)
+      }
+    }
+    await Promise.race([Promise.all([toEnd(ask), toEnd(other)]), timeout])
     assert.ok(!['pending', 'running'].includes(statusOf(ask) as string), `Ask is ${statusOf(ask)}`)
     assert.ok(!['pending', 'running'].includes(statusOf(other) as string), `the other is ${statusOf(other)}`)
     assert.ok(sent.slice(from).every(b => !b.includes('⏳')), JSON.stringify(sent.slice(from)))

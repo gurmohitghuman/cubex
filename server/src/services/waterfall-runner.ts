@@ -30,6 +30,8 @@ import { stopAutorunRun } from './autorun-stop';
 import { tokenRowsThatFit } from './token-spend';
 import { processWaterfallRow, type WaterfallRowCtx } from './waterfall-row';
 import { requestInputGate } from './run-input-gate';
+import { GatedRows } from './run-gated-rows';
+import type { RunParked } from '../lib/run-park';
 import { pruneKeptAnswers } from './waterfall-journal';
 import { RunFormulas } from './waterfall-formulas';
 import { RunLookups } from './waterfall-step-lookup';
@@ -122,7 +124,7 @@ function dryRowsLeft(run: HTTPRunRow, targets: number[]): number[] {
 
 export async function processWaterfallRun(
   run: HTTPRunRow, config: WaterfallRunConfig, generation: number, allTargets: number[] | null,
-): Promise<void> {
+): Promise<RunParked | void> {
   const w = config.waterfall;
   const targets = w.dry && allTargets ? dryRowsLeft(run, allTargets) : allTargets;
   const steps = rowSteps(config);
@@ -172,7 +174,7 @@ export async function processWaterfallRun(
     run, config, generation, enrich, ai, signal: wake.signal, stopped,
     halt: (message, reason = 'ai_key') => { if (own.halt === null) { own.halt = { reason, message }; wake.abort(); } },
     formulas, lookups,
-    allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns, gate: requestInputGate(run, config, stopped),
+    allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns,
   };
   const paid = steps.some(isPaidStep);
   const concurrency = enrichConcurrency(config);
@@ -189,12 +191,35 @@ export async function processWaterfallRun(
   const rowSettled = () => new Promise<void>(resolve => { slotFreed = resolve; });
   let ended: { reason: string; message: string } | null = null;
   const poll = setInterval(() => { if (stopped()) wake.abort(); }, STOP_POLL_MS);
+  // A row waits before it is sized and its money held while a column its inputs read is held by another run;
+  // a halt or a stop ends the wait at once (run-input-gate.ts, run-gated-rows.ts).
+  const gate = requestInputGate(run, config, stopped);
+  const rows = new GatedRows(source, gate);
+  const start = (row: RunRow, tregMicro: number, aiMicro: number, ring?: string): void => {
+    // A row that threw keeps its ⏳ and no result: the finalize fails the run
+    // with "Some rows could not be processed" (a rerun retries them).
+    const done: Promise<void> = processWaterfallRow(ctx, row, ring)
+      .then(() => {}, error => { console.error(`Waterfall run ${run.id} row error:`, redactError(error)); })
+      .finally(() => {
+        releaseRow(run.id, generation, tregMicro, aiMicro);
+        out.delete(done);
+        const freed = slotFreed;
+        slotFreed = null;
+        freed?.();
+        try {
+          if (!stopped()) progress.run(++completed, run.id);
+        } catch (error) { console.error(`Waterfall run ${run.id} progress error:`, redactError(error)); }
+      });
+    out.add(done);
+  };
   try {
     rows: for (;;) {
       if (stopped()) break;
       if (out.size >= concurrency) { await rowSettled(); continue; }
-      const first = await source.next();
-      if (first.done) break;
+      const first = await rows.next({ signal: wake.signal });
+      if (!('row' in first)) break;
+      // A row its run's ring of waits fails costs nothing and holds nothing.
+      if (first.ring) { start(first.row, 0, 0, first.ring); continue; }
       let allowed: Allowed = paid ? holdRows(run, config, generation, concurrency - out.size, out.size)
         : { n: concurrency - out.size, tregMicro: 0, aiMicro: 0 };
       while ('wait' in allowed) {
@@ -204,31 +229,16 @@ export async function processWaterfallRun(
       }
       if ('reason' in allowed) { ended = allowed; break; }
       const { n, tregMicro, aiMicro } = allowed;
-      const batch: RunRow[] = [first.value];
+      // The batch's further rows: only ones that can go at once (one that must wait is kept for the next round).
+      const batch: RunRow[] = [first.row];
       while (batch.length < n) {
-        const next = await source.next();
-        if (next.done) break;
-        batch.push(next.value);
+        const next = await rows.now();
+        if (!next) break;
+        batch.push(next);
       }
       const unused = n - batch.length;
       if (unused > 0) releaseRow(run.id, generation, unused * tregMicro, unused * aiMicro);
-      for (const row of batch) {
-        // A row that threw keeps its ⏳ and no result: the finalize fails the run
-        // with "Some rows could not be processed" (a rerun retries them).
-        const done: Promise<void> = processWaterfallRow(ctx, row)
-          .then(() => {}, error => { console.error(`Waterfall run ${run.id} row error:`, redactError(error)); })
-          .finally(() => {
-            releaseRow(run.id, generation, tregMicro, aiMicro);
-            out.delete(done);
-            const freed = slotFreed;
-            slotFreed = null;
-            freed?.();
-            try {
-              if (!stopped()) progress.run(++completed, run.id);
-            } catch (error) { console.error(`Waterfall run ${run.id} progress error:`, redactError(error)); }
-          });
-        out.add(done);
-      }
+      for (const row of batch) start(row, tregMicro, aiMicro);
     }
   } finally {
     await Promise.allSettled([...out]);
@@ -247,5 +257,7 @@ export async function processWaterfallRun(
   }
   if (own.halt !== null) { await stop(own.halt.reason, own.halt.message); return; }
   if (enrich.stopped()) return;
-  if (ended) await stop(ended.reason, ended.message);
+  if (ended) { await stop(ended.reason, ended.message); return; }
+  // Its rows wait for a run that can't go on in a job slot: the run parks (lib/run-park.ts).
+  if (gate.parked !== null) return { parkMs: gate.parked };
 }

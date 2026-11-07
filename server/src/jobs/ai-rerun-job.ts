@@ -7,7 +7,9 @@ const { processAIRerun } = require('../services/ai-runner') as
 
 export class AIRerunJob extends Job {
   // expectedGeneration: see ai-run-job.ts.
-  async run(runId: string, targetRows: number[], expectedGeneration?: number): Promise<void> {
-    await processAIRerun(runId, targetRows, expectedGeneration);
+  // A parked run's job is snoozed: see ai-run-job.ts.
+  async run(runId: string, targetRows: number[], expectedGeneration?: number): Promise<unknown> {
+    const parked = await processAIRerun(runId, targetRows, expectedGeneration);
+    return parked ? this.snooze(parked.parkMs) : undefined;
   }
 }

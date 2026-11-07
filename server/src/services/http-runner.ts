@@ -8,6 +8,8 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { getRunStatusAndGen, shouldNotStartRun, type HTTPRunRow } from './http-runner-status';
 import { processHTTPRow } from './http-row';
 import { requestInputGate } from './run-input-gate';
+import { GatedRows } from './run-gated-rows';
+import { parkRun, type RunParked } from '../lib/run-park';
 import { finalizeHTTPRun, failHTTPRun } from './http-runner-finalize';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { processEnrichmentRun } from './enrich-runner';
@@ -46,7 +48,7 @@ export async function processHTTPRun(
   runId: string,
   expectedGeneration?: number,
   targetRowIndices?: number[],
-): Promise<void> {
+): Promise<RunParked | void> {
   // Hoisted so the catch block can compare/clean up (mirrors ai-runner).
   let myGeneration = -1;
   let failedRun: HTTPRunRow | undefined;
@@ -73,26 +75,28 @@ export async function processHTTPRun(
 
     const config: HTTPAPIConfig = JSON.parse(run.config);
     // A waterfall (config.waterfall) walks its steps per row (services/waterfall-runner.ts).
+    // For a rerun, narrow to the requested rows that still exist (a row deleted
+    // between route commit and worker start is simply dropped, the same guard as
+    // processAIRerun). For a first-time run, process every row. Rows stream in
+    // pages (lib/run-rows), never the whole sheet at once.
+    const targets = Array.isArray(targetRowIndices) ? targetRowIndices : null;
+    // Either parks when its rows wait for a run that can't go on in a job slot (lib/run-park.ts).
     if (isWaterfallConfig(config)) {
-      await processWaterfallRun(run, config, myGeneration, Array.isArray(targetRowIndices) ? targetRowIndices : null);
+      const parked = await processWaterfallRun(run, config, myGeneration, targets);
+      if (parked) return parkRun('http_runs', runId, myGeneration, parked.parkMs);
       await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
       return;
     }
     // An enrichment (config.enrichment) calls treg with its own loop: spend
     // limits, the ledger, idempotent resume (services/enrich-runner.ts).
     if (isEnrichmentConfig(config)) {
-      await processEnrichmentRun(run, config, myGeneration, Array.isArray(targetRowIndices) ? targetRowIndices : null);
+      const parked = await processEnrichmentRun(run, config, myGeneration, targets);
+      if (parked) return parkRun('http_runs', runId, myGeneration, parked.parkMs);
       await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
       return;
     }
 
     const controller = new AbortController();
-
-    // For a rerun, narrow to the requested rows that still exist (a row deleted
-    // between route commit and worker start is simply dropped — same guard as
-    // processAIRerun). For a first-time run, process every row. Rows stream in
-    // pages (lib/run-rows), never the whole sheet at once.
-    const targets = Array.isArray(targetRowIndices) ? targetRowIndices : null;
 
     const rawBatch = typeof config.batchSize === 'number' && Number.isFinite(config.batchSize)
       ? config.batchSize : HTTP_DEFAULT_BATCH_SIZE;
@@ -147,8 +151,6 @@ export async function processHTTPRun(
     // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
     const source = runRows(run.sheet_id, run.user_id, masterCol, targets, requestRunStamper(run, config))
       [Symbol.asyncIterator]();
-    // A row waits while a column its request reads is held by another run (run-input-gate.ts).
-    const gate = requestInputGate(run, config, () => shouldStop(runId, myGeneration));
     const out = new Set<Promise<void>>();
     // A full pool waits for one row to settle, checking for a stop every
     // RUN_STOP_POLL_MS and beating updated_at meanwhile (lib/run-pool.ts).
@@ -163,10 +165,12 @@ export async function processHTTPRun(
     let rowsLeft = false;
     // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
     const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
-    const wait = async () => {
-      await pool.settledOrTick();
-      try { beat(); } catch (error) { ended(error); }
-    };
+    const beatNow = () => { try { beat(); } catch (error) { ended(error); } };
+    const wait = async () => { await pool.settledOrTick(); beatNow(); };
+    // A row waits before it starts while a column its request reads is held by another run, beating meanwhile;
+    // its run's own end stops the wait too (run-input-gate.ts, run-gated-rows.ts).
+    const gate = requestInputGate(run, config, () => end !== null || shouldStop(runId, myGeneration));
+    const rows = new GatedRows(source, gate);
     // The sheet's columns, read at most once a second: a cell with no key is an
     // empty value, not an unresolved {{column}} (withSheetColumns).
     let columns: string[] = [];
@@ -182,11 +186,12 @@ export async function processHTTPRun(
       for (;;) {
         if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
         if (out.size >= batchSize) { await wait(); continue; }
-        const next = await source.next();
-        if (next.done) break;
-        if (end) { rowsLeft = true; break; }
+        const next = await rows.next({ signal: controller.signal, tick: beatNow });
+        if ('done' in next) break;
+        if ('park' in next || end) { rowsLeft = true; break; }
+        if ('stopped' in next) continue;
         const done: Promise<void> = processHTTPRow(
-          runId, next.value, run, config, controller.signal, myGeneration, sheetColumns(), gate,
+          runId, next.row, run, config, controller.signal, myGeneration, sheetColumns(), next.ring,
         )
           .then(outcome => {
             breaker.record(outcome);
@@ -237,6 +242,8 @@ export async function processHTTPRun(
       }
       return;
     }
+    // Its rows wait for a run that can't go on in a job slot: back to pending, its job snoozed (lib/run-park.ts).
+    if (gate.parked !== null) return parkRun('http_runs', runId, myGeneration, gate.parked);
     await finalizeHTTPRun(run, runId, myGeneration, targetRowIndices);
   } catch (error) {
     console.error(`HTTP run ${runId} error:`, redactError(error));

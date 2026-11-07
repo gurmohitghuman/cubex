@@ -26,7 +26,6 @@ import type { RunFormulas } from './waterfall-formulas';
 import type { RunLookups } from './waterfall-step-lookup';
 import { keptBody, writeWaterfallRow, type AnswerOf } from './waterfall-row-write';
 import type { HTTPRunRow } from './http-runner-status';
-import type { InputGate } from './run-input-gate';
 
 export interface WaterfallRowCtx {
   run: HTTPRunRow;
@@ -41,7 +40,6 @@ export interface WaterfallRowCtx {
   columns: () => string[];            // the sheet's column registry, read at most once a second
   formulas: RunFormulas;              // formula steps and checks, opened once for the run
   lookups: RunLookups;                // lookup steps: the other sheet's index, names read again
-  gate: InputGate | null;             // a row waits while a column its inputs read is held (run-input-gate.ts)
 }
 
 async function callStep(c: WaterfallRowCtx, step: WaterfallStep, row: RunRow, inputs: Record<string, string>)
@@ -85,27 +83,20 @@ function traceOf(step: WaterfallStep, r: StepRun, ms: number): TraceStep {
 
 
 // Returns whether the row's result was written.
-export async function processWaterfallRow(c: WaterfallRowCtx, row: RunRow): Promise<boolean> {
+// ring: its run's ring of waits fails the row (services/run-input-gate.ts): no step is asked, and only its
+// failed cells and result are written (the answers it kept and the run's tallies are left as they are).
+export async function processWaterfallRow(c: WaterfallRowCtx, row: RunRow, ring?: string): Promise<boolean> {
+  if (ring) {
+    return writeWaterfallRow({ run: c.run, config: c.config, generation: c.generation, row, trace: [], answer: null,
+      scope: '', rowRef: '', kept: [], ring });
+  }
   const w = c.config.waterfall;
   const dry = !!w.dry;
-  // A column its inputs read that another run holds: the row waits for it, then reads it as it is then (a ⏳
-  // would read as empty, and the row be skipped as missing it); one whose wait would close a ring of runs
-  // fails, its first step saying why (services/run-input-gate.ts).
-  const ready = c.gate ? await c.gate.ready(row, c.signal) : { go: row };
-  if ('stopped' in ready) return false;
-  if ('go' in ready) row = ready.go;
   const keys = w.inputs.map(i => i.key);
   const inputs = inputValues(inputMapOf(c.config), row.data, goneColumnsOf(c.config.requestConfig), keys,
     c.columns());
   const scope = dry ? DRY_SCOPE : keyScope(c.enrich, row.rowIndex, row.rowId).scope;
   const rowRef = dry ? '' : row.rowId;
-  if ('ring' in ready) {
-    const first = rowSteps(c.config)[0];
-    const trace = first ? [traceOf(first, { outcome: 'error', value: '', detail: ready.ring, costUsd: 0 }, 0)] : [];
-    return writeWaterfallRow({
-      run: c.run, config: c.config, generation: c.generation, row, trace, answer: null, scope, rowRef, kept: [],
-    });
-  }
   const userId = c.run.user_id;
   const trace: TraceStep[] = [];
   const kept: RetryKept[] = [];

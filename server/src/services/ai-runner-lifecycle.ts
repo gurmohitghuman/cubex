@@ -3,8 +3,10 @@ import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { redactSecrets, redactError } from '../lib/redact';
 import { getOpenRouterClient } from './openrouter';
-import { processRowWhenFree } from './ai-row-gate';
+import { processRow } from './ai-row';
 import { aiInputGate } from './run-input-gate';
+import { GatedRows } from './run-gated-rows';
+import type { RunParked } from '../lib/run-park';
 import {
   getRunStatusAndGen, shouldStop,
   type AIRunRow, type SheetRow,
@@ -46,7 +48,7 @@ export const dispatchRows = async (
   rows: AsyncIterable<SheetRow>,
   startCompleted: number,
   controller: AbortController,
-): Promise<LoopEnd | null> => {
+): Promise<LoopEnd | RunParked | null> => {
   const openai = await getOpenRouterClient(run.user_id);
   // The sheet's columns, read once for the run: a listed column a row holds no
   // value for reads as empty in its prompt (lib/prompt.ts processPromptTemplate).
@@ -68,8 +70,10 @@ export const dispatchRows = async (
   // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
   const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
   const gate = await openSpendGate(run, myGeneration, columns);
-  // A row waits while a column its prompt reads is held by another run (services/run-input-gate.ts).
-  const inputs = aiInputGate(run, () => shouldStop(runId, myGeneration));
+  // A row waits before it starts and before its spend is admitted, beating, while a column its prompt reads is
+  // held by another run; the run's own end stops the wait too (run-input-gate.ts, run-gated-rows.ts).
+  const inputs = aiInputGate(run, () => end !== null || shouldStop(runId, myGeneration));
+  const pulled = new GatedRows(rows[Symbol.asyncIterator](), inputs);
   // Room for the row under the run's limit; null: a database that can't be written (end is set).
   // Busy with another writer past busy_timeout: the row waits and asks again.
   const admit = (row: SheetRow): GateAnswer | null => {
@@ -80,28 +84,32 @@ export const dispatchRows = async (
       return null;
     }
   };
-  const wait = async () => {
-    await pool.settledOrTick();
-    try { beat(); } catch (error) { ended(error); }
-  };
+  const beatNow = () => { try { beat(); } catch (error) { ended(error); } };
+  const wait = async () => { await pool.settledOrTick(); beatNow(); };
 
   // A throw from the row stream still waits for the rows already out: the run
   // is marked failed only once none of them can write (an undo checks for that).
   try {
-    rowLoop: for await (const row of rows) {
+    rowLoop: for (;;) {
       for (;;) {
         if (shouldStop(runId, myGeneration)) break rowLoop;
-        if (end) { rowsLeft = true; break rowLoop; }
+        if (end) { rowsLeft = await pulled.left(); break rowLoop; }
         if (out.size < concurrency) break;
         await wait();
       }
+      const next = await pulled.next({ signal: controller.signal, tick: beatNow });
+      if ('done' in next) break;
+      if ('park' in next || end) { rowsLeft = true; break; }
+      if ('stopped' in next) continue;
+      // A row its run's ring of waits fails calls nothing: no spend to admit, and not the provider's failure.
+      const row = next.ring ? { ...next.row, refused: next.ring } : next.row;
       if (run.access_token_id && spendCapRefusal(run.user_id, run.access_token_id)) {
         end = { reason: 'token_cap', message: null };
         break;
       }
       // Its own spend limit: wait while only rows out are in the way, pause when spending alone is.
       let held = 0;
-      if (gate) {
+      if (gate && !next.ring) {
         let room = admit(row);
         while (room && 'wait' in room) {
           await wait();
@@ -120,10 +128,9 @@ export const dispatchRows = async (
       }
 
       let settledAs: RowOutcome | null = null;
-      const promise: Promise<void> = processRowWhenFree(
-        inputs, runId, row, run, openai, controller.signal, myGeneration, columns,
-      )
-        .then(outcome => {
+      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
+        .then(processed => {
+          const outcome = next.ring && processed.kind === 'failed' ? { ...processed, provider: false } : processed;
           settledAs = outcome;
           breaker.record(outcome);
           const tripped = breaker.tripped;
@@ -154,7 +161,8 @@ export const dispatchRows = async (
   }
   // The provider failed the last rows: nothing is left to hold back, so the run ends as usual.
   if (end?.reason === 'provider_errors' && !rowsLeft) return null;
-  return end;
+  // Its rows wait for a run that can't go on in a job slot: the run parks (lib/run-park.ts).
+  return end ?? (inputs.parked !== null ? { parkMs: inputs.parked } : null);
 };
 
 // The run paused itself (the token's spend cap, its own spend limit, its

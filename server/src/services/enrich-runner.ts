@@ -26,6 +26,8 @@ import { getReuseDays } from './enrich-reuse';
 import { dropHold, heldMicro, releaseRow, setRunHold } from './enrich-holds';
 import { processEnrichmentRow } from './enrich-row';
 import { requestInputGate } from './run-input-gate';
+import { GatedRows } from './run-gated-rows';
+import type { RunParked } from '../lib/run-park';
 import { clearCooldowns } from './enrich-providers';
 import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
@@ -109,7 +111,7 @@ function holdRows(run: HTTPRunRow, config: EnrichRunConfig, generation: number, 
 
 export async function processEnrichmentRun(
   run: HTTPRunRow, config: EnrichRunConfig, generation: number, targets: number[] | null,
-): Promise<void> {
+): Promise<RunParked | void> {
   const wake = new AbortController();
   const ctx: RunCtx = {
     runId: run.id, userId: run.user_id, sheetId: run.sheet_id, statusColumn: run.master_column_name, token: '',
@@ -120,7 +122,6 @@ export async function processEnrichmentRun(
     // "Always call again" (and "Rerun this row") call every row, never reusing an earlier answer.
     reuseDays: config.enrichment.fresh || config.enrichment.noReuse ? 0 : getReuseDays(run.user_id),
   };
-  ctx.gate = requestInputGate(run, config, ctx.stopped);
   const concurrency = enrichConcurrency(config);
   clearCooldowns(run.id, run.user_id);
   const masterCol = run.master_column_name;
@@ -156,14 +157,40 @@ export async function processEnrichmentRun(
   };
   let ended: { reason: PauseReason; message: string } | null = null;
   const poll = setInterval(() => { if (ctx.stopped()) wake.abort(); }, STOP_POLL_MS);
+  // A row waits before it is sized and its money held while a column its inputs read is held by another run;
+  // a halt or a stop ends the wait at once (run-input-gate.ts, run-gated-rows.ts).
+  const gate = requestInputGate(run, config, () => !!ctx.halt || ctx.stopped());
+  const rows = new GatedRows(source, gate);
+  const start = (row: RunRow, rowMicro: number, columns: string[], ring?: string): void => {
+    // A row that threw keeps its ⏳ and no result, so the finalize fails the
+    // run with "Some rows could not be processed" (a rerun retries them).
+    const done: Promise<void> = processEnrichmentRow(ctx, run, config, row, columns, generation, false, ring)
+      .then(() => {}, error => { console.error(`Enrichment run ${run.id} row error:`, redactError(error)); })
+      .finally(() => {
+        releaseRow(run.id, generation, rowMicro);
+        out.delete(done);
+        const freed = slotFreed;
+        slotFreed = null;
+        freed?.();
+        // Never rejects: nothing may be waiting on this row yet (a worker
+        // thread dies on an unhandled rejection); a missed count is fixed
+        // by the next one, and a resume recounts.
+        try {
+          if (!ctx.halt && !ctx.stopped()) progress.run(++completed, run.id);
+        } catch (error) { console.error(`Enrichment run ${run.id} progress error:`, redactError(error)); }
+      });
+    out.add(done);
+  };
   try {
     rows: for (;;) {
       if (ctx.stopped() || ctx.halt) break;
       if (out.size >= concurrency) { await rowSettled(); continue; }
       // Limits are checked only when a row is waiting: a run whose last row
       // just spent the rest of its limit is done, not paused.
-      const first = await source.next();
-      if (first.done) break;
+      const first = await rows.next({ signal: wake.signal });
+      if (!('row' in first)) break;
+      // A row its run's ring of waits fails costs nothing and holds nothing.
+      if (first.ring) { start(first.row, 0, [], first.ring); continue; }
       let allowed = holdRows(run, config, generation, concurrency - out.size, out.size);
       while ('wait' in allowed) {
         // This run's own rows still out hold some of the room: one settling gives it back.
@@ -172,7 +199,7 @@ export async function processEnrichmentRun(
         allowed = holdRows(run, config, generation, concurrency - out.size, out.size);
       }
       if ('reason' in allowed) {
-        if (FREE_THROUGH.has(allowed.reason) && await freeRow(first.value)) continue;
+        if (FREE_THROUGH.has(allowed.reason) && await freeRow(first.row)) continue;
         ended = allowed;
         break;
       }
@@ -185,34 +212,16 @@ export async function processEnrichmentRun(
         break;
       }
       ctx.token = key;
-      const batch: RunRow[] = [first.value];
+      // The batch's further rows: only ones that can go at once (one that must wait is kept for the next round).
+      const batch: RunRow[] = [first.row];
       while (batch.length < n) {
-        const next = await source.next();
-        if (next.done) break;
-        batch.push(next.value);
+        const next = await rows.now();
+        if (!next) break;
+        batch.push(next);
       }
       if (batch.length < n) releaseRow(run.id, generation, (n - batch.length) * rowMicro);
       const columns = getSheetColumns(run.sheet_id, run.user_id, false);
-      for (const row of batch) {
-        // A row that threw keeps its ⏳ and no result, so the finalize fails the
-        // run with "Some rows could not be processed" (a rerun retries them).
-        const done: Promise<void> = processEnrichmentRow(ctx, run, config, row, columns, generation)
-          .then(() => {}, error => { console.error(`Enrichment run ${run.id} row error:`, redactError(error)); })
-          .finally(() => {
-            releaseRow(run.id, generation, rowMicro);
-            out.delete(done);
-            const wake = slotFreed;
-            slotFreed = null;
-            wake?.();
-            // Never rejects: nothing may be waiting on this row yet (a worker
-            // thread dies on an unhandled rejection); a missed count is fixed
-            // by the next one, and a resume recounts.
-            try {
-              if (!ctx.halt && !ctx.stopped()) progress.run(++completed, run.id);
-            } catch (error) { console.error(`Enrichment run ${run.id} progress error:`, redactError(error)); }
-          });
-        out.add(done);
-      }
+      for (const row of batch) start(row, rowMicro, columns);
     }
   } finally {
     await Promise.allSettled([...out]);
@@ -225,5 +234,7 @@ export async function processEnrichmentRun(
     return;
   }
   if (ctx.stopped()) return;
-  if (ended) await stop(ended.reason, ended.message);
+  if (ended) { await stop(ended.reason, ended.message); return; }
+  // Its rows wait for a run that can't go on in a job slot: the run parks (lib/run-park.ts).
+  if (gate.parked !== null) return { parkMs: gate.parked };
 }

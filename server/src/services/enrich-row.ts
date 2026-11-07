@@ -142,14 +142,10 @@ async function singleStep(
 // Returns whether the row's result was written.
 export async function processEnrichmentRow(
   ctx: RunCtx, run: HTTPRunRow, config: EnrichRunConfig, row: EnrichRow, columns: string[], generation: number,
-  freeOnly = false,
+  freeOnly = false, ring?: string,
 ): Promise<boolean> {
-  // A column its inputs read that another run holds: the row waits for it, then goes with the row as it is then;
-  // one whose wait would close a ring of runs fails with the ring's words (services/run-input-gate.ts).
-  const ready = ctx.gate ? await ctx.gate.ready(row, ctx.signal) : { go: row };
-  if ('stopped' in ready) return false;
-  if ('go' in ready) row = ready.go;
-  const req = 'ring' in ready ? { cells: failedCells(ready.ring) } : rowRequest(config, row, columns);
+  // A row its run's ring of waits fails calls nothing (services/run-input-gate.ts).
+  const req = ring ? { cells: failedCells(ring) } : rowRequest(config, row, columns);
   let result: RowResult | null;
   if ('cells' in req) result = { cells: req.cells, stored: undefined, costMicro: 0 };
   else result = reusedRow(ctx, config, req.built) ?? (freeOnly ? null : config.enrichment.email

@@ -53,7 +53,7 @@ export interface SheetRow {
   data: Record<string, string>;
   // What the row's result is made from (lib/run-inputs/stamp.ts), written with it.
   stamp?: RowStamp;
-  // Why it fails without a call: its wait for a column would close a ring of runs (services/ai-row-gate.ts).
+  // Why it fails without a call: its run's ring of waits fails it (services/run-input-gate.ts).
   refused?: string;
 }
 

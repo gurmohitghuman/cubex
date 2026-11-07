@@ -10,7 +10,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
-import { enrichCellValues } from '../lib/enrich-cells';
+import { enrichCellValues, failedCell, type RowCells } from '../lib/enrich-cells';
 import { withFill } from '../lib/answer-store';
 import { trimAnswer } from '../lib/answer-trim';
 import { nowDate } from '../lib/clock';
@@ -49,7 +49,15 @@ export interface WaterfallWrite {
   run: HTTPRunRow; config: WaterfallRunConfig; generation: number; row: RunRow;
   trace: TraceStep[]; answer: AnswerOf | null; scope: string; rowRef: string;
   kept: RetryKept[];              // what a retry shouldn't pay for again (kept only when the row failed)
+  // Its run's ring of waits failed it (services/run-input-gate.ts): no step was asked, so only its failed cells
+  // and result are written; the run's tallies, its journal and the answers the row kept stay as they are.
+  ring?: string;
 }
+
+const ringCells = (reason: string, steps: readonly { id: string }[]): RowCells => ({
+  status: 'failed', statusCell: failedCell(reason), fill: 'all', reason,
+  answer: { answered_by: '', steps: Object.fromEntries(steps.map(s => [s.id, ''])) },
+});
 
 // A found answer this run bought, kept whole enough for a later run to read:
 // a treg waterfall's (its output stays whole; raw is dropped and marked), a
@@ -86,7 +94,7 @@ function tally(run: HTTPRunRow, config: WaterfallRunConfig, trace: TraceStep[]):
 export function writeWaterfallRow(x: WaterfallWrite): boolean {
   const { run, config } = x;
   const trace: Trace = { v: 1, answered_by: x.answer?.stepId ?? null, steps: x.trace };
-  const cells = rowCells(trace, rowSteps(config));
+  const cells = x.ring ? ringCells(x.ring, rowSteps(config)) : rowCells(trace, rowSteps(config));
   const values = enrichCellValues(cells, config.responseMapping, run.master_column_name);
   const keyed = !!x.answer && reusable(x.answer);
   const dry = !!config.waterfall.dry;
@@ -109,10 +117,12 @@ export function writeWaterfallRow(x: WaterfallWrite): boolean {
       ...(keyed ? [x.answer!.reuseKey, answerTime(nowDate())] : [null, null]),
     );
     if (x.answer?.from === 'reused') noteReusedRow(run.id, run.user_id);
-    tally(run, config, x.trace);
+    if (!x.ring) tally(run, config, x.trace);
     if (!dry) {
       writeRowColumns(run.id, run.sheet_id, run.user_id, x.row.rowIndex, Object.entries(values), x.row.stamp);
       touchSheet(run.sheet_id, run.user_id);
+    }
+    if (!dry && !x.ring) {
       dropRowAnswers(run.user_id, x.scope, x.rowRef);
       const paidSteps = rowSteps(config).filter(s => s.choices.kind === 'enrichment' || s.choices.kind === 'ai'
         || s.check?.built.kind === 'verify');

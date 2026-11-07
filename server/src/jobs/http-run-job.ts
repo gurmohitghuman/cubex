@@ -7,7 +7,9 @@ const { processHTTPRun } = require('../services/http-runner') as
 
 export class HTTPRunJob extends Job {
   // expectedGeneration: see ai-run-job.ts.
-  async run(runId: string, expectedGeneration?: number): Promise<void> {
-    await processHTTPRun(runId, expectedGeneration);
+  // A parked run's job is snoozed: see ai-run-job.ts.
+  async run(runId: string, expectedGeneration?: number): Promise<unknown> {
+    const parked = await processHTTPRun(runId, expectedGeneration);
+    return parked ? this.snooze(parked.parkMs) : undefined;
   }
 }

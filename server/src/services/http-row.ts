@@ -17,7 +17,6 @@ import { httpResultCellValues } from '../lib/http-cell-values';
 import type { RunRow } from '../lib/run-rows';
 import { DONE, DROPPED, httpProviderSide, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
-import type { InputGate } from './run-input-gate';
 
 const shouldStop = shouldStopHttpRun;
 
@@ -36,13 +35,8 @@ export async function processHTTPRow(
   signal: AbortSignal | undefined,
   myGeneration: number,
   sheetColumns: string[],
-  gate?: InputGate,
+  refused?: string,
 ): Promise<RowOutcome> {
-  // A column the request reads that another run holds: the row waits for it, then goes with the row as it is
-  // then; a row whose wait would close a ring of runs fails with the ring's words (services/run-input-gate.ts).
-  const ready = gate ? await gate.ready(row, signal) : { go: row };
-  if ('stopped' in ready) return DROPPED;
-  if ('go' in ready) row = ready.go;
   // Upsert on the (run_id, row_index) unique key (migration 028): a re-write of
   // the SAME run+row is an idempotent overwrite, not a duplicate. (Reruns use a
   // NEW run_id, so they never collide here.) Belt-and-suspenders behind the
@@ -90,7 +84,8 @@ export async function processHTTPRow(
   const mappingColumns = config.responseMapping.map(m => m.columnName);
   const statusColumns = statusColumnsOf(config.responseMapping);
   try {
-    if ('ring' in ready) throw new Error(ready.ring);
+    // A row its run's ring of waits fails sends nothing (services/run-input-gate.ts).
+    if (refused) throw new Error(refused);
     const answer = await sendWithRetries(runId, myGeneration, config, rowData, run.user_id, signal, allowSavedKeys);
     if (answer === STOPPED) return DROPPED;
     const responseData = answer.data;

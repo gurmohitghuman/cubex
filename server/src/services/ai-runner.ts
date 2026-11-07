@@ -5,6 +5,7 @@ import { shouldNotStartRun, type AIRunRow } from './ai-runner-status';
 import { dispatchRows, finalizeStatus, markFailed, pauseAt } from './ai-runner-lifecycle';
 import { fetchModels } from '../lib/openrouter';
 import { aiRunStamper } from '../lib/run-inputs/stampers';
+import { parkRun, type RunParked } from '../lib/run-park';
 
 // Re-exports for backwards compatibility with existing callers (routes/ai.ts).
 export type { AIRunRow } from './ai-runner-status';
@@ -26,7 +27,7 @@ export type { AIRunRow } from './ai-runner-status';
 // Begin processing an AI run. Streams the sheet's unfinished rows (row_index
 // order, a page at a time), dispatches them to processRow with configurable concurrency, updates
 // progress on every row. Pause/cancel are detected by polling ai_runs.status.
-export async function processAIRun(runId: string, expectedGeneration?: number): Promise<void> {
+export async function processAIRun(runId: string, expectedGeneration?: number): Promise<RunParked | void> {
   // Hoisted so the catch block can compare/clean up. myGeneration -1 means
   // "never started"; failedRun stays undefined until we've read the row, so a
   // catch before that point has nothing to clean (and the generation guard
@@ -94,6 +95,8 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, null, aiRunStamper(run));
     // Stopped itself (spend cap, provider failing, nothing can be saved): paused, rows still ⏳.
     const end = await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    // Parked: back to pending, its job snoozed (lib/run-park.ts).
+    if (end && 'parkMs' in end) return parkRun('ai_runs', runId, myGeneration, end.parkMs);
     if (end) { pauseAt(runId, myGeneration, end); return; }
     await finalizeStatus(runId, run, myGeneration);
   } catch (error) {
@@ -103,7 +106,9 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
 }
 
 // Re-run AI for a specific subset of row indices. Used to retry failed/empty rows.
-export async function processAIRerun(runId: string, targetRows: number[], expectedGeneration?: number): Promise<void> {
+export async function processAIRerun(
+  runId: string, targetRows: number[], expectedGeneration?: number,
+): Promise<RunParked | void> {
   let myGeneration = -1;
   let failedRun: AIRunRow | undefined;
   try {
@@ -145,6 +150,8 @@ export async function processAIRerun(runId: string, targetRows: number[], expect
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, targetRows, aiRunStamper(run));
     // Stopped itself (spend cap, provider failing, nothing can be saved): paused, rows still ⏳.
     const end = await dispatchRows(runId, run, myGeneration, rows, startCompleted, controller);
+    // Parked: back to pending, its job snoozed (lib/run-park.ts).
+    if (end && 'parkMs' in end) return parkRun('ai_runs', runId, myGeneration, end.parkMs);
     if (end) { pauseAt(runId, myGeneration, end); return; }
     // Scope the stuck-row check to the rerun's targets (subset) — see finalizeStatus.
     await finalizeStatus(runId, run, myGeneration, targetRows);
