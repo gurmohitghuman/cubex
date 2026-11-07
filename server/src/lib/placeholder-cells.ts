@@ -4,7 +4,7 @@ import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { derivedReaderCount, markDerivedInputs } from './autorun-mark';
-import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_MIN_SLICE_ROWS } from './constants';
+import { PLACEHOLDER_CLEAR_QUEUE_ROWS } from './constants';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -26,10 +26,13 @@ export { PLACEHOLDER };
 // aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts). Queuing
 // tells them at once in the API process (lib/autorun-kick.ts); a run worker's
 // clear (a failed run) waits for the auto-run sweep, as its other writes do.
-// That queuing is most of a slice's work (on rows with random ids, a page
-// written per queued row), so slices shrink with the columns reading these,
-// counted once up front (lib/constants.ts): with none, a slice is
-// HEAVY_SLICE_ROWS rows, as for every other heavy job.
+// That queuing is most of a slice's work: on rows with random ids, each queued
+// row writes a page of its own. So with R columns reading these (counted once
+// up front), a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
+// least one), commits with SQLite's own checkpoint off and is checkpointed in
+// a turn of its own (runInCheckpointedRowSlices, lib/slices.ts; the numbers
+// are in lib/constants.ts). With none, a slice is HEAVY_SLICE_ROWS rows and
+// runs no checkpoint, as for every other heavy job.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void,
 ): Promise<void> {
@@ -45,7 +48,8 @@ export async function clearProcessingPlaceholders(
   const setArgs = paths.flatMap(p => [p, p, p]);
   const rowIds = await sheetRowIds(sheetId, userId);
   const readers = derivedReaderCount(sheetId, userId, columnNames);
-  const sliceRows = Math.max(PLACEHOLDER_CLEAR_MIN_SLICE_ROWS, Math.floor(HEAVY_SLICE_ROWS / (1 + readers)));
+  const slicing = readers === 0 ? {}
+    : { rows: Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))), checkpointed: true };
   await eachRowIdSlice(rowIds, ids => {
     // The clear and its queuing commit together, the write lock taken up front.
     db.transaction(() => {
@@ -53,7 +57,7 @@ export async function clearProcessingPlaceholders(
       if (cleared.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: cleared });
     }).immediate();
     afterSlice?.();
-  }, sliceRows);
+  }, slicing);
   db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
 }
 

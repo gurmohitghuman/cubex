@@ -1,6 +1,6 @@
 import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
-import { runInSlices, yieldToRequests } from './slices';
+import { runInCheckpointedRowSlices, runInSlices, yieldToRequests } from './slices';
 
 // Whole-sheet rewrites (placeholder seeding and clearing, a column's copy or
 // strip) visit rows in storage (rowid) order. Row order and storage order part
@@ -44,23 +44,29 @@ export async function sheetRowIds(
   return Float64Array.from(ids).sort();
 }
 
-// Calls `apply` with each `sliceRows` (HEAVY_SLICE_ROWS unless a caller whose
-// slices do more per row asks for fewer) of `rowIds` as a JSON array, for a
-// statement filtering on `rowid IN (SELECT value FROM json_each(?))`, one slice
-// per event-loop turn (lib/slices.ts). `apply` returns false to stop early.
-// Write the sheet filter as `+sheet_id = ? AND +user_id = ?`: without the `+`,
-// a fresh install (no planner statistics yet) walks the sheet's whole index on
-// every slice (about 0.1 s each at 1M rows) instead of looking rows up by rowid.
+// Calls `apply` with each slice of `rowIds` (`rows` of them: HEAVY_SLICE_ROWS
+// unless a caller whose slices do more per row asks for fewer) as a JSON array,
+// for a statement filtering on `rowid IN (SELECT value FROM json_each(?))`, one
+// slice per event-loop turn (lib/slices.ts). `apply` returns false to stop
+// early. `checkpointed`: for slices that write pages all over the database,
+// each commits with SQLite's own WAL checkpoint off and is followed by one in a
+// turn of its own (runInCheckpointedRowSlices). Write the sheet filter as
+// `+sheet_id = ? AND +user_id = ?`: without the `+`, a fresh install (no
+// planner statistics yet) walks the sheet's whole index on every slice (about
+// 0.1 s each at 1M rows) instead of looking rows up by rowid.
 export async function eachRowIdSlice(
-  rowIds: Float64Array, apply: (idsJson: string) => boolean | void, sliceRows = HEAVY_SLICE_ROWS,
+  rowIds: Float64Array, apply: (idsJson: string) => boolean | void,
+  opts: { rows?: number; checkpointed?: boolean } = {},
 ): Promise<void> {
-  const size = Math.max(1, Math.floor(sliceRows));
+  const size = Math.max(1, Math.floor(opts.rows ?? HEAVY_SLICE_ROWS));
   let i = 0;
-  await runInSlices(() => {
+  const step = (): boolean => {
     if (i >= rowIds.length) return false;
     const end = Math.min(rowIds.length, i + size);
     const keepGoing = apply(JSON.stringify(Array.from(rowIds.subarray(i, end))));
     i = end;
     return keepGoing !== false && i < rowIds.length;
-  });
+  };
+  if (rowIds.length > 0 && opts.checkpointed) await runInCheckpointedRowSlices(step);
+  else await runInSlices(step);
 }
