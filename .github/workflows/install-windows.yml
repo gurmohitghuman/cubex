@@ -4,9 +4,13 @@ name: Windows install
 # runner it left in the background (Node, never PowerShell), `cubex status` answering on /api/health, an update that
 # rebuilds and swaps, then an uninstall that leaves nothing behind. In Windows PowerShell like most PCs, and once in
 # PowerShell 7 with --no-service into an existing empty folder whose path has spaces, an apostrophe and accented
-# letters (plus the refusals: & in the path, and an elevated window for a background process). On pull requests and
-# pushes to main that touch the installer, the scripts or the dependencies; the Release workflow calls it for the
-# commit being released.
+# letters (plus the refusals: & in the path, and an elevated window for a background process). A second job installs
+# the latest release with that release's own installer, chooses a password and makes a sheet, then runs this commit's
+# installer over it as an update does: Cubex must run on this commit's Node, sign in with the password chosen before,
+# and read the sheet back unchanged. On pull requests and pushes to main that touch the installer, the scripts or the
+# dependencies; the Release workflow calls it for the commit being released.
+#
+# Over 200 lines: two jobs, step by step: the one-line install, and the Windows twin of install-unix.yml's update job.
 
 on:
   pull_request:
@@ -224,5 +228,264 @@ jobs:
         if: failure()
         run: |
           Get-ChildItem -LiteralPath "$env:CUBEX_TEST_HOME\logs" -ErrorAction Ignore | ForEach-Object {
+            "===== $($_.FullName)"; Get-Content -LiteralPath $_.FullName -Tail 80 -Encoding UTF8
+          }
+
+  update-from-release:
+    name: Update the latest release to this commit (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    env:
+      # The commit under test, as in the install job (a fork's, for a fork's pull request).
+      TEST_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      TEST_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+      # Where people install releases from: a fork's pull request also starts from this repository's latest release.
+      RELEASE_REPO: gurmohitghuman/cubex
+      TEST_URL: http://127.0.0.1:3002
+      TEST_PASSWORD: update-check-password
+      # Where Cubex runs as a plain background process, the installer refuses an elevated window unless this is set
+      # (the install job checks that refusal); a runner's window may be elevated.
+      CUBEX_ALLOW_ELEVATED: '1'
+      # What the steps that call Cubex's API share. Each step is a new PowerShell, so each loads it first:
+      # . ([scriptblock]::Create($env:TEST_API))
+      TEST_API: |
+        $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession # keeps the session cookie
+        # One request; an error status is an answer here, not an exception. A body goes as UTF-8 JSON.
+        function Send([string]$Method, [string]$Path, $Body = $null, [hashtable]$Headers = @{}) {
+          $call = @{ UseBasicParsing = $true; Method = $Method; Uri = "$env:TEST_URL$Path"; Headers = $Headers
+            WebSession = $web; TimeoutSec = 60 }
+          if ($null -ne $Body) {
+            $call.ContentType = 'application/json; charset=utf-8'
+            $call.Body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Body -Compress -Depth 10))
+          }
+          try { $res = Invoke-WebRequest @call; $status = [int]$res.StatusCode; $text = "$($res.Content)" }
+          catch {
+            if (-not $_.Exception.Response) { throw } # no answer at all
+            $status = [int]$_.Exception.Response.StatusCode
+            $text = "$($_.ErrorDetails.Message)"
+          }
+          $json = $null
+          if ($text) { try { $json = ConvertFrom-Json -InputObject $text } catch { } }
+          [pscustomobject]@{ Status = $status; Body = $text; Json = $json }
+        }
+        # The answer's JSON when it has the expected status; otherwise stop, saying what came back.
+        function Need($Answer, [int]$Status, [string]$What) {
+          Write-Host "$What -> $($Answer.Status)"
+          if ($Answer.Status -ne $Status) {
+            throw "$What answered $($Answer.Status), expected $Status. Body: $($Answer.Body)"
+          }
+          $Answer.Json
+        }
+        # A row as one line to compare: its id, its place and every column's value (as JSON, so "" is an empty cell).
+        function Format-Row($Id, $Index, $Data, [string[]]$Columns) {
+          $cells = foreach ($c in $Columns) { "$c=$(ConvertTo-Json -Compress -InputObject ([string]($Data.$c)))" }
+          "row $Id at ${Index}: $($cells -join ' ')"
+        }
+        # The sheet as the API token reads it: its name, row count and columns, then every row.
+        function Get-SheetLines([string]$SheetId, [hashtable]$Auth) {
+          $sheet = Need (Send GET "/api/v1/sheets/$SheetId" -Headers $Auth) 200 "GET /api/v1/sheets/$SheetId"
+          $page = Need (Send GET "/api/v1/sheets/$SheetId/rows?limit=100" -Headers $Auth) 200 `
+            "GET /api/v1/sheets/$SheetId/rows"
+          $columns = [string[]]@($sheet.columns)
+          "sheet '$($sheet.name)', $($sheet.row_count) rows, columns: $($columns -join ', ')"
+          foreach ($row in @($page.rows)) { Format-Row $row.id $row.index $row.data $columns }
+        }
+    steps:
+      - name: Find the latest release
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          "Commit under test: $env:TEST_REPO $env:TEST_REF"
+          # As install.ps1's Get-LatestRelease: github.com/<repo>/releases/latest redirects to the newest tag.
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+          $req = [Net.HttpWebRequest]::Create("https://github.com/$env:RELEASE_REPO/releases/latest")
+          $req.Method = 'HEAD'; $req.AllowAutoRedirect = $false; $req.UserAgent = 'cubex-ci'
+          $res = $req.GetResponse()
+          try { $location = $res.Headers['Location'] } finally { $res.Close() }
+          "github.com/$env:RELEASE_REPO/releases/latest -> $location"
+          if ($location -match '/releases/tag/([^/?#]+)$') { $tag = $Matches[1] }
+          else { throw "$env:RELEASE_REPO has no published release to update from." }
+          "Latest release: $tag"
+          # The Node major this commit's install.ps1 installs: its own $NodeMajor line, so it's written down once.
+          $installer = "https://raw.githubusercontent.com/$env:TEST_REPO/$env:TEST_REF/install.ps1"
+          $client = New-Object Net.WebClient
+          $client.Headers['User-Agent'] = 'cubex-ci'
+          $text = $client.DownloadString($installer)
+          if ($text -match '(?m)^\$NodeMajor = ([0-9]+)\s*$') { $major = $Matches[1] }
+          else { throw "No `$NodeMajor = <number> line in $installer." }
+          "This commit's install.ps1 installs Node $major."
+          [IO.File]::AppendAllText($env:GITHUB_ENV,
+            "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`nNODE_MAJOR=$major`n")
+
+      - name: Install the latest release with its own installer
+        run: |
+          $url = "https://raw.githubusercontent.com/$env:RELEASE_REPO/$env:RELEASE_TAG/install.ps1"
+          "Installing $env:RELEASE_TAG with $url"
+          $env:CUBEX_REPO = $env:RELEASE_REPO
+          $env:CUBEX_REF = $env:RELEASE_TAG
+          irm $url | iex
+          if ($LASTEXITCODE) { throw "The $env:RELEASE_TAG installer exited with $LASTEXITCODE." }
+          $home_ = $env:TEST_HOME
+          $version = Get-Content -LiteralPath "$home_\app\.cubex-version" -TotalCount 1
+          $node = & "$home_\node\node.exe" --version
+          $built = Get-Content -LiteralPath "$home_\app\.cubex-node" -TotalCount 1 -ErrorAction Ignore
+          "Installed: $version; node\node.exe --version: $node; app\.cubex-node: $built"
+          if ($version -notlike "$env:RELEASE_TAG *") { throw "Expected $env:RELEASE_TAG installed, found $version." }
+          & "$home_\bin\cubex.cmd" status --quiet
+          if ($LASTEXITCODE) { throw "$env:RELEASE_TAG is installed but not running." }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "RELEASE_NODE=$node`n")
+
+      - name: On the release, choose the password, sign in and make a sheet that must survive the update
+        run: |
+          . ([scriptblock]::Create($env:TEST_API))
+          if (Test-Path -LiteralPath "$env:TEST_HOME\app\node_modules\argon2") {
+            "$env:RELEASE_TAG hashes the password with the argon2 package."
+          }
+          $state = Need (Send GET /api/auth/status) 200 'GET /api/auth/status'
+          if (-not $state.setupRequired) { throw 'The new install should ask for a password, but it has one.' }
+          [void](Need (Send POST /api/auth/setup @{ password = $env:TEST_PASSWORD }) 200 'POST /api/auth/setup')
+          # A new session, like a browser coming back later: the password must let it in.
+          $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          [void](Need (Send POST /api/auth/login @{ password = $env:TEST_PASSWORD }) 200 'POST /api/auth/login')
+          $state = Need (Send GET /api/auth/status) 200 'GET /api/auth/status'
+          if (-not $state.authenticated) { throw 'Signed in, but the session cookie does not authenticate.' }
+          $made = Need (Send POST /api/settings/access-tokens @{ name = 'update check'; scopes = @('write') }) 201 `
+            'POST /api/settings/access-tokens (an API token with the write scope)'
+          "::add-mask::$($made.token)"
+          $auth = @{ Authorization = "Bearer $($made.token)" }
+          $table = Need (Send POST /api/v1/tables @{ name = 'Survives the update' } $auth) 201 'POST /api/v1/tables'
+          $sheetId = @($table.sheets)[0].id
+          $columns = 'Name', 'City', 'Note'
+          foreach ($name in $columns) {
+            [void](Need (Send POST "/api/v1/sheets/$sheetId/columns" @{ name = $name } $auth) 201 `
+              "POST /api/v1/sheets/$sheetId/columns ($name)")
+          }
+          $rows = @(
+            [ordered]@{ Name = 'Ada Lovelace'; City = 'London'; Note = 'first row' }
+            [ordered]@{ Name = 'Grace Hopper'; City = 'Arlington'; Note = "commas, `"quotes`" and a`nline break" }
+            [ordered]@{ Name = "Ren$([char]0xE9)e M$([char]0xFC)ller"; City = "Z$([char]0xFC)rich" } # Note left empty
+            [ordered]@{ Name = 'Alan Turing'; City = 'Wilmslow'; Note = '42' }
+          )
+          $entries = foreach ($row in $rows) { @{ data = $row } }
+          $added = @((Need (Send POST "/api/v1/sheets/$sheetId/rows" @{ rows = @($entries) } $auth) 201 `
+            "POST /api/v1/sheets/$sheetId/rows").rows)
+          if ($added.Count -ne $rows.Count) { throw "Added $($added.Count) rows, expected $($rows.Count)." }
+          # It reads back as sent; that reading is what the update must keep.
+          $expected = @("sheet '$(@($table.sheets)[0].name)', $($rows.Count) rows, columns: $($columns -join ', ')")
+          for ($i = 0; $i -lt $rows.Count; $i++) {
+            $expected += Format-Row $added[$i].id $added[$i].index $rows[$i] $columns
+          }
+          $lines = @(Get-SheetLines $sheetId $auth)
+          $lines | ForEach-Object { "  $_" }
+          if (($lines -join "`n") -cne ($expected -join "`n")) {
+            $expected | ForEach-Object { "  expected: $_" }
+            throw 'The sheet does not read back as it was written.'
+          }
+          $utf8 = New-Object Text.UTF8Encoding $false
+          [IO.File]::WriteAllLines("$env:RUNNER_TEMP\sheet-before.txt", [string[]]$lines, $utf8)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "TEST_SHEET=$sheetId`nTEST_TOKEN=$($made.token)`n")
+
+      - name: Update to this commit by running its installer over the release
+        run: |
+          $url = "https://raw.githubusercontent.com/$env:TEST_REPO/$env:TEST_REF/install.ps1"
+          "Updating $env:RELEASE_TAG to $env:TEST_REPO $env:TEST_REF with $url"
+          $env:CUBEX_REPO = $env:TEST_REPO
+          $env:CUBEX_REF = $env:TEST_REF
+          irm $url | iex
+          if ($LASTEXITCODE) { throw "This commit's installer exited with $LASTEXITCODE over $env:RELEASE_TAG." }
+          $version = Get-Content -LiteralPath "$env:TEST_HOME\app\.cubex-version" -TotalCount 1
+          "Installed now: $version"
+          if ($version -notlike "$env:TEST_REF *") { throw "Expected $env:TEST_REF installed, found $version." }
+
+      - name: Cubex runs on Node ${{ env.NODE_MAJOR }} now
+        run: |
+          $home_ = $env:TEST_HOME
+          $node = "$home_\node\node.exe"
+          $version = & $node --version
+          $file = Get-Content -LiteralPath "$home_\node\.version" -TotalCount 1
+          $built = "$(Get-Content -LiteralPath "$home_\app\.cubex-node" -TotalCount 1)".Trim()
+          "Before the update: $env:RELEASE_TAG on Node $env:RELEASE_NODE"
+          "Now: node\node.exe --version: $version; node\.version: $file; app\.cubex-node: $built"
+          if ($env:RELEASE_NODE -like "v$env:NODE_MAJOR.*") {
+            "$env:RELEASE_TAG already ran on Node $env:NODE_MAJOR, so this update kept Node's major version."
+          }
+          if ($version -notlike "v$env:NODE_MAJOR.*") { throw "Cubex's Node is $version, expected v$env:NODE_MAJOR." }
+          if ($built -ne $env:NODE_MAJOR) {
+            throw "app\.cubex-node says '$built': the app was built for another Node than v$env:NODE_MAJOR."
+          }
+          # The runner on cubex-run.mjs and the server it started, and any other node.exe from the Cubex folder.
+          $any = [StringComparison]::OrdinalIgnoreCase
+          $procs = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object {
+            "$($_.CommandLine)".IndexOf($home_, $any) -ge 0 -or "$($_.ExecutablePath)".StartsWith("$home_\", $any) })
+          foreach ($p in $procs) {
+            "$($p.ProcessId) (parent $($p.ParentProcessId)): $($p.CommandLine)"
+            if (-not [string]::Equals($p.ExecutablePath, $node, $any)) {
+              throw "Process $($p.ProcessId) runs '$($p.ExecutablePath)', not $node."
+            }
+          }
+          $runner = @($procs | Where-Object { $_.CommandLine -like '*cubex-run.mjs*' })
+          if ($runner.Count -ne 1) { throw "Expected one Node runner on cubex-run.mjs, found $($runner.Count)." }
+          $server = @($procs | Where-Object {
+            $_.ParentProcessId -eq $runner[0].ProcessId -and $_.CommandLine -like '*server\dist\index.js*' })
+          if ($server.Count -ne 1) { throw "Expected the runner's one server, found $($server.Count)." }
+          $running = & $server[0].ExecutablePath --version
+          if ($running -notlike "v$env:NODE_MAJOR.*") { throw "The server runs on Node $running." }
+          "The runner and the server run $node, Node $running."
+
+      - name: cubex status answers on /api/health
+        run: |
+          & "$env:TEST_HOME\bin\cubex.cmd" status
+          if ($LASTEXITCODE) { throw "cubex status exited with $LASTEXITCODE." }
+          & "$env:TEST_HOME\bin\cubex.cmd" status --quiet
+          if ($LASTEXITCODE) { throw 'cubex status --quiet says Cubex is not running.' }
+          $health = Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 "$env:TEST_URL/api/health"
+          "GET /api/health: $($health | ConvertTo-Json -Compress)"
+          if ($health.status -ne 'ok') { throw "Cubex answers, but isn't healthy." }
+
+      - name: Sign in with the password chosen before the update; a wrong one is refused
+        run: |
+          . ([scriptblock]::Create($env:TEST_API))
+          "The password was chosen on $env:RELEASE_TAG (Node $env:RELEASE_NODE)."
+          if (-not (Test-Path -LiteralPath "$env:TEST_HOME\app\node_modules\argon2")) {
+            'This build has no argon2 package: Node checks the password itself (crypto.argon2).'
+          }
+          [void](Need (Send POST /api/auth/login @{ password = $env:TEST_PASSWORD }) 200 'POST /api/auth/login')
+          $state = Need (Send GET /api/auth/status) 200 'GET /api/auth/status'
+          if (-not $state.authenticated) { throw 'Signed in, but the session cookie does not authenticate.' }
+          $tokens = @(Need (Send GET /api/settings/access-tokens) 200 'GET /api/settings/access-tokens (the session)')
+          if (-not ($tokens | Where-Object { $_.name -eq 'update check' })) {
+            throw 'The API token made before the update is not listed.'
+          }
+          # Without the session cookie, the same request is refused, and so is a wrong password.
+          $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          $none = Send GET /api/settings/access-tokens
+          "GET /api/settings/access-tokens without the session -> $($none.Status)"
+          if ($none.Status -ne 401) { throw "Expected 401 without the session, got $($none.Status)." }
+          $wrong = Send POST /api/auth/login @{ password = "$env:TEST_PASSWORD-wrong" }
+          "POST /api/auth/login with a wrong password -> $($wrong.Status)"
+          if ($wrong.Status -ne 401) { throw "A wrong password should get 401, got $($wrong.Status): $($wrong.Body)" }
+
+      - name: The sheet, its rows and the API token survived the update
+        run: |
+          . ([scriptblock]::Create($env:TEST_API))
+          $before = [IO.File]::ReadAllLines("$env:RUNNER_TEMP\sheet-before.txt")
+          # Read with the API token made before the update.
+          $after = @(Get-SheetLines $env:TEST_SHEET @{ Authorization = "Bearer $env:TEST_TOKEN" })
+          'Before the update:'; $before | ForEach-Object { "  $_" }
+          'After the update:'; $after | ForEach-Object { "  $_" }
+          if (($after -join "`n") -cne ($before -join "`n")) { throw 'The sheet reads back differently (see above).' }
+
+      - name: Uninstall
+        run: |
+          'delete' | & "$env:TEST_HOME\bin\cubex.cmd" uninstall --delete-data
+          if ($LASTEXITCODE) { throw "cubex uninstall exited with $LASTEXITCODE." }
+          if (Test-Path -LiteralPath $env:TEST_HOME) { throw 'The Cubex folder is still there.' }
+
+      - name: Show the logs
+        if: failure()
+        run: |
+          Get-ChildItem -LiteralPath "$env:TEST_HOME\logs" -ErrorAction Ignore | ForEach-Object {
             "===== $($_.FullName)"; Get-Content -LiteralPath $_.FullName -Tail 80 -Encoding UTF8
           }

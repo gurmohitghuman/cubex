@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- Stage 1: builder ---------------------------------------------------
-# Debian image with a build toolchain so native modules (better-sqlite3,
-# argon2) compile cleanly. Only the build output is carried into the runtime
-# stage. Node 22.6+ is required (Sidequest, the background-job queue).
-FROM node:22-bookworm-slim AS builder
+# Debian image with a build toolchain so a native module (better-sqlite3)
+# compiles cleanly when no ready-made build fits. Only the build output is
+# carried into the runtime stage. Node 24.7+ is required (passwords hash with
+# Node's own crypto.argon2).
+FROM node:24-bookworm-slim AS builder
 
 # Build dependencies for native node modules. python3 is needed by node-gyp.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,7 +38,7 @@ RUN npm prune --omit=dev --legacy-peer-deps
 
 
 # ---- Stage 2: runtime ---------------------------------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 # tini forwards signals to Node (graceful shutdown: PRAGMA optimize, queue
 # drain) and reaps zombies. curl backs the HEALTHCHECK below.

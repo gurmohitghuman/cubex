@@ -4,7 +4,7 @@ Thanks for helping. Bug reports and ideas are welcome as GitHub issues. For anyt
 
 ## Development
 
-Needs Node.js 22.6 or newer. Everything below works the same on Windows, macOS and Linux.
+Needs Node.js 24.7 or newer. Everything below works the same on Windows, macOS and Linux.
 
 ```bash
 npm install

@@ -51,8 +51,9 @@ function Invoke-Rollback([string[]]$Rest) {
     Select-Object -First 1
   if (-not $builtFor) { $builtFor = '22' }
   if ($builtFor.Trim() -ne $nodeMajor.Trim()) {
-    Die ("Cubex $prev was built for Node $builtFor, and Node $nodeMajor is installed now. " +
-      'Install that version again instead.')
+    Die ("Cubex $prev was built for Node $builtFor, and Node $nodeMajor is installed now. Install that version " +
+      'again instead: & ([scriptblock]::Create((irm https://raw.githubusercontent.com/gurmohitghuman/cubex/main/' +
+      'install.ps1))) --ref <its tag>')
   }
   Say "This puts back Cubex $prev and your data as it was at $($info.at), before the update. Everything changed since"
   Say 'then goes: rows, runs and settings, and sign-in too (a password changed or a token revoked since comes back).'

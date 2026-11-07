@@ -38,6 +38,13 @@ async function main(): Promise<void> {
     console.error('Run this in an interactive terminal (with Docker: docker compose exec cubex npm run reset-password).');
     process.exit(1);
   }
+  // Before anything opens the database: a Node that can't hash passwords changes nothing.
+  const { hashPassword, newPasswordError, passwordHashingUnavailable } = await import('../lib/password');
+  const unusable = passwordHashingUnavailable();
+  if (unusable) {
+    console.error(unusable);
+    process.exit(1);
+  }
   const { DB_PATH } = await import('../lib/db-path');
   // Check before opening: opening a missing database would create an empty one.
   if (!fs.existsSync(DB_PATH)) {
@@ -45,7 +52,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const { db } = await import('../lib/db');
-  const { hashPassword, newPasswordError } = await import('../lib/password');
 
   const user = db.prepare('SELECT id FROM users LIMIT 1').get() as { id: string } | undefined;
   if (!user) {
