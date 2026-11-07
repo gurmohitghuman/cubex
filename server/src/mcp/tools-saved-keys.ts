@@ -3,7 +3,7 @@
 // The 'read' scope is enough: a value never leaves Settings, and using a key
 // in a new request still needs 'secrets'.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { listSavedKeys } from '../services/saved-key-uses';
 import { SAVED_KEY_USES_BRIEF, SAVED_KEY_USES_LISTED, SAVED_KEYS_LISTED } from '../lib/api-v1-constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';

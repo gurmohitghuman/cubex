@@ -1,7 +1,7 @@
 // get_balances: the treg balance, the enrichment daily limit and what
 // OpenRouter reports for the saved key, without starting or estimating
 // anything (services/balances.ts; GET /v1/balances is the same read).
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { readBalances } from '../services/balances';
 import { McpAuthCtx, ok, missingScope, registerTool } from './tool-helpers';
 

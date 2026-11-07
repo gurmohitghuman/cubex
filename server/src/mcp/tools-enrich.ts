@@ -3,7 +3,7 @@
 // the same implementations GET /api/v1/enrichments and POST /api/v1/sheets/
 // :id/enrichment-runs use. The scope check stays the first statement.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import {
   ENRICH_DEFAULT_CONCURRENCY, ENRICH_LIST_MAX_ITEMS, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY,
 } from '../lib/constants';

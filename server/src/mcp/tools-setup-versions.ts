@@ -3,7 +3,7 @@
 // and the app's sheet menu do the same). list_setup_versions,
 // manage_setup_version (save, rename, delete), restore_setup_version.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_SETUP_VERSIONS_PER_SHEET } from '../lib/constants-setups';
 import {
   deleteSetupVersion, listSetupVersions, saveSetupVersion, updateSetupVersion,

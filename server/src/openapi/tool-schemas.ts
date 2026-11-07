@@ -3,7 +3,7 @@
 // keeps what registerTool was given (mcp/build-server.ts registerAllTools), so
 // no tool file needs to export its schema.
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { registerAllTools } from '../mcp/build-server';
 
 type Shape = Record<string, z.ZodType>;

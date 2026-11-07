@@ -5,7 +5,7 @@
 //   list_runs  — runs were fetchable only BY ID, so after a failed or
 //                interrupted start the run id was gone with no way back to it.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { buildSheetCsv } from '../lib/csv-export';
 import { listRuns, RUN_LIST_MAX, RUN_LIST_DEFAULT } from '../services/run-list';

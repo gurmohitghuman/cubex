@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import {
   createRunWebhook, deleteRunWebhook, getRunWebhook, listRunWebhooks, newRunWebhookSecret, runWebhookDeliveries,
   testRunWebhook, updateRunWebhook, type HookFail,

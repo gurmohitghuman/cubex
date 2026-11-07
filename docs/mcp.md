@@ -66,6 +66,31 @@ codex mcp add cubex --url http://localhost:3002/mcp --bearer-token-env-var CUBEX
 
 Any other client that speaks MCP over Streamable HTTP works the same way: point it at `<your Cubex address>/mcp` and send `Authorization: Bearer <token>`.
 
+## Protocol versions
+
+Cubex speaks MCP [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28), the current revision, and the earlier ones most clients still use: 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05 and 2024-10-07. How a client opens picks the version:
+
+- **2026-07-28** has no handshake. Each request names its version and the client's capabilities in `_meta`, and sends the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers. A client may call `server/discover` first: it answers the versions Cubex takes this way (`2026-07-28`), its capabilities (tools only), its instructions, and its name and version (`cubex`, `1.0.0`) in `_meta`.
+- **2025-11-25 and earlier** open with `initialize`, as before.
+
+Every request needs the token, `server/discover` and `initialize` too. Cubex keeps no session between requests, and each answer is one JSON body.
+
+On 2026-07-28:
+
+- Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`).
+- `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when its tools change (they change only with a new version of Cubex), so a client sees new tools within 5 minutes.
+- `tools/list` gives every tool at once, in the same order every time. Every token sees every tool: one its scopes don't allow refuses with a message that names the scope.
+- Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true`, such as `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
+- Errors: a version Cubex doesn't speak gets HTTP 400 with code `-32022` and the versions it does in `data.supported`. Headers that are missing or disagree with the body get 400 with `-32020` (an `Mcp-Name` sent as `=?base64?...?=` is decoded first). A `_meta` without `clientCapabilities` gets 400 with `-32602`. A method Cubex doesn't offer gets 404 with `-32601`.
+
+Not offered:
+
+- Resources, prompts and completions: Cubex has tools only.
+- Change notices. A `subscriptions/listen` is acknowledged with nothing and closed at once.
+- Progress and log messages, sessions (an `Mcp-Session-Id` header is ignored) and streams to resume. `GET` and `DELETE` on `/mcp` answer 405.
+- Anything on the spec's [deprecated list](https://modelcontextprotocol.io/specification/2026-07-28/deprecated): roots, sampling, logging, dynamic client registration and the old HTTP+SSE transport.
+- OAuth sign-in: Cubex uses its own access tokens.
+
 ## Things to ask for
 
 - "Import `leads.csv` into a new table called Leads."
@@ -273,7 +298,7 @@ answers
 - `group_by`, `aggregates` and `return_mode` `ids` or `count` return no cells, so they refuse it, naming it with the other options to leave out. A group's value is already cut to 200 characters.
 - Anything but a whole number from 1 to 200,000 is refused, and without `max_chars_per_cell` nothing is cut. On both surfaces, digits sent as text count as the number: `"200"` is 200, and so is `" 200 "` (whitespace around the digits is ignored). Any other text, such as `"1.5"`, `"1e3"`, `"0x10"` or `"-3"`, is refused.
   - REST answers 400 with `{"error": "max_chars_per_cell must be an integer from 1 to 200000."}`.
-  - Over MCP the tool's schema says it: an integer, minimum 1, maximum 200,000. A value refused comes back as an error result (`isError: true`) whose text holds `max_chars_per_cell must be an integer from 1 to 200000.`.
+  - Over MCP the tool's schema says it: an integer, minimum 1, maximum 200,000. A value refused comes back as an error result (`isError: true`) whose text is `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
 
 ## Column details
 

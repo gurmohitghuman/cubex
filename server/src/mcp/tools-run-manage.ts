@@ -5,7 +5,7 @@
 // start-rate window, since a rerun spends external calls like a fresh start).
 // get_run_status lives in tools-run-status.ts.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';

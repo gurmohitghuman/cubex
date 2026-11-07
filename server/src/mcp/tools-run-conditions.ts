@@ -3,7 +3,7 @@
 // services/run-condition-ai.ts, as the drawers and /api/v1 use. The scope
 // check stays the first statement.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { RULE_WORDS_MAX_CHARS } from '../lib/constants-ai';
 import { checkRuleOnSheet, generateRule } from '../services/run-condition-ai';

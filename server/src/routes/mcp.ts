@@ -1,20 +1,23 @@
-// /mcp — Cubex's MCP server over Streamable HTTP (docs/mcp.md).
-// STATELESS transport: every POST is independently authenticated by the PAT
-// Bearer header (same middleware as /api/v1), a fresh McpServer + transport
-// pair is built per request (tool handlers close over the caller's identity),
-// and there is no Mcp-Session-Id lifecycle — so GET (SSE stream) and DELETE
-// (session teardown) are 405s. enableJsonResponse makes tool responses plain
-// JSON rather than SSE, which passes through reverse proxies without buffering concerns.
+// /mcp: Cubex's MCP server over Streamable HTTP (docs/mcp.md). It speaks
+// 2026-07-28 to clients that send its per-request _meta, and the 2025 revisions
+// to clients that open with initialize (mcp/http-entry.ts picks the era).
+// STATELESS: every POST is independently authenticated by the PAT Bearer header
+// (same middleware as /api/v1), a fresh McpServer is built per request (tool
+// handlers close over the caller's identity), and there is no Mcp-Session-Id
+// lifecycle, so GET (a stream) and DELETE (session teardown) are 405s.
+// Answers are plain JSON, which passes through reverse proxies without
+// buffering concerns.
 //
 // Order is load-bearing (same as /api/v1): the global 32MB parsers SKIP /mcp
 // (applyServerMiddleware) → Origin guard (spec-mandated DNS-rebinding defense,
 // pre-body) → Bearer auth → per-token limiter → tight JSON parser → transport.
 import express from 'express';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
-import { buildMcpServer } from '../mcp/build-server';
+import { authInfoFor, serveMcp } from '../mcp/http-entry';
+import type { McpAuthCtx } from '../mcp/tool-helpers';
 import { linkBase } from '../lib/file-links';
 import { runAs } from '../lib/actor';
 import { readTokenSpend } from '../services/token-spend';
@@ -55,11 +58,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   });
 });
 
-router.post('/', async (req: TokenAuthRequest, res) => {
+router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
   const abortController = new AbortController();
   res.on('close', () => abortController.abort());
   try {
-    const server = buildMcpServer({
+    const ctx: McpAuthCtx = {
       userId: req.userId!,
       tokenId: req.accessTokenId!,
       scopes: req.tokenScopes!,
@@ -67,16 +70,11 @@ router.post('/', async (req: TokenAuthRequest, res) => {
       abortSignal: abortController.signal,
       linkBase: linkBase(req),
       spend: readTokenSpend(req.userId!, req.accessTokenId!)?.view ?? null,
-    });
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // stateless — the Bearer token is the identity
-      enableJsonResponse: true,
-    });
-    res.on('close', () => { void transport.close(); void server.close(); });
-    await server.connect(transport);
+    };
+    req.auth = authInfoFor(ctx);
     // What the tools change is done by this token over MCP (lib/actor.ts).
     await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null, tokenId: req.accessTokenId ?? null },
-      () => transport.handleRequest(req, res, req.body));
+      () => serveMcp(req, res, req.body));
   } catch (error) {
     console.error('MCP request error:', error);
     if (!res.headersSent) {
@@ -85,7 +83,7 @@ router.post('/', async (req: TokenAuthRequest, res) => {
   }
 });
 
-// Stateless mode has no server-push stream to GET and no session to DELETE.
+// No server-push stream to GET (2026-07-28 has none either) and no session to DELETE.
 const methodNotAllowed = (_req: express.Request, res: express.Response) =>
   res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
 router.get('/', methodNotAllowed);

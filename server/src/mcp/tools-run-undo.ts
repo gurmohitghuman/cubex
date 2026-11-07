@@ -3,7 +3,7 @@
 // app's column menu do the same). It writes cells, so it needs 'write'; it
 // calls nothing outside Cubex and bills nothing.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { UNDO_KEEP_DAYS } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { undoRun } from '../services/run-undo';

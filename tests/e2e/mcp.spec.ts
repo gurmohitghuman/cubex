@@ -146,3 +146,38 @@ test('MCP origin guard: a foreign browser Origin is rejected pre-auth', async ()
   })
   expect(res.status()).toBe(403)
 })
+
+// Clients on 2025-11-25, like this v1 client, open with initialize: Cubex
+// answers them as before, statelessly, one JSON body a request. The 2026-07-28
+// revision is mcp-protocol.spec.ts, on the v2 client.
+test('MCP 2025-11-25: the initialize handshake, and plain JSON answers with no session', async () => {
+  const api = await authedApi()
+  const token = await makeToken(api, ['read'], 'e2e mcp legacy')
+  const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+  })
+  const client = new Client({ name: 'e2e-legacy', version: '1.0.0' })
+  await client.connect(transport)
+  expect([transport.protocolVersion, transport.sessionId]).toEqual(['2025-11-25', undefined])
+  expect(client.getServerVersion()).toEqual({ name: 'cubex', version: '1.0.0' })
+  expect(client.getServerCapabilities()).toEqual({ tools: { listChanged: false } })
+  expect(client.getInstructions()).toMatch(/^Cubex is a spreadsheet workspace\./)
+  await client.close()
+
+  // The same as raw POSTs: no session id, and none of 2026-07-28's fields.
+  const post = (body: Record<string, unknown>, headers: Record<string, string> = {}) => fetch(`${BASE}/mcp`, {
+    method: 'POST', body: JSON.stringify(body),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream', ...headers },
+  })
+  const init = await post({ jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'e2e-raw', version: '1' } } })
+  expect([init.status, init.headers.get('content-type'), init.headers.get('mcp-session-id')])
+    .toEqual([200, 'application/json', null])
+  const { result } = await init.json()
+  expect(Object.keys(result).sort()).toEqual(['capabilities', 'instructions', 'protocolVersion', 'serverInfo'])
+  expect(result.protocolVersion).toBe('2025-11-25')
+  const list = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { 'MCP-Protocol-Version': '2025-11-25' })
+  expect([list.status, list.headers.get('content-type')]).toEqual([200, 'application/json'])
+  expect(Object.keys((await list.json()).result)).toEqual(['tools'])
+})

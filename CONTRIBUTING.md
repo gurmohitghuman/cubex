@@ -26,6 +26,10 @@ Stack: Express and SQLite (better-sqlite3) on the server, React, Vite and AG Gri
 
 - Run `npm run typecheck` and `npm run test:unit`, plus the end-to-end specs for the area you changed.
 - Keep each pull request to one change, and say in plain words what it lets someone do.
+- A change to the MCP server (`/mcp`, `server/src/mcp/`) follows the current revision of the spec at
+  [modelcontextprotocol.io](https://modelcontextprotocol.io/specification) and uses nothing on that revision's
+  Deprecated list. The pull request names the revision, and says how each MUST and SHOULD it touches is met (or
+  why it doesn't apply).
 
 ## Contributor agreement
 

@@ -93,3 +93,10 @@ export const IDEMPOTENT_WRITE_PRUNE_APPENDS = 25;
 export const SAVED_KEYS_LISTED = 20;
 export const SAVED_KEY_USES_BRIEF = 10;
 export const SAVED_KEY_USES_LISTED = 50;
+
+// How long an MCP client may keep server/discover and tools/list (2026-07-28
+// ttlMs) before asking again. Cubex sends no list-changed notices, so this is
+// the only freshness signal: a new version's tools show within five minutes.
+// Both answers name the token's spend cap, so they are private to the token
+// (mcp/build-server.ts).
+export const MCP_LIST_CACHE_TTL_MS = 5 * 60 * 1000;

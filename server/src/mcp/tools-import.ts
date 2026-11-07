@@ -4,7 +4,7 @@
 // upload link instead (mcp/tools-links.ts), straight from the agent's disk.
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { scanCsvText, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { importSummary } from '../services/csv-upload';

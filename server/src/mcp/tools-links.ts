@@ -6,7 +6,7 @@
 // write to import (as import_csv), read to export (as export_csv).
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { planSheetExport } from '../lib/csv-export';
 import { createFileLink, fileLinkUrl } from '../lib/file-links';
 import { tooManyMessage } from '../lib/rate-window';
