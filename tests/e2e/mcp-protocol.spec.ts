@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import type { Client } from '@modelcontextprotocol/client'
 import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
+import { modernMcpClient as modernClient } from './helpers-mcp'
 
 // /mcp on the 2026-07-28 revision, against the built server: the v2 client
 // pinned to it, and raw POSTs for what that client keeps to itself (resultType,
@@ -16,14 +17,6 @@ const META = { 'io.modelcontextprotocol/protocolVersion': MODERN,
 const EVERY = [MODERN, '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07']
 const BOUNDS = 'max_chars_per_cell must be an integer from 1 to 200000.'
 const WRITE_REFUSED = { error: "This action requires the 'write' scope on your Cubex access token." }
-
-async function modernClient(token: string): Promise<Client> {
-  const client = new Client({ name: 'e2e-modern', version: '1.0.0' }, { versionNegotiation: { mode: { pin: MODERN } } })
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
-  }))
-  return client
-}
 
 const textOf = (res: { content?: unknown }) => (res.content as Array<{ text: string }>)[0].text
 

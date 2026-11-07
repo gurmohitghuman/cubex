@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { authedApi, seedSheet, getSheet, makeAccessToken, BASE } from './helpers'
-import { mcpClient, call, callError } from './helpers-mcp'
+import { mcpClient, modernMcpClient, call, callError } from './helpers-mcp'
+import { seedCsv } from './helpers-enrich'
 
 // get_sheet's column details and descriptions, over MCP, REST and in the app:
 // each column's kind, what fills it and what it reads, counts on request; a
@@ -54,6 +55,23 @@ test('MCP: column_details, counts and descriptions', async () => {
   expect((await call(reader, 'get_sheet', { sheet_id: sheetId })).description).toBe('Seeded rows')
   expect(await callError(reader, 'set_description', { sheet_id: sheetId, description: 'x' })).toContain('write')
   await reader.close()
+})
+
+// Counting walks the sheet in slices of 4,000 rows (FILTER_SLICE_ROWS) and asks
+// between slices whether the caller went away: a sheet of 4,001 rows takes two,
+// read by a client of each protocol era.
+test('MCP: counts past the first 4,000 rows, on 2026-07-28 and on initialize', async () => {
+  const api = await authedApi()
+  const ROWS = 4_001
+  const { sheetId } = await seedCsv(api, ['val', ...Array.from({ length: ROWS }, (_, i) => `v${i}`)].join('\n'))
+  const token = await makeAccessToken(api, ['read'], 'e2e details big')
+  for (const client of [await modernMcpClient(token), await mcpClient(token)]) {
+    const meta = await call(client, 'get_sheet', { sheet_id: sheetId, include_counts: true })
+    expect(meta.row_count).toBe(ROWS)
+    expect(meta.column_details).toEqual([{ name: 'val', kind: 'plain',
+      counts: { filled: ROWS, empty: 0, errors: 0 } }])
+    await client.close()
+  }
 })
 
 test('REST: GET /sheets/:id details and counts; PATCH and POST take descriptions', async () => {

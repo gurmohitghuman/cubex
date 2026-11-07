@@ -65,12 +65,12 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets)'),
       },
     },
-    async ({ sheet_id, columns, include_counts }, extra) => {
+    async ({ sheet_id, columns, include_counts }, mcp) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
-      // Counting stops when the client cancels or goes away.
-      const read = await readSheetDetails(sheet_id, ctx.userId,
-        { columns, counts: include_counts === true, stop: () => extra.signal.aborted });
+      // Counting stops on a cancel or a hang-up (an initialize-era client's hang-up aborts only ctx.abortSignal).
+      const read = await readSheetDetails(sheet_id, ctx.userId, { columns, counts: include_counts === true,
+        stop: () => mcp.mcpReq.signal.aborted || ctx.abortSignal?.aborted === true });
       if (!read) return err('Sheet not found');
       if ('error' in read) return err(read.error);
       const meta = read.ok;
