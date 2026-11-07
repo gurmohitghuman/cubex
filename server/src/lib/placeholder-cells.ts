@@ -3,53 +3,75 @@ import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
+import { clearBackFor, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, markDerivedInputs } from './autorun-mark';
-import { PLACEHOLDER_CLEAR_QUEUE_ROWS } from './constants';
+import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS, PLACEHOLDER_CLEAR_QUEUE_ROWS } from './constants';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
-// cleared from whatever is left when a run is cancelled or fails. On a sheet of
-// a million rows both are heavy, so they work HEAVY_SLICE_ROWS rows at a time,
-// one short transaction each (lib/slices.ts): the server keeps answering, and
-// SQLite's write lock is free between slices for autosave, webhooks and workers.
+// cleared from whatever is left when a run is cancelled or fails (each such
+// cell back to what it held before the run). On a sheet of a million rows both
+// are heavy, so they work HEAVY_SLICE_ROWS rows at a time, one short
+// transaction each (lib/slices.ts): the server keeps answering, and SQLite's
+// write lock is free between slices for autosave, webhooks and workers.
 export { PLACEHOLDER };
 
 // Clear the placeholder from `columnNames` wherever a row still holds exactly
-// it: that cell becomes '', every other cell keeps its value, and json_replace
-// never creates a key, so a row without one of the columns stays without it.
-// Real results written just before a cancel are left untouched. Rows go in
-// storage order (lib/row-order.ts); `afterSlice` runs after each slice (a
-// progress heartbeat). Open grids reload when it's done (data_version).
-// The answer the placeholder covered is gone, so clean, formula and lookup
-// columns reading these columns work the cleared rows out again: queued in the
-// slice's transaction, by the rowids it changed (rows holding a real result
-// aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts). Queuing
-// tells them at once in the API process (lib/autorun-kick.ts); a run worker's
-// clear (a failed run) waits for the auto-run sweep, as its other writes do.
+// it. With `run` (the run that just ended early), such a cell is at a row the
+// run never reached and gets back the value the run's undo journal kept for it
+// from before the run, with its type (lib/run-undo/clear-back.ts); with
+// nothing kept there, or without `run`, it becomes ''. Every other cell keeps
+// its value, so results the run wrote before it ended stay, and json_replace
+// never creates a key: a row without one of the columns stays without it.
+// Rows go in storage order (lib/row-order.ts); `afterSlice` runs after each
+// slice (a progress heartbeat). Open grids reload when it's done (data_version).
+// A clean, formula or lookup column reading these columns holds what it
+// worked out from the cell before the run, or from the ⏳ (read as empty) if
+// the row changed meanwhile, so it works the rows the clear changed out again:
+// queued in the slice's transaction, by the rowids it changed (rows holding a
+// real result aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts).
+// Queuing tells them at once in the API process (lib/autorun-kick.ts); a run
+// worker's clear (a failed run) waits for the auto-run sweep, as its other
+// writes do.
 // That queuing is most of a slice's work: on rows with random ids, each queued
 // row writes a page of its own. So with R columns reading these (counted once
 // up front), a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
 // least one), commits with SQLite's own checkpoint off and is checkpointed in
 // a turn of its own (runInCheckpointedRowSlices, lib/slices.ts; the numbers
 // are in lib/constants.ts). With none, a slice is HEAVY_SLICE_ROWS rows and
-// runs no checkpoint, as for every other heavy job.
+// runs no checkpoint, as for every other heavy job. Putting K columns back
+// costs a journal lookup per cell, so a slice also holds at most
+// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows.
 export async function clearProcessingPlaceholders(
-  sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void,
+  sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void, run?: RunRef,
 ): Promise<void> {
   if (columnNames.length === 0) return;
   const paths = columnNames.map(jsonPath);
-  const keepOrClear = `?, CASE WHEN json_extract(data, ?) = '${PLACEHOLDER}' THEN '' ELSE json_extract(data, ?) END`;
+  const back = run ? clearBackFor(run, userId, columnNames) : null;
+  // Per column: its path, then its new value: where it holds ⏳, what was kept
+  // there (one lookup by the journal's primary key) or ''; else itself.
+  const sets = paths.map((p, i) => {
+    const slot = back?.slots[i] ?? null;
+    const value = slot === null ? { sql: "''", args: [] }
+      : { sql: `COALESCE(${KEPT_VALUE_SQL}, '')`, args: [back!.undoId, slot] };
+    return {
+      sql: `?, CASE WHEN json_extract(data, ?) = '${PLACEHOLDER}' THEN ${value.sql} ELSE json_extract(data, ?) END`,
+      args: [p, p, ...value.args, p],
+    };
+  });
   const clear = db.prepare(
-    'UPDATE rows SET data = json_replace(data, ' + paths.map(() => keepOrClear).join(', ') + ')' +
+    'UPDATE rows SET data = json_replace(data, ' + sets.map(s => s.sql).join(', ') + ')' +
     ", updated_at = datetime('now')" +
     ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND (' +
     paths.map(() => `json_extract(data, ?) = '${PLACEHOLDER}'`).join(' OR ') + ') RETURNING rowid',
   ).pluck();
-  const setArgs = paths.flatMap(p => [p, p, p]);
+  const setArgs = sets.flatMap(s => s.args);
   const rowIds = await sheetRowIds(sheetId, userId);
   const readers = derivedReaderCount(sheetId, userId, columnNames);
-  const slicing = readers === 0 ? {}
-    : { rows: Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))), checkpointed: true };
+  const restoring = back ? back.slots.filter(s => s !== null).length : 0;
+  const rows = Math.min(HEAVY_SLICE_ROWS, readers === 0 ? Infinity : PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers),
+    restoring === 0 ? Infinity : PLACEHOLDER_CLEAR_BACK_ROWS / (1 + restoring));
+  const slicing = { rows: Math.max(1, Math.floor(rows)), checkpointed: readers > 0 };
   await eachRowIdSlice(rowIds, ids => {
     // The clear and its queuing commit together, the write lock taken up front.
     db.transaction(() => {

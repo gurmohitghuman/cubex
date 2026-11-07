@@ -90,9 +90,10 @@ export async function stopAutorunRun(
 // A run that failed (finalize found rows it couldn't process, or the worker
 // threw): its auto-run pauses rather than try the same thing every sweep. An
 // enrichment's unfinished rows wait in the queue for when it is resumed (their
-// treg keys replay a paid answer for free). An HTTP column's are left empty:
-// one may have sent its request already, and sending it again could add a
-// lead twice. Call before the run's ⏳ cells are cleared.
+// treg keys replay a paid answer for free). An HTTP column's aren't queued
+// again: their ⏳ cells go back to what they held before the run, and one may
+// have sent its request already, so sending it again could add a lead twice.
+// Call before the run's ⏳ cells are cleared.
 export function autorunRunFailed(
   run: Pick<HTTPRunRow, 'autorun_id' | 'sheet_id' | 'user_id' | 'master_column_name' | 'target_rows'>,
   reason: string,
@@ -103,8 +104,8 @@ export function autorunRunFailed(
     const targets = parseTargetRows(run.target_rows);
     requeueUnfinished(run.autorun_id, run.sheet_id, run.user_id, run.master_column_name, targets);
   }
-  const left = http ? " Rows it didn't finish are left empty: some may have sent their request, so run them by "
-    + 'hand only if needed.' : '';
+  const left = http ? " Rows it didn't finish are back to what they held before; some may have sent their "
+    + 'request, so run them by hand only if needed.' : '';
   const why = reason.trim().replace(/[.!?]?$/, '.');
   pauseEntry(run.autorun_id, 'failed', `The last auto-run failed: ${why}${left}`);
   bumpDataVersion(run.sheet_id, run.user_id);

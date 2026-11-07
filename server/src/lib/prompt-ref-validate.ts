@@ -13,7 +13,8 @@ import { extractColumnReferences, findUnknownColumnReferences, normalizeColumnNa
 import { getLockedRunColumns } from './run-locked-columns';
 
 // Returns the user-facing error when the prompt references columns that don't
-// exist on the sheet or that an active run is still filling, or null when every
+// exist on the sheet or that a run is still filling (or, stopped, still putting
+// its ⏳ cells back to what they held before it), or null when every
 // reference resolves to a finished column. Deliberately NO
 // allowance for the run's own not-yet-created "(Output)"/"(Data)" columns: if
 // they exist from a prior run, getSheetColumns already includes them; if they
@@ -30,7 +31,8 @@ export function unknownPromptRefsError(
   if (unknown.length > 0) return unknownRefsMessage(unknown);
   // A column another run is still filling holds "⏳ Processing..." on the rows
   // it hasn't reached; reading it fed (and billed) the model that placeholder.
-  const locked = getLockedRunColumns(sheetId, userId);
+  // A stopped or failed run's ⏳ cells stay until its clear reaches them.
+  const locked = getLockedRunColumns(sheetId, userId, { clearing: true });
   if (locked.size === 0) return null;
   for (const ref of extractColumnReferences(prompt)) {
     const col = columns.find(c => normalizeColumnName(c) === ref || c.toLowerCase() === ref.toLowerCase());

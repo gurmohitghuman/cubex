@@ -40,7 +40,7 @@ function headline(s: EnrichRunStatus): string {
     return s.totalRows === 0
       ? 'No rows could run: they are missing an input.' : `Ran ${s.toolName} on ${plural(s.totalRows, 'row')}.`
   }
-  if (s.status === 'cancelled') return "The run was stopped. Rows it hadn't reached were left empty."
+  if (s.status === 'cancelled') return "The run was stopped. Rows it hadn't reached kept what they held before."
   if (s.status === 'failed') return `The run stopped: ${s.message ?? 'something went wrong.'}`
   if (s.status === 'paused') return `Paused after ${plural(s.processedRows, 'row')} of ${s.totalRows.toLocaleString()}.`
   return `Running ${s.toolName} on ${plural(s.totalRows, 'row')}…`

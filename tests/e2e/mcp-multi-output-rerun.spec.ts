@@ -5,8 +5,10 @@ import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 
 // control_run rerun on a structured (output_columns) run: a NEW run refills the
 // same typed columns on the chosen rows, and the modes read the "(Status)"
-// column. No OpenRouter key here, so each run fails as a whole and clears its
-// placeholders: the status cells end blank, which is what "empty" picks up.
+// column. No OpenRouter key here, so each run fails as a whole before reaching
+// a row and its cells get back what they held before it: the first run's
+// status cells end blank, which is what "empty" picks up, and a ❌ a rerun
+// started from comes back.
 
 const OUTPUT_COLUMNS = [
   { column_name: 'Fit', type: 'number', description: '1 to 10' },
@@ -69,6 +71,7 @@ test('control_run reruns a structured run into the same columns', async () => {
   const errored = parseResult(await rerun(started.run_id, { mode: 'errored', concurrency: 3 }))
   expect(errored.run_id).not.toBe(started.run_id)
   const erroredStatus = await settle(errored.run_id)
+  expect((await rows()).map(r => r.data['Score (Status)'] ?? '')).toEqual(['', '❌ Error: test', ''])
   expect(erroredStatus.concurrency).toBe(3)
   expect(erroredStatus.column_name).toBe('Score (Status)')
   expect(erroredStatus.output_columns).toEqual(['Fit', 'Why'])
@@ -79,10 +82,10 @@ test('control_run reruns a structured run into the same columns', async () => {
   expect(stale.isError).toBeTruthy()
   expect(JSON.stringify(stale.content)).toContain(errored.run_id)
 
-  // "empty" picks every blank status cell; row_ids exactly the rows named.
+  // "empty" picks every blank status cell (not the ❌ one); row_ids exactly the rows named.
   const empty = parseResult(await rerun(errored.run_id, { mode: 'empty' }))
   const emptyStatus = await settle(empty.run_id)
-  expect(emptyStatus.target_row_count).toBe(3)
+  expect(emptyStatus.target_row_count).toBe(2)
   expect(emptyStatus.concurrency).toBe(3)
   const [first] = await rows()
   const picked = parseResult(await rerun(empty.run_id, { row_ids: [first.id] }))

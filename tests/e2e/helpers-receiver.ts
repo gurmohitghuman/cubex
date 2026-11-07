@@ -6,11 +6,11 @@ import { expect, type APIRequestContext } from '@playwright/test'
 // under .cubex-e2e.invalid (tests/e2e/net-shim.cjs, loaded by the harness).
 // Each path answers from a script of replies (the last one repeats) and every
 // request is kept: method, path, query, headers, raw body and when it came.
-// hold() keeps every answer back until its release is called, so a spec can
-// keep an HTTP API run's requests in flight for as long as it needs; settled()
-// waits until each request so far was answered or dropped by Cubex. Every spec's
-// receiver takes the same port, so a spec counts requests on its own paths
-// (hitsOn), never all of them.
+// hold() keeps every answer back (or only those on the paths it's given) until
+// its release is called, so a spec can keep an HTTP API run's requests in
+// flight for as long as it needs; settled() waits until each request so far
+// was answered or dropped by Cubex. Every spec's receiver takes the same port,
+// so a spec counts requests on its own paths (hitsOn), never all of them.
 export interface Hit {
   method: string; path: string; query: URLSearchParams; headers: http.IncomingHttpHeaders; body: string; at: number
 }
@@ -21,7 +21,7 @@ export class Receiver {
   private readonly hits: Hit[] = []
   private replies = new Map<string, Reply[]>()
   private server: http.Server | null = null
-  private gate: { held: Promise<void>; release: () => void } | null = null
+  private gate: { held: Promise<void>; paths: Set<string> | null; release: () => void } | null = null
   private open = 0
 
   // The URL Cubex uses; `name` is any label (all go to this receiver).
@@ -31,11 +31,14 @@ export class Receiver {
 
   on(path: string, ...replies: Reply[]): void { this.replies.set(path, replies) }
 
-  hold(): () => void {
+  hold(paths?: string[]): () => void {
     this.gate?.release()
     let resolve!: () => void
     const held = new Promise<void>(r => { resolve = r })
-    const gate = { held, release: () => { if (this.gate === gate) this.gate = null; resolve() } }
+    const gate = {
+      held, paths: paths ? new Set(paths) : null,
+      release: () => { if (this.gate === gate) this.gate = null; resolve() },
+    }
     this.gate = gate
     return gate.release
   }
@@ -73,7 +76,8 @@ export class Receiver {
         const reply = script ? (script.length > 1 ? script.shift()! : script[0]) : { status: 404, body: '{}' }
         this.open++
         res.once('close', () => { this.open-- })
-        void (this.gate?.held ?? Promise.resolve()).then(() => {
+        const gate = this.gate && (!this.gate.paths || this.gate.paths.has(u.pathname)) ? this.gate : null
+        void (gate?.held ?? Promise.resolve()).then(() => {
           if (res.destroyed) return
           res.writeHead(reply.status, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) })
           res.end(reply.body ?? '{}')

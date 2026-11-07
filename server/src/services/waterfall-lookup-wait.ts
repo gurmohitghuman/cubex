@@ -6,7 +6,8 @@
 // deleted, filled with a copy's values (a new sheet), or rows go into the
 // trash or come back from it (each leaves its journal row until done), and,
 // for one row, while the cell it would return
-// holds a run's ⏳ and a run there is still going.
+// holds a run's ⏳ and a run there is still going, or ended and is still
+// putting its ⏳ cells back to what they held before it.
 // A paused run doesn't hold it: its ⏳ reads empty, as a run's words do.
 import { db } from '../lib/db';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
@@ -22,9 +23,9 @@ export function otherSheetMoving(sheetId: string, userId: string): boolean {
   return db.prepare(JOBS).pluck().get({ s: sheetId, u: userId }) === 1;
 }
 
-// The matched row's cell holds a run's ⏳ and a run there still fills that column
-// (a paused one doesn't, whatever else runs on that sheet).
+// The matched row's cell holds a run's ⏳ and a run there still fills that column,
+// or is clearing it (a paused one doesn't, whatever else runs on that sheet).
 export function cellStillFilling(raw: unknown, sheetId: string, userId: string, column: string): boolean {
   if (typeof raw !== 'string' || !raw.startsWith('⏳')) return false;
-  return getLockedRunColumns(sheetId, userId, { paused: false }).has(column);
+  return getLockedRunColumns(sheetId, userId, { paused: false, clearing: true }).has(column);
 }

@@ -82,17 +82,13 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
   const targetColumn = nameCheck.name;
   const targetExists = columns.includes(targetColumn);
 
-  // Never transform INTO a column an active run owns — the runner writes there.
-  const locked = getLockedRunColumns(p.sheetId, userId);
-  if (locked.has(targetColumn)) {
-    return { fail: 'locked', error: `Column "${targetColumn}" is being written by an active run. Stop it first.` };
-  }
-  if (p.sourceColumn && locked.has(p.sourceColumn)) {
-    return {
-      fail: 'locked',
-      error: `Column "${p.sourceColumn}" is being written by an active run. Stop it first.`,
-    };
-  }
+  // Never transform INTO or FROM a column an active run owns (the runner writes there), or one a stopped
+  // or failed run is still putting back (its ⏳ cells stay until its clear reaches them).
+  const locked = getLockedRunColumns(p.sheetId, userId, { clearing: true });
+  const busy = (c: string) => `Column "${c}" is being written by a run that hasn't finished. `
+    + 'Wait for it to finish (or stop it) first.';
+  if (locked.has(targetColumn)) return { fail: 'locked', error: busy(targetColumn) };
+  if (p.sourceColumn && locked.has(p.sourceColumn)) return { fail: 'locked', error: busy(p.sourceColumn) };
 
   if (!targetExists) {
     // Creating a new column: case/token collision + cap (same as column-add).

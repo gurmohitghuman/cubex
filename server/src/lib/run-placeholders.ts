@@ -2,6 +2,7 @@ import { db } from './db';
 import { aiRunDataColumn } from './ai-data-column';
 import { jsonPath } from './sql-rows';
 import { clearProcessingPlaceholders } from './placeholder-cells';
+import { dropUnusedJournal } from './run-undo/unused';
 
 // True if a row this run was supposed to process is GENUINELY unfinished: its
 // placeholder column still holds '⏳ Processing...' AND there's no result row for
@@ -54,9 +55,9 @@ const TARGETS_AS_PARAMS = 500;
 
 // Resolve the cells an AI/HTTP run writes a "⏳ Processing..." placeholder into,
 // and clear any that survive a terminal transition (cancel, a worker's failure,
-// a start that could not finish). These helpers are the single source of truth
-// so every path that takes a run out of 'running'/'pending' clears placeholders
-// the same way.
+// a start that could not finish), each back to what it held before the run.
+// These helpers are the single source of truth so every path that takes a run
+// out of 'running'/'pending' clears placeholders the same way.
 //
 // Worker note: the AI/HTTP runners run in Sidequest worker threads, where
 // importing '../lib/db' yields a fresh connection to the SAME cubex.db file.
@@ -115,8 +116,12 @@ const RUN_TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
 // placeholder_work='clearing' mark (migration 004). Whoever ends the run sets
 // that mark in the same statement (cancel, a worker's failure, a start that
 // could not finish), so a restart midway finishes the clear
-// (resumeRunCleanups) and a sort, which moves rows, waits for it. Works in
-// slices; safe to call twice.
+// (resumeRunCleanups) and a sort, which moves rows, waits for it. A cell still
+// holding ⏳ is at a row the run never reached: it gets back what it held
+// before the run, from the run's undo journal, else ''
+// (lib/placeholder-cells.ts); rows the run answered keep their new values.
+// A run that wrote no row then leaves nothing to undo (lib/run-undo/unused.ts).
+// Works in slices; safe to call twice (a cell put back no longer holds ⏳).
 export async function clearRunPlaceholders(kind: RunKind, runId: string): Promise<void> {
   const table = RUN_TABLE[kind];
   const run = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(runId) as
@@ -126,7 +131,10 @@ export async function clearRunPlaceholders(kind: RunKind, runId: string): Promis
   // updated_at is the clear's heartbeat: the stale sweep below retries only a
   // clear that stopped making progress, never a slow one still walking rows.
   const beat = db.prepare(`UPDATE ${table} SET updated_at = datetime('now') WHERE id = ?`);
-  await clearProcessingPlaceholders(run.sheet_id, run.user_id, columns, () => { beat.run(runId); });
+  const heartbeat = () => { beat.run(runId); };
+  await clearProcessingPlaceholders(run.sheet_id, run.user_id, columns, heartbeat, { kind, id: runId });
+  // Before the mark goes, so no undo can take a journal that is about to go.
+  await dropUnusedJournal({ kind, id: runId }, run.user_id);
   db.prepare(`UPDATE ${table} SET placeholder_work = NULL WHERE id = ? AND placeholder_work = 'clearing'`).run(runId);
 }
 
