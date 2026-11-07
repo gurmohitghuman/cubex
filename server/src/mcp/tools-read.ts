@@ -11,7 +11,7 @@ import { COLUMN_COUNTS_MAX_COLUMNS } from '../lib/constants-columns';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
-import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema } from './query-schema';
+import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerCellSchema } from './query-schema';
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
 
@@ -94,8 +94,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Read rows as {id, index, data} ordered by index. Keyset paging: pass cursor = the index of the last row '
-        + 'from the previous page; next_cursor is null at the end. '
-        + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
+        + 'from the previous page; next_cursor is null at the end. ' + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
         + 'Pass columns to fetch only the fields you need — reading every column of a wide sheet is the main way '
         + 'these calls get expensive. '
         + 'PAGING A FILTERED READ: if you pass `where` AND a cursor, you must ALSO pass expected_data_version and '
@@ -123,7 +122,11 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'next_cursor (text). filling lists columns being filled again (their changed rows come in a later read). '
         + 'Prefer it to keep a copy up to date: when next_cursor is null, pass as_of as the next updated_since and '
         + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
-        + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor.',
+        + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor. '
+        + 'LONG CELLS: max_chars_per_cell (e.g. 200) cuts each cell\'s text to that many characters and lists the '
+        + 'cells cut in cut_cells {"<row id>": {"<column>": full length}}: page or scan long AI answers or JSON '
+        + 'without filling your context, then read the cells you need whole with row_ids + columns. Any read of '
+        + 'rows takes it. A cut never leaves half of a surrogate pair; an emoji of several characters can lose parts.',
       inputSchema: {
         sheet_id: z.string(),
         // Digits sent as text are the number cursor (a model often quotes it).
@@ -149,11 +152,13 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Read exactly these rows by their stable ids, in this order'),
         updated_since: z.string().optional()
           .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
+        max_chars_per_cell: maxCharsPerCellSchema.optional(),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
       expected_row_generation, view, expected_view_version, group_by, aggregates, row_ids, updated_since,
+      max_chars_per_cell,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
@@ -161,7 +166,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       const after = typeof cursor === 'number' ? cursor : -1;
       const byIdOrTime = row_ids !== undefined || updated_since !== undefined || typeof cursor === 'string';
       if (!columns && !where && !view && !return_mode && !group_by && !aggregates && !byIdOrTime
-        && expected_data_version === undefined && expected_row_generation === undefined) {
+        && expected_data_version === undefined && expected_row_generation === undefined
+        && max_chars_per_cell === undefined) {
         const pageSize = Math.min(limit ?? MCP_MAX_ROWS_PAGE, MCP_MAX_ROWS_PAGE);
         return ok(readRowsPage(sheet_id, ctx.userId, after, pageSize, include_status === true));
       }
@@ -185,6 +191,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         expectedRowGeneration: expected_row_generation,
         view,
         expectedViewVersion: expected_view_version,
+        ...(max_chars_per_cell !== undefined ? { maxCharsPerCell: max_chars_per_cell } : {}),
       });
       if ('fail' in result) return err(result.error);
       return ok(aggregate.spec ? fitGroups(result.ok) : result.ok);

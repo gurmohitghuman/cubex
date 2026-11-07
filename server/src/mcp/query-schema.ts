@@ -1,11 +1,14 @@
-// read_rows' columns (with nested paths), group_by and aggregates, described
-// once (lib/row-select/paths.ts, lib/row-aggregate/spec.ts check them).
+// read_rows' columns (with nested paths), group_by, aggregates and
+// max_chars_per_cell, described once (lib/row-select/paths.ts,
+// lib/row-aggregate/spec.ts and services/row-query-input.ts check them).
 import { z } from 'zod';
 import {
-  AGGREGATE_MAX_GROUPS, AGGREGATE_TOP_GROUPS, MAX_AGGREGATES, MAX_GROUP_BY_COLUMNS, MAX_PATH_DEPTH,
-  MAX_PATH_KEY_CHARS, MCP_MAX_GROUP_CHARS,
+  AGGREGATE_MAX_GROUPS, AGGREGATE_TOP_GROUPS, CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS, MAX_AGGREGATES,
+  MAX_GROUP_BY_COLUMNS, MAX_PATH_DEPTH, MAX_PATH_KEY_CHARS, MCP_MAX_GROUP_CHARS,
 } from '../lib/constants-query';
 import { AGGREGATE_OPS } from '../lib/row-aggregate/spec';
+import { CELL_CUT_REFUSAL } from '../services/row-query-input';
+import { lenientInt } from './tool-helpers';
 
 const pick = z.object({
   column: z.string(),
@@ -40,6 +43,20 @@ export const aggregatesSchema = z.array(z.object({
   + 'min, max of a column. Numbers are read like gt/lt ("1,000" counts; text that isn\'t a number is skipped; '
   + 'null when none). Each comes back in values under "sum(Revenue)", "count", ...',
 );
+
+// Shared with the REST body's description (openapi/routes-rows.ts).
+export const MAX_CHARS_PER_CELL_HELP = 'Cut each cell\'s text to its first N characters, N from '
+  + `${CELL_CUT_MIN_CHARS} to ${CELL_CUT_MAX_CHARS.toLocaleString('en-US')}. cut_cells then lists the cells `
+  + 'cut by row id, then column, with each one\'s full length: {"<row id>": {"Notes": 5120}}, a row only when '
+  + 'a cell of it was cut ({} when none). Characters count as JavaScript counts them (an emoji is 2): a cut never '
+  + 'leaves half of a surrogate pair, but an emoji built from several characters (a skin tone, a flag, a family) '
+  + 'can lose its last parts. With include_status a run cell\'s value or error is cut, never its status. A value '
+  + 'a columns path takes out of a JSON cell: an object or list is cut as its JSON text (it comes back as text), '
+  + 'numbers and true/false never. Rows only: not with group_by, aggregates or return_mode ids or count.';
+// Over MCP digits sent as text are the number (a model often quotes it), and
+// every value refused gets the words REST answers (services/row-query-input.ts).
+export const maxCharsPerCellSchema = lenientInt(CELL_CUT_MIN_CHARS, CELL_CUT_MAX_CHARS, CELL_CUT_REFUSAL)
+  .describe(MAX_CHARS_PER_CELL_HELP);
 
 // An MCP answer's groups, cut to about MCP_MAX_GROUP_CHARS (an agent's context):
 // truncated then says more exist.
