@@ -9,6 +9,8 @@ name: Windows install
 # installer over it as an update does: Cubex must run on this commit's Node, sign in with the password chosen before,
 # and read the sheet back unchanged. On pull requests and pushes to main that touch the installer, the scripts or the
 # dependencies; the Release workflow calls it for the commit being released.
+#
+# Over 200 lines: two jobs, step by step: the one-line install, and the Windows twin of install-unix.yml's update job.
 
 on:
   pull_request:

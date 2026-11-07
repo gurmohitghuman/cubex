@@ -78,7 +78,7 @@ main() {
   echo 'This folder is a Cubex install. "cubex uninstall --delete-data" removes it.' > "$CUBEX_HOME/$MARKER"
   mkdir -p "$CUBEX_HOME/logs"
   TMP="$(mktemp -d)" LOCK="$CUBEX_HOME/.install-lock"
-  # Also on Ctrl-C. A new Node still in node.next didn't go in, so the installed Node and app stay as they were.
+  # Also on Ctrl-C, which activate ignores while Node and app move: a Node left in node.next isn't the one in use.
   trap 'rm -rf "$TMP"; [ "$LOCKED" = 0 ] || rm -rf "$CUBEX_HOME/node.next" "$LOCK"' EXIT
   mkdir "$LOCK" 2>/dev/null || die "Another install or update is running. If not, delete $LOCK and try again."
   LOCKED=1
@@ -143,7 +143,8 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum 
 # Cubex runs on, so installing or upgrading Node elsewhere can't break Cubex.
 # A patch update goes in at once (same native-module ABI). Another major version
 # waits in node.next: the app is rebuilt with it and activate swaps the two in
-# together, so the installed app never runs on a Node it wasn't built for.
+# together, ignoring Ctrl-C while they move, so the installed app never runs on
+# a Node it wasn't built for.
 install_node() {
   local base="https://nodejs.org/dist/latest-v$NODE_MAJOR.x" line file version current='' built_for
   line="$(curl -fsSL "$base/SHASUMS256.txt" | grep " node-v[0-9.]*-$OS-$ARCH\.tar\.gz\$")" \
@@ -171,10 +172,12 @@ install_node() {
   ok "Node.js $version (a private copy; your system Node is untouched)"
 }
 
-# The new version didn't start: the old Node goes back with the old app.
+# The new version didn't start: the old Node goes back with the old app, and the
+# new one to node.next, which the EXIT trap deletes. Two renames, nothing slow.
 restore_node() {
   if [ "$NODE_NEXT" = 1 ] && [ -d "$CUBEX_HOME/node.previous" ]; then
-    rm -rf "$CUBEX_HOME/node" && mv "$CUBEX_HOME/node.previous" "$CUBEX_HOME/node"
+    mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.next"
+    mv "$CUBEX_HOME/node.previous" "$CUBEX_HOME/node"
   fi
 }
 
@@ -316,18 +319,23 @@ activate() {
   fi
   rm -rf "$CUBEX_HOME/app.previous"
   if [ "$NODE_NEXT" = 1 ]; then rm -rf "$CUBEX_HOME/node.previous"; fi
+  trap '' INT TERM HUP # the app and the Node it was built for move together: Ctrl-C can't stop them half way
   if [ -d "$CUBEX_HOME/app" ]; then mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.previous"; fi
   mv "$CUBEX_HOME/app.next" "$CUBEX_HOME/app"
   if [ "$NODE_NEXT" = 1 ]; then
     mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.previous"
     mv "$CUBEX_HOME/node.next" "$CUBEX_HOME/node"
   fi
+  trap - INT TERM HUP
   if [ "$NO_START" = 1 ] || [ "$was_running" = 0 ]; then return 0; fi
   if "$cli" start --quiet; then ok "Started Cubex"; return 0; fi
   [ -d "$CUBEX_HOME/app.previous" ] || die "Cubex didn't start. See: cubex logs"
-  rm -rf "$CUBEX_HOME/app.failed" && mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.failed"
+  rm -rf "$CUBEX_HOME/app.failed"
+  trap '' INT TERM HUP # the old app and the old Node go back together
+  mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.failed"
   mv "$CUBEX_HOME/app.previous" "$CUBEX_HOME/app"
   restore_node
+  trap - INT TERM HUP
   # Whichever kept the copy puts it back (the new build is in app.failed now).
   case "$kept" in app.next) kept=app.failed ;; esac
   if [ -n "$kept" ] && ! "$CUBEX_HOME/$kept/bin/cubex" restore-snapshot; then

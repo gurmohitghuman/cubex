@@ -4,7 +4,7 @@
 // with p=2 and a short hash and salt, associated data, a 64-byte hash); a new hash is the same standard string,
 // verifies, and gets a fresh salt each time; a malformed or tampered hash fails without throwing (and a malformed one
 // needs a rehash); a Node without crypto.argon2 is named as such, and one whose argon2 throws gets the error's own
-// message, with OpenSSL before 3.2 as the likely cause.
+// message, plus OpenSSL as the likely cause only when it's older than 3.2 (compared as numbers).
 import assert from 'node:assert/strict'
 import passwordMod from '../../server/src/lib/password'
 const { hashPassword, verifyPassword, needsRehash, passwordHashingUnavailable, argon2Problem } =
@@ -39,14 +39,29 @@ async function main(): Promise<void> {
   assert.equal(argon2Problem(), null)
   assert.match(argon2Problem({}) ?? '', /needs Node\.js 24\.7 or newer/)
   const throwing = (error: unknown) => ({ argon2Sync: () => { throw error } })
-  const old = argon2Problem(throwing(Object.assign(new Error('Argon2 is not supported.'),
-    { code: 'ERR_CRYPTO_ARGON2_NOT_SUPPORTED' }))) ?? ''
-  assert.match(old, /can't hash passwords with argon2: Argon2 is not supported\. The likely cause: /)
-  assert.ok(old.includes(`OpenSSL ${process.versions.openssl}, and Cubex needs OpenSSL 3.2 or newer`), old)
-  const fips = argon2Problem(throwing(new Error('error:0308010C:digital envelope routines::unsupported'))) ?? ''
-  assert.match(fips, /argon2: error:0308010C:digital envelope routines::unsupported\. The likely cause: /)
-  assert.match(argon2Problem(throwing('a plain string')) ?? '', /argon2: a plain string\. The likely cause: /)
-  console.log('ok   this Node hashes; no crypto.argon2 is named as such, one that throws with its own message')
+  const unsupported = throwing(Object.assign(new Error('Argon2 is not supported.'),
+    { code: 'ERR_CRYPTO_ARGON2_NOT_SUPPORTED' }))
+  const fipsError = 'error:0308010C:digital envelope routines::unsupported'
+  const fips = throwing(new Error(fipsError))
+  const hint = (openssl: string) => ` The likely cause: it's built with OpenSSL ${openssl}, and Cubex needs `
+    + 'OpenSSL 3.2 or newer (the official Node.js 24 builds have it).'
+  const version = `Node.js ${process.versions.node}`
+  // Before 3.2: the error, then the hint naming that OpenSSL.
+  for (const openssl of ['3.0.13+quic', '3.1.8', '1.1.1w']) {
+    assert.equal(argon2Problem(unsupported, openssl),
+      `This ${version} can't hash passwords with argon2: Argon2 is not supported.${hint(openssl)}`, openssl)
+    assert.equal(argon2Problem(fips, openssl),
+      `This ${version} can't hash passwords with argon2: ${fipsError}.${hint(openssl)}`, openssl)
+  }
+  // 3.2 or newer (a FIPS refusal, say), or a version this can't read: Node's own error, and no hint.
+  for (const openssl of ['3.5.0', '3.5.4+quic', '3.2.0', '3.10.1', '4.0.0', 'unknown']) {
+    assert.equal(argon2Problem(fips, openssl), `This ${version} can't hash passwords with argon2: ${fipsError}.`,
+      openssl)
+  }
+  assert.equal(argon2Problem(throwing('a plain string'), '3.5.0'),
+    `This ${version} can't hash passwords with argon2: a plain string.`)
+  console.log('ok   this Node hashes; no crypto.argon2 is named as such, one that throws with its own message, '
+    + 'and OpenSSL as the likely cause only before 3.2')
 
   for (const f of BEFORE) {
     assert.equal(await verifyPassword(f.password, f.hash), true, f.label)

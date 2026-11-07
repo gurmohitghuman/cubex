@@ -40,7 +40,9 @@ export function passwordHashingUnavailable(): string | null {
 }
 
 type Argon2Sync = (algorithm: Variant, parameters: crypto.Argon2Parameters) => Buffer;
-export function argon2Problem(node: { argon2Sync?: Argon2Sync } = crypto): string | null {
+export function argon2Problem(
+  node: { argon2Sync?: Argon2Sync } = crypto, openssl: string = process.versions.openssl,
+): string | null {
   const version = `Node.js ${process.versions.node}`;
   if (typeof node.argon2Sync !== 'function') {
     return `Cubex needs Node.js 24.7 or newer to hash passwords, and this is ${version}.`;
@@ -51,9 +53,19 @@ export function argon2Problem(node: { argon2Sync?: Argon2Sync } = crypto): strin
     return null;
   } catch (err) {
     const why = (err instanceof Error ? err.message : String(err)).replace(/[.\s]+$/, '');
-    return `This ${version} can't hash passwords with argon2: ${why}. The likely cause: it's built with OpenSSL `
-      + `${process.versions.openssl}, and Cubex needs OpenSSL 3.2 or newer (the official Node.js 24 builds have it).`;
+    const hint = opensslBefore32(openssl) ? ` The likely cause: it's built with OpenSSL ${openssl}, and Cubex needs `
+      + 'OpenSSL 3.2 or newer (the official Node.js 24 builds have it).' : '';
+    return `This ${version} can't hash passwords with argon2: ${why}.${hint}`;
   }
+}
+
+// "3.0.13+quic" and "1.1.1w" are before 3.2; "3.5.0" and "3.10.1" aren't. A form
+// this can't read gets no hint rather than a wrong one.
+function opensslBefore32(openssl: string): boolean {
+  const parts = /^(\d+)\.(\d+)/.exec(openssl);
+  if (!parts) return false;
+  const [major, minor] = [Number(parts[1]), Number(parts[2])];
+  return major < 3 || (major === 3 && minor < 2);
 }
 
 export async function hashPassword(password: string): Promise<string> {
