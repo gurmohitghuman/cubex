@@ -10,17 +10,17 @@ import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 import type { SpendView } from '../lib/token-spend';
+import { digitsAsNumber } from '../lib/digits-text';
 
 // Option types that also take their value as text. An MCP client whose tool
 // list was loaded before an option existed sends it as a string ("true", "2"),
 // which a strict schema rejects. Clients still see a plain boolean or integer.
+// lenientInt's `message`: the words for every value it refuses (a wrong type, a
+// fraction, out of range), in place of the schema library's own.
 export const lenientBoolean = () =>
   z.preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
-export const lenientInt = (min: number, max: number) =>
-  z.preprocess(
-    v => (typeof v === 'string' && /^\d+$/.test(v.trim()) ? Number(v.trim()) : v),
-    z.number().int().min(min).max(max),
-  );
+export const lenientInt = (min: number, max: number, message?: string) =>
+  z.preprocess(v => digitsAsNumber(v), z.number(message).int(message).min(min, message).max(max, message));
 
 export interface McpAuthCtx {
   userId: string;

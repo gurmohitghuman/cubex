@@ -242,19 +242,38 @@ With `include_status`, a run cell's state can change without its row's `updated_
 
 ### Long cells
 
-AI answers and HTTP API responses can run to thousands of characters a cell, and a page of them can be far more text than you need. Pass `max_chars_per_cell` (1 to 200,000) to `read_rows` or REST `rows/query`, and each cell longer than that comes back cut to its first N characters. The answer then has `truncated_cells`, one `{row_id, column, full_length}` per cell cut, in the order of the rows and their columns. It is there, maybe empty, whenever you pass `max_chars_per_cell`, and never when you don't. Read a cell whole with `row_ids` and `columns`.
+AI answers and HTTP API responses can run to thousands of characters a cell, and a page of them can be far more text than you need. Pass `max_chars_per_cell` (1 to 200,000) to `read_rows` or REST `rows/query`, and each cell longer than that comes back cut to its first N characters. The answer then has `truncated_cells`: the id of each row with a cell cut, and under it each cut cell's column with the length of its full text. Rows come in the order they are returned, and a row's columns in the order of its `data`; a row with nothing cut isn't listed. `truncated_cells` is `{}` when you pass `max_chars_per_cell` and nothing was cut, and isn't there when you don't pass it. Read a cell whole with `row_ids` and `columns`.
 
 ```json
-{"max_chars_per_cell": 200, "columns": ["Company", "Summary"]}
+{"max_chars_per_cell": 40, "columns": ["Company", "Summary"], "limit": 2}
 ```
 
-- Characters are counted the way JavaScript counts them, as every limit in Cubex is: most characters count 1, an emoji 2. A cut never splits an emoji: when it would, the cell keeps one character fewer.
+answers
+
+```json
+{
+  "rows": [
+    {"id": "0b6d3f0e-5c1a-4e8e-9f61-2a7c1d9e4b10", "index": 0,
+     "data": {"Company": "Acme", "Summary": "Acme makes industrial pumps and sells th"}},
+    {"id": "7e21c9a4-0d3b-4f5e-8a6c-91b2d4e0f3a7", "index": 1,
+     "data": {"Company": "Beta", "Summary": "A short summary."}}
+  ],
+  "truncated_cells": {"0b6d3f0e-5c1a-4e8e-9f61-2a7c1d9e4b10": {"Summary": 78}},
+  "next_cursor": 1,
+  "data_version": 12,
+  "row_generation": 0
+}
+```
+
+- Characters are counted the way JavaScript counts them, as every limit in Cubex is: most characters count 1, an emoji 2 (a surrogate pair). A cut never leaves half of a surrogate pair: when it would, the cell keeps one character fewer. An emoji built from several characters, such as one with a skin tone, a flag or a family, can lose its last parts.
 - Cells are text. A cell holding JSON is cut like any text, so the cut JSON no longer parses: take values out of it with a `columns` path instead ([Values inside JSON cells](#values-inside-json-cells)).
-- A value a `columns` path takes out is cut the same way when it is text. An object or list is measured by its JSON text; when that is longer, it comes back as that text, cut. Numbers, `true`, `false` and `null` are never cut. `column` is the name the value comes back under.
-- With `include_status`, a run cell's `value` or `error` (or `reason`) is cut, and `full_length` is that text's length. Its `status` is never cut.
-- It works with every read of rows: pages, `where`, views (the columns the view shows), `row_ids` and `updated_since`. Over MCP, a read by id fits more rows into its 40,000 characters once they are cut; that count includes `truncated_cells`, which lists only the rows returned. A copy kept with `updated_since` holds the cut text: read the cells in `truncated_cells` whole if you need them.
-- `group_by`, `aggregates` and `return_mode` `ids` or `count` return no cells, so they refuse it. A group's value is already cut to 200 characters.
-- Anything but a whole number from 1 to 200,000 is refused with `max_chars_per_cell must be an integer from 1 to 200000.` (REST: 400). Without `max_chars_per_cell` nothing is cut.
+- A value a `columns` path takes out is cut the same way when it is text. An object or list is measured by its JSON text; when that is longer, it comes back as that text, cut. Numbers, `true`, `false` and `null` are never cut. `truncated_cells` lists the value under the name it comes back under.
+- With `include_status`, a run cell's `value` or `error` (or `reason`) is cut, and its length in `truncated_cells` is that text's full length. Its `status` is never cut.
+- It works with every read of rows: pages, `where`, views (the columns the view shows), `row_ids` and `updated_since`. Over MCP, a read by id fits more rows into its 40,000 characters once they are cut: each row counts with its `truncated_cells` entry, and the rows left for `unread_ids` leave their entries out too. A copy kept with `updated_since` holds the cut text: read the cells in `truncated_cells` whole if you need them.
+- `group_by`, `aggregates` and `return_mode` `ids` or `count` return no cells, so they refuse it, naming it with the other options to leave out. A group's value is already cut to 200 characters.
+- Anything but a whole number from 1 to 200,000 is refused, and without `max_chars_per_cell` nothing is cut. On both surfaces, digits sent as text count as the number: `"200"` is 200, and so is `" 200 "` (whitespace around the digits is ignored). Any other text, such as `"1.5"`, `"1e3"`, `"0x10"` or `"-3"`, is refused.
+  - REST answers 400 with `{"error": "max_chars_per_cell must be an integer from 1 to 200000."}`.
+  - Over MCP the tool's schema says it: an integer, minimum 1, maximum 200,000. A value refused comes back as an error result (`isError: true`) whose text is the protocol's input check: `MCP error -32602: Input validation error: Invalid arguments for tool read_rows:` and then a JSON list of the problems, each with `"message": "max_chars_per_cell must be an integer from 1 to 200000."`.
 
 ## Column details
 
@@ -737,7 +756,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | Endpoint | Body or query |
 |---|---|
 | `GET /sheets/:id/rows` | `?limit=100&cursor=...`. Returns `{rows: [{id, index, data}], next_cursor}`. `limit` is 1 to 500 (default 100). Pass `next_cursor` back as `cursor` until it's `null`. Add `&include_status=true` for run columns as `{status, value, error}`. |
-| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `columns` can take a value out of a JSON cell ([Values inside JSON cells](#values-inside-json-cells)), and `group_by` with `aggregates` answers groups instead of rows ([Counting and summing](#counting-and-summing)). `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. `{"row_ids": ["..."]}` (up to 1,000) reads those rows instead, in the order given, with `missing` for ids that are no row of the sheet; it takes `columns` and `include_status` only ([Rows by id](#rows-by-id)). `{"updated_since": "2026-11-05T10:00:00Z", "limit": 500}` reads the rows changed since then, oldest change first, paged with the text `next_cursor` it answers as `cursor`, plus `as_of` for the next read and `filling` for the columns being filled; it takes `columns`, `include_status`, `limit` and `cursor`, not `where`, `view` or `group_by` ([Keeping a copy up to date](#keeping-a-copy-up-to-date)). `{"max_chars_per_cell": 200}` cuts each cell to its first 200 characters and lists the cells cut in `truncated_cells`; it works with every read of rows ([Long cells](#long-cells)). |
+| `POST /sheets/:id/rows/query` | `{"where": [{"operator": "has_error"}], "columns": ["Email"], "limit": 100, "cursor": 0, "return_mode": "rows", "include_status": true}`. `where` is the same as in MCP (see [Finding rows](#finding-rows)): text, number and list operators, OR groups, and run states. Values are strings. `return_mode` is `rows`, `ids` or `count`; `include_status` works with `rows`. `columns` can take a value out of a JSON cell ([Values inside JSON cells](#values-inside-json-cells)), and `group_by` with `aggregates` answers groups instead of rows ([Counting and summing](#counting-and-summing)). `view` reads through a saved view (see [Saved views](#saved-views)). To page a filtered query, send back `expected_data_version` and `expected_row_generation` from the previous page; you get a 409 if the sheet changed in between. `{"row_ids": ["..."]}` (up to 1,000) reads those rows instead, in the order given, with `missing` for ids that are no row of the sheet; it takes `columns` and `include_status` only ([Rows by id](#rows-by-id)). `{"updated_since": "2026-11-05T10:00:00Z", "limit": 500}` reads the rows changed since then, oldest change first, paged with the text `next_cursor` it answers as `cursor`, plus `as_of` for the next read and `filling` for the columns being filled; it takes `columns`, `include_status`, `limit` and `cursor`, not `where`, `view` or `group_by` ([Keeping a copy up to date](#keeping-a-copy-up-to-date)). `{"max_chars_per_cell": 200}` cuts each cell to its first 200 characters and lists the cells cut in `truncated_cells` as `{"<row id>": {"<column>": <full length>}}` (`{}` when none); it works with every read of rows, and digits sent as text (`"200"`) count as the number ([Long cells](#long-cells)). |
 | `POST /sheets/:id/rows` | `{"rows": [{"data": {"Email": "a@b.com"}}]}`, up to 1,000 rows. Note the `data` wrapper (MCP's `append_rows` takes the objects directly). `201`; a replay answers `200`. |
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |

@@ -7,6 +7,7 @@ import { checkAggregate, parseAggregate, type AggregateSpec } from '../lib/row-a
 import { SINCE_FORMAT_HELP } from '../lib/row-since';
 import { ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 import { CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS } from '../lib/constants-query';
+import { digitsAsNumber } from '../lib/digits-text';
 
 export interface RowQuery {
   after: number;
@@ -47,10 +48,13 @@ export interface RowQuery {
 }
 
 // max_chars_per_cell as either surface sends it. null = fine (or not sent).
+// MCP's schema refuses with the same words (mcp/query-schema.ts).
+export const CELL_CUT_REFUSAL =
+  `max_chars_per_cell must be an integer from ${CELL_CUT_MIN_CHARS} to ${CELL_CUT_MAX_CHARS}.`;
 export function checkMaxChars(v: unknown): string | null {
   if (v === undefined) return null;
   if (typeof v === 'number' && Number.isInteger(v) && v >= CELL_CUT_MIN_CHARS && v <= CELL_CUT_MAX_CHARS) return null;
-  return `max_chars_per_cell must be an integer from ${CELL_CUT_MIN_CHARS} to ${CELL_CUT_MAX_CHARS}.`;
+  return CELL_CUT_REFUSAL;
 }
 
 export function parseRowQueryBody(
@@ -105,7 +109,9 @@ export function parseRowQueryBody(
   if (b.expected_view_version !== undefined && typeof b.expected_view_version !== 'string') {
     return { error: 'Invalid expected_view_version.' };
   }
-  const cutProblem = checkMaxChars(b.max_chars_per_cell);
+  // Digits sent as text are the number, as over MCP (lib/digits-text.ts).
+  const maxCharsPerCell = digitsAsNumber(b.max_chars_per_cell);
+  const cutProblem = checkMaxChars(maxCharsPerCell);
   if (cutProblem) return { error: cutProblem };
   return { query: {
     after: typeof b.cursor === 'number' ? b.cursor : -1,
@@ -123,7 +129,7 @@ export function parseRowQueryBody(
     expectedRowGeneration: b.expected_row_generation as number | undefined,
     view: b.view as string | undefined,
     expectedViewVersion: b.expected_view_version as string | undefined,
-    ...(b.max_chars_per_cell !== undefined ? { maxCharsPerCell: b.max_chars_per_cell as number } : {}),
+    ...(maxCharsPerCell !== undefined ? { maxCharsPerCell: maxCharsPerCell as number } : {}),
   } };
 }
 
@@ -135,23 +141,23 @@ export function validateQuery(columns: string[], q: RowQuery): string | null {
   if (q.columns && !q.picks && new Set(q.columns).size !== q.columns.length) {
     return 'columns must not contain duplicates';
   }
+  // max_chars_per_cell cuts rows' cells: groups (whose values are already cut to
+  // GROUP_VALUE_MAX_CHARS) and ids or counts have none. Named in the first
+  // refusal when sent, so one change of the call is enough.
+  const cut = q.maxCharsPerCell !== undefined;
   if (q.aggregate) {
-    if (q.after >= 0 || q.limit !== undefined || q.columns || q.returnMode !== 'rows' || q.includeStatus) {
-      return 'group_by and aggregates answer groups, not rows: leave out cursor, limit, columns, return_mode and '
-        + 'include_status.';
-    }
-    // A group's value is already cut to GROUP_VALUE_MAX_CHARS, and a cut one still counts apart.
-    if (q.maxCharsPerCell !== undefined) {
-      return 'group_by and aggregates answer groups, not rows: leave out max_chars_per_cell.';
+    if (q.after >= 0 || q.limit !== undefined || q.columns || q.returnMode !== 'rows' || q.includeStatus || cut) {
+      return 'group_by and aggregates answer groups, not rows: leave out cursor, limit, columns, return_mode'
+        + (cut ? ', include_status and max_chars_per_cell.' : ' and include_status.');
     }
     return checkAggregate(q.aggregate, columns);
   }
-  if (q.returnMode === 'count' && (q.after >= 0 || q.limit !== undefined || q.columns !== undefined)) {
-    return 'count mode does not accept cursor, limit, or columns';
+  if (q.returnMode === 'count' && (q.after >= 0 || q.limit !== undefined || q.columns !== undefined || cut)) {
+    return `count mode does not accept cursor, limit, ${cut ? 'columns, or max_chars_per_cell' : 'or columns'}`;
   }
-  if (q.includeStatus && q.returnMode !== 'rows') return 'include_status works with return_mode rows only';
-  if (q.maxCharsPerCell !== undefined && q.returnMode !== 'rows') {
-    return 'max_chars_per_cell works with return_mode rows only';
+  if ((q.includeStatus || cut) && q.returnMode !== 'rows') {
+    return q.includeStatus && cut ? 'include_status and max_chars_per_cell work with return_mode rows only'
+      : `${cut ? 'max_chars_per_cell' : 'include_status'} works with return_mode rows only`;
   }
   return null;
 }

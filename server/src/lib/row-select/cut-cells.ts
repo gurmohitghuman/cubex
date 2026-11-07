@@ -2,8 +2,9 @@
 // cell's text cut to its first N characters, and the cells cut listed with
 // their full length. Characters are UTF-16 code units, the way String.length
 // counts them and every cap in Cubex does (the cell limits, export_csv's
-// 40,000); a cut that would split a surrogate pair (an emoji) keeps one fewer,
-// so no half of a pair comes back.
+// 40,000); a cut that would end on the first half of a surrogate pair keeps one
+// fewer, so no half of a pair comes back. An emoji built from several
+// characters (a skin tone, a flag, a family) can still lose its last parts.
 //
 // Stored cells are text, a cell holding JSON included (cut like any text). A
 // value a `columns` path takes out of a JSON cell can be a number, true, false
@@ -12,7 +13,12 @@
 // include_status ({status, value, error}) has its text cut (value, error or
 // reason: it holds at most one), never its status.
 
-export interface CutCell { row_id: string; column: string; full_length: number }
+// The answer's truncated_cells: row id → column → the full length of the text
+// cut. Null-prototype objects, so any column name ("__proto__", "constructor")
+// is a plain key; a row is there only when at least one of its cells was cut.
+export type CellLengths = Record<string, number>;
+export type TruncatedCells = Record<string, CellLengths>;
+export const emptyTruncated = (): TruncatedCells => Object.create(null) as TruncatedCells;
 
 // At most `max` code units of `text`, never ending on the first half of a pair.
 export function cutChars(text: string, max: number): string {
@@ -38,17 +44,18 @@ export function cutCell(v: unknown, max: number, status = false): { value: unkno
   return text !== null && text.length > max ? { value: cutChars(text, max), full: text.length } : null;
 }
 
-// A row's returned data with its cells cut, and the cells cut in its key order.
-// statusCells: the keys holding a run cell as {status, value, error}. A new
-// object built with Object.fromEntries, so a column named "__proto__" stays a cell.
+// A row's returned data with its cells cut, and the cells cut (column → full
+// length, in its key order), null when none was. statusCells: the keys holding
+// a run cell as {status, value, error}. A new object built with
+// Object.fromEntries, so a column named "__proto__" stays a cell.
 export function cutRow(
-  rowId: string, data: Record<string, unknown>, max: number, statusCells: ReadonlySet<string>,
-): { data: Record<string, unknown>; cut: CutCell[] } {
-  const cut: CutCell[] = [];
+  data: Record<string, unknown>, max: number, statusCells: ReadonlySet<string>,
+): { data: Record<string, unknown>; cut: CellLengths | null } {
+  let cut: CellLengths | null = null;
   const out = Object.fromEntries(Object.entries(data).map(([column, v]) => {
     const c = cutCell(v, max, statusCells.has(column));
     if (!c) return [column, v];
-    cut.push({ row_id: rowId, column, full_length: c.full });
+    (cut ??= Object.create(null) as CellLengths)[column] = c.full;
     return [column, c.value];
   }));
   return { data: out, cut };

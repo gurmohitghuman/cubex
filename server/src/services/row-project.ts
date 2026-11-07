@@ -10,7 +10,7 @@ import { cellOf } from '../lib/row-cell';
 import { fillingColumns, overlayFilling } from '../lib/field-fill-columns';
 import { rowWithStatus } from '../lib/row-filter/status-rows';
 import { pickName, pickValue } from '../lib/row-select/paths';
-import { cutRow, type CutCell } from '../lib/row-select/cut-cells';
+import { cutRow, emptyTruncated, type TruncatedCells } from '../lib/row-select/cut-cells';
 import type { RunColumnMap } from '../lib/row-filter/sql';
 import { staleByRow } from './run-status-rows';
 import type { RowQuery } from './row-query-input';
@@ -65,19 +65,22 @@ function projectRow(
 }
 
 // max_chars_per_cell: each shaped row's cells cut (lib/row-select/cut-cells.ts),
-// its data replaced; the cells cut, row by row, for the answer's
-// truncated_cells. undefined when the query didn't ask. runs: as shapeRows had
-// them (a run cell is {status, value, error} under its column's name, or its pick's).
+// its data replaced; the answer's truncated_cells, row id → column → full
+// length, rows in their order (only those with a cell cut). undefined when the
+// query didn't ask. runs: as shapeRows had them (a run cell is {status, value,
+// error} under its column's name, or its pick's).
 export function cutRows(
   rows: Array<{ id: string; data: Record<string, unknown> }>, q: RowQuery, runs: RunColumns | null,
-): CutCell[] | undefined {
+): TruncatedCells | undefined {
   const max = q.maxCharsPerCell;
   if (max === undefined) return undefined;
   const status = new Set<string>(!runs ? []
     : q.picks ? q.picks.filter(p => !p.path && runs.has(p.column)).map(pickName) : runs.keys());
-  return rows.flatMap(r => {
-    const out = cutRow(r.id, r.data, max, status);
+  const truncated = emptyTruncated();
+  for (const r of rows) {
+    const out = cutRow(r.data, max, status);
     r.data = out.data;
-    return out.cut;
-  });
+    if (out.cut) truncated[r.id] = out.cut;
+  }
+  return truncated;
 }

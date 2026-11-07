@@ -94,8 +94,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Read rows as {id, index, data} ordered by index. Keyset paging: pass cursor = the index of the last row '
-        + 'from the previous page; next_cursor is null at the end. '
-        + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
+        + 'from the previous page; next_cursor is null at the end. ' + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
         + 'Pass columns to fetch only the fields you need — reading every column of a wide sheet is the main way '
         + 'these calls get expensive. '
         + 'PAGING A FILTERED READ: if you pass `where` AND a cursor, you must ALSO pass expected_data_version and '
@@ -125,8 +124,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
         + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor. '
         + 'LONG CELLS: max_chars_per_cell (e.g. 200) cuts each cell\'s text to that many characters and lists the '
-        + 'cells cut in truncated_cells {row_id, column, full_length}: page or scan long AI answers or JSON without '
-        + 'filling your context, then read the cells you need whole with row_ids + columns. Any read of rows takes it.',
+        + 'cells cut in truncated_cells {"<row id>": {"<column>": full length}}: page or scan long AI answers or JSON '
+        + 'without filling your context, then read the cells you need whole with row_ids + columns. Any read of '
+        + 'rows takes it. A cut never leaves half of a surrogate pair; an emoji of several characters can lose parts.',
       inputSchema: {
         sheet_id: z.string(),
         // Digits sent as text are the number cursor (a model often quotes it).

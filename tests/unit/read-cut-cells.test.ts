@@ -4,8 +4,9 @@
 // as a broken half; numbers, true/false and null never cut; an object or list
 // (a value a columns path took out of a JSON cell) cut as its JSON text; a run
 // cell's {status, value, error} has its value, error or reason cut and never its
-// status; a row's cells listed in key order with their full length, and a
-// column named "__proto__" still a cell.
+// status; a row's cut cells listed in key order as column → full length (null
+// when none), and a column named "__proto__" or "constructor" still a cell and a
+// plain key of that list (a null-prototype object).
 import assert from 'node:assert/strict'
 import cutMod from '../../server/src/lib/row-select/cut-cells'
 const { cutChars, cutCell, cutRow } = cutMod as typeof import('../../server/src/lib/row-select/cut-cells')
@@ -43,6 +44,9 @@ check('a cut never splits a surrogate pair: the emoji goes whole or not at all',
   assert.equal(cutChars('😀😀😀', 1), '', 'nothing fits but half an emoji: nothing')
   assert.equal(cutChars('😀😀😀', 3), '😀')
   assert.deepEqual(cutCell('😀😀😀', 3), { value: '😀', full: 6 })
+  // An emoji built from several characters can lose its last parts: a skin tone, a flag's second letter.
+  assert.equal(cutChars('👍🏽', 2), '👍')
+  assert.equal(cutChars('🇫🇷', 2), '🇫')
   // Every N over a text of mixed pairs and single units: well formed, never longer than N, a prefix.
   const mixed = 'a😀bc🎉🎉d👍🏽e'.repeat(3)
   for (let n = 1; n <= mixed.length + 1; n++) {
@@ -92,26 +96,31 @@ check('a run cell read with include_status: its value, error or reason cut, neve
 
 check('a row: its cells cut and listed in key order, short ones and non-text left alone', () => {
   const data = { A: 'a'.repeat(20), B: 'short', C: 42, D: 'd'.repeat(12), E: { status: 'done', value: 'e'.repeat(30) } }
-  const out = cutRow('row-1', data, 10, new Set(['E']))
+  const out = cutRow(data, 10, new Set(['E']))
   assert.deepEqual(out.data, { A: 'a'.repeat(10), B: 'short', C: 42, D: 'd'.repeat(10),
     E: { status: 'done', value: 'e'.repeat(10) } })
-  assert.deepEqual(out.cut, [
-    { row_id: 'row-1', column: 'A', full_length: 20 },
-    { row_id: 'row-1', column: 'D', full_length: 12 },
-    { row_id: 'row-1', column: 'E', full_length: 30 },
-  ])
+  assert.deepEqual({ ...out.cut }, { A: 20, D: 12, E: 30 })
+  assert.deepEqual(Object.keys(out.cut!), ['A', 'D', 'E'], 'the cut columns in the row\'s order')
+  assert.equal(Object.getPrototypeOf(out.cut), null)
   assert.deepEqual(Object.keys(out.data), ['A', 'B', 'C', 'D', 'E'], 'the columns keep their order')
   assert.equal(data.A.length, 20, 'the row read is left as it was')
-  assert.deepEqual(cutRow('row-2', { A: 'x' }, 10, new Set()), { data: { A: 'x' }, cut: [] })
+  assert.deepEqual(cutRow({ A: 'x' }, 10, new Set()), { data: { A: 'x' }, cut: null })
 })
 
-check('a column named "__proto__" stays a cell, cut like the others', () => {
-  const data = JSON.parse(`{"__proto__": "${'p'.repeat(20)}", "constructor": "c"}`) as Record<string, unknown>
-  const out = cutRow('r', data, 5, new Set())
+check('columns named "__proto__" and "constructor" stay cells and plain keys of the list', () => {
+  const long = 'p'.repeat(20)
+  const data: Record<string, unknown> = JSON.parse(`{"__proto__":"${long}","constructor":"${long}","toString":"t"}`)
+  const out = cutRow(data, 5, new Set())
   assert.ok(Object.prototype.hasOwnProperty.call(out.data, '__proto__'))
   assert.equal(out.data['__proto__'], 'ppppp')
   assert.equal(Object.getPrototypeOf(out.data), Object.prototype)
-  assert.deepEqual(out.cut, [{ row_id: 'r', column: '__proto__', full_length: 20 }])
+  const cut = out.cut!
+  assert.deepEqual(Object.keys(cut), ['__proto__', 'constructor'])
+  assert.equal(cut['__proto__'], 20)
+  assert.equal(cut['constructor'], 20)
+  assert.ok(!('toString' in cut), 'nothing inherited: a short "toString" cell is not listed')
+  assert.equal(JSON.stringify(cut), '{"__proto__":20,"constructor":20}')
+  assert.deepEqual(JSON.parse(JSON.stringify(cut)), JSON.parse('{"__proto__":20,"constructor":20}'))
 })
 
 if (failures) { console.error(`${failures} read-cut-cells check(s) failed`); process.exit(1) }

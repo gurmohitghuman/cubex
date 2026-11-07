@@ -10,6 +10,7 @@ import {
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { MAX_VIEW_DESCRIPTION_CHARS, MAX_VIEW_NAME_CHARS } from '../lib/constants-filters';
 import { CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS } from '../lib/constants-query';
+import { DIGITS_TEXT } from '../lib/digits-text';
 import { whereSchema } from '../mcp/where-schema';
 import { MAX_CHARS_PER_CELL_HELP } from '../mcp/query-schema';
 import { op, type RouteDoc } from './route-doc';
@@ -55,10 +56,13 @@ export const rowRoutes = (): RouteDoc[] => [
       extend: {
         limit: rowsPage.shape.limit,
         include_status: z.boolean().optional().describe("true: run columns' cells as {status, value, error}."),
-        max_chars_per_cell: z.number().int().min(CELL_CUT_MIN_CHARS).max(CELL_CUT_MAX_CHARS).optional()
-          .describe(MAX_CHARS_PER_CELL_HELP),
+        max_chars_per_cell: z.union([z.number().int().min(CELL_CUT_MIN_CHARS).max(CELL_CUT_MAX_CHARS),
+          z.string().regex(DIGITS_TEXT)]).optional()
+          .describe(`${MAX_CHARS_PER_CELL_HELP} Digits sent as text ("200") count as the number.`),
       },
     }),
+    responses: { 200: 'The rows, ids, count or groups asked for. With max_chars_per_cell, truncated_cells lists the '
+      + 'cells cut: {"<row id>": {"<column>": <full length>}}, {} when none.' },
     conflict: true,
   }),
   op({
