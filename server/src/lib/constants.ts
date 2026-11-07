@@ -96,6 +96,18 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
+// for every clean, formula and lookup column reading the run's columns, in the
+// same transaction; on rows with random ids each queued row writes a page of
+// its own. With R such columns a slice holds this many / (1 + R) rows (1,000
+// at 1, 500 at 3, still 10 on a full sheet of 200 columns), commits with
+// SQLite's own checkpoint off and is checkpointed in a turn of its own
+// (lib/slices.ts).
+// Measured at 200,000 rows with 3 formulas on random ids: slices up to 40 ms,
+// checkpoints up to 70 ms, the whole clear 23 to 25 s in the background. Left
+// on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
+// With none, slices stay HEAVY_SLICE_ROWS rows, with no checkpoint.
+export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
 // A journaled heavy job (a sort, a CSV import's clean-up) that fails half-way
 // keeps its sheet busy and is retried in the background, waiting this long
 // before the first retry and doubling up to the cap (lib/sheet-busy.ts).
