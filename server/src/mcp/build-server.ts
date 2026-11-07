@@ -41,6 +41,7 @@ import { registerSavedKeyTools } from './tools-saved-keys';
 import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
+import { refuseToolListCursor } from './list-cursor';
 
 // The name and version every answer carries (serverInfo).
 const MCP_SERVER_INFO = { name: 'cubex', version: '1.0.0' };
@@ -53,9 +54,6 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   const server = new McpServer(
     MCP_SERVER_INFO,
     {
-      // Cubex sends no list-changed notices: its tools change only with a new
-      // version. A subscriptions/listen is then acknowledged empty and closed.
-      capabilities: { tools: { listChanged: false } },
       cacheHints: { 'server/discover': CACHE_HINT, 'tools/list': CACHE_HINT },
       instructions:
         'Cubex is a spreadsheet workspace. Resolve names with list_tables first; ' +
@@ -107,6 +105,13 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'inside them.' + capToolNote(ctx.spend ?? null, true),
     },
   );
+  // Cubex sends no list-changed notices. The list changes with a new version or
+  // a restart that flips MCP_EFFICIENT_ROWS_ENABLED, and descriptions with the
+  // token's cap and spend. A subscriptions/listen is acknowledged empty and closed.
+  // Declared here, not in the options above: there McpServer installs tools/list
+  // at once, and the cursor check must wrap it before the first tool installs it.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
+  refuseToolListCursor(server);
   registerAllTools(server, ctx);
   return server;
 }

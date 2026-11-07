@@ -73,15 +73,21 @@ Cubex speaks MCP [2026-07-28](https://modelcontextprotocol.io/specification/2026
 - **2026-07-28** has no handshake. Each request names its version and the client's capabilities in `_meta`, and sends the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers. A client may call `server/discover` first: it answers the versions Cubex takes this way (`2026-07-28`), its capabilities (tools only), its instructions, and its name and version (`cubex`, `1.0.0`) in `_meta`.
 - **2025-11-25 and earlier** open with `initialize`, as before.
 
-Every request needs the token, `server/discover` and `initialize` too. Cubex keeps no session between requests, and each answer is one JSON body.
+Every request needs the token, `server/discover` and `initialize` too. Cubex keeps no session between requests, and each answer is one JSON body, except a `subscriptions/listen`, which answers `text/event-stream`.
+
+On every version:
+
+- `tools/list` gives every tool at once and hands out no cursor, so a request with a `cursor` gets error `-32602`.
+- An unknown tool name gets a JSON-RPC error `-32602` (`Tool nope not found`). Clients on 2025-11-25 and earlier used to get it as a tool result with `isError: true`.
+- A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600`. Neither answer has an `id`.
 
 On 2026-07-28:
 
 - Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`).
-- `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when its tools change (they change only with a new version of Cubex), so a client sees new tools within 5 minutes.
+- `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when they change: the tools change with a new version of Cubex or a restart that turns `MCP_EFFICIENT_ROWS_ENABLED` on or off, and descriptions change with the token's spend cap and what it has spent. A client sees each change within 5 minutes.
 - `tools/list` gives every tool at once, in the same order every time. Every token sees every tool: one its scopes don't allow refuses with a message that names the scope.
 - Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true`, such as `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
-- Errors: a version Cubex doesn't speak gets HTTP 400 with code `-32022` and the versions it does in `data.supported`. Headers that are missing or disagree with the body get 400 with `-32020` (an `Mcp-Name` sent as `=?base64?...?=` is decoded first). A `_meta` without `clientCapabilities` gets 400 with `-32602`. A method Cubex doesn't offer gets 404 with `-32601`.
+- Errors: a version Cubex doesn't speak gets HTTP 400 with code `-32022` and, in `data.supported`, every version it speaks, newest first: `2026-07-28`, then the five a client reaches with `initialize`. Headers that are missing or disagree with the body get 400 with `-32020` (an `Mcp-Name` sent as `=?base64?...?=` is decoded first). A `_meta` without `clientCapabilities`, or a request with the `MCP-Protocol-Version: 2026-07-28` header and no `_meta`, gets 400 with `-32602`. A method Cubex doesn't offer gets 404 with `-32601`.
 
 Not offered:
 

@@ -12,7 +12,8 @@
 // closed over its caller (build-server.ts); the caller travels in
 // authInfo.extra, which the SDK passes to the factory untouched.
 import {
-  createMcpHandler, isLegacyRequest, ProtocolError, WebStandardStreamableHTTPServerTransport,
+  createMcpHandler, isJsonContentType, isLegacyRequest, ProtocolErrorCode, SUPPORTED_PROTOCOL_VERSIONS,
+  WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type { AuthInfo, McpHandlerRequestOptions } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
@@ -36,9 +37,20 @@ function callerOf(authInfo: AuthInfo | undefined): McpAuthCtx {
 
 // The SDK reports every request it refused (a version Cubex doesn't speak,
 // headers that disagree with the body): the client's mistake, answered with
-// its error already. Anything else is logged, redacted.
+// its error already, so not logged. An error with any other code (an internal
+// -32603 included) or none is logged, redacted. The SDK's refusals that carry
+// no code are named by their words (the -32020/-32602 checks, the 415).
+const HEADER_MISMATCH = -32020; // the spec's HeaderMismatch; the SDK exports no name for it
+const CLIENT_CAUSED = new Set<number>([
+  HEADER_MISMATCH, ProtocolErrorCode.MissingRequiredClientCapability,
+  ProtocolErrorCode.UnsupportedProtocolVersion, ProtocolErrorCode.InvalidRequest,
+  ProtocolErrorCode.InvalidParams, ProtocolErrorCode.ParseError,
+]);
 export function reportMcpError(error: Error): void {
-  if (error instanceof ProtocolError || /^(Rejected |Unsupported Media Type)/.test(error.message)) return;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'number' ? CLIENT_CAUSED.has(code) : /^(Rejected |Unsupported Media Type)/.test(error.message)) {
+    return;
+  }
   console.error('MCP request error:', redactError(error));
 }
 
@@ -65,9 +77,30 @@ async function legacy(request: Request, options?: McpHandlerRequestOptions): Pro
   }
 }
 
+// Every version Cubex speaks, newest first: 2026-07-28 with _meta, and the
+// versions a client reaches with initialize.
+const everyVersion = (modernOnes: string[]): string[] =>
+  [...new Set([...modernOnes, ...SUPPORTED_PROTOCOL_VERSIONS])].sort().reverse();
+
+// The SDK's -32022 lists only the versions a request with _meta can name, but
+// a server MUST list every version it supports (basic/versioning). The status
+// and the rest of the body stay as the SDK wrote them.
+async function withEveryVersion(res: Response): Promise<Response> {
+  if (res.status !== 400 || !isJsonContentType(res.headers.get('content-type'))) return res;
+  type Refusal = { error?: { code?: unknown; data?: { supported?: string[] } } };
+  const body = await res.clone().json().catch(() => null) as Refusal | null;
+  const data = body?.error?.code === ProtocolErrorCode.UnsupportedProtocolVersion ? body.error.data : undefined;
+  if (!Array.isArray(data?.supported)) return res;
+  data.supported = everyVersion(data.supported);
+  const headers = new Headers(res.headers);
+  headers.delete('content-length');
+  return new Response(JSON.stringify(body), { status: res.status, statusText: res.statusText, headers });
+}
+
 export const mcpEntry = {
   fetch: async (request: Request, options?: McpHandlerRequestOptions): Promise<Response> =>
-    (await isLegacyRequest(request, options?.parsedBody)) ? legacy(request, options) : modern.fetch(request, options),
+    (await isLegacyRequest(request, options?.parsedBody))
+      ? legacy(request, options) : withEveryVersion(await modern.fetch(request, options)),
 };
 
 // Express face: reads req.auth (authInfoFor) and the parsed body, and stops

@@ -12,10 +12,11 @@
 // (applyServerMiddleware) → Origin guard (spec-mandated DNS-rebinding defense,
 // pre-body) → Bearer auth → per-token limiter → tight JSON parser → transport.
 import express from 'express';
+import { ProtocolErrorCode } from '@modelcontextprotocol/server';
 import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
-import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
+import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
 import { authInfoFor, serveMcp } from '../mcp/http-entry';
 import type { McpAuthCtx } from '../mcp/tool-helpers';
 import { linkBase } from '../lib/file-links';
@@ -38,8 +39,10 @@ router.use((req, res, next) => {
     const publicUrl = process.env.PUBLIC_URL;
     if (publicUrl && new URL(origin).origin === new URL(publicUrl).origin) return next();
   } catch { /* unparseable Origin → reject below */ }
+  // A JSON-RPC error with no id, as the transport page allows for this 403. The
+  // spec names no code for it: MCP_FORBIDDEN_ORIGIN_CODE (api-v1-constants.ts).
   return res.status(403).json({
-    jsonrpc: '2.0', error: { code: -32000, message: 'Forbidden origin' }, id: null,
+    jsonrpc: '2.0', error: { code: MCP_FORBIDDEN_ORIGIN_CODE, message: 'Forbidden origin' },
   });
 });
 
@@ -84,8 +87,12 @@ router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
 });
 
 // No server-push stream to GET (2026-07-28 has none either) and no session to DELETE.
+// A GET or DELETE carries no JSON-RPC request object at all: Invalid Request
+// (-32600), the spec's code for that. No id, since there is no request to name.
 const methodNotAllowed = (_req: express.Request, res: express.Response) =>
-  res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
+  res.status(405).json({
+    jsonrpc: '2.0', error: { code: ProtocolErrorCode.InvalidRequest, message: 'Method not allowed' },
+  });
 router.get('/', methodNotAllowed);
 router.delete('/', methodNotAllowed);
 

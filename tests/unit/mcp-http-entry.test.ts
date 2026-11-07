@@ -5,65 +5,17 @@
 // tools/list keeps registration order. A 2025-era request (initialize, or a
 // plain request) gets the stateless transport's single JSON body, as before.
 // A notification gets 202 and no body in both eras. The caller rides in
-// authInfo; without it nothing is served. reportMcpError
-// logs only what isn't a refused request.
+// authInfo; without it nothing is served. Refusals and errors:
+// mcp-http-entry-errors.test.ts.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
-import { ProtocolError } from '@modelcontextprotocol/server'
-import dbMod from '../../server/src/lib/db'
-import migMod from '../../server/src/db/migrate'
-import entryMod from '../../server/src/mcp/http-entry'
+import { mcpHttpKit, MODERN, SERVER, META } from './mcp-http-kit'
 import buildMod from '../../server/src/mcp/build-server'
 import spendMod from '../../server/src/lib/token-spend'
-const { db } = dbMod as typeof import('../../server/src/lib/db')
-const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { mcpEntry, authInfoFor, reportMcpError } = entryMod as typeof import('../../server/src/mcp/http-entry')
 const { registerAllTools } = buildMod as typeof import('../../server/src/mcp/build-server')
 const { capToolNote } = spendMod as typeof import('../../server/src/lib/token-spend')
 
-if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
-runMigrations()
-
-let failures = 0, finished = false
-// An answer stream that never ends leaves nothing for Node to wait on, and it
-// would exit 0 mid-run: a run that didn't reach the end fails.
-process.on('exit', () => {
-  if (!finished) { console.log('FAIL the run stopped before its end'); process.exitCode = 1 }
-})
-async function check(label: string, fn: () => void | Promise<void>) {
-  try { await fn(); console.log('ok  ', label) }
-  catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
-}
-
-const uid = uuid()
-db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
-const spend = { spend_cap_usd: 5, spent_usd: 1, left_usd: 4 }
-const ctx = { userId: uid, tokenId: 'tok', tokenName: 'unit', scopes: new Set(['read'] as const), spend }
-const MODERN = '2026-07-28'
-const SERVER = { 'io.modelcontextprotocol/serverInfo': { name: 'cubex', version: '1.0.0' } }
-const meta = { 'io.modelcontextprotocol/protocolVersion': MODERN,
-  'io.modelcontextprotocol/clientInfo': { name: 'unit', version: '1' },
-  'io.modelcontextprotocol/clientCapabilities': {} }
-
-// One POST through the router, as routes/mcp.ts hands it on (parsed body, caller in authInfo).
-async function post(body: Record<string, unknown>, headers: Record<string, string> = {}, signedIn = true) {
-  const request = new Request('http://127.0.0.1/mcp', { method: 'POST', body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers } })
-  const res = await mcpEntry.fetch(request, { parsedBody: body, ...(signedIn ? { authInfo: authInfoFor(ctx) } : {}) })
-  let timer: NodeJS.Timeout | undefined
-  const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('the answer was still open after 5 s')), 5000)
-  })
-  try {
-    return { status: res.status, type: res.headers.get('content-type'), text: await Promise.race([res.text(), late]) }
-  } finally { clearTimeout(timer) }
-}
-let id = 0
-const modern = (method: string, params: Record<string, unknown> = {}, name?: string) =>
-  post({ jsonrpc: '2.0', id: ++id, method, params: { ...params, _meta: meta } },
-    { 'mcp-protocol-version': MODERN, 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) })
-const legacy = (method: string, params: Record<string, unknown> = {}) =>
-  post({ jsonrpc: '2.0', id: ++id, method, params })
+const { ctx, spend, check, done, crash, post, modern, legacy } = mcpHttpKit('mcp-http-entry')
 
 // The order registerAllTools registers in (as openapi/tool-schemas.ts reads it).
 const registered: string[] = []
@@ -137,7 +89,7 @@ async function main() {
   await check('a notification is accepted with 202 and no body, in both eras', async () => {
     const legacyNote = await post({ jsonrpc: '2.0', method: 'notifications/initialized' })
     const modernNote = await post({ jsonrpc: '2.0', method: 'notifications/cancelled',
-      params: { requestId: 1, _meta: meta } }, { 'mcp-protocol-version': MODERN })
+      params: { requestId: 1, _meta: META } }, { 'mcp-protocol-version': MODERN })
     for (const res of [legacyNote, modernNote]) assert.deepEqual([res.status, res.text], [202, ''])
   })
 
@@ -145,7 +97,7 @@ async function main() {
     const quiet = console.error
     console.error = () => {}
     try {
-      const res = await post({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: meta } },
+      const res = await post({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } },
         { 'mcp-protocol-version': MODERN, 'mcp-method': 'tools/list' }, false)
       assert.deepEqual([res.status, JSON.parse(res.text).error.code], [500, -32603])
       await assert.rejects(post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, {}, false),
@@ -153,25 +105,7 @@ async function main() {
     } finally { console.error = quiet }
   })
 
-  await check('reportMcpError: refused requests are not logged, other errors are', () => {
-    const logged: unknown[][] = []
-    const real = console.error
-    console.error = (...args: unknown[]) => { logged.push(args) }
-    try {
-      reportMcpError(new ProtocolError(-32022, 'Unsupported protocol version: 1900-01-01'))
-      reportMcpError(new Error('Rejected inbound request (headers): Mcp-Name missing'))
-      reportMcpError(new Error('Unsupported Media Type: Content-Type must be application/json'))
-      assert.equal(logged.length, 0)
-      reportMcpError(new Error('factory blew up'))
-      assert.equal(logged.length, 1)
-      assert.equal(logged[0][0], 'MCP request error:')
-    } finally { console.error = real }
-  })
-
-  finished = true
-  if (failures) { console.error(`${failures} mcp-http-entry check(s) failed`); process.exit(1) }
-  console.log('All mcp-http-entry assertions passed.')
-  process.exit(0)
+  done()
 }
 
-main().catch(e => { finished = true; console.error(e); process.exit(1) })
+main().catch(crash)
