@@ -10,7 +10,7 @@
 // instead; no escape-hatch flag.
 import { getSheetColumns } from './sql-helpers';
 import { extractColumnReferences, findUnknownColumnReferences, normalizeColumnName, unknownRefsMessage } from './prompt';
-import { getLockedRunColumns } from './run-locked-columns';
+import { runHeldColumns } from './run-locked-columns';
 
 // Returns the user-facing error when the prompt references columns that don't
 // exist on the sheet or that a run is still filling (or, stopped, still putting
@@ -32,13 +32,17 @@ export function unknownPromptRefsError(
   // A column another run is still filling holds "⏳ Processing..." on the rows
   // it hasn't reached; reading it fed (and billed) the model that placeholder.
   // A stopped or failed run's ⏳ cells stay until its clear reaches them.
-  const locked = getLockedRunColumns(sheetId, userId, { clearing: true });
-  if (locked.size === 0) return null;
+  const held = runHeldColumns(sheetId, userId, { clearing: true });
+  if (held.size === 0) return null;
   for (const ref of extractColumnReferences(prompt)) {
     const col = columns.find(c => normalizeColumnName(c) === ref || c.toLowerCase() === ref.toLowerCase());
-    if (col && locked.has(col)) {
+    const hold = col === undefined ? undefined : held.get(col);
+    if (hold === 'going') {
       return `/${ref} reads "${col}", which a run that hasn't finished is still filling. `
         + 'Wait for that run to finish (or stop it), then start this one.';
+    }
+    if (hold === 'clearing') {
+      return `/${ref} reads "${col}", which is getting back what it held before a stopped run. Try again in a moment.`;
     }
   }
   return null;

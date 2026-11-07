@@ -1,3 +1,4 @@
+// Over 200 lines: one fixture of runs and journals; each case a way a run's journal goes or stays.
 // A run that ended before it wrote a row (cancelled, or failed to start, with
 // every row still ⏳) leaves nothing to undo once its clear has put the cells
 // back (lib/run-undo/unused.ts): its journal goes, so "Undo last run" offers
@@ -18,6 +19,7 @@ import markersMod from '../../server/src/lib/run-markers'
 import viewMod from '../../server/src/services/run-undo-view'
 import undoMod from '../../server/src/services/run-undo'
 import pruneMod from '../../server/src/services/run-undo-prune'
+import constMod from '../../server/src/lib/constants'
 const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { seedThenEnqueue } = seedRunMod as typeof import('../../server/src/services/run-seed')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
@@ -28,6 +30,7 @@ const { CONDITION_NOT_MET } = markersMod as typeof import('../../server/src/lib/
 const { undoViewOf, lastUndoable } = viewMod as typeof import('../../server/src/services/run-undo-view')
 const { undoRun } = undoMod as typeof import('../../server/src/services/run-undo')
 const { pruneRunUndos } = pruneMod as typeof import('../../server/src/services/run-undo-prune')
+const { UNDO_EMPTY_CHECK_ROWS } = constMod as typeof import('../../server/src/lib/constants')
 const { db, uid, ok, done, sheet, cells, run, journal, journalRows } = undoKit('run-end-nothing-to-undo')
 console.error = () => {}
 
@@ -142,6 +145,67 @@ await ok('an AI rerun that failed to start after seeding: nothing to undo either
   assert.deepEqual(cells(sid, 'V'), ['v0', 'v1'])
   assert.equal(journal('ai', id)!.state, 'dropping')
   assert.equal(undoViewOf(uid, 'ai', id)!.state, 'none')
+})
+
+// 5,001 rows of 3 columns (a page of the check: UNDO_EMPTY_CHECK_ROWS / 4 = 5,000 rows), a rerun on every row as
+// its seeding leaves it; `mark`: the last row kept out by an "Only run if" rule instead, its only cell written but
+// no result row, so only the journal's second page tells.
+const COLS = ['C1', 'C2', 'C3']
+const N = UNDO_EMPTY_CHECK_ROWS / 4 + 1
+async function widePages(mark: boolean) {
+  const sid = sheet(Array.from({ length: N }, (_, i) => Object.fromEntries(COLS.map(c => [c, `${c} ${i}`]))), COLS)
+  const id = await rerun(sid)
+  // Its status column C1, its mapped columns C2 and C3 (its clear puts back all three).
+  db.prepare("UPDATE http_runs SET master_column_name = 'C1' WHERE id = ?").run(id)
+  for (const c of COLS.slice(1)) {
+    db.prepare(`INSERT INTO http_column_associations (id,sheet_id,user_id,master_column_name,extracted_column_name,
+      run_id) VALUES (?,?,?,'C1',?,?)`).run(uuid(), sid, uid, c, id)
+  }
+  const rowids = db.prepare('SELECT rowid FROM rows WHERE sheet_id = ? ORDER BY rowid').pluck().all(sid) as number[]
+  const seeded = JSON.stringify(mark ? rowids.slice(0, -1) : rowids)
+  const set = db.prepare(`UPDATE rows SET data = json_set(data, '$.C1', ?, '$.C2', ?, '$.C3', ?)
+    WHERE rowid IN (SELECT value FROM json_each(?))`)
+  db.transaction(() => {
+    journalSeed({ kind: 'http', id }, sid, uid, { rowids: seeded }, COLS.map(c => [c, PLACEHOLDER]))
+    set.run(PLACEHOLDER, PLACEHOLDER, PLACEHOLDER, seeded)
+    if (!mark) return
+    const last = JSON.stringify(rowids.slice(-1))
+    journalSeed({ kind: 'http', id }, sid, uid, { rowids: last }, [['C1', CONDITION_NOT_MET], ['C2', ''], ['C3', '']])
+    set.run(CONDITION_NOT_MET, '', '', last)
+  })()
+  // Each read of the check's pages: where it went on from and how many rows it asked for.
+  const pages: Array<[number, number]> = []
+  const prepare = db.prepare
+  db.prepare = ((sql: string) => {
+    const st = prepare.call(db, sql)
+    if (!sql.startsWith('SELECT MAX(row_id), MAX(EXISTS')) return st
+    return new Proxy(st, { get(t, key) {
+      if (key === 'raw') return (...a: unknown[]) => new Proxy(t.raw(...a), { get(r, k) {
+        if (k === 'get') return (...g: number[]) => { pages.push([g[1], g[2]]); return r.get(...g) }
+        const v = Reflect.get(r, k)
+        return typeof v === 'function' ? v.bind(r) : v
+      } })
+      const v = Reflect.get(t, key)
+      return typeof v === 'function' ? v.bind(t) : v
+    } })
+  }) as typeof db.prepare
+  try { await cancel(id) } finally { db.prepare = prepare }
+  return { sid, id, rowids, pages }
+}
+
+await ok('3 columns, 5,001 rows, a rule\'s mark only on the last: the check reads its second page and keeps it',
+  async () => {
+    const { sid, id, rowids, pages } = await widePages(true)
+    assert.equal(journal('http', id)!.state, 'kept')
+    assert.deepEqual(pages, [[0, 5_000], [rowids[4_999], 5_000]])
+    assert.equal(lastUndoable(uid, sid, 'C1')?.run_id, id)
+  })
+
+await ok('3 columns, 5,001 rows, nothing but ⏳: the check reads both pages and the journal goes', async () => {
+  const { sid, id, rowids, pages } = await widePages(false)
+  assert.equal(journal('http', id)!.state, 'dropping')
+  assert.deepEqual(pages, [[0, 5_000], [rowids[4_999], 5_000], [rowids[5_000], 5_000]])
+  assert.deepEqual([cells(sid, 'C3')[0], cells(sid, 'C3')[N - 1]], ['C3 0', `C3 ${N - 1}`])
 })
 
 done()

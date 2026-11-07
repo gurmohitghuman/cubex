@@ -119,14 +119,18 @@ export function applyCellOp(
   }
 }
 
+// A template's {{column}} tokens. The name is trimmed in code: \s* around a lazy
+// [^}]+? backtracked cubically on long runs of spaces, and [^}] quadratically on
+// runs of "{".
+const TEMPLATE_TOKEN = /\{\{([^{}]+)\}\}/g;
+
+// The columns a template reads, as applyTemplate reads them (each once).
+export const templateColumns = (template: string): string[] =>
+  [...new Set([...template.matchAll(TEMPLATE_TOKEN)].map(m => m[1].trim()))];
+
 // template: substitute {{column}} tokens from the whole row. An unknown column
 // substitutes '' (blank), matching the HTTP request-template convention (not a
 // "[MISSING]" marker).
 export function applyTemplate(template: string, data: Record<string, string>): string {
-  // The name is trimmed in the callback: \s* around a lazy [^}]+? backtracked
-  // cubically on long runs of spaces, and [^}] quadratically on runs of "{".
-  return template.replace(/\{\{([^{}]+)\}\}/g, (_, raw: string) => {
-    const col = raw.trim();
-    return cellOf(data, col);
-  });
+  return template.replace(TEMPLATE_TOKEN, (_, raw: string) => cellOf(data, raw.trim()));
 }

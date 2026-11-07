@@ -3,9 +3,11 @@
 // is still going: an AI run's prompt check (lib/prompt-ref-validate.ts, what a
 // start and a preview ask) refuses a prompt reading its column, so the model is
 // never sent (and billed for) "⏳ Processing...", and transform_column
-// (services/column-transform.ts) refuses that column as its source or target,
-// so it never copies a ⏳. Each with the same words as for a running run; once
-// the clear is done, both go through and read the answers put back.
+// (services/column-transform.ts) refuses that column as its source, a column a
+// template names, or its target, so it never copies a ⏳. A running run is
+// named as before; a stopped one's words say its cells are getting back what
+// they held. Once the clear is done, both go through and read the answers put
+// back.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -38,20 +40,24 @@ async function scene() {
 const PROMPT = 'Write one line about /Answer for /Name.'
 const READS = '/Answer reads "Answer", which a run that hasn\'t finished is still filling. '
   + 'Wait for that run to finish (or stop it), then start this one.'
+const READS_BACK = '/Answer reads "Answer", which is getting back what it held before a stopped run. '
+  + 'Try again in a moment.'
 
 await ok('an AI run\'s prompt reading a column a stopped run is still putting back: refused as for a running run',
   async () => {
     const { sid, run, stop } = await scene()
     assert.equal(unknownPromptRefsError(sid, uid, PROMPT), READS, 'a running run')
     stop()
-    assert.equal(unknownPromptRefsError(sid, uid, PROMPT), READS, 'a stopped run still clearing')
+    assert.equal(unknownPromptRefsError(sid, uid, PROMPT), READS_BACK, 'a stopped run still clearing')
     await clearRunPlaceholders('http', run)
     assert.deepEqual(cells(sid, 'Answer'), ['Old A', 'Old B'])
     assert.equal(unknownPromptRefsError(sid, uid, PROMPT), null)
   })
 
-const busy = (c: string) => `Column "${c}" is being written by a run that hasn't finished. `
+const GOING = (c: string) => `Column "${c}" is being written by a run that hasn't finished. `
   + 'Wait for it to finish (or stop it) first.'
+const BACK = (c: string) => `Column "${c}" is getting back what it held before a stopped run. Try again in a moment.`
+const STATES = ['a running run', 'a stopped run still clearing']
 
 await ok('transform_column from or into a column a stopped run is still putting back: refused as for a running run',
   async () => {
@@ -61,18 +67,38 @@ await ok('transform_column from or into a column a stopped run is still putting 
     const into = () => transformColumn(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'Name',
       targetColumn: 'Answer' })
     const words: string[] = []
-    for (const state of ['a running run', 'a stopped run still clearing']) {
-      if (state !== 'a running run') stop()
+    for (const state of STATES) {
+      if (state !== STATES[0]) stop()
       for (const out of [from(), into()]) {
         assert.equal('fail' in out && out.fail, 'locked', `${state}: ${JSON.stringify(out)}`)
         words.push((out as { error: string }).error)
       }
     }
     assert.deepEqual(cells(sid, 'Loud'), ['', ''], 'nothing copied')
-    assert.deepEqual(words, words.map(() => busy('Answer')), 'the same words for both')
+    assert.deepEqual(words, [GOING('Answer'), GOING('Answer'), BACK('Answer'), BACK('Answer')])
     await clearRunPlaceholders('http', run)
     assert.deepEqual(from(), { ok: { updated: 2, created_column: 'Loud' } })
     assert.deepEqual(cells(sid, 'Loud'), ['OLD A', 'OLD B'])
   })
+
+await ok('a template transform naming a column a run holds, going or putting its cells back: refused, nothing '
+  + 'written; after the clear it copies the answers put back', async () => {
+  const { sid, run, stop } = await scene()
+  // The name as the template's own substitution reads it, spaces trimmed.
+  const copy = () => transformColumn(uid, { sheetId: sid, operation: 'template',
+    template: 'Was: {{ Answer }} ({{Name}})', targetColumn: 'Copy' })
+  const words: string[] = []
+  for (const state of STATES) {
+    if (state !== STATES[0]) stop()
+    const out = copy()
+    assert.equal('fail' in out && out.fail, 'locked', `${state}: ${JSON.stringify(out)}`)
+    words.push((out as { error: string }).error)
+    assert.deepEqual(cells(sid, 'Copy'), ['', ''], `${state}: nothing written`)
+  }
+  assert.deepEqual(words, [GOING('Answer'), BACK('Answer')])
+  await clearRunPlaceholders('http', run)
+  assert.deepEqual(copy(), { ok: { updated: 2, created_column: 'Copy' } })
+  assert.deepEqual(cells(sid, 'Copy'), ['Was: Old A (ada)', 'Was: Old B (bob)'])
+})
 
 done()

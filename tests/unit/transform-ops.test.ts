@@ -1,7 +1,7 @@
 // Unit test for lib/transform-ops.ts — pure cell transforms + the ReDoS guard.
 // server/src is type:commonjs → default-import + destructure under tsx.
 import transformOps from '../../server/src/lib/transform-ops'
-const { validateRegexPattern, applyCellOp, applyTemplate } =
+const { validateRegexPattern, applyCellOp, applyTemplate, templateColumns } =
   transformOps as typeof import('../../server/src/lib/transform-ops')
 
 let failures = 0
@@ -80,6 +80,13 @@ check('to_number junk → blank', applyCellOp('to_number', 'N/A', {}) === '')
 check('template substitutes', applyTemplate('{{First}} {{Last}}', { First: 'Ada', Last: 'L' }) === 'Ada L')
 check('template unknown col → blank', applyTemplate('[{{nope}}]', { First: 'x' }) === '[]')
 check('template trims token spaces', applyTemplate('{{ First }}', { First: 'x' }) === 'x')
+// The columns a template reads, named as its substitution reads them: trimmed, each once ("{{}}", "{x}" and
+// "{{a{b}}" name none, and stay as they are).
+const odd = '{{ First }} {{Last}} {{First}} {{}} {x} {{a{b}}'
+check('template columns', JSON.stringify(templateColumns(odd)) === JSON.stringify(['First', 'Last']))
+check('template columns: what it substitutes',
+  applyTemplate(odd, { First: 'A', Last: 'L' }) === 'A L A {{}} {x} {{a{b}}')
+check('template columns: none', templateColumns('plain text').length === 0)
 
 {
   // Long runs of spaces or "{" stay fast (the old pattern backtracked cubically on spaces).
