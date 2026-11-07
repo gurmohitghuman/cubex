@@ -113,15 +113,55 @@ await ok('a running rerun that fails: the fill waits until its clear (in the wor
   assert.deepEqual(cells(a, 'Who'), ['N0', 'N1', 'N2'])
 })
 
-await ok('a running rerun cancelled, its clear in slices with the rows it matches last: every row gets the '
-  + 'answers put back', async () => {
+// The run's clear held after its first slice until release(), nothing in it changed: the heartbeat it runs
+// right after each slice (lib/run-placeholders.ts) arms the hold, and the one turn its loop then waits for
+// (setImmediate, lib/slices.ts yieldToRequests) is kept back. held: the hold has engaged.
+function holdClearAfterFirstSlice(run: string) {
+  const prepare = db.prepare, immediate = globalThis.setImmediate
+  let armed = false, held = false, release!: () => void
+  const released = new Promise<void>(r => { release = r })
+  const beat = "UPDATE http_runs SET updated_at = datetime('now') WHERE id = ?"
+  db.prepare = ((sql: string) => {
+    const st = prepare.call(db, sql)
+    if (sql !== beat) return st
+    return new Proxy(st, { get(t, key) {
+      if (key === 'run') return (...a: unknown[]) => { const r = t.run(...a); if (a[0] === run) armed = true; return r }
+      const v = Reflect.get(t, key)
+      return typeof v === 'function' ? v.bind(t) : v
+    } })
+  }) as typeof db.prepare
+  globalThis.setImmediate = ((fn: (...args: unknown[]) => void, ...args: unknown[]) => {
+    if (!armed) return immediate(fn, ...args)
+    armed = false; held = true
+    globalThis.setImmediate = immediate
+    void released.then(() => immediate(fn, ...args))
+    return immediate(() => {})
+  }) as typeof setImmediate
+  return { held: () => held, release: () => { db.prepare = prepare; globalThis.setImmediate = immediate; release() } }
+}
+
+await ok('a running rerun cancelled, its clear held between two slices with the rows it matches still ⏳: the fill '
+  + 'waits for the clear, then every row gets the answers put back', async () => {
   const a = place().sid, o = other(4_000, true)
   const id = await lookup(a, o, 'Who', 'value', 'Name')
   const run = await rerun(o, 'paused')
   await fillThenResume(a, o, id, run)
-  assert.deepEqual(await cancelRun('http', run, uid), { ok: true })
+  const hold = holdClearAfterFirstSlice(run)
+  try {
+    assert.deepEqual(await cancelRun('http', run, uid), { ok: true })
+    await until('the clear is held after its first slice', hold.held)
+    // Its first slice put rows back; the 3 the lookup matches (the last ones) still hold ⏳.
+    const name = db.prepare(`SELECT json_extract(data, '$.Name') FROM rows WHERE sheet_id = ?
+      AND json_extract(data, '$.Email') = ?`).pluck()
+    assert.equal(name.get(o, 'u3999@a.com'), 'Old 3999')
+    assert.deepEqual(['u0', 'u1', 'u2'].map(e => name.get(o, `${e}@a.com`)), [PLACEHOLDER, PLACEHOLDER, PLACEHOLDER])
+    // Past two of the fill's looks (every LOOKUP_WAIT_POLL_MS): it still waits.
+    await sleep(1_200)
+    assert.equal(statusOf(a, 'Who'), 'filling', 'the fill does not go on while the clear is held')
+    assert.equal(derivedFillWait(id), runNote(o, 'Name'))
+  } finally { hold.release() }
   await until('it is done', () => statusOf(a, 'Who') === 'done')
-  assert.equal(runOf(run).placeholder_work, null, 'the clear was done before it finished')
+  assert.equal(runOf(run).placeholder_work, null)
   assert.deepEqual(cells(a, 'Who'), OLD)
 })
 
