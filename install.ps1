@@ -26,7 +26,7 @@ $RunAsFile = [bool]{}.File # pasted text (irm | iex) has no file, and there `exi
 $Repo = if ($env:CUBEX_REPO) { $env:CUBEX_REPO } else { 'gurmohitghuman/cubex' } # the public GitHub repository
 $Ref = if ($env:CUBEX_REF) { $env:CUBEX_REF } else { 'stable' } # stable = the latest release
 $CubexHome = if ($env:CUBEX_HOME) { $env:CUBEX_HOME } else { Join-Path $env:LOCALAPPDATA 'cubex' }
-$NodeMajor = 22
+$NodeMajor = 24
 $Marker = '.cubex-home' # marks a folder as a Cubex install; uninstall only ever deletes inside those
 $Cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
 $Tar = Join-Path $env:SystemRoot 'System32\tar.exe'
@@ -485,6 +485,7 @@ function Enable-NewVersion([bool]$NoStart) {
     }
   }
   $swapped = @()
+  $ctrlC = Block-CtrlC # Node and the app built for it move together: Ctrl+C can't stop them half way
   try {
     foreach ($name in $names) { Switch-Folder $name; $swapped += $name }
   } catch {
@@ -494,29 +495,33 @@ function Enable-NewVersion([bool]$NoStart) {
       Move-Folder $current "$current.next"
       if (Test-Path -LiteralPath "$current.previous") { Move-Folder "$current.previous" $current }
     }
+    Unblock-CtrlC $ctrlC
     if ($wasRunning -and (Test-Path -LiteralPath "$CubexHome\app\bin\cubex.ps1")) {
       [void](Invoke-Cli 'start', '--quiet')
     }
     throw
-  }
+  } finally { Unblock-CtrlC $ctrlC }
   if ($NoStart -or -not $wasRunning) { return }
   if (Invoke-Cli 'start', '--quiet') { Ok 'Started Cubex'; return }
   $oldApp = $S.Built -and (Test-Path -LiteralPath "$CubexHome\app.previous")
   $oldNode = $S.NodeNext -and (Test-Path -LiteralPath "$CubexHome\node.previous")
   if (-not ($oldApp -or $oldNode)) { Die "Cubex didn't start. See: cubex logs" }
   $failed = ''
-  if ($oldApp) {
-    Remove-Tree "$CubexHome\app.failed"
-    Move-Folder "$CubexHome\app" "$CubexHome\app.failed"
-    Move-Folder "$CubexHome\app.previous" "$CubexHome\app"
-    $failed = " The failed build is in $CubexHome\app.failed."
-  }
-  if ($oldNode) {
-    Remove-Tree "$CubexHome\node.failed"
-    Move-Folder "$CubexHome\node" "$CubexHome\node.failed"
-    Move-Folder "$CubexHome\node.previous" "$CubexHome\node"
-    $failed += " The new Node.js is in $CubexHome\node.failed."
-  }
+  if ($oldApp) { Remove-Tree "$CubexHome\app.failed" }
+  if ($oldNode) { Remove-Tree "$CubexHome\node.failed" }
+  $ctrlC = Block-CtrlC # the old app and the old Node go back together
+  try {
+    if ($oldApp) {
+      Move-Folder "$CubexHome\app" "$CubexHome\app.failed"
+      Move-Folder "$CubexHome\app.previous" "$CubexHome\app"
+      $failed = " The failed build is in $CubexHome\app.failed."
+    }
+    if ($oldNode) {
+      Move-Folder "$CubexHome\node" "$CubexHome\node.failed"
+      Move-Folder "$CubexHome\node.previous" "$CubexHome\node"
+      $failed += " The new Node.js is in $CubexHome\node.failed."
+    }
+  } finally { Unblock-CtrlC $ctrlC }
   # Whichever kept the copy puts it back (the new build is in app.failed now).
   if ($kept -eq 'app.next') { $kept = 'app.failed' }
   if ($kept -and $oldApp -and -not (Invoke-Cli 'restore-snapshot' -From $kept)) {
@@ -529,6 +534,13 @@ function Enable-NewVersion([bool]$NoStart) {
   }
   Die "The new version didn't start, and the previous one didn't either. See: cubex logs.$failed"
 }
+
+# While folders swap, Ctrl+C is ordinary input, so it can't stop a swap half way and leave the app on a Node it
+# wasn't built for. Block-CtrlC returns the setting to put back: $null where there's no console, and nothing changes.
+function Block-CtrlC {
+  try { $was = [Console]::TreatControlCAsInput; [Console]::TreatControlCAsInput = $true; $was } catch { $null }
+}
+function Unblock-CtrlC($Was) { if ($null -ne $Was) { try { [Console]::TreatControlCAsInput = $Was } catch { } } }
 
 function Switch-Folder([string]$Name) { # <name>.next becomes <name>; the one it replaces becomes <name>.previous
   $current = "$CubexHome\$Name"

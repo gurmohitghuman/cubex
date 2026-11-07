@@ -17,6 +17,16 @@ process.umask(0o077);
 dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
+// Passwords are hashed with Node's own argon2 (24.7+). An older Node stops here,
+// before any import below opens the database or writes a secret into the data
+// folder. lib/password imports only crypto and ./constants.
+import { passwordHashingUnavailable } from './lib/password';
+const nodeTooOld = passwordHashingUnavailable();
+if (nodeTooOld) {
+  console.error(`❌ ${nodeTooOld}`);
+  process.exit(1);
+}
+
 import express from 'express';
 import { runMigrations } from './db/migrate';
 import { assertEncryptionConfigured } from './lib/crypto';

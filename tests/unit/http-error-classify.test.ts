@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict'
 import classifyMod from '../../server/src/lib/http-error-classify'
-// Default import + destructure: Node 22 (CI) can't see named exports of the
+// Default import + destructure: Node 22 can't see named exports of the
 // server's CommonJS modules from this ESM test file.
 const { classifyHttpError: cls, summarizeHttpErrorClasses } =
   classifyMod as typeof import('../../server/src/lib/http-error-classify')

@@ -8,13 +8,15 @@
 # the `cubex` command in ~/.local/bin, plus one line in your shell's startup file
 # if that folder isn't on your PATH yet. Running it again updates Cubex and keeps
 # your data and settings. macOS and Linux; on Windows, install.ps1 does the same.
+#
+# Over 200 lines: one file that runs on its own before anything else is downloaded; install.ps1's twin, step by step.
 set -euo pipefail
 
 CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
 CUBEX_REF="${CUBEX_REF:-stable}" # stable = the latest release
 CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
 CUBEX_BIN_DIR="${CUBEX_BIN_DIR:-$HOME/.local/bin}"
-NODE_MAJOR=22
+NODE_MAJOR=24
 MARKER=.cubex-home # marks a folder as a Cubex install; uninstall only ever deletes inside those
 
 if [ -t 1 ]; then G=$'\033[32m' R=$'\033[31m' B=$'\033[1m' N=$'\033[0m'; else G='' R='' B='' N=''; fi
@@ -38,7 +40,7 @@ EOF
 
 main() {
   PORT_ARG='' PUBLIC=0 SOURCE='' NO_START=0 NO_SERVICE=0 NO_PATH=0 FORCE=0 PASSWORD='' LOCKED=0
-  NODE_SWAPPED=0 CONFIG_CHANGED=0 REF_GIVEN=0
+  NODE_NEXT=0 CONFIG_CHANGED=0 REF_GIVEN=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --port) PORT_ARG="${2:?--port needs a number}"; shift 2 ;;
@@ -76,7 +78,8 @@ main() {
   echo 'This folder is a Cubex install. "cubex uninstall --delete-data" removes it.' > "$CUBEX_HOME/$MARKER"
   mkdir -p "$CUBEX_HOME/logs"
   TMP="$(mktemp -d)" LOCK="$CUBEX_HOME/.install-lock"
-  trap 'rm -rf "$TMP"; [ "$LOCKED" = 0 ] || rm -rf "$LOCK"' EXIT
+  # Also on Ctrl-C, which activate ignores while Node and app move: a Node left in node.next isn't the one in use.
+  trap 'rm -rf "$TMP"; [ "$LOCKED" = 0 ] || rm -rf "$CUBEX_HOME/node.next" "$LOCK"' EXIT
   mkdir "$LOCK" 2>/dev/null || die "Another install or update is running. If not, delete $LOCK and try again."
   LOCKED=1
 
@@ -111,6 +114,17 @@ detect_platform() {
   esac
   # A Terminal running under Rosetta reports x86_64 on Apple silicon.
   if [ "$OS" = darwin ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ]; then ARCH=arm64; fi
+  # Node.js 24 runs on macOS 13.5 or newer. Stop before anything changes, so an installed Cubex keeps running.
+  if [ "$OS" = darwin ]; then
+    local macos major minor
+    macos="$(sw_vers -productVersion 2>/dev/null || true)"
+    major="${macos%%.*}" && minor=0
+    case "$macos" in *.*) minor="${macos#*.}" && minor="${minor%%.*}" ;; esac
+    case "$major.$minor" in *[!0-9.]*|.*|*.) major=0 minor=0 ;; esac
+    if [ "$major" -lt 13 ] || { [ "$major" -eq 13 ] && [ "$minor" -lt 5 ]; }; then
+      die "Cubex needs macOS 13.5 or newer (for Node.js $NODE_MAJOR), and this Mac has macOS ${macos:-unknown}."
+    fi
+  fi
   if [ "$OS" = linux ]; then # musl's ldd exits 1 even for --version, so read its output instead
     case "$(ldd --version 2>&1 || true)" in
       *musl*) die "Alpine and other musl-based Linux aren't supported by this installer. Use Docker instead." ;;
@@ -127,32 +141,43 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum 
 # The latest Node.js $NODE_MAJOR for this platform, checksum-verified, in
 # $CUBEX_HOME/node. Native modules are built against it and it's the only Node
 # Cubex runs on, so installing or upgrading Node elsewhere can't break Cubex.
+# A patch update goes in at once (same native-module ABI). Another major version
+# waits in node.next: the app is rebuilt with it and activate swaps the two in
+# together, ignoring Ctrl-C while they move, so the installed app never runs on
+# a Node it wasn't built for.
 install_node() {
-  local base="https://nodejs.org/dist/latest-v$NODE_MAJOR.x" line file version current=''
+  local base="https://nodejs.org/dist/latest-v$NODE_MAJOR.x" line file version current='' built_for
   line="$(curl -fsSL "$base/SHASUMS256.txt" | grep " node-v[0-9.]*-$OS-$ARCH\.tar\.gz\$")" \
     || die "Couldn't find Node.js $NODE_MAJOR for $OS-$ARCH (no internet connection?)."
   file="${line##* }" && version="${file#node-}" && version="${version%%-*}"
   if [ -f "$CUBEX_HOME/node/.version" ]; then current="$(cat "$CUBEX_HOME/node/.version")"; fi
+  rm -rf "$CUBEX_HOME/node.next"
   if [ "$current" != "$version" ]; then
     curl -fsSL "$base/$file" -o "$TMP/$file" || die "Downloading Node.js failed."
     [ "$(sha256 "$TMP/$file")" = "${line%% *}" ] || die "The Node.js download failed its checksum."
-    rm -rf "$CUBEX_HOME/node.next" && mkdir "$CUBEX_HOME/node.next"
+    mkdir "$CUBEX_HOME/node.next"
     tar -xzf "$TMP/$file" -C "$CUBEX_HOME/node.next" --strip-components 1
     echo "$version" > "$CUBEX_HOME/node.next/.version"
-    rm -rf "$CUBEX_HOME/node.previous"
-    if [ -d "$CUBEX_HOME/node" ]; then mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.previous"; fi
-    mv "$CUBEX_HOME/node.next" "$CUBEX_HOME/node"
-    # Another major version means another native-module ABI: the app must be rebuilt.
-    if [ "${current%%.*}" != "${version%%.*}" ]; then FORCE=1 NODE_SWAPPED=1; fi
+    if [ -d "$CUBEX_HOME/node" ] && [ "${current%%.*}" != "${version%%.*}" ]; then
+      NODE_NEXT=1 FORCE=1 # another native-module ABI: the app is rebuilt with it
+    else
+      rm -rf "$CUBEX_HOME/node.previous"
+      if [ -d "$CUBEX_HOME/node" ]; then mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.previous"; fi
+      mv "$CUBEX_HOME/node.next" "$CUBEX_HOME/node"
+    fi
   fi
+  # An app built for another major than the Node it runs on (left by an older installer, or by hand) is rebuilt.
+  built_for="$(cat "$CUBEX_HOME/app/.cubex-node" 2>/dev/null || echo 22)"
+  if [ "$NODE_NEXT" = 0 ] && [ -d "$CUBEX_HOME/app" ] && [ "v$built_for" != "${version%%.*}" ]; then FORCE=1; fi
   ok "Node.js $version (a private copy; your system Node is untouched)"
 }
 
-# If this run switched Node to a new major and then failed, put the old Node
-# back: the installed app's native modules were built for it.
+# The new version didn't start: the old Node goes back with the old app, and the
+# new one to node.next, which the EXIT trap deletes. Two renames, nothing slow.
 restore_node() {
-  if [ "$NODE_SWAPPED" = 1 ] && [ -d "$CUBEX_HOME/node.previous" ]; then
-    rm -rf "$CUBEX_HOME/node" && mv "$CUBEX_HOME/node.previous" "$CUBEX_HOME/node"
+  if [ "$NODE_NEXT" = 1 ] && [ -d "$CUBEX_HOME/node.previous" ]; then
+    mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.next"
+    mv "$CUBEX_HOME/node.previous" "$CUBEX_HOME/node"
   fi
 }
 
@@ -245,13 +270,13 @@ fetch_source() {
 }
 
 build_app() {
-  local next="$CUBEX_HOME/app.next" log="$CUBEX_HOME/logs/install.log"
+  local next="$CUBEX_HOME/app.next" log="$CUBEX_HOME/logs/install.log" node=node
   say "  Building Cubex; this takes a minute or two..."
+  if [ "$NODE_NEXT" = 1 ]; then node=node.next; fi # the Node it will run on
   # shellcheck disable=SC2030 # PATH changes only for the build's subshell
-  if ! (cd "$next" && export PATH="$CUBEX_HOME/node/bin:$PATH" npm_config_update_notifier=false &&
+  if ! (cd "$next" && export PATH="$CUBEX_HOME/$node/bin:$PATH" npm_config_update_notifier=false &&
     npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund) \
     > "$log" 2>&1; then
-    restore_node
     tail -n 25 "$log" >&2
     die "Building Cubex failed (full log: $log). If the log mentions node-gyp or a compiler,
 install build tools and run this again: macOS: xcode-select --install;
@@ -263,8 +288,9 @@ Debian/Ubuntu: sudo apt install build-essential python3."
   ok "Built Cubex"
 }
 
-# Swap the new build in. If Cubex was running (or this is a first install) it
-# restarts on the new version; if that fails, the previous version comes back
+# Swap the new build in, with the new Node when it was built for one. If Cubex
+# was running (or this is a first install) it restarts on the new version; if
+# that fails, the previous version (and Node) comes back
 # with the data as it was before the update. The copy of the data is taken
 # first, while Cubex is stopped: a new version's migrations only go forward,
 # and the previous version refuses a database they changed (cubex rollback
@@ -286,21 +312,30 @@ activate() {
       case "$rc" in
         0) ok "Kept a copy of your data from before the update" ;;
         4) kept='' ;; # no database yet
-        *) restore_node
-          if [ "$was_running" = 1 ]; then "$cli" start --quiet || true; fi
+        *) if [ "$was_running" = 1 ]; then "$cli" start --quiet || true; fi
           die "The update stopped before changing anything." ;;
       esac
     fi
   fi
   rm -rf "$CUBEX_HOME/app.previous"
+  if [ "$NODE_NEXT" = 1 ]; then rm -rf "$CUBEX_HOME/node.previous"; fi
+  trap '' INT TERM HUP # the app and the Node it was built for move together: Ctrl-C can't stop them half way
   if [ -d "$CUBEX_HOME/app" ]; then mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.previous"; fi
   mv "$CUBEX_HOME/app.next" "$CUBEX_HOME/app"
+  if [ "$NODE_NEXT" = 1 ]; then
+    mv "$CUBEX_HOME/node" "$CUBEX_HOME/node.previous"
+    mv "$CUBEX_HOME/node.next" "$CUBEX_HOME/node"
+  fi
+  trap - INT TERM HUP
   if [ "$NO_START" = 1 ] || [ "$was_running" = 0 ]; then return 0; fi
   if "$cli" start --quiet; then ok "Started Cubex"; return 0; fi
   [ -d "$CUBEX_HOME/app.previous" ] || die "Cubex didn't start. See: cubex logs"
-  rm -rf "$CUBEX_HOME/app.failed" && mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.failed"
+  rm -rf "$CUBEX_HOME/app.failed"
+  trap '' INT TERM HUP # the old app and the old Node go back together
+  mv "$CUBEX_HOME/app" "$CUBEX_HOME/app.failed"
   mv "$CUBEX_HOME/app.previous" "$CUBEX_HOME/app"
   restore_node
+  trap - INT TERM HUP
   # Whichever kept the copy puts it back (the new build is in app.failed now).
   case "$kept" in app.next) kept=app.failed ;; esac
   if [ -n "$kept" ] && ! "$CUBEX_HOME/$kept/bin/cubex" restore-snapshot; then

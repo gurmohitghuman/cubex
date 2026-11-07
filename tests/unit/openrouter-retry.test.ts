@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import retryMod from '../../server/src/services/openrouter-retry'
-// Default import + destructure: Node 22 (CI) can't see named exports of the
+// Default import + destructure: Node 22 can't see named exports of the
 // server's CommonJS modules from this ESM test file.
 const { inFlightWaitMs, withConnectRetry, errorCauseCode } =
   retryMod as typeof import('../../server/src/services/openrouter-retry')
