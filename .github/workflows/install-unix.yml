@@ -7,8 +7,9 @@ name: Linux install
 # 401), and read a sheet made before back unchanged through an API token made before. Then the way back: cubex
 # rollback is refused across the Node change and points at --ref, the release installed again with --ref keeps the
 # data and pins install.env, a run without --ref follows the latest release again, and forward to this commit once
-# more. On pull requests and pushes to main that touch the installer, the scripts or the dependencies; the Release
-# workflow calls it for the commit being released.
+# more. The way back is checked only when the release ran on another Node and has every migration of this commit.
+# On pull requests and pushes to main that touch the installer, the scripts or the dependencies; the Release workflow
+# calls it for the commit being released.
 #
 # Over 200 lines: one job, step by step, the Linux twin of install-windows.yml's update job.
 
@@ -325,7 +326,38 @@ jobs:
           grep -qF -- '--ref <its tag>' "$RUNNER_TEMP/rollback.txt" || fail 'It should say how: --ref <its tag>.'
           "$CUBEX_BIN_DIR/cubex" status --quiet || fail 'After the refused rollback, Cubex is not running.'
 
+      - name: Check the way back only where the docs offer it and the release can open this commit's data
+        run: |
+          eval "$TEST_API"
+          # The .sql names a build's server reads, found the way server/src/db/migrate.ts finds them.
+          migrations() {
+            local dir
+            for dir in "$1/server/dist/db/migrations" "$1/server/src/db/migrations"; do
+              if [ -d "$dir" ]; then find "$dir" -maxdepth 1 -name '*.sql' -printf '%f\n' | sort; return 0; fi
+            done
+            fail "No migrations folder in $1."
+          }
+          previous="$(cat "$CUBEX_HOME/app.previous/.cubex-version" 2>/dev/null || true)"
+          case "$previous" in "$RELEASE_TAG "*) ;; *) fail "app.previous should be $RELEASE_TAG: '$previous'." ;; esac
+          release="$(migrations "$CUBEX_HOME/app.previous")"
+          this="$(migrations "$CUBEX_HOME/app")"
+          # The release refuses a database that ran a migration it doesn't have (migrate.ts), so it couldn't start.
+          new="$(comm -13 <(printf '%s\n' "$release") <(printf '%s\n' "$this") | paste -sd ' ' -)"
+          why=''
+          case "$RELEASE_NODE" in "v$NODE_MAJOR".*)
+            why="$RELEASE_TAG already ran on Node $NODE_MAJOR, and the docs offer --ref only across a Node change" ;;
+          esac
+          if [ -n "$new" ]; then why="${why:+$why; }$RELEASE_TAG can't open this commit's data (it lacks $new)"; fi
+          if [ -n "$why" ]; then
+            echo "::notice::The way back isn't checked: $why."
+            echo 'GO_BACK=false' >> "$GITHUB_ENV"
+          else
+            echo "The way back is checked: $RELEASE_TAG ran on Node $RELEASE_NODE and has every migration here."
+            echo 'GO_BACK=true' >> "$GITHUB_ENV"
+          fi
+
       - name: Go back to the release with this commit's installer and --ref; the data stays as it is
+        if: env.GO_BACK == 'true'
         run: |
           eval "$TEST_API"
           CUBEX_REPO="$RELEASE_REPO" bash "$RUNNER_TEMP/install-this.sh" --ref "$RELEASE_TAG" --port "$TEST_PORT" \
@@ -339,6 +371,7 @@ jobs:
           as_before
 
       - name: Without --ref, this commit's installer follows the latest release again
+        if: env.GO_BACK == 'true'
         run: |
           eval "$TEST_API"
           unset CUBEX_REF # as in a new terminal: no --ref and nothing in the environment
@@ -352,6 +385,7 @@ jobs:
           "$CUBEX_BIN_DIR/cubex" status --quiet || fail 'Cubex is not running.'
 
       - name: Forward to this commit again, on Node ${{ env.NODE_MAJOR }}, with the same password and sheet
+        if: env.GO_BACK == 'true'
         run: |
           eval "$TEST_API"
           # No --ref: the version comes from CUBEX_REF in the environment, as cubex update passes it.
@@ -362,7 +396,8 @@ jobs:
           case "$node" in "v$NODE_MAJOR".*) ;; *) fail "Expected Node $NODE_MAJOR, found $node." ;; esac
           built="$(cat "$CUBEX_HOME/app/.cubex-node")"
           [ "$built" = "$NODE_MAJOR" ] || fail "app/.cubex-node says '$built': the app was built for another Node."
-          [ "$pin" != "$RELEASE_TAG" ] || fail "install.env still pins CUBEX_REF=$RELEASE_TAG."
+          # The ref it was given, which cubex update follows from now on.
+          [ "$pin" = "$TEST_REF" ] || fail "install.env should say CUBEX_REF=$TEST_REF, the ref given, found '$pin'."
           "$CUBEX_BIN_DIR/cubex" status --quiet || fail 'Cubex is not running.'
           as_before
 

@@ -114,7 +114,7 @@ Cubex keeps running in the background and starts again after a restart: on macOS
 | `cubex stop`, `cubex start`, `cubex restart` | Stop, start or restart it |
 | `cubex logs` | Follow the server log |
 | `cubex update` | Update to the latest release; your data and settings are kept |
-| `cubex rollback` | Go back to the version and the data from before the last update. Right after the update to Node 24 it's refused: run the install command again with `--ref <the old tag>` instead. That keeps your data as it is now, and `cubex update` stays on that version until you run the install command without `--ref` |
+| `cubex rollback` | Go back to the version and the data from before the last update. Right after the update to Node 24 it's refused: run the install command again with `--ref <the old tag>` instead. That keeps your data as it is now (back to v0.8.0; an older version won't start on it, and the installer puts the new one back). Until you run the install command without `--ref`, `cubex update` stays on that version and rebuilds it on that version's Node: let it finish |
 | `cubex config` | Show the settings file, `config.env` in the Cubex folder ([every setting](docs/configuration.md)) |
 | `cubex reset-password` | Choose a new password |
 | `cubex uninstall` | Remove Cubex but keep your data (`--delete-data` removes that too) |
