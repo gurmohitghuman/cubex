@@ -61,6 +61,10 @@ const watchersOf = (sheetId: string, userId: string): Watcher[] => db.prepare(`S
   input_columns FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND enabled = 1`)
   .all(sheetId, userId) as Watcher[];
 
+// The clean, formula and lookup columns reading one of the `written` columns.
+const derivedReaders = (sheetId: string, userId: string, written: Set<string>): Watcher[] =>
+  watchersOf(sheetId, userId).filter(w => isFollowKind(w.kind) && parseList(w.input_columns).some(c => written.has(c)));
+
 // A clean or formula column follows its inputs: every written row is queued,
 // whatever its cell holds (services/derived-follow.ts), and told at once.
 // quiet: queued by an undo (markDerivedInputs); a row already queued by
@@ -101,11 +105,14 @@ export function markAutorunInputs(sheetId: string, userId: string, columns: Iter
 export function markDerivedInputs(sheetId: string, userId: string, columns: Iterable<string>, rows: RowRef): void {
   const written = new Set(columns);
   if (written.size === 0 || rowCount(rows) === 0) return;
-  for (const w of watchersOf(sheetId, userId)) {
-    if (isFollowKind(w.kind) && parseList(w.input_columns).some(c => written.has(c))) {
-      queue(w, sheetId, userId, rows, true);
-    }
-  }
+  for (const w of derivedReaders(sheetId, userId, written)) queue(w, sheetId, userId, rows, true);
+}
+
+// How many columns markDerivedInputs queues a row for when `columns` are written
+// in it: a job doing that for every row it writes sizes its slices by it.
+export function derivedReaderCount(sheetId: string, userId: string, columns: Iterable<string>): number {
+  const written = new Set(columns);
+  return written.size === 0 ? 0 : derivedReaders(sheetId, userId, written).length;
 }
 
 // The same for edits that wrote different columns in different rows (a batch
