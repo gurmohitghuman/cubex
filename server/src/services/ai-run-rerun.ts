@@ -16,10 +16,10 @@ import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { activeRunOnColumn } from './ai-run-start-checks';
-import { ruleSeed, storedRule } from './run-rule';
+import { ruleSeed, startRunRule } from './run-rule';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { columnReuseCollision } from '../lib/column-names';
-import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
+import { promptRefsRefusal } from '../lib/prompt-ref-validate';
 import { type AIRunRow } from './ai-runner';
 import { enqueueAIRerun } from '../queue';
 import { RunFail } from './run-shared';
@@ -141,11 +141,11 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   // renamed or deleted since that run — without this gate the rerun bills every
   // target row producing "[MISSING: /old_name]" (same rationale as
   // the start-time gate in lib/prompt-ref-validate.ts).
-  const refsError = unknownPromptRefsError(p.sheetId, userId, latestRun.prompt);
-  if (refsError) return { fail: 'bad_request', message: refsError };
+  const refs = promptRefsRefusal(p.sheetId, userId, latestRun.prompt);
+  if (refs) return { fail: 'bad_request', ...refs };
   // The column's "Only run if" rule applies to its reruns too.
-  const rule = storedRule(p.sheetId, userId, latestRun.run_if);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const rule = startRunRule(p.sheetId, userId, latestRun.run_if, { stored: true });
+  if ('fail' in rule) return rule;
   const concurrency = rerunConcurrency(p.concurrency, latestRun.concurrency);
   if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 

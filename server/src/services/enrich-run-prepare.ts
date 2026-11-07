@@ -12,12 +12,14 @@ import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { sheetRowSpan } from './run-seed';
 import { buildEnrichmentConfig } from './enrich-run-build';
 import { countFor, enrichRowCounts } from './enrich-row-count';
-import type { RunFail } from './run-shared';
+import { heldFail, type RunFail } from './run-shared';
+import { heldRequestInput } from '../lib/http-held-inputs';
+import { firstHeldRead, heldRefusal } from '../lib/run-held-reads';
 import { autorunFillingColumn } from './autorun-block';
 import { listRowsBeingAdded, planListStart } from './enrich-list-start';
 import { manualListLoop } from './autorun-list';
 import type { DestPlan } from './enrich-list-dest';
-import { checkRunRule } from './run-rule';
+import { startRunRule } from './run-rule';
 import type { CheckedRule, RuleNode } from '../lib/run-condition';
 import type { SeedPlan } from '../lib/enrich-seed';
 import { statusStaleCheck } from './run-inputs';
@@ -137,8 +139,13 @@ export async function prepareEnrichmentStart(
     if (problem) return problem;
   }
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
-  const rule = checkRunRule(sheetId, userId, input.runIf);
-  if ('error' in rule) return bad(rule.error);
+  const rule = startRunRule(sheetId, userId, input.runIf, { conditions: input.conditions.map(c => c.column) });
+  if ('fail' in rule) return rule;
+  // An input column another run holds, as bound: refused before the rows are counted (a setup's step waiting
+  // for it asks every sweep). The built request is checked again below, after the catalog read.
+  const bound = heldRefusal('The request', firstHeldRead(sheetId, userId,
+    () => Object.values(input.inputs).flatMap(b => ('column' in b ? [b.column] : [])), [statusColumn, ...outputNames]));
+  if (bound) return heldFail(bound);
   // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
   const stale = input.continueColumn ? statusStaleCheck(sheetId, userId, statusColumn, input.rows.status) : null;
   const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null, stale);
@@ -154,6 +161,9 @@ export async function prepareEnrichmentStart(
   const named = { ...input, outputs: input.outputs.map((o, i) => ({ ...o, columnName: outputNames[i] })) };
   const built = await buildEnrichmentConfig(named, columns, upperBound);
   if ('fail' in built) return built;
+  // An input another run holds would be sent (and billed) as its ⏳ (lib/http-held-inputs.ts).
+  const held = heldRequestInput(sheetId, userId, built.ok, statusColumn);
+  if (held) return heldFail(held);
   const listPlan = planListStart(userId, sheetId, input, built.ok, columns);
   if ('fail' in listPlan) return listPlan;
   // The column's auto-run repeats its newest run: rows it adds must not come back here.

@@ -90,9 +90,11 @@ export function rowRequest(
     { cleanDomains: e.cleanDomains, columns });
   if (built.ok) return { built };
   if ('missing' in built) return { cells: missingCells(built.missing) };
-  const reason = built.invalid;
-  return { cells: { status: 'failed', statusCell: failedCell(reason), answer: null, fill: 'none', reason } };
+  return { cells: failedCells(built.invalid) };
 }
+
+const failedCells = (reason: string): RowCells =>
+  ({ status: 'failed', statusCell: failedCell(reason), answer: null, fill: 'none', reason });
 
 // One call for the run's tool, read into cells.
 async function singleStep(
@@ -140,9 +142,10 @@ async function singleStep(
 // Returns whether the row's result was written.
 export async function processEnrichmentRow(
   ctx: RunCtx, run: HTTPRunRow, config: EnrichRunConfig, row: EnrichRow, columns: string[], generation: number,
-  freeOnly = false,
+  freeOnly = false, ring?: string,
 ): Promise<boolean> {
-  const req = rowRequest(config, row, columns);
+  // A row its run's ring of waits fails calls nothing (services/run-input-gate.ts).
+  const req = ring ? { cells: failedCells(ring) } : rowRequest(config, row, columns);
   let result: RowResult | null;
   if ('cells' in req) result = { cells: req.cells, stored: undefined, costMicro: 0 };
   else result = reusedRow(ctx, config, req.built) ?? (freeOnly ? null : config.enrichment.email

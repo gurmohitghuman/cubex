@@ -83,7 +83,13 @@ function traceOf(step: WaterfallStep, r: StepRun, ms: number): TraceStep {
 
 
 // Returns whether the row's result was written.
-export async function processWaterfallRow(c: WaterfallRowCtx, row: RunRow): Promise<boolean> {
+// ring: its run's ring of waits fails the row (services/run-input-gate.ts): no step is asked, and only its
+// failed cells and result are written (the answers it kept and the run's tallies are left as they are).
+export async function processWaterfallRow(c: WaterfallRowCtx, row: RunRow, ring?: string): Promise<boolean> {
+  if (ring) {
+    return writeWaterfallRow({ run: c.run, config: c.config, generation: c.generation, row, trace: [], answer: null,
+      scope: '', rowRef: '', kept: [], ring });
+  }
   const w = c.config.waterfall;
   const dry = !!w.dry;
   const keys = w.inputs.map(i => i.key);

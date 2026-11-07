@@ -22,7 +22,7 @@ import {
   appendColumnsToOrder, getSheetColumns, sanitizeColumnName, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { asRunStart, seedThenEnqueue } from './run-seed';
-import { ruleSeed, storedRule } from './run-rule';
+import { ruleSeed, startRunRule } from './run-rule';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { isWaterfallConfig } from '../lib/waterfall/config';
@@ -121,8 +121,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   const refused = storedRequestRefusal(p.sheetId, userId, config, cleanMaster);
   if (refused) return refused;
   // The column's "Only run if" rule applies to its reruns too.
-  const rule = storedRule(p.sheetId, userId, config.runIf);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const rule = startRunRule(p.sheetId, userId, config.runIf, { stored: true });
+  if ('fail' in rule) return rule;
 
   const newRunId = uuidv4();
 

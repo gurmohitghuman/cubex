@@ -30,6 +30,7 @@ router.post('/runs/:id/resume', async (req: AuthRequest, res) => {
     const result = await resumeAiRun(req.params.id, req.userId!, limit, true, 'spendLimitUsd');
     if ('fail' in result) {
       if (result.fail === 'conflict') return res.status(409).json({ error: 'Run is no longer paused' });
+      if (result.fail === 'held') return res.status(409).json({ error: result.message });
       if (result.fail === 'spend_cap') return res.status(403).json({ error: result.message });
       if (result.fail === 'model_gone' || result.fail === 'bad_request') {
         return res.status(400).json({ error: result.message });

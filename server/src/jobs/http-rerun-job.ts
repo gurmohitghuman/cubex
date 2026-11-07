@@ -11,7 +11,9 @@ const { processHTTPRun } = require('../services/http-runner') as
 export class HTTPRerunJob extends Job {
   // expectedGeneration: see ai-run-job.ts. targetRows: the row_index subset this
   // rerun should process (passed through to the runner so resume stays scoped).
-  async run(runId: string, targetRows: number[], expectedGeneration?: number): Promise<void> {
-    await processHTTPRun(runId, expectedGeneration, targetRows);
+  // A parked run's job is snoozed: see ai-run-job.ts.
+  async run(runId: string, targetRows: number[], expectedGeneration?: number): Promise<unknown> {
+    const parked = await processHTTPRun(runId, expectedGeneration, targetRows);
+    return parked ? this.snooze(parked.parkMs) : undefined;
   }
 }

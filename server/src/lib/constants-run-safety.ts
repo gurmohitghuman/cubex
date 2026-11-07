@@ -26,6 +26,15 @@ export const RUN_BREAKER_FAILURES = envInt('RUN_BREAKER_FAILURES', 5);
 // A run with every slot busy checks for a stop this often, so Pause and
 // Cancel reach it while its rows are still out.
 export const RUN_STOP_POLL_MS = 1_000;
+// A running row whose request or prompt reads a column another run holds
+// looks again this often whether it's free (services/run-input-gate.ts).
+export const RUN_INPUT_WAIT_POLL_MS = envInt('RUN_INPUT_WAIT_POLL_MS', 1_000);
+// A run whose rows wait for a run that can't go on in a job slot (queued,
+// paused, or parked itself) gives its slot back and is picked up again after
+// this long (lib/run-park.ts); after the longer one when what it waits for is
+// paused, which waits for a person. Never under three of the queue's polls.
+export const RUN_PARK_MS = envInt('RUN_PARK_MS', 5_000);
+export const RUN_PARK_PAUSED_MS = envInt('RUN_PARK_PAUSED_MS', 30_000);
 // A running run beats updated_at this often while it waits on its rows.
 export const RUN_HEARTBEAT_MS = 30_000;
 // A running run whose beat is older than this has lost its worker: it is

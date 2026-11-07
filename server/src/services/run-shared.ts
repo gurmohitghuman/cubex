@@ -5,6 +5,7 @@ import { MCP_RUN_STARTS_PER_MIN } from '../lib/api-v1-constants';
 import { ROW_ID_RESOLVE_CHUNK } from '../lib/constants';
 import { makeRateWindow, tooManyMessage, type RateDecision } from '../lib/rate-window';
 import { spendCapRefusal } from './token-spend';
+import type { HeldRead, HeldRefusal } from '../lib/run-held-reads';
 
 // Structured failures the start/rerun/control services return instead of
 // throwing (expected outcomes keep their message + HTTP mapping identical on
@@ -21,7 +22,12 @@ export type RunFailKind =
 // field: the request field the failure is about (a new sheet's name: 'destName'),
 // so a form can show it in place. nothingToRun: no row is left for it to do (a
 // rerun of a column every row of which is done), which a setup counts as done.
-export interface RunFail { fail: RunFailKind; message: string; field?: string; nothingToRun?: true }
+// held: a column it reads that another run holds (lib/run-held-reads.ts), which a setup's step waits for.
+export interface RunFail { fail: RunFailKind; message: string; field?: string; nothingToRun?: true; held?: HeldRead }
+
+// A start refused for a column another run holds (409), saying which.
+export const heldFail = (h: HeldRefusal): RunFail =>
+  ({ fail: 'conflict', message: h.message, held: { column: h.column, hold: h.hold } });
 
 export const runFailHttpStatus = (f: RunFail): number =>
   f.fail === 'not_found' ? 404

@@ -99,7 +99,7 @@ function executeTransfer(
   }
   const plan = planTransferColumns(
     request.sourceSheetId, request.destinationSheetId, userId,
-    request.columnMapping, request.columnMode, pristine, request.columns,
+    request.columnMapping, request.columnMode, pristine, request.columns, request.operation === 'move',
   );
   if ('error' in plan) return { fail: plan.held ? 'active_run' : 'invalid', error: plan.error };
   result.created_columns = plan.createdColumns;

@@ -3,7 +3,7 @@
 // rows, rows whose inputs were just written), at most AUTORUN_MAX_ROWS at a
 // time, within today's caps. A column is skipped while its sheet is busy or
 // yielding to the user (lib/sheet-yield.ts), while a run on it is active or
-// clearing, and while it is paused. Pauses that can clear on their own are
+// clearing, while another run holds a column it reads, and while it is paused. Pauses that can clear on their own are
 // cleared here: caps when today allows a row again (midnight UTC or a raise),
 // treg's stops after AUTORUN_RETRY_MS, a missing column once it is back, a
 // missing key once one is saved, a loop of list auto-runs once it is broken,
@@ -34,6 +34,8 @@ import { isWaterfallConfig, onSteps } from '../lib/waterfall/config';
 import { getOpenRouterApiKey } from './openrouter';
 import { readOpenRouterBalance } from './openrouter-balance';
 import { rowCostOf, spendCapRefusal } from './token-spend';
+import { heldRequestInput } from '../lib/http-held-inputs';
+import { heldRuleRefusal } from '../lib/run-held-reads';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -132,6 +134,9 @@ export async function autorunTick(id: string): Promise<void> {
   if (loop) { pauseEntry(e.id, 'loop', loop); return; }
   const setup = setupOf(e);
   if ('reason' in setup) { pauseEntry(e.id, setup.reason, setup.message); return; }
+  // A column its request or rule reads that another run holds: its rows stay queued for a later tick.
+  if (heldRequestInput(e.sheet_id, e.user_id, setup.config, e.status_column)
+    || heldRuleRefusal(e.sheet_id, e.user_id, e.run_if, whereOf(e).map(c => c.column))) return;
   const room = autorunCapacity(e, setup.config);
   if (!('rows' in room)) { pauseEntry(e.id, room.reason, room.message); return; }
 

@@ -6,12 +6,16 @@
 // SETUP_SWEEP_MS) calls it for each live record, so a restart picks a chain
 // up from the table alone. A step in 'again' mode carries a column the sheet
 // has on (setup-step-again.ts): no row left to do is done, a run working on
-// it is waited for. A run that fails or is cancelled ends the chain; rows that
-// failed inside a run don't (they read as empty further on). The last layer
-// done, the setup's auto-runs are turned on (not after a test).
+// it is waited for. A step whose start is refused because another run holds a
+// column it reads (going, or stopped and putting its ⏳ cells back) waits too,
+// its note naming the column, and starts once it's free (a pause or stop of
+// the setup meanwhile starts nothing). A run that fails or is cancelled ends
+// the chain; rows that failed inside a run don't (they read as empty further
+// on). The last layer done, the setup's auto-runs are turned on (not after a test).
 import { db } from '../lib/db';
 import { SETUP_SWEEP_MS } from '../lib/constants-setups';
 import { isBusyMessage, sheetHeld } from '../lib/sheet-busy';
+import { heldWaitWords } from '../lib/run-held-words';
 import { mainColumn } from '../lib/setups/spec';
 import { startSetupStep } from './setup-step-start';
 import { startAgainStep } from './setup-step-again';
@@ -71,8 +75,10 @@ async function startStep(
   const out = modesOf(plan)[i] === 'again'
     ? await startAgainStep(r.user_id, r.sheet_id, step, { ...opts, autoRun: !!r.auto_run, refill })
     : await startSetupStep(r.user_id, r.sheet_id, step, opts);
-  if ('wait' in out || ('fail' in out && isBusyMessage(out.message))) {
-    steps[i] = waitingAgain(refill);
+  if ('wait' in out || ('fail' in out && (isBusyMessage(out.message) || out.held))) {
+    // A column it reads that another run holds (RunFail.held): it waits for that column, saying so.
+    const held = 'fail' in out ? out.held : undefined;
+    steps[i] = held ? { ...waitingAgain(refill), note: heldWaitWords(held.column, held.hold) } : waitingAgain(refill);
     saveSteps(r.id, steps);
     return 'waiting';
   }

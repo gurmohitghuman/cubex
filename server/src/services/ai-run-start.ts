@@ -21,8 +21,8 @@ import {
 } from '../lib/sql-helpers';
 import { existingRowIndexes } from '../lib/run-rows';
 import { activeRunOnColumn, runColumnConflict } from './ai-run-start-checks';
-import { checkRunRule, ruleSeed } from './run-rule';
-import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
+import { startRunRule, ruleSeed } from './run-rule';
+import { promptRefsRefusal } from '../lib/prompt-ref-validate';
 import { promotePreviewReuse } from '../lib/ai-run-promote';
 import { deleteDraftForColumn } from '../lib/ai-drafts';
 import { enqueueAIRun, enqueueAIRerun } from '../queue';
@@ -111,10 +111,10 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // Reject unresolvable /column references up front — unknown refs substitute
   // "[MISSING: /token]" on EVERY row and burn the run's whole model budget on
   // garbage (incident + rationale in lib/prompt-ref-validate.ts).
-  const refsError = unknownPromptRefsError(p.sheetId, userId, p.prompt);
-  if (refsError) return { fail: 'bad_request', message: refsError };
-  const rule = checkRunRule(p.sheetId, userId, p.runIf);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const refs = promptRefsRefusal(p.sheetId, userId, p.prompt);
+  if (refs) return { fail: 'bad_request', ...refs };
+  const rule = startRunRule(p.sheetId, userId, p.runIf);
+  if ('fail' in rule) return rule;
 
   const runId = uuidv4();
   const columns = needsDataColumn ? [outputCol, dataCol] : [outputCol];

@@ -62,6 +62,7 @@ export async function processRow(
   // Whether a try was reset late enough to have reached the provider (timedTries).
   let lateReset = () => false;
   try {
+    if (row.refused) throw new Error(row.refused);
     const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const search = runSearchConfig(run);
     const usingTools = !!search || !!run.use_web_fetch;
@@ -153,7 +154,8 @@ export async function processRow(
     // responses sometimes echo the offending key prefix; without this those keys
     // would land in server logs AND in ai_results.error_message.
     const errorMessage = redactSecrets(rawErrorMessage);
-    console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
+    // A ring's rows are logged once for the run (services/run-input-gate.ts), not row by row.
+    if (!row.refused) console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
     return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
   } finally {

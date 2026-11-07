@@ -16,11 +16,12 @@ import { ANSWERED_BY_PATH, stepPath, waterfallColumns, type WaterfallRunConfig }
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { sheetRowSpan } from './run-seed';
 import { countFor, enrichRowCounts } from './enrich-row-count';
-import { checkRunRule } from './run-rule';
+import { startRunRule } from './run-rule';
 import { autorunFillingColumn } from './autorun-block';
 import { buildWaterfall, type BuiltWaterfall } from './waterfall-build';
 import { newestWaterfallRun } from './waterfall-column';
-import type { RunFail } from './run-shared';
+import { heldFail, type RunFail } from './run-shared';
+import { heldRequestInput } from '../lib/http-held-inputs';
 import { statusStaleCheck } from './run-inputs';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 
@@ -126,8 +127,8 @@ export async function prepareWaterfallStart(
     prior = run.config;
   }
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
-  const rule = checkRunRule(sheetId, userId, input.runIf);
-  if ('error' in rule) return bad(rule.error);
+  const rule = startRunRule(sheetId, userId, input.runIf);
+  if ('fail' in rule) return rule;
   // A dry run picks its few rows itself: counting the whole sheet's would be wasted.
   // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
   const stale = input.continueColumn && !input.dry
@@ -167,6 +168,9 @@ export async function prepareWaterfallStart(
     ...(rule.ok ? { runIf: rule.ok.rule } : {}),
     waterfall: built.ok.block,
   };
+  // An input another run holds would read as empty, and the row be skipped as missing it (lib/http-held-inputs.ts).
+  const held = heldRequestInput(sheetId, userId, config, resultColumn);
+  if (held) return heldFail(held);
   return {
     ok: {
       resultColumn, outputs, newColumns, config, built: built.ok, columns, span, upperBound, rule: rule.ok, stale,

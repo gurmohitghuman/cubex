@@ -158,7 +158,9 @@ await ok('a rerun whose stored request reads a column a run holds: refused, noth
   const runs = () => db.prepare('SELECT COUNT(*) FROM http_runs WHERE sheet_id = ?').pluck().get(sid)
   assert.equal(runs(), 2, "Ask's run and the one holding Answer")
   const rerun = () => rerunHttpColumn(uid, { sheetId: sid, masterColumnName: 'Ask' })
-  await refusedBoth(h, rerun, [{ fail: 'conflict', message: GOING }, { fail: 'conflict', message: BACK }])
+  // held: the column, so a setup's step waits for it (services/setup-runner.ts).
+  await refusedBoth(h, rerun, [{ fail: 'conflict', message: GOING, held: { column: 'Answer', hold: 'going' } },
+    { fail: 'conflict', message: BACK, held: { column: 'Answer', hold: 'clearing' } }])
   assert.equal(runs(), 2, 'no run made')
   assert.deepEqual(cells(sid, 'Got'), ['yes', 'yes'], 'its cells untouched')
   await h.back()

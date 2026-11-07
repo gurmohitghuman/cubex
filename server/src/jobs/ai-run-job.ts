@@ -14,7 +14,9 @@ export class AIRunJob extends Job {
   // job — superseded by a pause/resume that bumped the generation — rejects
   // itself at startup. Optional: jobs enqueued before this arg existed carry
   // undefined and skip the check.
-  async run(runId: string, expectedGeneration?: number): Promise<void> {
-    await processAIRun(runId, expectedGeneration);
+  // A run that parked (lib/run-park.ts) gives its slot back: the queue runs this job again after the delay.
+  async run(runId: string, expectedGeneration?: number): Promise<unknown> {
+    const parked = await processAIRun(runId, expectedGeneration);
+    return parked ? this.snooze(parked.parkMs) : undefined;
   }
 }

@@ -58,6 +58,7 @@ export async function processMultiRow(
   let lateReset = () => false;
 
   try {
+    if (row.refused) throw new Error(row.refused);
     const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const withSources = web.search || web.fetch;
     const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
@@ -125,7 +126,8 @@ export async function processMultiRow(
     const rawMsg = deadline.timedOut() ? AI_TIMEOUT_MESSAGE
       : (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');
     const errorMessage = redactSecrets(rawMsg);
-    console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
+    // A ring's rows are logged once for the run (services/run-input-gate.ts), not row by row.
+    if (!row.refused) console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
     writeMultiFailure(ctx, blankOnFailure, errorMessage, billedUsage(call, error));
     return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
   } finally {
