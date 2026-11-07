@@ -61,7 +61,7 @@ export const rowRoutes = (): RouteDoc[] => [
           .describe(`${MAX_CHARS_PER_CELL_HELP} Digits sent as text ("200") count as the number.`),
       },
     }),
-    responses: { 200: 'The rows, ids, count or groups asked for. With max_chars_per_cell, truncated_cells lists the '
+    responses: { 200: 'The rows, ids, count or groups asked for. With max_chars_per_cell, cut_cells lists the '
       + 'cells cut: {"<row id>": {"<column>": <full length>}}, {} when none.' },
     conflict: true,
   }),

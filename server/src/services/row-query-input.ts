@@ -43,7 +43,7 @@ export interface RowQuery {
   // about this many characters and lists the rest in unread_ids.
   maxChars?: number;
   // max_chars_per_cell: each returned cell's text cut to this many characters,
-  // the cells cut listed in truncated_cells (services/row-project.ts cutRows).
+  // the cells cut listed in cut_cells (services/row-project.ts cutRows).
   maxCharsPerCell?: number;
 }
 
@@ -143,7 +143,8 @@ export function validateQuery(columns: string[], q: RowQuery): string | null {
   }
   // max_chars_per_cell cuts rows' cells: groups (whose values are already cut to
   // GROUP_VALUE_MAX_CHARS) and ids or counts have none. Named in the first
-  // refusal when sent, so one change of the call is enough.
+  // refusal when sent (a count's with include_status too, when that is sent),
+  // so one change of the call is enough.
   const cut = q.maxCharsPerCell !== undefined;
   if (q.aggregate) {
     if (q.after >= 0 || q.limit !== undefined || q.columns || q.returnMode !== 'rows' || q.includeStatus || cut) {
@@ -153,7 +154,8 @@ export function validateQuery(columns: string[], q: RowQuery): string | null {
     return checkAggregate(q.aggregate, columns);
   }
   if (q.returnMode === 'count' && (q.after >= 0 || q.limit !== undefined || q.columns !== undefined || cut)) {
-    return `count mode does not accept cursor, limit, ${cut ? 'columns, or max_chars_per_cell' : 'or columns'}`;
+    const also = !cut ? 'or columns' : `columns, ${q.includeStatus ? 'include_status, ' : ''}or max_chars_per_cell`;
+    return `count mode does not accept cursor, limit, ${also}`;
   }
   if ((q.includeStatus || cut) && q.returnMode !== 'rows') {
     return q.includeStatus && cut ? 'include_status and max_chars_per_cell work with return_mode rows only'

@@ -72,7 +72,7 @@ export function readRowsSince(sheetId: string, userId: string, q: RowQuery): Row
     const cut = cutRows(rows, q, runs);
     // The columns read that are filling now (with picks: the columns they read).
     const filling = fillingColumns(sheetId, userId).filter(c => !q.columns || q.columns.includes(c));
-    return { ok: { rows, ...(cut && { truncated_cells: cut }), next_cursor, as_of: isoTime(walk.asOf), filling,
+    return { ok: { rows, ...(cut && { cut_cells: cut }), next_cursor, as_of: isoTime(walk.asOf), filling,
       ...versions } };
   })();
 }

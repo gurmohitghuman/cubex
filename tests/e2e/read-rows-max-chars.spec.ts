@@ -6,9 +6,9 @@ import { BAD_URL, pollTerminal } from './helpers-run-results'
 
 // read_rows (MCP) and POST /api/v1/sheets/:id/rows/query (REST) with
 // max_chars_per_cell: each long cell cut to its first N characters (no half of
-// a surrogate pair), short ones as they are, and truncated_cells listing the
+// a surrogate pair), short ones as they are, and cut_cells listing the
 // cells cut as {"<row id>": {"<column>": full length}}; without it, no
-// truncated_cells, the whole cells and the keys in their order. Digits sent as
+// cut_cells, the whole cells and the keys in their order. Digits sent as
 // text count as the number on both. Bounds, groups and counts refused with the
 // same words on both (over MCP a wrong type too, as an isError result). It
 // holds through columns with JSON paths, a view, row_ids, updated_since and
@@ -62,26 +62,26 @@ test('max_chars_per_cell: cut cells listed, short ones as they are, no option un
   ])
   expect(wellFormed(mcp.rows[1].data.Notes)).toBe(true)
   const expected: Cuts = { [ids[0]]: { Notes: 500, Json: JSON_TEXT.length }, [ids[1]]: { Notes: 22 } }
-  expect(mcp.truncated_cells).toEqual(expected)
-  expect(Object.entries(mcp.truncated_cells as Cuts).map(([id, c]) => [id, ...Object.keys(c)]))
+  expect(mcp.cut_cells).toEqual(expected)
+  expect(Object.entries(mcp.cut_cells as Cuts).map(([id, c]) => [id, ...Object.keys(c)]))
     .toEqual([[ids[0], 'Notes', 'Json'], [ids[1], 'Notes']])
   // REST: the same answer. Digits sent as text over MCP are the number.
   const rest = await query({ max_chars_per_cell: 11 })
   expect(rest.status).toBe(200)
   expect(rest.body.rows).toEqual(mcp.rows)
-  expect(rest.body.truncated_cells).toEqual(expected)
-  expect((await call(ro, 'read_rows', { sheet_id: sheetId, max_chars_per_cell: '11' })).truncated_cells)
+  expect(rest.body.cut_cells).toEqual(expected)
+  expect((await call(ro, 'read_rows', { sheet_id: sheetId, max_chars_per_cell: '11' })).cut_cells)
     .toEqual(expected)
-  // Nothing long enough: truncated_cells is there, empty.
-  expect((await call(ro, 'read_rows', { sheet_id: sheetId, max_chars_per_cell: 200_000 })).truncated_cells)
+  // Nothing long enough: cut_cells is there, empty.
+  expect((await call(ro, 'read_rows', { sheet_id: sheetId, max_chars_per_cell: 200_000 })).cut_cells)
     .toEqual({})
 
-  // Without it: whole cells and no truncated_cells, on both surfaces.
+  // Without it: whole cells and no cut_cells, on both surfaces.
   const plain = await call(ro, 'read_rows', { sheet_id: sheetId })
-  expect(plain).not.toHaveProperty('truncated_cells')
+  expect(plain).not.toHaveProperty('cut_cells')
   expect(plain.rows[0].data).toEqual({ val: 'v0', Notes: 'n'.repeat(500), Json: JSON_TEXT })
   const restPlain = await query({})
-  expect(restPlain.body).not.toHaveProperty('truncated_cells')
+  expect(restPlain.body).not.toHaveProperty('cut_cells')
   expect(restPlain.body.rows).toEqual(plain.rows)
   for (const answer of [plain, restPlain.body]) {
     expect(Object.keys(answer)).toEqual(['rows', 'next_cursor', 'data_version', 'row_generation'])
@@ -108,7 +108,7 @@ test('max_chars_per_cell: cut cells listed, short ones as they are, no option un
   const asText = await query({ max_chars_per_cell: '12' })
   expect(asText.status).toBe(200)
   expect(asText.body.rows[0].data.Notes).toBe('n'.repeat(12))
-  expect(asText.body.truncated_cells).toEqual(expected)
+  expect(asText.body.cut_cells).toEqual(expected)
   expect(asText.body).toEqual((await query({ max_chars_per_cell: 12 })).body)
   expect(await query({ max_chars_per_cell: '1e3' })).toEqual({ status: 400, body: { error: BOUNDS } })
   // Groups, counts and ids: the first refusal names it with whatever else to leave out.
@@ -133,37 +133,37 @@ test('max_chars_per_cell with JSON paths, a view, row_ids and updated_since', as
   const picked = await call(ro, 'read_rows', { sheet_id: sheetId, columns, max_chars_per_cell: 20 })
   const whole = JSON.stringify(DATA)
   expect(picked.rows[0].data).toEqual({ val: 'v0', Bio: 'b'.repeat(20), 'Json.data': whole.slice(0, 20), N: 12345 })
-  expect(picked.truncated_cells).toEqual({ [ids[0]]: { Bio: 300, 'Json.data': whole.length } })
+  expect(picked.cut_cells).toEqual({ [ids[0]]: { Bio: 300, 'Json.data': whole.length } })
   const restPicked = await query({ columns, max_chars_per_cell: 20 })
-  expect([restPicked.body.rows, restPicked.body.truncated_cells]).toEqual([picked.rows, picked.truncated_cells])
+  expect([restPicked.body.rows, restPicked.body.cut_cells]).toEqual([picked.rows, picked.cut_cells])
 
   // A view: its filter, its visible columns only, view_version as usual.
   await call(rw, 'manage_view', { sheet_id: sheetId, action: 'create', name: 'Long notes',
     where: [{ column: 'val', operator: 'neq', value: 'v1' }], hidden_columns: ['Json'] })
   const viewed = await call(ro, 'read_rows', { sheet_id: sheetId, view: 'Long notes', max_chars_per_cell: 5 })
   expect(viewed.rows.map((r: Row) => r.data)).toEqual([{ val: 'v0', Notes: 'nnnnn' }, { val: 'v2', Notes: 'short' }])
-  expect(viewed.truncated_cells).toEqual({ [ids[0]]: { Notes: 500 } })
+  expect(viewed.cut_cells).toEqual({ [ids[0]]: { Notes: 500 } })
   expect(typeof viewed.view_version).toBe('string')
 
   // row_ids: the order asked, the entries in that order.
   const byId = { row_ids: [ids[1], ids[0]], columns: ['Notes'], max_chars_per_cell: 10 }
   const mcpById = await call(ro, 'read_rows', { sheet_id: sheetId, ...byId })
   expect(mcpById.rows.map((r: Row) => r.data.Notes)).toEqual([`ab${'😀'.repeat(4)}`, 'n'.repeat(10)])
-  expect(mcpById.truncated_cells).toEqual({ [ids[1]]: { Notes: 22 }, [ids[0]]: { Notes: 500 } })
-  expect(Object.keys(mcpById.truncated_cells)).toEqual([ids[1], ids[0]])
+  expect(mcpById.cut_cells).toEqual({ [ids[1]]: { Notes: 22 }, [ids[0]]: { Notes: 500 } })
+  expect(Object.keys(mcpById.cut_cells)).toEqual([ids[1], ids[0]])
   expect(mcpById.missing).toEqual([])
   const restById = await query(byId)
-  expect([restById.body.rows, restById.body.truncated_cells]).toEqual([mcpById.rows, mcpById.truncated_cells])
+  expect([restById.body.rows, restById.body.cut_cells]).toEqual([mcpById.rows, mcpById.cut_cells])
 
   // updated_since: the cells as rows hold them, cut, and the walk's own fields.
   const since = { updated_since: '2000-01-01T00:00:00Z', columns: ['Notes'], max_chars_per_cell: 10 }
   const mcpSince = await call(ro, 'read_rows', { sheet_id: sheetId, ...since })
-  expect(mcpSince.truncated_cells).toEqual({ [ids[0]]: { Notes: 500 }, [ids[1]]: { Notes: 22 } })
+  expect(mcpSince.cut_cells).toEqual({ [ids[0]]: { Notes: 500 }, [ids[1]]: { Notes: 22 } })
   expect(mcpSince.rows.find((r: Row) => r.id === ids[2]).data).toEqual({ Notes: 'short' })
   expect(mcpSince).toHaveProperty('as_of')
   expect(mcpSince.filling).toEqual([])
   const restSince = await query(since)
-  expect(restSince.body.truncated_cells).toEqual(mcpSince.truncated_cells)
+  expect(restSince.body.cut_cells).toEqual(mcpSince.cut_cells)
 
   // Without it, each read keeps its keys in order on both surfaces: the answer's and each row's.
   const shapes: Array<[Record<string, unknown>, string[], string[]]> = [
@@ -216,7 +216,7 @@ test('max_chars_per_cell with include_status: a run cell\'s value or error cut, 
       if (text.length > 5) listed[row.id] = { ...listed[row.id], [c]: text.length }
     }
   })
-  expect(page.truncated_cells).toEqual(listed)
+  expect(page.cut_cells).toEqual(listed)
 
   // By id: the run's whole error is what gets cut, on both surfaces.
   const full = (await call(client, 'read_rows', { sheet_id: sheetId, row_ids: [ids[1]], include_status: true,
@@ -226,11 +226,11 @@ test('max_chars_per_cell with include_status: a run cell\'s value or error cut, 
   const cut = await call(client, 'read_rows', { sheet_id: sheetId, row_ids: [ids[1]], include_status: true,
     columns: ['Lookup'], max_chars_per_cell: 12 })
   expect(cut.rows[0].data.Lookup).toEqual({ status: 'error', value: null, error: full.slice(0, 12) })
-  expect(cut.truncated_cells).toEqual({ [ids[1]]: { Lookup: full.length } })
+  expect(cut.cut_cells).toEqual({ [ids[1]]: { Lookup: full.length } })
   const rest = await bearer(await makeAccessToken(api, ['read'], 'max chars run rest'))
   const res = await rest.post(`/api/v1/sheets/${sheetId}/rows/query`,
     { data: { row_ids: [ids[1]], include_status: true, columns: ['Lookup'], max_chars_per_cell: 12 } })
   expect(res.status()).toBe(200)
   const body = await res.json()
-  expect([body.rows, body.truncated_cells]).toEqual([cut.rows, cut.truncated_cells])
+  expect([body.rows, body.cut_cells]).toEqual([cut.rows, cut.cut_cells])
 })

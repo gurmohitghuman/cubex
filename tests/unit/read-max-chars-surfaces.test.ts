@@ -2,7 +2,7 @@
 // server, in memory) and REST POST /api/v1/sheets/:id/rows/query (the real
 // router). Without the option every read keeps its keys in order: the answer's
 // and each row's, for a page, a filtered page, a view, row_ids and
-// updated_since. With it, truncated_cells is {"<row id>": {"<column>": full
+// updated_since. With it, cut_cells is {"<row id>": {"<column>": full
 // length}} on both, columns named "__proto__" and "constructor" included as
 // plain keys. MCP publishes the field as an integer from 1 to 200000 and
 // answers every value it refuses (a wrong type included) as an isError tool
@@ -10,6 +10,8 @@
 // sent as text as the number. groups refused in one round on both. The
 // services: read-max-chars.test.ts.
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -63,8 +65,10 @@ async function main() {
   app.use(express.json())
   app.use((req, _res, next) => { Object.assign(req, { userId: uid, tokenScopes: new Set(['read']) }); next() })
   app.use(sheetsRouter)
-  const http = app.listen(0)
-  const base = `http://127.0.0.1:${(http.address() as { port: number }).port}`
+  // Only this machine can reach it (every request is signed in); the port is read once it listens.
+  const http = app.listen(0, '127.0.0.1')
+  await once(http, 'listening')
+  const base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`
   const mcp = buildMcpServer({ userId: uid, tokenId: 't', tokenName: 'n', scopes: new Set(['read']) })
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   await mcp.connect(serverSide)
@@ -111,24 +115,24 @@ async function main() {
       }
     })
 
-    await check('with it: truncated_cells by row id, then column; "__proto__", "constructor" plain keys', async () => {
-      const wanted = `"truncated_cells":{"${r0}":{"Notes":300,"__proto__":50,"constructor":50}}`
+    await check('with it: cut_cells by row id, then column; "__proto__", "constructor" plain keys', async () => {
+      const wanted = `"cut_cells":{"${r0}":{"Notes":300,"__proto__":50,"constructor":50}}`
       const viaRest = await rest({ max_chars_per_cell: 10 }), viaMcp = await tool({ max_chars_per_cell: 10 })
       assert.ok(viaRest.text.includes(`}],${wanted},"next_cursor"`), viaRest.text)
       assert.ok(viaMcp.content[0].text.includes(wanted), viaMcp.content[0].text)
       const [a, b] = await both({ max_chars_per_cell: 10 })
       assert.deepEqual(a, b)
-      const cut = (a.truncated_cells as Record<string, Record<string, number>>)[r0]
+      const cut = (a.cut_cells as Record<string, Record<string, number>>)[r0]
       assert.deepEqual(Object.keys(cut), ['Notes', '__proto__', 'constructor'])
       assert.equal(Object.getPrototypeOf(cut), Object.prototype, 'a plain key, not a prototype')
       assert.deepEqual(a.rows[0].data, JSON.parse(`{"Name":"Acme","Notes":"${'n'.repeat(10)}",`
         + `"__proto__":"${'p'.repeat(10)}","constructor":"${'c'.repeat(10)}"}`))
       // Nothing cut: {} on both; picks named after them listed the same way.
-      for (const answer of await both({ max_chars_per_cell: 200_000 })) assert.deepEqual(answer.truncated_cells, {})
+      for (const answer of await both({ max_chars_per_cell: 200_000 })) assert.deepEqual(answer.cut_cells, {})
       const columns = [{ column: 'Notes', as: 'constructor' }, { column: 'Name', as: '__proto__' }]
       const picked = await both({ columns, max_chars_per_cell: 3 })
       for (const answer of picked) {
-        assert.equal(JSON.stringify(answer.truncated_cells), `{"${r0}":{"constructor":300,"__proto__":4},`
+        assert.equal(JSON.stringify(answer.cut_cells), `{"${r0}":{"constructor":300,"__proto__":4},`
           + `"${r1}":{"constructor":5,"__proto__":4},"${ids[2]}":{"__proto__":5}}`)
       }
     })

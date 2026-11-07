@@ -13,12 +13,12 @@
 // include_status ({status, value, error}) has its text cut (value, error or
 // reason: it holds at most one), never its status.
 
-// The answer's truncated_cells: row id → column → the full length of the text
+// The answer's cut_cells: row id → column → the full length of the text
 // cut. Null-prototype objects, so any column name ("__proto__", "constructor")
 // is a plain key; a row is there only when at least one of its cells was cut.
 export type CellLengths = Record<string, number>;
-export type TruncatedCells = Record<string, CellLengths>;
-export const emptyTruncated = (): TruncatedCells => Object.create(null) as TruncatedCells;
+export type CutCells = Record<string, CellLengths>;
+export const emptyCutCells = (): CutCells => Object.create(null) as CutCells;
 
 // At most `max` code units of `text`, never ending on the first half of a pair.
 export function cutChars(text: string, max: number): string {

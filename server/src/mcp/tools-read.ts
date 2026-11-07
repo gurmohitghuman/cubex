@@ -124,7 +124,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
         + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor. '
         + 'LONG CELLS: max_chars_per_cell (e.g. 200) cuts each cell\'s text to that many characters and lists the '
-        + 'cells cut in truncated_cells {"<row id>": {"<column>": full length}}: page or scan long AI answers or JSON '
+        + 'cells cut in cut_cells {"<row id>": {"<column>": full length}}: page or scan long AI answers or JSON '
         + 'without filling your context, then read the cells you need whole with row_ids + columns. Any read of '
         + 'rows takes it. A cut never leaves half of a surrogate pair; an emoji of several characters can lose parts.',
       inputSchema: {

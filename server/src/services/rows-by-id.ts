@@ -6,14 +6,14 @@
 // read says what the cell holds. Each row carries its updated_at. Over MCP the
 // rows stop at about MCP_ROWS_BY_ID_MAX_CHARS; the ids left are in unread_ids.
 // With max_chars_per_cell that cap counts the rows as cut and each one's
-// truncated_cells entry, and truncated_cells keeps only the rows returned.
+// cut_cells entry, and cut_cells keeps only the rows returned.
 import { db } from '../lib/db';
 import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
 import { isoTime } from '../lib/row-since';
 import { validateQuery, type RowQuery } from './row-query-input';
 import { sheetRunColumns } from './row-filter';
 import { cutRows, shapeRows, versionsOf, type PageRow } from './row-project';
-import { emptyTruncated, type TruncatedCells } from '../lib/row-select/cut-cells';
+import { emptyCutCells, type CutCells } from '../lib/row-select/cut-cells';
 import { fullRunErrors } from './run-cell-errors';
 import type { RowQueryResult } from './row-query-result';
 
@@ -44,16 +44,16 @@ export function readRowsById(sheetId: string, userId: string, q: RowQuery): RowQ
       .map((r, i) => ({ id: r.id, index: r.index, updated_at: isoTime(page[i].updated_at), data: r.data }));
     const cut = cutRows(shaped, q, runs);
     const { rows, unread } = fitChars(shaped, q.maxChars, cut);
-    const truncated = cut && (unread.length > 0 ? keptEntries(cut, rows) : cut);
-    return { ok: { rows, ...(truncated && { truncated_cells: truncated }), missing,
+    const listed = cut && (unread.length > 0 ? keptEntries(cut, rows) : cut);
+    return { ok: { rows, ...(listed && { cut_cells: listed }), missing,
       ...(unread.length > 0 ? { unread_ids: unread } : {}), ...versions } };
   })();
 }
 
 // Rows in order until about `max` characters (always at least one), each
-// counted with its truncated_cells entry ("<row id>":{...}); the ids of the rest.
+// counted with its cut_cells entry ("<row id>":{...}); the ids of the rest.
 function fitChars<T extends { id: string }>(
-  rows: T[], max?: number, cut?: TruncatedCells,
+  rows: T[], max?: number, cut?: CutCells,
 ): { rows: T[]; unread: string[] } {
   if (max === undefined) return { rows, unread: [] };
   let used = 0, kept = 0;
@@ -66,9 +66,9 @@ function fitChars<T extends { id: string }>(
   return { rows: rows.slice(0, kept), unread: rows.slice(kept).map(r => r.id) };
 }
 
-// The truncated_cells entries of the rows kept, in their order.
-function keptEntries(cut: TruncatedCells, rows: Array<{ id: string }>): TruncatedCells {
-  const out = emptyTruncated();
+// The cut_cells entries of the rows kept, in their order.
+function keptEntries(cut: CutCells, rows: Array<{ id: string }>): CutCells {
+  const out = emptyCutCells();
   for (const r of rows) if (cut[r.id]) out[r.id] = cut[r.id];
   return out;
 }

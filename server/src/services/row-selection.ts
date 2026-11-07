@@ -112,7 +112,7 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
   const runs = q.includeStatus ? prep.runColumns ?? sheetRunColumns(sheetId, userId, columns) : null;
   const rows = shapeRows(sheetId, userId, page, q, runs);
   const cut = cutRows(rows, q, runs);
-  return { ok: { rows, ...(cut && { truncated_cells: cut }), next_cursor, ...versions } };
+  return { ok: { rows, ...(cut && { cut_cells: cut }), next_cursor, ...versions } };
 }
 
 // group_by / aggregates: the groups of the rows the `where` and view pass,

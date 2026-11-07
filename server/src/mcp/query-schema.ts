@@ -46,7 +46,7 @@ export const aggregatesSchema = z.array(z.object({
 
 // Shared with the REST body's description (openapi/routes-rows.ts).
 export const MAX_CHARS_PER_CELL_HELP = 'Cut each cell\'s text to its first N characters, N from '
-  + `${CELL_CUT_MIN_CHARS} to ${CELL_CUT_MAX_CHARS.toLocaleString('en-US')}. truncated_cells then lists the cells `
+  + `${CELL_CUT_MIN_CHARS} to ${CELL_CUT_MAX_CHARS.toLocaleString('en-US')}. cut_cells then lists the cells `
   + 'cut by row id, then column, with each one\'s full length: {"<row id>": {"Notes": 5120}}, a row only when '
   + 'a cell of it was cut ({} when none). Characters count as JavaScript counts them (an emoji is 2): a cut never '
   + 'leaves half of a surrogate pair, but an emoji built from several characters (a skin tone, a flag, a family) '
