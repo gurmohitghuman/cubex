@@ -242,8 +242,6 @@ jobs:
       TEST_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
       # Where people install releases from: a fork's pull request also starts from this repository's latest release.
       RELEASE_REPO: gurmohitghuman/cubex
-      # The Node major this commit's install.ps1 installs (its $NodeMajor).
-      NODE_MAJOR: '24'
       TEST_URL: http://127.0.0.1:3002
       TEST_PASSWORD: update-check-password
       # Where Cubex runs as a plain background process, the installer refuses an elevated window unless this is set
@@ -308,7 +306,16 @@ jobs:
           if ($location -match '/releases/tag/([^/?#]+)$') { $tag = $Matches[1] }
           else { throw "$env:RELEASE_REPO has no published release to update from." }
           "Latest release: $tag"
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`n")
+          # The Node major this commit's install.ps1 installs: its own $NodeMajor line, so it's written down once.
+          $installer = "https://raw.githubusercontent.com/$env:TEST_REPO/$env:TEST_REF/install.ps1"
+          $client = New-Object Net.WebClient
+          $client.Headers['User-Agent'] = 'cubex-ci'
+          $text = $client.DownloadString($installer)
+          if ($text -match '(?m)^\$NodeMajor = ([0-9]+)\s*$') { $major = $Matches[1] }
+          else { throw "No `$NodeMajor = <number> line in $installer." }
+          "This commit's install.ps1 installs Node $major."
+          [IO.File]::AppendAllText($env:GITHUB_ENV,
+            "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`nNODE_MAJOR=$major`n")
 
       - name: Install the latest release with its own installer
         run: |

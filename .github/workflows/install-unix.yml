@@ -1,0 +1,297 @@
+name: Linux install
+
+# The latest release, installed on Linux with that release's own install.sh, then this commit's install.sh run over
+# it twice. First with a --ref that doesn't exist: that update must fail and leave the release as it was, on its own
+# Node with no node.next left, restarting, healthy and signing in with its password. Then as a real update: Cubex
+# must run on the Node this commit's install.sh installs, sign in with the password chosen before (a wrong one gets
+# 401), and read a sheet made before back unchanged through an API token made before. On pull requests and pushes to
+# main that touch the installer, the scripts or the dependencies; the Release workflow calls it for the commit being
+# released.
+#
+# Over 200 lines: one job, step by step, the Linux twin of install-windows.yml's update job.
+
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - 'bin/**'
+      - 'scripts/**'
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - .github/workflows/install-unix.yml
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - 'bin/**'
+      - 'scripts/**'
+      - package.json
+      - package-lock.json
+      - .npmrc
+      - .github/workflows/install-unix.yml
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to test (the caller's commit when empty)
+        type: string
+        default: ''
+  workflow_dispatch:
+
+concurrency:
+  group: install-unix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-from-release:
+    name: Update the latest release to this commit (Linux x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The commit under test, from the repository it lives in (a fork's, for a fork's pull request).
+      TEST_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      TEST_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+      # Where people install releases from: a fork's pull request also starts from this repository's latest release.
+      RELEASE_REPO: gurmohitghuman/cubex
+      TEST_PORT: '3002'
+      TEST_PASSWORD: update-check-password
+      # What the steps that call Cubex's API share. Each step is a new bash, so each loads it first: eval "$TEST_API"
+      TEST_API: |
+        shopt -s inherit_errexit
+        url="http://127.0.0.1:$TEST_PORT"
+        jar="$(mktemp)" answer="$(mktemp)" # a new session in each step, like a browser coming back later
+        fail() { echo "::error::$*"; exit 1; }
+        password_json() { jq -nc --arg password "$1" '{password: $password}'; }
+        # One request: prints the HTTP status and keeps the body in $answer. A body goes as JSON; curl options last.
+        send() { # METHOD PATH [JSON [curl options...]]
+          local method="$1" path="$2" json="${3:-}"
+          shift 2
+          if [ $# -gt 0 ]; then shift; fi
+          local args=(-sS -o "$answer" -w '%{http_code}' --max-time 60 -b "$jar" -c "$jar" -X "$method")
+          if [ -n "$json" ]; then args+=(-H 'Content-Type: application/json; charset=utf-8' --data-binary "$json"); fi
+          curl "${args[@]}" "$@" "$url$path"
+        }
+        # The answer's body when it has the expected status; otherwise stop, saying what came back.
+        need() { # STATUS WHAT METHOD PATH [JSON [curl options...]]
+          local want="$1" what="$2" got
+          shift 2
+          got="$(send "$@")" || fail "$what got no answer."
+          echo "$what -> $got" >&2
+          [ "$got" = "$want" ] || fail "$what answered $got, expected $want. Body: $(cat "$answer")"
+          cat "$answer"
+        }
+        # Rows as lines to compare: id, place and every column's value (as JSON, so "" is an empty cell).
+        row_lines() { # COLUMNS_JSON, with {"rows": [...]} on stdin
+          jq -r --argjson cols "$1" '.rows[] | . as $r | "row \(.id) at \(.index): "
+            + ([$cols[] | . as $c | "\($c)=\($r.data[$c] // "" | tostring | tojson)"] | join(" "))'
+        }
+        # The sheet as the API token reads it: its name, row count and columns, then every row.
+        sheet_lines() { # SHEET_ID TOKEN
+          local sheet rows
+          sheet="$(need 200 "GET /api/v1/sheets/$1" GET "/api/v1/sheets/$1" '' -H "Authorization: Bearer $2")"
+          rows="$(need 200 "GET /api/v1/sheets/$1/rows" GET "/api/v1/sheets/$1/rows?limit=100" '' \
+            -H "Authorization: Bearer $2")"
+          jq -r '"sheet \(.name | tojson), \(.row_count) rows, columns: \(.columns | join(", "))"' <<< "$sheet"
+          row_lines "$(jq -c .columns <<< "$sheet")" <<< "$rows"
+        }
+    steps:
+      - name: Find the latest release, and this commit's installer and Node major
+        run: |
+          echo "Commit under test: $TEST_REPO $TEST_REF"
+          # As install.sh's latest_release: github.com/<repo>/releases/latest redirects to the newest tag.
+          url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$RELEASE_REPO/releases/latest")"
+          echo "github.com/$RELEASE_REPO/releases/latest -> $url"
+          case "$url" in
+            */releases/tag/*) tag="${url##*/}" ;;
+            *) echo "::error::$RELEASE_REPO has no published release to update from."; exit 1 ;;
+          esac
+          echo "Latest release: $tag"
+          curl -fsSL "https://raw.githubusercontent.com/$TEST_REPO/$TEST_REF/install.sh" \
+            -o "$RUNNER_TEMP/install-this.sh"
+          # Its own NODE_MAJOR line, so the Node to expect is written down once.
+          major="$(sed -n 's/^NODE_MAJOR=\([0-9][0-9]*\)$/\1/p' "$RUNNER_TEMP/install-this.sh")"
+          if [ -z "$major" ]; then echo "::error::No NODE_MAJOR=<number> line in this commit's install.sh."; exit 1; fi
+          echo "This commit's install.sh installs Node $major."
+          printf '%s\n' "RELEASE_TAG=$tag" "NODE_MAJOR=$major" "CUBEX_HOME=$RUNNER_TEMP/cubex/home" \
+            "CUBEX_BIN_DIR=$RUNNER_TEMP/cubex/bin" >> "$GITHUB_ENV"
+
+      - name: Install the latest release with its own installer
+        run: |
+          eval "$TEST_API"
+          release_installer="https://raw.githubusercontent.com/$RELEASE_REPO/$RELEASE_TAG/install.sh"
+          echo "Installing $RELEASE_TAG with $release_installer"
+          curl -fsSL "$release_installer" -o "$RUNNER_TEMP/install-release.sh"
+          # A plain background process (no systemd user session on a runner), and no shell startup file edited.
+          CUBEX_REPO="$RELEASE_REPO" bash "$RUNNER_TEMP/install-release.sh" --ref "$RELEASE_TAG" --port "$TEST_PORT" \
+            --no-service --no-modify-path
+          version="$(cat "$CUBEX_HOME/app/.cubex-version")"
+          node="$("$CUBEX_HOME/node/bin/node" --version)"
+          built="$(cat "$CUBEX_HOME/app/.cubex-node" 2>/dev/null || echo none)"
+          echo "Installed: $version; node/bin/node --version: $node; app/.cubex-node: $built"
+          case "$version" in "$RELEASE_TAG "*) ;; *) fail "Expected $RELEASE_TAG installed, found $version." ;; esac
+          "$CUBEX_BIN_DIR/cubex" status --quiet || fail "$RELEASE_TAG is installed but not running."
+          echo "RELEASE_NODE=$(cat "$CUBEX_HOME/node/.version")" >> "$GITHUB_ENV"
+
+      - name: On the release, choose the password, sign in and make a sheet that must survive the update
+        run: |
+          eval "$TEST_API"
+          [ ! -d "$CUBEX_HOME/app/node_modules/argon2" ] || echo "$RELEASE_TAG uses the argon2 package for passwords."
+          state="$(need 200 'GET /api/auth/status' GET /api/auth/status)"
+          [ "$(jq .setupRequired <<< "$state")" = true ] \
+            || fail 'The new install should ask for a password, but it has one.'
+          need 200 'POST /api/auth/setup' POST /api/auth/setup "$(password_json "$TEST_PASSWORD")" > /dev/null
+          # A new session, like a browser coming back later: the password must let it in.
+          : > "$jar"
+          need 200 'POST /api/auth/login' POST /api/auth/login "$(password_json "$TEST_PASSWORD")" > /dev/null
+          state="$(need 200 'GET /api/auth/status' GET /api/auth/status)"
+          [ "$(jq .authenticated <<< "$state")" = true ] \
+            || fail 'Signed in, but the session cookie does not authenticate.'
+          made="$(need 201 'POST /api/settings/access-tokens (an API token with the write scope)' \
+            POST /api/settings/access-tokens '{"name":"update check","scopes":["write"]}')"
+          token="$(jq -r .token <<< "$made")"
+          echo "::add-mask::$token"
+          auth=(-H "Authorization: Bearer $token")
+          table="$(need 201 'POST /api/v1/tables' POST /api/v1/tables '{"name":"Survives the update"}' "${auth[@]}")"
+          sheet="$(jq -r '.sheets[0].id' <<< "$table")"
+          columns='["Name","City","Note"]'
+          for name in Name City Note; do
+            need 201 "POST /api/v1/sheets/$sheet/columns ($name)" POST "/api/v1/sheets/$sheet/columns" \
+              "$(jq -nc --arg name "$name" '{name: $name}')" "${auth[@]}" > /dev/null
+          done
+          sent='[{"Name":"Ada Lovelace","City":"London","Note":"first row"},
+            {"Name":"Grace Hopper","City":"Arlington","Note":"commas, \"quotes\" and a\nline break"},
+            {"Name":"Renée Müller","City":"Zürich"},
+            {"Name":"Alan Turing","City":"Wilmslow","Note":"42"}]' # Renée's Note left empty
+          added="$(need 201 "POST /api/v1/sheets/$sheet/rows" POST "/api/v1/sheets/$sheet/rows" \
+            "$(jq -c '{rows: map({data: .})}' <<< "$sent")" "${auth[@]}")"
+          count="$(jq '.rows | length' <<< "$added")"
+          [ "$count" = 4 ] || fail "Added $count rows, expected 4."
+          # It reads back as sent; that reading is what the update must keep.
+          {
+            echo "sheet $(jq -c '.sheets[0].name' <<< "$table"), 4 rows, columns: Name, City, Note"
+            jq -c --argjson sent "$sent" \
+              '{rows: [.rows | to_entries[] | {id: .value.id, index: .value.index, data: $sent[.key]}]}' <<< "$added" \
+              | row_lines "$columns"
+          } > "$RUNNER_TEMP/sheet-expected.txt"
+          sheet_lines "$sheet" "$token" > "$RUNNER_TEMP/sheet-before.txt"
+          sed 's/^/  /' "$RUNNER_TEMP/sheet-before.txt"
+          if ! cmp -s "$RUNNER_TEMP/sheet-expected.txt" "$RUNNER_TEMP/sheet-before.txt"; then
+            sed 's/^/  expected: /' "$RUNNER_TEMP/sheet-expected.txt"
+            fail 'The sheet does not read back as it was written.'
+          fi
+          { echo "TEST_SHEET=$sheet"; echo "TEST_TOKEN=$token"; } >> "$GITHUB_ENV"
+
+      - name: This commit's installer with a --ref that doesn't exist fails and leaves the release as it was
+        run: |
+          eval "$TEST_API"
+          version="$(cat "$CUBEX_HOME/app/.cubex-version")"
+          ref=no-such-ref-for-the-update-check
+          rc=0
+          CUBEX_REPO="$TEST_REPO" bash "$RUNNER_TEMP/install-this.sh" --ref "$ref" --port "$TEST_PORT" \
+            --no-service --no-modify-path || rc=$?
+          echo "This commit's install.sh with --ref $ref exited with $rc."
+          [ "$rc" != 0 ] || fail "It should have failed: $ref doesn't exist."
+          node="$(cat "$CUBEX_HOME/node/.version")"
+          echo "node/.version: $node, node/bin/node --version: $("$CUBEX_HOME/node/bin/node" --version)" \
+            "(the release's: $RELEASE_NODE); app/.cubex-version: $(cat "$CUBEX_HOME/app/.cubex-version")"
+          echo "In the Cubex folder: $(find "$CUBEX_HOME" -mindepth 1 -maxdepth 1 -printf '%f ')"
+          [ "$node" = "$RELEASE_NODE" ] || fail "The failed update left Node $node, not the release's $RELEASE_NODE."
+          [ "$("$CUBEX_HOME/node/bin/node" --version)" = "$RELEASE_NODE" ] || fail 'node/bin/node is another Node.'
+          [ "$(cat "$CUBEX_HOME/app/.cubex-version")" = "$version" ] || fail 'The failed update changed the app.'
+          for left in node.next node.previous .install-lock; do
+            [ ! -e "$CUBEX_HOME/$left" ] || fail "The failed update left $left behind."
+          done
+          # What a reboot or a settings change does: it must start again on the release's own Node.
+          "$CUBEX_BIN_DIR/cubex" restart
+          "$CUBEX_BIN_DIR/cubex" status --quiet || fail 'After cubex restart, Cubex is not running.'
+          health="$(need 200 'GET /api/health' GET /api/health)"
+          echo "GET /api/health: $health"
+          [ "$(jq -r .status <<< "$health")" = ok ] || fail "Cubex answers, but isn't healthy."
+          need 200 'POST /api/auth/login (the password chosen on the release)' POST /api/auth/login \
+            "$(password_json "$TEST_PASSWORD")" > /dev/null
+
+      - name: Update to this commit by running its installer over the release
+        run: |
+          eval "$TEST_API"
+          echo "Updating $RELEASE_TAG to $TEST_REPO $TEST_REF with this commit's install.sh"
+          CUBEX_REPO="$TEST_REPO" bash "$RUNNER_TEMP/install-this.sh" --ref "$TEST_REF" --port "$TEST_PORT" \
+            --no-service --no-modify-path
+          version="$(cat "$CUBEX_HOME/app/.cubex-version")"
+          echo "Installed now: $version"
+          case "$version" in "$TEST_REF "*) ;; *) fail "Expected $TEST_REF installed, found $version." ;; esac
+
+      - name: Cubex runs on Node ${{ env.NODE_MAJOR }} now
+        run: |
+          eval "$TEST_API"
+          node="$("$CUBEX_HOME/node/bin/node" --version)"
+          file="$(cat "$CUBEX_HOME/node/.version")"
+          built="$(cat "$CUBEX_HOME/app/.cubex-node")"
+          echo "Before the update: $RELEASE_TAG on Node $RELEASE_NODE"
+          echo "Now: node/bin/node --version: $node; node/.version: $file; app/.cubex-node: $built"
+          case "$RELEASE_NODE" in "v$NODE_MAJOR".*)
+            echo "$RELEASE_TAG already ran on Node $NODE_MAJOR, so this update kept Node's major version." ;;
+          esac
+          case "$node" in "v$NODE_MAJOR".*) ;; *) fail "Cubex's Node is $node, expected v$NODE_MAJOR." ;; esac
+          [ "$built" = "$NODE_MAJOR" ] || fail "app/.cubex-node says '$built': the app was built for another Node."
+          for left in node.next node.previous; do [ ! -e "$CUBEX_HOME/$left" ] || fail "The update left $left."; done
+          # The server the update started (a background process, so its PID file names it) runs that Node.
+          pid="$(cat "$CUBEX_HOME/cubex.pid")"
+          exe="$(readlink -f "/proc/$pid/exe")"
+          echo "The server, PID $pid: $exe $(tr '\0' ' ' < "/proc/$pid/cmdline")"
+          [ "$exe" = "$(readlink -f "$CUBEX_HOME/node/bin/node")" ] || fail "The server runs $exe."
+          echo "It runs Node $("$exe" --version)."
+
+      - name: cubex status answers on /api/health
+        run: |
+          eval "$TEST_API"
+          "$CUBEX_BIN_DIR/cubex" status
+          "$CUBEX_BIN_DIR/cubex" status --quiet || fail 'cubex status --quiet says Cubex is not running.'
+          health="$(need 200 'GET /api/health' GET /api/health)"
+          echo "GET /api/health: $health"
+          [ "$(jq -r .status <<< "$health")" = ok ] || fail "Cubex answers, but isn't healthy."
+
+      - name: Sign in with the password chosen before the update; a wrong one is refused
+        run: |
+          eval "$TEST_API"
+          echo "The password was chosen on $RELEASE_TAG (Node $RELEASE_NODE)."
+          [ -d "$CUBEX_HOME/app/node_modules/argon2" ] || echo 'No argon2 package now: Node checks the password itself.'
+          need 200 'POST /api/auth/login' POST /api/auth/login "$(password_json "$TEST_PASSWORD")" > /dev/null
+          state="$(need 200 'GET /api/auth/status' GET /api/auth/status)"
+          [ "$(jq .authenticated <<< "$state")" = true ] \
+            || fail 'Signed in, but the session cookie does not authenticate.'
+          tokens="$(need 200 'GET /api/settings/access-tokens (the session)' GET /api/settings/access-tokens)"
+          jq -e 'any(.[]; .name == "update check")' <<< "$tokens" > /dev/null \
+            || fail 'The API token made before the update is not listed.'
+          # Without the session cookie, the same request is refused, and so is a wrong password.
+          : > "$jar"
+          need 401 'GET /api/settings/access-tokens without the session' GET /api/settings/access-tokens > /dev/null
+          need 401 'POST /api/auth/login with a wrong password' POST /api/auth/login \
+            "$(password_json "$TEST_PASSWORD-wrong")" > /dev/null
+
+      - name: The sheet, its rows and the API token survived the update
+        run: |
+          eval "$TEST_API"
+          # Read with the API token made before the update.
+          sheet_lines "$TEST_SHEET" "$TEST_TOKEN" > "$RUNNER_TEMP/sheet-after.txt"
+          echo 'Before the update:'; sed 's/^/  /' "$RUNNER_TEMP/sheet-before.txt"
+          echo 'After the update:'; sed 's/^/  /' "$RUNNER_TEMP/sheet-after.txt"
+          cmp -s "$RUNNER_TEMP/sheet-before.txt" "$RUNNER_TEMP/sheet-after.txt" \
+            || fail 'The sheet reads back differently (see above).'
+
+      - name: Show the logs
+        if: failure()
+        run: |
+          for f in "${CUBEX_HOME:-/nonexistent}"/logs/*; do
+            if [ -f "$f" ]; then echo "===== $f"; tail -n 80 "$f"; fi
+          done
+
+      - name: Stop Cubex
+        if: always()
+        run: |
+          if [ -x "${CUBEX_BIN_DIR:-/nonexistent}/cubex" ]; then "$CUBEX_BIN_DIR/cubex" stop; fi

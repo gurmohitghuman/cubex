@@ -29,10 +29,10 @@ const BASE64 = /^[A-Za-z0-9+/]+$/;
 const DECIMAL = /^(0|[1-9]\d{0,9})$/;
 
 // A message when this Node can't hash passwords, else null. crypto.argon2
-// arrived in 24.7.0, and a Node built against an OpenSSL older than 3.2 has the
-// function but throws on every call, so a tiny hash (under a millisecond)
-// decides, once. The server checks at boot, before migrations run, and the
-// reset-password CLI before it asks for anything.
+// arrived in 24.7.0, and a Node built against an OpenSSL older than 3.2 (or one
+// that refuses argon2 for another reason) has the function but throws on every
+// call, so a tiny hash (under a millisecond) decides, once. The server checks at
+// boot and the reset-password CLI at its start, before either opens the database.
 let unavailable: string | null | undefined;
 export function passwordHashingUnavailable(): string | null {
   if (unavailable === undefined) unavailable = argon2Problem();
@@ -49,9 +49,10 @@ export function argon2Problem(node: { argon2Sync?: Argon2Sync } = crypto): strin
     node.argon2Sync('argon2id', { message: '', nonce: Buffer.alloc(8), memory: 8, passes: 1, parallelism: 1,
       tagLength: 4 });
     return null;
-  } catch {
-    return `This ${version} can't hash passwords with argon2: it's built with OpenSSL ${process.versions.openssl}, `
-      + 'and Cubex needs OpenSSL 3.2 or newer (the official Node.js 24 builds have it).';
+  } catch (err) {
+    const why = (err instanceof Error ? err.message : String(err)).replace(/[.\s]+$/, '');
+    return `This ${version} can't hash passwords with argon2: ${why}. The likely cause: it's built with OpenSSL `
+      + `${process.versions.openssl}, and Cubex needs OpenSSL 3.2 or newer (the official Node.js 24 builds have it).`;
   }
 }
 

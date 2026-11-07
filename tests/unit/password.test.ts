@@ -3,7 +3,8 @@
 // package did (the app's p=1, the package's default p=4, an older cost, argon2i, a password beyond ASCII, argon2d
 // with p=2 and a short hash and salt, associated data, a 64-byte hash); a new hash is the same standard string,
 // verifies, and gets a fresh salt each time; a malformed or tampered hash fails without throwing (and a malformed one
-// needs a rehash); a Node without crypto.argon2, or whose argon2 throws (OpenSSL before 3.2), is named as such.
+// needs a rehash); a Node without crypto.argon2 is named as such, and one whose argon2 throws gets the error's own
+// message, with OpenSSL before 3.2 as the likely cause.
 import assert from 'node:assert/strict'
 import passwordMod from '../../server/src/lib/password'
 const { hashPassword, verifyPassword, needsRehash, passwordHashingUnavailable, argon2Problem } =
@@ -37,9 +38,15 @@ async function main(): Promise<void> {
   assert.equal(passwordHashingUnavailable(), null)
   assert.equal(argon2Problem(), null)
   assert.match(argon2Problem({}) ?? '', /needs Node\.js 24\.7 or newer/)
-  const throws = () => { throw Object.assign(new Error('not supported'), { code: 'ERR_CRYPTO_ARGON2_NOT_SUPPORTED' }) }
-  assert.match(argon2Problem({ argon2Sync: throws }) ?? '', /OpenSSL .* needs OpenSSL 3\.2 or newer/)
-  console.log('ok   this Node hashes; no crypto.argon2, or one that throws, is named as such')
+  const throwing = (error: unknown) => ({ argon2Sync: () => { throw error } })
+  const old = argon2Problem(throwing(Object.assign(new Error('Argon2 is not supported.'),
+    { code: 'ERR_CRYPTO_ARGON2_NOT_SUPPORTED' }))) ?? ''
+  assert.match(old, /can't hash passwords with argon2: Argon2 is not supported\. The likely cause: /)
+  assert.ok(old.includes(`OpenSSL ${process.versions.openssl}, and Cubex needs OpenSSL 3.2 or newer`), old)
+  const fips = argon2Problem(throwing(new Error('error:0308010C:digital envelope routines::unsupported'))) ?? ''
+  assert.match(fips, /argon2: error:0308010C:digital envelope routines::unsupported\. The likely cause: /)
+  assert.match(argon2Problem(throwing('a plain string')) ?? '', /argon2: a plain string\. The likely cause: /)
+  console.log('ok   this Node hashes; no crypto.argon2 is named as such, one that throws with its own message')
 
   for (const f of BEFORE) {
     assert.equal(await verifyPassword(f.password, f.hash), true, f.label)
