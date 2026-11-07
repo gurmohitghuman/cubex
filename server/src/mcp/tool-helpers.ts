@@ -4,7 +4,7 @@
 // result as structuredContent, mirrored as JSON text for clients that only read
 // text (the spec asks for both: modelcontextprotocol.io/specification/2026-07-28/server/tools).
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/server';
+import type { McpServer, ServerContext } from '@modelcontextprotocol/server';
 import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
@@ -60,10 +60,12 @@ export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ToolResu
   return err(`This action requires the '${scope}' scope on your Cubex access token.`);
 }
 
-// A tool handler: the async callback the SDK invokes with validated input.
-// Loosely typed (the SDK infers per-tool arg shapes from the zod inputSchema);
-// what matters here is that it resolves to a ToolResult.
-type ToolHandler = (...args: any[]) => Promise<ToolResult>;
+// A tool handler: the async callback the SDK invokes with the validated input
+// and the request's context (its cancel signal: mcpReq.signal). The input stays
+// loose (the SDK infers per-tool arg shapes from the zod inputSchema); the
+// context is the SDK's own type, so a change in its shape fails the typecheck.
+// registerTool requires an inputSchema: the SDK passes a tool without one only the context.
+type ToolHandler = (args: any, mcp: ServerContext) => Promise<ToolResult>;
 
 // Wrap a tool handler so an UNEXPECTED throw becomes a generic client error
 // with the detail redacted-and-logged server-side — NOT leaked verbatim. The
@@ -78,9 +80,9 @@ export function withToolErrors(name: string, handler: ToolHandler): ToolHandler;
 export function withToolErrors(nameOrHandler: string | ToolHandler, maybeHandler?: ToolHandler): ToolHandler {
   const name = typeof nameOrHandler === 'string' ? nameOrHandler : 'unknown';
   const handler = typeof nameOrHandler === 'string' ? maybeHandler! : nameOrHandler;
-  return async (...args: any[]): Promise<ToolResult> => {
+  return async (args, mcp): Promise<ToolResult> => {
     try {
-      return await handler(...args);
+      return await handler(args, mcp);
     } catch (e) {
       // redactError: redacts the stack AND bounds it to 1000 chars (house style —
       // an unbounded provider stack could be huge and echo a key/header).
@@ -100,7 +102,7 @@ export function withToolErrors(nameOrHandler: string | ToolHandler, maybeHandler
 export function registerTool(
   server: McpServer,
   name: string,
-  config: { description: string; inputSchema?: Record<string, unknown> | z.ZodTypeAny; [k: string]: unknown },
+  config: { description: string; inputSchema: Record<string, unknown> | z.ZodTypeAny; [k: string]: unknown },
   handler: ToolHandler,
 ): void {
   // Title and behaviour hints come from one table (tool-annotations.ts); a tool
@@ -141,13 +143,13 @@ const KEYED_RUNS_WHILE_SHEET_BUSY = new Set(['update_cells']);
 
 export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {
   if (RUNS_WHILE_SHEET_BUSY.has(name)) return handler;
-  return async (...args: any[]): Promise<ToolResult> => {
-    const input = (args[0] ?? {}) as Record<string, unknown>;
-    if (KEYED_RUNS_WHILE_SHEET_BUSY.has(name) && typeof input.idempotency_key === 'string') return handler(...args);
+  return async (args, mcp): Promise<ToolResult> => {
+    const input = (args ?? {}) as Record<string, unknown>;
+    if (KEYED_RUNS_WHILE_SHEET_BUSY.has(name) && typeof input.idempotency_key === 'string') return handler(args, mcp);
     for (const key of ['sheet_id', 'source_sheet_id', 'destination_sheet_id']) {
       const what = typeof input[key] === 'string' ? sheetBusyWith(input[key] as string) : null;
       if (what) return err(busyMessage(what));
     }
-    return handler(...args);
+    return handler(args, mcp);
   };
 }
