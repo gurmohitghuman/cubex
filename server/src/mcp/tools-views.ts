@@ -3,7 +3,7 @@
 // checks, limits and the sheet's History lines are the same; get_sheet lists
 // views and read_rows, export_csv and create_download_link read through one.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { createView, deleteView, updateView, type ViewOutcome } from '../services/views';
 import { MAX_VIEWS_PER_SHEET } from '../lib/constants-filters';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';

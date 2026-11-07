@@ -1,9 +1,9 @@
-// Assembles Cubex's MCP server for ONE authenticated request. The transport is
-// stateless (routes/mcp.ts) and the Bearer token is the identity, so a fresh
+// Assembles Cubex's MCP server for ONE authenticated request. The protocol is
+// stateless (mcp/http-entry.ts) and the Bearer token is the identity, so a fresh
 // server instance per request keeps every tool handler cleanly closed over
 // the caller's userId + scopes — no state can leak between calls by
 // construction. Construction is cheap (tool registration, no I/O).
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { McpAuthCtx } from './tool-helpers';
 import { registerReadTools } from './tools-read';
 import { registerRowTools } from './tools-rows';
@@ -40,11 +40,21 @@ import { registerRunWebhookTools } from './tools-run-webhooks';
 import { registerSavedKeyTools } from './tools-saved-keys';
 import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
+import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
+import { refuseToolListCursor } from './list-cursor';
+
+// The name and version every answer carries (serverInfo).
+const MCP_SERVER_INFO = { name: 'cubex', version: '1.0.0' };
+// 2026-07-28 caching hints. The instructions and tool descriptions name this
+// token's spend cap (and some descriptions its scopes), so neither answer may be
+// shared with another token.
+const CACHE_HINT = { ttlMs: MCP_LIST_CACHE_TTL_MS, cacheScope: 'private' } as const;
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   const server = new McpServer(
-    { name: 'cubex', version: '1.0.0' },
+    MCP_SERVER_INFO,
     {
+      cacheHints: { 'server/discover': CACHE_HINT, 'tools/list': CACHE_HINT },
       instructions:
         'Cubex is a spreadsheet workspace. Resolve names with list_tables first; ' +
         'get_sheet\'s column_details says what fills each column (its kind, run, auto-run, rule and ' +
@@ -95,11 +105,20 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'inside them.' + capToolNote(ctx.spend ?? null, true),
     },
   );
+  // Cubex sends no list-changed notices. The list changes with a new version or
+  // a restart that flips MCP_EFFICIENT_ROWS_ENABLED, and descriptions with the
+  // token's cap and spend. A subscriptions/listen is acknowledged empty and closed.
+  // Declared here, not in the options above: there McpServer installs tools/list
+  // at once, and the cursor check must wrap it before the first tool installs it.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
+  refuseToolListCursor(server);
   registerAllTools(server, ctx);
   return server;
 }
 
-// Every tool, in order. The OpenAPI document (server/src/openapi/tool-schemas.ts)
+// Every tool, in order: tools/list answers in this order on every call, for
+// every token (the spec asks for a fixed order, which keeps clients' caches and
+// prompt caches valid). The OpenAPI document (server/src/openapi/tool-schemas.ts)
 // also calls it, on a stand-in server, to read the tools' input schemas; it
 // passes efficientRows true so the flag-gated tools' schemas are there too.
 export function registerAllTools(server: McpServer, ctx: McpAuthCtx, efficientRows = MCP_EFFICIENT_ROWS_ENABLED) {

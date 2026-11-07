@@ -4,7 +4,7 @@
 // resolution order and the no-hardcoded-fallback invariant live in
 // lib/ai-model-resolve.ts.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { fetchModels, TrimmedModel } from '../lib/openrouter';
 import { searchModels } from '../lib/model-search';
 import { getAccountDefaultModel } from '../lib/ai-model-resolve';

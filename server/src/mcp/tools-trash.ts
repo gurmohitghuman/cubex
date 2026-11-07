@@ -2,7 +2,7 @@
 // (services/trash-*.ts; GET /v1/trash and POST /v1/trash/restore are the same)
 // and get_sheet_history (services/sheet-history.ts). Deleting for good is only
 // in the app.
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
   CHANGE_LOG_DAYS, CHANGE_LOG_PAGE_MAX, TRASH_IDS_MAX, TRASH_LIST_PAGE, TRASH_RESTORE_PICK_MAX, TRASH_ROWS_PAGE_MAX,

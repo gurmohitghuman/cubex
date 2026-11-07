@@ -2,7 +2,7 @@
 // 'read'. Optionally waits a few seconds for the run to change, so an agent
 // polls less often. control_run is in tools-run-manage.ts.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { waitForRunChange } from '../services/run-status-wait';
 import { STATUS_WORDS } from '../services/enrich-agent-shared';

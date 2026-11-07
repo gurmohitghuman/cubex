@@ -4,7 +4,7 @@
 // routes. MCP is the only client-facing surface, so agents must be able to
 // provision tables/sheets, not just work inside existing ones.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { createTable, renameTable, deleteTable } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
 import { copySheetValues, sheetCopyWindow } from '../services/sheet-copy';

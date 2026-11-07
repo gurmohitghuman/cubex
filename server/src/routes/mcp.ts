@@ -1,20 +1,24 @@
-// /mcp — Cubex's MCP server over Streamable HTTP (docs/mcp.md).
-// STATELESS transport: every POST is independently authenticated by the PAT
-// Bearer header (same middleware as /api/v1), a fresh McpServer + transport
-// pair is built per request (tool handlers close over the caller's identity),
-// and there is no Mcp-Session-Id lifecycle — so GET (SSE stream) and DELETE
-// (session teardown) are 405s. enableJsonResponse makes tool responses plain
-// JSON rather than SSE, which passes through reverse proxies without buffering concerns.
+// /mcp: Cubex's MCP server over Streamable HTTP (docs/mcp.md). It speaks
+// 2026-07-28 to clients that send its per-request _meta, and the 2025 revisions
+// to clients that open with initialize (mcp/http-entry.ts picks the era).
+// STATELESS: every POST is independently authenticated by the PAT Bearer header
+// (same middleware as /api/v1), a fresh McpServer is built per request (tool
+// handlers close over the caller's identity), and there is no Mcp-Session-Id
+// lifecycle, so GET (a stream) and DELETE (session teardown) are 405s.
+// Answers are plain JSON, which passes through reverse proxies without
+// buffering concerns.
 //
 // Order is load-bearing (same as /api/v1): the global 32MB parsers SKIP /mcp
 // (applyServerMiddleware) → Origin guard (spec-mandated DNS-rebinding defense,
 // pre-body) → Bearer auth → per-token limiter → tight JSON parser → transport.
 import express from 'express';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { ProtocolErrorCode } from '@modelcontextprotocol/server';
+import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
-import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
-import { buildMcpServer } from '../mcp/build-server';
+import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
+import { authInfoFor, serveMcp } from '../mcp/http-entry';
+import type { McpAuthCtx } from '../mcp/tool-helpers';
 import { linkBase } from '../lib/file-links';
 import { runAs } from '../lib/actor';
 import { readTokenSpend } from '../services/token-spend';
@@ -35,8 +39,10 @@ router.use((req, res, next) => {
     const publicUrl = process.env.PUBLIC_URL;
     if (publicUrl && new URL(origin).origin === new URL(publicUrl).origin) return next();
   } catch { /* unparseable Origin → reject below */ }
+  // A JSON-RPC error with no id, as the transport page allows for this 403. The
+  // spec names no code for it: MCP_FORBIDDEN_ORIGIN_CODE (api-v1-constants.ts).
   return res.status(403).json({
-    jsonrpc: '2.0', error: { code: -32000, message: 'Forbidden origin' }, id: null,
+    jsonrpc: '2.0', error: { code: MCP_FORBIDDEN_ORIGIN_CODE, message: 'Forbidden origin' },
   });
 });
 
@@ -55,11 +61,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   });
 });
 
-router.post('/', async (req: TokenAuthRequest, res) => {
+router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
   const abortController = new AbortController();
   res.on('close', () => abortController.abort());
   try {
-    const server = buildMcpServer({
+    const ctx: McpAuthCtx = {
       userId: req.userId!,
       tokenId: req.accessTokenId!,
       scopes: req.tokenScopes!,
@@ -67,16 +73,11 @@ router.post('/', async (req: TokenAuthRequest, res) => {
       abortSignal: abortController.signal,
       linkBase: linkBase(req),
       spend: readTokenSpend(req.userId!, req.accessTokenId!)?.view ?? null,
-    });
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // stateless — the Bearer token is the identity
-      enableJsonResponse: true,
-    });
-    res.on('close', () => { void transport.close(); void server.close(); });
-    await server.connect(transport);
+    };
+    req.auth = authInfoFor(ctx);
     // What the tools change is done by this token over MCP (lib/actor.ts).
     await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null, tokenId: req.accessTokenId ?? null },
-      () => transport.handleRequest(req, res, req.body));
+      () => serveMcp(req, res, req.body));
   } catch (error) {
     console.error('MCP request error:', error);
     if (!res.headersSent) {
@@ -85,9 +86,13 @@ router.post('/', async (req: TokenAuthRequest, res) => {
   }
 });
 
-// Stateless mode has no server-push stream to GET and no session to DELETE.
+// No server-push stream to GET (2026-07-28 has none either) and no session to DELETE.
+// A GET or DELETE carries no JSON-RPC request object at all: Invalid Request
+// (-32600), the spec's code for that. No id, since there is no request to name.
 const methodNotAllowed = (_req: express.Request, res: express.Response) =>
-  res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
+  res.status(405).json({
+    jsonrpc: '2.0', error: { code: ProtocolErrorCode.InvalidRequest, message: 'Method not allowed' },
+  });
 router.get('/', methodNotAllowed);
 router.delete('/', methodNotAllowed);
 

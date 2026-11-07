@@ -14,8 +14,8 @@ import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { Client } from '@modelcontextprotocol/client'
+import { InMemoryTransport } from '@modelcontextprotocol/server'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import viewsMod from '../../server/src/services/views'
@@ -150,8 +150,8 @@ async function main() {
           // A JSON-RPC error would throw here: it resolves to a tool result.
           const res = await tool({ max_chars_per_cell: bad })
           assert.equal(res.isError, true, JSON.stringify(bad))
-          assert.ok(res.content[0].text.includes(BOUNDS), `${JSON.stringify(bad)}: ${res.content[0].text}`)
-          assert.ok(res.content[0].text.includes('Input validation error'), res.content[0].text)
+          assert.equal(res.content[0].text,
+            `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: ${BOUNDS}`)
           assert.deepEqual(await rest({ max_chars_per_cell: bad }), REFUSED, `REST ${JSON.stringify(bad)}`)
         }
       })

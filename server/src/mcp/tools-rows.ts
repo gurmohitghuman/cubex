@@ -5,7 +5,7 @@
 // the sheet is in the trash or busy (tool-helpers.ts lets a keyed update_cells
 // through its busy gate).
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';

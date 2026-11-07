@@ -11,7 +11,7 @@
 // Same services as GET /v1/{ai,http}-runs/:id/results — no new SQL, no new auth
 // path. Split from tools-run-manage.ts for the 200-line guardrail.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
 import {
   getAiRunResults, getHttpRunResults, RunResultStatusFilter,

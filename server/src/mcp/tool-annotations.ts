@@ -2,7 +2,7 @@
 // reviewed together. Clients use the hints to decide what to confirm with the
 // user: without them the spec's defaults apply (readOnlyHint false,
 // destructiveHint true, openWorldHint true), so a read looked as dangerous as
-// a delete (https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
+// a delete (https://modelcontextprotocol.io/specification/2026-07-28/server/tools).
 //   readOnlyHint    — changes nothing.
 //   destructiveHint — may change or remove what is there (false: only adds).
 //   idempotentHint  — repeating the same call has no further effect.

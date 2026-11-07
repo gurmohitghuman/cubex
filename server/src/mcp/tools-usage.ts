@@ -1,6 +1,6 @@
 // get_usage: what runs cost, by column (deleted ones too), day or run, for a
 // sheet or the whole account (services/usage.ts; GET /v1/usage is the same read).
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { USAGE_MCP_MAX_ROWS } from '../lib/constants';
 import { USAGE_GROUPS, USAGE_RANGES } from '../lib/usage-query';

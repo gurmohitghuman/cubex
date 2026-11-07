@@ -3,7 +3,7 @@
 // implementation POST /api/v1/sheets/:id/waterfall-columns uses. The scope
 // check stays the first statement.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import {
   ENRICH_DEFAULT_CONCURRENCY, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY, HTTP_RETRY_MAX, WATERFALL_LABEL_MAX_CHARS,
   WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS, WATERFALL_DRY_ROWS,
