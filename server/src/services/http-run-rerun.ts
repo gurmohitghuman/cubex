@@ -26,7 +26,7 @@ import { ruleSeed, storedRule } from './run-rule';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { isWaterfallConfig } from '../lib/waterfall/config';
-import { httpTemplateError } from '../lib/http-template-validate';
+import { storedRequestRefusal } from '../lib/http-held-inputs';
 import { type HTTPRunRow } from './http-runner';
 import { enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
@@ -116,10 +116,10 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   if (isWaterfallConfig(config)) {
     return { fail: 'bad_request', message: "Run waterfalls again from the column's Waterfall menu." };
   }
-  // The stored request is checked again: a column it read may be gone since
-  // (no saved key of its name stands in: lib/template-token-match.ts), or a key.
-  const templateError = httpTemplateError(config.requestConfig, getSheetColumns(p.sheetId, userId, false), userId);
-  if (templateError) return { fail: 'bad_request', message: templateError };
+  // The stored request is checked again: a column it read may be gone since (no saved key of its name stands
+  // in: lib/template-token-match.ts), or a key, and another run may hold one it reads (lib/http-held-inputs.ts).
+  const refused = storedRequestRefusal(p.sheetId, userId, config, cleanMaster);
+  if (refused) return refused;
   // The column's "Only run if" rule applies to its reruns too.
   const rule = storedRule(p.sheetId, userId, config.runIf);
   if ('error' in rule) return { fail: 'bad_request', message: rule.error };

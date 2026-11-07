@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
-import { authedApi, BASE, getSheet } from './helpers'
+import { authedApi, BASE, getSheet, makeAccessToken } from './helpers'
+import { mcpClient, callError } from './helpers-mcp'
 import { sheetWith } from './helpers-setups'
 import { Receiver } from './helpers-receiver'
 
@@ -8,7 +9,8 @@ import { Receiver } from './helpers-receiver'
 // run), a row it answered keeps its new answer, and a formula column reading
 // them follows, in the open grid too. An HTTP API column asks the spec's
 // receiver, which holds answers back, so the cancel lands while those rows are
-// still in flight and nothing it held back is written.
+// still in flight and nothing it held back is written. While a run fills a column, an HTTP API run or preview
+// whose request reads it is refused and sends nothing; once the cancel put it back, it sends what came back.
 
 const NAMES = ['ada', 'bob', 'cy']
 const FORMULA = '{{Who}} ? "found " + {{Who}} : "nobody"'
@@ -146,5 +148,53 @@ test('a rerun cancelled with one row answered: that row keeps its new answer, th
     release()
   }
   await staysFor2s(api, sheetId, ['ADA 2', 'BOB', 'CY'], ['found ADA 2', 'found BOB', 'found CY'])
+  await api.dispose()
+})
+
+test('an HTTP API run (MCP) or preview (the app) reading {{Who}} while a rerun fills it: refused, nothing sent; '
+  + 'once the cancel put Who back, the run sends those answers', async () => {
+  test.setTimeout(120_000)
+  const api = await authedApi()
+  const { sheetId } = await sheetWith(api, null, NAMES.map(Name => ({ Name })))
+  answers('held', '')
+  const first = await startLookup(api, sheetId, 'held')
+  await expect.poll(() => runStatus(api, first), { timeout: 30_000 }).toBe('completed')
+  const WHO = ['ADA', 'BOB', 'CY']
+  for (const w of WHO) rx.on(`/push/${w}`, { status: 200, body: '{"ok":"yes"}' })
+  const pushed = () => WHO.map(w => rx.hitsOn(`/push/${w}`).length)
+  const request = { method: 'POST', url: rx.url('/push/{{Who}}'), headers: { 'Content-Type': 'application/json' },
+    body: '{}' }
+  const push = { sheet_id: sheetId, ...request, master_column_name: 'Push',
+    response_mapping: [{ json_path: '$.ok', column_name: 'Pushed' }] }
+  const GOING = 'The request reads "Who", which a run that hasn\'t finished is still filling. '
+    + 'Wait for that run to finish (or stop it), then start this one.'
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'held inputs'))
+  const release = rx.hold(NAMES.map(n => `/held/${n}`))
+  try {
+    const rerun = await api.post('/api/http/rerun', { data: { sheetId, masterColumnName: 'Lookup' } })
+    expect(rerun.ok(), await rerun.text()).toBeTruthy()
+    await expect.poll(() => column(api, sheetId, 'Who'), { timeout: 30_000 }).toEqual(WHO.map(() => '⏳ Processing...'))
+    expect(await callError(client, 'run_http_enrichment', push)).toBe(GOING)
+    const preview = await api.post('/api/http/preview',
+      { data: { sheetId, config: { requestConfig: request, responseMapping: [], previewSize: 3 } } })
+    expect([preview.status(), (await preview.json()).error]).toEqual([409, GOING])
+    expect(pushed()).toEqual([0, 0, 0])
+    await cancel(api, (await rerun.json()).runId as string)
+    await expect.poll(() => column(api, sheetId, 'Who'), { timeout: 15_000 }).toEqual(WHO)
+  } finally {
+    release()
+  }
+  // Its clear done (a moment after the cells are back), the same call starts.
+  let runId = ''
+  await expect.poll(async () => {
+    const res = await client.callTool({ name: 'run_http_enrichment', arguments: push }) as
+      { isError?: boolean; content: Array<{ text: string }> }
+    const json = JSON.parse(res.content[0].text)
+    if (!res.isError) runId = json.run_id
+    return res.isError ? json.error : 'started'
+  }, { timeout: 15_000 }).toBe('started')
+  await expect.poll(() => runStatus(api, runId), { timeout: 30_000 }).toBe('completed')
+  expect(pushed()).toEqual([1, 1, 1])
+  expect(await column(api, sheetId, 'Pushed')).toEqual(['yes', 'yes', 'yes'])
   await api.dispose()
 })

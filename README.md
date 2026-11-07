@@ -143,7 +143,7 @@ Click **AI Column**, name it, and write what you want. Type `/` to use another c
 
 ### HTTP API column
 
-Click the arrow next to **AI Column**, then **HTTP API**, and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Preview a few rows, then click the response fields you want as columns.
+Click the arrow next to **AI Column**, then **HTTP API**, and describe the request: method, URL, headers and body. `{{column}}` (or `/column`) inserts the row's value. Preview a few rows, then click the response fields you want as columns. A preview or a run is refused while another run is still filling a column the request uses, or a stopped one is still putting it back, so no request goes out with `⏳ Processing...` in it: try again once that run is done.
 
 - Or click **Paste a cURL command** and paste one from the API's docs, or from your browser (right-click a request in DevTools, then **Copy as cURL**). Cubex fills in the method, URL, query, headers and body. It looks for keys in the command (sign-in headers and `-u`, headers and fields named like keys, and well-known key formats) and never keeps one it finds in the column: it asks to save each as a saved key, or to use one you already saved, and puts `{{name}}` in its place.
 

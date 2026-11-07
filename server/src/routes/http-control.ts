@@ -31,6 +31,7 @@ router.post('/jobs/:id/control', authenticateToken, async (req: AuthRequest, res
         if ('fail' in result) {
           if (result.fail === 'conflict') return res.status(409).json({ error: 'Run is no longer paused' });
           if (result.fail === 'spend_cap') return res.status(403).json({ error: result.message });
+          if (result.fail === 'held') return res.status(409).json({ error: result.message });
           return res.status(400).json({ error: 'Run not found or not paused' });
         }
         res.json({ message: 'HTTP run resumed' });

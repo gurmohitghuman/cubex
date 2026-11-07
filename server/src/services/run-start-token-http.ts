@@ -7,6 +7,7 @@ import { type HTTPAPIConfig } from '../lib/http-request';
 import { HTTP_MAX_CONCURRENCY, HTTP_MAX_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS } from '../lib/constants';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
 import { httpTemplateError } from '../lib/http-template-validate';
+import { heldRequestInputError } from '../lib/http-held-inputs';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
@@ -101,6 +102,9 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   const known = [...getSheetColumns(sheetId, c.userId, false), ...toSave];
   const templateError = httpTemplateError(config.requestConfig, known, c.userId);
   if (templateError) return bad(templateError);
+  // A column it reads that another run holds fails here too (lib/http-held-inputs.ts), as an AI estimate does.
+  const held = heldRequestInputError(sheetId, c.userId, config, (a.master_column_name as string | undefined) ?? '');
+  if (held) return { fail: 'conflict', message: held };
   const estimateOnly = parseBooleanOption(a.estimate_only) === true;
   const curlProblem = curl && curlStartProblem(
     c.userId, sheetId, curl, config.responseMapping, a.master_column_name as string | undefined, config.runIf,

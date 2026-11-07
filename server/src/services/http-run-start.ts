@@ -18,6 +18,7 @@ import { existingRowIndexes } from '../lib/run-rows';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { httpTemplateError } from '../lib/http-template-validate';
+import { heldRequestInputError } from '../lib/http-held-inputs';
 import { enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
 import { RunFail } from './run-shared';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
@@ -107,6 +108,10 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   // Use the SANITIZED names everywhere downstream.
   config.responseMapping.forEach((m, i) => { m.columnName = validation.sanitizedMappingColumns![i]; });
   const finalMasterColumnName = validation.sanitizedMaster!;
+  // A column the request reads that a run is still filling, or a stopped one is still putting back, would be
+  // sent as "⏳ Processing..." (lib/http-held-inputs.ts).
+  const held = heldRequestInputError(p.sheetId, userId, config, finalMasterColumnName);
+  if (held) return { fail: 'conflict', message: held };
 
   const runId = uuidv4();
   const allColumns = [finalMasterColumnName, ...config.responseMapping.map(m => m.columnName)];
