@@ -49,9 +49,12 @@ export interface AIRunRow {
 
 export interface SheetRow {
   rowIndex: number;
+  rowId?: string;
   data: Record<string, string>;
   // What the row's result is made from (lib/run-inputs/stamp.ts), written with it.
   stamp?: RowStamp;
+  // Why it fails without a call: its wait for a column would close a ring of runs (services/ai-row-gate.ts).
+  refused?: string;
 }
 
 // Statuses a worker must NOT start processing for. 'cancelled'/'paused' are

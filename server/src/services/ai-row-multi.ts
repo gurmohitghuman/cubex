@@ -58,6 +58,7 @@ export async function processMultiRow(
   let lateReset = () => false;
 
   try {
+    if (row.refused) throw new Error(row.refused);
     const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const withSources = web.search || web.fetch;
     const messages: Array<{ role: 'system' | 'user'; content: string }> = [];

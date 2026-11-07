@@ -29,6 +29,7 @@ import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
 import { tokenRowsThatFit } from './token-spend';
 import { processWaterfallRow, type WaterfallRowCtx } from './waterfall-row';
+import { requestInputGate } from './run-input-gate';
 import { pruneKeptAnswers } from './waterfall-journal';
 import { RunFormulas } from './waterfall-formulas';
 import { RunLookups } from './waterfall-step-lookup';
@@ -171,7 +172,7 @@ export async function processWaterfallRun(
     run, config, generation, enrich, ai, signal: wake.signal, stopped,
     halt: (message, reason = 'ai_key') => { if (own.halt === null) { own.halt = { reason, message }; wake.abort(); } },
     formulas, lookups,
-    allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns,
+    allowSavedKeys: run.allow_secrets !== 0, columns: sheetColumns, gate: requestInputGate(run, config, stopped),
   };
   const paid = steps.some(isPaidStep);
   const concurrency = enrichConcurrency(config);

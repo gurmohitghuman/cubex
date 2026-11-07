@@ -18,7 +18,7 @@ import { logRunControl } from '../lib/change-log';
 import { resumeTokenFor, rowCostOf, spendCapRefusal } from './token-spend';
 import { diskLow } from '../lib/disk-space';
 import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
-import { resumeHeldInputRefusal } from '../lib/http-held-inputs';
+import { resumeInputRefusal } from '../lib/run-resume-inputs';
 
 export type { RunKind };
 const TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
@@ -32,7 +32,8 @@ export type ControlOutcome =
   | { fail: 'secrets_required'; message: string } // resume would resolve saved keys
   | { fail: 'spend_cap'; message: string }       // resume of a run whose access token is at its spend cap
   | { fail: 'model_gone'; message: string }       // an AI run's model isn't on OpenRouter's list
-  | { fail: 'held'; message: string };            // an HTTP API request reads a column another run holds
+  | { fail: 'held'; message: string }             // it reads a column another run holds (run-resume-inputs.ts)
+  | { fail: 'bad_request'; message: string };     // an AI run's prompt names a column that's gone
 
 const getRun = (kind: RunKind, runId: string, userId: string) =>
   db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ? AND user_id = ?`)
@@ -111,9 +112,9 @@ export async function resumeRun(
   // The run spends for the token that resumes it, or (the app resuming) the one it spent for until now.
   const capped = capOf(kind, run, userId);
   if (capped) return { fail: 'spend_cap', message: capped };
-  // Its request would send another run's ⏳ cells (lib/http-held-inputs.ts).
-  const held = resumeHeldInputRefusal(kind, runId, userId);
-  if (held) return { fail: 'held', message: held };
+  // It would send another run's ⏳ cells, or an AI prompt a column that's gone (lib/run-resume-inputs.ts).
+  const inputs = resumeInputRefusal(kind, runId, userId);
+  if (inputs) return inputs;
 
   if (kind === 'http' && !hasSecretsScope && run.allow_secrets !== 0) {
     // A no-'secrets' caller resuming a permissive HTTP run. Two layers:

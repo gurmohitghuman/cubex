@@ -16,6 +16,7 @@ import { heldKeys, keysUsed, keyUsedByOtherRun, recordCall, seenCallId } from '.
 import { noteTregReach, tregAnswered } from './treg-reach';
 import { providerTries as triesOf } from '../lib/enrich-provider-tries';
 import { excludeWithCooldown, noteProviderTries, type Cooldown } from './enrich-providers';
+import type { InputGate } from './run-input-gate';
 
 export const UNREACHABLE_MESSAGE = "Can't reach treg. Check the server's internet connection, then Resume.";
 const BUSY_RETRIES = 3;
@@ -35,6 +36,7 @@ export interface RunCtx {
   cooldown: Cooldown;                     // providers its waterfalls leave out for now (enrich-providers.ts)
   providerNames?: Record<string, string>; // treg's provider ids -> the names the run shows
   reuseDays?: number;                     // found answers this young are reused (0: call every row)
+  gate?: InputGate;                       // a row waits while a column it reads is held (run-input-gate.ts)
 }
 
 export type StepResult =

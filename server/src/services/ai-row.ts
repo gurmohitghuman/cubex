@@ -62,6 +62,7 @@ export async function processRow(
   // Whether a try was reset late enough to have reached the provider (timedTries).
   let lateReset = () => false;
   try {
+    if (row.refused) throw new Error(row.refused);
     const processedPrompt = processPromptTemplate(run.prompt, row.data, columns);
     const search = runSearchConfig(run);
     const usingTools = !!search || !!run.use_web_fetch;

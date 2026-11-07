@@ -7,6 +7,7 @@ import { redactError } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { getRunStatusAndGen, shouldNotStartRun, type HTTPRunRow } from './http-runner-status';
 import { processHTTPRow } from './http-row';
+import { requestInputGate } from './run-input-gate';
 import { finalizeHTTPRun, failHTTPRun } from './http-runner-finalize';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { processEnrichmentRun } from './enrich-runner';
@@ -146,6 +147,8 @@ export async function processHTTPRun(
     // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
     const source = runRows(run.sheet_id, run.user_id, masterCol, targets, requestRunStamper(run, config))
       [Symbol.asyncIterator]();
+    // A row waits while a column its request reads is held by another run (run-input-gate.ts).
+    const gate = requestInputGate(run, config, () => shouldStop(runId, myGeneration));
     const out = new Set<Promise<void>>();
     // A full pool waits for one row to settle, checking for a stop every
     // RUN_STOP_POLL_MS and beating updated_at meanwhile (lib/run-pool.ts).
@@ -183,7 +186,7 @@ export async function processHTTPRun(
         if (next.done) break;
         if (end) { rowsLeft = true; break; }
         const done: Promise<void> = processHTTPRow(
-          runId, next.value, run, config, controller.signal, myGeneration, sheetColumns(),
+          runId, next.value, run, config, controller.signal, myGeneration, sheetColumns(), gate,
         )
           .then(outcome => {
             breaker.record(outcome);

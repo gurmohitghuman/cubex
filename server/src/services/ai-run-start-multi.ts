@@ -21,10 +21,10 @@ import {
   appendColumnsToOrder, countColumnsAndRows, getSheetColumns, verifySheetOwnership,
 } from '../lib/sql-helpers';
 import { existingRowIndexes } from '../lib/run-rows';
-import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
+import { promptRefsRefusal } from '../lib/prompt-ref-validate';
 import { findColumnNameCollision } from '../lib/column-names';
 import { activeRunOnColumn } from './ai-run-start-checks';
-import { checkRunRule, ruleSeed } from './run-rule';
+import { startRunRule, ruleSeed } from './run-rule';
 import { enqueueAIRun, enqueueAIRerun } from '../queue';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { AiRunStartParams, AiRunStartOutcome } from './ai-run-start-types';
@@ -115,10 +115,10 @@ export async function startAiMultiRun(
     message: `A structured run for "${p.cleanColumnName}" is still active, or still clearing the cells of a stopped run. Wait for it to finish, or stop it first.`,
   };
 
-  const refsError = unknownPromptRefsError(p.sheetId, userId, p.prompt);
-  if (refsError) return { fail: 'bad_request', message: refsError };
-  const rule = checkRunRule(p.sheetId, userId, p.runIf);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const refs = promptRefsRefusal(p.sheetId, userId, p.prompt);
+  if (refs) return { fail: 'bad_request', ...refs };
+  const rule = startRunRule(p.sheetId, userId, p.runIf);
+  if ('fail' in rule) return rule;
 
   const runId = uuidv4();
   const insertRun = db.prepare(`

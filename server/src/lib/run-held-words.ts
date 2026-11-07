@@ -17,3 +17,8 @@ export function heldReadWords(reader: string, column: string, hold: RunHold): st
 export const heldColumnWords = (column: string, hold: RunHold): string => (hold === 'going'
   ? `Column "${column}" is being written by a run that hasn't finished. Wait for it to finish (or stop it) first.`
   : `Column "${column}" is getting back what it held before a stopped run. Try again in a moment.`);
+
+// A setup's step waiting to start until a column it reads is free (services/setup-runner.ts).
+export const heldWaitWords = (column: string, hold: RunHold): string => (hold === 'going'
+  ? `Waits for "${column}", which a run that hasn't finished is still filling.`
+  : `Waits for "${column}" to get back what it held before a stopped run.`);

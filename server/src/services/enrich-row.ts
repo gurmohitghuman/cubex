@@ -90,9 +90,11 @@ export function rowRequest(
     { cleanDomains: e.cleanDomains, columns });
   if (built.ok) return { built };
   if ('missing' in built) return { cells: missingCells(built.missing) };
-  const reason = built.invalid;
-  return { cells: { status: 'failed', statusCell: failedCell(reason), answer: null, fill: 'none', reason } };
+  return { cells: failedCells(built.invalid) };
 }
+
+const failedCells = (reason: string): RowCells =>
+  ({ status: 'failed', statusCell: failedCell(reason), answer: null, fill: 'none', reason });
 
 // One call for the run's tool, read into cells.
 async function singleStep(
@@ -142,7 +144,12 @@ export async function processEnrichmentRow(
   ctx: RunCtx, run: HTTPRunRow, config: EnrichRunConfig, row: EnrichRow, columns: string[], generation: number,
   freeOnly = false,
 ): Promise<boolean> {
-  const req = rowRequest(config, row, columns);
+  // A column its inputs read that another run holds: the row waits for it, then goes with the row as it is then;
+  // one whose wait would close a ring of runs fails with the ring's words (services/run-input-gate.ts).
+  const ready = ctx.gate ? await ctx.gate.ready(row, ctx.signal) : { go: row };
+  if ('stopped' in ready) return false;
+  if ('go' in ready) row = ready.go;
+  const req = 'ring' in ready ? { cells: failedCells(ready.ring) } : rowRequest(config, row, columns);
   let result: RowResult | null;
   if ('cells' in req) result = { cells: req.cells, stored: undefined, costMicro: 0 };
   else result = reusedRow(ctx, config, req.built) ?? (freeOnly ? null : config.enrichment.email

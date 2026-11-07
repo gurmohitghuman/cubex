@@ -12,12 +12,12 @@ import { NO_MODEL_ERROR, resolveAiModel } from '../lib/ai-model-resolve';
 import { modelGone, modelList, type ModelList } from '../lib/ai-model-check';
 import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { columnReuseCollision } from '../lib/column-names';
-import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
+import { promptRefsRefusal } from '../lib/prompt-ref-validate';
 import { getLockedRunColumns } from '../lib/run-locked-columns';
 import { findStructuredRun, outputColumnNames } from '../lib/structured-run-owner';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
-import { ruleSeed, storedRule } from './run-rule';
+import { ruleSeed, startRunRule } from './run-rule';
 import { asRunStart, seedThenEnqueue } from './run-seed';
 import { type AIRunRow } from './ai-runner';
 import { enqueueAIRerun } from '../queue';
@@ -94,10 +94,10 @@ export async function rerunAiMultiColumn(
   }
 
   // The prompt's /references may name columns renamed or deleted since.
-  const refsError = unknownPromptRefsError(p.sheetId, userId, latest.prompt);
-  if (refsError) return { fail: 'bad_request', message: refsError };
-  const rule = storedRule(p.sheetId, userId, latest.run_if);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const refs = promptRefsRefusal(p.sheetId, userId, latest.prompt);
+  if (refs) return { fail: 'bad_request', ...refs };
+  const rule = startRunRule(p.sheetId, userId, latest.run_if, { stored: true });
+  if ('fail' in rule) return rule;
   const concurrency = rerunConcurrency(p.concurrency, latest.concurrency);
   if ('error' in concurrency) return { fail: 'bad_request', message: concurrency.error };
 

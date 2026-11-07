@@ -25,6 +25,7 @@ import { runSpentMicro } from './enrich-ledger';
 import { getReuseDays } from './enrich-reuse';
 import { dropHold, heldMicro, releaseRow, setRunHold } from './enrich-holds';
 import { processEnrichmentRow } from './enrich-row';
+import { requestInputGate } from './run-input-gate';
 import { clearCooldowns } from './enrich-providers';
 import { shouldStopHttpRun } from './run-row-write';
 import { stopAutorunRun } from './autorun-stop';
@@ -119,6 +120,7 @@ export async function processEnrichmentRun(
     // "Always call again" (and "Rerun this row") call every row, never reusing an earlier answer.
     reuseDays: config.enrichment.fresh || config.enrichment.noReuse ? 0 : getReuseDays(run.user_id),
   };
+  ctx.gate = requestInputGate(run, config, ctx.stopped);
   const concurrency = enrichConcurrency(config);
   clearCooldowns(run.id, run.user_id);
   const masterCol = run.master_column_name;

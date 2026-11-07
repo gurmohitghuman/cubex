@@ -12,6 +12,7 @@ import { runSpentMicro } from './enrich-ledger';
 import { reusedRows } from './enrich-reuse';
 import { dailyLimitView, type DailyLimitView } from './treg-key';
 import { resumeCapRefusal, resumeRun, type ControlOutcome } from './run-lifecycle';
+import { resumeInputRefusal } from '../lib/run-resume-inputs';
 import { destFullMessage, destRoom } from './enrich-list-room';
 import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 
@@ -163,6 +164,9 @@ export async function resumeEnrichmentRun(
   // A resume refused at a spend cap changes nothing (run-lifecycle.ts).
   const capped = resumeCapRefusal('http', runId, userId);
   if (capped) return { fail: 'spend_cap', message: capped };
+  // Nor one reading a column another run holds (lib/run-resume-inputs.ts): checked before its new limit is written.
+  const held = resumeInputRefusal('http', runId, userId);
+  if (held) return held;
   const concurrency = concurrencyOf(concurrencyAsked);
   if (concurrency === undefined) return { fail: 'bad_request', message: CONCURRENCY_ERROR };
   const sets: Array<[string, number]> = [];

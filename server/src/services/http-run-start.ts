@@ -18,12 +18,12 @@ import { existingRowIndexes } from '../lib/run-rows';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { httpTemplateError } from '../lib/http-template-validate';
-import { heldRequestInputError } from '../lib/http-held-inputs';
+import { heldRequestInput } from '../lib/http-held-inputs';
 import { enqueueHTTPRun, enqueueHTTPRerun } from '../queue';
-import { RunFail } from './run-shared';
+import { heldFail, RunFail } from './run-shared';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
-import { checkRunRule, ruleSeed } from './run-rule';
+import { startRunRule, ruleSeed } from './run-rule';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 
@@ -73,8 +73,8 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   const templateError = httpTemplateError(config.requestConfig, getSheetColumns(p.sheetId, userId, false), userId);
   if (templateError) return { fail: 'bad_request', message: templateError };
   // "Only run if": kept in the config in Cubex's spelling, so reruns repeat it.
-  const rule = checkRunRule(p.sheetId, userId, config.runIf);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
+  const rule = startRunRule(p.sheetId, userId, config.runIf);
+  if ('fail' in rule) return rule;
   if (rule.ok) config.runIf = rule.ok.rule;
   else delete config.runIf;
 
@@ -110,8 +110,8 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   const finalMasterColumnName = validation.sanitizedMaster!;
   // A column the request reads that a run is still filling, or a stopped one is still putting back, would be
   // sent as "⏳ Processing..." (lib/http-held-inputs.ts).
-  const held = heldRequestInputError(p.sheetId, userId, config, finalMasterColumnName);
-  if (held) return { fail: 'conflict', message: held };
+  const held = heldRequestInput(p.sheetId, userId, config, finalMasterColumnName);
+  if (held) return heldFail(held);
 
   const runId = uuidv4();
   const allColumns = [finalMasterColumnName, ...config.responseMapping.map(m => m.columnName)];

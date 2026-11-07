@@ -5,6 +5,8 @@
 import { getSheetColumns } from '../lib/sql-helpers';
 import { checkRule, RuleError, type CheckedRule } from '../lib/run-condition';
 import type { RuleSeed } from '../lib/placeholder-rule-seed';
+import { heldRuleRefusal } from '../lib/run-held-reads';
+import { heldFail, type RunFail } from './run-shared';
 
 export type RuleCheck = { ok: CheckedRule | null } | { error: string };
 
@@ -28,6 +30,19 @@ export function storedRule(sheetId: string, userId: string, text: string | null 
   return 'error' in checked
     ? { error: `${checked.error} Edit the rule, or run without it.` }
     : checked;
+}
+
+// A run start's rule (a stored one when it runs a column again): checked as above, then refused while a
+// column it reads is held by another run (lib/run-held-reads.ts): seeding judges each row on it, and a held
+// column's ⏳ reads as empty. conditions: an enrichment's older list of conditions, judged with it.
+export function startRunRule(
+  sheetId: string, userId: string, text: string | null | undefined,
+  opts: { stored?: boolean; conditions?: string[] } = {},
+): { ok: CheckedRule | null } | RunFail {
+  const checked = opts.stored ? storedRule(sheetId, userId, text) : checkRunRule(sheetId, userId, text);
+  if ('error' in checked) return { fail: 'bad_request', message: checked.error };
+  const held = heldRuleRefusal(sheetId, userId, checked.ok?.rule, opts.conditions ?? []);
+  return held ? heldFail(held) : checked;
 }
 
 // What a /api/v1 or MCP start says about its rule.

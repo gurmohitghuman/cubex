@@ -29,6 +29,7 @@ export function planTransferColumns(
   mode: 'require_existing' | 'create_missing',
   pristine: boolean,
   subset?: string[],
+  move = false,
 ): TransferColumnPlan | { error: string; held?: true } {
   const sourceColumns = getSheetColumns(sourceSheetId, userId, false);
   const sourceSet = new Set(sourceColumns);
@@ -84,9 +85,12 @@ export function planTransferColumns(
     newColumns.push(column);
   }
   // A copied column a run holds in the source would copy its ⏳ cells for good: a run still going (the sheet-wide
-  // check in rows-transfer.ts answers that first), or a stopped one still putting back what they held.
+  // check in rows-transfer.ts answers that first), or a stopped one still putting back what they held. A move
+  // takes the source rows to the trash whole, so any column held there counts (copied or not): its ⏳ would go
+  // to the trash, and a restore would bring it back for good.
   const sourceHeld = runHeldColumns(sourceSheetId, userId, { clearing: true });
-  const heldSource = [...sourceToDestination.keys()].find(c => sourceHeld.has(c));
+  const heldSource = [...sourceToDestination.keys()].find(c => sourceHeld.has(c))
+    ?? (move ? sourceColumns.find(c => sourceHeld.has(c)) ?? [...sourceHeld.keys()][0] : undefined);
   if (heldSource !== undefined) return { error: heldColumnWords(heldSource, sourceHeld.get(heldSource)!), held: true };
   const locked = getLockedRunColumns(destinationSheetId, userId);
   const lockedHits = destinationColumns.filter(c => locked.has(c));

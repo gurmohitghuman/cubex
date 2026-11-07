@@ -3,7 +3,8 @@ import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { redactSecrets, redactError } from '../lib/redact';
 import { getOpenRouterClient } from './openrouter';
-import { processRow } from './ai-row';
+import { processRowWhenFree } from './ai-row-gate';
+import { aiInputGate } from './run-input-gate';
 import {
   getRunStatusAndGen, shouldStop,
   type AIRunRow, type SheetRow,
@@ -67,6 +68,8 @@ export const dispatchRows = async (
   // A database that refuses writes ends the run, whatever else did (nothing more can be saved).
   const ended = (error: unknown) => { if (isStorageFailure(error)) end = storageEnd(error); };
   const gate = await openSpendGate(run, myGeneration, columns);
+  // A row waits while a column its prompt reads is held by another run (services/run-input-gate.ts).
+  const inputs = aiInputGate(run, () => shouldStop(runId, myGeneration));
   // Room for the row under the run's limit; null: a database that can't be written (end is set).
   // Busy with another writer past busy_timeout: the row waits and asks again.
   const admit = (row: SheetRow): GateAnswer | null => {
@@ -117,7 +120,9 @@ export const dispatchRows = async (
       }
 
       let settledAs: RowOutcome | null = null;
-      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
+      const promise: Promise<void> = processRowWhenFree(
+        inputs, runId, row, run, openai, controller.signal, myGeneration, columns,
+      )
         .then(outcome => {
           settledAs = outcome;
           breaker.record(outcome);

@@ -12,6 +12,7 @@ import { getSheetColumns } from './sql-helpers';
 import { extractColumnReferences, findUnknownColumnReferences, normalizeColumnName, unknownRefsMessage } from './prompt';
 import { runHeldColumns } from './run-locked-columns';
 import { heldReadWords } from './run-held-words';
+import type { HeldRead } from './run-held-reads';
 
 // Returns the user-facing error when the prompt references columns that don't
 // exist on the sheet or that a run is still filling (or, stopped, still putting
@@ -27,9 +28,17 @@ export function unknownPromptRefsError(
   userId: string,
   prompt: string,
 ): string | null {
+  return promptRefsRefusal(sheetId, userId, prompt)?.message ?? null;
+}
+
+// The same, saying which held column it was (a setup's step waits for it: RunFail.held). own: the columns
+// the run writes itself, which its own run holds (a paused run's resume, lib/run-resume-inputs.ts).
+export function promptRefsRefusal(
+  sheetId: string, userId: string, prompt: string, own: readonly string[] = [],
+): { message: string; held?: HeldRead } | null {
   const columns = getSheetColumns(sheetId, userId, false);
   const unknown = findUnknownColumnReferences(prompt, columns);
-  if (unknown.length > 0) return unknownRefsMessage(unknown);
+  if (unknown.length > 0) return { message: unknownRefsMessage(unknown) };
   // A column another run is still filling holds "⏳ Processing..." on the rows
   // it hasn't reached; reading it fed (and billed) the model that placeholder.
   // A stopped or failed run's ⏳ cells stay until its clear reaches them.
@@ -37,8 +46,9 @@ export function unknownPromptRefsError(
   if (held.size === 0) return null;
   for (const ref of extractColumnReferences(prompt)) {
     const col = columns.find(c => normalizeColumnName(c) === ref || c.toLowerCase() === ref.toLowerCase());
-    const hold = col === undefined ? undefined : held.get(col);
-    if (col !== undefined && hold) return heldReadWords(`/${ref}`, col, hold);
+    const hold = col === undefined || own.includes(col) ? undefined : held.get(col);
+    if (col === undefined || !hold) continue;
+    return { message: heldReadWords(`/${ref}`, col, hold), held: { column: col, hold } };
   }
   return null;
 }
