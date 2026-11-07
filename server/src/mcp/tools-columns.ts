@@ -1,7 +1,7 @@
 // Column, sort and column order tools: the shared cascade services (column-add/-rename/
 // -delete, sheet-sort), identical invariants to /api/v1 and the UI.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { addSheetColumn } from '../services/column-add';
 import { renameSheetColumn } from '../services/column-rename';

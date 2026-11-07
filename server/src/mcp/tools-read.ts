@@ -1,7 +1,7 @@
 // Read tools: discovery + paged row reads. All delegate to the same
 // services/workspace-read.ts the /api/v1 routes use.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { MCP_MAX_ROWS_PAGE, MCP_ROWS_BY_ID_MAX_CHARS, ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';

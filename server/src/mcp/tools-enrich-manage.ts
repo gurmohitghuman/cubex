@@ -2,7 +2,7 @@
 // and auto-run. Thin wrappers over services/enrich-agent-fields.ts and
 // enrich-agent-autorun.ts (the same as /api/v1). Scope check first.
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { agentAddField, agentAddListRows, agentListFields } from '../services/enrich-agent-fields';
 import { agentSetAutorun } from '../services/enrich-agent-autorun';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';

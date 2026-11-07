@@ -2,9 +2,9 @@
 // request's authenticated context (built per-request in routes/mcp.ts — the
 // transport is stateless, the Bearer token is the identity) and returns its
 // result as structuredContent, mirrored as JSON text for clients that only read
-// text (the spec asks for both: modelcontextprotocol.io/specification/2025-11-25/server/tools).
+// text (the spec asks for both: modelcontextprotocol.io/specification/2026-07-28/server/tools).
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
@@ -44,7 +44,7 @@ export interface ToolResult {
 
 export const ok = (data: unknown): ToolResult => ({
   content: [{ type: 'text', text: JSON.stringify(data) }],
-  // structuredContent must be a JSON object.
+  // An object only: 2025-era clients take nothing else (2026-07-28 allows any JSON value).
   ...(data !== null && typeof data === 'object' && !Array.isArray(data) ? { structuredContent: data } : {}),
 });
 
@@ -92,10 +92,11 @@ export function withToolErrors(nameOrHandler: string | ToolHandler, maybeHandler
 
 // MANDATORY registration wrapper: use this instead of server.registerTool so
 // every handler gets withToolErrors by construction. Same call shape as the
-// SDK's registerTool (name, config, handler) — only the handler is wrapped.
-// `config` is passed through as-is (the SDK's registerTool is heavily
-// overloaded, so we don't try to reproduce its exact param type — it validates
-// the config + inputSchema at registration; a bad shape still fails loudly).
+// SDK's registerTool (name, config, handler): the handler is wrapped, and a
+// field list in `config` becomes an object schema; the rest passes as-is (the
+// SDK's registerTool is heavily overloaded, so we don't try to reproduce its
+// exact param type; it validates the config + inputSchema at registration, so
+// a bad shape still fails loudly).
 export function registerTool(
   server: McpServer,
   name: string,
@@ -108,8 +109,13 @@ export function registerTool(
   const hints = TOOL_ANNOTATIONS[name];
   if (!hints) throw new Error(`MCP tool ${name} has no entry in tool-annotations.ts`);
   const { title, ...annotations } = hints;
+  // A field list becomes an object schema here, with Cubex's own zod: the SDK
+  // only takes a bare field list through an overload it has deprecated.
+  const { inputSchema, ...rest } = config;
+  const schema = inputSchema === undefined || inputSchema instanceof z.ZodType
+    ? inputSchema : z.object(inputSchema as z.ZodRawShape);
   server.registerTool(
-    name, { title, annotations, ...config } as never,
+    name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}) } as never,
     withToolErrors(name, refuseWhileSheetBusy(name, handler)) as never,
   );
 }

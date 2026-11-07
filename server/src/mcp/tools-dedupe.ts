@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { DEDUPE_KEEPS, DEDUPE_MATCHES } from '../lib/dedupe/key';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { AUTO_DEDUPE_KEEPS } from '../lib/auto-dedupe/key';

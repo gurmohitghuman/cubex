@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { applySetup } from '../services/setup-apply';
