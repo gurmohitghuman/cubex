@@ -1,5 +1,12 @@
 // Row-query extras (read_rows and REST rows/query: aggregates and nested
 // paths), the grid's search and its value counts. Guards, not quotas.
+import { CELL_MAX_ENRICHMENT } from './constants';
+
+// max_chars_per_cell (lib/row-select/cut-cells.ts): each returned cell's text
+// cut to that many characters. The highest is the longest cell Cubex stores
+// (an AI, HTTP API or enrichment answer), so it never cuts a stored cell.
+export const CELL_CUT_MIN_CHARS = 1;
+export const CELL_CUT_MAX_CHARS = CELL_MAX_ENRICHMENT;
 
 // group_by columns in one aggregate read, and aggregates in one read.
 export const MAX_GROUP_BY_COLUMNS = 3;
