@@ -38,12 +38,20 @@ export function sheetCleanView(sheetId: string, userId: string, columns: string[
   return out;
 }
 
+// A clean column's options as MCP and /api/v1 name them (snake_case), only those it has.
+export function apiCleanOptions(o: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...(typeof o.phoneFormat === 'string' ? { phone_format: o.phoneFormat } : {}),
+    ...(typeof o.phoneCountry === 'string' ? { phone_country: o.phoneCountry } : {}),
+    ...(typeof o.nameInput === 'string' ? { name_input: o.nameInput } : {}),
+    ...(typeof o.theCompany === 'string' ? { the_company: o.theCompany } : {}),
+  };
+}
+
 // For agents (snake_case, as every MCP and /api/v1 answer).
 export function cleanColumnJson(v: CleanColumnView): Record<string, unknown> {
   return {
-    column: v.column, source_column: v.source, cleaner: v.cleaner,
-    ...(typeof v.options.phoneFormat === 'string' ? { phone_format: v.options.phoneFormat } : {}),
-    ...(typeof v.options.phoneCountry === 'string' ? { phone_country: v.options.phoneCountry } : {}),
+    column: v.column, source_column: v.source, cleaner: v.cleaner, ...apiCleanOptions(v.options),
     auto_run: v.autoRun, status: v.status, cleaned_rows: v.cleanedRows, blank_rows: v.blankRows,
     ...(v.error ? { error: v.error } : {}),
   };

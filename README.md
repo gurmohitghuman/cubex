@@ -204,8 +204,9 @@ Agents use `ai_visibility`; the [MCP guide](docs/mcp.md#ai-visibility) has the d
 
 Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.
 
-- **Names.** Fix words typed in ALL CAPS or lowercase ("JOHN SMITH" and "John SMITH" both become "John Smith"), turn "Smith, John" around, drop titles (Mr, Dr), suffixes (Jr, PhD) and nicknames, or keep just the first or last name. Words typed in mixed case, like DeShawn or McDonald, keep their capitals.
-- **Company names.** Drop legal endings like Inc, LLC, Corp, Ltd and GmbH, and fix ALL CAPS: "ACME CO., LTD." becomes "Acme".
+- **Names.** Fix words typed in ALL CAPS or lowercase ("JOHN SMITH" and "John SMITH" both become "John Smith"), turn "Smith, John" around, drop titles (Mr, Dr), suffixes (Jr, PhD) and nicknames, or keep just the first or last name ("J. Michael Fox" has the first name Michael). When a column holds only first names, or only last names, say so: "Dr. Sarah" then gives Sarah and "SMITH JONES" gives Smith Jones. Words typed in mixed case, like DeShawn or McDonald, keep their capitals.
+- **Company names.** Drop legal endings like Inc, LLC, Corp, Ltd and GmbH, and fix ALL CAPS: "ACME CO., LTD." becomes "Acme". "The Christman Company" becomes "Christman", or stays whole if you pick Keep.
+- Names and company names lose their emoji ("Kowalski 👋" becomes "Kowalski"), and cells holding a placeholder such as n/a, none, unknown or test are left blank.
 - **Emails.** Lowercase them and leave a cell blank when the address isn't valid. This checks the format only, not whether mail gets delivered.
 - **Domains.** Get the root domain from a website or an email: "https://blog.acme.co.uk/about" and "pat@acme.co.uk" both become "acme.co.uk".
 - **Phone numbers.** One format for every number: (212) 555-0123, +1 212 555 0123 or +12125550123. Cells that don't hold a real number are left blank.

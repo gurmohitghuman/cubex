@@ -2,13 +2,17 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { sheetWith, waitSetup, column } from './helpers-setups'
 
 // clean_column (MCP) and POST /api/v1/sheets/:id/clean-columns: free cleaning
 // into a new column. Preview writes nothing; a call waits for the fill and
 // returns its counts; calling again on a clean column changes it; any other
 // existing column, the source itself and a loop are refused; auto-run follows
 // the source (edits and new rows), a hand edit stays until the source changes;
-// rename and delete keep the record in step.
+// rename and delete keep the record in step; name_input and the_company are
+// taken, echoed and refused alike over MCP and REST, follow new rows, and
+// survive a setup; emoji and placeholders go over real rows.
+// Over 200 lines: clean_column over MCP and REST is one area, scenario by scenario.
 
 const SEED = [
   {
@@ -181,4 +185,106 @@ test('REST: POST /api/v1/sheets/:id/clean-columns', async ({ playwright }) => {
 
   const readOnly = await rest(await makeAccessToken(api, ['read'], 'e2e clean read'))
   expect((await readOnly.post(url, { data: { source_column: 'Email', cleaner: 'email' } })).status()).toBe(403)
+})
+
+const NAME_ROWS = [
+  { First: 'Dr. Sarah', Last: 'SMITH JONES', Company: 'The Christman Company', Name: 'Katie Siklitska 🇺🇦' },
+  { First: 'J. Michael', Last: 'VAN DER BERG', Company: 'Docsumo 📄', Name: 'n/a' },
+  { First: 'n/a', Last: 'Kowalski 👋', Company: 'ImagineSoftware (Technology Partners', Name: 'Ｍｉｃｈａｅｌ Smith' },
+]
+const FIRST_PAIR = 'name_input on the first_name cleaner must be full_name or first_name.'
+const NAME_INPUT_ELSEWHERE = 'name_input is an option of the first_name cleaner (full_name or first_name) and the '
+  + 'last_name cleaner (full_name or last_name) only.'
+
+test('clean_column: name_input and the_company over MCP and REST, emoji and placeholders over rows', async ({
+  playwright,
+}) => {
+  test.setTimeout(90_000)
+  const api = await authedApi()
+  const { sheetId } = await sheetWith(api, null, NAME_ROWS)
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e clean names'), 'e2e-names')
+  const cells = async (c: string) => (await rowsOf(client, sheetId)).map(r => r.data[c] ?? '')
+
+  const tool = (await client.listTools()).tools.find(t => t.name === 'clean_column')!
+  const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>
+  expect(props.name_input.enum).toEqual(['full_name', 'first_name', 'last_name'])
+  expect(props.the_company.enum).toEqual(['strip', 'keep'])
+
+  const first = await call(client, 'clean_column',
+    { sheet_id: sheetId, source_column: 'First', cleaner: 'first_name', name_input: 'first_name' })
+  expect(first).toMatchObject({ name_input: 'first_name', status: 'done', cleaned_rows: 2, blank_rows: 1 })
+  expect(await cells('First (first name)')).toEqual(['Sarah', 'Michael', ''])
+  await call(client, 'clean_column', { sheet_id: sheetId, source_column: 'Last', cleaner: 'last_name',
+    name_input: 'last_name' })
+  expect(await cells('Last (last name)')).toEqual(['Smith Jones', 'van der Berg', 'Kowalski'])
+  const person = await call(client, 'clean_column',
+    { sheet_id: sheetId, source_column: 'Name', cleaner: 'person_name' })
+  expect(person).toMatchObject({ cleaned_rows: 2, blank_rows: 1 })
+  expect(person.name_input).toBeUndefined()
+  expect(await cells('Name (clean)')).toEqual(['Katie Siklitska', '', 'Michael Smith'])
+
+  // Refused with the service's words (nothing written); a value outside the list by the input schema.
+  expect(await callError(client, 'clean_column', { sheet_id: sheetId, source_column: 'First', cleaner: 'first_name',
+    name_input: 'last_name', column: 'X' })).toBe(FIRST_PAIR)
+  expect(await callError(client, 'clean_column', { sheet_id: sheetId, source_column: 'Name', cleaner: 'person_name',
+    name_input: 'full_name', column: 'X' })).toBe(NAME_INPUT_ELSEWHERE)
+  const outside = await client.callTool({ name: 'clean_column', arguments: { sheet_id: sheetId,
+    source_column: 'First', cleaner: 'first_name', name_input: 'nickname', column: 'X' } }) as any
+  expect(outside.isError).toBe(true)
+  expect(outside.content[0].text).toContain('name_input')
+  expect(outside.content[0].text).toContain('"full_name"')
+  expect((await call(client, 'get_sheet', { sheet_id: sheetId })).columns).not.toContain('X')
+
+  // Auto-run follows a new row with the column's option.
+  await call(client, 'append_rows', { sheet_id: sheetId, rows: [{ First: 'Mr John' }] })
+  await waitForCell(client, sheetId, 3, 'First (first name)', 'John')
+
+  // REST: the_company keep, echoed; the same refusals as MCP, as 400s.
+  const v1 = await playwright.request.newContext({ baseURL: BASE,
+    extraHTTPHeaders: { Authorization: `Bearer ${await makeAccessToken(api, ['read', 'write'], 'e2e names rest')}` } })
+  const url = `/api/v1/sheets/${sheetId}/clean-columns`
+  const made = await v1.post(url, { data: { source_column: 'Company', cleaner: 'company_name', the_company: 'keep' } })
+  expect(made.status()).toBe(201)
+  expect(await made.json()).toMatchObject({ the_company: 'keep', status: 'done', cleaned_rows: 3 })
+  expect(await cells('Company (clean)')).toEqual(['The Christman Company', 'Docsumo', 'ImagineSoftware', ''])
+  for (const [data, error] of [
+    [{ source_column: 'First', cleaner: 'first_name', name_input: 'last_name', column: 'X' }, FIRST_PAIR],
+    [{ source_column: 'First', cleaner: 'first_name', name_input: 'nickname', column: 'X' }, FIRST_PAIR],
+    [{ source_column: 'Company', cleaner: 'company_name', the_company: 'drop', column: 'X' },
+      'the_company must be strip or keep.'],
+  ] as const) {
+    const res = await v1.post(url, { data })
+    expect(res.status()).toBe(400)
+    expect((await res.json()).error).toBe(error)
+  }
+  const meta = await call(client, 'get_sheet', { sheet_id: sheetId })
+  expect(meta.clean_columns.find((c: any) => c.column === 'First (first name)'))
+    .toMatchObject({ name_input: 'first_name' })
+  expect(meta.clean_columns.find((c: any) => c.column === 'Company (clean)')).toMatchObject({ the_company: 'keep' })
+  await client.close()
+})
+
+test('clean_column options survive a setup saved and used on another sheet', async () => {
+  test.setTimeout(90_000)
+  const api = await authedApi()
+  for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e clean setup'), 'e2e-cs')
+  const a = await sheetWith(api, null, [{ First: 'Dr. Sarah', Company: 'The Christman Company' }])
+  await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'First', cleaner: 'first_name',
+    name_input: 'first_name', column: 'Given' })
+  await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Company', cleaner: 'company_name',
+    the_company: 'keep', column: 'Firm' })
+  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Names', columns: ['Given', 'Firm'] })
+
+  const b = await sheetWith(api, a.tableId, [
+    { First: 'Mr John', Company: 'THE CHRISTMAN COMPANY, INC.' }, { First: 'MARY ANN', Company: 'Acme Inc' },
+  ])
+  const started = await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false })
+  expect((await waitSetup(client, started.setup_run.id)).status).toBe('done')
+  expect((await column(api, b.sheetId, 'Given')).slice(0, 2)).toEqual(['John', 'Mary Ann'])
+  expect((await column(api, b.sheetId, 'Firm')).slice(0, 2)).toEqual(['The Christman Company', 'Acme'])
+  const meta = await call(client, 'get_sheet', { sheet_id: b.sheetId })
+  expect(meta.clean_columns.find((c: any) => c.column === 'Given')).toMatchObject({ name_input: 'first_name' })
+  expect(meta.clean_columns.find((c: any) => c.column === 'Firm')).toMatchObject({ the_company: 'keep' })
+  await client.close()
 })

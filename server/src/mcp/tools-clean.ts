@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { CLEANERS, PHONE_FORMATS } from '../lib/clean/cleaners';
+import { CLEANERS, NAME_INPUTS, PHONE_FORMATS, THE_COMPANY } from '../lib/clean/cleaners';
 import { agentCleanColumn } from '../services/clean-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
@@ -11,9 +11,16 @@ export function registerCleanTool(server: McpServer, ctx: McpAuthCtx): void {
       'Clean a column into a new column for FREE: no AI, no credits, no requests, nothing leaves Cubex. Prefer it '
       + 'over run_ai_column for any cleanup it covers. cleaner: person_name (fixes words typed in ALL CAPS or '
       + 'lowercase, "John SMITH" too, keeping DeShawn and McDonald; turns "Smith, John" around; drops Mr/Dr/Jr/PhD '
-      + 'and nicknames), first_name, last_name (keeps "van", "de la"), '
-      + 'company_name (drops Inc, LLC, Corp, Ltd, GmbH and other legal endings and a trailing ", a company of X"; '
-      + 'fixes ALL CAPS), email (lowercase; blank when the format is invalid, which says nothing about delivery), '
+      + 'and nicknames), first_name (skips initials: "J. Michael Fox" gives "Michael"; a lone initial gives blank), '
+      + 'last_name (keeps "van", "de la"); both read the source as full names: when the column holds only first '
+      + 'names, or only last names, pass name_input first_name or last_name ("Dr. Sarah" gives "Sarah", "SMITH '
+      + 'JONES" gives "Smith Jones"), '
+      + 'company_name (drops Inc, LLC, Corp, Ltd, GmbH and other legal endings, a trailing ", a company of X" and '
+      + 'a bracket that never closes with what follows it; fixes ALL CAPS; "The Christman Company" gives '
+      + '"Christman": pass the_company keep for companies whose name is said with The and Company). The name and '
+      + 'company cleaners drop emoji, read full-width letters as plain ones, and leave placeholders (n/a, none, '
+      + 'null, unknown, test, -) blank. '
+      + 'email (lowercase; blank when the format is invalid, which says nothing about delivery), '
       + 'domain (the root domain of a website or an email: "https://blog.acme.co.uk/x" and "pat@acme.co.uk" give '
       + '"acme.co.uk"), phone (phone_country, default US, is how bare digits are read; phone_format national '
       + '"(212) 555-0123" (default; a number from another country comes out international), international '
@@ -38,6 +45,12 @@ export function registerCleanTool(server: McpServer, ctx: McpAuthCtx): void {
       phone_format: z.enum(PHONE_FORMATS).optional().describe('phone only: national (default), international or e164'),
       phone_country: z.string().length(2).optional()
         .describe('phone only: how bare digits are read, e.g. US (default)'),
+      name_input: z.enum(NAME_INPUTS).optional()
+        .describe('first_name and last_name only: what the column holds. full_name (default): whole names; '
+          + 'first_name: first names only (first_name cleaner); last_name: last names only (last_name cleaner)'),
+      the_company: z.enum(THE_COMPANY).optional()
+        .describe('company_name only: strip (default) turns "The Christman Company" into "Christman"; keep keeps '
+          + 'it whole. Other legal endings go either way'),
       auto_run: lenientBoolean().optional(),
       preview: lenientBoolean().optional(),
     }).strict(),

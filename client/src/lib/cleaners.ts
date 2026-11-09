@@ -1,7 +1,8 @@
 // The clean data cleaners, mirrored from server/src/lib/clean/cleaners.ts (the
 // server is authoritative and checks every value): their ids, the dialog's
-// labels, groups and help, the phone formats, and the default column name
-// ("<source> (<suffix>)"), which the server computes the same way.
+// labels, groups and help, the phone formats, the name and company options,
+// and the default column name ("<source> (<suffix>)"), which the server
+// computes the same way.
 
 export const CLEANER_IDS = [
   'person_name', 'first_name', 'last_name', 'company_name', 'email', 'domain', 'phone',
@@ -18,11 +19,12 @@ export const CLEANERS: readonly CleanerInfo[] = [
   {
     id: 'person_name', label: 'Full name', group: 'People', suffix: 'clean',
     help: 'Fixes words typed in ALL CAPS or lowercase, turns "Smith, John" around, '
-      + 'drops Mr, Dr, Jr, PhD and nicknames.',
+      + 'drops Mr, Dr, Jr, PhD, nicknames and emoji, and leaves n/a, none and unknown blank.',
   },
   {
     id: 'first_name', label: 'First name', group: 'People', suffix: 'first name',
-    help: 'The first name, from a full name in any of those shapes.',
+    help: 'The first name, from a full name in any of those shapes. Initials are skipped: J. Michael Fox gives '
+      + 'Michael.',
   },
   {
     id: 'last_name', label: 'Last name', group: 'People', suffix: 'last name',
@@ -30,7 +32,8 @@ export const CLEANERS: readonly CleanerInfo[] = [
   },
   {
     id: 'company_name', label: 'Company name', group: 'Company', suffix: 'clean',
-    help: 'Drops Inc, LLC, Corp, Ltd, GmbH and other legal endings, and fixes ALL CAPS.',
+    help: 'Drops Inc, LLC, Corp, Ltd, GmbH and other legal endings and emoji, fixes ALL CAPS, and leaves n/a, '
+      + 'none and unknown blank.',
   },
   {
     id: 'email', label: 'Email', group: 'Contact', suffix: 'clean',
@@ -83,3 +86,14 @@ export const PHONE_FORMATS: ReadonlyArray<{ id: PhoneFormat; label: string; exam
 ]
 export const DEFAULT_PHONE_FORMAT: PhoneFormat = 'national'
 export const DEFAULT_PHONE_COUNTRY = 'US'
+
+// What a first- or last-name column holds (name_input): full names, read for
+// the part the cleaner gives (default), or that part only.
+export type NameInput = 'full_name' | 'first_name' | 'last_name'
+
+// What "The ... Company" becomes in a company name (the_company).
+export type TheCompany = 'strip' | 'keep'
+export const THE_COMPANY_CHOICES: ReadonlyArray<{ id: TheCompany; label: string; example: string }> = [
+  { id: 'strip', label: 'Drop', example: 'The Christman Company becomes Christman' },
+  { id: 'keep', label: 'Keep', example: 'The Christman Company stays as it is' },
+]

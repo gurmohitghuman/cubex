@@ -4,6 +4,7 @@ import { CLEANERS, CLEANER_GROUPS, cleanerInfo, type CleanerId } from '@/lib/cle
 import { Select } from '../ui/Select'
 import { useCleanForm } from './useCleanForm'
 import { CleanPhoneOptions } from './CleanPhoneOptions'
+import { CleanNameInputOption, CleanTheCompanyOption } from './CleanNameOptions'
 import { CleanPreview } from './CleanPreview'
 
 interface Props {
@@ -67,6 +68,11 @@ export const CleanColumnForm: React.FC<Props> = ({ sheetId, columns, editing, in
         <CleanPhoneOptions format={f.phoneFormat} onFormat={f.setPhoneFormat} country={f.country}
           onCountry={f.setCountry} />
       )}
+      {(f.cleaner === 'first_name' || f.cleaner === 'last_name') && (
+        <CleanNameInputOption part={f.cleaner === 'first_name' ? 'first' : 'last'} partOnly={f.partOnly}
+          onChange={f.setPartOnly} />
+      )}
+      {f.cleaner === 'company_name' && <CleanTheCompanyOption value={f.theCompany} onChange={f.setTheCompany} />}
       <div>
         {editing ? <span className={LABEL}>Column name</span>
           : <label htmlFor="clean-name" className={LABEL}>New column name</label>}

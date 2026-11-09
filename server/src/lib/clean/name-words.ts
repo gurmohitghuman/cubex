@@ -39,3 +39,13 @@ export const MAC_EXCEPTIONS = [
 ];
 // Take the capital although their ending would say otherwise.
 export const MAC_FORCED = new Map([['macmurdo', 'MacMurdo'], ['macisaac', 'MacIsaac']]);
+
+// Placeholders: a whole value that is one of these (case, and the spaces, dots
+// and brackets around it, ignored: "N/A.", "(none)") says there is no name.
+// The name and company cleaners leave it blank. Only whole values: "Test
+// Kitchen" and "Nancy Unknown" are names.
+export const PLACEHOLDERS = new Set([
+  'n/a', 'n.a', 'na', 'none', 'null', 'nil', '-', '--', '?', 'unknown', 'test', 'tbd', 'blank',
+]);
+// "Na" written so is a real name (Li Na, Na Young): the person name cleaners keep it.
+export const PLACEHOLDER_NAME_EXCEPTION = 'Na';

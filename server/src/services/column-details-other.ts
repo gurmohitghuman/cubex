@@ -2,7 +2,7 @@
 // formula and lookup columns (their records, as their own views read them).
 import { db } from '../lib/db';
 import type { ColumnDetail } from '../lib/column-details';
-import { sheetCleanView } from './clean-view';
+import { apiCleanOptions, sheetCleanView } from './clean-view';
 import { sheetFormulaView } from './formula-view';
 import { sheetLookupView } from './lookup-view';
 import { autoRunPart, type DetailContext } from './column-details-context';
@@ -38,11 +38,7 @@ export function describeDerivedColumns(ctx: DetailContext): Map<string, ColumnDe
     if (ctx.types[v.column] !== 'clean') continue;
     out.set(v.column, {
       name: v.column, kind: 'clean',
-      fill: {
-        cleaner: v.cleaner, fill_status: v.status,
-        ...(typeof v.options.phoneFormat === 'string' ? { phone_format: v.options.phoneFormat } : {}),
-        ...(typeof v.options.phoneCountry === 'string' ? { phone_country: v.options.phoneCountry } : {}),
-      },
+      fill: { cleaner: v.cleaner, fill_status: v.status, ...apiCleanOptions(v.options) },
       reads: [v.source], ...autoRunPart(ctx, v.column),
     });
   }
