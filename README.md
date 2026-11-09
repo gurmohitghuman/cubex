@@ -127,6 +127,8 @@ Cubex keeps running in the background and starts again after a restart: on macOS
 
 Create a table, then import a CSV or start typing.
 
+When cells look like text read with the wrong character set (`CafÃ©` where `Café` was meant), the import keeps the characters such text holds, says how many cells look that way and shows a few, and a [Clean data](#clean-data) column with **Fix garbled characters** repairs them.
+
 ![Creating a table and importing a CSV of companies](docs/media/cubex-import.gif)
 
 ### AI column
@@ -207,7 +209,7 @@ Click **+ Add Column**, choose **Clean data**, and pick the column to clean and 
 - **Emails.** Lowercase them and leave a cell blank when the address isn't valid. This checks the format only, not whether mail gets delivered.
 - **Domains.** Get the root domain from a website or an email: "https://blog.acme.co.uk/about" and "pat@acme.co.uk" both become "acme.co.uk".
 - **Phone numbers.** One format for every number: (212) 555-0123, +1 212 555 0123 or +12125550123. Cells that don't hold a real number are left blank.
-- **Text.** Title Case, lowercase, or remove extra spaces and invisible characters.
+- **Text.** Title Case, lowercase, or remove extra spaces and invisible characters. **Fix garbled characters** repairs text read with the wrong character set: "CafÃ©" becomes "Café", and anything it can't repair stays as it is.
 
 Auto-run is on by default, so new rows and rows whose source changes are cleaned on their own. Any column's menu has **Clean data…** too.
 

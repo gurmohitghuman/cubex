@@ -11,6 +11,14 @@ import { importSummary } from '../services/csv-upload';
 import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { IMPORT_GARBLED_SAMPLE_CHARS, IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
+
+// What import_csv and an upload link answer about cells that look garbled.
+export const GARBLED_HELP = 'When cells look like text read with the wrong character set (they hold U+0080-U+009F, '
+  + 'or fix_encoding would change them, as with "CafÃ©"), the answer adds garbled_cells (how many) and '
+  + `garbled_samples (the first ${IMPORT_GARBLED_SAMPLES} as {"<row id>": {"<column>": "<value>"}}, each value `
+  + `cut to ${IMPORT_GARBLED_SAMPLE_CHARS} characters), and its note says clean_column with cleaner fix_encoding `
+  + 'repairs them; their U+0080-U+009F characters are kept either way.';
 
 // At most 5 imports a minute per access token: each one can parse a large CSV
 // and write thousands of rows (holding SQLite's single writer that the UI's
@@ -28,7 +36,8 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         + 'them back). Fails on columns an active run owns. Max ~2MB of CSV per call. For a file, use '
         + 'create_upload_link instead: any size, and the contents never pass through your '
         + 'context. When auto-run is on in the sheet, auto_run lists the columns that will fill the imported rows on '
-        + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user.',
+        + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user. '
+        + GARBLED_HELP,
       inputSchema: {
         sheet_id: z.string(),
         csv: z.string().min(1).describe('Raw CSV content including the header row'),

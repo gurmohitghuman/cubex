@@ -5,7 +5,7 @@
 
 export const CLEANER_IDS = [
   'person_name', 'first_name', 'last_name', 'company_name', 'email', 'domain', 'phone',
-  'title_case', 'lowercase', 'trim',
+  'title_case', 'lowercase', 'trim', 'fix_encoding',
 ] as const
 export type CleanerId = typeof CLEANER_IDS[number]
 
@@ -54,6 +54,11 @@ export const CLEANERS: readonly CleanerInfo[] = [
   {
     id: 'trim', label: 'Remove extra spaces', group: 'Text', suffix: 'clean',
     help: 'Removes spaces at the ends, extra spaces and line breaks inside, and invisible characters.',
+  },
+  {
+    id: 'fix_encoding', label: 'Fix garbled characters', group: 'Text', suffix: 'clean',
+    help: 'Repairs text read with the wrong character set: CafÃ© becomes Café and â€™ becomes ’. '
+      + "Anything it can't repair stays as it is.",
   },
 ]
 

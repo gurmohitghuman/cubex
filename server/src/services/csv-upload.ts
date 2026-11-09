@@ -21,12 +21,31 @@ export type UploadFailure = { fail: 'too_big' | 'aborted' | 'parse'; error: stri
 export const tooBigMessage = (): string =>
   `The file is bigger than the ${Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024))} MB import limit.`;
 
+type ImportOk = Extract<CsvImportOutcome, { ok: unknown }>['ok'];
+
+// The import's note: cells cut to fit, cells that look garbled, or both in one
+// note; null when neither happened. `repair` names the call that fixes the
+// garbled ones on the asker's surface.
+export function importNote(ok: ImportOk, repair: string): string | null {
+  const parts = [
+    ...(ok.truncatedCells > 0
+      ? [`${ok.truncatedCells} cell(s) were longer than ${CELL_MAX_BASIC} characters and were cut to fit.`] : []),
+    ...(ok.garbledCells > 0
+      ? [`${ok.garbledCells} cell(s) look like text read with the wrong character set (garbled_samples shows the `
+        + `first ones). ${repair} with the cleaner fix_encoding can repair them into a new column.`] : []),
+  ];
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+// garbled_cells and garbled_samples, only when cells look garbled.
+export const garbledAnswer = (ok: ImportOk): Record<string, unknown> =>
+  ok.garbledCells > 0 ? { garbled_cells: ok.garbledCells, garbled_samples: ok.garbledSamples } : {};
+
 // What an import reports, the same through import_csv and an upload link. The
 // extras appear only when they happened, so a normal import isn't noisier: a
 // replace that moved rows to the trash says how to get them back.
-export function importSummary(
-  ok: Extract<CsvImportOutcome, { ok: unknown }>['ok'], replace: boolean, userId: string,
-): Record<string, unknown> {
+export function importSummary(ok: ImportOk, replace: boolean, userId: string): Record<string, unknown> {
+  const note = importNote(ok, 'clean_column');
   return {
     ...(replace && ok.trashId !== null ? { trash: trashAnswer(userId, ok.trashId, 'mcp') } : {}),
     rows_imported: ok.rowsImported,
@@ -35,10 +54,9 @@ export function importSummary(
     replaced: replace,
     ...(ok.droppedSeedRows ? { dropped_blank_starter_rows: true } : {}),
     ...(ok.autoDedupe ? { auto_dedupe: importDedupeAnswer(userId, ok.autoDedupe, 'mcp') } : {}),
-    ...(ok.truncatedCells > 0 ? {
-      truncated_cells: ok.truncatedCells,
-      note: `${ok.truncatedCells} cell(s) were longer than ${CELL_MAX_BASIC} characters and were cut to fit.`,
-    } : {}),
+    ...(ok.truncatedCells > 0 ? { truncated_cells: ok.truncatedCells } : {}),
+    ...garbledAnswer(ok),
+    ...(note ? { note } : {}),
   };
 }
 

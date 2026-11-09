@@ -36,10 +36,14 @@ import { forgetUnlistedRunInputKeys } from '../lib/run-inputs/keys';
 import { forgetUnlistedUndoColumns } from '../lib/run-undo/columns';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
+import { GarbledTally, type GarbledSamples } from '../lib/garbled-cells';
 
 export type CsvImportOutcome =
   | { ok: {
       rowsImported: number; startingRow: number; newColumns: string[]; truncatedCells: number;
+      // Cells that look like text read with the wrong character set, and the
+      // first few of them by row id and column (lib/garbled-cells.ts).
+      garbledCells: number; garbledSamples: GarbledSamples;
       // True when the sheet's untouched blank starter rows were dropped so the
       // import began at row 0. Surfaced so a caller can say so rather than
       // silently seeing a different starting_row than it expected.
@@ -137,12 +141,14 @@ export async function importCsv(
       }
 
       // Values become strings (CSV has no types), control chars are stripped
-      // (newline and tab kept), and an oversize cell is truncated and counted so
-      // the caller can say data was clipped. Formula triggers stay: the EXPORT
-      // quotes them at the spreadsheet boundary.
+      // (newline, tab and C1 kept), and an oversize cell is truncated and counted
+      // so the caller can say data was clipped. A cell that looks garbled is
+      // counted too. Formula triggers stay: the EXPORT quotes them at the
+      // spreadsheet boundary.
       const insertRow = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
       let next = startingRow;
       let truncatedCells = 0;
+      const garbled = new GarbledTally();
       let batch: Array<Record<string, unknown>> = [];
       // The rowids the import's rows got (in order): auto-dedupe checks them once they are all in.
       let firstRid: number | null = null;
@@ -153,12 +159,14 @@ export async function importCsv(
           // The journal reserved exactly rowCount rows; never write past them.
           if (next >= job.end_row) break;
           const data: Record<string, string> = {};
+          const id = orderedUuid();
           for (const [k, v] of Object.entries(row)) {
             const stripped = stripControlChars(String(v));
             if (stripped.length > CELL_MAX_BASIC) truncatedCells++;
             data[k] = clampCellChars(stripped, CELL_MAX_BASIC);
+            garbled.check(id, k, data[k]);
           }
-          lastRid = Number(insertRow.run(orderedUuid(), sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
+          lastRid = Number(insertRow.run(id, sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
           firstRid ??= lastRid;
         }
         batch = [];
@@ -216,6 +224,7 @@ export async function importCsv(
           trashId: replaced?.trashId ?? null,
           rowsImported: next - startingRow, startingRow,
           newColumns: replace ? [] : newColumns, truncatedCells, droppedSeedRows, autoDedupe,
+          garbledCells: garbled.cells, garbledSamples: garbled.samples,
           rowsKept: next - startingRow - (autoDedupe?.notKept ?? 0),
         },
       };

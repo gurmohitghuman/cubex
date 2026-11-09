@@ -61,9 +61,9 @@ export function valueToCell(value: unknown, valueMode: string): string {
   else out = ''; // object/array without json mode -> blank
   // Strip control chars BEFORE truncation (same input policy as cell edits + CSV
   // import; csv-safety.ts) so a stripped char can't consume the cell budget. The
-  // one input path that previously let NUL/C1 controls into rows.data (P2-9).
+  // one input path that previously let NUL controls into rows.data (P2-9).
   // JSON-mode is a no-op (JSON.stringify never emits raw controls); tab/newline
-  // are preserved.
+  // and C1 (U+0080-U+009F) are kept.
   out = stripControlChars(out);
   // clampCellChars (basic tier — WEBHOOK_MAX_CELL_CHARS === CELL_MAX_BASIC) is
   // surrogate-safe, unlike the previous raw slice which could leave a lone

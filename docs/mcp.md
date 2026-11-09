@@ -143,7 +143,7 @@ Not offered:
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit), and this token's spend cap with what is left (`access_token`). Costs nothing. |
 | `get_usage` | What AI, HTTP API and enrichment runs ran and cost, by column (deleted ones too), day or run, for one sheet or the whole account, over this week, this month, last week, last month or two days you pick. Each row has runs, cells run, cells reused from earlier answers, the cost (OpenRouter, your own AI provider key, treg) and the cost per cell. Costs nothing. |
-| `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase and spaces. No AI and no credits. See [Clean data](#clean-data). |
+| `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase, spaces and garbled characters. No AI and no credits. See [Clean data](#clean-data). |
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
 | `remove_duplicates` | Find rows that match on one or more columns (as text, email, domain, phone, company or person name) and remove all but one of each, for free. A dry run unless `dry_run: false`. See [Remove duplicates](#remove-duplicates). |
@@ -366,12 +366,20 @@ Checks are `is`, `is not`, `contains`, `does not contain`, `is empty`, `is not e
 | `title_case` | Capitalizes each word, keeps small words like "of" lowercase and acronyms like CEO upper. | `vp of sales` → `VP of Sales` |
 | `lowercase` | Every letter lowercase. | |
 | `trim` | Removes spaces at the ends, extra spaces and line breaks inside, and invisible characters. | |
+| `fix_encoding` | Repairs text that was read with the wrong character set: UTF-8 read as Windows-1252 or Latin-1, once or twice over (up to three times). Unlike the others it changes nothing else: no spaces are tidied, and a value it can't repair stays exactly as it was, never blank. | `CafÃ©` → `Café`, `MÃƒÂ¼ller` → `Müller`, `Ã¢â‚¬â„¢` → `’` |
 
 - The new column is named after its source unless you pass `column`: `Name (clean)`, `Name (first name)`, `Name (last name)` or `Website (domain)`.
 - `preview: true` shows the first rows before and after, and writes nothing.
 - The answer waits for the column to fill, up to 10 seconds, and says how many rows it cleaned (`cleaned_rows`) and how many values it couldn't read (`blank_rows`). A bigger sheet answers `status: "filling"`; its cells read `⏳ Processing...` until it's done.
 - Auto-run is on by default: new rows, and rows whose source cell changes, are cleaned on their own. If you fix a clean cell by hand, your fix stays until its source changes. Turn it off with `auto_run: false` or `set_auto_run`.
 - Calling `clean_column` again on a clean column changes it (another cleaner, format or source) and cleans every row again. Any other existing column is refused, so nothing typed by a person is overwritten.
+
+### Garbled text
+
+Text saved in one character set and read in another comes out garbled: `Café` turns into `CafÃ©`, and `FraudFighter™` into `FraudFighterâ¢` with an invisible character (U+0084) after the `â`. Cubex keeps every cell as it was sent, those invisible U+0080 to U+009F characters included, because without them the text can't be repaired. Other control characters still go (tab and line breaks stay), and names and descriptions drop U+0080 to U+009F too.
+
+- **On import.** When cells look garbled (they hold one of those characters, or `fix_encoding` would change them), `import_csv`, an upload link and `POST /sheets/:id/import` add `garbled_cells`, how many, and `garbled_samples`, the first 10 as `{"<row id>": {"<column>": "<value>"}}`, each value cut to its first 100 characters (counted as in [Long cells](#long-cells): a cut never leaves half of a surrogate pair, but an emoji built from several characters can lose its last parts). Cells are counted as the file's rows arrive, so they include rows [auto-dedupe](#auto-dedupe) then didn't keep. A `note` says how to repair them; when cells were also cut to fit (`truncated_cells`), the one `note` says both. An import with no such cell answers as before, without these keys. Accented text such as `José`, `JOSÉ’S`, `Łódź`, `„Grüße“` or `€100` isn't counted.
+- **Repairing.** `clean_column` with `cleaner: "fix_encoding"` writes the repaired text into a new column (in the app: **Clean data**, **Fix garbled characters**). It repairs text garbled once or twice, as Windows-1252 or as Latin-1, so `MÃ¼ller`, `MÃƒÂ¼ller` and their Latin-1 forms with invisible characters all give `Müller`. What doesn't read as garbled stays as it was: real accented text, and words in capitals before punctuation, such as `JOSÉ’S` or `NESCAFÉ™`.
 
 ## Formulas
 
@@ -672,7 +680,7 @@ The engine columns are ordinary enrichment columns (the column menu, `control_ru
 
 Everything an assistant sends or receives passes through its context, so a CSV pasted into chat is expensive: a 4 MB lead list is about a million tokens, and a file of a few hundred MB can't go through chat at all. For files, the assistant asks Cubex for a one-time link and moves the file with `curl`. Only a short summary goes through the chat.
 
-- **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns. Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
+- **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns (and cells that look garbled, see [Garbled text](#garbled-text)). Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
 - **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser.
 
 This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and choose **Data**, then **Import CSV**.
@@ -792,7 +800,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | `PATCH /rows/:rowId` | `{"data": {"Status": "Done", "Notes": null}}`. `null` clears a cell. |
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |
 | `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. They go to the trash: the answer's `trash` gives the `trash_id`. |
-| `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending (the replaced rows go to the trash). |
+| `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending (the replaced rows go to the trash). Answers `rows_imported`, `starting_row`, `new_columns`, `truncated_cells` (cells cut to fit), `replaced` and `dropped_blank_starter_rows`, plus `auto_dedupe`, `trash` and `auto_run` when they apply; when cells look garbled, also `garbled_cells`, `garbled_samples` and a `note` ([Garbled text](#garbled-text)). |
 | `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. |
 | `POST /sheets/:sourceId/rows/transfer` | Copy or move rows to another sheet. Needs `MCP_EFFICIENT_ROWS_ENABLED=1`. |
 

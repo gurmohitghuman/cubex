@@ -4,20 +4,22 @@ import { authedApi, seedSheet, getSheet } from './helpers'
 // P2-9 regression: webhook ingestion must strip control characters from cell
 // values, like every other input path (cell edits, CSV import). Before the fix,
 // valueToCell truncated but never stripped — the one input surface that let
-// NUL/backspace/C1 controls into rows.data. Tab/newline are preserved.
+// NUL/backspace controls into rows.data. Tab/newline are preserved, and so is
+// U+0080-U+009F (C1), as on every write of cell data: it is what text read with
+// the wrong character set holds, and the fix_encoding cleaner needs it.
 //
 // Also the FIRST e2e that exercises the webhook create -> map -> deliver -> read
 // flow end to end (this surface previously had zero coverage).
 
 
 // Build the value with explicit escapes so no raw control byte lives in source:
-// "a" NUL "b" C1(0x8A) "c" TAB "d" LF "e". Controls must be stripped; the
-// tab (0x09) and newline (0x0A) must survive.
+// "a" NUL "b" C1(0x8A) "c" TAB "d" LF "e". NUL must be stripped; the C1
+// character, tab (0x09) and newline (0x0A) must survive.
 const NUL = String.fromCharCode(0x00)
 const C1 = String.fromCharCode(0x8a)
 const PAYLOAD_VALUE = `a${NUL}b${C1}c\td\ne`
 
-test('webhook ingestion strips control chars from cell values (tab/newline kept)', async () => {
+test('webhook ingestion strips control chars from cell values (tab, newline and C1 kept)', async () => {
   const api = await authedApi()
   const { sheetId } = await seedSheet(api, 1)
 
@@ -41,7 +43,7 @@ test('webhook ingestion strips control chars from cell values (tab/newline kept)
   expect(delivered.ok()).toBeTruthy()
   await anon.dispose()
 
-  // The appended row's "name" cell has controls removed, tab/newline preserved.
+  // The appended row's "name" cell has NUL removed, C1, tab and newline preserved.
   const sheet = await getSheet(api, sheetId)
   const rows = sheet.data.rows as Array<{ data: Record<string, string> }>
   const values = rows.map(r => r.data.name).filter(Boolean)
@@ -49,8 +51,5 @@ test('webhook ingestion strips control chars from cell values (tab/newline kept)
   const cell = values[values.length - 1]
 
   expect(cell.includes(NUL)).toBe(false)             // NUL stripped
-  expect(cell.includes(C1)).toBe(false)              // C1 control stripped
-  expect(cell).toContain('\t')                       // tab preserved
-  expect(cell).toContain('\n')                       // newline preserved
-  expect(cell.replace(/[\t\n]/g, '')).toBe('abcde')  // visible text intact
+  expect(cell).toBe(`ab${C1}c\td\ne`)                // C1, tab and newline kept, byte for byte
 })

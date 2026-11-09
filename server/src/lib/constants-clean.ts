@@ -31,3 +31,11 @@ export const DERIVED_SLICE_CHARS = 8_000_000;
 // value longer than this as not one of those and return '' rather than work
 // through it.
 export const MAX_CLEAN_FIELD_CHARS = 1_000;
+// The fix_encoding cleaner (lib/clean/fix-encoding.ts) repairs text decoded
+// with the wrong character set up to this many times over; a value that would
+// still change after that is left as it came.
+export const FIX_ENCODING_MAX_PASSES = 3;
+// A CSV import counts the cells that look garbled (lib/garbled-cells.ts) and
+// shows up to this many of the first ones, each cut to this many characters.
+export const IMPORT_GARBLED_SAMPLES = 10;
+export const IMPORT_GARBLED_SAMPLE_CHARS = 100;

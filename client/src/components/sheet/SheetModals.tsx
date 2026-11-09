@@ -19,6 +19,7 @@ import type { NewColumnOpenTarget } from '@/components/sheet/NewColumnModal'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
 import { toastDeleted } from '@/components/trash/trashToast'
 import { importDedupeText } from '@/components/dedupe/autoDedupeToast'
+import { toastImportGarbled } from '@/components/sheet/importGarbledToast'
 
 interface SheetModalsProps {
   activeSheet: Sheet | null
@@ -144,7 +145,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           dropAllPending(activeSheet.id)
           return true
         }}
-        onImported={async ({ rowsImported, newColumns, autoDedupe }) => {
+        onImported={async ({ rowsImported, newColumns, autoDedupe, garbledCells, garbledSamples }) => {
           if (!activeSheet) return
           // Did the sheet already have data BEFORE this import? (Capture before
           // the reload replaces sheetData.) New columns only land off-screen to
@@ -161,6 +162,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
           } else {
             toast.success(`${plural(rowsImported, 'row')} imported.${importDedupeText(autoDedupe)}`)
           }
+          if (garbledCells > 0) toastImportGarbled(garbledCells, garbledSamples)
         }}
       />
 
