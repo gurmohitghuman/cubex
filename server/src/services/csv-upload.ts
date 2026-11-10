@@ -15,6 +15,7 @@ import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv, type CsvImportOutcome } from './csv-import';
 import { trashAnswer } from './trash-answer';
 import { importDedupeAnswer } from './auto-dedupe-answer';
+import { garbledColumns } from '../lib/garbled-cells';
 
 export type UploadFailure = { fail: 'too_big' | 'aborted' | 'parse'; error: string };
 
@@ -23,29 +24,33 @@ export const tooBigMessage = (): string =>
 
 type ImportOk = Extract<CsvImportOutcome, { ok: unknown }>['ok'];
 
+// How the asker reads rows by id and repairs a column, on its surface.
+export const MCP_WORDS = { read: 'read_rows', repair: 'clean_column' };
+export const REST_WORDS = { read: 'POST /sheets/{id}/rows/query', repair: 'POST /sheets/{id}/clean-columns' };
+
 // The import's note: cells cut to fit, cells that look garbled, or both in one
-// note; null when neither happened. `repair` names the call that fixes the
-// garbled ones on the asker's surface.
-export function importNote(ok: ImportOk, repair: string): string | null {
+// note; null when neither happened.
+export function importNote(ok: ImportOk, words: typeof MCP_WORDS): string | null {
   const parts = [
     ...(ok.truncatedCells > 0
       ? [`${ok.truncatedCells} cell(s) were longer than ${CELL_MAX_BASIC} characters and were cut to fit.`] : []),
     ...(ok.garbledCells > 0
-      ? [`${ok.garbledCells} cell(s) look like text read with the wrong character set (garbled_samples shows the `
-        + `first ones). ${repair} with the cleaner fix_encoding can repair them into a new column.`] : []),
+      ? [`${ok.garbledCells} cell(s) look like text read with the wrong character set. garbled_samples lists the `
+        + `first ones by row id and column; ${words.read} with those row_ids shows their values. ${words.repair} `
+        + 'with the cleaner fix_encoding can repair them into a new column.'] : []),
   ];
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
-// garbled_cells and garbled_samples, only when cells look garbled.
-export const garbledAnswer = (ok: ImportOk): Record<string, unknown> =>
-  ok.garbledCells > 0 ? { garbled_cells: ok.garbledCells, garbled_samples: ok.garbledSamples } : {};
+// garbled_cells and garbled_samples (where the first ones are, no values), only when cells look garbled.
+export const garbledAnswer = (ok: ImportOk): Record<string, unknown> => (ok.garbledCells > 0
+  ? { garbled_cells: ok.garbledCells, garbled_samples: garbledColumns(ok.garbledSamples) } : {});
 
 // What an import reports, the same through import_csv and an upload link. The
 // extras appear only when they happened, so a normal import isn't noisier: a
 // replace that moved rows to the trash says how to get them back.
 export function importSummary(ok: ImportOk, replace: boolean, userId: string): Record<string, unknown> {
-  const note = importNote(ok, 'clean_column');
+  const note = importNote(ok, MCP_WORDS);
   return {
     ...(replace && ok.trashId !== null ? { trash: trashAnswer(userId, ok.trashId, 'mcp') } : {}),
     rows_imported: ok.rowsImported,

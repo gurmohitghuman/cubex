@@ -11,14 +11,15 @@ import { importSummary } from '../services/csv-upload';
 import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { IMPORT_GARBLED_SAMPLE_CHARS, IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
+import { IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
 
 // What import_csv and an upload link answer about cells that look garbled.
 export const GARBLED_HELP = 'When cells look like text read with the wrong character set (they hold U+0080-U+009F, '
-  + 'or fix_encoding would change them, as with "CafÃ©"), the answer adds garbled_cells (how many) and '
-  + `garbled_samples (the first ${IMPORT_GARBLED_SAMPLES} as {"<row id>": {"<column>": "<value>"}}, each value `
-  + `cut to ${IMPORT_GARBLED_SAMPLE_CHARS} characters), and its note says clean_column with cleaner fix_encoding `
-  + 'repairs them; their U+0080-U+009F characters are kept either way.';
+  + 'a sequence that lost one of those bytes, as "FraudFighterâ¢", or fix_encoding would change them, as with '
+  + '"CafÃ©"), the answer adds garbled_cells (how many) and '
+  + `garbled_samples (where the first ${IMPORT_GARBLED_SAMPLES} are, as {"<row id>": ["<column>", ...]}, without `
+  + 'their values: read_rows with those row_ids shows them), and its note says clean_column with cleaner '
+  + 'fix_encoding repairs them; their U+0080-U+009F characters are kept either way.';
 
 // At most 5 imports a minute per access token: each one can parse a large CSV
 // and write thousands of rows (holding SQLite's single writer that the UI's

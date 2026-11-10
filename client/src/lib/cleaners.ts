@@ -58,7 +58,7 @@ export const CLEANERS: readonly CleanerInfo[] = [
   {
     id: 'fix_encoding', label: 'Fix garbled characters', group: 'Text', suffix: 'clean',
     help: 'Repairs text read with the wrong character set: CafÃ© becomes Café and â€™ becomes ’. '
-      + "Anything it can't repair stays as it is.",
+      + "A character that lost a byte stays as it is and the rest is repaired; anything it can't repair stays.",
   },
 ]
 

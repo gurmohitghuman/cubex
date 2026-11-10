@@ -1,13 +1,23 @@
 // Clean data columns as a derived kind (derived-kind.ts): one source column,
 // cleaned by a pure cleaner (lib/clean/). A source value the cleaner can't
 // read (it cleans to empty) is flagged, and the fill counts it as blanked.
+// What a cleaner gives goes through the cell policy (stripControlChars) before
+// it is written, as a formula's value does (lib/formula/cells.ts).
 import { db } from '../lib/db';
 import { cleanColumnFor, loadCleanColumn, type CleanColumnRow } from '../lib/clean-columns';
 import { cleanerForRecord } from '../lib/clean/cleaners';
 import type { DerivedCell, DerivedKind } from './derived-kind';
 import { inputText } from './derived-write';
+import { stripControlChars } from '../lib/csv-safety';
 
 export const CLEANING = 'cleaning a column';
+
+// The cell a cleaner writes for one source value.
+export function cleanedCell(clean: (value: string) => string, input: unknown): DerivedCell {
+  const source = inputText(input);
+  const value = source === '' ? '' : stripControlChars(clean(source));
+  return value === '' && /\S/.test(source) ? { value, filled: false, flag: '' } : { value, filled: value !== '' };
+}
 
 export const cleanKind: DerivedKind<CleanColumnRow> = {
   id: 'clean',
@@ -22,11 +32,7 @@ export const cleanKind: DerivedKind<CleanColumnRow> = {
   async open(rec) {
     const clean = cleanerForRecord(rec.cleaner, rec.options);
     if (!clean) return { error: `This version of Cubex doesn't know the cleaner "${rec.cleaner}".` };
-    const cell = (inputs: unknown[]): DerivedCell => {
-      const source = inputText(inputs[0]);
-      const value = source === '' ? '' : clean(source);
-      return value === '' && /\S/.test(source) ? { value, filled: false, flag: '' } : { value, filled: value !== '' };
-    };
+    const cell = (inputs: unknown[]): DerivedCell => cleanedCell(clean, inputs[0]);
     return {
       compute(rows, budgetMs) {
         const until = Date.now() + budgetMs;

@@ -17,7 +17,7 @@ import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { csvUploadMiddleware } from './sheets-shared';
 import { trashAnswer } from '../services/trash-answer';
 import { importDedupeAnswer } from '../services/auto-dedupe-answer';
-import { garbledAnswer, importNote } from '../services/csv-upload';
+import { garbledAnswer, importNote, REST_WORDS } from '../services/csv-upload';
 
 const router = express.Router();
 
@@ -84,7 +84,7 @@ router.post('/sheets/:id/import', requireScope('write'), csvUploadMiddleware, as
       truncated_cells: result.ok.truncatedCells,
       // Only when cells look garbled; the note then also says what was cut.
       ...garbledAnswer(result.ok),
-      ...(result.ok.garbledCells > 0 ? { note: importNote(result.ok, 'POST /sheets/{id}/clean-columns') } : {}),
+      ...(result.ok.garbledCells > 0 ? { note: importNote(result.ok, REST_WORDS) } : {}),
       replaced: replace,
       dropped_blank_starter_rows: result.ok.droppedSeedRows,
       ...(result.ok.autoDedupe ? { auto_dedupe: importDedupeAnswer(req.userId!, result.ok.autoDedupe, 'rest') } : {}),
