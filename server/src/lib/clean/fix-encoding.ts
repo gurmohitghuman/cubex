@@ -8,32 +8,36 @@
 // pass: text garbled twice as Latin-1 holds them after one.
 //
 // Passes repeat until one decodes nothing, at most FIX_ENCODING_MAX_PASSES; if
-// one more would still decode, the value is left as it came. The answer is the
-// last value of that chain without C1 characters, or the value as it came when
-// none after it qualifies. Cleaning a cleaned value changes nothing: a pass
-// depends only on its input, so the chain from an answer is the rest of the
-// first chain, which ends within the cap and holds a C1 character in every
-// value after the answer. The cell policy check keeps C1, so it leaves the
-// chain as it is.
-import { FIX_ENCODING_MAX_PASSES, MAX_CLEAN_FIELD_CHARS } from '../constants-clean';
+// one more would still decode, the value is left as it came. All the passes
+// share FIX_ENCODING_MAX_ROUNDS rounds; a value whose rounds run out is left as
+// it came too. The answer is the last value of that chain without C1
+// characters, or the value as it came when none after it qualifies. Cleaning a
+// cleaned value changes nothing: a pass (and the rounds it takes) depends only
+// on its input, so the chain from an answer is the rest of the first chain,
+// which ends within both caps and holds a C1 character in every value after
+// the answer. The cell policy check keeps C1, so it leaves the chain as it is.
+import { FIX_ENCODING_MAX_PASSES, FIX_ENCODING_MAX_ROUNDS, MAX_CLEAN_FIELD_CHARS } from '../constants-clean';
 import { stripControlChars } from '../csv-safety';
 import { hasLeadPair, holdsDamagedSequence, sequencesOf } from './fix-encoding-bytes';
-import { repairOnce } from './fix-encoding-pass';
+import { OUT_OF_ROUNDS, repairOnce } from './fix-encoding-pass';
 
 const NON_ASCII = /[^\u0000-\u007F]/;
 const C1 = /[\u0080-\u009F]/;
 
 export function fixEncoding(value: string): string {
   if (typeof value !== 'string') return '';
+  const rounds = { left: FIX_ENCODING_MAX_ROUNDS };
   let answer = value;
   let s = value;
   for (let pass = 0; pass < FIX_ENCODING_MAX_PASSES; pass++) {
-    const next = repairOnce(s);
+    const next = repairOnce(s, rounds);
+    if (next === OUT_OF_ROUNDS) return value;
     if (next === null) return answer;
     s = next;
     if (!C1.test(s)) answer = s;
   }
-  return repairOnce(s) === null ? answer : value;
+  // The check only matters when a value after the input qualified.
+  return answer === value || repairOnce(s, rounds) !== null ? value : answer;
 }
 
 // Whether a value looks like text read with the wrong character set: it holds

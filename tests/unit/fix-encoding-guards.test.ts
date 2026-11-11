@@ -46,11 +46,19 @@ const CAPITALS = ['OCKSÅ…', 'AMANHÃ…', 'MITÄ”', 'PÅ’', 'JOSÉ’S TA
 // Albanian puts Ç before an apostrophe; and words whose Ã, â, Å, Ä are real (not a lost byte's leftovers).
 const APOSTROPHE_AND_LEADS = ['Ç’kemi', 'Ç’është', 'château', 'pâte', 'âge', 'Åsa', 'Ålesund', 'Åke', 'Ärger',
   'Äpfel', 'Ñandú', 'Ðorđe', 'SÃO PAULO', 'NÃO', 'MÃE', 'IRMÃ E IRMÃO', 'PÃO', 'ÇA VA', 'Øre', 'Ýmir']
+// A lowercase accented letter before two punctuation marks makes three bytes that decode (to CJK, Hangul,
+// Mandaic or a number form) in French, Spanish, Portuguese, Catalan and Turkish quotes.
+const BEFORE_PUNCTUATION = ['«\u00A0Café\u00A0»', '“Cliché…”', '«Ya está…»', '«\u00A0voilà\u00A0»', 'hâlâ…”',
+  'Café\u00A0– Bar', 'Café\u00A0\u00A0Paris', '«Ela é…»', '«Què…»', 'Perquè…”', '«yâ…»', 'Você está…”', 'aç…»',
+  '«\u00A0Déjà\u00A0»', 'Ella está aquí…»', 'Bu güç…”']
+// Welsh "â’r", Turkish words that start or end with "â", Guarani "MITÃKUÑA", capitals before a no-break space.
+const LOOK_LIKE_LOST_BYTES = ['mynd â’r plant', 'gyda â’i fam', 'â’u', 'Bu âdet hâlâ sürüyor', 'hâlâ…',
+  'MITÃKUÑA', 'AMANHÃ\u00A0!', 'OCKSÅ\u00A0!']
 const REAL = [
   'José', 'Müller', 'Ångström', 'Øre', 'Łódź', 'São Paulo', 'Ελληνικά', '„Grüße“', 'Gruß“', 'Crème brûlée',
   'naïve café', 'Œuvre', '€100', '“quoted”', 'привет', '日本語', '😀', '👍🏽', '👨‍👩‍👧', '🇩🇪',
   'plain ASCII', '', '   ', 'x'.repeat(5000), 'Ã', 'Ñ', 'Straße', 'déjà vu', 'Ça va', 'İstanbul', 'Café’s',
-  ...GERMAN, ...SHAPES, ...CAPITALS, ...APOSTROPHE_AND_LEADS,
+  ...GERMAN, ...SHAPES, ...CAPITALS, ...APOSTROPHE_AND_LEADS, ...BEFORE_PUNCTUATION, ...LOOK_LIKE_LOST_BYTES,
 ]
 
 await group('real text: never changed, never counted as garbled', () => {
@@ -59,7 +67,8 @@ await group('real text: never changed, never counted as garbled', () => {
 })
 
 await group('real text that holds a sequence to decode: the checks keep it, not the first look', () => {
-  for (const s of [...GERMAN, ...CAPITALS.slice(0, 6), 'HALÖ…', 'so Ä… ja', 'Gruß“', 'PÂTÉ’S', 'Ç’kemi']) {
+  for (const s of [...GERMAN, ...CAPITALS.slice(0, 6), 'HALÖ…', 'so Ä… ja', 'Gruß“', 'PÂTÉ’S', 'Ç’kemi',
+    ...BEFORE_PUNCTUATION, 'mynd â’r plant', 'AMANHÃ\u00A0!']) {
     assert.equal(hasLeadPair(s), true, `a lead and a continuation in ${JSON.stringify(s)}`)
   }
 })

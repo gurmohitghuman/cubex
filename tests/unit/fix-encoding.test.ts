@@ -50,13 +50,23 @@ await group('repaired: UTF-8 read as Latin-1 (C1 characters), as Windows-1252, t
   check('hÇŽo', 'hǎo')
   check('ConstanÈ›a', 'Constanța')
   check('SÄ…', 'Są')
+  // Three bytes after a Latin letter: punctuation, the euro and the dashes stay repaired.
+  check('Prixâ€”Paris', 'Prix\u2014Paris')
+  check('Prixâ€“Paris', 'Prix\u2013Paris')
+  check('Kostet 5â‚¬, alsoâ€¦', 'Kostet 5\u20AC, also\u2026')
+  check('â€˜xâ€™ und â€žyâ€œ', '\u2018x\u2019 und \u201Ey\u201C')
+  check('ACMEâ„¢', 'ACME\u2122')
+  // A symbol of its own (â is the lead of U+2000-U+2FFF) is repaired with nothing else garbled around it.
+  check('Done âœ“', 'Done \u2713')
+  check('Status: âœ“ OK', 'Status: \u2713 OK')
   // A capital and an apostrophe at the start of a word, decoded along with the value's other sequence.
   check('Å’uvreâ€¦', 'Œuvre…')
 })
 
 await group('contact data in all four garbled forms: a capital, then an accented lowercase letter', () => {
   assert.deepEqual(misses(['Müller', 'Gómez', 'Pérez', 'Sánchez', 'Málaga', 'Résumé', 'Mélanie', 'São Paulo',
-    'FraudFighter™', 'CODE Éxitos', 'it’s', 'ÉCOLE', 'Ελληνικά']), [])
+    'FraudFighter™', 'CODE Éxitos', 'it’s', 'ÉCOLE', 'Ελληνικά', 'ΑΘΗΝΑ', 'ИВАНОВ', 'PŘÍLIŠ', 'jusqu’à', 'VOCÊ',
+    'USBケーブル', 'Paris→Berlin']), [])
 })
 
 await group('twice as Latin-1: a pass may leave C1 characters a later pass removes', () => {
