@@ -2,7 +2,8 @@
 // (lib/clean/cleaners.ts): auto-run cleans a row again whenever its source
 // changes. Values are made at random (a fixed seed, so a failure repeats) from
 // names, titles, initials, suffixes, particles, legal endings, brackets,
-// placeholders, emoji, full-width letters and characters that stay as typed.
+// placeholders, emoji, emoticons, full-width letters and characters that stay
+// as typed.
 // server/src is type:commonjs → default-import + destructure under tsx.
 import cleanersMod from '../../server/src/lib/clean/cleaners'
 const { cleanerFn } = cleanersMod as typeof import('../../server/src/lib/clean/cleaners')
@@ -32,6 +33,7 @@ const WORDS = [
   'Ⓜ\u{FE0F}', '1\u{FE0F}\u{20E3}', 'Ｍｉｃｈａｅｌ', 'ＡＣＭＥ', 'ﬁnn', 'Mª', '№1', 'Ⅷ', 'E²', 'ทองคำ', '1st', '3M',
   'a subsidiary of', 'jo@acme.com', 'acme.com', '+1 212 555 0123', 'CafÃ©', 'O\u{B4}Brien', '',
   'א.', 'כהן', 'कु.', 'कुमार', 'ส.', '７－', 'Ｏ＇', '\u{3000}', ') Ltd', '}{', 'Nil', 'blank',
+  ':)', ';-)', '=)', '8)', ':-(', ':(', '.)', ':]', 'Acme:)', 'x.)',
 ]
 const JOINS = [' ', ' ', ' ', ', ', '', '  ']
 

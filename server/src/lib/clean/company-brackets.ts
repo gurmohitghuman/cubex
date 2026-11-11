@@ -7,13 +7,23 @@ const CLOSERS = ')]}';
 const AN_OPENER = /[([{]/;
 const A_CLOSER = /[)\]}]/;
 const CLOSER_AT_AN_END = /^\s*[)\]}]|[)\]}]\s*$/;
+// The eyes of an emoticon (":)", ";-)", "=)", "8)").
+const EMOTICON_EYES = ':;=8';
+
+// A closing bracket that ends an emoticon (":)", ";-)", "8]") or comes right
+// after a period ("Acme.)") is text, never stray: "Acme :)" stays as it is.
+function endsEmoticon(s: string, i: number): boolean {
+  const before = i > 0 ? s[i - 1] : '';
+  if (before === '.' || (before !== '' && EMOTICON_EYES.includes(before))) return true;
+  return before === '-' && i > 1 && EMOTICON_EYES.includes(s[i - 2]);
+}
 
 // One pass over the brackets, a stack per kind: a closing bracket closes the
 // nearest open one of its kind, and every bracket of another kind opened after
 // that one (it sat inside the pair). open: the positions of the brackets that
-// never close, in order; stray: the closing brackets that close nothing. A
-// closing bracket's flag depends only on what comes before it, so it holds for
-// any shorter name this one starts with.
+// never close, in order; stray: the closing brackets that close nothing, an
+// emoticon's aside. A closing bracket's flag depends only on what comes before
+// it, so it holds for any shorter name this one starts with.
 function scanBrackets(s: string): { open: number[]; stray: Uint8Array } {
   const open: number[][] = [[], [], []];
   const stray = new Uint8Array(s.length);
@@ -22,7 +32,10 @@ function scanBrackets(s: string): { open: number[]; stray: Uint8Array } {
     if (o >= 0) { open[o].push(i); continue; }
     const c = CLOSERS.indexOf(s[i]);
     if (c < 0) continue;
-    if (open[c].length === 0) { stray[i] = 1; continue; }
+    if (open[c].length === 0) {
+      if (!endsEmoticon(s, i)) stray[i] = 1;
+      continue;
+    }
     const at = open[c].pop()!;
     for (const stack of open) while (stack.length && stack[stack.length - 1] > at) stack.pop();
   }
@@ -66,11 +79,11 @@ export function dropTrailingStray(s: string, stray: Uint8Array | null): string {
 // Closing brackets that close nothing go from either end, with the spaces
 // between ("Acme }" and ") Acme" → "Acme"). Matched pairs stay, and so does a
 // stray one inside the name ("Acme ) Beta"). With no opening bracket at all,
-// every closing one is stray and only the ends are read.
+// every closing one but an emoticon's is stray, and only the ends are read.
 export function trimStray(s: string): string {
   if (!CLOSER_AT_AN_END.test(s)) return s;
   const stray = AN_OPENER.test(s) ? scanBrackets(s).stray : null;
-  const isStray = (i: number) => (stray ? stray[i] === 1 : CLOSERS.includes(s[i]));
+  const isStray = (i: number) => (stray ? stray[i] === 1 : CLOSERS.includes(s[i]) && !endsEmoticon(s, i));
   let a = 0;
   let b = s.length;
   while (a < b && (s[a] === ' ' || isStray(a))) a++;

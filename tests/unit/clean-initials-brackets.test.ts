@@ -3,11 +3,15 @@
 // letter with a period is an initial in any script, so first_name never takes
 // it as the first name; full-width letters, digits and punctuation read as
 // plain ASCII and the ideographic space as a space; a closing bracket that
-// closes nothing goes from either end of a company name. Every case also
-// cleans its own output again with the same options, which must change nothing.
+// closes nothing goes from either end of a company name, but one that ends an
+// emoticon (":)") or follows a period stays, in the cleaned name and the
+// company duplicate key (lib/dedupe/key.ts) alike. Every case also cleans its
+// own output again with the same options, which must change nothing.
 // server/src is type:commonjs → default-import + destructure under tsx.
 import cleanersMod from '../../server/src/lib/clean/cleaners'
+import keyMod from '../../server/src/lib/dedupe/key'
 const { cleanerFn } = cleanersMod as typeof import('../../server/src/lib/clean/cleaners')
+const { keyPart } = keyMod as typeof import('../../server/src/lib/dedupe/key')
 type CleanerId = import('../../server/src/lib/clean/cleaners').CleanerId
 type CleanOptions = import('../../server/src/lib/clean/cleaners').CleanOptions
 
@@ -76,6 +80,9 @@ run({}, [
   ['company_name', 'Acme Ltd )', 'Acme'],
   ['company_name', 'Acme ), Inc', 'Acme'],
   ['company_name', ') Acme', 'Acme'],
+  // The leading scan: the stray one goes, the matched pair after it stays.
+  ['company_name', '] Acme [Beta]', 'Acme [Beta]'],
+  // Here the unclosed "[" is cut and the name is what follows it (the stray "]" goes with what comes before).
   ['company_name', '] [Acme', 'Acme'],
   ['company_name', 'Acme (UK) )', 'Acme'],
   ['company_name', '(Acme Ltd)', 'Acme'],
@@ -90,6 +97,33 @@ run({ theCompany: 'keep' }, [
   ['company_name', ') The Christman Company', 'The Christman Company'],
   ['company_name', 'The Christman Company )', 'The Christman Company'],
 ])
+
+// A closing bracket that ends an emoticon (or follows a period) is text: these
+// stay as they were. An emoticon's opening bracket still reads as one that
+// never closes, as before. A real stray one next to them still goes.
+const EMOTICONS: Array<[string, string]> = [
+  ['Acme :)', 'Acme :)'],
+  ['Acme ;-)', 'Acme ;-)'],
+  ['Acme =)', 'Acme =)'],
+  ['Acme :-) Inc', 'Acme :-)'],
+  ['Acme.)', 'Acme.)'],
+  ['Acme 8)', 'Acme 8)'],
+  ['Acme :]', 'Acme :]'],
+  ['Acme ;-}', 'Acme ;-}'],
+  ['Acme :-(', 'Acme :-'],
+  ['Acme :(', 'Acme :'],
+  ['Acme ) Ltd', 'Acme'],
+  ['Acme :) )', 'Acme :)'],
+  [') Acme :)', 'Acme :)'],
+]
+run({}, EMOTICONS.map(([input, want]): Case => ['company_name', input, want]))
+const companyKey = (v: string) => keyPart({ column: 'C', match: 'company' }, v)
+for (const [input, want] of EMOTICONS) {
+  const key = companyKey(input)
+  check(`company key ${JSON.stringify(input)} → ${JSON.stringify(want.toLowerCase())} (got ${JSON.stringify(key)})`,
+    key === want.toLowerCase())
+  check(`company key of ${JSON.stringify(want)} is the same`, companyKey(want) === key)
+}
 
 if (failures) { console.error(`\n${failures} check(s) failed`); process.exit(1) }
 console.log('\nall clean-initials-brackets checks passed')
