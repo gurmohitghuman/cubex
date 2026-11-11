@@ -20,6 +20,7 @@ import { resultsNotAdded, type ResultsNotAdded } from './enrich-list-guard';
 import { kickTrashPurge } from './trash-purge';
 import { sourcesGone } from './enrich-list-source';
 import { failedCell } from '../lib/enrich-cells';
+import { dropSheetTransformPasses } from './column-transform-passes';
 
 export type TrashFail = { fail: 'not_found' | 'conflict' | 'bad_request'; message: string };
 
@@ -51,6 +52,8 @@ function retireSheets(sheetIds: string[], userId: string): Retired {
   sourcesGone(sheetIds, failedCell('Rows not added: this sheet was deleted.'));
   db.prepare(`DELETE FROM enrichment_list_items WHERE (source_sheet_id IN (SELECT value FROM json_each(?))
     OR dest_sheet_id IN (SELECT value FROM json_each(?))) AND user_id = ?`).run(ids, ids, userId);
+  // Their unfinished transform_column passes go, as when they are deleted for good.
+  dropSheetTransformPasses(sheetIds, userId);
   db.prepare(`UPDATE setup_runs SET status = 'cancelled', error_message = 'Its sheet was deleted.',
       updated_at = datetime('now')
     WHERE sheet_id IN (SELECT value FROM json_each(?)) AND user_id = ? AND status IN ('running', 'paused')`)

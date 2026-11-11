@@ -1,8 +1,8 @@
 // rows_done counts the pass's own rows (services/column-transform-passes.ts).
-// A pass stopped at its call limit and left there keeps a closed record; the
-// same call started again without cursor is a new pass, and when its first
-// call writes nothing (the rows the first pass changed no longer match), the
-// old record must not add the first pass's rows to the new one's count.
+// A pass stopped at its call limit keeps its record; the same call sent again
+// with restart: true is a new pass, and when its first call writes nothing
+// (the rows the first pass changed no longer match), the old record must not
+// add the first pass's rows to the new one's count.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -10,6 +10,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import { transformPageFault } from './transform-page-fault'
+import { unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -54,9 +55,9 @@ db.prepare = ((sql: string) => {
   } })
   return stmt
 }) as typeof db.prepare
-async function cutShort() {
+async function cutShort(restart?: boolean) {
   shiftOnRead = true
-  return transformColumn(uid, call)
+  return transformColumn(uid, { ...call, restart })
 }
 
 async function main() {
@@ -64,7 +65,8 @@ async function main() {
     async () => {
       const first = await cutShort()
       assert.ok('ok' in first && first.ok.updated === 250 && first.ok.next_cursor, JSON.stringify(first))
-      const again = await cutShort()
+      assert.ok('unfinished' in await transformColumn(uid, call), 'the call without cursor is refused')
+      const again = await cutShort(true)
       assert.ok('ok' in again && again.ok.updated === 0 && again.ok.next_cursor, JSON.stringify(again))
       fault.arm(251)
       const out = await transformColumn(uid, { ...call, cursor: again.ok.next_cursor })
@@ -72,9 +74,7 @@ async function main() {
       assert.ok('stopped' in out, JSON.stringify(out))
       assert.equal(out.stopped.rows_done, 250, out.stopped.error)
       assert.match(out.stopped.error, /^Stopped on an error after 250 rows: /)
-      const refused = await transformColumn(uid, call)
-      assert.ok('fail' in refused && refused.error.includes('stopped on an error after 250 rows.'),
-        JSON.stringify(refused))
+      assert.deepEqual(await transformColumn(uid, call), unfinished('N', 250, out.stopped.next_cursor))
     })
 }
 

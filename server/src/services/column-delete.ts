@@ -25,6 +25,7 @@ import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
+import { deleteTransformPasses } from './column-transform-passes';
 
 export type ColumnDeleteOutcome =
   | { ok: true }
@@ -210,6 +211,8 @@ export async function deleteSheetColumn(
       deleteRunInputKey(sheetId, userId, columnName);
       // An undo never writes it again, nor a column made later under its name.
       deleteUndoColumn(sheetId, userId, columnName);
+      // Nor does an unfinished transform_column pass's cursor.
+      deleteTransformPasses(sheetId, userId, columnName);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

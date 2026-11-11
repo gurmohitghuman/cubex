@@ -54,6 +54,10 @@ export const TRANSFORM_PAGE_ROWS = 250;
 export const TRANSFORM_MAX_ROWS = 10_000;
 export const TRANSFORM_MAX_CALL_MS = 2000;
 export const TRANSFORM_QUEUED_ROWS = 2000;
+// A call's data_version bump that a write lock held past busy_timeout refuses is
+// tried again this much later, up to this many times in all.
+export const TRANSFORM_SETTLE_RETRY_MS = 1000;
+export const TRANSFORM_SETTLE_TRIES = 10;
 
 // PATCH /v1/rows/:id — at most one value per possible column.
 export const API_V1_MAX_PATCH_CELLS = 80;

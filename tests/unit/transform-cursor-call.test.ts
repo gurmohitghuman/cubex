@@ -1,15 +1,18 @@
 // A transform_column cursor belongs to the call that answered it
 // (services/column-transform-passes.ts): used on another sheet, or with another
-// target column, operation, operation parameter or where, it is refused in one
-// set of words and nothing is written. The same call with where's keys in
-// another order, or with a parameter its operation doesn't use, is the same
-// call: its cursor goes on.
+// target column, operation, operation parameter or where, it is refused and
+// nothing is written. Into a column with no unfinished pass, the refusal says
+// the cursor is another call's; into one with an unfinished pass, it names
+// that pass's cursor and restart. The same call with where's keys in another
+// order, or with a parameter its operation doesn't use, is the same call: its
+// cursor goes on.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
+import { unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -50,7 +53,7 @@ async function cursorOf(p: Params): Promise<string> {
   const call = transformColumn(uid, p)
   setImmediate(() => { shiftMs += TRANSFORM_MAX_CALL_MS })
   const out = await call
-  assert.ok('ok' in out && out.ok.next_cursor, JSON.stringify(out))
+  assert.ok('ok' in out && out.ok.next_cursor && out.ok.updated === 250, JSON.stringify(out))
   return out.ok.next_cursor
 }
 
@@ -65,24 +68,26 @@ async function main() {
     const t = await cursorOf(template)
     const s = await cursorOf(split)
     const before = cells()
-    const others: Array<[string, Params]> = [
-      ['another sheet', { ...template, sheetId: b, cursor: t }],
-      ['another target', { ...template, targetColumn: 'M', cursor: t }],
-      ['another operation', { ...template, operation: 'upper', sourceColumn: 'N', cursor: t }],
-      ['another template', { ...template, template: '{{N}}y', cursor: t }],
-      ['another where', { ...template, where: [{ column: 'N', operator: 'contains', value: 'r' }], cursor: t }],
-      ['no where', { ...template, where: undefined, cursor: t }],
-      ['the split on another sheet', { ...split, sheetId: b, cursor: s }],
-      ['another source', { ...split, sourceColumn: 'M', cursor: s }],
-      ['another pattern', { ...split, pattern: '1', cursor: s }],
-      ['another index', { ...split, index: 0, cursor: s }],
-      ['the other call\'s cursor', { ...split, cursor: t }],
+    const other = { fail: 'invalid', error: OTHER }
+    // Into N and Part, each pass stopped after 250 rows is unfinished.
+    const intoN = unfinished('N', 250, t), intoPart = unfinished('Part', 250, s)
+    const others: Array<[string, Params, object]> = [
+      ['another sheet', { ...template, sheetId: b, cursor: t }, other],
+      ['another target', { ...template, targetColumn: 'M', cursor: t }, other],
+      ['another operation', { ...template, operation: 'upper', sourceColumn: 'N', cursor: t }, intoN],
+      ['another template', { ...template, template: '{{N}}y', cursor: t }, intoN],
+      ['another where', { ...template, where: [{ column: 'N', operator: 'contains', value: 'r' }], cursor: t }, intoN],
+      ['no where', { ...template, where: undefined, cursor: t }, intoN],
+      ['the split on another sheet', { ...split, sheetId: b, cursor: s }, other],
+      ['another source', { ...split, sourceColumn: 'M', cursor: s }, intoPart],
+      ['another pattern', { ...split, pattern: '1', cursor: s }, intoPart],
+      ['another index', { ...split, index: 0, cursor: s }, intoPart],
+      ['the other call\'s cursor', { ...split, cursor: t }, intoPart],
     ]
     const accepted: string[] = []
-    for (const [what, p] of others) {
+    for (const [what, p, refused] of others) {
       const out = await transformColumn(uid, p)
-      if ('fail' in out && out.fail === 'invalid' && out.error === OTHER) continue
-      accepted.push(`${what}: ${JSON.stringify(out)}`)
+      try { assert.deepEqual(out, refused) } catch { accepted.push(`${what}: ${JSON.stringify(out)}`) }
     }
     assert.deepEqual(accepted, [], 'not refused in its words')
     assert.equal(cells(), before, 'nothing was written')

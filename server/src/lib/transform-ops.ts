@@ -128,6 +128,10 @@ const TEMPLATE_TOKEN = /\{\{([^{}]+)\}\}/g;
 export const templateColumns = (template: string): string[] =>
   [...new Set([...template.matchAll(TEMPLATE_TOKEN)].map(m => m[1].trim()))];
 
+// A template cut at its {{column}} tokens: text, then each token's name as
+// written (untrimmed) and the text after it, in turn.
+export const templateParts = (template: string): string[] => template.split(TEMPLATE_TOKEN);
+
 // template: substitute {{column}} tokens from the whole row. An unknown column
 // substitutes '' (blank), matching the HTTP request-template convention (not a
 // "[MISSING]" marker).

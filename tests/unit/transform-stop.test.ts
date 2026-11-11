@@ -5,7 +5,9 @@
 // cursor is refused, also from a fresh process, and writes nothing; going on
 // with the cursor applies the operation to every row exactly once, and the
 // pass's record goes. A first page that fails answers as before, and the
-// column the call added stays, with data_version moved.
+// column the call added stays, with data_version moved. So does a page that
+// fails before the pass wrote any row (a where matching only later rows): no
+// "after 0 rows", no record, and the same call then runs.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -17,6 +19,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import mcpMod from '../../server/src/mcp/build-server'
 import { transformPageFault } from './transform-page-fault'
+import { unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -34,16 +37,19 @@ async function check(label: string, fn: () => void | Promise<void>) {
 }
 
 const ROWS = 1000
-const uid = uuid(), tid = uuid(), sid = uuid(), fresh = uuid()
+const uid = uuid(), tid = uuid(), sid = uuid(), fresh = uuid(), late = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
 const addSheet = db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,?,?)')
 addSheet.run(sid, tid, uid, 'S', 0, JSON.stringify(['T']))
 addSheet.run(fresh, tid, uid, 'F', 1, JSON.stringify(['T']))
+addSheet.run(late, tid, uid, 'L', 2, JSON.stringify(['T', 'K']))
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ T: `t${i}` }))
   for (let i = 0; i < 300; i++) insert.run(uuid(), fresh, uid, i, JSON.stringify({ T: `f${i}` }))
+  // Only rows 300 on match the where below: the first page writes none.
+  for (let i = 0; i < 600; i++) insert.run(uuid(), late, uid, i, JSON.stringify({ T: `l${i}`, K: i < 300 ? 'n' : 'y' }))
 })()
 // Reads its own target: a row the operation reached twice ends "-x-x".
 const again = { sheetId: sid, operation: 'template' as const, template: '{{T}}-x', targetColumn: 'T' }
@@ -58,9 +64,7 @@ const mcp = buildMcpServer({ userId: uid, tokenId: 't', tokenName: 'n', scopes: 
 const client = new Client({ name: 'unit', version: '1.0.0' })
 const transform = async (args: Record<string, unknown>) => await client.callTool({ name: 'transform_column',
   arguments: args }) as { isError?: boolean; structuredContent?: Record<string, unknown>; content: { text: string }[] }
-const refusal = (cursor: string) => 'An earlier transform_column call with these arguments stopped on an error '
-  + `after 250 rows. Call again with cursor set to "${cursor}" to finish it; starting over would apply the `
-  + 'operation to those rows twice.'
+const refusal = (cursor: string) => unfinished('T', 250, cursor)
 let cursor = ''
 
 async function main() {
@@ -89,12 +93,16 @@ async function main() {
     assert.ok(dataVersion(sid) > before, 'data_version moved')
   })
 
-  await check('the same call without cursor is refused in its words and writes nothing', async () => {
+  await check('the same call without cursor is refused in its words, with next_cursor and rows_done, and writes '
+    + 'nothing', async () => {
     const before = { cells: cells(), version: dataVersion(sid) }
-    assert.deepEqual(await transformColumn(uid, again), { fail: 'unfinished', error: refusal(cursor) })
+    assert.deepEqual(await transformColumn(uid, again), refusal(cursor))
     const viaMcp = await transform({ sheet_id: sid, operation: 'template', template: '{{T}}-x', target_column: 'T' })
     assert.equal(viaMcp.isError, true)
-    assert.deepEqual(JSON.parse(viaMcp.content[0].text), { error: refusal(cursor) })
+    const s = viaMcp.structuredContent!
+    assert.deepEqual(Object.keys(s), ['error', 'next_cursor', 'rows_done'])
+    assert.deepEqual(s, { error: refusal(cursor).unfinished.error, next_cursor: cursor, rows_done: 250 })
+    assert.deepEqual(JSON.parse(viaMcp.content[0].text), s, 'the text mirrors the structured content')
     assert.deepEqual({ cells: cells(), version: dataVersion(sid) }, before)
   })
 
@@ -110,7 +118,7 @@ async function main() {
     assert.equal(await new Promise(resolve => child.on('close', resolve)), 0, out)
     const answer = /^ANSWER (.*)$/m.exec(out)
     assert.ok(answer, out)
-    assert.deepEqual(JSON.parse(answer[1]), { fail: 'unfinished', error: refusal(cursor) })
+    assert.deepEqual(JSON.parse(answer[1]), refusal(cursor))
     assert.equal(suffixed('t*-x'), 250)
   })
 
@@ -139,6 +147,22 @@ async function main() {
     assert.ok(dataVersion(fresh) > before, 'data_version moved for the column added')
     assert.deepEqual(await transformColumn(uid, { sheetId: fresh, operation: 'upper', sourceColumn: 'T',
       targetColumn: 'Up' }), { ok: { updated: 300, created_column: null } })
+  })
+
+  await check('a page that fails before the pass wrote any row answers as a first page does: no record, and the '
+    + 'same call then runs', async () => {
+    const call = { sheet_id: late, operation: 'template', template: '{{T}}-x', target_column: 'T',
+      where: [{ column: 'K', operator: 'eq', value: 'y' }] }
+    fault.arm(1)
+    const out = await transform(call)
+    fault.disarm()
+    assert.deepEqual(out, { content: [{ type: 'text',
+      text: JSON.stringify({ error: 'Something went wrong handling that request. Please try again.' }) }],
+    isError: true })
+    assert.equal(db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(late), 0)
+    assert.deepEqual(JSON.parse((await transform(call)).content[0].text), { updated: 300, created_column: null })
+    assert.equal(db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.T') GLOB '*-x'`)
+      .pluck().get(late), 300)
   })
   await client.close()
 }

@@ -1,22 +1,22 @@
 // transform_column: non-AI, zero-credit server-side cell transforms (extract,
-// split, case, trim, to_number, template). The point: agents stop routing
-// mechanical string ops through the LLM (paid) when a free tool exists. A call
-// holds the sheet as its one heavy operation (lib/sheet-busy.ts: no sort, rename
-// or run start meanwhile) and walks it a page at a time
-// (column-transform-pages.ts). It writes at most TRANSFORM_MAX_ROWS rows or works
-// TRANSFORM_MAX_CALL_MS; stopped with rows left, it answers next_cursor, and the
-// same call with that cursor goes on after the last row looked at. A page that
-// fails after others committed answers `stopped`: the rows written, and the
-// cursor to go on with; the same call without cursor is then refused
+// split, case, trim, to_number, template), so agents stop routing mechanical
+// string ops through a paid model. A call holds the sheet as its one heavy
+// operation (lib/sheet-busy.ts) and walks it a page at a time
+// (column-transform-pages.ts), writing at most TRANSFORM_MAX_ROWS rows or
+// working TRANSFORM_MAX_CALL_MS; stopped with rows left, it answers next_cursor
+// (or, a page failing after others committed, `stopped` with the rows written).
+// Until a pass that wrote rows gets to the end, whatever stopped it, a call into
+// its column without its cursor answers `unfinished`; restart: true starts over
 // (column-transform-passes.ts). A new target column is only added to
-// column_order (the column registry): rows it wrote nothing in read it as empty,
-// as with add_column. Bumps data_version (a value change) but never
-// row_generation (no reorder or append, so what a row_index means is unchanged;
-// bumping it would 409 in-flight autosaves). A cursor names the row_generation it
-// was given at, so one from before a sort or a replace is refused rather than
-// re-meant, and the call it came from.
+// column_order: rows it wrote nothing in read it as empty, as with add_column.
+// Bumps data_version, never row_generation (what a row_index means is
+// unchanged; bumping it would 409 in-flight autosaves). A cursor names the
+// row_generation it was given at, so one from before a sort or a replace is
+// refused rather than re-meant, and the call it came from.
 import { db } from '../lib/db';
-import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
+import {
+  TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_SETTLE_RETRY_MS, TRANSFORM_SETTLE_TRIES,
+} from '../lib/api-v1-constants';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
@@ -27,14 +27,13 @@ import { heldColumnWords } from '../lib/run-held-words';
 import { cellOf } from '../lib/row-cell';
 import { sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { prepareWhere } from './row-filter';
-import { allOffError } from '../lib/row-filter/where';
-import type { WhereItem } from '../lib/row-filter/where';
+import { allOffError, type WhereItem } from '../lib/row-filter/where';
 import {
   applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
 import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
 import {
-  passTracker, startPass, stoppedOnErrorWords, transformCallKey, transformCursor, type PassStart,
+  passTracker, startPass, stoppedOnErrorWords, transformCursor, type PassStart, type Unfinished,
 } from './column-transform-passes';
 import { redactError } from '../lib/redact';
 
@@ -43,6 +42,9 @@ const BUSY_WHAT = 'transforming a column';
 export const TRANSFORM_STOPPED_NOTE = `Stopped at this call's limit (${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} `
   + `rows written or about ${TRANSFORM_MAX_CALL_MS / 1000} seconds of work). The rows before next_cursor are done: `
   + 'call transform_column again with the same arguments and cursor set to next_cursor to go on.';
+
+const RESTART_WITH_CURSOR = 'restart and cursor don\'t go together: restart: true starts the column over from '
+  + 'the first row, cursor goes on from where a call stopped. Send one of them.';
 
 export interface TransformParams {
   sheetId: string;
@@ -55,24 +57,28 @@ export interface TransformParams {
   where?: WhereItem[];
   // next_cursor of the call before: go on after the last row it looked at.
   cursor?: string;
+  // Start over from the first row, discarding the column's unfinished pass.
+  restart?: boolean;
 }
 
 // next_cursor and note only when the call stopped with rows left. `stopped`: a
 // page failed after others committed (rows_done: the pass's rows written so far).
+// `unfinished`: refused, another pass into the column is unfinished.
 export type TransformOutcome =
   | { ok: { updated: number; created_column: string | null; next_cursor?: string; note?: string } }
   | { stopped: { error: string; next_cursor: string; rows_done: number } }
-  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy' | 'unfinished'; error: string };
+  | { unfinished: Unfinished }
+  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy'; error: string };
 
 type Fail = Extract<TransformOutcome, { fail: string }>;
 type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track'> & PassStart
-  & { targetExists: boolean; generation: number; key: string };
+  & { targetExists: boolean; generation: number };
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
   const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
     const plan = planTransform(userId, p);
-    if ('fail' in plan) return plan;
-    const pass = passTracker({ ...plan, sheetId: p.sheetId, userId });
+    if ('fail' in plan || 'unfinished' in plan) return plan;
+    const track = passTracker({ ...plan, sheetId: p.sheetId, userId });
     let added = false;
     let walked: WalkResult | undefined;
     try {
@@ -80,16 +86,14 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
         db.transaction(() => appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn])).immediate();
         added = true;
       }
-      walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track: pass.page });
+      walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track });
     } finally {
       // Open grids and readers learn of a column added or pages written, whatever stopped the call.
-      const ended = walked !== undefined && !walked.failed;
-      const atLimit = ended && walked?.stoppedAfter !== null;
-      if (ended || added || (walked?.pages ?? 0) > 0) settle(p.sheetId, userId, atLimit ? pass.atLimit : undefined);
+      if ((walked !== undefined && !walked.failed) || added || (walked?.pages ?? 0) > 0) settle(p.sheetId, userId);
     }
     if (walked.failed) {
-      // A first page that failed wrote nothing: the call fails as any other.
-      if (walked.pages === 0) throw walked.failed.error;
+      // A first page that failed, or a pass with no row written yet: the call fails as any other.
+      if (walked.pages === 0 || plan.base + walked.updated === 0) throw walked.failed.error;
       const rows = plan.base + walked.updated;
       const next = transformCursor(plan.generation, walked.stoppedAfter, plan.key);
       console.error(`transform_column on sheet ${p.sheetId} stopped on an error after ${rows} rows:`,
@@ -106,23 +110,25 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
   return out;
 }
 
-// data_version (and the pass's record, at a limit) after a call. A failure here
-// is logged: the pages it would report are written either way.
-function settle(sheetId: string, userId: string, more?: () => void): void {
+// data_version after a call. Refused (a write lock held past busy_timeout), it
+// is tried again TRANSFORM_SETTLE_RETRY_MS later, up to TRANSFORM_SETTLE_TRIES
+// times in all, so readers learn of the rows written once the lock is let go.
+function settle(sheetId: string, userId: string, tries = 1): void {
   try {
-    db.transaction(() => {
-      db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
-        WHERE id = ? AND user_id = ?`).run(sheetId, userId);
-      more?.();
-    }).immediate();
+    db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`).run(sheetId, userId);
   } catch (error) {
-    console.error(`transform_column could not mark sheet ${sheetId} changed:`, redactError(error));
+    const again = tries < TRANSFORM_SETTLE_TRIES;
+    console.error(`transform_column could not mark sheet ${sheetId} changed${again ? ' (tries again)' : ''}:`,
+      redactError(error));
+    if (again) setTimeout(() => settle(sheetId, userId, tries + 1), TRANSFORM_SETTLE_RETRY_MS).unref();
   }
 }
 
 // What the call writes, checked with the sheet held (nothing can change it until the call ends).
-function planTransform(userId: string, p: TransformParams): Plan | Fail {
+function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfinished: Unfinished } {
   if (!CELL_OPS.includes(p.operation)) return { fail: 'invalid', error: `Unknown operation "${p.operation}".` };
+  if (p.restart && p.cursor !== undefined) return { fail: 'invalid', error: RESTART_WITH_CURSOR };
 
   // Per-op required params.
   if (p.operation === 'regex_extract') {
@@ -180,13 +186,14 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail {
 
   const generation = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
     .pluck().get(p.sheetId, userId) as number;
-  const key = transformCallKey({ ...p, targetColumn });
-  const start = startPass({ sheetId: p.sheetId, userId, key, generation, targetExists }, p.cursor);
-  if ('error' in start) return { fail: p.cursor === undefined ? 'unfinished' : 'invalid', error: start.error };
+  const start = startPass({ sheetId: p.sheetId, userId, targetColumn, generation, targetExists },
+    { ...p, targetColumn }, { cursor: p.cursor, restart: p.restart });
+  if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
+  if ('unfinished' in start) return start;
   const op = p.operation;
   const value = op === 'template'
     ? (data: Record<string, string>) => applyTemplate(p.template!, data)
     : (data: Record<string, string>) =>
       applyCellOp(op, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
-  return { filter, targetColumn, value, ...start, targetExists, generation, key };
+  return { filter, targetColumn, value, ...start, targetExists, generation };
 }

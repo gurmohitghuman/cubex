@@ -20,7 +20,9 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       `${TRANSFORM_MAX_CALL_MS / 1000} seconds; the rows it wrote stay written. When it stops with rows left, the ` +
       'answer has next_cursor: call again with the same arguments and cursor set to it to go on. If it stops on ' +
       'an error after writing rows, the error carries next_cursor and rows_done: go on with that cursor, never ' +
-      'start over (the rows written would get the operation twice).',
+      'start over (the rows written would get the operation twice). Until that pass gets to the end, any call ' +
+      'writing the same column without its cursor is refused with the cursor and rows_done; restart: true ' +
+      'starts the column over from the first row instead.',
     inputSchema: {
       sheet_id: z.string(),
       target_column: z.string().describe('Column to write into; created if it does not exist'),
@@ -33,6 +35,10 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       where: whereSchema.optional().describe(`Only transform rows matching it. ${WHERE_LANGUAGE}`),
       cursor: z.string().optional()
         .describe('next_cursor of the call before, to go on after the last row it looked at.'),
+      restart: z.boolean().optional()
+        .describe('true: discard the column\'s unfinished pass (a call that stopped with next_cursor) and start '
+          + 'over from the first row, applying the operation to every row again. Use it when rows changed since '
+          + 'the pass stopped, or to run the column with different arguments. Not with cursor.'),
     },
   }, async input => {
     const denied = missingScope(ctx, 'write');
@@ -47,10 +53,11 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       template: input.template,
       where: input.where,
       cursor: input.cursor,
+      restart: input.restart,
     };
     const result = await transformColumn(ctx.userId, params);
-    if ('stopped' in result) {
-      const { error, ...more } = result.stopped;
+    if ('stopped' in result || 'unfinished' in result) {
+      const { error, ...more } = 'stopped' in result ? result.stopped : result.unfinished;
       return errWith(error, more);
     }
     return 'fail' in result ? err(result.error) : ok(result.ok);
