@@ -65,7 +65,8 @@ await group('repaired: UTF-8 read as Latin-1 (C1 characters), as Windows-1252, t
 
 await group('contact data in all four garbled forms: a capital, then an accented lowercase letter', () => {
   assert.deepEqual(misses(['Müller', 'Gómez', 'Pérez', 'Sánchez', 'Málaga', 'Résumé', 'Mélanie', 'São Paulo',
-    'FraudFighter™', 'CODE Éxitos', 'it’s', 'ÉCOLE', 'Ελληνικά']), [])
+    'FraudFighter™', 'CODE Éxitos', 'it’s', 'ÉCOLE', 'Ελληνικά', 'ΑΘΗΝΑ', 'ИВАНОВ', 'PŘÍLIŠ', 'jusqu’à', 'VOCÊ',
+    'USBケーブル', 'Paris→Berlin']), [])
 })
 
 await group('twice as Latin-1: a pass may leave C1 characters a later pass removes', () => {

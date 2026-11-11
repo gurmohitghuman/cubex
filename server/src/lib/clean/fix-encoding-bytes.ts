@@ -66,21 +66,25 @@ export const hasLeadPair = (s: string): boolean => LEAD_PAIR.test(s);
 // sequence at all, so nothing decodes it, but these shapes show it:
 // - "â" and one of the signs a lost middle byte leaves, then no continuation:
 //   what is left of ™ or • ("â¢"), … ("â¦"), € ("â¬"), ‰ ("â°"), ′ ″ ("â²",
-//   "â³"), ‹ › ("â¹", "âº"), a narrow no-break space ("â¯"), ❤ ("â¤"), or a
-//   Windows-1252 ” ("â€"). Not an apostrophe or other punctuation: Welsh
-//   writes "â’r", Turkish "hâlâ…".
+//   "â³"), ‹ › ("â¹", "âº"), a narrow no-break space ("â¯"), ❤ ("â¤"),
+//   ♥ or ≥ ("â¥"), ‡ ("â¡"), ♣ ("â£"), or a Windows-1252 ” ("â€"). Not an
+//   apostrophe, other punctuation or a no-break space: Welsh writes "â’r",
+//   Turkish "hâlâ…" and "hâlâ" before a no-break space.
 // - "Ã" before a lowercase letter: a capital À to ß lost its second byte
 //   ("CODE Ãxitos"). No word puts "Ã" before a lowercase letter.
 // - "Ã" before a capital that no Portuguese, Vietnamese or Guarani word puts
-//   after it ("ÃCOLE"; "SÃO", "MÃE", "MAÇÃS", "LÃNG", "MITÃKUÑA" stay).
+//   after it ("ÃCOLE"; "SÃO", "MÃE", "MAÇÃS", "LÃNG", "MITÃKUÑA" stay), or
+//   starting a word before K or R ("ÃREA" from "ÁREA", "ÃKOS"; "AKÃRAGUE"
+//   and "PIRÃRE" stay).
 // - A word that starts with "â" and a later one that ends with it, after a
 //   letter that doesn't follow "â" itself: quotes that both lost two bytes
 //   ("âquotedâ"). Turkish "hâlâ" ends in "â" too, after "l" that follows "â".
 const DAMAGED = [
-  new RegExp(`\\u00E2[\\u00A2\\u00A4\\u00A6\\u00AC\\u00AF\\u00B0\\u00B2\\u00B3\\u00B9\\u00BA\\u20AC]`
-    + `(?![${CONTINUATION}])`),
+  new RegExp(`\\u00E2[\\u00A1\\u00A2\\u00A3\\u00A4\\u00A5\\u00A6\\u00AC`
+    + `\\u00AF\\u00B0\\u00B2\\u00B3\\u00B9\\u00BA\\u20AC](?![${CONTINUATION}])`),
   /\u00C3[a-z]/,
   /\u00C3[BCDFHJLPQTVWX]/,
+  /(?<!\p{L})\u00C3[KR]/u,
   /(?<![\p{L}\p{M}])\u00E2\p{L}[\s\S]*?(?<!\u00E2)\p{L}\u00E2(?![\p{L}\p{M}])/u,
 ];
 export const holdsDamagedSequence = (s: string): boolean => DAMAGED.some(re => re.test(s));

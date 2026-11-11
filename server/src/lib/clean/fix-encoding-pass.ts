@@ -8,191 +8,180 @@
 //   in this pass) it gives a capital, ß, a Latin-1 sign, à to ô (which start a
 //   longer form garbled twice) or a C1 character (gone after a later pass).
 //   Text in capitals garbled gives those ("CAFÃ‰" is "CAFÉ"); real capitals
-//   before punctuation would give a lowercase or rare letter ("JOSÉ’S" and
-//   "PÂTÉ’S" would hold "ɒ").
-// - At the end of a word, right after a capital, it isn't read from a capital
-//   and the punctuation that follows words or a no-break space ("AMANHÃ…",
-//   "OCKSÅ…", "PÅ’", "AMANHÃ" + no-break space stay), unless it gives a
-//   lowercase letter after one capital: "JÄ…" is "Ją".
-// - Three bytes right after a Latin letter give a Latin letter or a character
-//   of U+2000-U+214F (’ “ ” … € ™ – and the like): a lowercase accented letter
-//   before two punctuation marks would give a CJK or rare character
-//   ("“Cliché…”", "«Ya está…»" and "hâlâ…”" stay).
-// - A word of its own read from a capital and such punctuation ("so Ä… ja"),
-//   the start of a word read from a capital and an apostrophe ("Ç’kemi" is
-//   Albanian), or three bytes that make a word of their own, read from a letter
-//   other than â (the lead of symbols: "âœ“" is ✓), and give neither a Latin
-//   letter nor U+2000-U+214F ("«Ela é…»"), is decoded only along with
-//   another sequence of the value: garbled text ("Å’uvreâ€¦",
-//   "Ð¼Ð°Ð¼Ð° Ñ– Ñ‚Ð°Ñ‚Ð¾") has more, real text has none.
-// - No word holds both a Latin letter and a character of a script other than
-//   Latin, Common or Inherited, signs and digits included ("Gruß“" and
-//   "Viel Spaß…" stay: "ß“" and "ß…" give NKo characters). A lead left behind
-//   by a lost byte ("Î" in "ÎÎ»...") isn't Latin. Each word that would has
-//   its sequences left as they are, and the pass is worked out again.
-// Each decoded character encodes back to exactly its bytes.
-import { FIX_ENCODING_MAX_ROUNDS } from '../constants-clean';
+//   before punctuation would give a lowercase or rare letter ("JOSÉ’S").
+// - At the end of a word, right after a capital taken as it came, it isn't
+//   read from a capital and a mark that follows words ("AMANHÃ…", "OCKSÅ…",
+//   "PÅ’", "AMANHÃ" before a no-break space stay), unless it gives a lowercase
+//   letter after one capital ("JÄ…" is "Ją") or the word already holds a
+//   character decoded in this pass ("PÅ˜Ã" + U+008D + "LIÅ" + no-break space
+//   is "PŘÍLIŠ"). A capital decoded in this pass is garbled, not real.
+// - Three bytes right after a Latin letter give a Latin letter, a character of
+//   U+2000-U+214F (’ “ ” … € ™ –), a symbol not read from two marks as below
+//   ("Parisâ†’Berlin" is "Paris→Berlin"), or anything when another
+//   sequence starts right after them, as in garbled Japanese, Chinese and
+//   Korean ("Tã‚·ãƒ£ãƒ„" is "Tシャツ"). A lowercase accented letter before two
+//   marks would give a CJK character or a number form: "“Cliché…”",
+//   "«Ya está…»" and "hâlâ…”" stay.
+// - Decoded only along with another sequence of the value (alone): a word of
+//   its own read from a capital and a mark that follows words ("so Ä… ja"; a
+//   no-break space too, unless it gives a Latin-1 letter: "vou Ã" + no-break
+//   space + " praia" is "vou à praia"), the start of a word read from a capital
+//   and an apostrophe ("Ç’kemi" is Albanian), three bytes making a word of
+//   their own, read from a letter other than â (the lead of symbols), that give
+//   neither a Latin letter nor U+2000-U+214F ("«Ela é…»"), and three bytes
+//   after a Latin letter read from two marks that follow words, the second one
+//   that follows a closing quote too, ending the word unless that mark is a
+//   long dash or a no-break space ("está»¹" stays; "Má»¹" alone stays,
+//   "Hà Nội và Mỹ Tho" and "Nguyá»…n" are repaired). Garbled text has more
+//   sequences ("Å’uvreâ€¦"), real text has none.
+// - No word mixes scripts (fix-encoding-parts.ts). Each word that would has its
+//   sequences left as they are, and the pass is worked out again.
+// Each decoded character encodes back to exactly its bytes. Superscripts ¹ ² ³
+// after a sequence don't make it part of a word.
+import { FIX_ENCODING_GROUP_CHARS } from '../constants-clean';
 import { stripControlChars } from '../csv-safety';
-import { byteOf, sequencesOf, type Seq } from './fix-encoding-bytes';
+import { sequencesOf, type Seq } from './fix-encoding-bytes';
+import { inMixedWords, Parts, type Kept } from './fix-encoding-parts';
 
 const UNASSIGNED = /\p{Cn}/u;
 const UPPER = /^\p{Lu}$/u;
 const LOWER = /^\p{Ll}$/u;
 const LETTER = /^\p{L}$/u;
 const LATIN_LETTER = /^(?=\p{L})\p{sc=Latn}$/u;
-const IN_WORD = /^[\p{L}\p{M}\p{N}]$/u;
+const LATIN1_LETTER = /^(?=\p{L})[\u00C0-\u00FF]$/u;
+const SYMBOL = /^\p{S}$/u;
+const IN_WORD = /^(?![\u00B2\u00B3\u00B9])[\p{L}\p{M}\p{N}]$/u;
 // What two bytes may give right after capitals (see the top).
 const AFTER_CAPITALS = new RegExp('^(?:[\\u0080-\\u00BF\\u00DF\\u00E0-\\u00F4\\u018F\\u01A0\\u01AF\\u0218\\u021A]'
   + '|(?=\\p{Lu})[\\u00C0-\\u017F])$', 'u');
-// Punctuation that follows words: … „ · » “ ” ’ ‘ ‚ – (and the long dash) • « ‹ ›.
+// Marks that follow words: … „ · » “ ” ’ ‘ ‚ – (and the long dash) • « ‹ ›.
 const AFTER_WORDS = new Set([
   ...'\u2026\u201E\u00B7\u00BB\u201C\u201D\u2019\u2018\u201A\u2013\u2014\u2022\u00AB\u2039\u203A',
 ]);
 const NO_BREAK_SPACE = '\u00A0';
+// For two continuation characters: the marks above, a no-break space, ¹ ² ³.
+const FOLLOW_WORDS = new Set([...AFTER_WORDS, NO_BREAK_SPACE, '\u00B9', '\u00B2', '\u00B3']);
+// The second of them: one that follows a closing quote in real text (» … ” ’ – and the long dash, a no-break
+// space, ¹ ² ³). The others there are Vietnamese letters: á» and “ is ồ, ‘ is ố, • is ổ, ‹ is ị, › is ớ.
+const AFTER_CLOSING = new Set(['\u00BB', '\u2026', '\u201D', '\u2019', '\u2013', '\u2014', NO_BREAK_SPACE,
+  '\u00B9', '\u00B2', '\u00B3']);
+// Marks a word may follow right away: a long dash, a no-break space.
+const BEFORE_WORDS = new Set(['\u2014', NO_BREAK_SPACE]);
 const APOSTROPHE = '\u2019';
 const SYMBOL_LEAD = '\u00E2';
 // Three bytes after a Latin letter: what ’ “ ” … € ™ – give (the number forms start at U+2150).
 const PUNCTUATION_FROM = 0x2000;
 const PUNCTUATION_TO = 0x214F;
-// A word: letters, marks, digits, any character of a script but Common and Inherited.
-const WORD = /(?:[\p{L}\p{M}\p{N}]|[^\p{sc=Zyyy}\p{sc=Zinh}])+/gu;
-const OTHER_SCRIPT = /[^\p{sc=Latn}\p{sc=Zyyy}\p{sc=Zinh}]/u;
-const LATIN = /\p{sc=Latn}/u;
-
-// The characters of the pass so far: text, decoded in this pass, or a lead
-// left behind (damaged). Flat arrays: a cell can hold 200,000 characters.
-class Parts {
-  readonly texts: string[] = [];
-  readonly decoded: Uint8Array;
-  readonly damaged: Uint8Array;
-  constructor(size: number) {
-    this.decoded = new Uint8Array(size);
-    this.damaged = new Uint8Array(size);
-  }
-
-  // The text `back` characters before the end (1: the last one).
-  text(back: number): string { return this.texts[this.texts.length - back] ?? ''; }
-
-  // A capital taken as it came, `back` characters before the end.
-  takenCapital(back: number): boolean {
-    const k = this.texts.length - back;
-    return k >= 0 && !this.decoded[k] && UPPER.test(this.texts[k]);
-  }
-
-  push(text: string, decoded: boolean, damaged: boolean): void {
-    const k = this.texts.length;
-    this.texts.push(text);
-    this.decoded[k] = decoded ? 1 : 0;
-    this.damaged[k] = damaged ? 1 : 0;
-  }
-}
-// alone: decoded only along with a sequence that isn't (see the top).
-interface Kept { from: number; to: number; at: number; alone: boolean }
 
 const punctuationLike = (t: string) => {
   const c = t.codePointAt(0)!;
   return c >= PUNCTUATION_FROM && c <= PUNCTUATION_TO;
 };
+const inWord = (t: string) => IN_WORD.test(t);
+const wordEndsAfter = (q: Seq, s: string) => !inWord(s[q.at + q.len] ?? '');
+const followsWords = (c: string) => AFTER_WORDS.has(c) || c === NO_BREAK_SPACE;
+// Three bytes whose two continuation characters follow words, the second as after a closing quote, at the end
+// of a word unless a word may follow it ("está»¹", "está»" + a long dash + "dijo"; "Nguyá»…n" is "Nguyễn").
+const twoMarks = (q: Seq, s: string) => q.len === 3 && FOLLOW_WORDS.has(s[q.at + 1])
+  && AFTER_CLOSING.has(s[q.at + 2]) && (BEFORE_WORDS.has(s[q.at + 2]) || wordEndsAfter(q, s));
 
-// Whether sequence q may be decoded, given the characters before it and the value it is in.
-function mayDecode(q: Seq, s: string, parts: Parts): boolean {
+// Whether sequence q may be decoded, given the characters before it, the value
+// it is in, and whether another sequence starts right after it.
+function mayDecode(q: Seq, s: string, parts: Parts, runFollows: boolean): boolean {
   const t = q.text;
   if (stripControlChars(t) !== t || t === '\uFFFD' || t === '\uFEFF' || UNASSIGNED.test(t)) return false;
-  const last = parts.text(1);
-  if (q.len === 3 && LATIN_LETTER.test(last)) return LATIN_LETTER.test(t) || punctuationLike(t);
+  if (q.len === 3 && LATIN_LETTER.test(parts.text(1))) {
+    return LATIN_LETTER.test(t) || punctuationLike(t) || runFollows || (SYMBOL.test(t) && !twoMarks(q, s));
+  }
   if (q.len !== 2) return true;
   if (parts.takenCapital(1) && parts.takenCapital(2) && !AFTER_CAPITALS.test(t)) return false;
-  const wordEnds = !IN_WORD.test(s[q.at + q.len] ?? '');
-  const follows = s[q.at + 1];
+  if (!wordEndsAfter(q, s) || !parts.takenCapital(1) || !followsWords(s[q.at + 1])) return true;
   const titleCase = !LETTER.test(parts.text(2)) && LOWER.test(t);
-  return !(wordEnds && UPPER.test(last) && (AFTER_WORDS.has(follows) || follows === NO_BREAK_SPACE) && !titleCase);
+  return titleCase || parts.decodedInWord(inWord);
 }
 
 function isAlone(q: Seq, s: string, parts: Parts): boolean {
-  if (IN_WORD.test(parts.text(1))) return false;
-  const wordEnds = !IN_WORD.test(s[q.at + q.len] ?? '');
+  const before = parts.text(1);
+  if (q.len === 3 && LATIN_LETTER.test(before)) return twoMarks(q, s);
+  if (inWord(before)) return false;
+  const wordEnds = wordEndsAfter(q, s);
   if (q.len === 3) return wordEnds && s[q.at] !== SYMBOL_LEAD && !LATIN_LETTER.test(q.text) && !punctuationLike(q.text);
   if (q.len !== 2) return false;
   const follows = s[q.at + 1];
-  return (AFTER_WORDS.has(follows) && wordEnds) || (follows === APOSTROPHE && UPPER.test(s[q.at]));
+  const mark = AFTER_WORDS.has(follows) || (follows === NO_BREAK_SPACE && !LATIN1_LETTER.test(q.text));
+  return (mark && wordEnds) || (follows === APOSTROPHE && UPPER.test(s[q.at]));
 }
 
-// The value with every sequence decoded that may be, except those refused.
-function decodeAll(s: string, seqs: Seq[], refused: Set<number>): { parts: Parts; kept: Kept[] } {
-  const parts = new Parts(s.length);
-  const kept: Kept[] = [];
-  let length = 0;
-  let next = 0;
-  for (let i = 0; i < s.length;) {
-    const q = seqs[next]?.at === i ? seqs[next++] : null;
-    if (q && !refused.has(q.at) && mayDecode(q, s, parts)) {
-      kept.push({ from: length, to: length + q.text.length, at: q.at, alone: isAlone(q, s, parts) });
-      parts.push(q.text, true, false);
-      length += q.text.length;
-      i += q.len;
-    } else {
-      const b = byteOf(s.charCodeAt(i));
-      parts.push(s[i], false, b !== undefined && b >= 0xC2 && b <= 0xF4);
-      length += 1;
-      i += 1;
-    }
-  }
-  return { parts, kept };
+// A part of the value whose sequences are worked out on their own. Each but
+// the first starts at a character no sequence holds and no word does (ASCII
+// but a letter or digit): it stops every check that reads back, and words
+// don't cross it. A round works out again only the groups whose words mixed
+// scripts, so a long cell costs one reading per pass, not one per round.
+interface Group { from: number; to: number; seqs: Seq[]; parts: Parts; kept: Kept[]; out: string; alone: boolean }
+const SEPARATOR = /[^A-Za-z0-9\u0080-\uFFFF]/;
+
+function separatorIn(s: string, from: number, to: number): number {
+  for (let i = from; i < to; i++) if (SEPARATOR.test(s[i])) return i;
+  return -1;
 }
 
-// How many damaged leads come before each offset of the joined text.
-function damagedBefore(parts: Parts, size: number): Int32Array {
-  const before = new Int32Array(size + 1);
-  let at = 0;
-  parts.texts.forEach((text, k) => {
-    for (let c = 0; c < text.length; c++, at++) before[at + 1] = before[at] + (c === 0 ? parts.damaged[k] : 0);
+// Groups of at least FIX_ENCODING_GROUP_CHARS characters (but the last).
+function groupsOf(s: string, seqs: Seq[]): Group[] {
+  const groups: Group[] = [];
+  const add = (from: number, to: number, first: number, end: number) => groups.push({
+    from, to, seqs: seqs.slice(first, end), parts: new Parts(s, from), kept: [], out: '', alone: true,
   });
-  return before;
-}
-
-// Whether a word holds a Latin letter that isn't a damaged lead.
-function holdsLatin(word: string, from: number, before: Int32Array): boolean {
-  if (before[from + word.length] === before[from]) return LATIN.test(word);
-  for (let i = 0; i < word.length;) {
-    const ch = String.fromCodePoint(word.codePointAt(i)!);
-    if (LATIN.test(ch) && before[from + i + 1] === before[from + i]) return true;
-    i += ch.length;
+  let from = 0;
+  let first = 0;
+  for (let n = 1; n < seqs.length; n++) {
+    const after = seqs[n - 1].at + seqs[n - 1].len;
+    const cut = after - from < FIX_ENCODING_GROUP_CHARS ? -1 : separatorIn(s, after, seqs[n].at);
+    if (cut < 0) continue;
+    add(from, cut, first, n);
+    from = cut;
+    first = n;
   }
-  return false;
+  add(from, s.length, first, seqs.length);
+  return groups;
 }
 
-// The decoded sequences in a word mixing Latin with another script (words and
-// kept sequences both come in order: one pass over each).
-function inMixedWords(out: string, parts: Parts, kept: Kept[]): Kept[] {
-  let before: Int32Array | null = null;
-  const bad: Kept[] = [];
-  let k = 0;
-  for (const m of out.matchAll(WORD)) {
-    const from = m.index!;
-    const end = from + m[0].length;
-    while (k < kept.length && kept[k].to <= from) k++;
-    if (k === kept.length) break;
-    if (kept[k].from >= end || !OTHER_SCRIPT.test(m[0])) continue;
-    before ??= damagedBefore(parts, out.length);
-    if (!holdsLatin(m[0], from, before)) continue;
-    for (let j = k; j < kept.length && kept[j].from < end; j++) bad.push(kept[j]);
-  }
-  return bad;
+// The group with every sequence decoded that may be, except those refused.
+function decodeGroup(s: string, g: Group, refused: Set<number>): void {
+  const parts = new Parts(s, g.from);
+  const kept: Kept[] = [];
+  g.seqs.forEach((q, n) => {
+    parts.takeTo(q.at);
+    if (refused.has(q.at) || !mayDecode(q, s, parts, g.seqs[n + 1]?.at === q.at + q.len)) return;
+    kept.push({ from: parts.length, to: parts.length + q.text.length, at: q.at, alone: isAlone(q, s, parts) });
+    parts.decode(q);
+  });
+  parts.takeTo(g.to);
+  Object.assign(g, { parts, kept, out: parts.joined(), alone: kept.every(k => k.alone) });
 }
 
-// One pass, or null when it decodes nothing.
-export function repairOnce(s: string): string | null {
+// Rounds of decoding left for the whole repair of one value (fix-encoding.ts).
+export interface Rounds { left: number }
+export const OUT_OF_ROUNDS = Symbol('out of rounds');
+
+// One pass, null when it decodes nothing, or OUT_OF_ROUNDS when the value's
+// rounds ran out first.
+export function repairOnce(s: string, rounds: Rounds): string | null | typeof OUT_OF_ROUNDS {
   const seqs = sequencesOf(s);
   if (seqs.length === 0) return null;
+  const groups = groupsOf(s, seqs);
   const refused = new Set<number>();
-  for (let round = 0; round < FIX_ENCODING_MAX_ROUNDS; round++) {
-    const { parts, kept } = decodeAll(s, seqs, refused);
-    if (kept.every(k => k.alone)) return null;
-    const out = parts.texts.join('');
-    const bad = inMixedWords(out, parts, kept);
-    if (bad.length === 0) return out;
-    for (const k of bad) refused.add(k.at);
+  let dirty = groups;
+  for (;;) {
+    if (rounds.left <= 0) return OUT_OF_ROUNDS;
+    rounds.left -= 1;
+    for (const g of dirty) decodeGroup(s, g, refused);
+    if (groups.every(g => g.alone)) return null;
+    dirty = dirty.filter(g => {
+      const bad = inMixedWords(g.out, g.parts, g.kept);
+      for (const k of bad) refused.add(k.at);
+      return bad.length > 0;
+    });
+    if (dirty.length === 0) return groups.map(g => g.out).join('');
     if (refused.size === seqs.length) return null;
   }
-  return null;
 }
