@@ -156,10 +156,31 @@ export const ROWS: Row[] = [
   // Nit 7: Greek units after a Latin letter, garbled twice, come back garbled once.
   ...['10kΩ', '100μF'].flatMap(w => left('known edge, a Greek unit after Latin', w, [
     ['twice Latin-1', 1, true], ['twice Windows-1252', 1, true]])),
+
+  // Review 5 (8b9a7ad): should-fix 1, a × read with the character after it stays unless it touches another
+  // sequence; Hebrew words come as runs of such sequences and repair.
+  ...stay('review 5, should-fix 1, × between numbers', `1920${NB}×${NB}1080`, `Résolution${NB}: 1920${NB}×${NB}1080`,
+    `30${NB}×${NB}40 cm`, `120${NB}×${NB}80${NB}×${NB}45 cm`, `×${NB}2`, '1920 × 1080', '120 × 80 × 45 cm', '× 2',
+    `10${NB}×²`, `A${NB}×${NB}B`),
+  ...repair('review 5, should-fix 1, Hebrew', FOUR, 'נתניהו', 'שלום', 'מחיר: 100₪', 'Nike שלום', 'עברית'),
+  ...left('known edge, a Hebrew letter alone', 'ש', [['Windows-1252', 0, false], ['twice Windows-1252', 1, true]]),
+  ...left('known edge, a Hebrew word glued to a Latin word', 'Nikeשלום', [['Latin-1', 0, true],
+    ['Windows-1252', 0, true], ['twice Latin-1', 0, true], ['twice Windows-1252', 0, true]]),
+  // Nit 2: the footnote shape is decoded only along with other garbled text.
+  row('review 5, nit 2, Lithuanian', 'JÅ³ vaikai ir Å¡uo', 'Jų vaikai ir šuo', true),
+  row('review 5, nit 2, Lithuanian', 'TÅ³ Å¾moniÅ³', 'Tų žmonių', true),
+  row('known edge, Lithuanian Jų alone', 'JÅ³ namai', 'JÅ³ namai', false),
+  ...stay('review 5, nit 2, footnote words', 'São Paulo AMANHÃ³', '«AMANHÃ²»', 'MÅ³'),
+  // Nit 3: footnote and sign shapes that change, and are counted.
+  ...[['LÃ¹', 'Lù'], ['FÃ²', 'Fò'], ['SÃ²', 'Sò'], ['RÃ³', 'Ró'], ['Classe É¹', 'Classe ɹ'], ['Tipo Ó²', 'Tipo Ӳ'],
+    ['IRMÃ®', 'IRMî'], ['AMANHÃ™', 'AMANHÙ'], ['PÅ®', 'PŮ']]
+    .map(([v, gives]) => row('known edge, a footnote or a sign after capitals', v, gives, true)),
+  ...stay('review 5, nit 3, a capital É before a sign', 'NESCAFÉ®', 'CAFÉ¹', 'VOCÊ²'),
 ]
 
-// Real text with no sequence to decode: fix_encoding can't change it, and the import must not count it (the shapes
-// a lost byte leaves are read in it).
+// Values with no sequence to decode: fix_encoding can't change them, and the import must not count them (the
+// shapes a lost byte leaves are read in them). All are real text but two that look garbled and aren't counted:
+// "Ã  la carte" lost the no-break space of "à", and "âaâ" is a quote pair around one letter.
 export const NOTHING_TO_DECODE = [
   '¿Qué?', '25°C', '3×4', '€100', '£5 ¥500', 'josé@café.fr', 'https://café.fr/menú', 'Ã  la carte', 'mynd â’r plant',
   'gyda â’i fam', 'â’u', 'Bu âdet hâlâ sürüyor', 'hâlâ…', 'MITÃKUÑA', 'hâlâ', 'Kâzım', 'L’âge', 'NÃO É', 'CORAÇÃO',

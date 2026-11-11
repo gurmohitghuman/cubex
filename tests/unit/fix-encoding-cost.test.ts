@@ -4,14 +4,18 @@
 // import's check on it is cheaper still. A made-up chain of sequences at the
 // head of such a cell doesn't multiply that: the whole repair gets
 // FIX_ENCODING_MAX_ROUNDS rounds, and a round after a pass's first works out
-// again only the group the chain is in. Japanese text with units garbled once
-// costs most: in the first pass nothing between its sequences ends a word, so
-// each round reads the whole cell (about four readings, under two slices). The
-// best of a few tries counts, so a busy machine doesn't decide it.
+// again only the group the chain is in. Of real text, Japanese text with units
+// garbled once costs most: in the first pass nothing between its sequences
+// ends a word, so each round reads the whole cell (about four readings, under
+// two slices). Made-up units can cost as much: one repeated unit used to set off
+// a round per unit, until a round could only leave more sequences as they are.
+// The best of a few tries counts, so a busy machine doesn't decide it.
 import assert from 'node:assert/strict'
 import constantsMod from '../../server/src/lib/constants-clean'
+import passMod from '../../server/src/lib/clean/fix-encoding-pass'
 import { cp1252, finish, fixEncoding, group, looksGarbled } from './fix-encoding-kit'
 const { DERIVED_SLICE_MS } = constantsMod as typeof import('../../server/src/lib/constants-clean')
+const { repairOnce } = passMod as typeof import('../../server/src/lib/clean/fix-encoding-pass')
 
 const SIZE = 200_000
 const fill = (unit: string) => unit.repeat(Math.ceil(SIZE / unit.length)).slice(0, SIZE)
@@ -70,6 +74,18 @@ await group('a long cell of Japanese text with units, garbled once (nothing betw
   const ms = best(() => { out = fixEncoding(cell) })
   console.log(`      fixEncoding ${ms.toFixed(1)} ms`)
   assert.equal(out, cell, 'left as it came: "10kΩ" and "100μF" mix scripts, and their C1 characters stay')
+  assert.ok(ms < 2 * DERIVED_SLICE_MS, `fixEncoding took ${ms.toFixed(1)} ms`)
+})
+
+await group('a long cell of one made-up unit repeated (each round left the next unit free to decode)', () => {
+  const cell = fill('\u2013\u00E6\u2013\u2013A\u017D\u00B9\u0153\u00EF\u02C6\u00B0\u00C4')
+  let out = ''
+  const ms = best(() => { out = fixEncoding(cell) })
+  console.log(`      fixEncoding ${ms.toFixed(1)} ms`)
+  assert.ok(fixEncoding(out) === out, 'cleaning the answer again changes nothing')
+  const rounds = { left: 100 }
+  repairOnce(cell, rounds)
+  assert.ok(100 - rounds.left <= 2, `the first pass took ${100 - rounds.left} rounds`)
   assert.ok(ms < 2 * DERIVED_SLICE_MS, `fixEncoding took ${ms.toFixed(1)} ms`)
 })
 

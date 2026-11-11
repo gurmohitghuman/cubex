@@ -1,6 +1,6 @@
 // The one table of every case (fix-encoding-cases.ts): for each value and form, what fix_encoding gives, whether
-// the import counts it, and that cleaning the answer again changes nothing; each input once; and real text with
-// no sequence to decode, left as it is and not counted. Every failing row is listed.
+// the import counts it, and that cleaning the answer again changes nothing; each input once; and values with
+// no sequence to decode, left as they are and not counted. Every failing row is listed.
 import assert from 'node:assert/strict'
 import { finish, fixEncoding, group, looksGarbled } from './fix-encoding-kit'
 import { NOTHING_TO_DECODE, ROWS } from './fix-encoding-cases'
@@ -32,7 +32,7 @@ await group('each input once, in one list', () => {
   assert.deepEqual(inputs.filter((v, i) => inputs.indexOf(v) !== i).map(show), [])
 })
 
-await group(`${NOTHING_TO_DECODE.length} real values with nothing to decode: left as they are, not counted`, () => {
+await group(`${NOTHING_TO_DECODE.length} values with nothing to decode: left as they are, not counted`, () => {
   const wrong = NOTHING_TO_DECODE.flatMap(v => [
     ...(sequencesOf(v).length === 0 ? [] : [`${show(v)} holds a sequence: it belongs in the rows`]),
     ...(fixEncoding(v) === v ? [] : [`${show(v)} gave ${show(fixEncoding(v))}`]),

@@ -36,7 +36,8 @@ export function fixEncoding(value: string): string {
     s = next;
     if (!C1.test(s)) answer = s;
   }
-  return repairOnce(s, rounds) === null ? answer : value;
+  // The check only matters when a value after the input qualified.
+  return answer === value || repairOnce(s, rounds) !== null ? value : answer;
 }
 
 // Whether a value looks like text read with the wrong character set: it holds
