@@ -2,7 +2,8 @@
 // made with an idempotency key, sent again with that key by a token with read, write and run but not 'secrets':
 // a cURL command with a key in it (save_keys true, or naming the key) and a URL whose header names a saved key
 // get the start's own 403, in its words, with the key as without it, every time and with no run made (so do a
-// $NAME naming a saved key, and -u with a user and password); the token with 'secrets' still gets the replay.
+// saved key named by $NAME in a header, by --oauth2-bearer, in the URL or in the body, and -u with a user and
+// password); the token with 'secrets' still gets the replay.
 // Whether a cURL command needs 'secrets' is read from the command alone: one without a key, started by a token
 // without the scope, replays for it after its sheet went to the trash or a {{column}} it names was removed.
 // Over the service, /api/v1 and MCP. The queue only records.
@@ -69,20 +70,34 @@ for (const surface of SURFACE_NAMES) {
       response_mapping: [{ json_path: '$.ok', column_name: 'Said' }] }, `scope-saved-${surface}`, configScope(name))
   })
 
-  await ok(`${surface}: a $NAME naming a saved key, and -u with a user and password, retried with their keys by a `
-    + "token without 'secrets', get the start's 403", async () => {
+  await ok(`${surface}: a saved key named by $NAME in a header, by --oauth2-bearer, in the URL or in the body, and -u `
+    + "with a user and password, retried with their keys by a token without 'secrets', get the start's 403",
+  async () => {
     const name = `scope_var_${surface}`
     assert.ok('ok' in createSavedKey(uid, { name, key_type: 'bearer', key_value: `var-key-${surface}-0123456789`,
       description: null }))
-    const variable = ['$', name].join('')
-    await scoped(surface, { sheet_id: fresh(), curl: `curl 'https://api.example.com/find?n={{Name}}' `
-      + `-H "X-Key: ${variable}"`, master_column_name: 'Find', response_mapping: mapping },
-    `scope-var-${surface}`, configScope(name))
-    await scoped(surface, { sheet_id: fresh(), curl: `curl -u ada:pw-${surface}-0123456789 `
-      + "'https://api.example.com/find?n={{Name}}'", save_keys: true, master_column_name: 'Find',
-    response_mapping: mapping }, `scope-basic-${surface}`,
-    "This cURL command has keys in it (-u user and password). Saving or using them needs the token's 'secrets' "
-      + 'scope.')
+    const url = 'https://api.example.com/find?n={{Name}}'
+    const variable = ['$', name].join(''), ref = `{{${name}}}`
+    // Each command, the part of it that names the key, and the start's 403: every one checked, any miss named.
+    const commands: Array<{ part: string; curl: string; message: string; saveKeys?: boolean }> = [
+      { part: 'header', curl: `curl '${url}' -H "X-Key: ${variable}"`, message: configScope(name) },
+      { part: 'bearer', curl: `curl --oauth2-bearer '${ref}' '${url}'`, message: configScope(name) },
+      { part: 'url', curl: `curl '${url}&q=${ref}'`, message: configScope(name) },
+      { part: 'body', curl: `curl '${url}' -d 'a=${ref}'`, message: configScope(name) },
+      { part: 'basic', curl: `curl -u ada:pw-${surface}-0123456789 '${url}'`, saveKeys: true,
+        message: "This cURL command has keys in it (-u user and password). Saving or using them needs the token's "
+          + "'secrets' scope." },
+    ]
+    const missed: string[] = []
+    for (const c of commands) {
+      try {
+        await scoped(surface, { sheet_id: fresh(), curl: c.curl, ...(c.saveKeys ? { save_keys: true } : {}),
+          master_column_name: 'Find', response_mapping: mapping }, `scope-${c.part}-${surface}`, c.message)
+      } catch (e) {
+        missed.push(`${c.part}: ${(e as Error).message.split('\n')[0]}`)
+      }
+    }
+    assert.deepEqual(missed, [], 'every command gets the start\'s 403')
   })
 }
 
