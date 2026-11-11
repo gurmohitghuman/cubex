@@ -9,15 +9,16 @@ const A_CLOSER = /[)\]}]/;
 const CLOSER_AT_AN_END = /^\s*[)\]}]|[)\]}]\s*$/;
 // The eyes of an emoticon (":)", ";-)", "=)", "8)").
 const EMOTICON_EYES = ':;=8';
-// An "8" right after a letter, digit or mark ends a word or a number ("2018",
-// "X8"): it isn't eyes. Read at one position (sticky), so a check costs the
-// same however long the name is.
-const EIGHT_IN_A_WORD = /(?<=[\p{L}\p{N}\p{M}])8/uy;
+// An "8" is eyes only at the start or after a space: right after anything
+// else it ends a word, a number or a code ("2018", "X8", "1.8", "#8", "F-8").
+// The name holds plain single spaces by then (nameText). Read at one position
+// (sticky), so a check costs the same however long the name is.
+const EIGHT_IN_A_WORD = /(?<=\S)8/uy;
 
 // A closing bracket that ends an emoticon (":)", ";-)", "8]", "8-)") is text,
-// never stray: "Acme :)" stays as it is. An "8" is eyes only with nothing
-// letter- or digit-like right before it, so the bracket after "2018" or "X8"
-// is still stray, and so is one after a period ("Acme Inc.]" → "Acme").
+// never stray: "Acme :)" stays as it is. An "8" is eyes only at the start or
+// after a space, so the bracket after "2018", "No.8" or "F-8" is still stray,
+// and so is one after a period ("Acme Inc.]" → "Acme").
 function endsEmoticon(s: string, at: number): boolean {
   const eye = at > 0 && s[at - 1] === '-' ? at - 2 : at - 1;
   if (eye < 0 || !EMOTICON_EYES.includes(s[eye])) return false;

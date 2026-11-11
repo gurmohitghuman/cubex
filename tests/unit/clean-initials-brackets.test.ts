@@ -100,8 +100,9 @@ run({ theCompany: 'keep' }, [
 
 // A closing bracket that ends an emoticon is text: these stay as they were.
 // An emoticon's opening bracket still reads as one that never closes, as
-// before. A real stray one next to them still goes, and so does one after a
-// number or code ending in 8, or after a period: those end no emoticon.
+// before. A real stray one next to them still goes. An 8 is eyes only at the
+// start or after a space, so one after a number or code ending in 8 goes too,
+// and so does one after a period: those end no emoticon.
 const EMOTICONS: Array<[string, string]> = [
   ['Acme :)', 'Acme :)'],
   ['Acme ;-)', 'Acme ;-)'],
@@ -109,7 +110,8 @@ const EMOTICONS: Array<[string, string]> = [
   ['Acme :-) Inc', 'Acme :-)'],
   ['Acme 8)', 'Acme 8)'],
   ['Acme 8-)', 'Acme 8-)'],
-  ['8) Acme', '8) Acme'],
+  // The start-of-value branch: an 8 at the very start is eyes.
+  ['8) Ltd', '8)'],
   ['Acme :]', 'Acme :]'],
   ['Acme ;-}', 'Acme ;-}'],
   ['Acme :-(', 'Acme :-'],
@@ -117,7 +119,8 @@ const EMOTICONS: Array<[string, string]> = [
   ['Acme ) Ltd', 'Acme'],
   ['Acme :) )', 'Acme :)'],
   [') Acme :)', 'Acme :)'],
-  // An 8 after a letter or digit ends a word or a number, not eyes.
+  // An 8 is eyes only at the start or after a space: after a letter, a digit
+  // or punctuation it ends a word, a number or a code.
   ['Acme 2018)', 'Acme 2018'],
   ['Acme 2018) Ltd', 'Acme 2018'],
   ['Acme Group 1998)', 'Acme Group 1998'],
@@ -125,6 +128,12 @@ const EMOTICONS: Array<[string, string]> = [
   ['Acme X8)', 'Acme X8'],
   ['Acme Ltd8)', 'Acme Ltd8'],
   ['Acme (UK) 2018)', 'Acme (UK) 2018'],
+  ['Acme 1.8)', 'Acme 1.8'],
+  ['Acme v1.8)', 'Acme v1.8'],
+  ['Acme #8)', 'Acme #8'],
+  ['Acme No.8)', 'Acme No.8'],
+  ['Acme Unit #8)', 'Acme Unit #8'],
+  ['Acme F-8)', 'Acme F-8'],
   // A period is no emoticon.
   ['Acme.)', 'Acme.'],
   ['Acme Inc.]', 'Acme'],
