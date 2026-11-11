@@ -5,6 +5,7 @@ import { db } from '../lib/db';
 import { CLEAN_PREVIEW_ROWS, CLEAN_PREVIEW_SCAN_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { cleanerFn } from '../lib/clean/cleaners';
+import { stripControlChars } from '../lib/csv-safety';
 import { checkCleanInput, type CleanColumnInput } from './clean-column';
 import { inputText as sourceText } from './derived-write';
 import type { RunFail } from './run-shared';
@@ -29,7 +30,7 @@ export function previewCleanColumn(
     // A run's own words (⏳, ❌, ⏭️) read as empty, as the fill reads them.
     const before = sourceText(r.v);
     if (!before.trim()) continue;
-    samples.push({ row: r.row, before, after: clean(before) });
+    samples.push({ row: r.row, before, after: stripControlChars(clean(before)) });
     if (samples.length >= CLEAN_PREVIEW_ROWS) break;
   }
   return { ok: { column: s.column, existing: !!s.existing && !s.isNew, samples } };

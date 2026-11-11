@@ -1,15 +1,15 @@
 // A CSV import keeps C1 characters and counts the cells that look garbled
 // (text read with the wrong character set) as it writes them, keeping the
 // first 10 as {"<row id>": {"<column>": "<value>"}} (null-prototype, values
-// cut to 100 characters). import_csv and upload links answer garbled_cells,
-// garbled_samples and one note only when there are such cells, so an import
-// without them answers exactly as before, key order included. A formula
-// reading a C1 cell gets it whole.
+// cut to 100 characters) for the app. import_csv and upload links answer
+// garbled_cells, garbled_samples (row ids and columns, no values) and one note
+// only when there are such cells, so an import without them answers exactly
+// as before, key order included. A formula reading a C1 cell gets it whole.
 import assert from 'node:assert/strict'
 import { undoKit } from './run-undo-kit'
 const { db, uid, ok, done, idle, sheet } = undoKit('import-garbled')
-const { GarbledTally } = await import('../../server/src/lib/garbled-cells')
-const { importSummary } = await import('../../server/src/services/csv-upload')
+const { GarbledTally, garbledColumns } = await import('../../server/src/lib/garbled-cells')
+const { importNote, importSummary, REST_WORDS } = await import('../../server/src/services/csv-upload')
 const { importCsv } = await import('../../server/src/services/csv-import')
 const { scanCsvText } = await import('../../server/src/lib/csv-import-parse')
 const { HEAVY_SLICE_ROWS } = await import('../../server/src/lib/constants')
@@ -63,21 +63,27 @@ await ok('import_csv answers: no garbled keys without garbled cells, key order a
   assert.equal(cut.note, '2 cell(s) were longer than 8000 characters and were cut to fit.')
 })
 
-await ok('import_csv answers: garbled cells add garbled_cells, garbled_samples and one note (with cut cells)', () => {
-  const samples = Object.assign(Object.create(null), { r1: { A: GARBLED[1] } })
+const GARBLED_NOTE = '3 cell(s) look like text read with the wrong character set. garbled_samples lists the first '
+  + 'ones by row id and column; read_rows with those row_ids shows their values. clean_column with the cleaner '
+  + 'fix_encoding can repair them into a new column.'
+await ok('import_csv answers: garbled cells add garbled_cells, garbled_samples (no values) and one note', () => {
+  const samples = Object.assign(Object.create(null), { r1: Object.assign(Object.create(null), { A: GARBLED[1] }) })
+  samples.r2 = Object.assign(Object.create(null), { ['__proto__']: GARBLED[0], constructor: GARBLED[2] })
   const g = importSummary({ ...base, garbledCells: 3, garbledSamples: samples }, false, uid)
   assert.deepEqual(Object.keys(g),
     ['rows_imported', 'starting_row', 'new_columns', 'replaced', 'garbled_cells', 'garbled_samples', 'note'])
   assert.equal(g.garbled_cells, 3)
-  assert.equal(g.garbled_samples, samples)
-  assert.equal(g.note, '3 cell(s) look like text read with the wrong character set (garbled_samples shows the '
-    + 'first ones). clean_column with the cleaner fix_encoding can repair them into a new column.')
+  assert.equal(JSON.stringify(g.garbled_samples), '{"r1":["A"],"r2":["__proto__","constructor"]}')
+  assert.equal(Object.getPrototypeOf(g.garbled_samples), null)
+  assert.equal(g.note, GARBLED_NOTE)
   const both = importSummary({ ...base, truncatedCells: 1, garbledCells: 3, garbledSamples: samples }, false, uid)
   assert.deepEqual(Object.keys(both), ['rows_imported', 'starting_row', 'new_columns', 'replaced', 'truncated_cells',
     'garbled_cells', 'garbled_samples', 'note'])
-  assert.equal(both.note, '1 cell(s) were longer than 8000 characters and were cut to fit. 3 cell(s) look like text '
-    + 'read with the wrong character set (garbled_samples shows the first ones). clean_column with the cleaner '
-    + 'fix_encoding can repair them into a new column.')
+  assert.equal(both.note, `1 cell(s) were longer than 8000 characters and were cut to fit. ${GARBLED_NOTE}`)
+  assert.equal(importNote({ ...base, garbledCells: 3, garbledSamples: samples }, REST_WORDS),
+    GARBLED_NOTE.replace('read_rows', 'POST /sheets/{id}/rows/query')
+      .replace('clean_column', 'POST /sheets/{id}/clean-columns'))
+  assert.equal(JSON.stringify(garbledColumns(Object.create(null))), '{}')
 })
 
 const rowIds = (sid: string) => db.prepare('SELECT id FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck()

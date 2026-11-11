@@ -31,6 +31,7 @@ import express from 'express';
 import { runMigrations } from './db/migrate';
 import { assertEncryptionConfigured } from './lib/crypto';
 import { applyServerMiddleware } from './lib/server-middleware';
+import { escapeC1InJson } from './lib/json-c1-escape';
 import { serveClientInProduction } from './lib/serve-client';
 import { BUILD_HEADER, currentBuildId } from './lib/build-id';
 import { startBackground, installShutdownHandlers } from './lib/server-lifecycle';
@@ -110,6 +111,9 @@ if (!HOST && !isProduction) {
   );
 }
 
+// First, so every answer goes through it: JSON and event streams carry
+// U+0080-U+009F as escapes (lib/json-c1-escape.ts).
+app.use(escapeC1InJson);
 applyServerMiddleware(app, { isProduction });
 
 // Cache-Control: private, no-store on every API response.

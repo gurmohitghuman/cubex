@@ -5,14 +5,17 @@ import { expect, type APIRequestContext } from '@playwright/test'
 // reach it through Cubex's real outbound path, SSRF guard included, by names
 // under .cubex-e2e.invalid (tests/e2e/net-shim.cjs, loaded by the harness).
 // Each path answers from a script of replies (the last one repeats) and every
-// request is kept: method, path, query, headers, raw body and when it came.
-// hold() keeps every answer back (or only those on the paths it's given) until
-// its release is called, so a spec can keep an HTTP API run's requests in
-// flight for as long as it needs; settled() waits until each request so far
-// was answered or dropped by Cubex. Every spec's receiver takes the same port,
-// so a spec counts requests on its own paths (hitsOn), never all of them.
+// request is kept: method, path, query, headers, body and when it came, plus
+// `url`, the request target as it came (percent-encoding and all), and `raw`,
+// the body's bytes. hold() keeps every answer back (or only those on the paths
+// it's given) until its release is called, so a spec can keep an HTTP API
+// run's requests in flight for as long as it needs; settled() waits until each
+// request so far was answered or dropped by Cubex. Every spec's receiver takes
+// the same port, so a spec counts requests on its own paths (hitsOn), never
+// all of them.
 export interface Hit {
   method: string; path: string; query: URLSearchParams; headers: http.IncomingHttpHeaders; body: string; at: number
+  url: string; raw: Buffer
 }
 export interface Reply { status: number; headers?: Record<string, string>; body?: string }
 
@@ -68,9 +71,10 @@ export class Receiver {
       req.on('data', c => chunks.push(c))
       req.on('end', () => {
         const u = new URL(req.url ?? '/', 'http://receiver')
+        const raw = Buffer.concat(chunks)
         this.hits.push({
           method: req.method ?? '', path: u.pathname, query: u.searchParams, headers: req.headers,
-          body: Buffer.concat(chunks).toString('utf8'), at: Date.now(),
+          body: raw.toString('utf8'), at: Date.now(), url: req.url ?? '', raw,
         })
         const script = this.replies.get(u.pathname)
         const reply = script ? (script.length > 1 ? script.shift()! : script[0]) : { status: 404, body: '{}' }
