@@ -11,6 +11,7 @@ import { readRunLedger, runRequestHash, writeRunLedger } from '../lib/run-idempo
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { waitForRunChange } from './run-status-wait';
 import { startWaterfallDryRun } from './waterfall-dry-run';
+import { replayKeysRefusal } from './waterfall-run-start';
 import { readDryRun, type DryRunView } from './waterfall-dry-read';
 
 type Json = Record<string, unknown>;
@@ -38,30 +39,38 @@ export function dryRunJson(v: DryRunView): Json {
   };
 }
 
-export async function tokenDryRun(c: TokenCaller, sheetId: string, input: WaterfallRunInput, a: Json)
-  : Promise<TokenRunResult> {
+// sentHash: the arguments as sent (lib/run-idempotency.ts sentArgsHash), null for a call refused here.
+export async function tokenDryRun(c: TokenCaller, sheetId: string, input: WaterfallRunInput, a: Json,
+  sentHash: string | null): Promise<TokenRunResult> {
   if (a.estimate_only !== undefined && parseBooleanOption(a.estimate_only) === true) {
     return bad('dry_run runs a few rows for real (at their cost) and writes nothing: leave out estimate_only.');
   }
   for (const k of ['auto_run', 'webhook_id']) {
     if (a[k] !== undefined) return bad(`${k} doesn't go with dry_run.`);
   }
-  // A retry with the same idempotency key (REST sends its header as one) reads the first dry run.
+  // A retry with the same idempotency key (REST sends its header as one) reads the first dry run: known by its
+  // arguments as sent (waterfall-token-run.ts reads that one first), or as parsed (a key from before holds that).
   const key = typeof a.idempotency_key === 'string' ? a.idempotency_key : null;
   const { rowGeneration: _gen, ...rest } = input;
-  const hash = runRequestHash('waterfall_dry', { sheet_id: sheetId, input: rest });
+  const hash = [sentHash, runRequestHash('waterfall_dry', { sheet_id: sheetId, input: rest })]
+    .filter((h): h is string => !!h);
   const prior = key ? readRunLedger(c.userId, key, hash) : null;
   if (prior && 'conflict' in prior) return bad(IDEMPOTENCY_CONFLICT_MESSAGE);
-  let runId: string;
-  if (prior) runId = prior.replay.run_id;
-  else {
-    const limited = startWindow(c);
-    if (limited) return limited;
-    const out = await startWaterfallDryRun(c.userId, sheetId, input, { hasSecretsScope: c.scopes.has('secrets') });
-    if ('fail' in out) return out;
-    runId = out.ok.runId;
-    if (key) writeRunLedger(c.userId, key, hash, 'waterfall_dry', { run_id: runId });
+  if (prior) {
+    // A token without 'secrets' gets the start's refusal for a dry run whose steps read a saved key.
+    return replayKeysRefusal(c.userId, prior.replay.run_id, c.scopes.has('secrets'))
+      ?? answerDryRun(c, prior.replay.run_id, true);
   }
+  const limited = startWindow(c);
+  if (limited) return limited;
+  const out = await startWaterfallDryRun(c.userId, sheetId, input, { hasSecretsScope: c.scopes.has('secrets') });
+  if ('fail' in out) return out;
+  if (key) writeRunLedger(c.userId, key, hash, 'waterfall_dry', { run_id: out.ok.runId });
+  return answerDryRun(c, out.ok.runId, false);
+}
+
+// The dry run's traces once it ends, waiting up to WATERFALL_DRY_WAIT_SECONDS; replayed: a retry's.
+export async function answerDryRun(c: TokenCaller, runId: string, replayed: boolean): Promise<TokenRunResult> {
   const deadline = Date.now() + WATERFALL_DRY_WAIT_SECONDS * 1000;
   for (;;) {
     const asked = Date.now();
@@ -74,5 +83,5 @@ export async function tokenDryRun(c: TokenCaller, sheetId: string, input: Waterf
   }
   const view = readDryRun(c.userId, runId);
   if (!view) return { fail: 'not_found', message: 'The dry run went missing.' };
-  return { ok: { ...dryRunJson(view), ...(prior ? { replayed: true } : {}) }, started: !prior };
+  return { ok: { ...dryRunJson(view), ...(replayed ? { replayed: true } : {}) }, started: !replayed };
 }

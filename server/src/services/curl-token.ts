@@ -8,7 +8,10 @@
 // key this way, never read or change one.
 import { parseBooleanOption } from '../lib/web-search-options';
 import type { KeyChoice } from '../lib/curl/key-apply';
-import type { KeyFinding } from '../lib/curl/key-detect';
+import { findKeys, toDraft, type KeyFinding } from '../lib/curl/key-detect';
+import { parseCurl, type ParsedCurl } from '../lib/curl/parse';
+import { savedKeyMatcher } from '../lib/http-secrets-scan';
+import { savedKeyNames } from './saved-keys';
 import { commitCurlKeys, planCurl, prepareCurl, type CurlPlan, type PreparedCurl } from './curl-import';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
@@ -84,6 +87,31 @@ export function curlStartProblem(
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
   const columns = validateHttpRunColumns(sheetId, userId, mapping.map(m => ({ ...m })), master, true);
   return columns.ok ? null : bad(columns.error ?? 'The response columns are not valid.');
+}
+
+// Whether a cURL command needs the 'secrets' scope, from the command alone (no sheet or column is read, nor any
+// saved key's value): a literal key in it (findKeys, every {{name}} taken as resolving), or a {{name}} or $NAME
+// that names a saved key (the start's saved-key check, savedKeyRefsInConfig's matcher), in its URL, a header, its
+// body or its -u / bearer sign-in. The names are read once and matched in one pass, so its cost grows with the
+// command's length, not with headers times saved keys. A command the parser refuses: true, so the start's own
+// checks answer it.
+export function curlNeedsSecrets(userId: string, curl: unknown): boolean {
+  if (typeof curl !== 'string') return true;
+  let parsed: ParsedCurl;
+  let findings: KeyFinding[];
+  try {
+    parsed = parseCurl(curl);
+    findings = findKeys(toDraft(parsed), { resolves: () => true, variables: parsed.variables });
+  } catch {
+    return true;
+  }
+  if (findings.some(f => f.kind === 'value')) return true;
+  const auth = !parsed.auth ? [] : parsed.auth.kind === 'basic' ? [parsed.auth.user, parsed.auth.password]
+    : [parsed.auth.token];
+  const parts = [{ url: parsed.url, body: parsed.body }, ...auth.map(text => ({ url: text })),
+    ...parsed.headers.map(h => ({ url: '', headers: { [h.name]: h.value } }))];
+  const match = savedKeyMatcher(savedKeyNames(userId));
+  return parts.some(part => match({ method: 'GET', ...part }).length > 0);
 }
 
 function parseSaveKeys(v: unknown): { ok: boolean | Record<string, string> } | RunFail {
