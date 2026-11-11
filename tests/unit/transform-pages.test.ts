@@ -4,7 +4,12 @@
 // that of a page, not of the sheet. A where matching nothing writes nothing (no
 // '' into every row: the new column is only listed); one matching every row
 // writes every row exactly once over calls of at most TRANSFORM_MAX_ROWS rows,
-// each going on from the call before's next_cursor. Numbers are printed.
+// each going on from the call before's next_cursor. No page's commit runs
+// SQLite's own WAL checkpoint (it copied 2,000 frames back inside about one
+// page commit in fifty, and on a slower CI disk the server was held 743 ms):
+// the WAL never holds the frames that start it. Numbers are printed, the
+// longest page transaction and the longest checkpoint among them
+// (sqlite-write-probe.ts).
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
@@ -16,6 +21,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
+import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -40,6 +46,7 @@ db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < 5; i++) insert.run(uuid(), small, uid, i, JSON.stringify({ Name: `s${i}` }))
 })()
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -61,6 +68,8 @@ async function main() {
   async function measured(params: Params) {
     const calls: Array<{ updated: number; created_column: string | null; next_cursor?: string }> = []
     let running = true, answered = 0, slowest = 0
+    // Emptying the WAL is the test's own work: done before anything is timed.
+    probe.reset()
     const pinging = (async () => {
       while (running) {
         const t0 = performance.now()
@@ -102,8 +111,12 @@ async function main() {
     const ms = performance.now() - t0
     await pinging
     const mb = (n: number) => Math.round(n / 1048576)
+    const w = probe.read()
     const stats = { calls: calls.length, ms: Math.round(ms), answered, slowestMs: Math.round(slowest),
-      loopMaxMs: Math.round(loopMax), heapMb: mb(heap), rssMb: mb(rss) }
+      loopMaxMs: Math.round(loopMax), heapMb: mb(heap), rssMb: mb(rss), pages: w.transactions,
+      longestPageMs: Math.round(w.longestTransactionMs), checkpoints: w.checkpoints,
+      longestCheckpointMs: Math.round(w.longestCheckpointMs), mostCheckpointFrames: w.mostCheckpointFrames,
+      pageCommitsWritingDbFile: w.transactionsWritingMainFile, mostWalFrames: w.mostWalFrames }
     console.log('     ', params.targetColumn, JSON.stringify(stats))
     return { calls, stats }
   }
@@ -115,6 +128,8 @@ async function main() {
       const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
         targetColumn: 'Nothing', where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
       assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
+      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
       assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
       assert.deepEqual(calls[0].created_column, 'Nothing')
       assert.equal(stored('Nothing'), 0, 'no row stores the new column')
@@ -132,6 +147,8 @@ async function main() {
         AND json_extract(data, '$.Every') = json_extract(data, '$.Name') || '!'`).pluck().get(sid)
       assert.equal(right, ROWS)
       assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
+      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
       assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
 

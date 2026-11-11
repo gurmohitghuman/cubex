@@ -42,10 +42,11 @@ export const TRANSFER_SCAN_BATCH = 250;
 export const TRANSFORM_MAX_REGEX_LEN = 200;
 export const TRANSFORM_REGEX_INPUT_CAP = 10000;
 // A call walks the sheet TRANSFORM_PAGE_ROWS rows at a time, each page read, worked
-// out and written in one short transaction, the server answering other requests
-// between pages (services/column-transform-pages.ts). It stops once it has written
-// TRANSFORM_MAX_ROWS rows (as transfer_rows takes at most TRANSFER_MAX_ROWS) or
-// worked TRANSFORM_MAX_CALL_MS, checked before each page; its next_cursor goes on.
+// out and written in one short transaction and checkpointed after it, the server
+// answering other requests between pages (services/column-transform-pages.ts).
+// It stops once it has written TRANSFORM_MAX_ROWS rows (as transfer_rows takes at
+// most TRANSFER_MAX_ROWS) or worked TRANSFORM_MAX_CALL_MS, checked before each
+// page; its next_cursor goes on.
 // With columns that follow the target (clean, formula, lookup, auto-run), a page
 // queues every row it writes for each of them: it then takes at most
 // TRANSFORM_QUEUED_ROWS / (1 + those columns) rows.

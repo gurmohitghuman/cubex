@@ -1,20 +1,26 @@
 // transform_column's walk over the sheet (services/column-transform.ts), in row
-// order from the cursor: a page of TRANSFORM_PAGE_ROWS rows at a time, each page
-// read, worked out and written in one short immediate transaction, the server
-// answering other requests between pages (lib/slices.ts). One page of rows is in
-// memory at a time, whatever the sheet's size. A page first reads its window off
-// the (sheet_id, user_id, row_index) index, then only the rows in that window
-// that pass `where`: a where that matches nothing still looks at one window a
-// page, never the rest of the sheet in one statement. The call stops before a
-// page once it has written TRANSFORM_MAX_ROWS rows or worked TRANSFORM_MAX_CALL_MS;
-// every page before that is written and stays written.
+// order from the cursor: a page of TRANSFORM_PAGE_ROWS rows at a time, each
+// page read, worked out and written in one short immediate transaction, the
+// server answering other requests between pages (lib/slices.ts). Each page
+// commits with SQLite's own WAL checkpoint off and is checkpointed (PASSIVE) in
+// a turn of its own, whatever the columns that follow the target: left on,
+// SQLite's checkpoint ran inside about one page commit in fifty and copied
+// 2,000 frames (8 MB) back into the database file there, holding the server
+// meanwhile (up to 77 ms on a fast disk; a pass over every row on a slower CI
+// disk held it 743 ms). One page of rows is in memory at a time, whatever the
+// sheet's size. A page first reads its window off the (sheet_id, user_id,
+// row_index) index, then only the rows in that window that pass `where`: a
+// where that matches nothing still looks at one window a page, never the rest
+// of the sheet in one statement. The call stops before a page once it has
+// written TRANSFORM_MAX_ROWS rows or worked TRANSFORM_MAX_CALL_MS; every page
+// before that is written and stays written.
 import { db } from '../lib/db';
 import {
   TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
 } from '../lib/api-v1-constants';
 import { jsonPath, parseRowData } from '../lib/sql-helpers';
 import { autorunReaderCount, markAutorunInputs } from '../lib/autorun-mark';
-import { runInCheckpointedRowSlices, runInSlices } from '../lib/slices';
+import { runInCheckpointedRowSlices } from '../lib/slices';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 
 export interface TransformWalk {
@@ -31,8 +37,7 @@ export interface WalkResult { updated: number; stoppedAfter: number | null }
 
 export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   // With columns following the target, a page queues each row it writes for each
-  // of them: sized by queued rows, each committed with SQLite's own checkpoint off
-  // and checkpointed in a turn of its own (lib/slices.ts).
+  // of them: it is sized by the rows it queues.
   const readers = autorunReaderCount(w.sheetId, w.userId, [w.targetColumn]);
   const pageRows = readers === 0 ? TRANSFORM_PAGE_ROWS
     : Math.max(1, Math.min(TRANSFORM_PAGE_ROWS, Math.floor(TRANSFORM_QUEUED_ROWS / (1 + readers))));
@@ -64,6 +69,6 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     page.immediate(Math.min(pageRows, room));
     return !done;
   };
-  await (readers > 0 ? runInCheckpointedRowSlices(step) : runInSlices(step));
+  await runInCheckpointedRowSlices(step);
   return { updated, stoppedAfter: done ? null : after };
 }
