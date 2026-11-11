@@ -14,9 +14,12 @@ import type { RunFail } from './run-shared';
 
 export interface AgentCleanArgs {
   source_column?: unknown; cleaner?: unknown; column?: unknown; phone_format?: unknown; phone_country?: unknown;
-  auto_run?: unknown; preview?: unknown;
+  name_input?: unknown; the_company?: unknown; auto_run?: unknown; preview?: unknown;
 }
-const KNOWN = ['source_column', 'cleaner', 'column', 'phone_format', 'phone_country', 'auto_run', 'preview'];
+const KNOWN = [
+  'source_column', 'cleaner', 'column', 'phone_format', 'phone_country', 'name_input', 'the_company', 'auto_run',
+  'preview',
+];
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const FILLING_NOTE = 'Still filling: its cells read "⏳ Processing..." until done. '
@@ -31,7 +34,10 @@ export async function agentCleanColumn(userId: string, sheetId: string, a: Agent
   if (preview === 'invalid' || autoRun === 'invalid') return bad('preview and auto_run must be true or false.');
   const input: CleanColumnInput = {
     source: a.source_column, cleaner: a.cleaner, column: a.column,
-    options: { phoneFormat: a.phone_format ?? null, phoneCountry: a.phone_country ?? null },
+    options: {
+      phoneFormat: a.phone_format ?? null, phoneCountry: a.phone_country ?? null,
+      nameInput: a.name_input ?? null, theCompany: a.the_company ?? null,
+    },
     autoRun,
   };
   if (preview) {
