@@ -1,6 +1,7 @@
 // The text the person name and company cleaners read (pure): spaces tidied
-// (cleanTrim), emoji dropped, full-width letters read as plain ones, and
-// whether a whole value is a placeholder ("n/a", "unknown") rather than a name.
+// (cleanTrim), emoji dropped, full-width letters, digits and punctuation read
+// as plain ASCII, and whether a whole value is a placeholder ("n/a",
+// "unknown") rather than a name.
 import { MAX_CLEAN_FIELD_CHARS } from '../constants-clean';
 import { PERSON_NAME_EXCEPTIONS, PLACEHOLDER_NAME_EXCEPTIONS, PLACEHOLDERS } from './name-words';
 import { cleanTrim } from './text';
@@ -19,13 +20,14 @@ const EMOJI_RUN = new RegExp(`(?:${PART})(?:\\u200D?(?:${PART}))*`, 'gu');
 
 const dropEmoji = (s: string): string => s.replace(EMOJI_RUN, ' ');
 
-// Only full-width ASCII (U+FF01-U+FF5E, "Ｍｉｃｈａｅｌ") becomes plain ASCII, and the
-// ideographic space a space. Everything else stays exactly as typed: "Mª",
-// "№1", "Ⅷ", "E²", "℠", ligatures ("ﬁ"), half-width kana, and Thai.
-const FULL_WIDTH = /[\uFF01-\uFF5E\u3000]/g;
+// Only full-width ASCII (U+FF01-U+FF5E: letters "Ｍｉｃｈａｅｌ", digits, punctuation)
+// becomes plain ASCII; the ideographic space is a space already (cleanTrim
+// makes every kind of space one). Everything else stays exactly as typed:
+// "Mª", "№1", "Ⅷ", "E²", "℠", ligatures ("ﬁ"), half-width kana, and Thai.
+const FULL_WIDTH = /[\uFF01-\uFF5E]/g;
 const FULL_WIDTH_OFFSET = 0xFEE0;
-const foldFullWidth = (s: string): string => s.replace(FULL_WIDTH, ch =>
-  (ch === '\u3000' ? ' ' : String.fromCharCode(ch.charCodeAt(0) - FULL_WIDTH_OFFSET)));
+const foldFullWidth = (s: string): string =>
+  s.replace(FULL_WIDTH, ch => String.fromCharCode(ch.charCodeAt(0) - FULL_WIDTH_OFFSET));
 
 // The value as the cleaners read it. A value longer than MAX_CLEAN_FIELD_CHARS
 // comes back only tidied: the cleaners read it as no name.

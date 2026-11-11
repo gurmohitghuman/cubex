@@ -1,7 +1,7 @@
 // Person name cleaners (pure): the full name in natural order without
 // honorific, nickname or suffix ("smith, john q." → "John Q. Smith"), or just
 // its first or last name. Each reads the value through nameText (emoji
-// dropped, full-width letters folded) and leaves a placeholder ("n/a",
+// dropped, full-width ASCII folded) and leaves a placeholder ("n/a",
 // "unknown") blank. The first- and last-name cleaners can also read a column
 // that holds only first names, or only last names (NameInput).
 import { MAX_CLEAN_FIELD_CHARS } from '../constants-clean';
@@ -18,9 +18,11 @@ export type NameInput = 'full_name' | 'first_name' | 'last_name';
 
 const isSuffix = (w: string) => SUFFIXES.has(nameKey(w));
 const isParticle = (w: string) => PARTICLES.has(nameKey(w));
-// One cased letter, with or without its period: "J", "J.". "J.R." and "AJ" are
-// names, and so is one Han or Hangul character (伟, 민): those scripts have no case.
-const isInitial = (w: string) => /^[\p{Lu}\p{Ll}\p{Lt}]\.?$/u.test(w);
+// An initial: one letter and its period in any script ("J.", "א.", "ส.", "कु."
+// with its vowel sign), or one cased letter alone ("J"). "J.R." and "AJ" are
+// names, and so is one Han or Hangul character with no period (伟, 민): those
+// scripts have no case.
+const isInitial = (w: string) => /^(?:\p{L}\p{M}*\.|[\p{Lu}\p{Ll}\p{Lt}]\p{M}*)$/u.test(w);
 // After a comma a credential can be any short all-capital word (in a name
 // that isn't all in capitals) or a dotted one (M.D.).
 const isCommaSuffix = (w: string, mixedCase: boolean) =>

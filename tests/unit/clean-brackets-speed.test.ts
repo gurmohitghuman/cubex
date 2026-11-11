@@ -1,6 +1,7 @@
 // The company name cleaner on values full of brackets that never close
-// (lib/clean/company.ts): it finds them in one pass and cuts the leading ones
-// at once, so a value of up to MAX_CLEAN_FIELD_CHARS characters costs well
+// (lib/clean/company-brackets.ts): it finds them in one pass and cuts the
+// leading ones at once, and on values with many endings to strip, so a value of
+// up to MAX_CLEAN_FIELD_CHARS characters costs well
 // under 5 ms, in a clean column and in a company duplicate key (lib/dedupe/key.ts)
 // alike. Each value is timed as the best of a few rounds, so a busy machine
 // doesn't decide it. server/src is type:commonjs → default-import + destructure.
@@ -47,6 +48,22 @@ for (const open of ['(', '[', '{']) {
       check(`${name} on ${label}: ${ms.toFixed(2)} ms a call, under ${LIMIT_MS}`, ms < LIMIT_MS)
       check(`${name} on ${label}: no bracket left`, !/[([{]/.test(f(v)))
     }
+  }
+}
+
+// Many legal endings, stray closing brackets between them, or closed pairs:
+// each comes off one at a time, and a step reads only the end of the name.
+const MANY = [
+  'x' + ' ) Ltd'.repeat(166), '( a )' + ' ) Ltd'.repeat(165), 'x' + ' Ltd'.repeat(249), 'Acme' + ' )'.repeat(498),
+  '(a) '.repeat(250).trim(),
+]
+for (const v of MANY) {
+  assert.ok(v.length <= 1000)
+  const label = `${JSON.stringify(v.slice(0, 10))}... (${v.length} characters)`
+  for (const [name, f] of cleaners) {
+    const ms = msPerCall(f, v)
+    check(`${name} on ${label}: ${ms.toFixed(2)} ms a call, under ${LIMIT_MS}`, ms < LIMIT_MS)
+    check(`${name} on ${label}: cleaning it again changes nothing`, f(f(v)) === f(v))
   }
 }
 
