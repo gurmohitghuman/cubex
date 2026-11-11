@@ -5,15 +5,18 @@
 // start over a token (run-start-token.ts): estimate_only as a pure read,
 // idempotency keys, the per-token run-start window, a webhook, the 'secrets'
 // scope for an HTTP step reading a saved key, and auto_run turned on once the
-// run has started. action 'describe' reads a column's setup instead.
+// run has started. action 'describe' reads a column's setup instead. A retry
+// with the same key and arguments answers the first start (or dry run) before
+// the sheet, the column's earlier run or the webhook are read (firstStart),
+// and only to a token the start would accept for its scopes (replayKeysRefusal).
 import { db } from '../lib/db';
-import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
+import { runRequestHash, sentArgsHash, writeRunLedger } from '../lib/run-idempotency';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseWaterfallInput } from '../lib/waterfall/input';
 import { agentWaterfallBody } from '../lib/waterfall/agent-args';
 import { flagOf } from '../lib/enrich-agent-input';
 import { estimateWaterfall } from './waterfall-estimate';
-import { startWaterfallRun } from './waterfall-run-start';
+import { replayKeysRefusal, startWaterfallRun } from './waterfall-run-start';
 import { newestWaterfallRun, recallInput, waterfallSetup } from './waterfall-column';
 import { saveAutorunSettings } from './autorun-settings';
 import { sheetAutorunView } from './autorun-view';
@@ -21,9 +24,11 @@ import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { runIfReply } from './run-rule';
-import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
+import {
+  bad, firstStart, ledgerReplay, preamble, startsRun, startWindow, type TokenCaller, type TokenRunResult,
+} from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
-import { tokenDryRun } from './waterfall-token-dry';
+import { answerDryRun, tokenDryRun } from './waterfall-token-dry';
 import { spendPart } from './token-spend';
 
 type Json = Record<string, unknown>;
@@ -70,6 +75,19 @@ export async function tokenWaterfall(
     const setup = waterfallSetup(a.sheet_id, c.userId, a.column_name);
     return 'fail' in setup ? setup : { ok: agentSetup(setup.ok, { secrets: c.scopes.has('secrets') }), started: false };
   }
+  const dry = a.dry_run === true;
+  const estimateOnly = a.estimate_only === undefined
+    ? opts.estimateDefault && !dry
+    : parseBooleanOption(a.estimate_only) === true;
+  // A dry run's answer is its trace, read again; a start's is what it answered. Only estimate_only false or left
+  // out is a start: another value the start refuses (preamble) never hashes like one.
+  const sent = () => (estimateOnly || !startsRun(a.estimate_only)
+    ? null : sentArgsHash(dry ? 'waterfall_dry' : 'waterfall_run', a, ['action']));
+  const known = firstStart(c, a.idempotency_key, sent);
+  // A token without 'secrets' replaying a run whose steps read a saved key: the start's own checks answer.
+  if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
+    return dry ? answerDryRun(c, known.run_id, true) : { ok: { ...known, replayed: true }, started: false };
+  }
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
   const pre = preamble(c, a as Parameters<typeof preamble>[1]);
   if ('fail' in pre) return pre;
@@ -84,12 +102,9 @@ export async function tokenWaterfall(
   if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
-  if (parsed.ok.dry) return tokenDryRun(c, sheetId, parsed.ok, a);
+  if (parsed.ok.dry) return tokenDryRun(c, sheetId, parsed.ok, a, sent());
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
-  const estimateOnly = a.estimate_only === undefined
-    ? opts.estimateDefault
-    : parseBooleanOption(a.estimate_only) === true;
   if (estimateOnly) {
     const est = await estimateWaterfall(c.userId, sheetId, parsed.ok);
     if ('fail' in est) return est;
@@ -99,11 +114,18 @@ export async function tokenWaterfall(
     };
   }
   const { rowGeneration: _gen, rows, ...rest } = parsed.ok;
-  const hash = runRequestHash('waterfall_run', {
+  // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
+  const hash = [sent(), runRequestHash('waterfall_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun, ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  });
+  })].filter((h): h is string => !!h);
   const replay = ledgerReplay(c, a.idempotency_key, hash);
+  // A token without 'secrets' replaying a run whose steps read a saved key gets the start's 403 here: before the
+  // start's own refusals that come later on a call without the key (the run-start window's 429, the start's
+  // checks), on purpose, so the refused retry takes no run-start slot.
+  if (replay && 'ok' in replay) {
+    return replayKeysRefusal(c.userId, (replay.ok as { run_id: string }).run_id, c.scopes.has('secrets')) ?? replay;
+  }
   if (replay) return replay;
   const limited = startWindow(c);
   if (limited) return limited;

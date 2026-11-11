@@ -2,25 +2,29 @@
 // for what a token caller gets and why it lives in one place. On top of that,
 // the saved-key secrets gate, and estimate_only checks the request template.
 // `curl` (a pasted cURL command) stands in for url/method/headers/body; its keys
-// follow curl-token.ts, and are saved only once the run is about to start.
+// follow curl-token.ts, and are saved only once the run is about to start. A
+// retry with the same key and arguments answers the first start before any of
+// that (replayFirst): known by the command as sent, not by the request it became
+// once its keys were matched to saved ones.
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { HTTP_MAX_CONCURRENCY, HTTP_MAX_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS } from '../lib/constants';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
 import { httpTemplateError } from '../lib/http-template-validate';
 import { heldRequestInputError } from '../lib/http-held-inputs';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
+import { writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
 import { estimateHttpRun } from './run-estimate-http';
 import {
-  bad, ledgerReplay, preamble, startWindow, type Fail, type TokenCaller, type TokenRunResult,
+  bad, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
-import { curlForToken, curlStartProblem, type TokenCurl } from './curl-token';
+import { curlForToken, curlNeedsSecrets, curlStartProblem, type TokenCurl } from './curl-token';
 import { commitCurlKeys } from './curl-import';
-import { HTTP_RETRY_MAX, HTTP_STATUS_PATH } from '../lib/constants-http-retry';
+import { HTTP_STATUS_PATH } from '../lib/constants-http-retry';
+import { httpRunExtras, httpRunHash, httpSentHash, wholeIn } from './http-token-args';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 
 export interface TokenHttpRunArgs {
@@ -32,9 +36,27 @@ export interface TokenHttpRunArgs {
   webhook_id?: unknown;
 }
 
-const wholeIn = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
+// A replay answers only a token the start would accept for its scopes. Without 'secrets', a cURL command with a
+// key in it or a request naming a saved key goes through the start's own checks instead, so it gets the start's
+// 'secrets' refusal in the start's words. Decided from what was sent, reading no sheet or column (a cURL
+// command: curlNeedsSecrets), so a start that needs no key replays after the sheet changed, as for any token.
+function startNeedsSecrets(c: TokenCaller, a: TokenHttpRunArgs): boolean {
+  if (c.scopes.has('secrets')) return false;
+  if (a.curl !== undefined) return curlNeedsSecrets(c.userId, a.curl);
+  const rq: { url?: unknown; headers?: unknown; body?: unknown } = a;
+  const headers = rq.headers ?? {};
+  const strings = !!headers && typeof headers === 'object' && !Array.isArray(headers)
+    && Object.values(headers).every(v => typeof v === 'string');
+  // A request the start refuses for its shape: its own checks answer.
+  if (typeof rq.url !== 'string' || !strings || (rq.body !== undefined && typeof rq.body !== 'string')) return true;
+  const request = { method: 'GET' as const, url: rq.url, headers: headers as Record<string, string>, body: rq.body };
+  return savedKeyRefsInConfig(c.userId, request).length > 0;
+}
 
-export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Promise<TokenRunResult> {
+export async function tokenStartHttpRun(c: TokenCaller, sent: TokenHttpRunArgs): Promise<TokenRunResult> {
+  const first = replayFirst(c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)));
+  if (first) return first;
+  let a = sent;
   const pre = preamble(c, a);
   if ('fail' in pre) return pre;
   const sheetId = a.sheet_id as string;
@@ -125,18 +147,8 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
     const curlPart = curl ? { keys_to_save: [...new Set(toSave)], notes: curl.plan.notes } : {};
     return { ok: { ...est.ok, ...curlPart }, started: false };
   }
-  const hash = runRequestHash('http_run', {
-    sheet_id: sheetId, url: a.url, method: a.method, headers: a.headers, body: a.body,
-    response_mapping: a.response_mapping, master_column_name: a.master_column_name, target_row_ids: a.target_row_ids,
-    batch_size: a.batch_size, timeout_ms: a.timeout_ms, ...(runIf.ok ? { run_if: runIf.ok } : {}),
-    ...(curl ? { curl: a.curl, save_keys: a.save_keys } : {}),
-    // Only when given, so a retry that spans the release still replays.
-    ...(extras.retries === undefined ? {} : { retries: extras.retries }),
-    ...(extras.retryPost ? { retry_post: true } : {}),
-    ...(extras.skipEmpty ? { skip_empty_values: true } : {}),
-    ...(extras.statusColumn ? { status_code_column: extras.statusColumn } : {}),
-    ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  });
+  // Known by the arguments as sent and by the request they became: one hash unless a cURL command was sent.
+  const hash = [httpRunHash(sheetId, sent, runIf.ok, extras), httpRunHash(sheetId, a, runIf.ok, extras)];
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
   const refused = held();
@@ -166,25 +178,4 @@ export async function tokenStartHttpRun(c: TokenCaller, a: TokenHttpRunArgs): Pr
   };
   if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
   return { ok: payload, started: true };
-}
-
-// Retries, empty values and the response code column, checked; a string is why not.
-type Extras = { retries?: number; retryPost: boolean; skipEmpty: boolean; statusColumn: string | null };
-function httpRunExtras(a: TokenHttpRunArgs): Extras | string {
-  if (a.retries !== undefined && !wholeIn(a.retries, 0, HTTP_RETRY_MAX)) {
-    return `retries must be a whole number from 0 to ${HTTP_RETRY_MAX}`;
-  }
-  const retryPost = parseBooleanOption(a.retry_post);
-  if (retryPost === 'invalid') return 'retry_post must be true or false';
-  const skipEmpty = parseBooleanOption(a.skip_empty_values);
-  if (skipEmpty === 'invalid') return 'skip_empty_values must be true or false';
-  const col = a.status_code_column;
-  if (col !== undefined && col !== null && (typeof col !== 'string' || !col.trim())) {
-    return 'status_code_column must be the name of the column to create';
-  }
-  return {
-    ...(a.retries === undefined ? {} : { retries: a.retries as number }),
-    retryPost: retryPost === true, skipEmpty: skipEmpty === true,
-    statusColumn: typeof col === 'string' ? col.trim() : null,
-  };
 }

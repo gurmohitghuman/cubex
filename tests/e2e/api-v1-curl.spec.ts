@@ -1,3 +1,4 @@
+// Over 200 lines: the agents' cURL starts over REST and MCP share the stored-setup, run and key helpers here.
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { test, expect, APIRequestContext } from '@playwright/test'
@@ -10,6 +11,9 @@ import { mcpClient, call, callError } from './helpers-mcp'
 // save_keys, which needs 'secrets', saves it as a saved key (an estimate saves
 // nothing), and the run's stored setup holds {{name}}, never the key. A
 // $VARIABLE uses the saved key of that name. Also: REST now passes run_if on.
+// A start retried with its idempotency key answers the first start, even once
+// its column exists and its key is saved (the same call without the key is
+// refused for the column now).
 
 const SECRET = 'sk-proj-e2eAGENT0123456789abcdefgh'
 const CURL = `curl '${JSON_URL}' -H 'Authorization: Bearer ${SECRET}'`
@@ -24,6 +28,17 @@ function storedConfig(runId: string): string {
   const db = new Database(assertTestDb(process.env.DB_PATH), { readonly: true })
   try {
     return (db.prepare('SELECT config FROM http_runs WHERE id = ?').get(runId) as { config: string }).config
+  } finally {
+    db.close()
+  }
+}
+
+// How many HTTP runs a sheet has, read the same way.
+function runCount(sheetId: string): number {
+  const Database = require(path.join(process.cwd(), 'node_modules/better-sqlite3'))
+  const db = new Database(assertTestDb(process.env.DB_PATH), { readonly: true })
+  try {
+    return db.prepare('SELECT COUNT(*) FROM http_runs WHERE sheet_id = ?').pluck().get(sheetId) as number
   } finally {
     db.close()
   }
@@ -150,3 +165,50 @@ test('MCP: run_http_enrichment takes curl; a $VARIABLE uses the saved key with t
 
   await client.close(); await runOnly.close(); await api.dispose()
 })
+
+test('a curl start whose key save_keys named, retried with its idempotency key, answers the first start (REST, MCP)',
+  async () => {
+    test.setTimeout(120_000)
+    const api = await authedApi()
+    await clearKeys(api, 'e2e_replay')
+    const { sheetId } = await seedSheet(api, 1)
+    const v1 = await bearer(await makeToken(api, ['read', 'run', 'secrets'], 'e2e curl replay'))
+    const client = await mcpClient(await makeToken(api, ['read', 'run', 'secrets'], 'e2e curl replay mcp'))
+    // Idempotency keys share the account's ledger with every other spec: keep them unique.
+    const key = `e2e-curl-replay-${Date.now()}`
+    const args = (column: string) => ({
+      curl: CURL, save_keys: { 'Authorization header': `e2e_replay_${column.toLowerCase()}` },
+      master_column_name: column, response_mapping: [{ json_path: '$.title', column_name: `${column} title` }],
+    })
+    const taken = (column: string) => `A column named "${column}" already exists. Choose a different name.`
+
+    const rest = (data: Record<string, unknown>, headers: Record<string, string> = { 'Idempotency-Key': key }) =>
+      v1.post(`/api/v1/sheets/${sheetId}/http-runs`, { data, headers })
+    const first = await rest(args('REST'))
+    expect(first.status(), await first.text()).toBe(202)
+    const started = await first.json()
+    expect(started.saved_keys).toEqual(['e2e_replay_rest'])
+    await waitForTerminal(v1, `/api/v1/http-runs/${started.run_id}`)
+    const now = await rest(args('REST'), {})
+    expect(now.status()).toBe(400)
+    expect((await now.json()).error).toBe(taken('REST'))
+    for (const header of [true, false]) {
+      const again = header ? await rest(args('REST')) : await rest({ ...args('REST'), idempotency_key: key }, {})
+      expect(again.status(), await again.text()).toBe(200)
+      expect(await again.json()).toEqual({ ...started, replayed: true })
+    }
+
+    const mcpArgs = { sheet_id: sheetId, ...args('MCP'), idempotency_key: `${key}-mcp` }
+    const viaMcp = await call(client, 'run_http_enrichment', mcpArgs)
+    expect(viaMcp.saved_keys).toEqual(['e2e_replay_mcp'])
+    await waitForTerminal(v1, `/api/v1/http-runs/${viaMcp.run_id}`)
+    expect(await callError(client, 'run_http_enrichment', { ...mcpArgs, idempotency_key: undefined }))
+      .toContain(taken('MCP'))
+    expect(await call(client, 'run_http_enrichment', mcpArgs)).toEqual({ ...viaMcp, replayed: true })
+
+    expect(runCount(sheetId)).toBe(2)
+    expect((await keyNames(api)).filter(n => n.startsWith('e2e_replay')).sort()).toEqual(['e2e_replay_mcp',
+      'e2e_replay_rest'])
+    await clearKeys(api, 'e2e_replay')
+    await client.close(); await v1.dispose(); await api.dispose()
+  })
