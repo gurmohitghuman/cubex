@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { encrypt, decrypt } from '../lib/crypto';
 import { validateKey, fetchAccountBalance, fetchModels } from '../lib/openrouter';
+import { runnableModels } from '../lib/ai-model-check';
 import { dailyLimitView } from '../services/treg-key';
 import { clearAiKeyPauses } from '../services/autorun-entry';
 
@@ -157,13 +158,14 @@ router.delete('/openrouter-key', (req: AuthRequest, res) => {
   }
 });
 
+// The model picker's list: no ":batch" variant, which Cubex can't run (lib/ai-model-check.ts).
 router.get('/openrouter-models', async (_req: AuthRequest, res) => {
   try {
     const result = await fetchModels(Date.now());
-    if (result.ok) return res.json(result.models);
+    if (result.ok) return res.json(runnableModels(result.models));
 
     // Upstream failed — serve stale cache if we have it, else a clean 502.
-    if (result.stale) return res.json(result.stale);
+    if (result.stale) return res.json(runnableModels(result.stale));
     const msg = result.aborted
       ? 'OpenRouter took too long to respond.'
       : result.status

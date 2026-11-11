@@ -17,8 +17,6 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     // Specs sign in (and deliberately fail sign-ins) far more often than a person does; lift the
     // instance-wide failed-attempt budget for the harness only.
     LOGIN_RATE_MAX: env.LOGIN_RATE_MAX || '100000',
-    // Enables the transfer_rows / transform_column MCP tools so their specs run.
-    MCP_EFFICIENT_ROWS_ENABLED: env.MCP_EFFICIENT_ROWS_ENABLED || '1',
     // Enrichments talk to a mock treg (tests/mock-treg), never the real treg.to, except in the live
     // smoke. TREG_BASE_URL is an operator setting (never user input); specs drive the mock's state
     // through E2E_TREG.

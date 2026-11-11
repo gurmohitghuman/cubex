@@ -19,7 +19,7 @@ function captured(): Map<string, Shape> {
     },
   };
   const ctx = { userId: '', tokenId: '', tokenName: '', scopes: new Set<never>() };
-  registerAllTools(standIn as unknown as McpServer, ctx, true);
+  registerAllTools(standIn as unknown as McpServer, ctx);
   shapes = found;
   return found;
 }

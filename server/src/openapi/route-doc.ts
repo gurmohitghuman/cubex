@@ -56,8 +56,6 @@ export interface RouteDoc {
   // notFound adds 404; conflict true adds 409 to a GET, false drops it.
   notFound?: boolean;
   conflict?: boolean;
-  // Mounted only when this env flag is on (api-v1.ts).
-  flag?: 'MCP_EFFICIENT_ROWS_ENABLED';
 }
 
 const id = (description: string): z.ZodType => z.string().describe(description);

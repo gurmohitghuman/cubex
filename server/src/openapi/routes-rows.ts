@@ -120,8 +120,6 @@ export const rowRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{sourceId}/rows/transfer', operationId: 'transferRows', tag: 'rows',
     scope: 'write', summary: 'Copy or move rows to another sheet.',
-    description: 'Only there when the server runs with MCP_EFFICIENT_ROWS_ENABLED=1.',
-    flag: 'MCP_EFFICIENT_ROWS_ENABLED',
     headers: z.object({
       'Idempotency-Key': z.string().describe('Required. A retry with the same key replays the first answer.'),
     }),

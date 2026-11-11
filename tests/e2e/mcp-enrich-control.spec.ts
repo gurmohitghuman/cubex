@@ -38,7 +38,8 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   // concurrency means nothing on a pause; a resume sets it (kept for the column's reruns).
   expect(await callError(client, 'control_run', {
     run_type: 'enrichment', run_id: started.run_id, action: 'pause', concurrency: 3,
-  })).toContain('resuming an enrichment run')
+  })).toBe('concurrency applies only to rerunning an AI, HTTP API or enrichment run, or resuming an HTTP API or '
+    + 'enrichment run.')
   const resumed = await call(client, 'control_run', {
     run_type: 'enrichment', run_id: started.run_id, action: 'resume', spend_limit_usd: 1, concurrency: 4,
   })

@@ -1,9 +1,11 @@
 // A run's model is checked against OpenRouter's model list when it starts and
 // is resumed, and when a default model is saved (lib/ai-model-check.ts): a
 // model the list doesn't have is refused; routing variants (:nitro, :floor,
-// :exacto, :online) follow any listed id, presets pass; without the list (down,
-// empty, or slower than MODEL_CHECK_WAIT_MS) nothing is refused, and a slow
-// read isn't waited on twice. OpenRouter is a stand-in on 127.0.0.1.
+// :exacto, :online) follow any listed id, presets pass; a :batch variant is
+// never listed (routing variants after it or a preset don't change that) and
+// is refused even without the list, naming the id to use; without the list
+// (down, empty, or slower than MODEL_CHECK_WAIT_MS) nothing else is refused,
+// and a slow read isn't waited on twice. OpenRouter is a stand-in on 127.0.0.1.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
@@ -30,7 +32,8 @@ process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${(server.address() as Addre
 
 const { db } = await import('../../server/src/lib/db')
 const { runMigrations } = await import('../../server/src/db/migrate')
-const { modelListed, checkModel, modelProblem } = await import('../../server/src/lib/ai-model-check')
+const { modelListed, checkModel, modelProblem, modelGone, batchOnlyRefusal, runnableModels } =
+  await import('../../server/src/lib/ai-model-check')
 const { MODEL_CHECK_WAIT_MS } = await import('../../server/src/lib/constants')
 const { setAccountDefaultModel, setSheetDefaultModel } = await import('../../server/src/services/ai-model-config')
 const { startAiRun } = await import('../../server/src/services/ai-run-start')
@@ -61,7 +64,36 @@ async function main() {
   check('routing variants follow any listed id, several of them',
     listed('openai/gpt-4o-mini:nitro') && listed('openai/gpt-4o-mini:floor:exacto') && listed('openrouter/auto:online'))
   check('a listed catalog variant, with routing variants after it',
-    listed('meta/llama-4:free') && listed('meta/llama-4:free:nitro') && listed('openai/gpt-4o-mini:batch'))
+    listed('meta/llama-4:free') && listed('meta/llama-4:free:nitro'))
+  check('a :batch variant is never listed, though the list has it; routing variants or a preset after it neither',
+    !listed('openai/gpt-4o-mini:batch') && !listed('openai/gpt-4o-mini:batch:nitro')
+    && !listed('openai/gpt-4o-mini:batch:floor:online') && !listed('openai/gpt-4o-mini:batch@preset/email-writer')
+    && !listed('openai/gpt-4o-mini:batch:thinking'))
+  const batchWords = (id: string, use: string) => `The model "${id}" is a batch-only variant: it runs only through `
+    + `OpenRouter's batch API, which Cubex doesn't use. Use "${use}" instead.`
+  const refusals = [
+    batchOnlyRefusal('openai/gpt-4o-mini:batch'), batchOnlyRefusal(' openai/gpt-4o-mini:batch:nitro '),
+    batchOnlyRefusal('openai/gpt-4o-mini:batch@preset/email-writer'),
+    batchOnlyRefusal('openai/gpt-4o-mini:batch:thinking:nitro'),
+  ]
+  check('a :batch refusal names the id without :batch, routing variants and preset kept', JSON.stringify(refusals)
+    === JSON.stringify([batchWords('openai/gpt-4o-mini:batch', 'openai/gpt-4o-mini'),
+      batchWords('openai/gpt-4o-mini:batch:nitro', 'openai/gpt-4o-mini:nitro'),
+      batchWords('openai/gpt-4o-mini:batch@preset/email-writer', 'openai/gpt-4o-mini@preset/email-writer'),
+      batchWords('openai/gpt-4o-mini:batch:thinking:nitro', 'openai/gpt-4o-mini:thinking:nitro')]), refusals)
+  check('only a :batch variant is refused that way',
+    [batchOnlyRefusal('openai/gpt-4o-mini'), batchOnlyRefusal('meta/llama-4:free:nitro'),
+      batchOnlyRefusal('@preset/batch'), batchOnlyRefusal('batch'), batchOnlyRefusal(':batch'),
+      batchOnlyRefusal('openai/gpt-4o-mini:batched')].every(r => r === null))
+  check('without a list, a :batch variant is still refused and nothing else is',
+    modelGone(null, 'openai/gpt-4o-mini:batch:nitro', 'Fix.') === batchWords('openai/gpt-4o-mini:batch:nitro',
+      'openai/gpt-4o-mini:nitro') && modelGone(null, 'nobody/none', 'Fix.') === null)
+  check('a model the list lacks gets the fix after its refusal; a :batch one gets the batch words alone',
+    modelGone(ids, 'openai/gpt-4o-mni', 'Fix.')?.endsWith('mistyped. Fix.') === true
+    && modelGone(ids, 'openai/gpt-4o-mini:batch', 'Fix.')
+      === batchWords('openai/gpt-4o-mini:batch', 'openai/gpt-4o-mini'))
+  check('runnableModels leaves out the :batch entries only', JSON.stringify(runnableModels(LISTED.map(id => ({ id }))))
+    === JSON.stringify(['openai/gpt-4o-mini', 'meta/llama-4:free', 'openrouter/auto'].map(id => ({ id }))))
   check('a deprecated catalog variant of a listed model is accepted', listed('openai/gpt-4o-mini:thinking'))
   check('a catalog variant the list lacks is not', !listed('openai/gpt-4o-mini:free'))
   check('a mistyped id, an unknown variant and a bare variant are not',

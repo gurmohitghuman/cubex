@@ -47,8 +47,8 @@ export async function startAiMultiRun(
 
   const resolvedModel = resolveAiModel(p.model, p.sheetId, userId);
   if (!resolvedModel) return { fail: 'no_model', message: NO_MODEL_ERROR };
-  const gone = modelGone(models, resolvedModel);
-  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
+  const gone = modelGone(models, resolvedModel, 'Choose another model.');
+  if (gone) return { fail: 'bad_request', message: gone };
 
   // The search plan, awaited before the checks below (none may await between
   // them and the insert), as in ai-run-start.ts.

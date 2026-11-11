@@ -1,10 +1,13 @@
 import type { TrimmedModel } from './openrouter';
+import { runnableModels } from './ai-model-check';
 
 // Model catalog search for the token surfaces (MCP list_models, GET /v1/models):
 // case-insensitive substring on id or name, an exact id match first (searching
 // "deepseek/deepseek-v4-flash" used to return a longer id ahead of it), and no
-// descriptions: they run to paragraphs and made the full list ~170 KB.
-export function searchModels(models: TrimmedModel[], search: string | undefined, limit: number) {
+// descriptions: they run to paragraphs and made the full list ~170 KB. No
+// ":batch" variant: Cubex can't run one (lib/ai-model-check.ts).
+export function searchModels(all: TrimmedModel[], search: string | undefined, limit: number) {
+  const models = runnableModels(all);
   const needle = search?.trim().toLowerCase();
   let matching = needle
     ? models.filter(m => m.id.toLowerCase().includes(needle) || m.name.toLowerCase().includes(needle))

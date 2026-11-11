@@ -36,9 +36,6 @@ export const TRANSFER_MAX_ROWS = 10000;
 export const TRANSFER_MAX_STORED_BYTES = 32 * 1024 * 1024;
 export const TRANSFER_MAX_WRITER_MS = 2000;
 export const TRANSFER_SCAN_BATCH = 250;
-export const MCP_EFFICIENT_ROWS_ENABLED = ['1', 'true'].includes(
-  (process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase(),
-);
 
 // transform_column (non-AI server-side cell transforms). Regex ReDoS guard:
 // bounded pattern length + input the regex runs against (see lib/transform-ops).
@@ -96,9 +93,8 @@ export const SAVED_KEY_USES_LISTED = 50;
 
 // How long an MCP client may keep server/discover and tools/list (2026-07-28
 // ttlMs) before asking again. Cubex sends no list-changed notices, so this is
-// the only freshness signal: tools that change (a new version, a restart that
-// flips MCP_EFFICIENT_ROWS_ENABLED) and the spend a description names show
-// within five minutes. Both answers name the token's spend cap, so they are
+// the only freshness signal: tools that change with a new version and the
+// spend a description names show within five minutes. Both answers name the token's spend cap, so they are
 // private to the token (mcp/build-server.ts).
 export const MCP_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
 

@@ -1,3 +1,4 @@
+// Over 200 lines: one rerun flow, its checks in the order the seeded run needs them.
 // HTTP column rerun — the flow behind POST /api/http/rerun, extracted verbatim
 // so the UI route, /api/v1 and MCP share one implementation. Inherits the
 // latest run's config + the sheet's CURRENT column associations for the master
@@ -54,6 +55,8 @@ export interface HttpRerunParams extends RerunScope {
   // no-secrets caller must never cause saved-key fallback). undefined = copy
   // the parent (UI/cookie reruns, which carry full owner authority).
   forceAllowSecrets?: boolean;
+  // Requests at once for the new run (control_run's and the REST rerun's concurrency): its config keeps it.
+  batchSize?: number;
 }
 
 export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promise<RerunOutcome> {
@@ -107,6 +110,7 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   const allColumns = [cleanMaster, ...extractedColumns];
 
   const config: HTTPAPIConfig = JSON.parse(latestRun.config);
+  if (p.batchSize !== undefined) config.batchSize = p.batchSize;
   // An enrichment starts through services/enrich-run-start.ts (the live tool,
   // inputs, limits and which rows): a plain clone here would skip all that.
   if (isEnrichmentConfig(config)) {

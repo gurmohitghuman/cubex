@@ -22,13 +22,6 @@ function parsed(result: any): any {
   return text ? JSON.parse(text) : null
 }
 
-// transfer_rows is flag-gated at process start; without the flag the tool is
-// absent from discovery, so the whole workflow test only runs when enabled.
-test.skip(
-  !['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase()),
-  'requires MCP_EFFICIENT_ROWS_ENABLED=1 in the harness env',
-)
-
 test('efficient MCP rows: query, batch update, idempotent copy and atomic move', async () => {
   const api = await authedApi()
   const { tableId, sheetId: sourceId } = await seedSheet(api, 4)

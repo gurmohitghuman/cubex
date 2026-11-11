@@ -4,7 +4,7 @@
 // parameters are zod schemas turned into JSON Schema 2020-12, which OpenAPI
 // 3.1 uses as it is. Success answers say what they hold in words only.
 import { z } from 'zod';
-import { API_V1_MAX_JSON_BYTES, API_V1_RATE_PER_MIN, MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
+import { API_V1_MAX_JSON_BYTES, API_V1_RATE_PER_MIN } from '../lib/api-v1-constants';
 import { apiV1Routes } from './registry';
 import { TAGS, type RouteDoc } from './route-doc';
 
@@ -110,7 +110,7 @@ const DESCRIPTION = [
 ].join('\n\n');
 
 function build(): Json {
-  const routes = apiV1Routes().filter(r => !r.flag || MCP_EFFICIENT_ROWS_ENABLED);
+  const routes = apiV1Routes();
   const paths: Record<string, Json> = {};
   for (const route of routes) (paths[route.path] ??= {})[route.method] = operation(route);
   return {

@@ -25,7 +25,6 @@ Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LO
 | `AI_CALL_DEADLINE_MS` | `600000` | Longest one AI call may take, answer included, before its row fails as timed out. |
 | `DISK_LOW_MB` | `200` | Free space on the data folder below which the health check says `low` and stalled runs aren't started again. |
 | `CUBEX_START_TIMEOUT` | `600` | Seconds `cubex start` waits for Cubex to answer (30 to 86400). A big database takes a while to check, and to upgrade after an update. A server that keeps crashing fails sooner. |
-| `MCP_EFFICIENT_ROWS_ENABLED` | off | Set to `1` to give agents the `transfer_rows` and `transform_column` tools. |
 | `JWT_SECRET`, `APP_ENCRYPTION_KEY` | generated | Created on first boot. Set them only to manage them yourself. |
 
 There are no limits on tables or sheets. A million rows per sheet runs comfortably on an ordinary server: the grid loads rows as you scroll, and the big jobs (import, sort, renaming or deleting a column, AI and HTTP runs) work through the sheet in small batches, so memory stays low and Cubex keeps answering while they run. The measured numbers are in [Performance](performance.md).

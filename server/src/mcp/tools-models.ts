@@ -28,7 +28,7 @@ export function registerModelTools(server: McpServer, ctx: McpAuthCtx) {
     'list_models',
     {
       description:
-        'List AI models available for run_ai_column (OpenRouter catalog: id, name, context length, per-token pricing). Use search to narrow (e.g. "claude", "gpt-4o", "gemini") — the full catalog is 300+ models. Also returns the account\'s default model (used when a run specifies none).',
+        'List AI models available for run_ai_column (OpenRouter catalog: id, name, context length, per-token pricing; no ":batch" variants, which run only through OpenRouter\'s batch API and are refused). Use search to narrow (e.g. "claude", "gpt-4o", "gemini") — the full catalog is 300+ models. Also returns the account\'s default model (used when a run specifies none).',
       inputSchema: {
         search: z.string().optional().describe('Case-insensitive substring match on model id/name'),
         limit: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Max results, default ${DEFAULT_LIMIT}`),

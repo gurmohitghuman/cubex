@@ -54,8 +54,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // an AI column only ever runs on a model the user chose.
   const resolvedModel = resolveAiModel(p.model, p.sheetId, userId);
   if (!resolvedModel) return { fail: 'no_model', message: NO_MODEL_ERROR };
-  const gone = modelGone(models, resolvedModel);
-  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
+  const gone = modelGone(models, resolvedModel, 'Choose another model.');
+  if (gone) return { fail: 'bad_request', message: gone };
 
   // Search engine, price and cap (lib/web-search-plan.ts). Awaited before the
   // checks below: from the conflict check to the insert there is no await.

@@ -7,16 +7,6 @@ import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 // needed. Covers the headline case (extract a number from "N | reason"),
 // template, where-filtering, target creation, collision + ReDoS rejection.
 
-// transform_column is flag-gated at process start (same flag as transfer_rows);
-// without it the tool is absent from discovery and every call errors, so skip
-// rather than fail the default harness run.
-test.skip(
-  !['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase()),
-  'requires MCP_EFFICIENT_ROWS_ENABLED=1 in the harness env',
-)
-
-
-
 async function mcpClient(token: string): Promise<Client> {
   const client = new Client({ name: 'e2e-transform', version: '1.0.0' })
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {

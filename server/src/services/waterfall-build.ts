@@ -126,8 +126,8 @@ export async function buildWaterfall(
       }
       const model = resolveAiModel(c.model, ctx.sheetId, ctx.userId);
       if (!model) return bad(`${where}: ${NO_MODEL_ERROR}`);
-      const gone = await modelProblem(model);
-      if (gone) return bad(`${where}: ${gone} Choose another model for this step.`);
+      const gone = await modelProblem(model, 'Choose another model for this step.');
+      if (gone) return bad(`${where}: ${gone}`);
       const price = await priceAiStep(ctx.userId, w, model, c.prompt, c.webSearch, sample);
       if ('error' in price) return bad(`${where}: ${price.error}`);
       ai.set(id, price.ok);

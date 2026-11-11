@@ -65,8 +65,8 @@ export function resumeCapRefusal(kind: RunKind, runId: string, userId: string): 
 export function resumeModelRefusal(kind: RunKind, runId: string, userId: string, models: ModelList): string | null {
   if (kind !== 'ai') return null;
   const run = getRun(kind, runId, userId);
-  const gone = run && run.status === 'paused' && run.model ? modelGone(models, run.model) : null;
-  return gone ? `${gone} Edit the column to choose another model, then run it again.` : null;
+  return run && run.status === 'paused' && run.model
+    ? modelGone(models, run.model, 'Edit the column to choose another model, then run it again.') : null;
 }
 
 export function pauseRun(kind: RunKind, runId: string, userId: string): ControlOutcome {
@@ -92,10 +92,13 @@ export function pauseRun(kind: RunKind, runId: string, userId: string): ControlO
 // existing HTTP run whose stored config references a saved key would have the
 // worker inject the decrypted key, so a run-scope-only PAT must be refused
 // (the authoring-time scan doesn't cover operating a run you didn't author).
-// aiSpendLimitUsd: an AI run's new spend limit, written by the update that
-// resumes it, so a resume refused here leaves the old one (ai-run-limit.ts).
+// aiSpendLimitUsd: an AI run's new spend limit, and httpBatchSize an HTTP API
+// run's new requests at once (its config's batchSize: http-run-resume.ts), each
+// written by the update that resumes it, so a resume refused here leaves the old
+// one (ai-run-limit.ts).
 export async function resumeRun(
   kind: RunKind, runId: string, userId: string, hasSecretsScope: boolean, aiSpendLimitUsd: number | null = null,
+  httpBatchSize: number | null = null,
 ): Promise<ControlOutcome> {
   // An AI run's model is looked up in OpenRouter's list, read before the
   // checks below (nothing between them and the resume may wait).
@@ -155,8 +158,9 @@ export async function resumeRun(
   const token = resumeTokenFor(userId, run.access_token_id);
   const resumed = kind === 'http'
     ? db.prepare(`UPDATE http_runs SET status = 'pending', worker_generation = worker_generation + 1,
-         updated_at = datetime('now'), pause_reason = NULL, error_message = NULL, access_token_id = ?
-       WHERE id = ? AND user_id = ? AND status = 'paused'`).run(token, runId, userId)
+         updated_at = datetime('now'), pause_reason = NULL, error_message = NULL, access_token_id = ?,
+         config = CASE WHEN ? IS NULL THEN config ELSE json_set(config, '$.batchSize', ?) END
+       WHERE id = ? AND user_id = ? AND status = 'paused'`).run(token, httpBatchSize, httpBatchSize, runId, userId)
     : db.prepare(`UPDATE ai_runs SET status = 'pending', worker_generation = worker_generation + 1,
          updated_at = datetime('now'), pause_reason = NULL, error_message = NULL, access_token_id = ?,
          spend_limit_usd = IFNULL(?, spend_limit_usd)

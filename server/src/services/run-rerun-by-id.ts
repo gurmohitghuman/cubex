@@ -13,6 +13,7 @@ import { rerunHttpColumn } from './http-run-rerun';
 import { resolveRowIdsToIndexes } from './run-shared';
 import { isWaterfallRun } from './waterfall-agent-control';
 import { usdLimitOf } from '../lib/cost-ceiling';
+import { httpConcurrencyProblem } from '../lib/run-concurrency';
 
 // Names the latest run, so a caller with no run list can go straight to it.
 const superseded = (latestId: string): string =>
@@ -77,10 +78,14 @@ export async function rerunAiRunById(
   });
 }
 
+// concurrency: requests at once for the new run (its config's batchSize, which
+// later reruns repeat); left out, the run's own.
 export async function rerunHttpRunById(
   userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: RerunMode; hasSecretsScope: boolean; firstRows?: number },
+  opts: { rowIds?: string[]; mode?: RerunMode; hasSecretsScope: boolean; firstRows?: number; concurrency?: number },
 ): Promise<RerunOutcome> {
+  const tooMany = httpConcurrencyProblem(opts.concurrency);
+  if (tooMany) return { fail: 'bad_request', message: tooMany };
   const run = db.prepare(
     'SELECT id, sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?',
   ).get(runId, userId) as { id: string; sheet_id: string; master_column_name: string | null } | undefined;
@@ -123,7 +128,7 @@ export async function rerunHttpRunById(
 
   return rerunHttpColumn(userId, {
     sheetId: run.sheet_id, masterColumnName: run.master_column_name,
-    mode: opts.mode, rowIndices: t.indexes, firstRows: opts.firstRows,
+    mode: opts.mode, rowIndices: t.indexes, firstRows: opts.firstRows, batchSize: opts.concurrency,
     // A no-'secrets' caller's rerun produces a FROZEN clone: even a key created
     // after the gate check above can never resolve. A secrets caller keeps the
     // parent's policy (copy). See http-run-rerun.ts forceAllowSecrets.

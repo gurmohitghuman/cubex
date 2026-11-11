@@ -27,7 +27,6 @@ import runUndoV1 from './api-v1-run-undo';
 import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import waterfallV1 from './api-v1-waterfall';
-import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import runConditionsV1 from './api-v1-run-conditions';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
@@ -73,7 +72,7 @@ router.use(tableSheetsV1);
 router.use(sheetsV1);
 router.use(sheetOpsV1);
 router.use(rowsV1);
-if (MCP_EFFICIENT_ROWS_ENABLED) router.use(transferV1);
+router.use(transferV1);
 router.use(columnsV1);
 // Clean data columns: free cleaning into a new column (services/clean-agent.ts).
 router.use(cleanV1);

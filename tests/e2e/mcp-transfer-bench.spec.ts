@@ -12,11 +12,6 @@ const ROWS = 10_000
 const COLUMNS = 10
 const CELL = 'x'.repeat(80) // ~800B/row of cell data, ~8 MB sheet
 
-test.skip(
-  !['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase()),
-  'requires MCP_EFFICIENT_ROWS_ENABLED=1 in the harness env',
-)
-
 test('bench: 10k-row transfer copy + move stay inside the writer budgets', async () => {
   test.setTimeout(180_000)
   const api = await authedApi()

@@ -133,8 +133,9 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
   // too (the run's start checks the model it resolves) for the estimate and
   // preview paths, with where to look the id up.
   if (typeof a.model === 'string' && a.model.trim()) {
-    const gone = await modelProblem(a.model.trim());
-    if (gone) return bad(`${gone} Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.`);
+    const gone = await modelProblem(a.model.trim(),
+      'Use list_models (MCP) or GET /api/v1/models?search= to find the exact id.');
+    if (gone) return bad(gone);
   }
   // The estimate a ceiling is checked against is the one estimate_only answers.
   const estimate = async () => {
