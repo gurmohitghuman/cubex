@@ -4,7 +4,9 @@
 // again with the list answering without that model: the same start with no key is refused for the model; with
 // its key, sent more times than the token's run-start window holds, it answers the first start each time, makes
 // no run and takes no slot (a new start goes through after). The same key with other arguments is still refused.
-// The stand-in for OpenRouter is ai-spend-kit.ts's; the job queue only records.
+// What the hash leaves out never replays where the start refuses it: an empty webhook_id, or an estimate_only
+// the start refuses, gets the start's 400 with a key too. The stand-in for OpenRouter is ai-spend-kit.ts's; the
+// job queue only records.
 import assert from 'node:assert/strict'
 import { startStandIn, world, PRICED } from './ai-spend-kit'
 
@@ -44,6 +46,23 @@ await ok(`an AI start retried with its key after its model left the list answers
       { fail: 'conflict', message: 'Idempotency key was already used with different arguments.' })
     const next = await tokenStartAiRun(c, { ...other, idempotency_key: 'ai-next' })
     assert.ok('ok' in next && next.started, `a new start after the retries: ${JSON.stringify(next)}`)
+  })
+
+await ok('an empty webhook_id or an estimate_only the start refuses, sent with a started key, gets the start\'s 400',
+  async () => {
+    const c = { userId: uid, tokenId: 'tok-ai-shape', scopes: new Set(['read', 'write', 'run']) }
+    const args = { sheet_id: sheetOf(1), column_name: 'Hi', prompt: 'Say hi to /name', model: PRICED,
+      idempotency_key: 'ai-shape' }
+    const first = await tokenStartAiRun(c, args)
+    assert.ok('ok' in first && first.started, JSON.stringify(first))
+    for (const webhook_id of ['', '  ', 0, false]) {
+      assert.deepEqual(await tokenStartAiRun(c, { ...args, webhook_id }),
+        { fail: 'bad_request', message: 'webhook_id must be the id of a run webhook.' }, JSON.stringify(webhook_id))
+    }
+    for (const estimate_only of ['maybe', null, 0, 'FALSE']) {
+      assert.deepEqual(await tokenStartAiRun(c, { ...args, estimate_only }),
+        { fail: 'bad_request', message: 'estimate_only must be true or false' }, JSON.stringify(estimate_only))
+    }
   })
 
 stand.close()

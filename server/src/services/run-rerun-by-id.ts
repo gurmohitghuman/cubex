@@ -137,14 +137,13 @@ export async function rerunHttpRunById(userId: string, runId: string, opts: Http
   return 'fail' in params ? params : rerunHttpColumn(userId, params);
 }
 
-// /api/v1 and MCP ask this before a rerun by id takes its run-start slot: the refusal for a column its request
-// reads that another run holds (lib/http-held-inputs.ts), so retrying while the hold lasts never uses up the
-// token's window. Only when that is the first thing the rerun would refuse: when another refusal comes first (no
-// 'secrets' scope, a column it reads deleted, a run still active on its own column), null, and the rerun gives
-// that one itself, as it always has. Writes nothing.
-export function rerunHeldFirst(userId: string, runId: string, opts: HttpRerunOpts): string | null {
+// /api/v1 and MCP ask this before a rerun by id takes its run-start slot: the first thing the rerun refuses, in
+// its order and words, up to the request it sends again (its run, the 'secrets' scope, its rows, the column, a
+// column the request reads deleted or held by another run), so retrying while it holds never uses up the
+// token's window. null when the rerun goes on; it checks all of it again. Writes nothing.
+export function rerunRefusalFirst(userId: string, runId: string, opts: HttpRerunOpts): RunFail | null {
   const params = httpRerunByIdChecks(userId, runId, opts);
-  if ('fail' in params) return null;
+  if ('fail' in params) return params;
   const basis = httpRerunChecks(userId, params);
-  return 'fail' in basis && basis.held ? basis.message : null;
+  return 'fail' in basis ? basis : null;
 }

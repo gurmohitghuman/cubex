@@ -33,7 +33,7 @@ import { type RateDecision } from '../lib/rate-window';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { runIfReply } from './run-rule';
-import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
+import { attachRunWebhook, webhookIdProblem, webhookIdShapeProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 import { aiCeilingCheck, aiRunLimitsOf, aiRunRequestHash } from './run-start-ceiling';
 
@@ -102,7 +102,9 @@ export function ledgerReplay(c: TokenCaller, key: unknown, hash: string | readon
 // checks then run in their order, its ledgerReplay refusing a key used with other arguments, as always.
 export function firstStart(c: TokenCaller, key: unknown, hash: () => string | null): RunLedgerResult | null {
   if (!isIdempotencyKey(key)) return null;
-  const sent = hash();
+  let sent: string | null;
+  // Arguments nested too deep to hash: no lookup, and the start's own checks refuse them.
+  try { sent = hash(); } catch { return null; }
   const prior = sent ? readRunLedger(c.userId, key, sent) : null;
   return prior && 'replay' in prior ? prior.replay : null;
 }
@@ -149,6 +151,7 @@ function aiArgsOf(sheetId: string, a: TokenAiRunArgs): RunParams | { ok: false; 
 // The hash a start is known by, from its arguments alone; null when they don't parse (the start refuses them).
 function aiSentHash(a: TokenAiRunArgs): string | null {
   if (typeof a.sheet_id !== 'string' || a.preview_rows !== undefined || !startsRun(a.estimate_only)) return null;
+  if (webhookIdShapeProblem(a.webhook_id)) return null;
   const parsed = aiArgsOf(a.sheet_id, a);
   const limits = aiRunLimitsOf(a);
   return parsed.ok && !('error' in limits) ? aiRunRequestHash(a.sheet_id, a, parsed, limits) : null;

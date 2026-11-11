@@ -11,6 +11,7 @@ import { readRunLedger, runRequestHash, writeRunLedger } from '../lib/run-idempo
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { waitForRunChange } from './run-status-wait';
 import { startWaterfallDryRun } from './waterfall-dry-run';
+import { replayKeysRefusal } from './waterfall-run-start';
 import { readDryRun, type DryRunView } from './waterfall-dry-read';
 
 type Json = Record<string, unknown>;
@@ -55,7 +56,11 @@ export async function tokenDryRun(c: TokenCaller, sheetId: string, input: Waterf
     .filter((h): h is string => !!h);
   const prior = key ? readRunLedger(c.userId, key, hash) : null;
   if (prior && 'conflict' in prior) return bad(IDEMPOTENCY_CONFLICT_MESSAGE);
-  if (prior) return answerDryRun(c, prior.replay.run_id, true);
+  if (prior) {
+    // A token without 'secrets' gets the start's refusal for a dry run whose steps read a saved key.
+    return replayKeysRefusal(c.userId, prior.replay.run_id, c.scopes.has('secrets'))
+      ?? answerDryRun(c, prior.replay.run_id, true);
+  }
   const limited = startWindow(c);
   if (limited) return limited;
   const out = await startWaterfallDryRun(c.userId, sheetId, input, { hasSecretsScope: c.scopes.has('secrets') });

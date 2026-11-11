@@ -5,6 +5,7 @@ import { parseRuleField } from '../lib/run-condition';
 import { runRequestHash } from '../lib/run-idempotency';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { startsRun } from './run-start-token';
+import { webhookIdShapeProblem } from './run-hooks-attach';
 import type { TokenHttpRunArgs } from './run-start-token-http';
 
 export const wholeIn = (v: unknown, lo: number, hi: number) =>
@@ -17,7 +18,8 @@ export function httpRunHash(sheetId: string, a: TokenHttpRunArgs, runIf: string 
     sheet_id: sheetId, url: a.url, method: a.method, headers: a.headers, body: a.body,
     response_mapping: a.response_mapping, master_column_name: a.master_column_name, target_row_ids: a.target_row_ids,
     batch_size: a.batch_size, timeout_ms: a.timeout_ms, ...(runIf ? { run_if: runIf } : {}),
-    ...(a.curl !== undefined ? { curl: a.curl, save_keys: a.save_keys } : {}),
+    // Either one sent: save_keys without curl is refused, so it never hashes like a start without it.
+    ...(a.curl !== undefined || a.save_keys !== undefined ? { curl: a.curl, save_keys: a.save_keys } : {}),
     // Only when given, so a retry that spans the release still replays.
     ...(extras.retries === undefined ? {} : { retries: extras.retries }),
     ...(extras.retryPost ? { retry_post: true } : {}),
@@ -29,7 +31,7 @@ export function httpRunHash(sheetId: string, a: TokenHttpRunArgs, runIf: string 
 
 // From the arguments alone; null when they don't parse (the start refuses them).
 export function httpSentHash(a: TokenHttpRunArgs): string | null {
-  if (typeof a.sheet_id !== 'string' || !startsRun(a.estimate_only)) return null;
+  if (typeof a.sheet_id !== 'string' || !startsRun(a.estimate_only) || webhookIdShapeProblem(a.webhook_id)) return null;
   const runIf = parseRuleField(a.run_if, 'run_if');
   const extras = httpRunExtras(a);
   return 'error' in runIf || typeof extras === 'string' ? null : httpRunHash(a.sheet_id, a, runIf.ok, extras);

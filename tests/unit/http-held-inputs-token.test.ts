@@ -4,8 +4,8 @@
 // (a cURL command with save_keys too, which saves no key) and an estimate are refused; a rerun over /api/v1 or
 // MCP control_run is refused before it takes a run-start slot, so retrying any of them while the hold lasts never
 // uses up the token's window. A rerun another refusal comes first for (no 'secrets' scope, a column it reads
-// deleted, a run still active on its own column) gets that one at once. Once the clear is done each goes
-// through. The job queue only records: no run is worked and nothing is sent.
+// deleted, a run still active on its own column) gets that one at once, before it takes a slot. Once the clear
+// is done each goes through. The job queue only records: no run is worked and nothing is sent.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -202,19 +202,24 @@ const FIRST: Array<{ why: string; status: number; error: string; run: (sid: stri
     error: 'A run on this column is still active, or still clearing the cells of a stopped run. Wait for it to '
       + 'finish, or stop it first.', run: sid => pushRun(sid, '', 'running') },
 ]
+// Refused TRIES times, then a rerun that goes through, by the same token: no refusal took a run-start slot.
 for (const [surface, rerun] of Object.entries(RERUN)) {
   for (const f of FIRST) {
-    await ok(`${surface}: a rerun with ${f.why}, while a column it reads is held, gets that refusal at once`,
-      async () => {
-        const sid = fresh(['Push'])
-        const id = f.run(sid)
-        const h = await hold(sid)
-        const want = `${surface === 'rest' ? f.status : 'error'} ${f.error}`
-        assert.deepEqual(await rerun(id), { refused: true, error: want })
-        assert.equal(runsOn(sid), 2, 'no run made')
-        h.stop()
-        await h.back()
-      })
+    await ok(`${surface}: a rerun with ${f.why}, while a column it reads is held, gets that refusal at once, `
+      + `${TRIES} times, taking no run-start slot`, async () => {
+      const sid = fresh(['Push'])
+      const id = f.run(sid)
+      const h = await hold(sid)
+      const want = `${surface === 'rest' ? f.status : 'error'} ${f.error}`
+      for (let i = 0; i < TRIES; i++) assert.deepEqual(await rerun(id), { refused: true, error: want }, `try ${i}`)
+      assert.equal(runsOn(sid), 2, 'no run made')
+      h.stop()
+      await h.back()
+      const clean = fresh(['Push'])
+      const out = await rerun(pushRun(clean))
+      assert.equal(out.refused, false, `a rerun after the refusals: ${out.error}`)
+      assert.equal(runsOn(clean), 2)
+    })
   }
 }
 

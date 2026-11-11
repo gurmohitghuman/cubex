@@ -84,8 +84,13 @@ export function runRequestHash(kind: RunLedgerKind, config: Record<string, unkno
 
 // A start's arguments as the caller sent them, without the key and without what only says it is a start
 // (estimate_only false or left out; a waterfall's action 'run'): read before anything else, so a retry
-// answers the first start even after the sheet, its saved keys or the catalog changed.
-export function sentArgsHash(kind: RunLedgerKind, args: object, omit: readonly string[] = []): string {
+// answers the first start even after the sheet, its saved keys or the catalog changed. null for arguments
+// nested too deep to read: no start was made with them, and the start's own checks refuse them.
+export function sentArgsHash(kind: RunLedgerKind, args: object, omit: readonly string[] = []): string | null {
   const skip = new Set(['idempotency_key', 'estimate_only', ...omit]);
-  return canonicalHash(kind, { sent: Object.fromEntries(Object.entries(args).filter(([k]) => !skip.has(k))) });
+  try {
+    return canonicalHash(kind, { sent: Object.fromEntries(Object.entries(args).filter(([k]) => !skip.has(k))) });
+  } catch {
+    return null;
+  }
 }

@@ -6,9 +6,16 @@ import { db } from '../lib/db';
 export type RunTable = 'ai_runs' | 'http_runs' | 'setup_runs';
 
 // null: no webhook named; a string: why the value can't be used.
+// What's wrong with a webhook_id's shape, read alone (a replay checks it before the ledger), or null.
+export function webhookIdShapeProblem(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  return typeof value !== 'string' || !value.trim() ? 'webhook_id must be the id of a run webhook.' : null;
+}
+
 export function webhookIdProblem(userId: string, value: unknown): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string' || !value.trim()) return 'webhook_id must be the id of a run webhook.';
+  const shape = webhookIdShapeProblem(value);
+  if (shape) return shape;
   const found = db.prepare('SELECT 1 FROM run_webhooks WHERE id = ? AND user_id = ?').get(value, userId);
   return found ? null
     : 'webhook_id doesn\'t match a run webhook. List them with list_run_webhooks or GET /api/v1/run-webhooks.';

@@ -90,11 +90,11 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   const { rowGeneration: _gen, rows, runIf, ...others } = parsed.ok;
   const rest = runIf ? { ...others, runIf } : others;
   // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
-  const hash = [sent() as string, runRequestHash('enrichment_run', {
+  const hash = [sent(), runRequestHash('enrichment_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun,
     ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  })];
+  })].filter((h): h is string => !!h);
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
   const limited = startWindow(c);

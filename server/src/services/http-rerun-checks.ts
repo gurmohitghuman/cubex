@@ -2,7 +2,7 @@
 // stored request it sends again, read without writing: a busy sheet, the sheet, a run still active on the
 // column, its newest run, an enrichment or waterfall (they rerun their own way), then the stored request (a
 // column it reads deleted since, or held by another run). A rerun by run id asks it ahead of its run-start
-// slot too (services/run-rerun-by-id.ts rerunHeldFirst).
+// slot too (services/run-rerun-by-id.ts rerunRefusalFirst).
 import { db } from '../lib/db';
 import { getSheetColumns, sanitizeColumnName, verifySheetOwnership } from '../lib/sql-helpers';
 import { type HTTPAPIConfig } from '../lib/http-request';

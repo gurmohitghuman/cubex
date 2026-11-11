@@ -1,147 +1,91 @@
-// An enrichment or waterfall start (and a waterfall dry run) sent again with its idempotency key answers what its
-// first call started (replayed: true), whatever changed since: the key is read before the catalog, the webhook,
-// the sheet and its rows. An enrichment whose webhook was deleted while treg's catalog can't be reached, a
-// waterfall whose webhook was deleted, and a dry run whose row was deleted: the same call with no key is refused
-// now; with its key, sent more times than the token's run-start window holds, it answers the first call each
-// time, makes no run and takes no slot (a new start goes through after). The same key with other arguments is
-// still refused. treg is the repo's mock (tests/mock-treg); the job queue only records, so nothing is called.
+// An enrichment start sent again with its idempotency key answers what its first call started (replayed: true),
+// whatever changed since: the key is read before the catalog, the webhook, the sheet and its rows. Its webhook
+// deleted while treg's catalog can't be reached: the same call with no key is refused now; with its key, sent
+// more times than the token's run-start window holds, it answers the first call each time, makes no run and takes
+// no slot (a new start goes through after), and the same key with other arguments is still refused. A key from
+// before the arguments as sent were kept (its parsed hash alone) still replays. Inputs nested 5,000 levels deep
+// get the start's own 400, with a key or without, over the service and /api/v1. treg is the repo's mock.
 import assert from 'node:assert/strict'
-import net from 'node:net'
-import path from 'node:path'
-import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
+import express from 'express'
+import { tregKit, type Args, type Start } from './token-replay-treg-kit'
 
-if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-// The mock treg, on a port of its own; stopped when this test ends.
-const tregPort = await new Promise<number>(resolve => {
-  const s = net.createServer().listen(0, '127.0.0.1', () => {
-    const p = (s.address() as AddressInfo).port
-    s.close(() => resolve(p))
-  })
-})
-const treg = spawn(process.execPath, ['tests/mock-treg/server.mjs', String(tregPort)], { stdio: 'ignore' })
-process.on('exit', () => treg.kill())
-const TREG = `http://127.0.0.1:${tregPort}`
-for (;;) {
-  try { if ((await fetch(`${TREG}/health`)).ok) break } catch { /* not up yet */ }
-  await sleep(50)
-}
-process.env.TREG_BASE_URL = TREG
-const tregDown = (down: boolean) => fetch(`${TREG}/__mock/state`, { method: 'POST', body: JSON.stringify({ down }) })
-// A run webhook's address must look public: the e2e shim resolves *.cubex-e2e.invalid so (nothing is sent).
-process.env.E2E_RECEIVER_PORT = '9'
-createRequire(import.meta.url)('../e2e/net-shim.cjs')
-
-const { undoKit } = await import('./run-undo-kit')
-const { saveTregToken } = await import('../../server/src/services/treg-key')
+const k = await tregKit('token-replay-first-enrich')
+const { db, uid, ok, done, idle, TRIES, runsOn, replays, preUpgradeRow, hook, caller, fresh, tregDown } = k
 const { clearCatalogCache } = await import('../../server/src/lib/treg-catalog')
-const { createRunWebhook, deleteRunWebhook } = await import('../../server/src/services/run-hooks')
-const { deleteRowsByIds } = await import('../../server/src/services/rows-write')
+const { deleteRunWebhook } = await import('../../server/src/services/run-hooks')
+const { sentArgsHash } = await import('../../server/src/lib/run-idempotency')
 const { tokenStartEnrichmentRun } = await import('../../server/src/services/enrich-token-run')
-const { tokenWaterfall } = await import('../../server/src/services/waterfall-token-run')
-const { MCP_RUN_STARTS_PER_MIN } = await import('../../server/src/lib/api-v1-constants')
-const { db, uid, ok, done, idle, sheet } = undoKit('token-replay-first-enrich')
-console.error = () => {}
-saveTregToken(uid, 'treg_mock_unit_team_key')
-createRequire(path.resolve('server/src/queue.ts'))('sidequest').Sidequest.build = () => ({ enqueue: async () => ({}) })
+const { default: v1Enrich } = await import('../../server/src/routes/api-v1-enrich')
 
-type Args = Record<string, unknown>
-type Start = (a: Args) => ReturnType<typeof tokenWaterfall>
-const c = (tokenId: string) => ({ userId: uid, tokenId, scopes: new Set(['read', 'write', 'run']) })
-const fresh = () => sheet([{ Name: 'Ada Lovelace', Website: 'a.example' }, { Name: 'Bob Stone', Website: 'b.example' }],
-  ['Name', 'Website'])
-const runsOn = (sid: string) => db.prepare('SELECT COUNT(*) FROM http_runs WHERE sheet_id = ?').pluck().get(sid)
-const CONFLICT = 'Idempotency key was already used with different arguments.'
-const HOOK_GONE = "webhook_id doesn't match a run webhook. "
-  + 'List them with list_run_webhooks or GET /api/v1/run-webhooks.'
-const TRIES = MCP_RUN_STARTS_PER_MIN + 1
-async function hook(name: string): Promise<string> {
-  const made = await createRunWebhook(uid, { url: `https://${name}.cubex-e2e.invalid/done` })
-  assert.ok('ok' in made, JSON.stringify(made))
-  return made.ok.webhook.id
-}
-
-// The first call with `key`, then `change`, then: no key refused as `now` says; the key TRIES times, each the
-// first call's answer replayed with no run made; the key with `other` arguments refused; a new key started.
-// dry: a dry run's answer is its trace, read again (its run is compared), and a key it knows with other arguments
-// is refused as a bad request (400), as before.
-async function replays(sid: string, start: Start, args: Args, key: string, change: () => Promise<void> | void,
-  now: { fail: string; message: string }, other: Args, settle?: () => Promise<void> | void, dry = false) {
-  const seen = (o: Args) => (dry ? { dry_run: o.dry_run, run_id: o.run_id, replayed: o.replayed } : o)
-  const first = await start({ ...args, idempotency_key: key })
-  assert.ok('ok' in first && first.started, JSON.stringify(first))
-  await idle(sid)
-  await change()
-  assert.deepEqual(await start(args), now, 'no key: refused now')
-  const runs = runsOn(sid)
-  for (let i = 0; i < TRIES; i++) {
-    const again = await start({ ...args, idempotency_key: key })
-    assert.ok('ok' in again, JSON.stringify(again))
-    assert.deepEqual({ ok: seen(again.ok as Args), started: again.started },
-      { ok: seen({ ...first.ok, replayed: true }), started: false }, `try ${i}`)
-  }
-  assert.equal(runsOn(sid), runs, 'no second run')
-  await settle?.()
-  assert.deepEqual(await start({ ...other, idempotency_key: key }),
-    { fail: dry ? 'bad_request' : 'conflict', message: CONFLICT })
-  const next = await start({ ...other, idempotency_key: `${key}-next` })
-  assert.ok('ok' in next && next.started, `a new start after the retries: ${JSON.stringify(next)}`)
-}
+const app = express()
+app.use(express.json())
+app.use('/v1', (req, _res, next) => {
+  Object.assign(req, { userId: uid, accessTokenId: 'tok-enrich-v1', tokenScopes: new Set(['read', 'write', 'run']) })
+  next()
+}, v1Enrich)
+const server = app.listen(0)
+const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+const start: Start = a => tokenStartEnrichmentRun(caller('tok-enrich'), a)
+const email = (sid: string, more: Args = {}) => ({ sheet_id: sid, tool_id: 'treg.people.email.find',
+  preset: 'verified_email', column_name: 'Work email', inputs: { full_name: 'Name', domain: 'Website' }, ...more })
 
 await ok(`an enrichment retried with its key after its webhook was deleted and while treg's catalog can't be `
   + `reached answers the first start ${TRIES} times`, async () => {
   const sid = fresh()
-  const args = { sheet_id: sid, tool_id: 'treg.people.email.find', preset: 'verified_email', column_name: 'Work email',
-    inputs: { full_name: 'Name', domain: 'Website' }, webhook_id: await hook('enrich') }
-  const start: Start = a => tokenStartEnrichmentRun(c('tok-enrich'), a)
-  await replays(sid, start, args, 'enrich-K', async () => {
-    assert.equal(deleteRunWebhook(uid, args.webhook_id), true)
-    await tregDown(true)
-    clearCatalogCache()
-  }, { fail: 'upstream', message: "Can't reach treg's catalog right now. Try again in a moment." },
-  { ...args, webhook_id: undefined, column_name: 'Other email', outputs: [{ field: 'email', column_name: 'Other' }] },
-  async () => { await tregDown(false) })
+  const args = email(sid, { webhook_id: await hook('enrich') })
+  await replays(sid, start, args, 'enrich-K', {
+    change: async () => {
+      assert.equal(deleteRunWebhook(uid, args.webhook_id as string), true)
+      await tregDown(true)
+      clearCatalogCache()
+    },
+    now: { fail: 'upstream', message: "Can't reach treg's catalog right now. Try again in a moment." },
+    other: { ...args, webhook_id: undefined, column_name: 'Other email', outputs: [{ field: 'email',
+      column_name: 'Other' }] },
+    settle: async () => { await tregDown(false) },
+  })
 })
 
-const STEPS = [
-  { kind: 'http', label: 'Own API', url: 'https://api.example.com/find?d={{domain}}', value_path: '$.email' },
-]
-const waterfall = (sid: string, more: Args = {}) => ({ sheet_id: sid, column_name: 'Found', result_type: 'email',
-  inputs: { domain: 'Website' }, steps: STEPS, ...more })
-
-await ok(`a waterfall retried with its key after its webhook was deleted answers the first start ${TRIES} times`,
+await ok('a key from before the sent arguments were kept (the parsed hash alone) still replays an enrichment',
   async () => {
     const sid = fresh()
-    const args = waterfall(sid, { webhook_id: await hook('waterfall'), estimate_only: false })
-    const start: Start = a => tokenWaterfall(c('tok-waterfall'), a, { estimateDefault: true })
-    await replays(sid, start, args, 'waterfall-K', () => {
-      assert.equal(deleteRunWebhook(uid, args.webhook_id as string), true)
-    }, { fail: 'bad_request', message: HOOK_GONE }, { ...args, webhook_id: undefined, column_name: 'Other' })
+    const args = email(sid)
+    const first = await start({ ...args, idempotency_key: 'enrich-legacy-new' })
+    assert.ok('ok' in first && first.started, JSON.stringify(first))
+    await idle(sid)
+    preUpgradeRow('enrich-legacy-new', 'enrich-legacy-old', sentArgsHash('enrichment_run', args), 'enrichment_run')
+    const runs = runsOn(sid)
+    assert.deepEqual(await start({ ...args, idempotency_key: 'enrich-legacy-old' }),
+      { ok: { ...first.ok, replayed: true }, started: false })
+    assert.equal(runsOn(sid), runs, 'no second run')
   })
 
-await ok(`a waterfall dry run retried with its key after its row was deleted reads the first dry run ${TRIES} times`,
+// 5,000 levels of { a: ... } as an input: the start's own refusal, with its key or without, and REST answers it
+// (400), not a server error. REST's body is written out as a client sends it.
+const LEVELS = 5000
+let deep: unknown = 'x'
+for (let i = 0; i < LEVELS; i++) deep = { a: deep }
+const deepJson = `${'{"a":'.repeat(LEVELS)}"x"${'}'.repeat(LEVELS)}`
+await ok('inputs nested 5,000 levels deep get the start\'s 400 with a key or without, over the service and REST',
   async () => {
     const sid = fresh()
-    const [rowId] = db.prepare('SELECT id FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck().all(sid) as string[]
-    const args = waterfall(sid, { dry_run: true, target_row_ids: [rowId] })
-    // The queue only records: a dry run is marked done here once it is made, so its answer doesn't wait.
-    const start: Start = async a => {
-      const before = runsOn(sid)
-      let answered = false
-      const answer = tokenWaterfall(c('tok-dry'), a, { estimateDefault: true }).finally(() => { answered = true })
-      while (!answered && runsOn(sid) === before) await sleep(10)
-      db.prepare("UPDATE http_runs SET status = 'completed' WHERE sheet_id = ? AND status != 'completed'").run(sid)
-      return answer
+    const args = email(sid, { inputs: { full_name: { value: deep }, domain: 'Website' } })
+    const message = 'Input full_name needs a column or a value.'
+    assert.deepEqual(await start(args), { fail: 'bad_request', message }, 'service, no key')
+    assert.deepEqual(await start({ ...args, idempotency_key: 'deep-enrich' }), { fail: 'bad_request', message },
+      'service, a key')
+    for (const key of [null, 'deep-enrich-rest']) {
+      const body = '{"tool_id":"treg.people.email.find","preset":"verified_email","column_name":"Work email",'
+        + `${key ? `"idempotency_key":"${key}",` : ''}"inputs":{"full_name":{"value":${deepJson}},"domain":"Website"}}`
+      const res = await fetch(`${base}/v1/sheets/${sid}/enrichment-runs`, { method: 'POST',
+        headers: { 'content-type': 'application/json' }, body })
+      assert.deepEqual({ status: res.status, body: await res.json() }, { status: 400, body: { error: message } },
+        `rest, ${key ? 'a key' : 'no key'}`)
     }
-    await replays(sid, start, args, 'dry-K', () => {
-      const out = deleteRowsByIds(sid, uid, [rowId])
-      assert.ok(!('fail' in out), JSON.stringify(out))
-    }, { fail: 'bad_request', message: `Unknown row id(s): ${rowId}` },
-    waterfall(sid, { dry_run: true, column_name: 'Other' }), undefined, true)
+    assert.equal(runsOn(sid), 0)
   })
 
-treg.kill()
+server.close()
+k.stop()
 done()

@@ -51,14 +51,27 @@ export function keysProblem(
     return { fail: 'conflict', message: 'Add your OpenRouter key in Settings first: an AI step needs it.' };
   }
   const keys = savedKeyRefsInRun(userId, p.config);
-  if (keys.length && !hasSecretsScope) {
-    return {
-      fail: 'forbidden',
-      message: `An HTTP step reads the saved key ${keys.map(k => `/${k}`).join(', ')}: this needs the 'secrets' scope.`,
-    };
-  }
+  if (keys.length && !hasSecretsScope) return stepKeysRefusal(keys);
   // A run that reads no saved key can never read one (a key made later included).
   return { allowSecrets: keys.length ? 1 : 0 };
+}
+
+const stepKeysRefusal = (keys: string[]): RunFail => ({
+  fail: 'forbidden',
+  message: `An HTTP step reads the saved key ${keys.map(k => `/${k}`).join(', ')}: this needs the 'secrets' scope.`,
+});
+
+// A replay answers only a token the start would accept for its scopes: without 'secrets', a run whose HTTP steps
+// read a saved key gets keysProblem's refusal, by the same test on the setup that run was started with (it may
+// come from the column's earlier run, so the arguments alone can't tell). Writes nothing.
+export function replayKeysRefusal(userId: string, runId: string, hasSecretsScope: boolean): RunFail | null {
+  if (hasSecretsScope) return null;
+  const stored = db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
+    .get(runId, userId) as string | null | undefined;
+  let config: unknown = null;
+  try { config = stored ? JSON.parse(stored) : null; } catch { config = null; }
+  const keys = config ? savedKeyRefsInRun(userId, config) : [];
+  return keys.length ? stepKeysRefusal(keys) : null;
 }
 
 export async function startWaterfallRun(

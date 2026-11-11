@@ -7,7 +7,7 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { pauseRun, resumeRun, cancelRun, ControlOutcome, RunKind } from '../services/run-lifecycle';
-import { rerunAiRunById, rerunHeldFirst, rerunHttpRunById } from '../services/run-rerun-by-id';
+import { rerunAiRunById, rerunHttpRunById, rerunRefusalFirst } from '../services/run-rerun-by-id';
 import { AI_RERUN_MODES, AiRerunMode, isRerunMode, RERUN_MODES, type RerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runFailHttpStatus, takeRunStart } from '../services/run-shared';
@@ -264,12 +264,12 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
     if (refuseBadWebhook(req, res, b)) return;
-    // A request reading a column another run holds is refused before it takes a run-start slot.
-    const held = rerunHeldFirst(req.userId!, req.params.id, {
+    // What the rerun refuses first (a column another run holds included) is answered before it takes a slot.
+    const refused = rerunRefusalFirst(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
       hasSecretsScope: req.tokenScopes?.has('secrets') === true,
     });
-    if (held) return res.status(409).json({ error: held });
+    if (refused) return res.status(runFailHttpStatus(refused)).json({ error: refused.message });
     if (refuseRunStart(req, res, false)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,

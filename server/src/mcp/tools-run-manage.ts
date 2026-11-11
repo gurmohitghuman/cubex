@@ -11,7 +11,7 @@ import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { resumeAiRun } from '../services/ai-run-limit';
-import { rerunAiRunById, rerunHeldFirst, rerunHttpRunById } from '../services/run-rerun-by-id';
+import { rerunAiRunById, rerunHttpRunById, rerunRefusalFirst } from '../services/run-rerun-by-id';
 import { startRefusalMessage, takeRunStart } from '../services/run-shared';
 import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
@@ -199,11 +199,11 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             + 're-bill EVERY row) or row_ids for a specific subset.',
           );
         }
-        // A request reading a column another run holds is refused before it takes a run-start slot.
-        const held = run_type === 'http' ? rerunHeldFirst(ctx.userId, run_id, {
+        // What an HTTP rerun refuses first (a column another run holds included) is answered before it takes a slot.
+        const refusedFirst = run_type === 'http' ? rerunRefusalFirst(ctx.userId, run_id, {
           rowIds: row_ids, mode, hasSecretsScope: hasSecrets, firstRows: first_rows,
         }) : null;
-        if (held) return err(held);
+        if (refusedFirst) return err(refusedFirst.message);
         // A plain HTTP rerun costs nothing here: only its run-start slot.
         const refused = takeRunStart(ctx.userId, ctx.tokenId, run_type === 'ai');
         if (refused) return err(startRefusalMessage(refused));

@@ -36,8 +36,28 @@ export interface TokenHttpRunArgs {
   webhook_id?: unknown;
 }
 
+// A replay answers only a token the start would accept for its scopes. Without 'secrets', a cURL command with a
+// key in it or a request naming a saved key goes through the start's own checks instead (the same tests:
+// curlForToken, then the saved-key check), so it gets the start's 'secrets' refusal in the start's words.
+function startNeedsSecrets(c: TokenCaller, a: TokenHttpRunArgs): boolean {
+  if (c.scopes.has('secrets')) return false;
+  let rq: { url?: unknown; headers?: unknown; body?: unknown } = a;
+  if (a.curl !== undefined) {
+    const parsed = curlForToken(c, a.sheet_id as string, a.curl, a.save_keys);
+    if ('fail' in parsed) return true;
+    rq = parsed.ok.prepared.request;
+  }
+  const headers = rq.headers ?? {};
+  const strings = !!headers && typeof headers === 'object' && !Array.isArray(headers)
+    && Object.values(headers).every(v => typeof v === 'string');
+  // A request the start refuses for its shape: its own checks answer.
+  if (typeof rq.url !== 'string' || !strings || (rq.body !== undefined && typeof rq.body !== 'string')) return true;
+  const request = { method: 'GET' as const, url: rq.url, headers: headers as Record<string, string>, body: rq.body };
+  return savedKeyRefsInConfig(c.userId, request).length > 0;
+}
+
 export async function tokenStartHttpRun(c: TokenCaller, sent: TokenHttpRunArgs): Promise<TokenRunResult> {
-  const first = replayFirst(c, sent.idempotency_key, () => httpSentHash(sent));
+  const first = replayFirst(c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)));
   if (first) return first;
   let a = sent;
   const pre = preamble(c, a);

@@ -7,7 +7,8 @@
 // scope for an HTTP step reading a saved key, and auto_run turned on once the
 // run has started. action 'describe' reads a column's setup instead. A retry
 // with the same key and arguments answers the first start (or dry run) before
-// the sheet, the column's earlier run or the webhook are read (firstStart).
+// the sheet, the column's earlier run or the webhook are read (firstStart),
+// and only to a token the start would accept for its scopes (replayKeysRefusal).
 import { db } from '../lib/db';
 import { runRequestHash, sentArgsHash, writeRunLedger } from '../lib/run-idempotency';
 import { parseBooleanOption } from '../lib/web-search-options';
@@ -15,7 +16,7 @@ import { parseWaterfallInput } from '../lib/waterfall/input';
 import { agentWaterfallBody } from '../lib/waterfall/agent-args';
 import { flagOf } from '../lib/enrich-agent-input';
 import { estimateWaterfall } from './waterfall-estimate';
-import { startWaterfallRun } from './waterfall-run-start';
+import { replayKeysRefusal, startWaterfallRun } from './waterfall-run-start';
 import { newestWaterfallRun, recallInput, waterfallSetup } from './waterfall-column';
 import { saveAutorunSettings } from './autorun-settings';
 import { sheetAutorunView } from './autorun-view';
@@ -24,7 +25,7 @@ import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { runIfReply } from './run-rule';
 import {
-  bad, firstStart, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult,
+  bad, firstStart, ledgerReplay, preamble, startsRun, startWindow, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
 import { answerDryRun, tokenDryRun } from './waterfall-token-dry';
@@ -78,10 +79,15 @@ export async function tokenWaterfall(
   const estimateOnly = a.estimate_only === undefined
     ? opts.estimateDefault && !dry
     : parseBooleanOption(a.estimate_only) === true;
-  // A dry run's answer is its trace, read again; a start's is what it answered.
-  const sent = () => (estimateOnly ? null : sentArgsHash(dry ? 'waterfall_dry' : 'waterfall_run', a, ['action']));
+  // A dry run's answer is its trace, read again; a start's is what it answered. Only estimate_only false or left
+  // out is a start: another value the start refuses (preamble) never hashes like one.
+  const sent = () => (estimateOnly || !startsRun(a.estimate_only)
+    ? null : sentArgsHash(dry ? 'waterfall_dry' : 'waterfall_run', a, ['action']));
   const known = firstStart(c, a.idempotency_key, sent);
-  if (known) return dry ? answerDryRun(c, known.run_id, true) : { ok: { ...known, replayed: true }, started: false };
+  // A token without 'secrets' replaying a run whose steps read a saved key: the start's own checks answer.
+  if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
+    return dry ? answerDryRun(c, known.run_id, true) : { ok: { ...known, replayed: true }, started: false };
+  }
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
   const pre = preamble(c, a as Parameters<typeof preamble>[1]);
   if ('fail' in pre) return pre;
@@ -109,11 +115,14 @@ export async function tokenWaterfall(
   }
   const { rowGeneration: _gen, rows, ...rest } = parsed.ok;
   // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
-  const hash = [sent() as string, runRequestHash('waterfall_run', {
+  const hash = [sent(), runRequestHash('waterfall_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun, ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  })];
+  })].filter((h): h is string => !!h);
   const replay = ledgerReplay(c, a.idempotency_key, hash);
+  if (replay && 'ok' in replay) {
+    return replayKeysRefusal(c.userId, (replay.ok as { run_id: string }).run_id, c.scopes.has('secrets')) ?? replay;
+  }
   if (replay) return replay;
   const limited = startWindow(c);
   if (limited) return limited;
