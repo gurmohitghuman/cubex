@@ -12,7 +12,7 @@ import { createFileLink, fileLinkUrl } from '../lib/file-links';
 import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
-import { importWindow } from './tools-import';
+import { GARBLED_HELP, importWindow } from './tools-import';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
 import { applyView } from '../services/view-read';
@@ -39,6 +39,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         `Import a CSV file of any size (up to ${MAX_MB} MB) into a sheet without its contents passing through `
         + 'your context. Returns a one-time link; upload the file to it with the curl command in the result, '
         + 'from any machine that can reach Cubex. curl prints the import result (rows imported, new columns). '
+        + GARBLED_HELP + ' '
         + 'Same header rules as import_csv; mode "replace" deletes all existing rows when the file arrives (to the '
         + `trash, restorable). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write `
         + 'scope.'

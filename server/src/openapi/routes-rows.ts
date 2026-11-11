@@ -8,6 +8,7 @@ import {
   IDEMPOTENT_WRITE_ROW_BYTES,
 } from '../lib/api-v1-constants';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
+import { IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
 import { MAX_VIEW_DESCRIPTION_CHARS, MAX_VIEW_NAME_CHARS } from '../lib/constants-filters';
 import { CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS } from '../lib/constants-query';
 import { DIGITS_TEXT } from '../lib/digits-text';
@@ -115,7 +116,14 @@ export const rowRoutes = (): RouteDoc[] => [
       replace: z.enum(['true', 'false']).optional()
         .describe('true replaces the rows (the old ones go to the trash). Default: add them.'),
     }),
-    responses: { 201: 'How many rows came in, the new columns, and what was left out.' },
+    responses: {
+      201: 'How many rows came in, the new columns, and what was left out (truncated_cells: cells cut to fit). Only '
+        + 'when cells look like text read with the wrong character set (a sequence that lost a byte included): '
+        + 'garbled_cells (how many), garbled_samples '
+        + `(where the first ${IMPORT_GARBLED_SAMPLES} are, as {"<row id>": ["<column>", ...]}, without their `
+        + 'values: rows/query with those row_ids shows them) and a note naming the fix_encoding cleaner that '
+        + 'repairs them (it also says how many cells were cut to fit).',
+    },
   }),
   op({
     method: 'post', path: '/sheets/{sourceId}/rows/transfer', operationId: 'transferRows', tag: 'rows',

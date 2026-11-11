@@ -91,6 +91,10 @@ router.post('/:id/import', csvUploadMiddleware, async (req: AuthRequest, res) =>
       // >0 when some cells exceeded the basic cell cap and were truncated, so
       // the client can warn the user their import was clipped.
       truncatedCells: result.ok.truncatedCells,
+      // Only when cells look like text read with the wrong character set: how
+      // many, and the first few by row id and column, for the import summary.
+      ...(result.ok.garbledCells > 0
+        ? { garbledCells: result.ok.garbledCells, garbledSamples: result.ok.garbledSamples } : {}),
       // A replace: the rows it replaced, in the trash.
       trash: result.ok.trashId === null ? null : { id: result.ok.trashId, days: getTrashDays(req.userId!) },
       // Rows auto-dedupe didn't keep (or older rows they replaced), and whether checks go on.

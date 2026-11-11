@@ -22,20 +22,22 @@ function isBidiControl(code: number): boolean {
     || (code >= 0x2066 && code <= 0x2069)
 }
 
-// Strip ASCII control characters (except newline 0x0A and tab 0x09) AND Unicode
-// BIDI controls. MUST stay byte-for-byte identical to the server's
-// stripControlChars (lib/csv-safety.ts): the server strips on write, so a cell
-// edit that optimistically shows '\r' (a CRLF paste) or a U+202E spoof char would
-// mismatch the persisted value and silently diverge until a reload. Stripping
-// here makes the optimistic value == persisted.
+// Strip ASCII control characters (except newline 0x0A and tab 0x09), DEL
+// (0x7F) AND Unicode BIDI controls; U+0080-U+009F (C1) stay, as on the server:
+// they are what text decoded with the wrong character set holds, and the
+// "Fix garbled characters" cleaner needs them to repair it. MUST stay
+// identical to the server's stripControlChars (lib/csv-safety.ts): the server
+// strips on write, so a cell edit that optimistically shows '\r' (a CRLF
+// paste) or a U+202E spoof char would mismatch the persisted value and
+// silently diverge until a reload. Stripping here makes the optimistic value
+// == persisted.
 export function stripControlChars(s: string): string {
   if (!s) return s
   let out = ''
   for (let i = 0; i < s.length; i++) {
     const code = s.charCodeAt(i)
     if (code === 0x0a || code === 0x09) { out += s[i]; continue }
-    if (code < 0x20) continue
-    if (code >= 0x7f && code <= 0x9f) continue
+    if (code < 0x20 || code === 0x7f) continue
     if (isBidiControl(code)) continue
     out += s[i]
   }

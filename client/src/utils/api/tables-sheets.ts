@@ -75,6 +75,9 @@ export const sheetsAPI = {
     id: string, file: File, replaceData: boolean = false, pauseAutorun: boolean = false,
   ): Promise<{
     rowsImported: number; startingRow: number; newColumns: string[]; autoDedupe?: ImportAutoDedupe | null
+    // Only when cells look like text read with the wrong character set: how
+    // many, and the first few by row id, then column.
+    garbledCells?: number; garbledSamples?: Record<string, Record<string, string>>
   }> => {
     const formData = new FormData()
     formData.append('replaceData', replaceData.toString())

@@ -25,7 +25,8 @@ const otherBrands = z.array(z.string().max(AI_VISIBILITY_MAX_BRAND_CHARS)).max(A
 export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/clean-columns', operationId: 'cleanColumn', tag: 'filled', scope: 'write',
-    summary: 'Clean a column into a new column for free: names, companies, emails, domains, phones, case, spaces.',
+    summary: 'Clean a column into a new column for free: names, companies, emails, domains, phones, case, spaces, '
+      + 'garbled characters.',
     body: toolBody('clean_column', { omit: ['sheet_id'], strict: true }), responses: filled,
   }),
   op({
