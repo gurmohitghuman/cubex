@@ -1,8 +1,10 @@
 // The clean data cleaners (pure): their names, options, and the function that
-// cleans one value. Every cleaner tidies spaces first (text.ts), returns ''
-// for input it can't read and never throws, and cleaning a cleaned value
-// changes nothing: auto-run cleans a row again whenever its source changes
-// (services/clean-follow.ts). The client mirrors the list and labels
+// cleans one value. Every cleaner but fix_encoding tidies spaces first
+// (text.ts) and returns '' for input it can't read; fix_encoding repairs text
+// read with the wrong character set and returns anything it can't repair
+// exactly as it came (fix-encoding.ts). None throws, and cleaning a cleaned
+// value changes nothing: auto-run cleans a row again whenever its source
+// changes (services/clean-follow.ts). The client mirrors the list and labels
 // (client/src/lib/cleaners.ts).
 import { cleanEmail } from './email';
 import { cleanDomain } from './domain';
@@ -10,10 +12,11 @@ import { cleanPhone, isPhoneCountry, type PhoneFormat } from './phone';
 import { cleanCompanyName } from './company';
 import { cleanFirstName, cleanLastName, cleanPersonName } from './person-name';
 import { cleanLowercase, cleanTitleCase, cleanTrim } from './text';
+import { fixEncoding } from './fix-encoding';
 
 export const CLEANERS = [
   'person_name', 'first_name', 'last_name', 'company_name', 'email', 'domain', 'phone',
-  'title_case', 'lowercase', 'trim',
+  'title_case', 'lowercase', 'trim', 'fix_encoding',
 ] as const;
 export type CleanerId = typeof CLEANERS[number];
 export const PHONE_FORMATS = ['national', 'international', 'e164'] as const;
@@ -36,6 +39,7 @@ const INFO: Record<CleanerId, { suffix: string; apply: (value: string, o: CleanO
   title_case: { suffix: 'clean', apply: v => cleanTitleCase(v) },
   lowercase: { suffix: 'clean', apply: v => cleanLowercase(v) },
   trim: { suffix: 'clean', apply: v => cleanTrim(v) },
+  fix_encoding: { suffix: 'clean', apply: v => fixEncoding(v) },
 };
 
 export const isCleaner = (x: unknown): x is CleanerId =>

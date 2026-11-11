@@ -1,5 +1,5 @@
 import { db } from './db';
-import { stripControlChars } from './csv-safety';
+import { stripControlAndC1Chars } from './csv-safety';
 import { stripInvisibleNameChars } from './name-safety';
 import { jsonPath } from './json-path';
 import { orderedUuid } from './ordered-id';
@@ -16,12 +16,13 @@ export function sanitizeColumnName(raw: string): string {
   // a name (e.g. a Windows path "C:\files" pasted as a CSV header) otherwise
   // produces malformed row JSON — see jsonPath() above.
   name = name.replace(/["\\]/g, '');
-  // Strip control + BIDI chars: this name becomes a visible column header / CSV
-  // header, so a U+202E-style override would spoof how the header renders. This
-  // path already transforms the name (unlike the reject-based table/sheet name
-  // validators), so we strip here to stay consistent.
+  // Strip control (C1 too: a name is never repaired later) + BIDI chars: this
+  // name becomes a visible column header / CSV header, so a U+202E-style
+  // override would spoof how the header renders. This path already transforms
+  // the name (unlike the reject-based table/sheet name validators), so we strip
+  // here to stay consistent.
   // Trim again after: a hidden character could shield a space at either end.
-  name = stripInvisibleNameChars(stripControlChars(name)).replace(/\s+/g, ' ').trim();
+  name = stripInvisibleNameChars(stripControlAndC1Chars(name)).replace(/\s+/g, ' ').trim();
   if (name.length === 0) name = 'Column';
   if (name.length > 200) {
     // Don't cut through a surrogate pair (a lone half becomes U+FFFD in the

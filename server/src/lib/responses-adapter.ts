@@ -6,7 +6,7 @@
 // answer into the chat-completion shape the rest of the pipeline reads
 // (extractCompletionText, citationsFromCompletion), and lists the searches.
 // Pure: unit-tested against recorded responses (tests/unit/web-search-controls.test.ts).
-import { stripControlChars } from './csv-safety';
+import { stripControlAndC1Chars } from './csv-safety';
 
 export interface ChatLikeCompletion {
   choices: Array<{
@@ -101,7 +101,7 @@ export function searchLogFromResponse(resp: unknown, replay: SearchReplay): Sear
       results += Array.isArray(a.sources) ? a.sources.length : 0;
     }
     if (queries.length < MAX_LOGGED_QUERIES) {
-      queries.push({ query: stripControlChars(text).trim().slice(0, MAX_QUERY_CHARS), ran: !refused });
+      queries.push({ query: stripControlAndC1Chars(text).trim().slice(0, MAX_QUERY_CHARS), ran: !refused });
     }
   }
   return { queries, searches: ran };

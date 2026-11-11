@@ -31,3 +31,22 @@ export const DERIVED_SLICE_CHARS = 8_000_000;
 // value longer than this as not one of those and return '' rather than work
 // through it.
 export const MAX_CLEAN_FIELD_CHARS = 1_000;
+// The fix_encoding cleaner (lib/clean/fix-encoding.ts) repairs text decoded
+// with the wrong character set up to this many times over; a value that would
+// still change after that is left as it came.
+export const FIX_ENCODING_MAX_PASSES = 3;
+// A pass leaves the sequences of a word that would mix scripts as they are and
+// works the groups holding such words out again. Each working out is a round:
+// a pass takes one, and another each time a word in it would mix scripts while
+// other sequences are left to decode.
+// One value's repair (every pass, and the check after the last) gets at most
+// this many; a value that needs more is left as it came.
+export const FIX_ENCODING_MAX_ROUNDS = 8;
+// A pass works a value out in groups of at least this many characters (each
+// ends before a character between two sequences that no word holds), and a
+// round after the first works out again only the groups whose words mixed scripts.
+export const FIX_ENCODING_GROUP_CHARS = 1_000;
+// A CSV import counts the cells that look garbled (lib/garbled-cells.ts) and
+// shows up to this many of the first ones, each cut to this many characters.
+export const IMPORT_GARBLED_SAMPLES = 10;
+export const IMPORT_GARBLED_SAMPLE_CHARS = 100;

@@ -9,8 +9,9 @@ import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { rerunAiColumn, RerunOutcome } from './ai-run-rerun';
 import { rerunAiMultiColumn } from './ai-run-rerun-multi';
 import { AiRerunMode, type RerunMode } from './ai-rerun-modes';
-import { rerunHttpColumn } from './http-run-rerun';
-import { resolveRowIdsToIndexes } from './run-shared';
+import { rerunHttpColumn, type HttpRerunParams } from './http-run-rerun';
+import { httpRerunChecks } from './http-rerun-checks';
+import { resolveRowIdsToIndexes, type RunFail } from './run-shared';
 import { isWaterfallRun } from './waterfall-agent-control';
 import { usdLimitOf } from '../lib/cost-ceiling';
 import { httpConcurrencyProblem } from '../lib/run-concurrency';
@@ -80,10 +81,12 @@ export async function rerunAiRunById(
 
 // concurrency: requests at once for the new run (its config's batchSize, which
 // later reruns repeat); left out, the run's own.
-export async function rerunHttpRunById(
-  userId: string, runId: string,
-  opts: { rowIds?: string[]; mode?: RerunMode; hasSecretsScope: boolean; firstRows?: number; concurrency?: number },
-): Promise<RerunOutcome> {
+type HttpRerunOpts = {
+  rowIds?: string[]; mode?: RerunMode; hasSecretsScope: boolean; firstRows?: number; concurrency?: number;
+};
+
+// What a rerun by id refuses before its column's own checks, in its order, or the column rerun it asks for.
+function httpRerunByIdChecks(userId: string, runId: string, opts: HttpRerunOpts): RunFail | HttpRerunParams {
   const tooMany = httpConcurrencyProblem(opts.concurrency);
   if (tooMany) return { fail: 'bad_request', message: tooMany };
   const run = db.prepare(
@@ -126,12 +129,28 @@ export async function rerunHttpRunById(
   const t = resolveTargets(run.sheet_id, userId, opts.rowIds);
   if ('error' in t) return { fail: 'bad_request', message: t.error };
 
-  return rerunHttpColumn(userId, {
+  return {
     sheetId: run.sheet_id, masterColumnName: run.master_column_name,
     mode: opts.mode, rowIndices: t.indexes, firstRows: opts.firstRows, batchSize: opts.concurrency,
     // A no-'secrets' caller's rerun produces a FROZEN clone: even a key created
     // after the gate check above can never resolve. A secrets caller keeps the
     // parent's policy (copy). See http-run-rerun.ts forceAllowSecrets.
     forceAllowSecrets: opts.hasSecretsScope ? undefined : false,
-  });
+  };
+}
+
+export async function rerunHttpRunById(userId: string, runId: string, opts: HttpRerunOpts): Promise<RerunOutcome> {
+  const params = httpRerunByIdChecks(userId, runId, opts);
+  return 'fail' in params ? params : rerunHttpColumn(userId, params);
+}
+
+// /api/v1 and MCP ask this before a rerun by id takes its run-start slot: the first thing the rerun refuses, in
+// its order and words, up to the request it sends again (its run, the 'secrets' scope, its rows, the column, a
+// column the request reads deleted or held by another run), so retrying while it holds never uses up the
+// token's window. null when the rerun goes on; it checks all of it again. Writes nothing.
+export function rerunRefusalFirst(userId: string, runId: string, opts: HttpRerunOpts): RunFail | null {
+  const params = httpRerunByIdChecks(userId, runId, opts);
+  if ('fail' in params) return params;
+  const basis = httpRerunChecks(userId, params);
+  return 'fail' in basis ? basis : null;
 }

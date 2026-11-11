@@ -1,4 +1,5 @@
-// Over 200 lines: one AI run start for both token surfaces, its estimate, ceiling, preview and replay together.
+// Over 200 lines: one AI run start for both token surfaces, its estimate, ceiling, preview and replay, with the
+// checks and replays every token start shares.
 // Run starts for the token surfaces (/api/v1 and MCP), in ONE place so the two
 // can't drift: REST used to drop estimate_only, preview_rows, output_columns and
 // idempotency keys without a word (an "estimate" started a billed run) and skip
@@ -8,7 +9,8 @@
 //   - preview_rows (AI): real calls on a sample, nothing saved;
 //   - output_columns (AI): one call per row filling several typed columns;
 //   - idempotency_key: a retry with the same key and arguments replays the
-//     original run; the same key with different arguments is refused;
+//     original run, before any check that reads the sheet, its webhooks or the
+//     model list (replayFirst); the same key with different arguments is refused;
 //   - the per-token run-start window, shared by both surfaces (startWindow);
 //   - an explicit model must exist in the catalog (when it's reachable);
 //   - max_cost_usd / allow_unpriced (AI): refused before anything starts when
@@ -20,9 +22,9 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
-import { readRunLedger, writeRunLedger } from '../lib/run-idempotency';
+import { readRunLedger, writeRunLedger, type RunLedgerResult } from '../lib/run-idempotency';
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
-import { parseRunRequest } from '../routes/ai-run-parse';
+import { parseRunRequest, type RunParams } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
 import { estimateAiRun } from './run-estimate';
 import { previewAiRun } from './run-preview';
@@ -31,7 +33,7 @@ import { type RateDecision } from '../lib/rate-window';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { webSearchSummary } from '../lib/web-search-plan';
 import { runIfReply } from './run-rule';
-import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
+import { attachRunWebhook, webhookIdProblem, webhookIdShapeProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 import { aiCeilingCheck, aiRunLimitsOf, aiRunRequestHash } from './run-start-ceiling';
 
@@ -53,7 +55,7 @@ export function preamble(c: TokenCaller, a: { sheet_id: unknown; target_row_ids?
   // true/false, or the text "true"/"false" (an MCP client with a stale tool
   // list). null is refused too: read as "not an estimate" it would start a billed run.
   if (a.estimate_only === null || parseBooleanOption(a.estimate_only) === 'invalid') return bad('estimate_only must be true or false');
-  if (a.idempotency_key !== undefined && (typeof a.idempotency_key !== 'string' || !a.idempotency_key || a.idempotency_key.length > 200)) {
+  if (a.idempotency_key !== undefined && !isIdempotencyKey(a.idempotency_key)) {
     return bad('idempotency_key must be a string of 1-200 characters');
   }
   if (typeof a.sheet_id !== 'string' || !verifySheetOwnership(a.sheet_id, c.userId)) {
@@ -80,14 +82,44 @@ export function startWindow(c: TokenCaller, paid = true): Fail | null {
     : { fail: 'rate_limited', message: startRefusalMessage(refused), rate: refused.limited };
 }
 
+const isIdempotencyKey = (key: unknown): key is string => typeof key === 'string' && !!key && key.length <= 200;
+
 // Replay or refuse a repeated idempotency key; null when the start should go ahead.
-export function ledgerReplay(c: TokenCaller, key: unknown, hash: string): TokenRunResult | null {
+// hash: the start's hashes (lib/run-idempotency.ts); either one matching replays.
+export function ledgerReplay(c: TokenCaller, key: unknown, hash: string | readonly string[]): TokenRunResult | null {
   if (typeof key !== 'string') return null;
   const prior = readRunLedger(c.userId, key, hash);
   if (!prior) return null;
   return 'conflict' in prior
     ? { fail: 'conflict', message: IDEMPOTENCY_CONFLICT_MESSAGE }
     : { ok: { ...prior.replay, replayed: true }, started: false };
+}
+
+// A start sent again with its key: the first start's answer, before any check that reads state (the sheet and
+// its rows, columns, webhooks, the model list, the tool catalog, held columns, the run-start window), so a retry
+// is never refused for what changed since its first call, and takes no run-start slot. Only the token's scopes
+// count: a token without 'secrets' whose start needs it gets the start's own checks instead (the saved keys'
+// names are read for that alone: run-start-token-http.ts startNeedsSecrets, waterfall-run-start.ts
+// replayKeysRefusal). hash: the arguments as the caller sent them. Anything else (no key, a new one, other
+// arguments) is null: the start's own checks then run in their order, its ledgerReplay refusing a key used with
+// other arguments, as always.
+export function firstStart(c: TokenCaller, key: unknown, hash: () => string | null): RunLedgerResult | null {
+  if (!isIdempotencyKey(key)) return null;
+  let sent: string | null;
+  // Arguments nested too deep to hash: no lookup, and the start's own checks refuse them.
+  try { sent = hash(); } catch { return null; }
+  const prior = sent ? readRunLedger(c.userId, key, sent) : null;
+  return prior && 'replay' in prior ? prior.replay : null;
+}
+export function replayFirst(c: TokenCaller, key: unknown, hash: () => string | null): TokenRunResult | null {
+  const prior = firstStart(c, key, hash);
+  return prior ? { ok: { ...prior, replayed: true }, started: false } : null;
+}
+
+// true for a start: estimate_only false or left out (a value preamble refuses isn't one).
+export function startsRun(estimateOnly: unknown): boolean {
+  const v = parseBooleanOption(estimateOnly);
+  return estimateOnly !== null && (v === undefined || v === false);
 }
 
 export interface TokenAiRunArgs {
@@ -99,17 +131,12 @@ export interface TokenAiRunArgs {
   webhook_id?: unknown; max_cost_usd?: unknown; allow_unpriced?: unknown; spend_limit_usd?: unknown;
 }
 
-export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
-  const pre = preamble(c, a);
-  if ('fail' in pre) return pre;
-  const sheetId = a.sheet_id as string;
-  if (a.preview_rows !== undefined && !(Number.isInteger(a.preview_rows) && (a.preview_rows as number) >= 1 && (a.preview_rows as number) <= PREVIEW_MAX_ROWS)) {
-    return bad(`preview_rows must be a whole number from 1 to ${PREVIEW_MAX_ROWS}`);
-  }
+// What the arguments say, read as the start reads them (no state): output_columns' shape, then the request.
+function aiArgsOf(sheetId: string, a: TokenAiRunArgs): RunParams | { ok: false; error: string } {
   let outputColumns: Array<{ columnName: unknown; type: unknown; description: unknown }> | undefined;
   if (a.output_columns !== undefined) {
     if (!Array.isArray(a.output_columns) || a.output_columns.some(o => !o || typeof o !== 'object')) {
-      return bad('output_columns must be an array of { column_name, type, description }');
+      return { ok: false, error: 'output_columns must be an array of { column_name, type, description }' };
     }
     outputColumns = (a.output_columns as Array<Record<string, unknown>>).map(o =>
       ({ columnName: o.column_name, type: o.type, description: o.description }));
@@ -121,7 +148,30 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     searchEngine: a.search_engine, searchMode: a.search_mode, maxSearchesPerRow: a.max_searches_per_row,
     runIf: a.run_if,
   });
-  if (!parsed.ok) return bad(parsed.error.replace(/^runIf/, 'run_if'));
+  return parsed.ok ? parsed : { ok: false, error: parsed.error.replace(/^runIf/, 'run_if') };
+}
+
+// The hash a start is known by, from its arguments alone; null when they don't parse (the start refuses them).
+function aiSentHash(a: TokenAiRunArgs): string | null {
+  if (typeof a.sheet_id !== 'string' || a.preview_rows !== undefined || !startsRun(a.estimate_only)) return null;
+  if (webhookIdShapeProblem(a.webhook_id)) return null;
+  const parsed = aiArgsOf(a.sheet_id, a);
+  const limits = aiRunLimitsOf(a);
+  return parsed.ok && !('error' in limits) ? aiRunRequestHash(a.sheet_id, a, parsed, limits) : null;
+}
+
+export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
+  const first = replayFirst(c, a.idempotency_key, () => aiSentHash(a));
+  if (first) return first;
+  const pre = preamble(c, a);
+  if ('fail' in pre) return pre;
+  const sheetId = a.sheet_id as string;
+  const rows = a.preview_rows as number | undefined;
+  if (rows !== undefined && !(Number.isInteger(rows) && rows >= 1 && rows <= PREVIEW_MAX_ROWS)) {
+    return bad(`preview_rows must be a whole number from 1 to ${PREVIEW_MAX_ROWS}`);
+  }
+  const parsed = aiArgsOf(sheetId, a);
+  if (!parsed.ok) return bad(parsed.error);
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
   const limits = aiRunLimitsOf(a);

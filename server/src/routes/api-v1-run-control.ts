@@ -8,7 +8,7 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { pauseRun, cancelRun, ControlOutcome, RunKind } from '../services/run-lifecycle';
 import { resumeHttpRun } from '../services/http-run-resume';
-import { rerunAiRunById, rerunHttpRunById } from '../services/run-rerun-by-id';
+import { rerunAiRunById, rerunHttpRunById, rerunRefusalFirst } from '../services/run-rerun-by-id';
 import { AI_RERUN_MODES, AiRerunMode, isRerunMode, RERUN_MODES, type RerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runFailHttpStatus, takeRunStart } from '../services/run-shared';
@@ -25,7 +25,6 @@ import { parseFirstRows } from './ai-run-rerun';
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeAiRun } from '../services/ai-run-limit';
 import { usdLimitOf } from '../lib/cost-ceiling';
-import { rerunHeldInputRefusal } from '../lib/http-held-inputs';
 
 const router = express.Router();
 
@@ -273,9 +272,12 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     const tooMany = httpConcurrencyProblem(b.concurrency);
     if (tooMany) return res.status(400).json({ error: tooMany });
     if (refuseBadWebhook(req, res, b)) return;
-    // A request reading a column another run holds is refused before it takes a run-start slot.
-    const held = rerunHeldInputRefusal(req.params.id, req.userId!);
-    if (held) return res.status(409).json({ error: held });
+    // What the rerun refuses first (a column another run holds included) is answered before it takes a slot.
+    const refused = rerunRefusalFirst(req.userId!, req.params.id, {
+      rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
+      concurrency: b.concurrency as number | undefined, hasSecretsScope: req.tokenScopes?.has('secrets') === true,
+    });
+    if (refused) return res.status(runFailHttpStatus(refused)).json({ error: refused.message });
     if (refuseRunStart(req, res, false)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,

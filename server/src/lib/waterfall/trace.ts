@@ -7,7 +7,7 @@
 // run-state filters work per step (lib/row-filter/cell-status.ts).
 import { CELL_MAX_ENRICHMENT, WATERFALL_TRACE_DETAIL_CHARS, WATERFALL_TRACE_VALUE_CHARS } from '../constants';
 import { ENRICH_CELL, failedCell, type RowCells } from '../enrich-cells';
-import { clampCellChars, stripControlChars } from '../csv-safety';
+import { clampCellChars, stripControlAndC1Chars, stripControlChars } from '../csv-safety';
 import type { StepKind, WaterfallStep } from './config';
 
 export type StepOutcome = 'answered' | 'rejected' | 'not_found' | 'no_inputs' | 'error' | 'budget';
@@ -30,8 +30,9 @@ export interface Trace { v: 1; answered_by: string | null; steps: TraceStep[] }
 
 export const STEP_CELL = { noInputs: '⏭️ No inputs' } as const;
 
+// A one-line excerpt for the trace panel (not a cell: C1 goes too).
 const cut = (s: string, n: number): string => {
-  const one = stripControlChars(s).replace(/\s+/g, ' ').trim();
+  const one = stripControlAndC1Chars(s).replace(/\s+/g, ' ').trim();
   return one.length > n ? `${one.slice(0, n - 1)}…` : one;
 };
 export const traceValue = (s: string): string => cut(s, WATERFALL_TRACE_VALUE_CHARS);

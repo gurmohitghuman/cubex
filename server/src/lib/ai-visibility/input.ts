@@ -2,7 +2,7 @@
 // brand, the other brands to look for, your site's domain, where the questions
 // are asked from, the engines to ask and the questions. The same parse serves
 // the app, /api/v1 and MCP.
-import { stripControlChars } from '../csv-safety';
+import { stripControlAndC1Chars, stripControlChars } from '../csv-safety';
 import { cleanDomain } from '../clean/domain';
 import { holdsRunMarker } from '../enrich-seed';
 import { FORMULA_MAX_CHARS } from '../constants-formula';
@@ -21,11 +21,12 @@ export interface AiVisibilityInput extends Brands {
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
 
-// A brand name as the formulas embed it: plain text, no braces (a {{…}} would
-// read a column) and no comment marks (the brand list sits between comments).
+// A brand name as the formulas embed it: plain text (a label: C1 goes too), no
+// braces (a {{…}} would read a column) and no comment marks (the brand list
+// sits between comments).
 function brandName(v: unknown): string | null {
   if (typeof v !== 'string') return null;
-  const s = stripControlChars(v).replace(/\p{Cf}/gu, '').replace(/\s+/g, ' ').trim();
+  const s = stripControlAndC1Chars(v).replace(/\p{Cf}/gu, '').replace(/\s+/g, ' ').trim();
   if (!s || s.length > AI_VISIBILITY_MAX_BRAND_CHARS || /[{}]|\/\*|\*\//.test(s) || holdsRunMarker(s)) return null;
   return s;
 }
