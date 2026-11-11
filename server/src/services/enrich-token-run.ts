@@ -5,11 +5,13 @@
 // as for AI and HTTP runs (run-start-token.ts): estimate_only as a pure read,
 // idempotency keys, the per-token run-start window. And auto_run: turned on
 // for the column once the run has started, as the drawer's checkbox does.
+// A retry with the same key and arguments answers the first start before the
+// sheet, the catalog or the webhook are read (replayFirst).
 import { db } from '../lib/db';
 import { TREG_TOOL_ID_PATTERN } from '../lib/constants';
 import { MAX_SELECTED_ROWS, parseEnrichRunInput } from '../lib/enrich-run-input';
 import { agentRunBody, flagOf, unknownArgument, type AgentRunArgs } from '../lib/enrich-agent-input';
-import { runRequestHash, writeRunLedger } from '../lib/run-idempotency';
+import { runRequestHash, sentArgsHash, writeRunLedger } from '../lib/run-idempotency';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { getTool } from './enrich-catalog';
 import { startEnrichmentRun } from './enrich-run-start';
@@ -19,7 +21,9 @@ import { sheetAutorunView } from './autorun-view';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
-import { bad, ledgerReplay, preamble, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
+import {
+  bad, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type TokenCaller, type TokenRunResult,
+} from './run-start-token';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 
@@ -52,6 +56,9 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   if (Array.isArray(a.target_row_ids) && a.target_row_ids.length > MAX_SELECTED_ROWS) {
     return bad(`target_row_ids takes at most ${MAX_SELECTED_ROWS.toLocaleString('en-US')} rows a run.`);
   }
+  const sent = () => (startsRun(a.estimate_only) ? sentArgsHash('enrichment_run', a) : null);
+  const first = replayFirst(c, a.idempotency_key, sent);
+  if (first) return first;
   // Read before the row ids resolve: a sort in between moves the generation,
   // and the start then refuses instead of running other rows.
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
@@ -82,11 +89,12 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   // runIf only when set, so a retry that spans the release still replays.
   const { rowGeneration: _gen, rows, runIf, ...others } = parsed.ok;
   const rest = runIf ? { ...others, runIf } : others;
-  const hash = runRequestHash('enrichment_run', {
+  // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
+  const hash = [sent() as string, runRequestHash('enrichment_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun,
     ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
-  });
+  })];
   const replay = ledgerReplay(c, a.idempotency_key, hash);
   if (replay) return replay;
   const limited = startWindow(c);

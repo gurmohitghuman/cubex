@@ -37,18 +37,24 @@ function canonicalHash(kind: string, config: Record<string, unknown>): string {
   return crypto.createHash('sha256').update(JSON.stringify({ kind, config: norm(config) })).digest('hex');
 }
 
+// A start is known by its arguments as sent, and (enrichments, waterfalls, cURL commands) by what they became
+// once parsed against the sheet, saved keys or the catalog. A row's request_hash holds the start's hashes, space
+// separated; a retry matching either replays. A key written before both were kept holds the parsed one alone.
+const hashesOf = (hash: string | readonly string[]): string[] => [...new Set(typeof hash === 'string' ? [hash] : hash)];
+
 // Read: null (proceed), {replay} (return the stored run), or {conflict} (key
 // reused with different args). A row write's key over a day old is free again:
 // deleted first, so the start records the key (lib/write-idempotency.ts).
 export function readRunLedger(
-  userId: string, key: string, hash: string,
+  userId: string, key: string, hash: string | readonly string[],
 ): { replay: RunLedgerResult } | { conflict: true } | null {
   forgetExpiredWriteKey(userId, key);
   const row = db.prepare(
     'SELECT request_hash, result_json FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = ?',
   ).get(userId, key) as { request_hash: string; result_json: string } | undefined;
   if (!row) return null;
-  if (row.request_hash !== hash) return { conflict: true };
+  const given = hashesOf(hash);
+  if (!row.request_hash.split(' ').some(h => given.includes(h))) return { conflict: true };
   return { replay: JSON.parse(row.result_json) as RunLedgerResult };
 }
 
@@ -57,13 +63,13 @@ export function readRunLedger(
 // Prunes the per-user ledger to the most recent 1000 (shared with transfer; row
 // writes' keys keep their own rule, lib/write-idempotency.ts).
 export function writeRunLedger(
-  userId: string, key: string, hash: string, kind: RunLedgerKind, result: RunLedgerResult,
+  userId: string, key: string, hash: string | readonly string[], kind: RunLedgerKind, result: RunLedgerResult,
 ): void {
   db.prepare(`
     INSERT OR IGNORE INTO data_operation_ledger
       (id, user_id, idempotency_key, operation_kind, request_hash, result_json)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(uuidv4(), userId, key, kind, hash, JSON.stringify(result));
+  `).run(uuidv4(), userId, key, kind, hashesOf(hash).join(' '), JSON.stringify(result));
   db.prepare(`
     DELETE FROM data_operation_ledger WHERE id IN (
       SELECT id FROM data_operation_ledger WHERE user_id = ? AND operation_kind NOT IN (${WRITE_KINDS_SQL})
@@ -74,4 +80,12 @@ export function writeRunLedger(
 
 export function runRequestHash(kind: RunLedgerKind, config: Record<string, unknown>): string {
   return canonicalHash(kind, config);
+}
+
+// A start's arguments as the caller sent them, without the key and without what only says it is a start
+// (estimate_only false or left out; a waterfall's action 'run'): read before anything else, so a retry
+// answers the first start even after the sheet, its saved keys or the catalog changed.
+export function sentArgsHash(kind: RunLedgerKind, args: object, omit: readonly string[] = []): string {
+  const skip = new Set(['idempotency_key', 'estimate_only', ...omit]);
+  return canonicalHash(kind, { sent: Object.fromEntries(Object.entries(args).filter(([k]) => !skip.has(k))) });
 }

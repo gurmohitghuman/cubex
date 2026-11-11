@@ -882,7 +882,7 @@ Starting a run needs the `run` scope. A started run answers `202` with its `run_
 
 **Waterfall column:** `POST /sheets/:id/waterfall-columns` takes `waterfall_column`'s arguments as JSON (see [Waterfalls](#waterfalls)), but here `estimate_only` defaults to `false`: pass `"estimate_only": true` to price it first. `GET /sheets/:id/waterfall-columns/:column` (`read` scope) returns a column's setup in the same shape, step ids included, to change and send back with `"add_to_column": true`.
 
-**Retrying safely:** send an `Idempotency-Key` header (or `idempotency_key` in the body). Repeating a start with the same key and arguments returns the original `run_id` instead of starting (and paying for) a second run.
+**Retrying safely:** send an `Idempotency-Key` header (or `idempotency_key` in the body). Repeating a start with the same key and arguments returns the original `run_id` instead of starting (and paying for) a second run. Such a retry answers what the first start answered, even when the sheet has changed since (the column it made now exists, its webhook was deleted), and isn't checked again.
 
 | Endpoint | Body or query |
 |---|---|
