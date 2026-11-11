@@ -35,15 +35,16 @@ export const MAX_CLEAN_FIELD_CHARS = 1_000;
 // with the wrong character set up to this many times over; a value that would
 // still change after that is left as it came.
 export const FIX_ENCODING_MAX_PASSES = 3;
-// A pass leaves the sequences of a word that mixes scripts as they are and
-// works the groups holding such words out again. Each working out is a round,
-// and one value's repair (every pass) gets at most this many; a value that
-// needs more is left as it came. Garbled text needs one round per pass, and
-// one more for each time leaving sequences as they are makes another word mix.
+// A pass leaves the sequences of a word that would mix scripts as they are and
+// works the groups holding such words out again. Each working out is a round:
+// a pass takes one, and another each time a word in it would mix scripts while
+// other sequences are left to decode.
+// One value's repair (every pass, and the check after the last) gets at most
+// this many; a value that needs more is left as it came.
 export const FIX_ENCODING_MAX_ROUNDS = 8;
 // A pass works a value out in groups of at least this many characters (each
-// ends before an ASCII character other than a letter or digit), and a round
-// after the first works out again only the groups whose words mixed scripts.
+// ends before a character between two sequences that no word holds), and a
+// round after the first works out again only the groups whose words mixed scripts.
 export const FIX_ENCODING_GROUP_CHARS = 1_000;
 // A CSV import counts the cells that look garbled (lib/garbled-cells.ts) and
 // shows up to this many of the first ones, each cut to this many characters.

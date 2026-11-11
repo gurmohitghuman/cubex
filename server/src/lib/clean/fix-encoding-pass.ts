@@ -15,6 +15,11 @@
 //   letter after one capital ("JÄ…" is "Ją") or the word already holds a
 //   character decoded in this pass ("PÅ˜Ã" + U+008D + "LIÅ" + no-break space
 //   is "PŘÍLIŠ"). A capital decoded in this pass is garbled, not real.
+// - At the end of a word, right after a capital taken as it came, two bytes
+//   read from a capital and a footnote mark (¹ ² ³) don't give a lowercase
+//   letter ("AMANHÃ²", "IRMÃ³" and "GÅ³" stay), unless one capital before gives
+//   a Latin-1 letter ("SÃ³" is "Só") or the word holds a character decoded in
+//   this pass. A capital still comes out: "LIETUVIÅ²" is "LIETUVIŲ".
 // - Three bytes right after a Latin letter give a Latin letter, a character of
 //   U+2000-U+214F (’ “ ” … € ™ –), a symbol not read from two marks as below
 //   ("Parisâ†’Berlin" is "Paris→Berlin"), or anything when another
@@ -34,13 +39,15 @@
 //   long dash or a no-break space ("está»¹" stays; "Má»¹" alone stays,
 //   "Hà Nội và Mỹ Tho" and "Nguyá»…n" are repaired). Garbled text has more
 //   sequences ("Å’uvreâ€¦"), real text has none.
-// - No word mixes scripts (fix-encoding-parts.ts). Each word that would has its
-//   sequences left as they are, and the pass is worked out again.
+// - No word mixes scripts (fix-encoding-parts.ts), but a character decoded from
+//   three or four bytes next to another decoded one may sit in a Latin word,
+//   whatever its script ("Nikeà¸£à¸­à¸‡..." is Thai). Each word that would mix
+//   has its sequences left as they are, and the pass is worked out again.
 // Each decoded character encodes back to exactly its bytes. Superscripts ¹ ² ³
 // after a sequence don't make it part of a word.
-import { FIX_ENCODING_GROUP_CHARS } from '../constants-clean';
 import { stripControlChars } from '../csv-safety';
 import { sequencesOf, type Seq } from './fix-encoding-bytes';
+import { groupsOf, type Group } from './fix-encoding-groups';
 import { inMixedWords, Parts, type Kept } from './fix-encoding-parts';
 
 const UNASSIGNED = /\p{Cn}/u;
@@ -65,6 +72,8 @@ const FOLLOW_WORDS = new Set([...AFTER_WORDS, NO_BREAK_SPACE, '\u00B9', '\u00B2'
 // space, ¹ ² ³). The others there are Vietnamese letters: á» and “ is ồ, ‘ is ố, • is ổ, ‹ is ị, › is ớ.
 const AFTER_CLOSING = new Set(['\u00BB', '\u2026', '\u201D', '\u2019', '\u2013', '\u2014', NO_BREAK_SPACE,
   '\u00B9', '\u00B2', '\u00B3']);
+// Footnote marks.
+const SUPERSCRIPTS = new Set(['\u00B9', '\u00B2', '\u00B3']);
 // Marks a word may follow right away: a long dash, a no-break space.
 const BEFORE_WORDS = new Set(['\u2014', NO_BREAK_SPACE]);
 const APOSTROPHE = '\u2019';
@@ -85,16 +94,29 @@ const followsWords = (c: string) => AFTER_WORDS.has(c) || c === NO_BREAK_SPACE;
 const twoMarks = (q: Seq, s: string) => q.len === 3 && FOLLOW_WORDS.has(s[q.at + 1])
   && AFTER_CLOSING.has(s[q.at + 2]) && (BEFORE_WORDS.has(s[q.at + 2]) || wordEndsAfter(q, s));
 
+// Two bytes read from a capital and a footnote mark ending a word that a capital
+// taken as it came starts: a lowercase letter there is a real word's footnote
+// ("AMANHÃ²", "GÅ³"), unless one capital before gives a Latin-1 letter ("SÃ³"
+// is "Só") or the word already holds a character decoded in this pass.
+function footnoteAfterCapitals(q: Seq, s: string, parts: Parts): boolean {
+  if (!SUPERSCRIPTS.has(s[q.at + 1]) || !wordEndsAfter(q, s) || !parts.takenCapital(1) || !LOWER.test(q.text)) {
+    return false;
+  }
+  return (parts.takenCapital(2) || !LATIN1_LETTER.test(q.text)) && !parts.decodedInWord(inWord);
+}
+
 // Whether sequence q may be decoded, given the characters before it, the value
 // it is in, and whether another sequence starts right after it.
 function mayDecode(q: Seq, s: string, parts: Parts, runFollows: boolean): boolean {
   const t = q.text;
-  if (stripControlChars(t) !== t || t === '\uFFFD' || t === '\uFEFF' || UNASSIGNED.test(t)) return false;
+  q.kept ??= stripControlChars(t) === t && t !== '\uFFFD' && t !== '\uFEFF' && !UNASSIGNED.test(t);
+  if (!q.kept) return false;
   if (q.len === 3 && LATIN_LETTER.test(parts.text(1))) {
     return LATIN_LETTER.test(t) || punctuationLike(t) || runFollows || (SYMBOL.test(t) && !twoMarks(q, s));
   }
   if (q.len !== 2) return true;
   if (parts.takenCapital(1) && parts.takenCapital(2) && !AFTER_CAPITALS.test(t)) return false;
+  if (footnoteAfterCapitals(q, s, parts)) return false;
   if (!wordEndsAfter(q, s) || !parts.takenCapital(1) || !followsWords(s[q.at + 1])) return true;
   const titleCase = !LETTER.test(parts.text(2)) && LOWER.test(t);
   return titleCase || parts.decodedInWord(inWord);
@@ -110,39 +132,6 @@ function isAlone(q: Seq, s: string, parts: Parts): boolean {
   const follows = s[q.at + 1];
   const mark = AFTER_WORDS.has(follows) || (follows === NO_BREAK_SPACE && !LATIN1_LETTER.test(q.text));
   return (mark && wordEnds) || (follows === APOSTROPHE && UPPER.test(s[q.at]));
-}
-
-// A part of the value whose sequences are worked out on their own. Each but
-// the first starts at a character no sequence holds and no word does (ASCII
-// but a letter or digit): it stops every check that reads back, and words
-// don't cross it. A round works out again only the groups whose words mixed
-// scripts, so a long cell costs one reading per pass, not one per round.
-interface Group { from: number; to: number; seqs: Seq[]; parts: Parts; kept: Kept[]; out: string; alone: boolean }
-const SEPARATOR = /[^A-Za-z0-9\u0080-\uFFFF]/;
-
-function separatorIn(s: string, from: number, to: number): number {
-  for (let i = from; i < to; i++) if (SEPARATOR.test(s[i])) return i;
-  return -1;
-}
-
-// Groups of at least FIX_ENCODING_GROUP_CHARS characters (but the last).
-function groupsOf(s: string, seqs: Seq[]): Group[] {
-  const groups: Group[] = [];
-  const add = (from: number, to: number, first: number, end: number) => groups.push({
-    from, to, seqs: seqs.slice(first, end), parts: new Parts(s, from), kept: [], out: '', alone: true,
-  });
-  let from = 0;
-  let first = 0;
-  for (let n = 1; n < seqs.length; n++) {
-    const after = seqs[n - 1].at + seqs[n - 1].len;
-    const cut = after - from < FIX_ENCODING_GROUP_CHARS ? -1 : separatorIn(s, after, seqs[n].at);
-    if (cut < 0) continue;
-    add(from, cut, first, n);
-    from = cut;
-    first = n;
-  }
-  add(from, s.length, first, seqs.length);
-  return groups;
 }
 
 // The group with every sequence decoded that may be, except those refused.

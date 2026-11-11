@@ -18,8 +18,9 @@ const CP1252_BYTE = new Map<number, number>([
 export const byteOf = (code: number): number | undefined => (code < 0x100 ? code : CP1252_BYTE.get(code));
 
 // A valid UTF-8 sequence of 2 to 4 bytes starting at character `at`, and the
-// character it decodes to.
-export interface Seq { at: number; len: number; text: string }
+// character it decodes to. `kept`: whether cells keep that character, worked
+// out once a pass (fix-encoding-pass.ts).
+export interface Seq { at: number; len: number; text: string; kept?: boolean }
 
 // The code point of the `len`-byte sequence at i, or -1 when it isn't valid
 // UTF-8 (a missing or wrong continuation byte, an overlong form, a surrogate,
@@ -71,7 +72,8 @@ export const hasLeadPair = (s: string): boolean => LEAD_PAIR.test(s);
 //   apostrophe, other punctuation or a no-break space: Welsh writes "â’r",
 //   Turkish "hâlâ…" and "hâlâ" before a no-break space.
 // - "Ã" before a lowercase letter: a capital À to ß lost its second byte
-//   ("CODE Ãxitos"). No word puts "Ã" before a lowercase letter.
+//   ("CODE Ãxitos"). No Portuguese or Vietnamese word puts "Ã" before a
+//   lowercase letter; a Guarani word that starts that way ("Ãga") is counted.
 // - "Ã" before a capital that no Portuguese, Vietnamese or Guarani word puts
 //   after it ("ÃCOLE"; "SÃO", "MÃE", "MAÇÃS", "LÃNG", "MITÃKUÑA" stay), or
 //   starting a word before K or R ("ÃREA" from "ÁREA", "ÃKOS"; "AKÃRAGUE"

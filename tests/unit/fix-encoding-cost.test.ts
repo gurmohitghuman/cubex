@@ -4,8 +4,10 @@
 // import's check on it is cheaper still. A made-up chain of sequences at the
 // head of such a cell doesn't multiply that: the whole repair gets
 // FIX_ENCODING_MAX_ROUNDS rounds, and a round after a pass's first works out
-// again only the group the chain is in. The best of a few tries counts, so a
-// busy machine doesn't decide it.
+// again only the group the chain is in. Japanese text with units garbled once
+// costs most: in the first pass nothing between its sequences ends a word, so
+// each round reads the whole cell (about four readings, under two slices). The
+// best of a few tries counts, so a busy machine doesn't decide it.
 import assert from 'node:assert/strict'
 import constantsMod from '../../server/src/lib/constants-clean'
 import { cp1252, finish, fixEncoding, group, looksGarbled } from './fix-encoding-kit'
@@ -60,6 +62,15 @@ await group('a made-up chain of sequences at the head of the long cell, as it is
     assert.equal(out, cell, `${name}: left as it came`)
     assert.ok(ms < DERIVED_SLICE_MS, `${name}: fixEncoding took ${ms.toFixed(1)} ms`)
   }
+})
+
+await group('a long cell of Japanese text with units, garbled once (nothing between its sequences ends a word)', () => {
+  const cell = fill(cp1252('抵抗10kΩ、容量100μF、USBケーブル。'))
+  let out = ''
+  const ms = best(() => { out = fixEncoding(cell) })
+  console.log(`      fixEncoding ${ms.toFixed(1)} ms`)
+  assert.equal(out, cell, 'left as it came: "10kΩ" and "100μF" mix scripts, and their C1 characters stay')
+  assert.ok(ms < 2 * DERIVED_SLICE_MS, `fixEncoding took ${ms.toFixed(1)} ms`)
 })
 
 finish('fix-encoding-cost')
