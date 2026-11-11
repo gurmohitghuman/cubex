@@ -4,9 +4,9 @@
 // it as the first name; full-width letters, digits and punctuation read as
 // plain ASCII and the ideographic space as a space; a closing bracket that
 // closes nothing goes from either end of a company name, but one that ends an
-// emoticon (":)") or follows a period stays, in the cleaned name and the
-// company duplicate key (lib/dedupe/key.ts) alike. Every case also cleans its
-// own output again with the same options, which must change nothing.
+// emoticon (":)", "8)") stays, in the cleaned name and the company duplicate
+// key (lib/dedupe/key.ts) alike. Every case also cleans its own output again
+// with the same options, which must change nothing.
 // server/src is type:commonjs → default-import + destructure under tsx.
 import cleanersMod from '../../server/src/lib/clean/cleaners'
 import keyMod from '../../server/src/lib/dedupe/key'
@@ -98,16 +98,18 @@ run({ theCompany: 'keep' }, [
   ['company_name', 'The Christman Company )', 'The Christman Company'],
 ])
 
-// A closing bracket that ends an emoticon (or follows a period) is text: these
-// stay as they were. An emoticon's opening bracket still reads as one that
-// never closes, as before. A real stray one next to them still goes.
+// A closing bracket that ends an emoticon is text: these stay as they were.
+// An emoticon's opening bracket still reads as one that never closes, as
+// before. A real stray one next to them still goes, and so does one after a
+// number or code ending in 8, or after a period: those end no emoticon.
 const EMOTICONS: Array<[string, string]> = [
   ['Acme :)', 'Acme :)'],
   ['Acme ;-)', 'Acme ;-)'],
   ['Acme =)', 'Acme =)'],
   ['Acme :-) Inc', 'Acme :-)'],
-  ['Acme.)', 'Acme.)'],
   ['Acme 8)', 'Acme 8)'],
+  ['Acme 8-)', 'Acme 8-)'],
+  ['8) Acme', '8) Acme'],
   ['Acme :]', 'Acme :]'],
   ['Acme ;-}', 'Acme ;-}'],
   ['Acme :-(', 'Acme :-'],
@@ -115,6 +117,23 @@ const EMOTICONS: Array<[string, string]> = [
   ['Acme ) Ltd', 'Acme'],
   ['Acme :) )', 'Acme :)'],
   [') Acme :)', 'Acme :)'],
+  // An 8 after a letter or digit ends a word or a number, not eyes.
+  ['Acme 2018)', 'Acme 2018'],
+  ['Acme 2018) Ltd', 'Acme 2018'],
+  ['Acme Group 1998)', 'Acme Group 1998'],
+  ['Acme 48)', 'Acme 48'],
+  ['Acme X8)', 'Acme X8'],
+  ['Acme Ltd8)', 'Acme Ltd8'],
+  ['Acme (UK) 2018)', 'Acme (UK) 2018'],
+  // A period is no emoticon.
+  ['Acme.)', 'Acme.'],
+  ['Acme Inc.]', 'Acme'],
+  ['Acme Inc.}', 'Acme'],
+  ['Acme St.)', 'Acme St.'],
+  ['Acme U.S.A.)', 'Acme U.S.A.'],
+  ['Acme (UK) St.)', 'Acme (UK) St.'],
+  // Known edge: a lone 8 before the bracket reads as eyes, as in "Acme 8)".
+  ['Acme Model 8)', 'Acme Model 8)'],
 ]
 run({}, EMOTICONS.map(([input, want]): Case => ['company_name', input, want]))
 const companyKey = (v: string) => keyPart({ column: 'C', match: 'company' }, v)
@@ -124,6 +143,8 @@ for (const [input, want] of EMOTICONS) {
     key === want.toLowerCase())
   check(`company key of ${JSON.stringify(want)} is the same`, companyKey(want) === key)
 }
+// So "Acme Inc.]" and "Acme Inc." are duplicates again.
+check('company key of "Acme Inc.]" is the key of "Acme Inc."', companyKey('Acme Inc.]') === companyKey('Acme Inc.'))
 
 if (failures) { console.error(`\n${failures} check(s) failed`); process.exit(1) }
 console.log('\nall clean-initials-brackets checks passed')
