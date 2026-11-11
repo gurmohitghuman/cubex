@@ -64,19 +64,23 @@ export const hasLeadPair = (s: string): boolean => LEAD_PAIR.test(s);
 // as Latin-1 lost every continuation byte 0x80-0x9F, text garbled as
 // Windows-1252 lost 0x81, 0x8D, 0x8F, 0x90 and 0x9D. What is left is no
 // sequence at all, so nothing decodes it, but these shapes show it:
-// - "â" and one character read from a continuation byte, then none: what is
-//   left of ™ ("â¢"), … ("â¦"), € ("â¬") or a Windows-1252 ” ("â€").
+// - "â" and one of the signs a lost middle byte leaves, then no continuation:
+//   what is left of ™ or • ("â¢"), … ("â¦"), € ("â¬"), ‰ ("â°"), ′ ″ ("â²",
+//   "â³"), ‹ › ("â¹", "âº"), a narrow no-break space ("â¯"), ❤ ("â¤"), or a
+//   Windows-1252 ” ("â€"). Not an apostrophe or other punctuation: Welsh
+//   writes "â’r", Turkish "hâlâ…".
 // - "Ã" before a lowercase letter: a capital À to ß lost its second byte
 //   ("CODE Ãxitos"). No word puts "Ã" before a lowercase letter.
-// - "Ã" before a capital that no Portuguese or Vietnamese word puts after it
-//   ("ÃCOLE"; "SÃO", "MÃE", "MAÇÃS", "LÃNG" stay).
-// - A word that starts with "â" and a later one that ends with it: quotes that
-//   both lost two bytes ("âquotedâ"). No word ends in "â".
-const CONT = `[${CONTINUATION}]`;
+// - "Ã" before a capital that no Portuguese, Vietnamese or Guarani word puts
+//   after it ("ÃCOLE"; "SÃO", "MÃE", "MAÇÃS", "LÃNG", "MITÃKUÑA" stay).
+// - A word that starts with "â" and a later one that ends with it, after a
+//   letter that doesn't follow "â" itself: quotes that both lost two bytes
+//   ("âquotedâ"). Turkish "hâlâ" ends in "â" too, after "l" that follows "â".
 const DAMAGED = [
-  new RegExp(`\\u00E2${CONT}(?!${CONT})`),
+  new RegExp(`\\u00E2[\\u00A2\\u00A4\\u00A6\\u00AC\\u00AF\\u00B0\\u00B2\\u00B3\\u00B9\\u00BA\\u20AC]`
+    + `(?![${CONTINUATION}])`),
   /\u00C3[a-z]/,
-  /\u00C3[BCDFHJKLPQRTVWX]/,
-  /(?<![\p{L}\p{M}])\u00E2\p{L}[\s\S]*?\p{L}\u00E2(?![\p{L}\p{M}])/u,
+  /\u00C3[BCDFHJLPQTVWX]/,
+  /(?<![\p{L}\p{M}])\u00E2\p{L}[\s\S]*?(?<!\u00E2)\p{L}\u00E2(?![\p{L}\p{M}])/u,
 ];
 export const holdsDamagedSequence = (s: string): boolean => DAMAGED.some(re => re.test(s));

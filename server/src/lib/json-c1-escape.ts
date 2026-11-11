@@ -41,19 +41,19 @@ export function escapeC1Bytes(chunk: Buffer, held: boolean, last: boolean): { ou
 
 const isUtf8 = (encoding: unknown) => encoding === undefined || /^utf-?8$/i.test(String(encoding));
 
-// The Content-Type in writeHead's headers argument (an object, a flat
-// [name, value, ...] list or a list of pairs), and that argument without its Content-Length.
+// The Content-Type in writeHead's headers argument (an object, a list of
+// [name, value] pairs, or a flat [name, value, ...] list whose values may be
+// lists themselves), and that argument without its Content-Length. A list
+// goes on flat: once a header is set, Node takes no list of pairs.
 function headersArg(arg: unknown): { type: string; rest: unknown } {
   if (Array.isArray(arg)) {
-    const flat = arg.flat() as unknown[];
-    let type = '';
-    const rest: unknown[] = [];
-    for (let i = 0; i + 1 < flat.length; i += 2) {
-      const name = String(flat[i]).toLowerCase();
-      if (name === 'content-type') type = String(flat[i + 1]);
-      if (name !== 'content-length') rest.push(flat[i], flat[i + 1]);
-    }
-    return { type, rest };
+    const asPairs = Array.isArray(arg[0]);
+    const pairs: unknown[][] = asPairs ? arg as unknown[][]
+      : Array.from({ length: Math.floor(arg.length / 2) }, (_, i) => [arg[2 * i], arg[2 * i + 1]]);
+    const named = (pair: unknown[], name: string) => String(pair[0]).toLowerCase() === name;
+    const type = String(pairs.find(pair => named(pair, 'content-type'))?.[1] ?? '');
+    const kept = pairs.filter(pair => !named(pair, 'content-length'));
+    return { type, rest: kept.flat(1) };
   }
   if (!arg || typeof arg !== 'object') return { type: '', rest: arg };
   const rest: Record<string, unknown> = {};
@@ -118,7 +118,10 @@ export function escapeC1InJson(_req: Request, res: Response, next: NextFunction)
     if (!decide()) return end(...a);
     const [chunk, encoding, cb] = split(a);
     const [out, enc] = convert(chunk, encoding, true);
-    if (!res.headersSent && res.getHeader('content-length') !== undefined && out !== undefined) {
+    // The length Express set was the unescaped body's: set it again from what is
+    // sent, or drop it when no body comes here (HEAD).
+    if (!res.headersSent && out === undefined) res.removeHeader('content-length');
+    else if (!res.headersSent && res.getHeader('content-length') !== undefined) {
       res.setHeader('content-length', Buffer.byteLength(out as string | Buffer, (enc ?? 'utf8') as BufferEncoding));
     }
     return out === undefined ? end(...cb) : end(out, enc, ...cb);

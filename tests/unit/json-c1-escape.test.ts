@@ -43,17 +43,23 @@ app.get('/ndjson', (_req, res) => {
 })
 app.get('/csv', (_req, res) => { res.type('text/csv').send(`"${VALUE}"`) })
 app.get('/text', (_req, res) => { res.type('text/plain').send(VALUE) })
+// A flat header list whose value is a list itself (two X-Multi headers), and a stale length.
+app.get('/flat-list', (_req, res) => {
+  res.writeHead(200, ['Content-Type', 'application/json', 'X-Multi', ['a', 'b'], 'Content-Length', '999'])
+  res.end(JSON.stringify({ v: VALUE }))
+})
 
 const server = app.listen(0, '127.0.0.1')
 await new Promise(r => server.once('listening', r))
 const port = (server.address() as AddressInfo).port
-const get = (path: string) => new Promise<{ headers: http.IncomingHttpHeaders; bytes: Buffer }>((resolve, reject) => {
-  http.get({ host: '127.0.0.1', port, path }, res => {
-    const chunks: Buffer[] = []
-    res.on('data', c => chunks.push(c))
-    res.on('end', () => resolve({ headers: res.headers, bytes: Buffer.concat(chunks) }))
-  }).on('error', reject)
-})
+const get = (path: string, method = 'GET') =>
+  new Promise<{ headers: http.IncomingHttpHeaders; bytes: Buffer }>((resolve, reject) => {
+    http.request({ host: '127.0.0.1', port, path, method }, res => {
+      const chunks: Buffer[] = []
+      res.on('data', c => chunks.push(c))
+      res.on('end', () => resolve({ headers: res.headers, bytes: Buffer.concat(chunks) }))
+    }).on('error', reject).end()
+  })
 
 let failures = 0
 async function check(label: string, fn: () => Promise<void> | void) {
@@ -97,6 +103,22 @@ await check('an event stream and NDJSON: escaped, the same value', async () => {
     const line = bytes.toString('utf8').replace(/^data: /, '').trim()
     assert.equal(JSON.parse(line).v, VALUE)
   }
+})
+await check('a flat header list with a list value: read as pairs, escaped, no stale length', async () => {
+  const { headers, bytes } = await get('/flat-list')
+  escaped(bytes)
+  assert.equal(headers['x-multi'], 'a, b')
+  assert.equal(headers.b, undefined)
+  assert.notEqual(headers['content-length'], '999')
+  assert.equal(JSON.parse(bytes.toString('utf8')).v, VALUE)
+})
+await check('HEAD through the escape: no body, and no length that GET would not send', async () => {
+  const head = await get('/json', 'HEAD')
+  const full = await get('/json')
+  assert.equal(head.bytes.length, 0)
+  assert.ok(head.headers['content-length'] === undefined
+    || Number(head.headers['content-length']) === full.bytes.length, `HEAD says ${head.headers['content-length']}`)
+  assert.equal(head.headers['content-type'], full.headers['content-type'])
 })
 await check('CSV and plain text keep the raw bytes', async () => {
   for (const path of ['/csv', '/text']) {
