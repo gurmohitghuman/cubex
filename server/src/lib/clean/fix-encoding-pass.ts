@@ -15,6 +15,11 @@
 //   letter after one capital ("JÄ…" is "Ją") or the word already holds a
 //   character decoded in this pass ("PÅ˜Ã" + U+008D + "LIÅ" + no-break space
 //   is "PŘÍLIŠ"). A capital decoded in this pass is garbled, not real.
+// - At the end of a word, right after a capital taken as it came, two bytes
+//   read from a capital and a footnote mark (¹ ² ³) don't give a lowercase
+//   letter ("AMANHÃ²", "IRMÃ³" and "GÅ³" stay), unless one capital before gives
+//   a Latin-1 letter ("SÃ³" is "Só") or the word holds a character decoded in
+//   this pass. A capital still comes out: "LIETUVIÅ²" is "LIETUVIŲ".
 // - Three bytes right after a Latin letter give a Latin letter, a character of
 //   U+2000-U+214F (’ “ ” … € ™ –), a symbol not read from two marks as below
 //   ("Parisâ†’Berlin" is "Paris→Berlin"), or anything when another
@@ -32,15 +37,10 @@
 //   after a Latin letter read from two marks that follow words, the second one
 //   that follows a closing quote too, ending the word unless that mark is a
 //   long dash or a no-break space ("está»¹" stays; "Má»¹" alone stays,
-//   "Hà Nội và Mỹ Tho" and "Nguyá»…n" are repaired). Also two bytes at the end
-//   of a word right after a capital taken as it came, read from a capital and a
-//   footnote mark (¹ ² ³), that give a lowercase letter, unless one capital
-//   before gives a Latin-1 letter ("SÃ³" is "Só") or the word holds a character
-//   decoded in this pass ("AMANHÃ²" and "GÅ³" stay, "JÅ³ vaikai ir Å¡uo" is
-//   "Jų vaikai ir šuo"; a capital comes out anyway: "LIETUVIÅ²" is
-//   "LIETUVIŲ"), and two bytes read from × that touch no other sequence ("1920"
-//   + no-break space + "×" + no-break space + "1080" stays; Hebrew words come
-//   as runs). Garbled text has more sequences ("Å’uvreâ€¦"), real text has none.
+//   "Hà Nội và Mỹ Tho" and "Nguyá»…n" are repaired). Also two bytes read from ×
+//   that touch no other sequence ("1920" + no-break space + "×" + no-break
+//   space + "1080" stays; Hebrew words come as runs). Garbled text has more
+//   sequences ("Å’uvreâ€¦"), real text has none.
 // - A sequence a round leaves as it is stays so in the rounds after it.
 // - No word mixes scripts (fix-encoding-parts.ts), but a character decoded from
 //   three or four bytes next to another decoded one may sit in a Latin word,
@@ -122,13 +122,14 @@ function mayDecode(q: Seq, s: string, parts: Parts, runFollows: boolean): boolea
   }
   if (q.len !== 2) return true;
   if (parts.takenCapital(1) && parts.takenCapital(2) && !AFTER_CAPITALS.test(t)) return false;
+  if (footnoteAfterCapitals(q, s, parts)) return false;
   if (!wordEndsAfter(q, s) || !parts.takenCapital(1) || !followsWords(s[q.at + 1])) return true;
   const titleCase = !LETTER.test(parts.text(2)) && LOWER.test(t);
   return titleCase || parts.decodedInWord(inWord);
 }
 
 function isAlone(q: Seq, s: string, parts: Parts, inRun: boolean): boolean {
-  if (q.len === 2 && ((s[q.at] === TIMES && !inRun) || footnoteAfterCapitals(q, s, parts))) return true;
+  if (q.len === 2 && s[q.at] === TIMES && !inRun) return true;
   const before = parts.text(1);
   if (q.len === 3 && LATIN_LETTER.test(before)) return twoMarks(q, s);
   if (inWord(before)) return false;

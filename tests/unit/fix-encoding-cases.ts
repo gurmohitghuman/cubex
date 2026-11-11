@@ -1,3 +1,4 @@
+// Over 200 lines: the one table of every case, kept in one file so each case is checked in one place.
 // One table of every value named while the fix_encoding change was reviewed, so a change that breaks
 // an earlier case fails here, not later. Each row: the input (a value, or a word garbled one way), what
 // fix_encoding must give, whether the import counts it as garbled, and where the case comes from. Real text stays
@@ -166,9 +167,9 @@ export const ROWS: Row[] = [
   ...left('known edge, a Hebrew letter alone', 'ש', [['Windows-1252', 0, false], ['twice Windows-1252', 1, true]]),
   ...left('known edge, a Hebrew word glued to a Latin word', 'Nikeשלום', [['Latin-1', 0, true],
     ['Windows-1252', 0, true], ['twice Latin-1', 0, true], ['twice Windows-1252', 0, true]]),
-  // Nit 2: the footnote shape is decoded only along with other garbled text.
-  row('review 5, nit 2, Lithuanian', 'JÅ³ vaikai ir Å¡uo', 'Jų vaikai ir šuo', true),
-  row('review 5, nit 2, Lithuanian', 'TÅ³ Å¾moniÅ³', 'Tų žmonių', true),
+  // Lithuanian Jų and Tų have the footnote shape after a capital, which stays (review 6 took nit 2 back).
+  row('known edge, Lithuanian Jų and Tų', 'JÅ³ vaikai ir Å¡uo', 'JÅ³ vaikai ir šuo', true),
+  row('known edge, Lithuanian Jų and Tų', 'TÅ³ Å¾moniÅ³', 'TÅ³ žmonių', true),
   row('known edge, Lithuanian Jų alone', 'JÅ³ namai', 'JÅ³ namai', false),
   ...stay('review 5, nit 2, footnote words', 'São Paulo AMANHÃ³', '«AMANHÃ²»', 'MÅ³'),
   // Nit 3: footnote and sign shapes that change, and are counted.
@@ -176,6 +177,21 @@ export const ROWS: Row[] = [
     ['IRMÃ®', 'IRMî'], ['AMANHÃ™', 'AMANHÙ'], ['PÅ®', 'PŮ']]
     .map(([v, gives]) => row('known edge, a footnote or a sign after capitals', v, gives, true)),
   ...stay('review 5, nit 3, a capital É before a sign', 'NESCAFÉ®', 'CAFÉ¹', 'VOCÊ²'),
+
+  // Review 6 (defaf89): should-fix 1, a footnote word after capitals stays beside a garbled word.
+  ...[['MÃ¼ller AMANHÃ²', 'Müller AMANHÃ²'], ['MÃ¼ller CIDADÃ³', 'Müller CIDADÃ³'],
+    ['SÃ£o Paulo AMANHÃ³', 'São Paulo AMANHÃ³'], ['CafÃ© AMANHÃ²', 'Café AMANHÃ²'], ['MÃ¼ller GÅ³', 'Müller GÅ³'],
+    ['MÃ¼ller TÈ¹', 'Müller TÈ¹'], ['MÃ¼ller MÄ³', 'Müller MÄ³'], ['MÃ¼ller MÅ³', 'Müller MÅ³']]
+    .map(([v, gives]) => row('review 6, should-fix 1, a footnote word beside a garbled word', v, gives, true)),
+  // Nit 2: Hebrew abbreviations of single letters stay garbled (their × sequences touch no other); a value with
+  // a Hebrew run repairs whole.
+  ...left('known edge, a Hebrew abbreviation', '100 ש"ח', [['Latin-1', 0, true], ['Windows-1252', 0, false],
+    ['twice Latin-1', 0, true], ['twice Windows-1252', 1, true]]),
+  ...left('known edge, a Hebrew abbreviation', 'ע"י', [['Windows-1252', 0, false],
+    ['twice Windows-1252', 1, true]]),
+  ...left('known edge, a Hebrew abbreviation', 'ת"א', [['Windows-1252', 0, true], ['twice Windows-1252', 0, true]]),
+  ...['(א)', "א'", 'א, ב, ג'].flatMap(w => left('known edge, a Hebrew abbreviation', w, [['Windows-1252', 0, true]])),
+  ...repair('review 6, nit 2, Hebrew with a run', FOUR, 'בע"מ', 'צה"ל', 'ד"ר כהן', 'מחיר 100 ש"ח לק"ג'),
 ]
 
 // Values with no sequence to decode: fix_encoding can't change them, and the import must not count them (the
