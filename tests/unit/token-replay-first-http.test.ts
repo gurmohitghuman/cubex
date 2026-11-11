@@ -6,7 +6,8 @@
 // run, saves no key and takes no slot: a new start goes through after. The same key with other arguments is still
 // refused. A key written before a start was also known by its arguments as sent (the parsed hash alone) still
 // replays. What the hash leaves out never replays where the start refuses it (save_keys without curl, an empty
-// webhook_id), and arguments nested too deep to hash get the start's own 400, with a key or without.
+// webhook_id, curl with the url it became), and arguments nested too deep to hash get the start's own 400, with
+// a key or without.
 import assert from 'node:assert/strict'
 import {
   httpKit, curlWith, CONFLICT, SURFACE_NAMES, TRIES, type Answer, type Args, type Surface,
@@ -14,7 +15,9 @@ import {
 import hooksMod from '../../server/src/services/run-hooks'
 import ledgerMod from '../../server/src/lib/run-idempotency'
 import argsMod from '../../server/src/services/http-token-args'
+import curlMod from '../../server/src/services/curl-token'
 const { createRunWebhook, deleteRunWebhook } = hooksMod as typeof import('../../server/src/services/run-hooks')
+const { curlForToken } = curlMod as typeof import('../../server/src/services/curl-token')
 const { writeRunLedger } = ledgerMod as typeof import('../../server/src/lib/run-idempotency')
 const { httpSentHash } = argsMod as typeof import('../../server/src/services/http-token-args')
 const k = await httpKit('token-replay-first-http')
@@ -118,6 +121,22 @@ for (const surface of ['service', 'rest'] as const) {
         refusal(surface, 'bad_request', 400, 'webhook_id must be the id of a run webhook.'), JSON.stringify(webhook_id))
     }
   })
+}
+
+// curl sent with the url, method and headers it became (the cURL command's own code builds them), and its key:
+// the start's 400, never a replay of the cURL start.
+for (const surface of SURFACE_NAMES) {
+  await ok(`${surface}: curl with the url, method and headers it became, sent with its key, gets the start's 400`,
+    async () => {
+      const args = { sheet_id: fresh(), curl: curlWith(`Both${surface}`), save_keys: true, master_column_name: 'Find',
+        response_mapping: mapping('Got'), idempotency_key: `curl-both-${surface}` }
+      assert.ok((await start(surface, args)).ok)
+      const built = curlForToken({ userId: uid, scopes: new Set(['secrets']) }, args.sheet_id, args.curl, true)
+      assert.ok('ok' in built, JSON.stringify(built))
+      const { url, method, headers, body } = built.ok.prepared.request
+      assert.deepEqual(await start(surface, { ...args, url, method, headers, ...(body === undefined ? {} : { body }) }),
+        refusal(surface, 'bad_request', 400, 'Pass either curl or url/method/headers/body, not both.'))
+    })
 }
 
 await ok('a key from before the sent arguments were kept (the parsed hash alone) still replays a cURL start',

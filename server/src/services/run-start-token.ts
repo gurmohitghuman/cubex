@@ -96,10 +96,13 @@ export function ledgerReplay(c: TokenCaller, key: unknown, hash: string | readon
 }
 
 // A start sent again with its key: the first start's answer, before any check that reads state (the sheet and
-// its rows, columns, saved keys, webhooks, the model list, the tool catalog, held columns, the run-start window),
-// so a retry is never refused for what changed since its first call, and takes no run-start slot. hash: the
-// arguments as the caller sent them. Anything else (no key, a new one, other arguments) is null: the start's own
-// checks then run in their order, its ledgerReplay refusing a key used with other arguments, as always.
+// its rows, columns, webhooks, the model list, the tool catalog, held columns, the run-start window), so a retry
+// is never refused for what changed since its first call, and takes no run-start slot. Only the token's scopes
+// count: a token without 'secrets' whose start needs it gets the start's own checks instead (the saved keys'
+// names are read for that alone: run-start-token-http.ts startNeedsSecrets, waterfall-run-start.ts
+// replayKeysRefusal). hash: the arguments as the caller sent them. Anything else (no key, a new one, other
+// arguments) is null: the start's own checks then run in their order, its ledgerReplay refusing a key used with
+// other arguments, as always.
 export function firstStart(c: TokenCaller, key: unknown, hash: () => string | null): RunLedgerResult | null {
   if (!isIdempotencyKey(key)) return null;
   let sent: string | null;

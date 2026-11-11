@@ -120,6 +120,9 @@ export async function tokenWaterfall(
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun, ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   })].filter((h): h is string => !!h);
   const replay = ledgerReplay(c, a.idempotency_key, hash);
+  // A token without 'secrets' replaying a run whose steps read a saved key gets the start's 403 here: before the
+  // start's own refusals that come later on a call without the key (the run-start window's 429, the start's
+  // checks), on purpose, so the refused retry takes no run-start slot.
   if (replay && 'ok' in replay) {
     return replayKeysRefusal(c.userId, (replay.ok as { run_id: string }).run_id, c.scopes.has('secrets')) ?? replay;
   }

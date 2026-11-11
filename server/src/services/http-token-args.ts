@@ -29,9 +29,11 @@ export function httpRunHash(sheetId: string, a: TokenHttpRunArgs, runIf: string 
   });
 }
 
-// From the arguments alone; null when they don't parse (the start refuses them).
+// From the arguments alone; null when they don't parse (the start refuses them). curl with any of url, method,
+// headers or body is refused too, so it never hashes like the request a cURL command became.
 export function httpSentHash(a: TokenHttpRunArgs): string | null {
   if (typeof a.sheet_id !== 'string' || !startsRun(a.estimate_only) || webhookIdShapeProblem(a.webhook_id)) return null;
+  if (a.curl !== undefined && [a.url, a.method, a.headers, a.body].some(v => v !== undefined)) return null;
   const runIf = parseRuleField(a.run_if, 'run_if');
   const extras = httpRunExtras(a);
   return 'error' in runIf || typeof extras === 'string' ? null : httpRunHash(a.sheet_id, a, runIf.ok, extras);

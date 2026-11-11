@@ -5,13 +5,14 @@ import { db } from '../lib/db';
 
 export type RunTable = 'ai_runs' | 'http_runs' | 'setup_runs';
 
-// null: no webhook named; a string: why the value can't be used.
-// What's wrong with a webhook_id's shape, read alone (a replay checks it before the ledger), or null.
+// What's wrong with a webhook_id's shape, read alone (a replay checks it before the ledger): null for none
+// named or a usable shape, else why.
 export function webhookIdShapeProblem(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   return typeof value !== 'string' || !value.trim() ? 'webhook_id must be the id of a run webhook.' : null;
 }
 
+// null: no webhook named; a string: why the value can't be used.
 export function webhookIdProblem(userId: string, value: unknown): string | null {
   if (value === undefined || value === null) return null;
   const shape = webhookIdShapeProblem(value);

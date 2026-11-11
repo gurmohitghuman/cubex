@@ -21,7 +21,7 @@ import {
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
-import { curlForToken, curlStartProblem, type TokenCurl } from './curl-token';
+import { curlForToken, curlNeedsSecrets, curlStartProblem, type TokenCurl } from './curl-token';
 import { commitCurlKeys } from './curl-import';
 import { HTTP_STATUS_PATH } from '../lib/constants-http-retry';
 import { httpRunExtras, httpRunHash, httpSentHash, wholeIn } from './http-token-args';
@@ -37,16 +37,13 @@ export interface TokenHttpRunArgs {
 }
 
 // A replay answers only a token the start would accept for its scopes. Without 'secrets', a cURL command with a
-// key in it or a request naming a saved key goes through the start's own checks instead (the same tests:
-// curlForToken, then the saved-key check), so it gets the start's 'secrets' refusal in the start's words.
+// key in it or a request naming a saved key goes through the start's own checks instead, so it gets the start's
+// 'secrets' refusal in the start's words. Decided from what was sent, reading no sheet or column (a cURL
+// command: curlNeedsSecrets), so a start that needs no key replays after the sheet changed, as for any token.
 function startNeedsSecrets(c: TokenCaller, a: TokenHttpRunArgs): boolean {
   if (c.scopes.has('secrets')) return false;
-  let rq: { url?: unknown; headers?: unknown; body?: unknown } = a;
-  if (a.curl !== undefined) {
-    const parsed = curlForToken(c, a.sheet_id as string, a.curl, a.save_keys);
-    if ('fail' in parsed) return true;
-    rq = parsed.ok.prepared.request;
-  }
+  if (a.curl !== undefined) return curlNeedsSecrets(c.userId, a.curl);
+  const rq: { url?: unknown; headers?: unknown; body?: unknown } = a;
   const headers = rq.headers ?? {};
   const strings = !!headers && typeof headers === 'object' && !Array.isArray(headers)
     && Object.values(headers).every(v => typeof v === 'string');
