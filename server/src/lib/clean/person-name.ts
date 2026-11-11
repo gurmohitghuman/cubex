@@ -18,8 +18,9 @@ export type NameInput = 'full_name' | 'first_name' | 'last_name';
 
 const isSuffix = (w: string) => SUFFIXES.has(nameKey(w));
 const isParticle = (w: string) => PARTICLES.has(nameKey(w));
-// One letter, with or without its period: "J", "J.". "J.R." and "AJ" are names.
-const isInitial = (w: string) => /^\p{L}\.?$/u.test(w);
+// One cased letter, with or without its period: "J", "J.". "J.R." and "AJ" are
+// names, and so is one Han or Hangul character (伟, 민): those scripts have no case.
+const isInitial = (w: string) => /^[\p{Lu}\p{Ll}\p{Lt}]\.?$/u.test(w);
 // After a comma a credential can be any short all-capital word (in a name
 // that isn't all in capitals) or a dotted one (M.D.).
 const isCommaSuffix = (w: string, mixedCase: boolean) =>
@@ -42,25 +43,22 @@ const wordsOf = (s: string) => s.split(' ').filter(Boolean);
 // MBA, PMP" are a name and its suffixes (only suffixes after the comma, more
 // than one word before it); otherwise "Smith, John Q." is last name first
 // ("Smith Jr., John"; "Smith, John, Jr." puts suffixes after a second comma).
-// turned: the words were put around.
-function naturalOrder(s: string): { words: string[]; turned: boolean } {
+function naturalOrder(s: string): string[] {
   const parts = s.split(',').map(p => p.trim()).filter(Boolean);
-  if (parts.length < 2) return { words: wordsOf(parts[0] ?? ''), turned: false };
+  if (parts.length < 2) return wordsOf(parts[0] ?? '');
   const before = wordsOf(parts[0]);
   const after = parts.slice(1).flatMap(wordsOf);
   const mixedCase = hasLower(s) && hasUpper(s);
-  if (after.every(w => isCommaSuffix(w, mixedCase)) && (before.length > 1 || after.every(isSuffix))) {
-    return { words: before, turned: false };
-  }
-  return { words: [...wordsOf(parts[1]), ...before], turned: true };
+  if (after.every(w => isCommaSuffix(w, mixedCase)) && (before.length > 1 || after.every(isSuffix))) return before;
+  return [...wordsOf(parts[1]), ...before];
 }
 
 // part: the value holds one part of a name only (NameInput), every word of it.
-interface Parsed { words: string[]; roles: NameRole[]; turned: boolean; part: boolean }
+interface Parsed { words: string[]; roles: NameRole[]; part: boolean }
 
 // s: the value as nameText gives it.
 function parseName(s: string, mode: Mode): Parsed | null {
-  const { words, turned } = naturalOrder(cleanTrim(dropNicknames(s)));
+  const words = naturalOrder(cleanTrim(dropNicknames(s)));
   while (words.length > 1 && isSuffix(words[words.length - 1])) words.pop();
   let honorific = false;
   while (words.length > 1 && HONORIFICS.has(nameKey(words[0]))) {
@@ -80,31 +78,34 @@ function parseName(s: string, mode: Mode): Parsed | null {
   while (lastStart > 1 && isParticle(words[lastStart - 1])) lastStart--;
   if (lastOnly) lastStart = 0;
   const roles = words.map((_, i): NameRole => (i >= lastStart ? 'last' : i === 0 ? 'first' : 'middle'));
-  return { words, roles, turned, part: false };
+  return { words, roles, part: false };
 }
 
 // A value that holds one part only: honorifics and nicknames go, suffixes
-// after a last name, and initials before a first name ("J. Michael"); every
+// after a last name, and initials before a first name, titles and initials in
+// any order ("J. Dr. Michael"), so one pass leaves nothing for another; every
 // word left is that part, particles included ("VAN DER BERG" → "van der Berg").
 function parsePart(s: string, part: 'first' | 'last'): Parsed | null {
   const words = wordsOf(cleanTrim(dropNicknames(s).replace(/,/g, ' ')));
   if (part === 'last') while (words.length > 1 && isSuffix(words[words.length - 1])) words.pop();
-  while (words.length > 1 && HONORIFICS.has(nameKey(words[0]))) words.shift();
-  if (part === 'first') while (words.length && isInitial(words[0])) words.shift();
+  for (let n = -1; n !== words.length;) {
+    n = words.length;
+    while (words.length > 1 && HONORIFICS.has(nameKey(words[0]))) words.shift();
+    if (part === 'first') while (words.length && isInitial(words[0])) words.shift();
+  }
   if (!words.length) return null;
   const roles = words.map((_, i): NameRole => (part === 'last' ? 'last' : i === 0 ? 'first' : 'middle'));
-  return { words, roles, turned: false, part: true };
+  return { words, roles, part: true };
 }
 
 // Where the first name is: the first word before the last name that isn't an
-// initial ("J. Michael Fox" → Michael). A lone initial before one more word,
-// with no comma, is read as an initial and a first name ("J. Michael" →
-// Michael); otherwise a first name of initials only is none ("J.", "Smith, J.").
+// initial ("J. Michael Fox" → Michael). The last name is never the first name,
+// so a first name of initials only is none ("J. Smith", "Mr. R. Patel", "J.").
 function firstNameAt(p: Parsed): number {
   const lastAt = p.roles.indexOf('last');
   const end = lastAt < 0 ? p.words.length : lastAt;
   for (let i = 0; i < end; i++) if (!isInitial(p.words[i])) return i;
-  return end === 1 && p.words.length === 2 && !p.turned ? 1 : -1;
+  return -1;
 }
 
 // Starting with St./Ste. ("St. Clair"), or with a particle written in lower

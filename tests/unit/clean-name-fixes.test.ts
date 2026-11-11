@@ -7,6 +7,7 @@
 // must change nothing (auto-run cleans rows again).
 // server/src is type:commonjs → default-import + destructure under tsx.
 // Over 200 lines: one table of cases per decision, read top to bottom.
+// Characters that don't show (joiners, selectors, combining marks) are written as escapes.
 import cleanersMod from '../../server/src/lib/clean/cleaners'
 const { cleanerFn } = cleanersMod as typeof import('../../server/src/lib/clean/cleaners')
 type CleanerId = import('../../server/src/lib/clean/cleaners').CleanerId
@@ -37,31 +38,49 @@ run({}, [
   ['person_name', 'Katie Siklitska 🇺🇦', 'Katie Siklitska'],
   ['first_name', 'Katie Siklitska 🇺🇦', 'Katie'],
   // A skin tone and a joiner sequence (woman technologist), a family, a subdivision flag (tag characters).
-  ['first_name', 'Katie 👩🏽‍💻 Siklitska', 'Katie'],
-  ['person_name', 'Jane 👨‍👩‍👧 Doe', 'Jane Doe'],
+  ['first_name', 'Katie 👩🏽\u{200D}💻 Siklitska', 'Katie'],
+  ['person_name', 'Jane 👨\u{200D}👩\u{200D}👧 Doe', 'Jane Doe'],
   ['person_name', '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F} Ewan McGregor', 'Ewan McGregor'],
   ['person_name', 'John😀Smith', 'John Smith'],
   // A keycap goes whole; a digit, # or * on its own stays.
-  ['company_name', 'Acme 1️⃣', 'Acme'],
+  ['company_name', 'Acme 1\u{FE0F}\u{20E3}', 'Acme'],
   ['company_name', '3M', '3M'],
   ['company_name', 'Studio #9', 'Studio #9'],
   ['company_name', 'Acme*', 'Acme*'],
-  // © ® ™ are pictographs too, dropped before NFKC would turn ™ into TM.
+  // © ® ™ are pictographs too.
   ['company_name', 'Coca-Cola®', 'Coca-Cola'],
   ['company_name', 'FraudFighter™', 'FraudFighter'],
   ['company_name', '©Acme Inc', 'Acme'],
+  // An enclosed letter is a letter, dropped only as an emoji (with U+FE0F after it).
+  ['company_name', 'Ⓜ Labs', 'Ⓜ Labs'],
+  ['company_name', 'Ⓜ\u{FE0F} Labs', 'Labs'],
+  ['company_name', '🅰 Acme', '🅰 Acme'],
+  ['company_name', '🅰\u{FE0F} Acme', 'Acme'],
+  // ℠ isn't: it stays.
+  ['company_name', 'Acme℠', 'Acme℠'],
   // Only emoji: blank.
   ['person_name', '👋', ''],
   ['company_name', '🚀🚀', ''],
   ['last_name', '🇺🇦', ''],
   // A joiner between letters of a joining script is spelling, not an emoji's.
-  ['person_name', 'سا‍را', 'سا‍را'],
+  ['person_name', 'سا\u{200D}را', 'سا\u{200D}را'],
 ])
 
-// 2. Initials: first_name gives the first word that isn't one; a lone one is blank.
+// 2. Initials: first_name gives the first word that isn't one, never the last
+// name; initials only (or a lone one) give blank.
 run({}, [
-  ['first_name', 'J. Michael', 'Michael'],
   ['first_name', 'J. Michael Fox', 'Michael'],
+  ['first_name', 'J. Michael', ''],
+  ['first_name', 'J. Smith', ''],
+  ['first_name', 'Mr. R. Patel', ''],
+  ['first_name', 'Dr. A. Kumar', ''],
+  ['first_name', 'Prof. J. Smith', ''],
+  // One word keeps its reading.
+  ['first_name', 'Prince', 'Prince'],
+  // Han and Hangul have no case: one character is a name, not an initial.
+  ['first_name', '王 伟', '王'],
+  ['first_name', '伟', '伟'],
+  ['first_name', '민', '민'],
   ['first_name', 'J.', ''],
   ['first_name', 'J', ''],
   ['first_name', 'j. michael fox', 'Michael'],
@@ -81,8 +100,9 @@ run({}, [
 ])
 
 // 3. Placeholders: blank in every name cleaner and company_name, whole values only.
-const PLACEHOLDER_INPUTS = ['n/a', 'N/A', 'n.a.', 'N.A.', 'na', 'NA', 'none', 'None', 'NULL', 'nil', '-', '--', '?',
-  'unknown', 'Unknown', 'test', 'TEST', 'tbd', 'TBD', 'blank', ' (none) ', '[N/A]', 'n/a.', '{null}', 'N/A 👋']
+const PLACEHOLDER_INPUTS = ['n/a', 'N/A', '#N/A', '#n/a', 'n.a.', 'N.A.', 'na', 'NA', 'none', 'None', 'NULL', 'null',
+  'nil', 'NIL', 'blank', 'BLANK', '-', '--', '?', 'unknown', 'Unknown', 'test', 'TEST', 'tbd', 'TBD', ' (none) ',
+  '[N/A]', 'n/a.', '{null}', '(blank)', 'N/A 👋']
 for (const c of ['person_name', 'first_name', 'last_name', 'company_name'] as const) {
   for (const v of PLACEHOLDER_INPUTS) expectClean(c, {}, v, '')
 }
@@ -96,6 +116,21 @@ run({}, [
   ['last_name', 'Li Na', 'Na'],
   ['last_name', 'LI NA', 'Na'],
   ['first_name', 'Na Young', 'Na'],
+  // Nil, Null and Blank are words inside a longer value, and written so they
+  // stay alone too, in every cleaner: they can be a cleaner's own result.
+  ['first_name', 'Nil Moliner', 'Nil'],
+  ['last_name', 'Arthur Blank', 'Blank'],
+  ['last_name', 'Steve Blank', 'Blank'],
+  ['last_name', 'Kim Nil', 'Nil'],
+  ['last_name', 'Gary Null', 'Null'],
+  ['company_name', 'Blank Inc', 'Blank'],
+  ['company_name', 'blank inc', 'Blank'],
+  ['person_name', 'Null', 'Null'],
+  ['first_name', 'Nil', 'Nil'],
+  ['last_name', 'Blank', 'Blank'],
+  ['company_name', 'Null', 'Null'],
+  ['company_name', 'Nil', 'Nil'],
+  ['company_name', 'Blank', 'Blank'],
   // Only whole values.
   ['company_name', 'Test Kitchen', 'Test Kitchen'],
   ['company_name', 'None Such', 'None Such'],
@@ -128,6 +163,9 @@ run({ nameInput: 'first_name' }, [
   ['first_name', 'J. Michael', 'Michael'],
   ['first_name', 'J.', ''],
   ['first_name', 'J', ''],
+  ['first_name', '伟', '伟'],
+  // Titles and initials in any order, gone in one pass.
+  ['first_name', 'J. Dr J. Dr J. Dr J. Dr Sarah', 'Sarah'],
   ['first_name', 'Robert (Bob)', 'Robert'],
   ['first_name', 'William "Bill"', 'William'],
   ['first_name', 'Sarah 👋', 'Sarah'],
@@ -150,19 +188,37 @@ run({ nameInput: 'last_name' }, [
   ['last_name', 'Kim (they/them)', 'Kim'],
 ])
 
-// 5. Full-width letters and other compatibility forms read as plain ones (NFKC).
+// 5. Full-width ASCII reads as plain ASCII, the ideographic space as a space;
+// every other character stays exactly as typed.
 run({}, [
   ['person_name', 'Ｍｉｃｈａｅｌ', 'Michael'],
   ['first_name', 'Ｍｉｃｈａｅｌ', 'Michael'],
   ['last_name', 'Ｍｉｃｈａｅｌ', 'Michael'],
   ['person_name', 'Ｊ． Ｍｉｃｈａｅｌ Ｆｏｘ', 'J. Michael Fox'],
-  ['company_name', 'ＡＣＭＥ　ＩＮＣ', 'Acme'],
-  ['person_name', 'ﬁona smith', 'Fiona Smith'],
-  // An acute accent typed as an apostrophe stays (NFKC would make it a space and a mark).
+  ['company_name', 'ＡＣＭＥ\u{3000}ＩＮＣ', 'Acme'],
+  ['company_name', 'ＡＣＭＥ\u{3000}Ｉｎｃ', cleanerFn('company_name', {})('ACME Inc')],
+  ['company_name', 'ＡＣＭＥ\u{3000}Ｉｎｃ', 'Acme'],
+  // Ligatures and half-width kana stay as typed.
+  ['person_name', 'ﬁona smith', 'ﬁona Smith'],
+  ['person_name', 'ﬁnn Wolfhard', 'ﬁnn Wolfhard'],
+  ['company_name', 'ｶﾞｽ', 'ｶﾞｽ'],
+  ['person_name', 'Mª José García', 'Mª José García'],
+  ['first_name', 'Mª José García', 'Mª'],
+  ['company_name', '1º de Mayo', '1º de Mayo'],
+  ['company_name', 'Аптека №1', 'Аптека №1'],
+  ['person_name', 'Henry Ⅷ', 'Henry Ⅷ'],
+  ['company_name', 'E² Solutions', 'E² Solutions'],
+  ['person_name', 'ทองคำ', 'ทองคำ'],
+  // An acute accent typed as an apostrophe stays.
   ['person_name', 'Sean O´Brien', 'Sean O´Brien'],
-  // Accents typed as two characters come out composed.
-  ['person_name', 'José García', 'José García'],
+  // Accents typed as two characters stay so.
+  ['person_name', 'Jose\u{301} Garci\u{301}a', 'Jose\u{301} Garci\u{301}a'],
 ])
+// Thai, byte for byte and code point by code point: SARA AM (U+0E33) stays one character.
+const thai = cleanerFn('person_name', {})('ทองคำ')
+check('Thai comes back byte for byte', Buffer.from(thai, 'utf8').equals(Buffer.from('ทองคำ', 'utf8')))
+check('Thai keeps its 5 code points', [...thai].join(' ')
+  === ['\u{E17}', '\u{E2D}', '\u{E07}', '\u{E04}', '\u{E33}'].join(' '))
 
 // 6. A bracket that never closes goes with what follows it (company_name).
 run({}, [
@@ -174,6 +230,9 @@ run({}, [
   // Nothing named before it: what follows is the name.
   ['company_name', '(Acme Corp', 'Acme'],
   ['company_name', '[Globex LLC', 'Globex'],
+  ['company_name', '( ( (Acme', 'Acme'],
+  // A first word "The" isn't a name: what follows the bracket is.
+  ['company_name', 'The (Acme Company', 'Acme'],
   // Closed brackets as before.
   ['company_name', 'Acme (UK) Ltd', 'Acme'],
   ['company_name', 'Acme (NYSE: ACM)', 'Acme'],
@@ -197,8 +256,11 @@ run({ theCompany: 'keep' }, [
   ['company_name', 'The Home Depot, Inc.', 'The Home Depot'],
   ['company_name', 'Acme Company', 'Acme'],
   ['company_name', 'Acme, Inc.', 'Acme'],
-  ['company_name', 'The Christman Company 🏗️', 'The Christman Company'],
+  ['company_name', 'The Christman Company 🏗\u{FE0F}', 'The Christman Company'],
   ['company_name', 'n/a', ''],
+  // The bracket is cut first: "Acme Company" has no The, so it is cleaned as with strip.
+  ['company_name', 'The (Acme Company', 'Acme'],
+  ['company_name', '(The Christman Company', 'The Christman Company'],
 ])
 
 // 8. What already worked, each its own case.
@@ -220,7 +282,7 @@ run({}, [
   ['company_name', 'Initech GmbH', 'Initech'],
 ])
 
-// The other cleaners don't change: no emoji dropped, no NFKC, no placeholders.
+// The other cleaners don't change: no emoji dropped, no folding, no placeholders.
 run({}, [
   ['title_case', 'n/a', 'N/A'],
   ['trim', 'Kowalski 👋', 'Kowalski 👋'],

@@ -39,3 +39,7 @@ export const FIX_ENCODING_MAX_PASSES = 3;
 // shows up to this many of the first ones, each cut to this many characters.
 export const IMPORT_GARBLED_SAMPLES = 10;
 export const IMPORT_GARBLED_SAMPLE_CHARS = 100;
+// Title case (lib/clean/text.ts) cleans its result again until it holds still,
+// at most this many times more: a pass that drops an emoji's selector after a
+// change of case (Ⓜ shown as an emoji, to ⓜ) can read differently to the next one.
+export const TITLE_CASE_EXTRA_PASSES = 3;

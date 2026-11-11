@@ -20,14 +20,17 @@ Everything here is free: no AI call, nothing sent anywhere. Never use an AI colu
 | Cleaner | Does |
 |---|---|
 | `person_name` | Fixes ALL CAPS and lowercase, turns "Last, First" around, drops titles and suffixes |
-| `first_name`, `last_name` | The same, split |
-| `company_name` | Drops Inc, LLC, Ltd, GmbH and other legal endings, fixes ALL CAPS |
+| `first_name`, `last_name` | The same, split. `name_input` says what the column holds: `full_name` (default), or `first_name` / `last_name` when it holds only that part |
+| `company_name` | Drops Inc, LLC, Ltd, GmbH and other legal endings, fixes ALL CAPS. `the_company`: `strip` (default) or `keep` |
 | `email` | Pulls the address out of `Name <address>`, lowercases it, blank when invalid |
 | `domain` | The root domain of a website or an email address |
 | `phone` | One format: `phone_format` national, international or e164; `phone_country` for numbers without a country code |
 | `title_case`, `lowercase`, `trim` | Case and spaces |
 
 - Pass `preview: true` first and show the user a few before and after values.
+- The name and company cleaners drop emoji and leave a cell that is only a placeholder (n/a, none, null, unknown, test) blank, counted in `blank_rows`.
+- Pass `name_input: "first_name"` when a column holds only first names (`Dr. Sarah`, `MARY ANN`), or `name_input: "last_name"` when it holds only last names (`SMITH JONES`, `VAN DER BERG`); read as full names, those come out blank or cut short. Leave it out for full names.
+- Pass `the_company: "keep"` when the companies are always named with The and Company (`The Christman Company`); the default turns that into `Christman`.
 - Auto-run is on by default, so new and edited rows get cleaned on their own.
 - For what the cleaners don't do (join two columns, split on a character, pick a value out of a JSON cell), use `formula_column`: one JavaScript expression reading cells as `{{Column}}`, also free. `write_formula` writes one from plain words.
 

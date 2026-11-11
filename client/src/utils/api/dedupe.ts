@@ -57,7 +57,8 @@ export interface AutoDedupeView {
   state: 'building' | 'on'
   // Rows whose check waits (a run is working on a row that would go, or the keys are catching up).
   waiting_rows: number
-  // Rows that already shared a key with an older row when it was turned on (left as they were).
+  // Rows that shared a key with an older row when its keys were last built (left as they were); null while
+  // they build.
   shared_rows: number | null
   removed_rows: number
   since: string

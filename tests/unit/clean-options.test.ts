@@ -31,7 +31,7 @@ const FIRST_PAIR = 'name_input on the first_name cleaner must be full_name or fi
 const LAST_PAIR = 'name_input on the last_name cleaner must be full_name or last_name.'
 const THE_COMPANY_ELSEWHERE = 'the_company is an option of the company_name cleaner only: strip or keep.'
 const THE_COMPANY_VALUE = 'the_company must be strip or keep.'
-const PHONE_ELSEWHERE = 'phoneFormat and phoneCountry are options of the phone cleaner only.'
+const PHONE_ELSEWHERE = 'phone_format and phone_country are options of the phone cleaner only.'
 
 await ok('accepted pairs', () => {
   assert.deepEqual(parseCleanOptions('first_name', { nameInput: 'first_name' }), { ok: { nameInput: 'first_name' } })
@@ -57,8 +57,12 @@ await ok('refused: another pair, another cleaner, another value, in these words'
     assert.deepEqual(parseCleanOptions(c, { theCompany: 'keep' }), { error: THE_COMPANY_ELSEWHERE }, c)
   }
   assert.deepEqual(parseCleanOptions('company_name', { theCompany: 'drop' }), { error: THE_COMPANY_VALUE })
-  // Phone's own words are as they were.
+  // Phone's options are named as MCP and REST callers send them too.
   assert.deepEqual(parseCleanOptions('person_name', { phoneFormat: 'e164' }), { error: PHONE_ELSEWHERE })
+  assert.deepEqual(parseCleanOptions('phone', { phoneFormat: 'e165' }),
+    { error: 'phone_format must be one of: national, international, e164.' })
+  assert.deepEqual(parseCleanOptions('phone', { phoneCountry: 'XX' }),
+    { error: 'phone_country must be a two-letter country code, such as US, CA or GB.' })
   assert.deepEqual(parseCleanOptions('first_name', { name_input: 'first_name' }),
     { error: 'Unknown option "name_input".' })
 })

@@ -6,8 +6,10 @@
 // matching another placeholder); a name with an emoji or in full-width
 // letters matches the plain one; on a database at migration 052 whose keys
 // the old cleaners built, 053 sends those settings (only those) back to
-// building, the build rewrites the keys in place and removes nothing, and a
-// new row holding a value whose old key differed is then caught.
+// building with shared_rows cleared (null, as a new setting's, while they
+// build), the build rewrites the keys in place, removes nothing and counts
+// shared_rows again, and a new row holding a value whose old key differed is
+// then caught.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -106,13 +108,20 @@ putKey.run(sId, na1, '=n/a')
 putKey.run(sId, na2, '=n/a')
 const textKeys = db.prepare('SELECT rid, key FROM auto_dedupe_keys WHERE dedupe_id = ? ORDER BY rid').all(
   autoDedupeOf(T, uid)!.id)
+const textShared = autoDedupeOf(T, uid)!.shared_rows
+await ok('before 053: the old count shows (the two "n/a" rows shared a key)', () => {
+  assert.equal(autoDedupeOf(S, uid)!.shared_rows, 1)
+})
 
 runMigrations()
 
 await ok('053 sends company and person_name settings back to building, and only those', () => {
   assert.equal(autoDedupeOf(S, uid)!.build_cursor, 0)
   assert.equal(autoDedupeView(S, uid)!.state, 'building')
+  assert.equal(autoDedupeOf(S, uid)!.shared_rows, null)
+  assert.equal(autoDedupeView(S, uid)!.shared_rows, null)
   assert.equal(autoDedupeOf(T, uid)!.build_cursor, null)
+  assert.equal(autoDedupeOf(T, uid)!.shared_rows, textShared)
   assert.deepEqual(db.prepare('SELECT rid, key FROM auto_dedupe_keys WHERE dedupe_id = ? ORDER BY rid').all(
     autoDedupeOf(T, uid)!.id), textKeys)
 })

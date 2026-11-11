@@ -6,5 +6,7 @@
 -- the same value. Settings matching on company or person_name build their
 -- keys again, as a new setting does (services/auto-dedupe-index.ts): every row
 -- is read again from the start, rows arriving meanwhile are checked once it is
--- done, and building removes no row.
-UPDATE auto_dedupe SET build_cursor = 0 WHERE match IN ('company', 'person_name');
+-- done, and building removes no row. Their shared_rows (rows sharing a key
+-- with an older row) is cleared, as a new setting's is, and counted again with
+-- the new keys once they are built.
+UPDATE auto_dedupe SET build_cursor = 0, shared_rows = NULL WHERE match IN ('company', 'person_name');

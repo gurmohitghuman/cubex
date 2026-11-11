@@ -60,30 +60,45 @@ function stripLegal(name: string, keepCompanyWord: boolean): { name: string; los
   return { name, lostCompanyWord };
 }
 
-const CLOSE: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+const OPENERS = '([{';
+const CLOSERS = ')]}';
 
-// Where the first bracket that never closes is, or -1. A closing bracket
-// closes the nearest open one of its kind (and any left open inside it).
-function unclosedAt(s: string): number {
-  const open: Array<{ ch: string; at: number }> = [];
+// The positions of the brackets that never close, in order. One pass, a stack
+// per kind: a closing bracket closes the nearest open one of its kind, and
+// every bracket of another kind opened after that one (it sat inside the pair).
+function unclosed(s: string): number[] {
+  const open: number[][] = [[], [], []];
   for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (CLOSE[ch]) { open.push({ ch, at: i }); continue; }
-    const j = open.map(o => CLOSE[o.ch]).lastIndexOf(ch);
-    if (j >= 0) open.length = j;
+    const o = OPENERS.indexOf(s[i]);
+    if (o >= 0) { open[o].push(i); continue; }
+    const c = CLOSERS.indexOf(s[i]);
+    if (c < 0 || open[c].length === 0) continue;
+    const at = open[c].pop()!;
+    for (const stack of open) while (stack.length && stack[stack.length - 1] > at) stack.pop();
   }
-  return open.length ? open[0].at : -1;
+  return open.flat().sort((x, y) => x - y);
 }
 
-// An unclosed bracket and what follows go ("ImagineSoftware (Technology
-// Partners" → "ImagineSoftware"); when nothing named comes before it, what
-// follows it is the name ("(Acme Corp" → "Acme Corp").
+// Where the name starts: the first letter or digit, a first word "The" aside
+// (hasName's reading).
+function nameStart(s: string): number {
+  const the = /^[^\p{L}\p{N}]*the(?![\p{L}\p{N}])/iu.exec(s);
+  const from = the ? the[0].length : 0;
+  const m = /[\p{L}\p{N}]/u.exec(s.slice(from));
+  return m ? from + m.index : s.length;
+}
+
+// A bracket that never closes goes with what follows it ("ImagineSoftware
+// (Technology Partners" → "ImagineSoftware"). Those with nothing named before
+// them go all at once, and the name is what follows them ("(Acme Corp" → "Acme
+// Corp", "The (Acme Company" → "Acme Company"). What's left has none.
 function cutUnclosed(s: string): string {
-  for (let at = unclosedAt(s); at >= 0; at = unclosedAt(s)) {
-    const before = s.slice(0, at);
-    s = (/[\p{L}\p{N}]/u.test(before) ? before : s.slice(at + 1)).trim();
-  }
-  return s;
+  const open = unclosed(s);
+  if (open.length === 0) return s;
+  const named = nameStart(s);
+  let k = 0;
+  while (k < open.length && open[k] < named) k++;
+  return s.slice(k > 0 ? open[k - 1] + 1 : 0, k < open.length ? open[k] : s.length).trim();
 }
 
 // Brackets and legal forms off, again until neither changes anything: cutting
@@ -123,8 +138,10 @@ function recaseWord(word: string, i: number, count: number): string {
 export type TheCompany = 'strip' | 'keep';
 
 export function cleanCompanyName(value: string, theCompany: TheCompany = 'strip'): string {
-  const s = nameText(value);
-  if (!s || s.length > MAX_CLEAN_FIELD_CHARS || isPlaceholder(s, false)) return '';
+  const text = nameText(value);
+  if (!text || text.length > MAX_CLEAN_FIELD_CHARS || isPlaceholder(text, false)) return '';
+  // "The" counts for the_company once an unclosed bracket is cut: "The (Acme Company" is "Acme Company".
+  const s = cutUnclosed(text);
   const keep = theCompany === 'keep' && isThe(s.split(' ')[0]);
   const { name: stripped, lostCompanyWord } = strip(s, keep);
   const words = stripped.split(' ');

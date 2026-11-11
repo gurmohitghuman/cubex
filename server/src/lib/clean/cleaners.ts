@@ -65,16 +65,16 @@ const given = (x: unknown) => (x ?? null) !== null;
 // The phone options: its format (national by default) and its country (US by default).
 function phoneOptions(cleaner: CleanerId, o: Record<string, unknown>, out: CleanOptions): string | null {
   if (!given(o.phoneFormat) && !given(o.phoneCountry)) return null;
-  if (cleaner !== 'phone') return 'phoneFormat and phoneCountry are options of the phone cleaner only.';
+  if (cleaner !== 'phone') return 'phone_format and phone_country are options of the phone cleaner only.';
   if (given(o.phoneFormat)) {
     if (!(PHONE_FORMATS as readonly unknown[]).includes(o.phoneFormat)) {
-      return `phoneFormat must be one of: ${PHONE_FORMATS.join(', ')}.`;
+      return `phone_format must be one of: ${PHONE_FORMATS.join(', ')}.`;
     }
     out.phoneFormat = o.phoneFormat as PhoneFormat;
   }
   if (given(o.phoneCountry)) {
     const c = typeof o.phoneCountry === 'string' ? o.phoneCountry.trim().toUpperCase() : '';
-    if (!isPhoneCountry(c)) return 'phoneCountry must be a two-letter country code, such as US, CA or GB.';
+    if (!isPhoneCountry(c)) return 'phone_country must be a two-letter country code, such as US, CA or GB.';
     out.phoneCountry = c;
   }
   return null;
@@ -109,7 +109,9 @@ function theCompanyOption(cleaner: CleanerId, o: Record<string, unknown>, out: C
 
 // The options a cleaner takes, checked: phone's format and country, the name
 // cleaners' input, company_name's "The ... Company". Any other key is refused,
-// so a typo isn't ignored, and every problem is named at once.
+// so a typo isn't ignored, and every problem is named at once, each option by
+// the name MCP and REST callers send (the app sends the camelCase keys, and
+// never a wrong pair).
 export function parseCleanOptions(cleaner: CleanerId, raw: unknown): { ok: CleanOptions } | { error: string } {
   if (raw === undefined || raw === null) return { ok: {} };
   if (typeof raw !== 'object' || Array.isArray(raw)) return { error: 'options must be an object.' };

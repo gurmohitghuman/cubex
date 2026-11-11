@@ -23,8 +23,8 @@ export const CLEANERS: readonly CleanerInfo[] = [
   },
   {
     id: 'first_name', label: 'First name', group: 'People', suffix: 'first name',
-    help: 'The first name, from a full name in any of those shapes. Initials are skipped: J. Michael Fox gives '
-      + 'Michael.',
+    help: 'The first name, from a full name in any of those shapes. Initials are skipped and the last name is never '
+      + 'taken: J. Michael Fox gives Michael, J. Smith a blank.',
   },
   {
     id: 'last_name', label: 'Last name', group: 'People', suffix: 'last name',
