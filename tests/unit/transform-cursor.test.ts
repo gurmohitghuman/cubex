@@ -78,7 +78,7 @@ async function main() {
     assert.ok('ok' in first, JSON.stringify(first))
     assert.deepEqual(Object.keys(first.ok), ['updated', 'created_column', 'next_cursor', 'note'])
     assert.ok(first.ok.updated > 0 && first.ok.updated < TRANSFORM_MAX_ROWS, String(first.ok.updated))
-    assert.match(first.ok.next_cursor!, /^\d+:\d+$/)
+    assert.match(first.ok.next_cursor!, /^\d+:\d+:[0-9a-f]{12}$/)
     assert.equal(first.ok.note, TRANSFORM_STOPPED_NOTE)
     assert.equal(first.ok.note, "Stopped at this call's limit (10,000 rows written or about 2 seconds of work). "
       + 'The rows before next_cursor are done: call transform_column again with the same arguments and cursor set '

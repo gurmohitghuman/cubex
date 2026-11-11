@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { transformColumn, TransformParams } from '../services/column-transform';
 import { TransformOp } from '../lib/transform-ops';
 import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { McpAuthCtx, ok, err, errWith, missingScope, registerTool } from './tool-helpers';
 import { WHERE_LANGUAGE, whereSchema } from './where-schema';
 
 
@@ -18,7 +18,9 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       'regex_extract pattern "^(\\\\d+)". Optional where limits which rows are transformed. ' +
       `A call writes at most ${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} rows or works about ` +
       `${TRANSFORM_MAX_CALL_MS / 1000} seconds; the rows it wrote stay written. When it stops with rows left, the ` +
-      'answer has next_cursor: call again with the same arguments and cursor set to it to go on.',
+      'answer has next_cursor: call again with the same arguments and cursor set to it to go on. If it stops on ' +
+      'an error after writing rows, the error carries next_cursor and rows_done: go on with that cursor, never ' +
+      'start over (the rows written would get the operation twice).',
     inputSchema: {
       sheet_id: z.string(),
       target_column: z.string().describe('Column to write into; created if it does not exist'),
@@ -47,6 +49,10 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       cursor: input.cursor,
     };
     const result = await transformColumn(ctx.userId, params);
+    if ('stopped' in result) {
+      const { error, ...more } = result.stopped;
+      return errWith(error, more);
+    }
     return 'fail' in result ? err(result.error) : ok(result.ok);
   });
 }

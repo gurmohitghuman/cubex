@@ -5,13 +5,16 @@
 // or run start meanwhile) and walks it a page at a time
 // (column-transform-pages.ts). It writes at most TRANSFORM_MAX_ROWS rows or works
 // TRANSFORM_MAX_CALL_MS; stopped with rows left, it answers next_cursor, and the
-// same call with that cursor goes on after the last row looked at. A new target
-// column is only added to column_order (the column registry): rows it wrote
-// nothing in read it as empty, as with add_column. Bumps data_version (a value
-// change) but never row_generation (no reorder or append, so what a row_index
-// means is unchanged; bumping it would 409 in-flight autosaves). A cursor names
-// the row_generation it was given at, so one from before a sort or a replace is
-// refused rather than re-meant.
+// same call with that cursor goes on after the last row looked at. A page that
+// fails after others committed answers `stopped`: the rows written, and the
+// cursor to go on with; the same call without cursor is then refused
+// (column-transform-passes.ts). A new target column is only added to
+// column_order (the column registry): rows it wrote nothing in read it as empty,
+// as with add_column. Bumps data_version (a value change) but never
+// row_generation (no reorder or append, so what a row_index means is unchanged;
+// bumping it would 409 in-flight autosaves). A cursor names the row_generation it
+// was given at, so one from before a sort or a replace is refused rather than
+// re-meant, and the call it came from.
 import { db } from '../lib/db';
 import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
@@ -29,11 +32,14 @@ import type { WhereItem } from '../lib/row-filter/where';
 import {
   applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
-import { walkTransform, type TransformWalk } from './column-transform-pages';
+import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
+import {
+  passTracker, startPass, stoppedOnErrorWords, transformCallKey, transformCursor, type PassStart,
+} from './column-transform-passes';
+import { redactError } from '../lib/redact';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
 const BUSY_WHAT = 'transforming a column';
-const CURSOR = /^(\d+):(-?\d+)$/;
 export const TRANSFORM_STOPPED_NOTE = `Stopped at this call's limit (${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} `
   + `rows written or about ${TRANSFORM_MAX_CALL_MS / 1000} seconds of work). The rows before next_cursor are done: `
   + 'call transform_column again with the same arguments and cursor set to next_cursor to go on.';
@@ -51,32 +57,67 @@ export interface TransformParams {
   cursor?: string;
 }
 
-// next_cursor and note only when the call stopped with rows left.
+// next_cursor and note only when the call stopped with rows left. `stopped`: a
+// page failed after others committed (rows_done: the pass's rows written so far).
 export type TransformOutcome =
   | { ok: { updated: number; created_column: string | null; next_cursor?: string; note?: string } }
-  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy'; error: string };
+  | { stopped: { error: string; next_cursor: string; rows_done: number } }
+  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy' | 'unfinished'; error: string };
 
 type Fail = Extract<TransformOutcome, { fail: string }>;
-type Plan = Omit<TransformWalk, 'sheetId' | 'userId'> & { targetExists: boolean; generation: number };
+type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track'> & PassStart
+  & { targetExists: boolean; generation: number; key: string };
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
   const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
     const plan = planTransform(userId, p);
     if ('fail' in plan) return plan;
-    if (!plan.targetExists) {
-      db.transaction(() => appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn])).immediate();
+    const pass = passTracker({ ...plan, sheetId: p.sheetId, userId });
+    let added = false;
+    let walked: WalkResult | undefined;
+    try {
+      if (!plan.targetExists) {
+        db.transaction(() => appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn])).immediate();
+        added = true;
+      }
+      walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track: pass.page });
+    } finally {
+      // Open grids and readers learn of a column added or pages written, whatever stopped the call.
+      const ended = walked !== undefined && !walked.failed;
+      const atLimit = ended && walked?.stoppedAfter !== null;
+      if (ended || added || (walked?.pages ?? 0) > 0) settle(p.sheetId, userId, atLimit ? pass.atLimit : undefined);
     }
-    const walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId });
-    db.prepare(
-      "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-    ).run(p.sheetId, userId);
+    if (walked.failed) {
+      // A first page that failed wrote nothing: the call fails as any other.
+      if (walked.pages === 0) throw walked.failed.error;
+      const rows = plan.base + walked.updated;
+      const next = transformCursor(plan.generation, walked.stoppedAfter, plan.key);
+      console.error(`transform_column on sheet ${p.sheetId} stopped on an error after ${rows} rows:`,
+        redactError(walked.failed.error));
+      return { stopped: { error: stoppedOnErrorWords(rows, next, walked.failed.error), next_cursor: next,
+        rows_done: rows } };
+    }
     const ok = { updated: walked.updated, created_column: plan.targetExists ? null : plan.targetColumn };
-    return walked.stoppedAfter === null ? { ok }
-      : { ok: { ...ok, next_cursor: `${plan.generation}:${walked.stoppedAfter}`, note: TRANSFORM_STOPPED_NOTE } };
+    return walked.stoppedAfter === null ? { ok } : { ok: { ...ok,
+      next_cursor: transformCursor(plan.generation, walked.stoppedAfter, plan.key), note: TRANSFORM_STOPPED_NOTE } };
   });
   if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };
   if ('busy' in out) return { fail: 'busy', error: out.busy };
   return out;
+}
+
+// data_version (and the pass's record, at a limit) after a call. A failure here
+// is logged: the pages it would report are written either way.
+function settle(sheetId: string, userId: string, more?: () => void): void {
+  try {
+    db.transaction(() => {
+      db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+        WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+      more?.();
+    }).immediate();
+  } catch (error) {
+    console.error(`transform_column could not mark sheet ${sheetId} changed:`, redactError(error));
+  }
 }
 
 // What the call writes, checked with the sheet held (nothing can change it until the call ends).
@@ -139,20 +180,13 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail {
 
   const generation = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
     .pluck().get(p.sheetId, userId) as number;
-  let after = -1;
-  if (p.cursor !== undefined) {
-    const m = CURSOR.exec(p.cursor);
-    if (!m) return { fail: 'invalid', error: 'cursor must be the next_cursor a transform_column call answered.' };
-    if (Number(m[1]) !== generation) {
-      return { fail: 'invalid', error: 'The sheet\'s rows were sorted or replaced since that cursor was given. '
-        + 'Run the transform again without cursor.' };
-    }
-    after = Number(m[2]);
-  }
+  const key = transformCallKey({ ...p, targetColumn });
+  const start = startPass({ sheetId: p.sheetId, userId, key, generation, targetExists }, p.cursor);
+  if ('error' in start) return { fail: p.cursor === undefined ? 'unfinished' : 'invalid', error: start.error };
   const op = p.operation;
   const value = op === 'template'
     ? (data: Record<string, string>) => applyTemplate(p.template!, data)
     : (data: Record<string, string>) =>
       applyCellOp(op, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
-  return { filter, targetColumn, value, after, targetExists, generation };
+  return { filter, targetColumn, value, ...start, targetExists, generation, key };
 }

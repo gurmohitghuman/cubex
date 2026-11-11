@@ -7,9 +7,11 @@
 // each going on from the call before's next_cursor. No page's commit runs
 // SQLite's own WAL checkpoint (it copied 2,000 frames back inside about one
 // page commit in fifty, and on a slower CI disk the server was held 743 ms):
-// the WAL never holds the frames that start it. Numbers are printed, the
-// longest page transaction and the longest checkpoint among them
-// (sqlite-write-probe.ts).
+// the WAL never holds the frames that start it. A page that wrote nothing is
+// not checkpointed (4,000 such checkpoints and their turns took a where matching
+// nothing in a million rows to 1.7 s), also once the pass has written rows.
+// Numbers are printed, the longest page transaction and the longest checkpoint
+// among them (sqlite-write-probe.ts).
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
@@ -131,10 +133,20 @@ async function main() {
       assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
         + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
       assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
+      assert.equal(stats.checkpoints, 0, `${stats.checkpoints} checkpoints after pages that wrote nothing`)
       assert.deepEqual(calls[0].created_column, 'Nothing')
       assert.equal(stored('Nothing'), 0, 'no row stores the new column')
       assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
+
+  await check('a where matching only the first row: a checkpoint after the page that wrote it and the one that '
+    + 'ended the pass, none after the pages between', async () => {
+    const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
+      targetColumn: 'First', where: [{ column: 'Name', operator: 'eq', value: 'p0' }] })
+    assert.equal(calls.reduce((n, c) => n + c.updated, 0), 1)
+    assert.equal(stats.checkpoints, 2, `${stats.checkpoints} checkpoints`)
+    assert.equal(stored('First'), 1)
+  })
 
   await check(`a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`,
     async () => {

@@ -2,18 +2,20 @@
 // order from the cursor: a page of TRANSFORM_PAGE_ROWS rows at a time, each
 // page read, worked out and written in one short immediate transaction, the
 // server answering other requests between pages (lib/slices.ts). Each page
-// commits with SQLite's own WAL checkpoint off and is checkpointed (PASSIVE) in
-// a turn of its own, whatever the columns that follow the target: left on,
-// SQLite's checkpoint ran inside about one page commit in fifty and copied
-// 2,000 frames (8 MB) back into the database file there, holding the server
-// meanwhile (up to 77 ms on a fast disk; a pass over every row on a slower CI
-// disk held it 743 ms). One page of rows is in memory at a time, whatever the
+// commits with SQLite's own WAL checkpoint off and, when it wrote, is
+// checkpointed (PASSIVE) in a turn of its own, whatever the columns that follow
+// the target: left on, SQLite's checkpoint ran inside about one page commit in
+// fifty and copied 2,000 frames (8 MB) back into the database file there,
+// holding the server meanwhile (up to 77 ms on a fast disk; a pass over every
+// row on a slower CI disk held it 743 ms). A page that wrote nothing has
+// nothing to checkpoint. One page of rows is in memory at a time, whatever the
 // sheet's size. A page first reads its window off the (sheet_id, user_id,
 // row_index) index, then only the rows in that window that pass `where`: a
 // where that matches nothing still looks at one window a page, never the rest
 // of the sheet in one statement. The call stops before a page once it has
 // written TRANSFORM_MAX_ROWS rows or worked TRANSFORM_MAX_CALL_MS; every page
-// before that is written and stays written.
+// before that is written and stays written. A page that fails ends the walk:
+// the pages before it stay written, and the walk answers how far they got.
 import { db } from '../lib/db';
 import {
   TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
@@ -29,11 +31,18 @@ export interface TransformWalk {
   value: (data: Record<string, string>) => string;
   // The row_index the walk starts after (the cursor's; -1 from the top).
   after: number;
+  // In each page's transaction, once its rows are written: the pass's record
+  // (column-transform-passes.ts). `after` null: the pass is done. Answers
+  // whether it wrote.
+  track: (after: number | null, callRows: number, pageRows: number) => boolean;
 }
 
-// Rows written, and the last row_index looked at when the call stopped with rows
-// left (null: it got to the end of the sheet).
-export interface WalkResult { updated: number; stoppedAfter: number | null }
+// Rows written and pages committed, and the last row_index looked at when the
+// call stopped with rows left (null: it got to the end of the sheet). `failed`:
+// a page failed; stoppedAfter is then where the pages committed before it got.
+export type WalkResult =
+  | { updated: number; pages: number; stoppedAfter: number | null; failed?: undefined }
+  | { updated: number; pages: number; stoppedAfter: number; failed: { error: unknown } };
 
 export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   // With columns following the target, a page queues each row it writes for each
@@ -50,25 +59,37 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   const startedAt = Date.now();
   let after = w.after;
   let updated = 0;
+  let pages = 0;
   let done = false;
-  const page = db.transaction((rows: number): void => {
+  let wrote = false;
+  // What a page did, taken over only once it committed: a page that fails leaves the walk where it was.
+  const page = db.transaction((rows: number) => {
     const last = windowEnd.get(w.sheetId, w.userId, after, rows - 1) as number | undefined;
     const found = read.all(w.sheetId, w.userId, after, last ?? Number.MAX_SAFE_INTEGER, ...w.filter.params) as
       Array<{ rid: number; data: string }>;
     for (const r of found) set.run(path, w.value(parseRowData(r.data)), r.rid);
     // A column another column's auto-run reads queues these rows for it.
     markAutorunInputs(w.sheetId, w.userId, [w.targetColumn], { rowids: found.map(r => r.rid) });
-    updated += found.length;
-    if (last === undefined) done = true;
-    else after = last;
+    const tracked = w.track(last ?? null, updated + found.length, found.length);
+    return { found: found.length, last, wrote: found.length > 0 || tracked };
   });
   const step = (): boolean => {
+    wrote = false;
     const room = TRANSFORM_MAX_ROWS - updated;
     if (room <= 0 || Date.now() - startedAt >= TRANSFORM_MAX_CALL_MS) return false;
     // A page never looks at more rows than the call may still write.
-    page.immediate(Math.min(pageRows, room));
+    const p = page.immediate(Math.min(pageRows, room));
+    updated += p.found;
+    pages++;
+    wrote = p.wrote;
+    if (p.last === undefined) done = true;
+    else after = p.last;
     return !done;
   };
-  await runInCheckpointedRowSlices(step);
-  return { updated, stoppedAfter: done ? null : after };
+  try {
+    await runInCheckpointedRowSlices(step, () => wrote);
+  } catch (error) {
+    return { updated, pages, stoppedAfter: after, failed: { error } };
+  }
+  return { updated, pages, stoppedAfter: done ? null : after };
 }
