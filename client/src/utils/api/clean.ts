@@ -1,10 +1,15 @@
 import { api } from './client'
-import type { PhoneFormat } from '../../lib/cleaners'
+import type { NameInput, PhoneFormat, TheCompany } from '../../lib/cleaners'
 
 // Clean data columns (server routes/sheets-clean.ts, services/clean-*.ts): a
 // column filled for free from a source column by a cleaner (lib/cleaners.ts).
 
-export interface CleanOptions { phoneFormat?: PhoneFormat; phoneCountry?: string }
+export interface CleanOptions {
+  phoneFormat?: PhoneFormat
+  phoneCountry?: string
+  nameInput?: NameInput
+  theCompany?: TheCompany
+}
 
 // A clean column's setup and its last fill, from the sheet payload (cleanColumns).
 export interface CleanColumnView {

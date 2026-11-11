@@ -1,5 +1,6 @@
 // Text cleaners (pure): tidy spaces, lower case, title case. Every other
 // cleaner starts with cleanTrim.
+import { TITLE_CASE_EXTRA_PASSES } from '../constants-clean';
 import { stripInvisibleNameChars } from '../name-safety';
 import { capAfterOneLetterApostrophe, capitalize, hasLower, splitAffixes, upper } from './word-case';
 
@@ -12,7 +13,10 @@ export function cleanTrim(value: string): string {
   return stripInvisibleNameChars(value.replace(/\p{White_Space}+/gu, ' ')).replace(/ {2,}/g, ' ').trim();
 }
 
-export const cleanLowercase = (value: string): string => cleanTrim(value).toLowerCase();
+// A change of case can leave an emoji's presentation selector after a letter
+// that takes none (Ⓜ shown as an emoji, lowercased, is ⓜ and the selector): the hidden-character
+// rule runs again on the result, so cleaning it again changes nothing.
+export const cleanLowercase = (value: string): string => stripInvisibleNameChars(cleanTrim(value).toLowerCase());
 
 // Short words that stay lower case inside a title ("VP of Sales").
 const SMALL = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to',
@@ -75,8 +79,8 @@ function readWords(s: string): (Part | string)[][] {
   });
 }
 
-// Data-style title case: "vp of sales" → "VP of Sales", "o'fallon" → "O'Fallon".
-export function cleanTitleCase(value: string): string {
+// One pass of title case.
+function titleCaseOnce(value: string): string {
   const s = cleanTrim(value);
   if (!s) return '';
   const words = readWords(s);
@@ -87,5 +91,19 @@ export function cleanTitleCase(value: string): string {
   const allCaps = !parts.some(x => fixedCase(x.core, x.small) === null && hasLower(x.core));
   const render = (x: Part | string) =>
     typeof x === 'string' ? x : x.lead + (x.core && titleCore(x.core, x.small, allCaps)) + x.trail;
-  return words.map(word => word.map(render).join('')).join(' ');
+  return stripInvisibleNameChars(words.map(word => word.map(render).join('')).join(' '));
+}
+
+// Data-style title case: "vp of sales" → "VP of Sales", "o'fallon" → "O'Fallon".
+// A pass that dropped a selector (Ⓜ shown as an emoji, lowercased inside a word) can read
+// differently to the next one, so the result is cleaned again until it holds
+// still; any other value holds at once.
+export function cleanTitleCase(value: string): string {
+  let out = titleCaseOnce(value);
+  for (let i = 0; i < TITLE_CASE_EXTRA_PASSES; i++) {
+    const again = titleCaseOnce(out);
+    if (again === out) break;
+    out = again;
+  }
+  return out;
 }

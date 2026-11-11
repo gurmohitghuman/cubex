@@ -18,6 +18,8 @@ function expectClean(name: string, f: (v: string) => string, input: string, want
 // Built from code points so no invisible character hides in this file.
 const cp = (...codes: number[]) => String.fromCodePoint(...codes)
 const NBSP = cp(0xA0), ZWSP = cp(0x200B), ZWJ = cp(0x200D), ZWNJ = cp(0x200C), BOM = cp(0xFEFF)
+// Ⓜ shown as an emoji (U+FE0F after it); its lower case ⓜ takes no selector.
+const M_EMOJI = cp(0x24C2, 0xFE0F)
 
 // --- trim ------------------------------------------------------------------
 const trims: [string, string][] = [
@@ -53,8 +55,15 @@ const lowers: [string, string][] = [
   [`HELLO${NBSP} WORLD`, 'hello world'],
   ['ÉCOLE', 'école'],
   ['', ''],
+  // The selector goes with the change of case, so a second pass reads the same.
+  [`${M_EMOJI} Labs`, `${cp(0x24DC)} labs`],
 ]
 for (const [input, want] of lowers) expectClean('lowercase', cleanLowercase, input, want)
+// Title case of a word holding it holds still after one call.
+for (const input of [`LLC la ${M_EMOJI}${M_EMOJI}o'brien`, `test${M_EMOJI}, x`, `${M_EMOJI} labs`]) {
+  const once = cleanTitleCase(input)
+  check(`title case idempotent on ${JSON.stringify(once)}`, cleanTitleCase(once) === once)
+}
 
 // --- title case --------------------------------------------------------------
 const titles: [string, string][] = [
