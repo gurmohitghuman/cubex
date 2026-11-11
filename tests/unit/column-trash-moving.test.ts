@@ -1,7 +1,8 @@
 // A big column's way into the trash and back (migration 054). Its delete waits for the cells to move into the
 // item only COLUMN_DELETE_WAIT_MS (services/column-trash.ts moveWithin), then answers "moving": the column is
 // gone from the sheet, the move goes on with the sheet busy, and the item ends holding every cell once. While it
-// moves, GET /trash/:id and list_trash show "moving", and a restore is refused (REST 409, MCP a failed item).
+// moves, GET /trash/:id and list_trash show "moving", the change log's line says in_trash, and a restore is
+// refused (REST 409, MCP a failed item).
 // With Settings at 0 days the delete waits for its strip however long, as before. A restore of over 20,000 cells
 // answers "restoring", and the column shows once they are all back; when its setup can't come back by then,
 // the change log says why. Each slice of the move is held a little (its statement sleeps once it has run), so
@@ -99,13 +100,20 @@ await ok('over MCP, a delete past its wait says so, and list_trash and the chang
       const listed = await api.call('list_trash', { kind: 'column', sheet_id: sid })
       assert.deepEqual(listed.body.items.map((i: any) => [i.id, i.state]), [[id, 'moving']])
       const log = await api.call('get_sheet_history', { sheet_id: sid })
-      assert.deepEqual([log.isError, log.body.changes[0].action], [false, 'column_deleted'], 'read while it moves')
+      const line = log.body.changes[0]
+      assert.deepEqual([log.isError, line.action, line.detail.trash_id, line.in_trash, item(id)!.state],
+        [false, 'column_deleted', id, true, 'moving'], 'read while it moves: in the trash, as list_trash says')
     } finally { release() }
     await idle(sid)
     assert.ok(await until(() => !k.db.prepare('SELECT 1 FROM column_purges WHERE sheet_id = ?').get(sid)))
     const id = db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind = 'column'`).pluck()
       .get(sid) as number
     assert.deepEqual([item(id)!.state, item(id)!.row_count], ['kept', 6_000])
+    const inTrash = async () => (await api.call('get_sheet_history', { sheet_id: sid })).body.changes
+      .find((c: any) => c.action === 'column_deleted').in_trash
+    assert.equal(await inTrash(), true)
+    assert.ok((await restoreOne(id)).restored)
+    assert.equal(await inTrash(), false, 'restored: no longer in the trash')
   })
 
 await ok("the app's delete past its wait answers moving (its toast says the cells are still going)", async () => {

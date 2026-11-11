@@ -17,6 +17,7 @@ import usesMod from '../../server/src/services/saved-key-uses'
 import constMod from '../../server/src/lib/api-v1-constants'
 import routeMod from '../../server/src/routes/api-v1-saved-keys'
 import buildMod from '../../server/src/mcp/build-server'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createSavedKey, validateSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
@@ -25,6 +26,7 @@ const { listSavedKeys } = usesMod as typeof import('../../server/src/services/sa
 const { SAVED_KEYS_LISTED } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { default: savedKeysRouter } = routeMod as unknown as { default: express.Router }
 const { buildMcpServer } = buildMod as typeof import('../../server/src/mcp/build-server')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 
@@ -91,6 +93,7 @@ await ok('GET /api/v1/saved-keys?after= takes the 250-character next_after', asy
   })
   app.use(savedKeysRouter)
   const server = app.listen(0)
+  applyServerTimeouts(server)
   try {
     const port = (server.address() as { port: number }).port
     const get = (query: string) => fetch(`http://127.0.0.1:${port}/saved-keys${query}`)

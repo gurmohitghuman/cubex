@@ -112,7 +112,8 @@ export const tableRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/columns', operationId: 'addColumn', tag: 'columns', scope: 'write',
     summary: 'Add an empty column.',
     body: z.object({
-      name: z.string().describe('The column name. Names are unique in a sheet, whatever their case.'),
+      name: z.string().describe('The column name. Names are unique in a sheet, whatever their case; a column '
+        + 'being restored from the trash holds its name until it is back (409).'),
       description: describing(MAX_COLUMN_DESCRIPTION_CHARS).optional(),
     }),
     responses: { 201: 'The new column name, and its description when one was given.' },

@@ -12,12 +12,14 @@ import mcpMod from '../../server/src/mcp/build-server'
 import scopesMod from '../../server/src/lib/access-token'
 import appDeleteMod from '../../server/src/routes/sheets-columns-delete'
 import authMod from '../../server/src/lib/auth'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { default: columnsRouter } = columnsMod as unknown as { default: express.Router }
 const { default: trashRouter } = trashMod as unknown as { default: express.Router }
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
 const { expandScopes } = scopesMod as typeof import('../../server/src/lib/access-token')
 const { default: appDeleteRouter } = appDeleteMod as unknown as { default: express.Router }
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 export interface Answer { status: number; body: any }
 
@@ -32,11 +34,22 @@ export async function trashSurfaces(uid: string, scopes: string) {
     Object.assign(req, { userId: uid, accessTokenId: 'tok-rest', accessTokenName: 'unit', tokenScopes: granted })
     next()
   }, columnsRouter, trashRouter)
+  // With the real server's timeouts: a test that holds the event loop for seconds between two requests on one
+  // kept-alive connection would otherwise see it closed under Node's 5-second default.
   const server = web.listen(0)
+  applyServerTimeouts(server)
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   const ask = async (url: string, method: string, body: unknown, cookie?: string): Promise<Answer> => {
-    const r = await fetch(url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body) })
+    let r: Response
+    try {
+      r = await fetch(url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body) })
+    } catch (err) {
+      // "fetch failed" alone doesn't say why: the cause does (ECONNRESET, a timeout, a refused connection).
+      const cause = (err as { cause?: { code?: string; message?: string } }).cause
+      throw new Error(`${method} ${url}: ${(err as Error).message} (${cause?.code ?? 'no code'}: `
+        + `${cause?.message ?? 'no cause'})`, { cause: err })
+    }
     return { status: r.status, body: await r.json() }
   }
   const rest = (method: string, path: string, body?: unknown) => ask(`${origin}/v1${path}`, method, body)

@@ -25,6 +25,7 @@ import settingsMod from '../../server/src/routes/settings-api-keys'
 import v1Mod from '../../server/src/routes/api-v1-saved-keys'
 import mcpMod from '../../server/src/mcp/build-server'
 import { API_KEY_NAME_MAX as CLIENT_API_KEY_NAME_MAX } from '../../client/src/lib/constants'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
@@ -36,6 +37,7 @@ const { buildRequest } = requestMod as typeof import('../../server/src/lib/http-
 const { default: settingsRouter } = settingsMod as unknown as { default: express.Router }
 const { default: v1Router } = v1Mod as unknown as { default: express.Router }
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 
@@ -72,6 +74,7 @@ app.use('/v1', (req, _res, next) => {
   next()
 }, v1Router)
 const server = app.listen(0)
+applyServerTimeouts(server)
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
 const send = async (method: string, path: string, body?: unknown) => {

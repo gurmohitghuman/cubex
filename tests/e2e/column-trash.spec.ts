@@ -1,3 +1,4 @@
+// Over 200 lines: one feature through the app, REST and MCP, its cases run in order on one account.
 import { test, expect, APIRequestContext } from '@playwright/test'
 import os from 'node:os'
 import { authedApi, BASE, getSheet, importCsv, seedSheet } from './helpers'
@@ -5,12 +6,13 @@ import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
 import { call, callError, mcpClient } from './helpers-mcp'
 import { Receiver } from './helpers-receiver'
 
-// A deleted column goes to the trash (migration 054). In the app: deleted from its header menu (the confirm
-// and the toast say it goes to the trash), it shows on the Trash page as a column with its cells inside, and
-// Restore puts it back at its place with its cells. Over REST: an HTTP API column's delete answers where it
-// went, list and look inside find it, restore brings it back set up as it was, and its rerun fills it again
-// through the receiver; refusals answer their status and words. Over MCP: delete_column, list_trash and
-// restore_from_trash, the answer's references_dropped, and a refusal as an isError result.
+// A deleted column goes to the trash (migration 054). In the app: deleted from its header menu (the confirm and the
+// toast say it goes to the trash), it shows on the Trash page as a column with its cells inside, and Restore puts
+// it back at its place with its cells; a delete that answers "moving" offers no Restore in its toast and says to
+// restore it from the Trash once its cells are in. Over REST: an HTTP API column's delete answers where it went,
+// list and look inside find it, restore brings it back set up as it was, and its rerun fills it again through the
+// receiver; refusals answer their status and words. Over MCP: delete_column, list_trash and restore_from_trash, the
+// answer's references_dropped, and a refusal as an isError result.
 const SHOT_DIR = process.env.SHOT_DIR || os.tmpdir()
 const HEADER = (name: string) => `.ag-header-cell[col-id^="col_"]:has-text("${name}")`
 const rx = new Receiver()
@@ -93,6 +95,35 @@ test('app: delete a column from its menu, find it in the Trash page, restore it 
   await expect(page.getByText('Restored the column "Notes", 2 cells back.')).toBeVisible({ timeout: 10_000 })
   await expect.poll(() => shownColumns(page), { timeout: 15_000 }).toEqual(['Name', 'Notes', 'City'])
   expect(await notesOf(sheetId)).toEqual(['called twice', '', 'wants a demo'])
+})
+
+// A big column's delete answers before its cells are all in (`trash.moving`, unit-tested at this route in
+// column-trash-moving): its answer here is marked so, the real delete going through underneath.
+test('app: a delete that answers "moving" says where to restore it from, with no Restore in its toast', async ({
+  page, context }) => {
+  test.setTimeout(60_000)
+  await context.addCookies((await api.storageState()).cookies)
+  const { tableId, sheetId } = await csvSheet('Name,Notes\nAnn,called twice\nBo,later\n')
+  await page.route(`**/api/sheets/${sheetId}/columns/Notes`, async route => {
+    if (route.request().method() !== 'DELETE') return route.continue()
+    const real = await route.fetch()
+    const body = await real.json()
+    expect(body.trash).toEqual({ id: expect.any(Number), days: expect.any(Number) })
+    await route.fulfill({ response: real, json: { ...body, trash: { ...body.trash, moving: true } } })
+  })
+  await page.goto(`${BASE}/table/${tableId}`)
+  await expect(page.locator(HEADER('Notes'))).toBeVisible({ timeout: 15_000 })
+  await page.locator(HEADER('Notes')).click({ button: 'right' })
+  await page.getByText('Delete column', { exact: true }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByText('Column "Notes" deleted: its cells are still going to the trash. You can restore it '
+    + 'from the Trash once they are in.')).toBeVisible()
+  await expect(page.getByTestId('deleted-toast-restore')).toHaveCount(0)
+  await expect(page.getByTestId('deleted-toast')).toHaveCount(0)
+  await expect(page.locator(HEADER('Notes'))).toHaveCount(0)
+  expect(await columnsOf(sheetId)).toEqual(['Name'])
+  await expect(page.getByText(/It goes to the trash with its cells/)).toBeHidden()
+  await page.screenshot({ path: `${SHOT_DIR}/column-trash-04-moving-toast.png` })
 })
 
 test('REST: an HTTP API column goes to the trash, comes back set up, and its rerun fills it again', async () => {

@@ -4,7 +4,8 @@
 // (resumeColumnPurges, resumeTrashRestores) and checks: the move goes on from the slice that was lost, and
 // every cell ends up in the item once; the restore goes on and lists the column; a restore that had put
 // nothing back goes back to the trash as it was, its cells still in the item and nothing under its name. A
-// delete that answered "moving" (its move held so it outlasts the wait) and then stopped is finished too.
+// delete that answered "moving" (its move held so it outlasts the wait) and then stopped is finished too, and
+// so is one whose slice failed (its strip threw) with the process gone before its retry.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -20,9 +21,11 @@ const { db, uid, ok, done, idle, sheet, order, cells, item, stored, del, restore
 
 // The other process: `what` runs with the statement starting `sql` stopping the process right after its
 // `at`-th run, inside that slice's transaction (at 0: never; `pause` ms after each run instead, while `what`
-// ends the process itself). Resolves with what it wrote.
+// ends the process itself), or with `fails`, throwing there instead (`what` then ends it). Resolves with
+// what it wrote.
 const requireHere = createRequire(import.meta.url)
-const stopsAt = (sql: string, at: number, what: string, pause = 0) => new Promise<string>((resolve, reject) => {
+const stopsAt = (sql: string, at: number, what: string, pause = 0, fails = false) => new Promise<string>((resolve,
+  reject) => {
   const mod = (p: string) => JSON.stringify(requireHere.resolve(p))
   const code = `require(${mod('tsx/cjs/api')}).register();
     console.log = console.warn = () => {};
@@ -36,7 +39,7 @@ const stopsAt = (sql: string, at: number, what: string, pause = 0) => new Promis
       const run = stmt.run.bind(stmt);
       stmt.run = (...args) => {
         const out = run(...args);
-        if (++n === ${at}) process.exit(0);
+        if (++n === ${at}) ${fails ? "throw new Error('disk I/O error')" : 'process.exit(0)'};
         Atomics.wait(nap, 0, 0, ${pause});
         return out;
       };
@@ -108,6 +111,28 @@ await ok('a delete that answered "moving", then a restart: the boot resume moves
     assert.deepEqual(cells(sid, 'Big'), expected.map(() => null))
     const back = (await restoreOne(id)).restored as any
     assert.equal(back.cells_restored, valued)
+    assert.deepEqual(cells(sid, 'Big'), expected)
+  })
+
+await ok('a move whose slice failed, then a restart before its retry: the boot resume moves the rest, each cell once',
+  async () => {
+    const sid = big()
+    const q = (s: string) => JSON.stringify(s)
+    // The second slice's strip throws: the delete answers "moving" (its retry waits), and the process ends.
+    const said = JSON.parse(await stopsAt('UPDATE rows SET data = json_remove(data, ?)', 2, 'const out = await '
+      + `deleteSheetColumn(${q(sid)}, ${q(uid)}, 'Big', { bumpDataVersion: true }); `
+      + 'process.stdout.write(JSON.stringify(out), () => process.exit(0)); await new Promise(() => {})', 0, true))
+    assert.deepEqual([said.ok, said.moving], [true, true])
+    const id = said.trashId as number
+    const before = stored(id).length
+    assert.ok(before > 0 && before < valued, `one slice was in, the failed one went back: ${before}`)
+    assert.deepEqual([item(id)!.state, item(id)!.row_count], ['moving', before])
+    resumeColumnPurges()
+    await idle(sid)
+    assert.deepEqual([item(id)!.state, item(id)!.row_count], ['kept', valued])
+    assert.equal(new Set(stored(id).map(r => r.row_id)).size, valued, 'no cell twice')
+    assert.deepEqual(cells(sid, 'Big'), expected.map(() => null))
+    assert.equal(((await restoreOne(id)).restored as any).cells_restored, valued)
     assert.deepEqual(cells(sid, 'Big'), expected)
   })
 

@@ -17,6 +17,8 @@ import type { AddressInfo } from 'node:net'
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import { v4 as uuid } from 'uuid'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -66,6 +68,7 @@ app.use(cookieParser())
 app.use(express.json())
 app.use('/api/ai', aiControl)
 const server = app.listen(0)
+applyServerTimeouts(server)
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
 const post = async (route: string, body: unknown) => {

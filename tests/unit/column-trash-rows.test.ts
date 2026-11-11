@@ -44,8 +44,8 @@ await ok('rows deleted after their column: restored later, the leftover cells go
     ['Notes', false, 2, 0, 1])
   assert.equal(rest.setup.note, 'Its setup came back with "Notes" already.')
   assert.deepEqual(rest.references_dropped, [])
-  assert.equal(rest.note, 'These cells\' rows were gone or held a value when "Notes" came back; they went into it '
-    + 'now.')
+  assert.equal(rest.note, '"Notes" came back without some of its cells (their rows were gone or held a value '
+    + 'then); 2 cells of them went into it now.')
   assert.equal(item(id), undefined)
   assert.deepEqual(order(sid), ['Email', 'Notes', 'Name'])
   assert.deepEqual(cells(sid, 'Notes'), ['first', null, null, '{"deep":[1,2]}', 42])
@@ -80,10 +80,14 @@ await ok('a cell whose row holds a value now under its name is never overwritten
     assert.deepEqual(stored(id).map(r => [r.row_id, JSON.parse(r.data)]), [[`r3-${sid}`, { Notes: { deep: [1, 2] } }]])
     const again = (await restoreOne(id)).restored as any
     assert.deepEqual([again.cells_restored, again.cells_kept], [0, 1], 'still held: kept again, still in the trash')
+    assert.equal(again.note, `1 cell stayed in the trash (trash_id ${id}): their rows hold a value in "Notes" now, `
+      + 'which a restore never overwrites. Empty those cells and restore it again to put them back.', 'none went in')
     assert.equal(stored(id).length, 1)
     db.prepare(`UPDATE rows SET data = json_remove(data, '$.Notes') WHERE id = ?`).run(`r3-${sid}`)
     const back = (await restoreOne(id)).restored as any
     assert.deepEqual([back.name, back.cells_restored, back.cells_kept], ['Notes', 1, 0])
+    assert.equal(back.note, '"Notes" came back without some of its cells (their rows were gone or held a value '
+      + 'then); 1 cell of them went into it now.')
     assert.deepEqual(cells(sid, 'Notes'), ['first', null, null, '{"deep":[1,2]}', 42])
     assert.equal(item(id), undefined)
   })

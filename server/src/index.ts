@@ -35,6 +35,7 @@ import { escapeC1InJson } from './lib/json-c1-escape';
 import { serveClientInProduction } from './lib/serve-client';
 import { BUILD_HEADER, currentBuildId } from './lib/build-id';
 import { startBackground, installShutdownHandlers } from './lib/server-lifecycle';
+import { applyServerTimeouts } from './lib/server-timeouts';
 import { resetOrphanedRuns } from './lib/orphan-runs';
 import { redactSecrets } from './lib/http-request';
 import { createAccountFromEnv } from './services/account';
@@ -202,16 +203,7 @@ function startServer(): void {
     startBackground(recoveredRuns);
   };
   const server = HOST ? app.listen(PORT, HOST, onListening) : app.listen(PORT, onListening);
-
-  // Reverse proxies and CDNs keep idle upstream sockets open for a while (60s
-  // on many); Node's default keepAliveTimeout is 5s. When a proxy reuses a socket
-  // Node just closed, the user sees a random 502, so outlast the proxy.
-  // headersTimeout MUST exceed keepAliveTimeout or Node treats it as a
-  // misconfiguration. requestTimeout=0 is intentional — SSE streams
-  // (ai/http run progress) are long-lived by design and must not be killed.
-  server.keepAliveTimeout = 65_000;
-  server.headersTimeout = 66_000;
-  server.requestTimeout = 0;
+  applyServerTimeouts(server);
 
   installShutdownHandlers(server);
 }

@@ -134,10 +134,13 @@ export const useColumnOps = ({
         const { [columnName]: _dropped, ...rest } = prev
         return rest
       })
-      // It went to the trash: say so, with Restore (with the trash kept 0 days, no toast: it just goes).
-      if (trash) {
-        toastDeleted(trash.moving ? `Column "${columnName}" deleted: its cells are still going to the trash`
-          : `Column "${columnName}" moved to the trash`, trash.id, {
+      // It went to the trash: say so, with Restore (with the trash kept 0 days, no toast: it just goes). A big
+      // column's cells may still be going there: a restore is refused until they are all in, so no Restore then.
+      if (trash?.moving) {
+        toastDeleted(`Column "${columnName}" deleted: its cells are still going to the trash. You can restore it `
+          + 'from the Trash once they are in.', null)
+      } else if (trash) {
+        toastDeleted(`Column "${columnName}" moved to the trash`, trash.id, {
           onRestored: () => { if (activeIdRef.current === originSheetId) reloadActiveSheet() },
         })
       }

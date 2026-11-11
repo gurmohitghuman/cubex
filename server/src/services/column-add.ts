@@ -1,7 +1,7 @@
 // Column add — one implementation for the UI route, /api/v1, and the MCP
 // tool. Invariants: sanitize + relaxed validation, exact/case/token collision
-// rejection, the column cap, a placeholder row 0 on an empty sheet,
-// appendColumnsToOrder in the SAME transaction.
+// rejection (a column being restored from the trash counts), the column cap, a
+// placeholder row 0 on an empty sheet, appendColumnsToOrder in the SAME transaction.
 import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -10,6 +10,7 @@ import {
 } from '../lib/column-names';
 import { logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
+import { restoringColumnNames } from '../lib/trash/store';
 
 export type ColumnAddOutcome =
   | { ok: true; name: string }
@@ -35,6 +36,12 @@ export function addSheetColumn(
   const existingCols = getSheetColumns(sheetId, userId);
   const collision = findColumnNameCollision(columnName, existingCols);
   if (collision) return { fail: 'collision', error: columnCollisionMessage(columnName, collision) };
+  // A column coming back from the trash isn't listed until all its cells are back: its name is taken meanwhile.
+  const restoring = findColumnNameCollision(columnName, restoringColumnNames(sheetId, userId));
+  if (restoring) {
+    return { fail: 'collision', error: `The column "${restoring.clash}" is being restored from the trash, so that `
+      + 'name is taken. Pick another one.' };
+  }
   if (existingCols.length >= MAX_COLUMNS_PER_SHEET) {
     return {
       fail: 'cap',

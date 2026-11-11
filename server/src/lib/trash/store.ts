@@ -88,6 +88,14 @@ export function setTrashState(id: number, state: TrashState): void {
 // Whether something deleted now is kept: Settings keeps it at least a day.
 export const trashKeeps = (userId: string): boolean => getTrashDays(userId) > 0;
 
+// The names a column restore is putting cells back under (services/trash-restore-column.ts): the column is listed
+// only once they are all back, so until then the name is taken, or a column made under it would get those cells.
+export function restoringColumnNames(sheetId: string, userId: string): string[] {
+  return db.prepare(`SELECT restore_name FROM trash_items WHERE sheet_id = ? AND user_id = ? AND kind = 'column'
+    AND state = 'restoring' AND restore_into = 0 AND restore_name IS NOT NULL`).pluck()
+    .all(sheetId, userId) as string[];
+}
+
 // Today's batch of a sheet's rows that went one way (auto-dedupe, a rerun
 // replacing them), while the sheet keeps its row order: a restore puts rows
 // back at their old places only then.

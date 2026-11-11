@@ -3,7 +3,7 @@
 // /trash/restore answers 200 with that item failed as forbidden, and MCP restore_from_trash gives the same in its
 // results; each time the item stays kept, the column stays out of the sheet and no HTTP run is made. With
 // 'secrets' it comes back, set up. The delete answers its trash with state "kept" on both surfaces, and the
-// app's as before ({ id, days }).
+// app's as before ({ id, days }). The test server keeps a connection open as long as the real one does.
 import assert from 'node:assert/strict'
 import keysMod from '../../server/src/services/saved-keys'
 import writeMod from '../../server/src/services/setup-version-write'
@@ -90,6 +90,17 @@ await ok("MCP: restore_from_trash without 'secrets' fails that item as forbidden
     const viaApp = await without.app('DELETE', `/sheets/${sheet(['A', 'B'], [{ A: 1, B: 2 }])}/columns/B`)
     assert.deepEqual(viaApp.body, { message: 'Column deleted successfully',
       trash: { id: viaApp.body.trash.id, days: 30 } }, 'in time: no moving')
+  })
+
+// The test server takes the real server's timeouts (lib/server-timeouts.ts). Under Node's default keep-alive it
+// closes an idle connection after 6 s, and a slow machine building a big sheet can hold the loop that long
+// between two requests: the next one then fails ("fetch failed", ECONNRESET), as one did on a Windows run.
+await ok("a request after the loop was held 7 s in one turn gets its answer: the real server's keep-alive",
+  async () => {
+    assert.equal((await without.rest('GET', '/trash?limit=1')).status, 200)
+    await new Promise(r => setTimeout(r, 0))
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 7_000)
+    assert.equal((await without.rest('GET', '/trash?limit=1')).status, 200)
   })
 
 await without.close()

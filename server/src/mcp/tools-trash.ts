@@ -120,8 +120,9 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'runs started and stopped, auto-run and "Only run if" changes, default model, clean, formula and lookup '
       + 'columns, views, its webhook, and rows deleted, restored, imported, sorted, moved and deduplicated. Each '
       + 'line has when (at, UTC), by (the app, an access token by name over the API or MCP, or Cubex itself), '
-      + 'action, column, summary and detail; a line about rows in the trash has in_trash and its trash_id. '
-      + 'column narrows to one column; before pages on. Read-only.',
+      + 'action, column, summary and detail; a line about rows or a column deleted to the trash has its trash_id '
+      + 'and in_trash: true while that item is in the trash (also while a big column\'s cells are still moving in), '
+      + 'false once it is restored or deleted for good. column narrows to one column; before pages on. Read-only.',
     inputSchema: {
       sheet_id: z.string(),
       column: z.string().optional(),

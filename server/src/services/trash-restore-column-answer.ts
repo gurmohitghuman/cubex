@@ -25,6 +25,7 @@ export function answerOf(item: TrashItem, name: string, into: boolean, state: Co
   const refs = into ? [] : [...droppedRefsOf(item).filter(r => stillDropped(r, renamed)), ...plan.taken];
   const left = done?.skipped ?? 0;
   const kept = done?.kept ?? 0;
+  const back = done?.restored ?? 0;
   // Leftovers of an earlier restore whose column is gone or renamed since: a column of their own.
   const away = !into && item.restore_name !== null;
   const notes = [
@@ -32,8 +33,9 @@ export function answerOf(item: TrashItem, name: string, into: boolean, state: Co
       + `(prompts, formulas, requests, clean and lookup columns) read the column now called "${old}".`] : []),
     ...(away ? [`The column its other cells went back to, "${item.restore_name}", is gone or renamed, so these `
       + `came back as a column of their own, "${name}", with the setup the column had.`] : []),
-    ...(into ? [`These cells' rows were gone or held a value when "${old}" came back${renamed ? ` as "${name}"`
-      : ''}; they went into it now.`] : []),
+    // Its leftovers: a sentence about them going in only when some did (none may have: rows still gone or held).
+    ...(into && back ? [`"${old}" came back${renamed ? ` as "${name}"` : ''} without some of its cells (their rows `
+      + `were gone or held a value then); ${countOf(back, 'cell')} of them went into it now.`] : []),
     ...(left ? [`${countOf(left, 'cell')} stayed in the trash (trash_id ${item.id}): their rows are gone, maybe `
       + `in the trash too. Once those rows are back, restore it again and they go into "${name}".`] : []),
     ...(kept ? [`${countOf(kept, 'cell')} stayed in the trash (trash_id ${item.id}): their rows hold a value in `
@@ -47,8 +49,8 @@ export function answerOf(item: TrashItem, name: string, into: boolean, state: Co
       : 'Its setup comes back with it once all its cells are back; nothing runs.';
   return {
     trash_id: item.id, kind: 'column', sheet_id: item.sheet_id!, state, name, old_name: old, renamed,
-    position: done?.position ?? null, cells: item.row_count, cells_restored: done?.restored ?? 0,
-    cells_skipped: left, cells_kept: done?.kept ?? 0,
+    position: done?.position ?? null, cells: item.row_count, cells_restored: back,
+    cells_skipped: left, cells_kept: kept,
     setup: { kind: plan.kind, restored: !into && plan.kind !== 'plain' && plan.problem === null && done !== null,
       run_id: done?.runId ?? null, note: setupNote },
     references_dropped: refs.map(r => droppedEntry(r, name, old, surface, item.sheet_id!)),
