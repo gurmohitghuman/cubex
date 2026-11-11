@@ -6,7 +6,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { trashAPI } from '@/utils/api'
 import { plural } from '@/lib/utils'
 
-// Settings → Account → Trash: how many days deleted rows, sheets and tables
+// Settings → Account → Trash: how many days deleted rows, columns, sheets and tables
 // stay in the trash before they're deleted for good (0: at once). Lowering it
 // deletes what is now older, so that asks first.
 export const TrashCard: React.FC = () => {
@@ -37,7 +37,7 @@ export const TrashCard: React.FC = () => {
       <div className="p-6">
         <h3 className="text-title text-gray-900 mb-1">Trash</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Deleted rows, sheets and tables go to the <Link to="/trash" className="underline">trash</Link>, where
+          Deleted rows, columns, sheets and tables go to the <Link to="/trash" className="underline">trash</Link>, where
           you can restore them. They keep using disk space until they leave it.
         </p>
         {!editing ? (

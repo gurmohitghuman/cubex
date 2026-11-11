@@ -23,7 +23,9 @@ export const DeleteConfirms: React.FC<Props> = ({
     <ConfirmDialog
       isOpen={!!confirmDeleteColumn}
       title="Delete Column"
-      message={`Are you sure you want to delete column "${confirmDeleteColumn || ''}"?`}
+      message={`Delete the column "${confirmDeleteColumn || ''}"? It goes to the trash with its cells, `
+        + 'its description and its setup, where you can restore it. Filters, views and settings that use it '
+        + "don't come back with it."}
       confirmText="Delete" isDestructive
       onConfirm={async () => {
         if (confirmDeleteColumn && onDeleteColumn) await onDeleteColumn(confirmDeleteColumn)

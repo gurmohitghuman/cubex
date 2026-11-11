@@ -2,10 +2,13 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { deleteSheetColumn } from '../services/column-delete';
+import { getTrashDays } from '../lib/trash/store';
 
 // DELETE /:id/columns/:columnName — the cascade implementation (rows.data key,
 // column_order, filters, HTTP/webhook refs, run + webhook-marker +
 // last-column guards) is shared with /api/v1 in services/column-delete.ts.
+// Answers where it went: `trash` ({ id, days }, as a row or sheet delete
+// answers the app), or null when Settings keeps deleted things 0 days.
 const router = express.Router();
 router.use(authenticateToken);
 
@@ -27,7 +30,10 @@ router.delete('/:id/columns/:columnName', async (req: AuthRequest, res) => {
           return res.status(400).json({ error: result.error });
       }
     }
-    res.json({ message: 'Column deleted successfully' });
+    res.json({
+      message: 'Column deleted successfully',
+      trash: result.trashId === null ? null : { id: result.trashId, days: getTrashDays(req.userId!) },
+    });
   } catch (error) {
     console.error('Delete column error:', error);
     res.status(500).json({ error: 'Failed to delete column' });

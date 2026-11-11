@@ -133,6 +133,9 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'delete', path: '/sheets/{id}/columns/{name}', operationId: 'deleteColumn', tag: 'columns',
-    scope: 'write', summary: 'Delete a column and its values for good. Columns never go to the trash.',
+    scope: 'write', summary: 'Put a column in the trash with its cells, place, description and own setup.',
+    description: 'What other columns, views and settings said about it is removed now; the restore lists each one. '
+      + 'The answer\'s trash gives trash_id, kept_days, restorable_until and how_to_restore (trash_id null: '
+      + 'Settings keeps deleted things 0 days, so it was deleted at once).',
   }),
 ];

@@ -12,6 +12,7 @@ const HOW: Record<TrashHow, string> = {
   rerun: 'Replaced by a rerun',
   sheet: 'Sheet deleted',
   table: 'Table deleted',
+  column: 'Column deleted',
 }
 
 export const howText = (how: TrashHow): string => HOW[how] ?? 'Deleted'
@@ -19,12 +20,14 @@ export const howText = (how: TrashHow): string => HOW[how] ?? 'Deleted'
 export function titleOf(e: TrashEntry): string {
   if (e.kind === 'table') return `Table "${e.table_name}"`
   if (e.kind === 'sheet') return `Sheet "${e.sheet_name}"`
+  if (e.kind === 'column') return `Column "${e.column ?? ''}" from "${e.sheet_name}"`
   return `${plural(e.rows, 'row')} from "${e.sheet_name}"`
 }
 
 export function placeOf(e: TrashEntry): string {
   if (e.kind === 'table') return plural(e.rows, 'row')
   if (e.kind === 'sheet') return `In "${e.table_name}" · ${plural(e.rows, 'row')}`
+  if (e.kind === 'column') return `In "${e.table_name}" · ${plural(e.cells ?? e.rows, 'cell')} · ${e.column_kind ?? ''}`
   return `In "${e.table_name}"`
 }
 
@@ -51,6 +54,7 @@ export function restoredText(r: TrashRestoreResult, e?: TrashEntry): string {
   if (!got) return r.error ?? "Couldn't restore it"
   if (got.kind === 'table') return `Restored the table "${got.name}"${got.renamed ? ' (its name was taken)' : ''}`
   if (got.kind === 'sheet') return `Restored the sheet "${got.name}"${got.renamed ? ' (its name was taken)' : ''}`
+  if (got.kind === 'column') return columnRestoredText(got)
   const where = got.place === 'old' ? 'to their old places' : 'to the end of the sheet'
   const rows = plural(got.rows ?? 0, 'row')
   if (got.state === 'restoring') return `Restoring ${rows}${e?.sheet_name ? ` to "${e.sheet_name}"` : ''}…`
@@ -58,4 +62,20 @@ export function restoredText(r: TrashRestoreResult, e?: TrashEntry): string {
   const lost = got.columns_left_out?.length
     ? ` Left out (no room for more columns): ${got.columns_left_out.join(', ')}.` : ''
   return `Restored ${rows} ${where}${e?.sheet_name ? ` in "${e.sheet_name}"` : ''}.${added}${lost}`
+}
+
+type Restored = NonNullable<TrashRestoreResult['restored']>
+
+// A column: its name (and why it changed), its cells, and how many references didn't come back.
+function columnRestoredText(got: Restored): string {
+  const as = got.renamed ? ` as "${got.name}" ("${got.old_name}" was taken)` : ''
+  if (got.state === 'restoring') return `Restoring the column "${got.old_name}"${as}…`
+  const skipped = got.cells_skipped ? ` ${plural(got.cells_skipped, 'cell')} left out: their rows are gone.` : ''
+  const kept = got.cells_kept ? ` ${plural(got.cells_kept, 'cell')} kept what the row holds now.` : ''
+  const dropped = got.references_dropped ?? []
+  const named = dropped.slice(0, 3).map(r => r.where).join(', ')
+  const more = dropped.length > 3 ? ` and ${dropped.length - 3} more` : ''
+  const refs = dropped.length ? ` Not brought back, set up again if needed: ${named}${more}.` : ''
+  return `Restored the column "${got.old_name}"${as}, ${plural(got.cells_restored ?? 0, 'cell')} back.${skipped}${kept}`
+    + refs
 }

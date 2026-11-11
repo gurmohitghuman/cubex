@@ -6,6 +6,7 @@ import { db } from '../lib/db';
 import { addSheetColumn } from '../services/column-add';
 import { renameSheetColumn } from '../services/column-rename';
 import { deleteSheetColumn } from '../services/column-delete';
+import { trashAnswer } from '../services/trash-answer';
 import { physicalSortSheet } from '../services/sheet-sort';
 import { describeColumn, describeSheet, descriptionProblem } from '../services/descriptions';
 import { reorderSheetColumns } from '../services/column-reorder';
@@ -96,8 +97,14 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'delete_column',
     {
       description:
-        'PERMANENTLY delete a column and its data from every row (there is no undo). Fails for run-owned ' +
-        'columns, columns an active run reads, webhook marker columns, and the last remaining column.',
+        'Delete a column: it goes to the trash with its cells, its place, its description and its own setup '
+        + '(what makes it an AI, HTTP API, enrichment, waterfall, formula, lookup or clean column), and the '
+        + 'answer\'s trash says until when and how to restore it (restore_from_trash). What other columns, views '
+        + 'and settings said about it is removed now and does not come back with it: its own auto-run, filters '
+        + 'and hidden columns in views, webhook mappings, fields another run writes into it, lookups in other '
+        + 'sheets reading it, auto-dedupe on it; the restore answer lists each one so you can set it up again. '
+        + 'With Settings keeping deleted things 0 days it is deleted at once (trash_id null). Refused for '
+        + 'run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column.',
       inputSchema: { sheet_id: z.string(), column: z.string() },
     },
     async ({ sheet_id, column }) => {
@@ -108,7 +115,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) {
         return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.error);
       }
-      return ok({ deleted: true });
+      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.trashId, 'mcp') });
     },
   );
 

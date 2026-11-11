@@ -1,8 +1,6 @@
 // The trash's query and body checks, shared by /api/trash, /api/v1/trash and MCP.
 import { TRASH_IDS_MAX, TRASH_LIST_PAGE, TRASH_ROWS_PAGE_MAX } from '../lib/constants';
-import { TRASH_HOWS, type TrashHow, type TrashKind } from '../lib/trash/store';
-
-const KINDS: TrashKind[] = ['rows', 'sheet', 'table'];
+import { TRASH_HOWS, TRASH_KINDS, type TrashHow, type TrashKind } from '../lib/trash/store';
 
 // A whole number >= 1 (undefined when absent, null when not one).
 function posInt(v: unknown): number | undefined | null {
@@ -25,7 +23,9 @@ export function trashListAsk(q: Record<string, unknown>):
   if (before === null) return { error: 'before must be a trash id.' };
   if (limit === null) return { error: `limit must be a whole number from 1 to ${TRASH_LIST_PAGE}.` };
   const kind = q.kind === undefined || q.kind === '' ? undefined : q.kind;
-  if (kind !== undefined && !KINDS.includes(kind as TrashKind)) return { error: 'kind must be rows, sheet or table.' };
+  if (kind !== undefined && !TRASH_KINDS.includes(kind as TrashKind)) {
+    return { error: 'kind must be rows, sheet, table or column.' };
+  }
   const how = q.how === undefined || q.how === '' ? undefined : q.how;
   if (how !== undefined && !TRASH_HOWS.includes(how as TrashHow)) {
     return { error: `how must be one of: ${TRASH_HOWS.join(', ')}.` };

@@ -21,20 +21,22 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       'What was deleted and can still be restored: batches of rows (from delete_rows, remove_duplicates, '
       + 'auto-dedupe, a CSV import that replaced the rows, transfer_rows moving rows out, a list job\'s rerun '
       + 'replacing the rows it added before, or the app), whole '
-      + 'sheets and whole tables. '
+      + 'sheets, whole tables and columns (delete_column: kind column, with column, cells, column_kind and '
+      + 'references_dropped, how many references to it went with the delete). '
       + 'Each item has its trash_id, what it was (table_name, sheet_name, rows), how and by whom it was deleted, '
       + 'and expires_at (kept for kept_days, set in Settings; then deleted). Without trash_id: the list, '
       + 'newest first (q finds words in a table or sheet name or the token that deleted it; kind, how and '
       + 'sheet_id narrow it: how auto_dedupe with a sheet_id lists the rows auto-dedupe removed there, one '
       + 'batch a day; before pages on). With trash_id: that item, and for a batch its rows (cells as they were, seq, '
       + 'row_id, old_row_index), a page at a time (after), or only rows whose column (or any cell, without one) '
-      + 'contains a text: a search reads part of a big batch per call and next_after goes on. Read-only.',
+      + 'contains a text: a search reads part of a big batch per call and next_after goes on. A column reads the '
+      + 'same way: one row per cell it held, with the row it came from. Read-only.',
     inputSchema: {
       trash_id: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('One item, with its rows'),
       q: z.string().max(200).optional(),
-      kind: z.enum(['rows', 'sheet', 'table']).optional(),
+      kind: z.enum(['rows', 'sheet', 'table', 'column']).optional(),
       how: z.enum(TRASH_HOWS as [TrashHow, ...TrashHow[]]).optional()
-        .describe('How it went: grid, api, duplicates, auto_dedupe, import, transfer, sheet or table'),
+        .describe('How it went: grid, api, duplicates, auto_dedupe, import, transfer, rerun, sheet, table or column'),
       sheet_id: z.string().optional().describe('Only batches of rows from this sheet, and the sheet'),
       before: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('List: the next page, below this id'),
       limit: lenientInt(1, TRASH_ROWS_PAGE_MAX).optional()
@@ -44,7 +46,7 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       contains: z.string().max(500).optional().describe('Rows: only rows holding this text (any case)'),
     },
   }, async (a: {
-    trash_id?: number; q?: string; kind?: 'rows' | 'sheet' | 'table'; how?: TrashHow; sheet_id?: string;
+    trash_id?: number; q?: string; kind?: 'rows' | 'sheet' | 'table' | 'column'; how?: TrashHow; sheet_id?: string;
     before?: number;
     limit?: number; after?: number; column?: string; contains?: string;
   }) => {
@@ -58,7 +60,7 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     }
     const entry = getTrashEntry(ctx.userId, a.trash_id);
     if (!entry) return err('Nothing in the trash with that trash_id. list_trash shows what is there.');
-    if (entry.kind !== 'rows') return ok({ item: entry });
+    if (entry.kind !== 'rows' && entry.kind !== 'column') return ok({ item: entry });
     const rows = readTrashRows(ctx.userId, a.trash_id, {
       after: a.after, limit: a.limit, column: a.column, contains: a.contains,
     });
@@ -69,13 +71,23 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'restore_from_trash', {
     description:
       'Puts deleted things back from the trash (list_trash shows them): trash_ids restores whole items, tables '
-      + 'first, then sheets, then batches of rows. A sheet or table comes back as it was (rows, columns, runs, '
+      + 'first, then sheets, then columns and batches of rows, the newest deletion first. A sheet or table comes '
+      + 'back as it was (rows, '
+      + 'columns, runs, '
       + 'views, webhook), renamed "<name> (restored)" if its name was taken meanwhile. A batch of rows goes back '
       + 'to the old places when the sheet was not sorted, replaced or deduplicated since and those places are '
       + 'free, otherwise to the end of the sheet in the order they had; columns they need that the sheet lost are '
       + 'added again (columns_added), and a sheet without room for them refuses the restore (no cell is left out). '
       + 'Rows moved out with transfer_rows are still in their new sheet: restoring them keeps both (the item\'s '
-      + 'note says so). Auto-run does not run restored rows. With trash_id and seqs: only those '
+      + 'note says so). Auto-run does not run restored rows. A column comes back whole: its cells on the rows '
+      + 'that still exist (by row id; cells_kept counts the rows holding a value there now, never overwritten; '
+      + 'cells_skipped the cells whose rows are gone, which stay in its item until those rows are back and you '
+      + 'restore it again), at its old place, with its description and its own setup (setup: an AI or '
+      + 'HTTP API column can be rerun with control_run and setup.run_id; a clean, formula or lookup column works '
+      + 'its rows out again), auto-run off, renamed "<name> (restored)" if its name was taken (name, renamed). '
+      + 'references_dropped lists what other columns, views and settings said about it that did not come back, '
+      + 'each with where, did and redo (the tool to set it up again). A column whose request reads saved API '
+      + 'keys needs the secrets scope. With trash_id and seqs: only those '
       + `rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). Refused while a run is active on the sheet. A big `
       + 'batch answers state "restoring" and finishes in the background. Costs nothing.',
     inputSchema: {
@@ -94,7 +106,8 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     }
     const ids = a.trash_ids ?? (a.trash_id !== undefined ? [a.trash_id] : null);
     if (!ids) return err('Give trash_ids (or trash_id with seqs). list_trash shows what is in the trash.');
-    return ok({ results: await restoreFromTrash(ctx.userId, holdersFirst(ctx.userId, ids)) });
+    return ok({ results: await restoreFromTrash(ctx.userId, holdersFirst(ctx.userId, ids),
+      { surface: 'mcp', hasSecretsScope: ctx.scopes.has('secrets') }) });
   });
 
   registerTool(server, 'get_sheet_history', {

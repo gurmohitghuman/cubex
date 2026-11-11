@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  ArchiveRestore, Download, Eye, FileSpreadsheet, Loader2, MoreHorizontal, Rows, Table2, Trash2,
+  ArchiveRestore, Columns, Download, Eye, FileSpreadsheet, Loader2, MoreHorizontal, Rows, Table2, Trash2,
 } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -20,7 +20,7 @@ interface Props {
   busy: Set<number>
 }
 
-const ICON = { table: Table2, sheet: FileSpreadsheet, rows: Rows } as const
+const ICON = { table: Table2, sheet: FileSpreadsheet, rows: Rows, column: Columns } as const
 
 // One line per deleted thing: what it was, where it came from, how and by whom
 // it went, and how long it stays; Restore, and in ⋯ the rest.
@@ -44,8 +44,8 @@ export const TrashList: React.FC<Props> = ({
             {e.state === 'restoring' && (
               <p className="text-xs text-gray-700 flex items-center gap-1 mt-1">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Restoring… {plural(e.restored_so_far ?? 0, 'row')} back of {(e.rows + (e.restored_so_far ?? 0))
-                  .toLocaleString()}
+                Restoring… {plural(e.restored_so_far ?? 0, e.kind === 'column' ? 'cell' : 'row')} back of {(e.rows
+                  + (e.restored_so_far ?? 0)).toLocaleString()}
               </p>
             )}
             {e.state === 'purging' && <p className="text-xs text-gray-700 mt-1">Deleting…</p>}
@@ -66,7 +66,7 @@ export const TrashList: React.FC<Props> = ({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {e.kind === 'rows' && (
+              {(e.kind === 'rows' || e.kind === 'column') && (
                 <>
                   <DropdownMenuItem onClick={() => onLook(e)} data-testid="trash-look">
                     <Eye className="h-3.5 w-3.5 mr-2" />Look inside

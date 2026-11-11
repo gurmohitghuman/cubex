@@ -46,6 +46,10 @@ const passesOf = (id: string) => {
   return { count: () => n, restore: () => { lookupKind.open = real } }
 }
 
+// The delete puts the column in the trash (migration 054): its answer names that item.
+const trashedColumn = (sid: string, column: string) => db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ?
+  AND kind = 'column' AND column_name = ? ORDER BY id DESC LIMIT 1`).pluck().get(sid, column) as number
+
 await ok('a lookup with no rows written yet waits for the column it reads to finish filling, then fills', async () => {
   const { a, o, fid, id, note } = await setUp()
   fillingFrom(id)
@@ -146,7 +150,7 @@ await ok("a lookup deleted while it waits isn't brought back when the fill it wa
   fillingFrom(id)
   resumeLookups()
   await until('it waits', () => derivedFillWait(id) === note)
-  assert.deepEqual(await deleteSheetColumn(a, uid, 'Who'), { ok: true })
+  assert.deepEqual(await deleteSheetColumn(a, uid, 'Who'), { ok: true, trashId: trashedColumn(a, 'Who') })
   await fillF(o, fid)
   await new Promise(r => setTimeout(r, 300))
   await idle(a)

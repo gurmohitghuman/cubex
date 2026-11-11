@@ -3,7 +3,9 @@
 // column_order, empty_filter, column_filters,
 // http_column_associations, stored HTTP run configs, webhook mappings, auto-run
 // and clean column settings, descriptions; guards:
-// active-run 409, webhook raw-marker protection, last-column.
+// active-run 409, webhook raw-marker protection, last-column. With the trash
+// kept (Settings), the column goes to it (services/column-trash.ts): the
+// cleanup stays the same, and the strip moves its cells into the item.
 // Over 200 lines: one delete with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
@@ -25,9 +27,12 @@ import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
+import { getTrashDays } from '../lib/trash/store';
+import { openColumnItem } from './column-trash';
 
 export type ColumnDeleteOutcome =
-  | { ok: true }
+  // trashId: the trash item it went to (null: Settings keeps deleted things 0 days, it went at once).
+  | { ok: true; trashId: number | null }
   | { fail: 'column_not_found' }
   | { fail: 'active_run' | 'busy'; error: string }
   | { fail: 'webhook_column'; error: string }
@@ -173,8 +178,12 @@ export async function deleteSheetColumn(
     // If the transaction below then fails, the delete reports it and is retried;
     // until then that column's auto-run has lost rows it had queued.
     await dropAutorunQueueOf(sheetId, userId, columnName);
+    let trashId: number | null = null;
     db.transaction(() => {
-      recordPurge(sheetId, userId, columnName);
+      // Kept in the trash (services/column-trash.ts): what it is and what named it, read before the
+      // cleanup below; its cells then move into the item with the strip.
+      trashId = openColumnItem(sheetId, userId, columnName);
+      recordPurge(sheetId, userId, columnName, trashId);
       // http_column_associations references columns by name string (not FK), so
       // DELETE CASCADE doesn't cover us.
       db.prepare(
@@ -230,10 +239,13 @@ export async function deleteSheetColumn(
       } else {
         touchSheet(sheetId, userId);
       }
-    })();
+      // It reads first (the trash item's snapshot, the purges' settings): the write lock first.
+    }).immediate();
     await finishColumnChange(sheetId, userId, columnName);
-    logSheetChange(sheetId, userId, 'column_deleted', `Deleted the column "${columnName}"`, { column: columnName });
-    return { ok: true as const };
+    logSheetChange(sheetId, userId, 'column_deleted', trashId === null ? `Deleted the column "${columnName}"`
+      : `Deleted the column "${columnName}" (to the trash, kept ${getTrashDays(userId)} days)`,
+    { column: columnName, ...(trashId === null ? {} : { detail: { trash_id: trashId } }) });
+    return { ok: true as const, trashId };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
 }

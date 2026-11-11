@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ColumnFilters } from '@/lib/filters'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet, SheetData } from '@/utils/api'
 import { useColumnRename } from './useColumnRename'
 import { useColumnReorder } from './useColumnReorder'
+import { toastDeleted } from '@/components/trash/trashToast'
 
 interface UseColumnOpsArgs {
   activeSheet: Sheet | null
@@ -23,13 +24,17 @@ interface UseColumnOpsArgs {
   // name can't reach the server after the rename commits (which would resurrect
   // the old column). Edits still queue; we remap then unpause.
   setAutosavePaused: (paused: boolean) => void
+  // A deleted column's toast offers Restore; once back, the sheet showing it reloads.
+  reloadActiveSheet: () => void
 }
 
 export const useColumnOps = ({
   activeSheet, sheetData, setSheetData, setEmptyFilter, setColumnFilters,
-  waitForSaves, dropPendingForColumn, renamePendingColumn, setAutosavePaused,
+  waitForSaves, dropPendingForColumn, renamePendingColumn, setAutosavePaused, reloadActiveSheet,
 }: UseColumnOpsArgs) => {
   const [columnOrder, setColumnOrder] = useState<string[]>([])
+  const activeIdRef = useRef(activeSheet?.id)
+  activeIdRef.current = activeSheet?.id
   // Signal to AGGridSpreadsheet so it can preserve a column's stable colId across a rename
   // — otherwise AG Grid sees the field change as remove+add and snaps the renamed column
   // to the end of the row.
@@ -91,7 +96,8 @@ export const useColumnOps = ({
     }
     dropPendingForColumn(columnName)
     try {
-      await sheetsAPI.deleteColumn(activeSheet.id, columnName)
+      const originSheetId = activeSheet.id
+      const { trash } = await sheetsAPI.deleteColumn(originSheetId, columnName)
       setSheetData(prev => {
         if (!prev) return prev
         const updatedRows = prev.data.rows.map(row => ({
@@ -128,7 +134,12 @@ export const useColumnOps = ({
         const { [columnName]: _dropped, ...rest } = prev
         return rest
       })
-      // No success toast — the column disappears from the grid immediately.
+      // It went to the trash: say so, with Restore (with the trash kept 0 days, no toast: it just goes).
+      if (trash) {
+        toastDeleted(`Column "${columnName}" moved to the trash`, trash.id, {
+          onRestored: () => { if (activeIdRef.current === originSheetId) reloadActiveSheet() },
+        })
+      }
     } catch (error: any) {
       console.error('Delete column error:', error)
       // Surface the server's specific message — e.g. the 400 that blocks deleting
@@ -136,7 +147,8 @@ export const useColumnOps = ({
       // active-run 409 — instead of a generic, unactionable "Failed to delete".
       toast.error(error?.response?.data?.error || 'Failed to delete column')
     }
-  }, [activeSheet, setSheetData, setEmptyFilter, setColumnFilters, dropPendingForColumn, waitForSaves])
+  }, [activeSheet, setSheetData, setEmptyFilter, setColumnFilters, dropPendingForColumn, waitForSaves,
+    reloadActiveSheet])
 
   // Drag-reorder: optimistic, serialized, latest-drag rollback.
   const { handleColumnReorder } = useColumnReorder({ activeSheet, sheetData, columnOrder, setColumnOrder })

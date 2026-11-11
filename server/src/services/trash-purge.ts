@@ -4,9 +4,10 @@
 // deleted while Settings keeps 0 days. An item being purged is 'purging', so a
 // restart goes on with it and a restore can't start on it meanwhile.
 //
-// A batch of rows: its trash_rows, then the item. A sheet: lookups that look
-// in it learn it is gone and its looked-up keys go (lib/trash/lookups.ts), then
-// the row batches of it still in the trash, its rows, its runs' results and
+// A batch of rows, or a deleted column: its trash_rows, then the item. A
+// sheet: lookups that look in it learn it is gone and its looked-up keys go
+// (lib/trash/lookups.ts), then the row batches and columns of it still in the
+// trash, its rows, its runs' results and
 // undo journals, its auto-run queue, list provenance and webhook deliveries,
 // each in slices; then the sheet itself in one small transaction (the rest
 // cascades). A table: each of its sheets, then the table. The sweep also
@@ -71,7 +72,8 @@ async function purgeDue(): Promise<void> {
     const claimed = db.prepare(`UPDATE trash_items SET state = 'purging' WHERE id = ? AND state IN ('kept', 'purging')`)
       .run(item.id).changes > 0;
     if (!claimed) continue;
-    if (item.kind === 'rows') await purgeBatch(item.id);
+    // A column's cells are rows of trash_rows too (migration 054).
+    if (item.kind === 'rows' || item.kind === 'column') await purgeBatch(item.id);
     else if (item.kind === 'sheet' && item.sheet_id) await purgeSheet(item.sheet_id, item.user_id, item.id);
     else if (item.kind === 'table') await purgeTable(item.table_id, item.user_id, item.id);
   }
@@ -98,7 +100,7 @@ async function purgeSheet(sheetId: string, userId: string, itemId: number | null
   if (sheetHeld(sheetId)) return false;
   const name = db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(sheetId) as string | undefined;
   if (name !== undefined) db.transaction(() => lookupsLoseSheet(sheetId, name))();
-  for (const batch of db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind = 'rows'`).pluck()
+  for (const batch of db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind IN ('rows', 'column')`).pluck()
     .all(sheetId) as number[]) {
     db.prepare(`UPDATE trash_items SET state = 'purging' WHERE id = ?`).run(batch);
     await purgeBatch(batch);
