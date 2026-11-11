@@ -71,7 +71,8 @@ function columnRestoredText(got: Restored): string {
   const as = got.renamed ? ` as "${got.name}" ("${got.old_name}" was taken)` : ''
   if (got.state === 'restoring') return `Restoring the column "${got.old_name}"${as}…`
   const skipped = got.cells_skipped ? ` ${plural(got.cells_skipped, 'cell')} left out: their rows are gone.` : ''
-  const kept = got.cells_kept ? ` ${plural(got.cells_kept, 'cell')} kept what the row holds now.` : ''
+  const kept = got.cells_kept
+    ? ` ${plural(got.cells_kept, 'cell')} stayed in the trash: their rows hold a value there now.` : ''
   const dropped = got.references_dropped ?? []
   const named = dropped.slice(0, 3).map(r => r.where).join(', ')
   const more = dropped.length > 3 ? ` and ${dropped.length - 3} more` : ''

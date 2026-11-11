@@ -1,7 +1,8 @@
 // A column restore's last transaction (services/trash-restore-column.ts), once its cells have gone through:
 // the column listed at its old place with its description and its own setup, or nothing to set up when the
 // cells went into a column already there (the item's leftovers); the change log; and the item gone, or kept
-// with the cells whose rows were gone (restore_name: the column they go into once their rows are back).
+// with the cells that didn't go back (restore_name: the column they go into once their rows are back and
+// empty there). The change log says what came back, its setup too (restored, or plain and why).
 // A clean, formula or lookup column set up again works its rows out by a fill started after the request
 // (startFills): its record is 'filling' already, so a restart resumes it as any fill (resumeDerivedFills).
 import { db } from '../lib/db';
@@ -31,7 +32,7 @@ export function finishColumnRestore(itemId: number, sheetId: string, userId: str
   const item = getTrashItem(itemId, userId)!;
   const own = columnSetupOf(item);
   const into = item.restore_into === 1 && getSheetColumns(sheetId, userId, false).includes(name);
-  const plan: SetupPlan = { kind: own.fill ? fillKind(own.fill) : 'plain', problem: null };
+  const plan: SetupPlan = { kind: own.fill ? fillKind(own.fill) : 'plain', problem: null, taken: [] };
   let position = getSheetColumns(sheetId, userId, false).indexOf(name);
   let written: { runId: string | null; fill: { table: string; id: string } | null } = { runId: null, fill: null };
   if (!into) {
@@ -42,14 +43,17 @@ export function finishColumnRestore(itemId: number, sheetId: string, userId: str
   db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
   touchSheet(sheetId, userId);
   const old = item.column_name!;
-  const dropped = droppedRefsOf(item).filter(r => stillDropped(r, name !== old))
+  const dropped = [...droppedRefsOf(item).filter(r => stillDropped(r, name !== old)), ...plan.taken]
     .map(r => droppedEntry(r, name, old, 'app', sheetId)).map(e => ({ where: e.where, did: e.did }));
   const cells = countOf(item.restored, 'cell');
+  // Its setup: restored, or why it came back plain (a restore past its wait answered before this was known).
+  const setup = { kind: plan.kind, restored: plan.kind !== 'plain' && plan.problem === null,
+    ...(plan.problem ? { why: plan.problem } : {}) };
   logSheetChange(sheetId, userId, 'column_restored', into
     ? `Restored ${cells} of the column "${old}" into "${name}" from the trash`
     : `Restored the column "${old}"${name === old ? '' : ` as "${name}"`} from the trash (${cells} back)`,
   { column: name, detail: { trash_id: itemId, old_name: old, cells: item.restored, skipped: item.restore_skipped,
-    kept: item.restore_kept, references_dropped: dropped } });
+    kept: item.restore_kept, ...(into ? {} : { setup }), references_dropped: dropped } });
   if (item.row_count <= 0) {
     db.prepare('DELETE FROM trash_rows WHERE item_id = ?').run(itemId);
     db.prepare('DELETE FROM trash_items WHERE id = ?').run(itemId);

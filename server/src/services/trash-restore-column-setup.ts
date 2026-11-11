@@ -7,7 +7,9 @@
 //     created (a fill, in the background, resumed after a restart).
 // Auto-run comes back off for every kind (the answer lists it among the references dropped when it was on).
 // A setup that can't work now (its source column gone, a formula reading a column the sheet lost, the other
-// sheet of a lookup gone, a loop) isn't written: the column comes back plain with its cells, and says why.
+// sheet of a lookup or a list enrichment gone, a loop) isn't written: the column comes back plain with its
+// cells, and says why. A column its AI or HTTP setup wrote that another setup fills now stays with that one
+// (trash-restore-column-owners.ts).
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { compileFormula } from '../lib/formula/refs';
@@ -19,8 +21,11 @@ import {
   writeAiSetup, writeCleanSetup, writeFormulaSetup, writeHttpSetup, writeLookupSetup,
 } from './setup-version-write';
 import { KEYS } from './setup-version-restore';
+import { fillProblem } from './setup-version-plan-words';
+import { ownedFill, withoutWords, type Taken } from './trash-restore-column-owners';
 
-export interface SetupPlan { kind: ColumnKind; problem: string | null }
+// taken: the columns it wrote that another setup fills now (it comes back without them).
+export interface SetupPlan { kind: ColumnKind; problem: string | null; taken: Taken[] }
 export interface SetupWritten { runId: string | null; fill: { table: string; id: string } | null }
 
 const columnsOf = (sheetId: string, userId: string) => getSheetColumns(sheetId, userId, false);
@@ -34,7 +39,12 @@ function derivedInputs(f: Fill, columns: string[]): string[] {
 
 // Why its setup can't be written now (null: it can). `columns`: the sheet's, the restored one with them.
 function setupProblem(sheetId: string, userId: string, name: string, f: Fill, columns: string[]): string | null {
-  if (f.kind === 'ai' || f.kind === 'http') return null;
+  if (f.kind === 'ai') return null;
+  if (f.kind === 'http') {
+    // A list enrichment's sheet gone (its words start a sentence; here they follow a colon).
+    const gone = fillProblem(userId, sheetId, f, columns);
+    return gone && gone[0].toLowerCase() + gone.slice(1);
+  }
   if ((f.kind === 'clean' || f.kind === 'lookup') && !columns.includes(f.source)) {
     return `the column it reads, "${f.source}", is gone`;
   }
@@ -54,17 +64,24 @@ function setupProblem(sheetId: string, userId: string, name: string, f: Fill, co
   return loop ? `it would work "${name}" out from itself (${loop})` : null;
 }
 
+// What it can write now: without the columns another setup fills now, and why not at all (null: it can).
+function shapeOf(sheetId: string, userId: string, name: string, f: Fill, columns: string[]) {
+  const owned = ownedFill(sheetId, userId, name, f);
+  return { ...owned, problem: owned.problem ?? setupProblem(sheetId, userId, name, owned.fill, columns) };
+}
+
 // Before the restore starts: a refusal (its request reads saved keys the caller can't use), or the plan.
 export function planColumnSetup(sheetId: string, userId: string, own: VersionColumn, name: string,
   hasSecretsScope: boolean): { refuse: string } | { plan: SetupPlan } {
   const f = own.fill;
-  if (!f) return { plan: { kind: 'plain', problem: null } };
+  if (!f) return { plan: { kind: 'plain', problem: null, taken: [] } };
   if (f.kind === 'http' && !hasSecretsScope && httpRunSecretRefsRequiringScope(userId,
     { config: JSON.stringify(f.config), allow_secrets: f.allowSecrets }, false).length > 0) {
     return { refuse: `"${own.name}": ${KEYS}` };
   }
   const columns = [...columnsOf(sheetId, userId).filter(c => c !== name), name];
-  return { plan: { kind: fillKind(f), problem: setupProblem(sheetId, userId, name, f, columns) } };
+  const { problem, taken } = shapeOf(sheetId, userId, name, f, columns);
+  return { plan: { kind: fillKind(f), problem, taken } };
 }
 
 // Each kind's record set to work every row out again, as a new one is (its id back).
@@ -84,9 +101,12 @@ const fillAgain = (kind: 'clean' | 'formula' | 'lookup') => (kind === 'clean'
 // formula or lookup record is set to fill again ('filling'), the caller starts the fill after it.
 export function writeColumnSetup(sheetId: string, userId: string, own: VersionColumn, name: string,
   plan: SetupPlan, hasSecretsScope: boolean): SetupWritten {
-  const f = own.fill;
-  // Read again: what it reads may have changed since the restore started (another sheet, for a lookup).
-  plan.problem = f ? setupProblem(sheetId, userId, name, f, columnsOf(sheetId, userId)) : null;
+  // Read again: what it reads may have changed since the restore started (another sheet, for a lookup), and
+  // so may the setups filling the columns it writes.
+  const shape = own.fill ? shapeOf(sheetId, userId, name, own.fill, columnsOf(sheetId, userId)) : null;
+  plan.problem = shape?.problem ?? null;
+  plan.taken = shape?.taken ?? [];
+  const f = shape?.fill;
   if (!f || plan.problem !== null) return { runId: null, fill: null };
   if (f.kind === 'ai') return { runId: writeAiSetup(sheetId, userId, name, f), fill: null };
   if (f.kind === 'http') {
@@ -123,5 +143,7 @@ export function setupWords(plan: SetupPlan, runId: string | null, s: RefSurface)
     + `"${runId}" and a mode ("empty" for the rows it left empty)`
     : s === 'rest' ? `POST /api/v1/${type}-runs/${runId}/rerun with a mode ("empty" for the rows it left empty)`
       : 'Rerun from its column menu';
-  return `Set up as it was (its newest run's settings). Nothing ran and auto-run stays off: ${rerun} fills it.`;
+  const without = plan.taken.length ? `, ${withoutWords(plan.taken)}` : '';
+  return `Set up as it was (its newest run's settings)${without}. Nothing ran and auto-run stays off: ${rerun} `
+    + 'fills it.';
 }

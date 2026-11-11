@@ -37,8 +37,15 @@ export async function copyColumnKey(sheetId: string, userId: string, from: strin
 }
 
 // trashId: a column delete whose cells go to that trash item (lib/trash/column-move.ts) as they are stripped.
+// That one is a plain INSERT: a strip of the name still pending would keep its own record and never fill the
+// item, so it fails loudly (services/column-delete.ts refuses such a delete before it gets here).
 export function recordPurge(sheetId: string, userId: string, name: string, trashId: number | null = null): void {
-  db.prepare('INSERT OR IGNORE INTO column_purges (sheet_id, user_id, column_name, trash_id) VALUES (?, ?, ?, ?)')
+  if (trashId === null) {
+    db.prepare('INSERT OR IGNORE INTO column_purges (sheet_id, user_id, column_name) VALUES (?, ?, ?)')
+      .run(sheetId, userId, name);
+    return;
+  }
+  db.prepare('INSERT INTO column_purges (sheet_id, user_id, column_name, trash_id) VALUES (?, ?, ?, ?)')
     .run(sheetId, userId, name, trashId);
 }
 

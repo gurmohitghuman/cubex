@@ -46,8 +46,8 @@ function entryOf(item: TrashItem, days: number): TrashEntry {
     ...(item.how === 'transfer'
       ? { note: 'These rows were moved to another sheet and are still there: restoring them here keeps both.' } : {}),
     ...(item.kind === 'column' && item.state === 'kept' && item.restore_name !== null
-      ? { note: `Its other cells went back to "${item.restore_name}" when their rows were gone: restored once those `
-        + 'rows are back, these go into it too.' } : {}),
+      ? { note: `Its other cells went back to "${item.restore_name}". These stayed: their rows were gone, or held a `
+        + 'value there. Restored again, each goes into it once its row is back and empty there.' } : {}),
     ...(item.how === 'rerun'
       ? { note: 'A rerun replaced these rows. Restored, they stay as rows of their own: a later rerun adds new rows '
         + 'beside them.' } : {}),

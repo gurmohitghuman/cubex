@@ -103,7 +103,9 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         + 'and settings said about it is removed now and does not come back with it: its own auto-run, filters '
         + 'and hidden columns in views, webhook mappings, fields another run writes into it, lookups in other '
         + 'sheets reading it, auto-dedupe on it; the restore answer lists each one so you can set it up again. '
-        + 'With Settings keeping deleted things 0 days it is deleted at once (trash_id null). Refused for '
+        + 'With Settings keeping deleted things 0 days it is deleted at once (trash_id null). A big column\'s '
+        + 'cells take a while: past a few seconds the answer\'s trash says state "moving" (they go on in the '
+        + 'background, and a restore waits until they are all in). Refused for '
         + 'run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column.',
       inputSchema: { sheet_id: z.string(), column: z.string() },
     },
@@ -115,7 +117,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) {
         return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.error);
       }
-      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.trashId, 'mcp') });
+      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.trashId, 'mcp', { moving: !!result.moving }) });
     },
   );
 

@@ -34,7 +34,10 @@ export function columnTrashKit(name: string) {
     .run(uuid(), uid, encrypt('sk-or-test'))
   let failures = 0
   const ok = async (label: string, fn: () => void | Promise<void>) => {
-    try { await fn(); console.log('ok  ', label) } catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
+    try { await fn(); console.log('ok  ', label) } catch (e) {
+      failures++
+      console.log('FAIL', label, '\n ', (e as Error).stack)
+    }
   }
   const done = () => {
     if (failures > 0) { console.error(`${failures} ${name} assertion(s) failed`); process.exit(1) }
@@ -67,8 +70,8 @@ export function columnTrashKit(name: string) {
     WHERE sheet_id = ? ORDER BY row_index`).pluck().all(`$."${column}"`, sid) as unknown[])
   const item = (id: number) => db.prepare('SELECT * FROM trash_items WHERE id = ?').get(id) as Record<string, any>
     | undefined
-  const stored = (id: number) => db.prepare('SELECT row_id, row_index, data FROM trash_rows WHERE item_id = ? ORDER BY seq')
-    .all(id) as Array<{ row_id: string; row_index: number; data: string }>
+  const stored = (id: number) => db.prepare(`SELECT row_id, row_index, data FROM trash_rows WHERE item_id = ?
+    ORDER BY seq`).all(id) as Array<{ row_id: string; row_index: number; data: string }>
   // The delete as REST and MCP call it, waiting for its strip; returns its trash id.
   const del = async (sid: string, column: string): Promise<number | null> => {
     const out = await deleteSheetColumn(sid, uid, column, { bumpDataVersion: true })

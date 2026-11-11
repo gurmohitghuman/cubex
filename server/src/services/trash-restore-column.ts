@@ -4,10 +4,12 @@
 // It comes back under its old name when no column has it (in any case), else "<name> (restored)", "(restored
 // 2)"…; at its old place, or last when the sheet has fewer columns now; with its description and its own
 // setup (trash-restore-column-setup.ts says what that does), auto-run off. Its cells go back to the rows that
-// still exist, found by stable id: a row holding a value there now keeps it; a cell whose row is gone (deleted
-// since, maybe in the trash too) stays in the item, which restored again puts it into that column (into, its
-// leftovers) once the row is back. What other columns, views and settings said about it doesn't come back:
-// the answer lists each one with how to set it up again (references_dropped, lib/trash/column-refs-words.ts).
+// still exist, found by stable id: a row holding a value there now keeps it, and that cell stays in the item,
+// as one whose row is gone (deleted since, maybe in the trash too) does; restored again, the item puts them
+// into that column (into, its leftovers) once their rows are back and empty there. What other columns, views
+// and settings said about it doesn't come back: the answer lists each one with how to set it up again
+// (references_dropped, lib/trash/column-refs-words.ts). A column still moving into the trash (its delete
+// answered before every cell was in) is refused until it is all in.
 //
 // It is the sheet's heavy operation while it runs (lib/sheet-busy.ts), refused while a run is active there,
 // as a row restore is. The item is 'restoring' with its cursor and counts, so a restart goes on
@@ -20,28 +22,22 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { continueInBackground, stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
 import { runInCheckpointedRowSlices } from '../lib/slices';
 import { derivedReaderCount } from '../lib/autorun-mark';
-import { countOf } from '../lib/change-log';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
-import { columnSetupOf, droppedRefsOf, freeColumnName, restoreCellsSlice } from '../lib/trash/column-restore';
-import { droppedEntry, stillDropped, type DroppedEntry, type RefSurface } from '../lib/trash/column-refs-words';
+import { columnSetupOf, freeColumnName, restoreCellsSlice } from '../lib/trash/column-restore';
+import type { RefSurface } from '../lib/trash/column-refs-words';
 import { sheetRunBlock } from './autorun-block';
 import { finishRunRewrites } from './run-config-rewrite';
-import { planColumnSetup, setupWords, type SetupPlan } from './trash-restore-column-setup';
+import { planColumnSetup } from './trash-restore-column-setup';
 import { finishColumnRestore, startFills, type FillStart, type Finished } from './trash-restore-column-finish';
+import { answerOf, type ColumnRestored } from './trash-restore-column-answer';
 import type { RestoreFail } from './trash-restore';
+
+export type { ColumnRestored };
 
 const WHAT = 'restoring a column';
 
 // later: a multi-item restore collects the fills to start once its whole request is done (startFills).
 export interface ColumnRestoreOpts { surface: RefSurface; hasSecretsScope: boolean; later?: FillStart[] }
-export interface ColumnRestored {
-  trash_id: number; kind: 'column'; sheet_id: string; state: 'restored' | 'restoring';
-  name: string; old_name: string; renamed: boolean; position: number | null;
-  cells: number; cells_restored: number; cells_skipped: number; cells_kept: number;
-  setup: { kind: SetupPlan['kind']; restored: boolean; run_id: string | null; note: string };
-  references_dropped: DroppedEntry[];
-  note?: string;
-}
 
 const fail = (f: RestoreFail['fail'], message: string): RestoreFail => ({ fail: f, message });
 
@@ -52,8 +48,8 @@ const intoOf = (item: TrashItem, userId: string): boolean => item.restore_name !
 function checks(item: TrashItem, userId: string): RestoreFail | null {
   if (item.state !== 'kept') {
     return fail('conflict', item.state === 'restoring' ? 'This is already being restored.'
-      : item.state === 'purging' ? 'This is being deleted.' : 'This column is still being deleted. Try again in a '
-        + 'moment.');
+      : item.state === 'purging' ? 'This is being deleted.' : `"${item.column_name}" is still moving to the trash, `
+        + 'try again in a moment.');
   }
   const sheet = db.prepare('SELECT name, trash_id FROM sheets WHERE id = ? AND user_id = ?').get(item.sheet_id,
     userId) as { name: string; trash_id: number | null } | undefined;
@@ -111,37 +107,6 @@ export async function restoreColumn(
   });
   if ('busy' in outcome && typeof outcome.busy === 'string') return { ...fail('conflict', outcome.busy), busy: true };
   return outcome as { ok: ColumnRestored } | RestoreFail;
-}
-
-function answerOf(item: TrashItem, name: string, into: boolean, state: ColumnRestored['state'],
-  done: Finished | null, surface: RefSurface, planned: SetupPlan | null): ColumnRestored {
-  const old = item.column_name!;
-  const renamed = name !== old;
-  const plan = done?.plan ?? planned ?? { kind: 'plain' as const, problem: null };
-  const refs = into ? [] : droppedRefsOf(item).filter(r => stillDropped(r, renamed));
-  const left = done?.skipped ?? 0;
-  const notes = [
-    ...(renamed && !into ? [`Its name "${old}" was taken, so it came back as "${name}". Setups that name "${old}" `
-      + `(prompts, formulas, requests, clean and lookup columns) read the column now called "${old}".`] : []),
-    ...(into ? [`These cells' rows were gone when "${old}" came back${renamed ? ` as "${name}"` : ''}; they went `
-      + 'into it now.'] : []),
-    ...(left ? [`${countOf(left, 'cell')} stayed in the trash (trash_id ${item.id}): their rows are gone, maybe `
-      + `in the trash too. Once those rows are back, restore it again and they go into "${name}".`] : []),
-    ...(state === 'restoring' ? [`Its ${countOf(item.row_count, 'cell')} are going back in the background, and `
-      + 'the column shows once they are all back (the trash shows how far it got).'] : []),
-  ];
-  const setupNote = into ? `Its setup came back with "${name}" already.`
-    : done || plan.kind === 'plain' || plan.problem ? setupWords(plan, done?.runId ?? null, surface)
-      : 'Its setup comes back with it once all its cells are back; nothing runs.';
-  return {
-    trash_id: item.id, kind: 'column', sheet_id: item.sheet_id!, state, name, old_name: old, renamed,
-    position: done?.position ?? null, cells: item.row_count, cells_restored: done?.restored ?? 0,
-    cells_skipped: left, cells_kept: done?.kept ?? 0,
-    setup: { kind: plan.kind, restored: !into && plan.kind !== 'plain' && plan.problem === null && done !== null,
-      run_id: done?.runId ?? null, note: setupNote },
-    references_dropped: refs.map(r => droppedEntry(r, name, old, surface, item.sheet_id!)),
-    ...(notes.length ? { note: notes.join(' ') } : {}),
-  };
 }
 
 // The cells, slice by slice, then the last transaction. A failure once some cells went through keeps the

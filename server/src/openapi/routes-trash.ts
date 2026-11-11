@@ -64,8 +64,9 @@ export const trashRoutes = (): RouteDoc[] => [
     method: 'post', path: '/trash/restore', operationId: 'restoreFromTrash', tag: 'trash', scope: 'write',
     summary: 'Put items back from the trash: tables, then sheets, then columns and rows, newest deletion first.',
     description: 'A column comes back with its cells, place, description and own setup, under "<name> (restored)" '
-      + 'when its name was taken; references_dropped lists what other columns, views and settings said about it '
-      + 'that did not come back, with how to set each up again.',
+      + 'when its name was taken; a column its setup wrote that another setup fills now stays with that one. '
+      + 'references_dropped lists what other columns, views and settings said about it that did not come back, '
+      + 'with how to set each up again. An item refused (fail and error in results) leaves the others going.',
     body: z.object({ trash_ids: z.array(trashId).min(1).max(TRASH_IDS_MAX) }),
     responses: { 200: 'results: what each item did, restored or why not.' }, conflict: false,
   }),
@@ -73,9 +74,13 @@ export const trashRoutes = (): RouteDoc[] => [
     method: 'post', path: '/trash/{id}/restore', operationId: 'restoreTrashItem', tag: 'trash', scope: 'write',
     summary: 'Put one item back from the trash, or only some rows of a batch.',
     description: 'A column comes back whole (no seqs), with its cells, place, description and own setup; its '
-      + 'answer has name, renamed, cells_restored, cells_skipped, cells_kept, setup and references_dropped.',
+      + 'answer has name, renamed, cells_restored, cells_skipped, cells_kept, setup and references_dropped. A row '
+      + 'holding a value there now keeps it (cells_kept), and that trashed cell stays in the item, as one whose '
+      + 'row is gone does (cells_skipped): restore it again once their rows are back and empty there.',
     responses: { 200: 'Restored, or state "restoring" for a big one going on in the background.',
-      403: "A column whose request reads saved API keys, from a token without the 'secrets' scope." },
+      403: "A column whose request reads saved API keys, from a token without the 'secrets' scope.",
+      409: 'A run is active on the sheet, the sheet is busy or in the trash, or a column is still moving into the '
+        + 'trash (try again in a moment).' },
     body: z.object({
       seqs: z.array(z.number().int()).min(1).max(TRASH_RESTORE_PICK_MAX).optional()
         .describe('Rows picked from a batch, by seq. Left out: the whole item.'),

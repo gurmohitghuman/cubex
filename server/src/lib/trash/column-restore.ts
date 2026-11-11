@@ -1,10 +1,13 @@
 // Putting a deleted column back (services/trash-restore-column.ts runs it, with the sheet busy): the name it
 // gets, its cells a slice at a time, and its place. Cells go back while the column isn't listed yet (the
 // sheet stays busy, so nothing else reads or names it); the last transaction lists it, so a restore that
-// stops before its first slice leaves the sheet as it was. Cells whose rows were gone stay in the item; a
-// later restore of it (its leftovers) puts them into that column once their rows are back.
+// stops before its first slice leaves the sheet as it was. Cells whose rows were gone, or whose rows hold a
+// value there now, stay in the item; a later restore of it (its leftovers) puts them into that column once
+// their rows are back and empty there. A restore never deletes a trashed value for good.
 import { db } from '../db';
+import { MAX_COLUMN_NAME_LENGTH } from '../constants-columns';
 import { appendColumnsToOrder, getSheetColumns, jsonPath } from '../sql-helpers';
+import { stripInvisibleNameChars } from '../name-safety';
 import { pendingPurges } from '../column-purge';
 import { findColumnNameCollision } from '../column-names';
 import { markDerivedInputs } from '../autorun-mark';
@@ -29,12 +32,21 @@ export function droppedRefsOf(item: TrashItem): DroppedRef[] {
   } catch { return []; }
 }
 
+// "<old><tail>", the old name cut to fit a column name when it must be (as a restored sheet's name is,
+// trash-restore-sheet.ts): never through a character made of two halves, nor leaving a joiner without its emoji.
+function withTail(old: string, tail: string): string {
+  if (old.length + tail.length <= MAX_COLUMN_NAME_LENGTH) return `${old}${tail}`;
+  const room = Math.max(1, MAX_COLUMN_NAME_LENGTH - tail.length);
+  const cut = /[\uD800-\uDBFF]/.test(old[room - 1]) ? room - 1 : room;
+  return `${stripInvisibleNameChars(old.slice(0, cut)).trimEnd()}${tail}`;
+}
+
 // The old name when no column has it (in any case, or as the same /name), else "<name> (restored)",
-// "(restored 2)"… A name still being stripped from the rows counts as taken.
+// "(restored 2)"…, cut to fit. A name still being stripped from the rows counts as taken.
 export function freeColumnName(sheetId: string, userId: string, old: string): string {
   const taken = [...getSheetColumns(sheetId, userId, false), ...pendingPurges(sheetId)];
   for (let i = 0; ; i++) {
-    const name = i === 0 ? old : i === 1 ? `${old} (restored)` : `${old} (restored ${i})`;
+    const name = i === 0 ? old : withTail(old, i === 1 ? ' (restored)' : ` (restored ${i})`);
     if (!findColumnNameCollision(name, taken)) return name;
   }
 }
@@ -42,8 +54,8 @@ export function freeColumnName(sheetId: string, userId: string, old: string): st
 interface Cell { seq: number; row_id: string; value: string; size: number }
 
 // One transaction: up to `limit` of the item's cells after its cursor (in seq order) go back to their rows
-// under `name`, found by stable id. A row holding a value there now keeps it (that cell leaves the item); a
-// row gone since is skipped, and its cell stays in the item for when the row is back. The counts say which.
+// under `name`, found by stable id. A row holding a value there now keeps it (kept), and a row gone since is
+// skipped: either cell stays in the item, for a later restore. The counts say which.
 // Clean, formula and lookup columns reading `name` work the rows written out again (quietly: no paid run).
 // Returns how many cells it went through.
 export function restoreCellsSlice(itemId: number, sheetId: string, userId: string, name: string,
@@ -71,9 +83,9 @@ export function restoreCellsSlice(itemId: number, sheetId: string, userId: strin
     for (const c of cells) {
       const row = byId.get(c.row_id);
       if (!row) { skipped++; continue; }
+      if (row.held) { kept++; continue; }
       done.push(c.seq);
       bytes += c.size;
-      if (row.held) { kept++; continue; }
       write.run(path, c.value, row.rid);
       written.push(row.rid);
     }

@@ -8,7 +8,8 @@ import { getTrashDays } from '../lib/trash/store';
 // column_order, filters, HTTP/webhook refs, run + webhook-marker +
 // last-column guards) is shared with /api/v1 in services/column-delete.ts.
 // Answers where it went: `trash` ({ id, days }, as a row or sheet delete
-// answers the app), or null when Settings keeps deleted things 0 days.
+// answers the app, and moving: true while its cells are still going there),
+// or null when Settings keeps deleted things 0 days.
 const router = express.Router();
 router.use(authenticateToken);
 
@@ -32,7 +33,8 @@ router.delete('/:id/columns/:columnName', async (req: AuthRequest, res) => {
     }
     res.json({
       message: 'Column deleted successfully',
-      trash: result.trashId === null ? null : { id: result.trashId, days: getTrashDays(req.userId!) },
+      trash: result.trashId === null ? null
+        : { id: result.trashId, days: getTrashDays(req.userId!), ...(result.moving ? { moving: true } : {}) },
     });
   } catch (error) {
     console.error('Delete column error:', error);

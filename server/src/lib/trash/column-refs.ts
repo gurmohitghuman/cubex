@@ -23,7 +23,11 @@ export type DroppedRef =
   | { kind: 'auto_run_input'; column: string }
   | { kind: 'lookup_into'; sheet_id: string; sheet: string; column: string; part: 'match' | 'return' }
   | { kind: 'auto_dedupe'; keep: string }
-  | { kind: 'undo'; runs: number };
+  | { kind: 'undo'; runs: number }
+  // Added by the restore, not the delete: a column its own setup wrote that another setup fills now
+  // (services/trash-restore-column-setup.ts). It stays with that setup (owner: the column filling it).
+  | { kind: 'output_taken'; column: string; mode: 'ai' | 'http' | 'enrichment' | 'waterfall'; path: string | null;
+      owner: string; owner_kind: string; now: string };
 
 const list = (raw: string | null): unknown[] => {
   try { const v = JSON.parse(raw ?? '[]'); return Array.isArray(v) ? v : []; } catch { return []; }

@@ -37,9 +37,7 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
         "Map the field to it again in the sheet's webhook settings (only in the app).");
     case 'http_field': {
       const field = ref.path ? `its field ${ref.path}` : 'a field';
-      const tool = ref.mode === 'enrichment' ? { mcp: 'add_enrichment_field', rest: 'enrichment-fields' }
-        : ref.mode === 'waterfall' ? { mcp: 'waterfall_column', rest: 'waterfall-columns' }
-          : { mcp: 'run_http_enrichment', rest: 'http-runs' };
+      const tool = TOOL[ref.mode];
       return w(`column ${q(ref.column)}`, `the ${MODE_WORDS[ref.mode]} ${q(ref.column)} wrote ${field} here`, by(s, {
         mcp: `${tool.mcp} on ${q(ref.column)}, writing ${field} into ${q(name)}`,
         rest: `POST ${sheetPath}/${tool.rest} for ${q(ref.column)}, writing ${field} into ${q(name)}`,
@@ -87,7 +85,35 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
     case 'undo':
       return w('undo_run', `undoing ${ref.runs === 1 ? 'the run' : `${ref.runs} runs`} that wrote this column no `
         + 'longer puts its cells back', 'Nothing to set up: those undos leave this column as it is.');
+    case 'output_taken':
+      return takenEntry(ref, name, s, sheetPath, w);
   }
+}
+
+const TOOL = {
+  http: { mcp: 'run_http_enrichment', rest: 'http-runs' },
+  enrichment: { mcp: 'add_enrichment_field', rest: 'enrichment-fields' },
+  waterfall: { mcp: 'waterfall_column', rest: 'waterfall-columns' },
+} as const;
+
+// A column the restored column's own setup wrote, which another setup fills now: it stays with that one.
+function takenEntry(ref: Extract<DroppedRef, { kind: 'output_taken' }>, name: string, s: RefSurface,
+  sheetPath: string, w: (where: string, did: string, redo: string) => DroppedEntry): DroppedEntry {
+  const what = ref.mode === 'ai' ? 'one of its outputs' : `its field ${ref.path ?? ''}`.trim();
+  const did = `${q(name)} wrote ${what} here. ${q(ref.column)} ${ref.now}, so it stays with that setup and `
+    + `${q(name)} came back without it`;
+  const once = `once nothing else fills ${q(ref.column)}`;
+  if (ref.mode === 'ai') {
+    return w(`column ${q(ref.column)}`, did, by(s, {
+      mcp: `run_ai_column on ${q(name)} with ${q(ref.column)} in output_columns, ${once}`,
+      rest: `POST ${sheetPath}/ai-runs for ${q(name)} with ${q(ref.column)} in output_columns, ${once}`,
+      app: `Add ${q(ref.column)} back as an output in ${q(name)}'s AI setup, ${once}.` }));
+  }
+  const tool = TOOL[ref.mode];
+  return w(`column ${q(ref.column)}`, did, by(s, {
+    mcp: `${tool.mcp} on ${q(name)}, writing ${what} into ${q(ref.column)}, ${once}`,
+    rest: `POST ${sheetPath}/${tool.rest} for ${q(name)}, writing ${what} into ${q(ref.column)}, ${once}`,
+    app: `Pick ${what} again in ${q(name)}'s setup, ${once}.` }));
 }
 
 // A paused auto-run of another column lifts by itself once a column named as before is back.

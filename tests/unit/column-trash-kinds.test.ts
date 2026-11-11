@@ -24,8 +24,8 @@ const { deleteRowsToTrash } = await import('../../server/src/services/trash-rows
 const k = columnTrashKit('column-trash-kinds')
 const { db, uid, ok, done, idle, sheet, order, cells, del, restore, restoreOne, enqueued } = k
 
-const people = () => sheet(['Email', 'Name'], [{ Email: 'Ann@Acme.com', Name: 'Ann' }, { Email: 'bo@beta.io', Name: 'Bo' },
-  { Email: 'cy@acme.com', Name: 'Cy' }])
+const people = () => sheet(['Email', 'Name'], [{ Email: 'Ann@Acme.com', Name: 'Ann' },
+  { Email: 'bo@beta.io', Name: 'Bo' }, { Email: 'cy@acme.com', Name: 'Cy' }])
 // A column of that name taken meanwhile, for the renamed case.
 const take = (sid: string, name: string) => appendColumnsToOrder(sid, uid, [name])
 const newest = (table: string, col: string, column: string, sid: string) => db.prepare(`SELECT * FROM ${table}
@@ -50,8 +50,9 @@ for (const renamed of [false, true]) {
     const sid = people()
     db.transaction(() => {
       appendColumnsToOrder(sid, uid, ['Pitch'])
-      writeAiSetup(sid, uid, 'Pitch', { kind: 'ai', prompt: 'Write a line for /Name at /Email', systemPrompt: 'Be brief',
-        model: 'openai/gpt-x', temperature: 0.3, maxChars: 200, concurrency: 7, webSearch: false, webFetch: false,
+      writeAiSetup(sid, uid, 'Pitch', { kind: 'ai', prompt: 'Write a line for /Name at /Email',
+        systemPrompt: 'Be brief', model: 'openai/gpt-x', temperature: 0.3, maxChars: 200, concurrency: 7,
+        webSearch: false, webFetch: false,
         outputColumns: null, dataColumn: null, searchEngine: null, searchMode: null, maxSearchesPerRow: null,
         searchEngineUsed: null, runIf: null })
     })()
@@ -81,38 +82,39 @@ for (const renamed of [false, true]) {
     await idle(sid)
   })
 
-  await ok(`an HTTP API column comes back with its request and fields, and its rerun starts from it${tag}`, async () => {
-    const sid = people()
-    const config = { requestConfig: { method: 'GET', url: 'https://api.example.test/p?e={{Email}}', headers: {} },
-      responseMapping: [{ jsonPath: '$.title', columnName: 'Title' }], batchSize: 5 }
-    db.transaction(() => {
-      appendColumnsToOrder(sid, uid, ['Lookup', 'Title'])
-      writeHttpSetup(sid, uid, 'Lookup', { kind: 'http', mode: 'http', config, allowSecrets: 1, destSheetId: null,
-        extracted: ['Title'] }, order(sid), true)
-    })()
-    db.prepare(`UPDATE rows SET data = json_set(data, '$.Lookup', '✅', '$.Title', 'CEO') WHERE sheet_id = ?`).run(sid)
-    const id = (await del(sid, 'Lookup'))!
-    if (renamed) take(sid, 'Lookup')
-    const got = (await restoreOne(id, { surface: 'rest', hasSecretsScope: false })).restored as any
-    assert.equal(got.name, as('Lookup'))
-    const run = newest('http_runs', 'master_column_name', as('Lookup'), sid)
-    assert.deepEqual(JSON.parse(run.config), config)
-    assert.equal(run.setup_only, 1)
-    assert.deepEqual(db.prepare(`SELECT extracted_column_name FROM http_column_associations WHERE sheet_id = ?
-      AND master_column_name = ?`).pluck().all(sid, as('Lookup')), ['Title'], 'its field is its own again')
-    assert.equal(got.setup.note, 'Set up as it was (its newest run\'s settings). Nothing ran and auto-run stays off: '
-      + `POST /api/v1/http-runs/${run.id}/rerun with a mode ("empty" for the rows it left empty) fills it.`)
-    enqueued.length = 0
-    const rerun = await rerunHttpColumn(uid, { sheetId: sid, masterColumnName: as('Lookup') })
-    assert.ok('ok' in rerun, JSON.stringify(rerun))
-    assert.equal(rerun.ok.targetCount, 3)
-    const started = db.prepare('SELECT config, setup_only FROM http_runs WHERE id = ?').get(rerun.ok.runId) as
-      { config: string; setup_only: number }
-    assert.equal(JSON.parse(started.config).requestConfig.url, config.requestConfig.url)
-    assert.equal(started.setup_only, 0)
-    assert.ok(enqueued.length > 0, 'its job was queued')
-    await idle(sid)
-  })
+  await ok(`an HTTP API column comes back with its request and fields, and its rerun starts from it${tag}`,
+    async () => {
+      const sid = people()
+      const config = { requestConfig: { method: 'GET', url: 'https://api.example.test/p?e={{Email}}', headers: {} },
+        responseMapping: [{ jsonPath: '$.title', columnName: 'Title' }], batchSize: 5 }
+      db.transaction(() => {
+        appendColumnsToOrder(sid, uid, ['Lookup', 'Title'])
+        writeHttpSetup(sid, uid, 'Lookup', { kind: 'http', mode: 'http', config, allowSecrets: 1, destSheetId: null,
+          extracted: ['Title'] }, order(sid), true)
+      })()
+      db.prepare(`UPDATE rows SET data = json_set(data, '$.Lookup', '✅', '$.Title', 'CEO') WHERE sheet_id = ?`).run(sid)
+      const id = (await del(sid, 'Lookup'))!
+      if (renamed) take(sid, 'Lookup')
+      const got = (await restoreOne(id, { surface: 'rest', hasSecretsScope: false })).restored as any
+      assert.equal(got.name, as('Lookup'))
+      const run = newest('http_runs', 'master_column_name', as('Lookup'), sid)
+      assert.deepEqual(JSON.parse(run.config), config)
+      assert.equal(run.setup_only, 1)
+      assert.deepEqual(db.prepare(`SELECT extracted_column_name FROM http_column_associations WHERE sheet_id = ?
+        AND master_column_name = ?`).pluck().all(sid, as('Lookup')), ['Title'], 'its field is its own again')
+      assert.equal(got.setup.note, 'Set up as it was (its newest run\'s settings). Nothing ran and auto-run stays off: '
+        + `POST /api/v1/http-runs/${run.id}/rerun with a mode ("empty" for the rows it left empty) fills it.`)
+      enqueued.length = 0
+      const rerun = await rerunHttpColumn(uid, { sheetId: sid, masterColumnName: as('Lookup') })
+      assert.ok('ok' in rerun, JSON.stringify(rerun))
+      assert.equal(rerun.ok.targetCount, 3)
+      const started = db.prepare('SELECT config, setup_only FROM http_runs WHERE id = ?').get(rerun.ok.runId) as
+        { config: string; setup_only: number }
+      assert.equal(JSON.parse(started.config).requestConfig.url, config.requestConfig.url)
+      assert.equal(started.setup_only, 0)
+      assert.ok(enqueued.length > 0, 'its job was queued')
+      await idle(sid)
+    })
 
   await ok(`a formula column comes back and works its rows out again, auto-run off${tag}`, async () => {
     const sid = people()
@@ -153,7 +155,8 @@ for (const renamed of [false, true]) {
   })
 
   await ok(`a lookup column comes back and looks its rows up again${tag}`, async () => {
-    const accounts = sheet(['Domain', 'Owner'], [{ Domain: 'acme.com', Owner: 'Kim' }, { Domain: 'beta.io', Owner: 'Lee' }])
+    const accounts = sheet(['Domain', 'Owner'], [{ Domain: 'acme.com', Owner: 'Kim' },
+      { Domain: 'beta.io', Owner: 'Lee' }])
     const sid = sheet(['Domain', 'Name'], [{ Domain: 'beta.io', Name: 'x' }, { Domain: 'acme.com', Name: 'y' }])
     const made = await startLookupColumn(uid, sid, { column: 'Owner', sourceColumn: 'Domain', otherSheetId: accounts,
       matchColumn: 'Domain', returns: 'value', returnColumn: 'Owner' })

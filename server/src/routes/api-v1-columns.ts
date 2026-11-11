@@ -129,7 +129,7 @@ router.delete('/sheets/:id/columns/:name', requireScope('write'), async (req: To
           return res.status(400).json({ error: result.error });
       }
     }
-    res.json({ deleted: true, trash: trashAnswer(req.userId!, result.trashId, 'rest') });
+    res.json({ deleted: true, trash: trashAnswer(req.userId!, result.trashId, 'rest', { moving: !!result.moving }) });
   } catch (error) {
     console.error('DELETE /v1/sheets/:id/columns/:name error:', error);
     res.status(500).json({ error: 'Failed to delete column' });

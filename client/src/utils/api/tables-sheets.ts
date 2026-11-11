@@ -10,8 +10,9 @@ import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants
 // bulkDeleteRows) shows a persistent "Save failed · Retry" pill (SaveStatus). Without
 // this, a 5xx stacks a redundant second toast on top — and on autosave's backoff it
 // fired once per retry. See client.ts for the flag.
-// Where a delete went: its trash item and how many days it is kept.
-export interface TrashRef { id: number; days: number }
+// Where a delete went: its trash item and how many days it is kept (moving: a column's cells are still
+// going there).
+export interface TrashRef { id: number; days: number; moving?: boolean }
 
 const noServerToast = { skipServerErrorToast: true } as const
 

@@ -39,7 +39,8 @@ test('app: delete a column from its menu, find it in the Trash page, restore it 
   context }) => {
   test.setTimeout(120_000)
   await context.addCookies((await api.storageState()).cookies)
-  const { tableId, sheetId } = await csvSheet('Name,Notes,City\nAnn,called twice,Oslo\nBo,,Rome\nCy,wants a demo,Lima\n')
+  const { tableId, sheetId } =
+    await csvSheet('Name,Notes,City\nAnn,called twice,Oslo\nBo,,Rome\nCy,wants a demo,Lima\n')
   expect(await columnsOf(sheetId)).toEqual(['Name', 'Notes', 'City'])
 
   await page.goto(`${BASE}/table/${tableId}`)
@@ -108,8 +109,9 @@ test('REST: an HTTP API column goes to the trash, comes back set up, and its rer
   const del = await v1.delete(`/api/v1/sheets/${sheetId}/columns/Call`)
   expect(del.status(), await del.text()).toBe(200)
   const out = await del.json()
-  expect(out).toMatchObject({ deleted: true, trash: { kept_days: 30,
-    how_to_restore: `POST /api/v1/trash/${out.trash.trash_id}/restore puts it back (GET /api/v1/trash lists the trash).` } })
+  expect(out).toMatchObject({ deleted: true, trash: { kept_days: 30, state: 'kept',
+    how_to_restore: `POST /api/v1/trash/${out.trash.trash_id}/restore puts it back (GET /api/v1/trash lists the `
+      + 'trash).' } })
   const id = out.trash.trash_id as number
   const list = await (await v1.get('/api/v1/trash', { params: { kind: 'column', q: 'Call' } })).json()
   expect(list.items.find((i: { id: number }) => i.id === id)).toMatchObject({ kind: 'column', how: 'column',

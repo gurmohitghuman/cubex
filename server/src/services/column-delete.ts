@@ -5,12 +5,14 @@
 // and clean column settings, descriptions; guards:
 // active-run 409, webhook raw-marker protection, last-column. With the trash
 // kept (Settings), the column goes to it (services/column-trash.ts): the
-// cleanup stays the same, and the strip moves its cells into the item.
+// cleanup stays the same, and the strip moves its cells into the item. That
+// delete waits for the move only so long, then answers that the cells are
+// still moving (they go on in the background).
 // Over 200 lines: one delete with its guards and its cascade; split, a reference could be missed.
 import { db } from '../lib/db';
 import { getSheetColumns, touchSheet } from '../lib/sql-helpers';
 import { withSheetBusy } from '../lib/sheet-busy';
-import { recordPurge } from '../lib/column-purge';
+import { pendingPurges, recordPurge } from '../lib/column-purge';
 import { isWebhookRawColumn, deleteWebhookMappingsForColumn } from '../lib/webhook-columns';
 import { finishColumnChange, finishRunRewrites, recordRunRewrite } from './run-config-rewrite';
 import { deleteAiRunColumnRefs, activeStructuredRunOwnsColumn } from '../lib/ai-columns';
@@ -27,12 +29,13 @@ import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
-import { getTrashDays } from '../lib/trash/store';
-import { openColumnItem } from './column-trash';
+import { getTrashDays, trashKeeps } from '../lib/trash/store';
+import { moveWithin, openColumnItem } from './column-trash';
 
 export type ColumnDeleteOutcome =
-  // trashId: the trash item it went to (null: Settings keeps deleted things 0 days, it went at once).
-  | { ok: true; trashId: number | null }
+  // trashId: the trash item it went to (null: Settings keeps deleted things 0 days, it went at once);
+  // moving: its cells were still going into it when the delete answered (they go on in the background).
+  | { ok: true; trashId: number | null; moving?: true }
   | { fail: 'column_not_found' }
   | { fail: 'active_run' | 'busy'; error: string }
   | { fail: 'webhook_column'; error: string }
@@ -172,14 +175,23 @@ export async function deleteSheetColumn(
   // transaction, so it disappears at once; its values are then stripped from
   // the rows in slices between requests, with the sheet busy (lib/sheet-busy.ts)
   // and the strip recorded so a restart finishes it (lib/column-purge.ts).
-  const outcome = await withSheetBusy(sheetId, 'deleting a column', async () => {
+  // A strip of this name still pending (column_purges) would never fill a trash item: such a delete is
+  // refused, before anything changes and again inside its transaction.
+  const stripPending = () => trashKeeps(userId) && pendingPurges(sheetId).has(columnName);
+  const pending = `"${columnName}" can't be deleted yet: an earlier change is still removing a column of that `
+    + 'name from the rows. Try again in a moment.';
+  type Done = Extract<ColumnDeleteOutcome, { ok: true }> | { busy: string };
+  const outcome = await withSheetBusy(sheetId, 'deleting a column', async (): Promise<Done> => {
     // A column change a failure left half-done is finished first.
     await finishRunRewrites(sheetId);
+    if (stripPending()) return { busy: pending };
     // If the transaction below then fails, the delete reports it and is retried;
     // until then that column's auto-run has lost rows it had queued.
     await dropAutorunQueueOf(sheetId, userId, columnName);
-    let trashId: number | null = null;
+    let trashId = null as number | null;
+    let refused = null as string | null;
     db.transaction(() => {
+      if (stripPending()) { refused = pending; return; }
       // Kept in the trash (services/column-trash.ts): what it is and what named it, read before the
       // cleanup below; its cells then move into the item with the strip.
       trashId = openColumnItem(sheetId, userId, columnName);
@@ -241,11 +253,20 @@ export async function deleteSheetColumn(
       }
       // It reads first (the trash item's snapshot, the purges' settings): the write lock first.
     }).immediate();
-    await finishColumnChange(sheetId, userId, columnName);
-    logSheetChange(sheetId, userId, 'column_deleted', trashId === null ? `Deleted the column "${columnName}"`
-      : `Deleted the column "${columnName}" (to the trash, kept ${getTrashDays(userId)} days)`,
-    { column: columnName, ...(trashId === null ? {} : { detail: { trash_id: trashId } }) });
-    return { ok: true as const, trashId };
+    if (refused !== null) return { busy: refused };
+    if (trashId === null) {
+      await finishColumnChange(sheetId, userId, columnName);
+      logSheetChange(sheetId, userId, 'column_deleted', `Deleted the column "${columnName}"`, { column: columnName });
+      return { ok: true as const, trashId: null };
+    }
+    const id = trashId;
+    const state = await moveWithin(id, sheetId, 'deleting a column',
+      finishColumnChange(sheetId, userId, columnName));
+    logSheetChange(sheetId, userId, 'column_deleted',
+      `Deleted the column "${columnName}" (to the trash, kept ${getTrashDays(userId)} days)`,
+      { column: columnName, detail: { trash_id: id } });
+    return state === 'kept' ? { ok: true as const, trashId: id }
+      : { ok: true as const, trashId: id, moving: true as const };
   });
   return 'busy' in outcome ? { fail: 'busy', error: outcome.busy } : outcome;
 }

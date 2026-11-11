@@ -23,6 +23,11 @@ export const TRASH_SLICE_ROWS = 250;
 // 5,000 rows holding 2 KB cells held the server 310-350 ms (140-150 ms without the copy). 1,000 rows and a
 // checkpoint each keep a slice near a fifth of that.
 export const COLUMN_TRASH_SLICE_ROWS = 1_000;
+// A column delete to the trash waits this long for its cells to move into the item, then answers that they
+// are still moving ("state": "moving"); the move goes on in the background and boot finishes one a restart
+// cut. The app's requests give up at 30 s and an MCP client's at 60 s by default; at 1,000,000 rows of wide
+// cells the move takes over a minute.
+export const COLUMN_DELETE_WAIT_MS = 5_000;
 // A batch's own rows go for good in their order (no random index): more at a time.
 export const TRASH_PURGE_BATCH_ROWS = 2_000;
 // The app's grid sends a big delete in calls of this many rows (one batch in

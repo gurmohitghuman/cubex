@@ -52,7 +52,8 @@ async function referenced() {
     appendColumnsToOrder(b, uid, ['People'])
     writeHttpSetup(b, uid, 'People', { kind: 'http', mode: 'enrichment', destSheetId: a, allowSecrets: 1, extracted: [],
       config: { requestConfig: { method: 'POST', url: 'https://treg.example.test/x' }, responseMapping: [],
-        enrichment: { toolId: 'people.list', list: { fields: [{ path: '$.email', columnName: 'Email' }], copy: [] } } } },
+        enrichment: { toolId: 'people.list',
+          list: { fields: [{ path: '$.email', columnName: 'Email' }], copy: [] } } } },
     ['Company', 'People'], true)
   })()
   no(await startFormulaColumn(uid, a, { column: 'Domain', formula: '{{Email}}.split("@")[1]' }))
@@ -106,9 +107,10 @@ await ok('the delete records every reference it cleans, and still cleans each as
     .all(c), ['The column "Email" in "Leads" was deleted.', 'The column "Email" in "Leads" was deleted.'])
   assert.equal(db.prepare(`SELECT paused_reason FROM autorun_columns WHERE sheet_id = ? AND status_column = 'Domain'`)
     .pluck().get(a), 'missing_input')
-  assert.deepEqual(JSON.parse(db.prepare('SELECT columns FROM run_undos WHERE run_id = ?').pluck().get(
-    db.prepare(`SELECT id FROM http_runs WHERE sheet_id = ? AND master_column_name = 'Enrich'`).pluck().get(a)) as string),
-  [null])
+  const enrichRun = db.prepare(`SELECT id FROM http_runs WHERE sheet_id = ? AND master_column_name = 'Enrich'`)
+    .pluck().get(a)
+  assert.deepEqual(JSON.parse(db.prepare('SELECT columns FROM run_undos WHERE run_id = ?').pluck()
+    .get(enrichRun) as string), [null])
   // Back under its name: each is listed, in MCP's words, but the formula's waiting auto-run (it lifts by itself).
   const got = (await restoreOne(id)).restored as any
   assert.equal(got.name, 'Email')
@@ -140,7 +142,8 @@ await ok('the delete records every reference it cleans, and still cleans each as
   // What doesn't come back stays as the delete left it; the formula's auto-run goes on once the sweep looks.
   assert.equal(db.prepare('SELECT COUNT(*) FROM webhook_mappings WHERE column_name = ?').pluck().get('Email'), 0)
   assert.equal(db.prepare('SELECT COUNT(*) FROM auto_dedupe WHERE sheet_id = ?').pluck().get(a), 0)
-  assert.equal(db.prepare('SELECT COUNT(*) FROM lookup_columns WHERE sheet_id = ? AND broken IS NULL').pluck().get(c), 0)
+  assert.equal(db.prepare('SELECT COUNT(*) FROM lookup_columns WHERE sheet_id = ? AND broken IS NULL').pluck()
+    .get(c), 0)
   assert.ok(order(a).includes('Email'))
   assert.equal(nameOf(a), 'Leads')
 })

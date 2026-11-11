@@ -15,7 +15,8 @@ console.log = () => {}
 
 // The database as the previous build left it: each migration before 054, as migrate.ts runs one.
 const dir = path.resolve('server/src/db/migrations')
-db.exec('CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime(\'now\')))')
+db.exec(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now')))`)
 for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.sql') && f < '054').sort()) {
   const sql = fs.readFileSync(path.join(dir, file), 'utf8')
   const off = sql.startsWith('-- cube:foreign-keys-off')

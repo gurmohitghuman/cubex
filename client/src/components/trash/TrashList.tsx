@@ -49,7 +49,11 @@ export const TrashList: React.FC<Props> = ({
               </p>
             )}
             {e.state === 'purging' && <p className="text-xs text-gray-700 mt-1">Deleting…</p>}
-            {e.state === 'moving' && <p className="text-xs text-gray-700 mt-1">Still being deleted…</p>}
+            {e.state === 'moving' && (
+              <p className="text-xs text-gray-700 mt-1">
+                {e.kind === 'column' ? 'Its cells are still going to the trash…' : 'Still being deleted…'}
+              </p>
+            )}
             {e.blocked && <p className="text-xs text-amber-700 mt-1">{e.blocked}</p>}
             {e.note && <p className="text-xs text-gray-600 mt-1">{e.note}</p>}
           </div>

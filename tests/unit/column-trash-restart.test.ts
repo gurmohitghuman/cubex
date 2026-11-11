@@ -3,7 +3,8 @@
 // (its cells written, not committed), as a killed server does. Then this process does what boot does
 // (resumeColumnPurges, resumeTrashRestores) and checks: the move goes on from the slice that was lost, and
 // every cell ends up in the item once; the restore goes on and lists the column; a restore that had put
-// nothing back goes back to the trash as it was, its cells still in the item and nothing under its name.
+// nothing back goes back to the trash as it was, its cells still in the item and nothing under its name. A
+// delete that answered "moving" (its move held so it outlasts the wait) and then stopped is finished too.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -18,31 +19,39 @@ const k = columnTrashKit('column-trash-restart')
 const { db, uid, ok, done, idle, sheet, order, cells, item, stored, del, restoreOne } = k
 
 // The other process: `what` runs with the statement starting `sql` stopping the process right after its
-// `at`-th run, inside that slice's transaction.
+// `at`-th run, inside that slice's transaction (at 0: never; `pause` ms after each run instead, while `what`
+// ends the process itself). Resolves with what it wrote.
 const requireHere = createRequire(import.meta.url)
-const stopsAt = (sql: string, at: number, what: string) => new Promise<void>((resolve, reject) => {
+const stopsAt = (sql: string, at: number, what: string, pause = 0) => new Promise<string>((resolve, reject) => {
   const mod = (p: string) => JSON.stringify(requireHere.resolve(p))
   const code = `require(${mod('tsx/cjs/api')}).register();
     console.log = console.warn = () => {};
     const { db } = require(${mod('../../server/src/lib/db')});
     const prepare = db.prepare.bind(db);
+    const nap = new Int32Array(new SharedArrayBuffer(4));
     let n = 0;
     db.prepare = (text) => {
       const stmt = prepare(text);
       if (!text.trimStart().startsWith(${JSON.stringify(sql)})) return stmt;
       const run = stmt.run.bind(stmt);
-      stmt.run = (...args) => { const out = run(...args); if (++n === ${at}) process.exit(0); return out; };
+      stmt.run = (...args) => {
+        const out = run(...args);
+        if (++n === ${at}) process.exit(0);
+        Atomics.wait(nap, 0, 0, ${pause});
+        return out;
+      };
       return stmt;
     };
     const { deleteSheetColumn } = require(${mod('../../server/src/services/column-delete')});
     const { restoreFromTrash } = require(${mod('../../server/src/services/trash-actions')});
-    setTimeout(() => process.exit(3), 20000);
+    setTimeout(() => process.exit(3), 30000);
     (async () => { ${what}; process.exit(4); })().catch(e => { console.error(e); process.exit(5); });`
-  const child = spawn(process.execPath, ['-e', code], { env: process.env, stdio: ['ignore', 'ignore', 'pipe'] })
-  let err = ''
+  const child = spawn(process.execPath, ['-e', code], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  let out = '', err = ''
+  child.stdout.on('data', chunk => { out += chunk })
   child.stderr.on('data', chunk => { err += chunk })
   child.on('error', reject)
-  child.on('close', c => (c === 0 ? resolve() : reject(new Error(`it didn't stop where it should (${c}): ${err}`))))
+  child.on('close', c => (c === 0 ? resolve(out) : reject(new Error(`it didn't stop where it should (${c}): ${err}`))))
 })
 
 const ROWS = HEAVY_SLICE_ROWS * 2 + 7
@@ -76,6 +85,31 @@ await ok('a restart in the middle of the move: the boot resume moves the rest, e
   assert.equal(back.cells_restored, valued)
   assert.deepEqual(cells(sid, 'Big'), expected)
 })
+
+await ok('a delete that answered "moving", then a restart: the boot resume moves the rest, each cell once',
+  async () => {
+    const sid = big()
+    const q = (s: string) => JSON.stringify(s)
+    // Each slice of the move held 700 ms: 11 slices outlast the delete's wait, and it stops once it answered.
+    const said = JSON.parse(await stopsAt('INSERT INTO trash_rows', 0, `const out = await deleteSheetColumn(${q(sid)}, `
+      + `${q(uid)}, 'Big', { bumpDataVersion: true }); process.stdout.write(JSON.stringify(out), () => `
+      + 'process.exit(0)); await new Promise(() => {})', 700))
+    assert.deepEqual(Object.keys(said), ['ok', 'trashId', 'moving'])
+    assert.equal(said.moving, true)
+    const id = said.trashId as number
+    assert.equal(item(id)!.state, 'moving')
+    const before = stored(id).length
+    assert.ok(before > 0 && before < valued, `part of it was in: ${before}`)
+    assert.deepEqual(order(sid), ['Email'])
+    resumeColumnPurges()
+    await idle(sid)
+    assert.deepEqual([item(id)!.state, item(id)!.row_count], ['kept', valued])
+    assert.equal(new Set(stored(id).map(r => r.row_id)).size, valued, 'no cell twice')
+    assert.deepEqual(cells(sid, 'Big'), expected.map(() => null))
+    const back = (await restoreOne(id)).restored as any
+    assert.equal(back.cells_restored, valued)
+    assert.deepEqual(cells(sid, 'Big'), expected)
+  })
 
 await ok('a restart in the middle of the restore: the boot resume puts the rest back, then lists it', async () => {
   const cellsIn = TRASH_SLICE_ROWS * 2 + 3

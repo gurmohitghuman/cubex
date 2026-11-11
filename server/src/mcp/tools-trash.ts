@@ -30,7 +30,8 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'batch a day; before pages on). With trash_id: that item, and for a batch its rows (cells as they were, seq, '
       + 'row_id, old_row_index), a page at a time (after), or only rows whose column (or any cell, without one) '
       + 'contains a text: a search reads part of a big batch per call and next_after goes on. A column reads the '
-      + 'same way: one row per cell it held, with the row it came from. Read-only.',
+      + 'same way: one row per cell it held, with the row it came from. A column whose state is "moving" is '
+      + 'still getting its cells (its delete answered first): it can be restored once it reads "kept". Read-only.',
     inputSchema: {
       trash_id: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('One item, with its rows'),
       q: z.string().max(200).optional(),
@@ -80,14 +81,17 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'added again (columns_added), and a sheet without room for them refuses the restore (no cell is left out). '
       + 'Rows moved out with transfer_rows are still in their new sheet: restoring them keeps both (the item\'s '
       + 'note says so). Auto-run does not run restored rows. A column comes back whole: its cells on the rows '
-      + 'that still exist (by row id; cells_kept counts the rows holding a value there now, never overwritten; '
-      + 'cells_skipped the cells whose rows are gone, which stay in its item until those rows are back and you '
-      + 'restore it again), at its old place, with its description and its own setup (setup: an AI or '
+      + 'that still exist (by row id; cells_kept counts the rows holding a value there now: that value is never '
+      + 'overwritten, and the trashed cell stays in its item; cells_skipped the cells whose rows are gone, which '
+      + 'stay in its item too; restore it again once those rows are back and empty there), at its old place, with '
+      + 'its description and its own setup (setup: an AI or '
       + 'HTTP API column can be rerun with control_run and setup.run_id; a clean, formula or lookup column works '
       + 'its rows out again), auto-run off, renamed "<name> (restored)" if its name was taken (name, renamed). '
-      + 'references_dropped lists what other columns, views and settings said about it that did not come back, '
+      + 'A column its setup wrote that another setup fills now stays with that one: the setup comes back without '
+      + 'it. references_dropped lists what other columns, views and settings said about it that did not come back, '
       + 'each with where, did and redo (the tool to set it up again). A column whose request reads saved API '
-      + 'keys needs the secrets scope. With trash_id and seqs: only those '
+      + 'keys needs the secrets scope; one still moving into the trash is refused until it is all in. A refused '
+      + 'item is in results with fail and error; the others still go. With trash_id and seqs: only those '
       + `rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). Refused while a run is active on the sheet. A big `
       + 'batch answers state "restoring" and finishes in the background. Costs nothing.',
     inputSchema: {
