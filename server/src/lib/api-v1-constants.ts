@@ -39,11 +39,20 @@ export const TRANSFER_SCAN_BATCH = 250;
 
 // transform_column (non-AI server-side cell transforms). Regex ReDoS guard:
 // bounded pattern length + input the regex runs against (see lib/transform-ops).
-// The whole transform runs synchronously in one txn under a wall-clock budget so
-// a 10k-row sheet can't pin the event loop indefinitely.
 export const TRANSFORM_MAX_REGEX_LEN = 200;
 export const TRANSFORM_REGEX_INPUT_CAP = 10000;
-export const TRANSFORM_MAX_WRITER_MS = 2000;
+// A call walks the sheet TRANSFORM_PAGE_ROWS rows at a time, each page read, worked
+// out and written in one short transaction, the server answering other requests
+// between pages (services/column-transform-pages.ts). It stops once it has written
+// TRANSFORM_MAX_ROWS rows (as transfer_rows takes at most TRANSFER_MAX_ROWS) or
+// worked TRANSFORM_MAX_CALL_MS, checked before each page; its next_cursor goes on.
+// With columns that follow the target (clean, formula, lookup, auto-run), a page
+// queues every row it writes for each of them: it then takes at most
+// TRANSFORM_QUEUED_ROWS / (1 + those columns) rows.
+export const TRANSFORM_PAGE_ROWS = 250;
+export const TRANSFORM_MAX_ROWS = 10_000;
+export const TRANSFORM_MAX_CALL_MS = 2000;
+export const TRANSFORM_QUEUED_ROWS = 2000;
 
 // PATCH /v1/rows/:id — at most one value per possible column.
 export const API_V1_MAX_PATCH_CELLS = 80;

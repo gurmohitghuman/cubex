@@ -73,7 +73,7 @@ await ok('transform_column from or into a column a stopped run is still putting 
     const words: string[] = []
     for (const state of STATES) {
       if (state !== STATES[0]) stop()
-      for (const out of [from(), into()]) {
+      for (const out of [await from(), await into()]) {
         assert.equal('fail' in out && out.fail, 'locked', `${state}: ${JSON.stringify(out)}`)
         words.push((out as { error: string }).error)
       }
@@ -81,7 +81,7 @@ await ok('transform_column from or into a column a stopped run is still putting 
     assert.deepEqual(cells(sid, 'Loud'), ['', ''], 'nothing copied')
     assert.deepEqual(words, [GOING('Answer'), GOING('Answer'), BACK('Answer'), BACK('Answer')])
     await clearRunPlaceholders('http', run)
-    assert.deepEqual(from(), { ok: { updated: 2, created_column: 'Loud' } })
+    assert.deepEqual(await from(), { ok: { updated: 2, created_column: 'Loud' } })
     assert.deepEqual(cells(sid, 'Loud'), ['OLD A', 'OLD B'])
   })
 
@@ -94,14 +94,14 @@ await ok('a template transform naming a column a run holds, going or putting its
   const words: string[] = []
   for (const state of STATES) {
     if (state !== STATES[0]) stop()
-    const out = copy()
+    const out = await copy()
     assert.equal('fail' in out && out.fail, 'locked', `${state}: ${JSON.stringify(out)}`)
     words.push((out as { error: string }).error)
     assert.deepEqual(cells(sid, 'Copy'), ['', ''], `${state}: nothing written`)
   }
   assert.deepEqual(words, [GOING('Answer'), BACK('Answer')])
   await clearRunPlaceholders('http', run)
-  assert.deepEqual(copy(), { ok: { updated: 2, created_column: 'Copy' } })
+  assert.deepEqual(await copy(), { ok: { updated: 2, created_column: 'Copy' } })
   assert.deepEqual(cells(sid, 'Copy'), ['Was: Old A (ada)', 'Was: Old B (bob)'])
 })
 

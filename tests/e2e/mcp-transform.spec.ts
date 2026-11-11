@@ -68,7 +68,10 @@ test('transform_column: extract, template, where, collision, ReDoS', async () =>
   expect(templated.updated).toBe(1)
   rows = parseResult(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sheetId } })).rows
   expect(rows[0].data['Label']).toBe('score=8 raw=8 | B2B SaaS')
-  expect(rows[1].data['Label']).toBe('') // filtered out → stays blank
+  // Filtered out: nothing is stored there; the column is listed, so the row reads it as empty (as add_column's).
+  expect(rows[1].data).not.toHaveProperty('Label')
+  const sheet = parseResult(await client.callTool({ name: 'get_sheet', arguments: { sheet_id: sheetId } }))
+  expect(sheet.columns).toContain('Label')
 
   // Collision: target a case-variant of an existing column.
   const collide: any = await client.callTool({

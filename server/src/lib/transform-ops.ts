@@ -11,9 +11,9 @@ export type TransformOp =
 
 // ReDoS guard. Node's regex engine cannot be interrupted, so one catastrophic
 // pattern pins the whole event loop — and transform runs the match INSIDE a
-// BEGIN IMMEDIATE txn (services/column-transform.ts), so it would hold the
-// SQLite writer lock while it hangs: an app-wide stall from one write-scoped
-// token. Two lines of defense, both structural:
+// page's BEGIN IMMEDIATE txn (services/column-transform-pages.ts), so it would
+// hold the SQLite writer lock while it hangs: an app-wide stall from one
+// write-scoped token. Two lines of defense, both structural:
 //
 //   1. This validator: reject a quantifier applied to a group that itself
 //      contains a quantifier, AT ANY NESTING DEPTH.

@@ -7,8 +7,8 @@ import { mcpClient, call } from './helpers-mcp'
 import { Receiver } from './helpers-receiver'
 
 // An HTTP API run's rerun and resume take concurrency, over MCP control_run and
-// REST: the new run's batch size (a resume writes it into the run), which a
-// later rerun without it repeats. A local receiver (tests/e2e/net-shim.cjs)
+// REST: the new run's batch size (a resume writes it into the run, as a whole
+// number, every other setting kept), which a later rerun without it repeats. A local receiver (tests/e2e/net-shim.cjs)
 // holds every answer, so the requests Cubex really has in flight are counted:
 // exactly that many come, and no more for 2 s. Out of range, both surfaces
 // refuse in the same words. Refusals in detail: unit/http-run-concurrency.test.ts.
@@ -32,12 +32,20 @@ test.afterAll(async () => { await rx.stop(); await mcp?.close(); await v1?.dispo
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const hits = () => rx.hitsOn(PATH).length
-// The batch size the run stores, read from the test database.
-function storedBatchSize(runId: string): unknown {
+// The config the run stores, as text, read from the test database; and its batch size.
+function storedConfig(runId: string): string {
   const db = new Database(assertTestDb(process.env.DB_PATH), { readonly: true })
   try {
-    return db.prepare("SELECT json_extract(config, '$.batchSize') FROM http_runs WHERE id = ?").pluck().get(runId)
+    return db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(runId) as string
   } finally { db.close() }
+}
+const storedBatchSize = (runId: string): unknown => JSON.parse(storedConfig(runId)).batchSize
+// A resume changes the batch size alone, written as a whole number ("batchSize":4, not 4.0).
+function expectOnlyBatchSize(before: string, runId: string, n: number) {
+  const after = storedConfig(runId)
+  expect(after).toContain(`"batchSize":${n}`)
+  expect(after).not.toContain(`"batchSize":${n}.`)
+  expect(JSON.parse(after)).toEqual({ ...JSON.parse(before), batchSize: n })
 }
 
 // Starts a run with every answer held: exactly `n` requests come, and no other for 2 s.
@@ -107,21 +115,23 @@ test('HTTP API reruns and resumes run with the concurrency asked, and later reru
   // Resumes: REST, then MCP, each change a paused run's concurrency before it goes on.
   const restPaused = await pausedRerun(last, async id =>
     expect((await v1.post(`/api/v1/http-runs/${id}/pause`)).status()).toBe(200))
+  const restBefore = storedConfig(restPaused)
   await inFlight(4, async () => {
     const res = await v1.post(`/api/v1/http-runs/${restPaused}/resume`, { data: { concurrency: 4 } })
     expect(res.status(), await res.text()).toBe(200)
     return restPaused
   })
-  expect(storedBatchSize(restPaused)).toBe(4)
+  expectOnlyBatchSize(restBefore, restPaused, 4)
   await done(restPaused)
   const mcpPaused = await pausedRerun(restPaused, async id => {
     await call(mcp, 'control_run', { run_type: 'http', run_id: id, action: 'pause' })
   })
+  const mcpBefore = storedConfig(mcpPaused)
   await inFlight(2, async () => {
     await call(mcp, 'control_run', { run_type: 'http', run_id: mcpPaused, action: 'resume', concurrency: 2 })
     return mcpPaused
   })
-  expect(storedBatchSize(mcpPaused)).toBe(2)
+  expectOnlyBatchSize(mcpBefore, mcpPaused, 2)
   await done(mcpPaused)
   last = await inFlight(2, () => restRerun(mcpPaused, {}))
   expect(storedBatchSize(last)).toBe(2)

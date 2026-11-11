@@ -1,14 +1,20 @@
-// transform_column — non-AI, zero-credit server-side cell transforms (extract,
+// transform_column: non-AI, zero-credit server-side cell transforms (extract,
 // split, case, trim, to_number, template). The point: agents stop routing
-// mechanical string ops through the LLM (paid) when a free tool exists. Runs
-// synchronously in one immediate txn under a wall-clock budget; bumps
-// data_version (a value change) but NEVER row_generation (no reorder/append, so
-// what a row_index means is unchanged — bumping it would 409 in-flight autosaves).
+// mechanical string ops through the LLM (paid) when a free tool exists. A call
+// holds the sheet as its one heavy operation (lib/sheet-busy.ts: no sort, rename
+// or run start meanwhile) and walks it a page at a time
+// (column-transform-pages.ts). It writes at most TRANSFORM_MAX_ROWS rows or works
+// TRANSFORM_MAX_CALL_MS; stopped with rows left, it answers next_cursor, and the
+// same call with that cursor goes on after the last row looked at. A new target
+// column is only added to column_order (the column registry): rows it wrote
+// nothing in read it as empty, as with add_column. Bumps data_version (a value
+// change) but never row_generation (no reorder or append, so what a row_index
+// means is unchanged; bumping it would 409 in-flight autosaves). A cursor names
+// the row_generation it was given at, so one from before a sort or a replace is
+// refused rather than re-meant.
 import { db } from '../lib/db';
-import { TRANSFORM_MAX_WRITER_MS } from '../lib/api-v1-constants';
-import {
-  appendColumnsToOrder, getSheetColumns, jsonPath, parseRowData,
-} from '../lib/sql-helpers';
+import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
+import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
@@ -16,15 +22,21 @@ import {
 import { runHeldColumns } from '../lib/run-locked-columns';
 import { heldColumnWords } from '../lib/run-held-words';
 import { cellOf } from '../lib/row-cell';
+import { sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import type { WhereItem } from '../lib/row-filter/where';
 import {
   applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
-import { markAutorunInputs } from '../lib/autorun-mark';
+import { walkTransform, type TransformWalk } from './column-transform-pages';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
+const BUSY_WHAT = 'transforming a column';
+const CURSOR = /^(\d+):(-?\d+)$/;
+export const TRANSFORM_STOPPED_NOTE = `Stopped at this call's limit (${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} `
+  + `rows written or about ${TRANSFORM_MAX_CALL_MS / 1000} seconds of work). The rows before next_cursor are done: `
+  + 'call transform_column again with the same arguments and cursor set to next_cursor to go on.';
 
 export interface TransformParams {
   sheetId: string;
@@ -35,18 +47,40 @@ export interface TransformParams {
   index?: number;
   template?: string;
   where?: WhereItem[];
+  // next_cursor of the call before: go on after the last row it looked at.
+  cursor?: string;
 }
 
+// next_cursor and note only when the call stopped with rows left.
 export type TransformOutcome =
-  | { ok: { updated: number; created_column: string | null } }
-  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'budget'; error: string };
+  | { ok: { updated: number; created_column: string | null; next_cursor?: string; note?: string } }
+  | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy'; error: string };
 
-class WriterBudgetError extends Error {}
+type Fail = Extract<TransformOutcome, { fail: string }>;
+type Plan = Omit<TransformWalk, 'sheetId' | 'userId'> & { targetExists: boolean; generation: number };
 
-export function transformColumn(userId: string, p: TransformParams): TransformOutcome {
-  if (!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(p.sheetId, userId)) {
-    return { fail: 'not_found', error: 'Sheet not found' };
-  }
+export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
+  const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
+    const plan = planTransform(userId, p);
+    if ('fail' in plan) return plan;
+    if (!plan.targetExists) {
+      db.transaction(() => appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn])).immediate();
+    }
+    const walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId });
+    db.prepare(
+      "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+    ).run(p.sheetId, userId);
+    const ok = { updated: walked.updated, created_column: plan.targetExists ? null : plan.targetColumn };
+    return walked.stoppedAfter === null ? { ok }
+      : { ok: { ...ok, next_cursor: `${plan.generation}:${walked.stoppedAfter}`, note: TRANSFORM_STOPPED_NOTE } };
+  });
+  if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };
+  if ('busy' in out) return { fail: 'busy', error: out.busy };
+  return out;
+}
+
+// What the call writes, checked with the sheet held (nothing can change it until the call ends).
+function planTransform(userId: string, p: TransformParams): Plan | Fail {
   if (!CELL_OPS.includes(p.operation)) return { fail: 'invalid', error: `Unknown operation "${p.operation}".` };
 
   // Per-op required params.
@@ -103,57 +137,22 @@ export function transformColumn(userId: string, p: TransformParams): TransformOu
     }
   }
 
-  const targetPath = jsonPath(targetColumn);
-  const startedAt = Date.now();
-  let updated = 0;
-  try {
-    db.transaction(() => {
-      const setCell = db.prepare(
-        "UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE id = ?",
-      );
-      // A brand-new target column: initialize '' on every row first, so a
-      // where-filtered transform leaves non-matching rows blank (not a ghost
-      // column the read path prunes when zero rows back it).
-      if (!targetExists) {
-        const seedRows = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND user_id = ?')
-          .all(p.sheetId, userId) as Array<{ id: string }>;
-        for (const r of seedRows) {
-          setCell.run(targetPath, '', r.id);
-        }
-        appendColumnsToOrder(p.sheetId, userId, [targetColumn]);
-      }
-      // Materialize (not .iterate()): better-sqlite3 forbids writing while a
-      // cursor is open on the same connection, and we json_set per row below.
-      // Only the rows passing `where` (SQLite checks it).
-      const rows = db.prepare(`SELECT id, data FROM rows WHERE sheet_id = ? AND user_id = ? AND (${filter.sql})
-        ORDER BY row_index ASC`).all(p.sheetId, userId, ...filter.params) as Array<{ id: string; data: string }>;
-      let seen = 0;
-      const written: string[] = [];
-      for (const row of rows) {
-        if ((++seen & 255) === 0 && Date.now() - startedAt > TRANSFORM_MAX_WRITER_MS) throw new WriterBudgetError();
-        const data = parseRowData(row.data);
-        const value = p.operation === 'template'
-          ? applyTemplate(p.template!, data)
-          : applyCellOp(p.operation, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
-        setCell.run(targetPath, value, row.id);
-        written.push(row.id);
-        updated++;
-      }
-      // A column another column's auto-run reads queues these rows for it.
-      markAutorunInputs(p.sheetId, userId, [targetColumn], { ids: written });
-      db.prepare(
-        "UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
-      ).run(p.sheetId, userId);
-    }).immediate();
-  } catch (e) {
-    if (e instanceof WriterBudgetError) {
-      return {
-        fail: 'budget',
-        error: 'Transform exceeded its time budget. Narrow it with a where filter and retry.',
-      };
+  const generation = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
+    .pluck().get(p.sheetId, userId) as number;
+  let after = -1;
+  if (p.cursor !== undefined) {
+    const m = CURSOR.exec(p.cursor);
+    if (!m) return { fail: 'invalid', error: 'cursor must be the next_cursor a transform_column call answered.' };
+    if (Number(m[1]) !== generation) {
+      return { fail: 'invalid', error: 'The sheet\'s rows were sorted or replaced since that cursor was given. '
+        + 'Run the transform again without cursor.' };
     }
-    throw e;
+    after = Number(m[2]);
   }
-
-  return { ok: { updated, created_column: targetExists ? null : targetColumn } };
+  const op = p.operation;
+  const value = op === 'template'
+    ? (data: Record<string, string>) => applyTemplate(p.template!, data)
+    : (data: Record<string, string>) =>
+      applyCellOp(op, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
+  return { filter, targetColumn, value, after, targetExists, generation };
 }

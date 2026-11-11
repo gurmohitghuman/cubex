@@ -41,15 +41,20 @@ function catalogPart(model: string): { id: string; tail: string } | null {
   return { id, tail };
 }
 
-// Pure: the refusal for a ":batch" variant (a deprecated catalog variant after it too), or null.
+// Pure: the refusal for an id with a ":batch" variant anywhere in it (in any case), or null. It names the id
+// without its ":batch" parts and empty ones, its other variants and preset kept; with no model name before them
+// there is none to name.
 export function batchOnlyRefusal(model: string): string | null {
-  const part = catalogPart(model);
-  let v = part ? lastVariant(part.id) : null;
-  const deprecated = v && DEPRECATED_CATALOG_VARIANTS.has(v.variant) ? `:${v.variant}` : '';
-  if (v && deprecated) v = lastVariant(v.base);
-  if (!part || !v || v.variant !== 'batch') return null;
-  return `The model "${model.trim()}" is a batch-only variant: it runs only through OpenRouter's batch API, `
-    + `which Cubex doesn't use. Use "${v.base}${deprecated}${part.tail}" instead.`;
+  const id = model.trim();
+  if (id.startsWith('@preset/')) return null;
+  const at = id.indexOf('@preset/');
+  const [name, ...variants] = (at > 0 ? id.slice(0, at) : id).split(':');
+  if (!variants.some(v => v.toLowerCase() === 'batch')) return null;
+  const kept = variants.filter(v => v !== '' && v.toLowerCase() !== 'batch').map(v => `:${v}`).join('');
+  const words = `The model "${id}" is a batch-only variant: it runs only through OpenRouter's batch API, `
+    + 'which Cubex doesn\'t use.';
+  if (!name) return `${words} Choose another model.`;
+  return `${words} Use "${name}${kept}${at > 0 ? id.slice(at) : ''}" instead.`;
 }
 
 // The models a list Cubex shows may hold: no ":batch" variant.

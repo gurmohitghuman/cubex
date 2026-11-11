@@ -47,7 +47,7 @@ const controls = (): RouteDoc[] => RUN_KINDS.flatMap(({ prefix, name, what }) =>
           + 'limit in USD, to go on past the one that paused it.'),
         concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
           .describe('HTTP API and enrichment runs: rows at once. On an HTTP API run, its requests at once (its '
-            + 'batch size), which later reruns repeat. Not on a waterfall run.'),
+            + 'batch size), which later reruns and auto-run batches repeat. Not on a waterfall run.'),
       }),
     } : {}),
   }),
@@ -99,7 +99,8 @@ export const runControlRoutes = (): RouteDoc[] => [
       spend_limit_usd: spendLimit.optional(),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe("HTTP API and enrichment runs: rows at once. Default: the run's own. On an HTTP API run, its "
-          + 'requests at once (its batch size), which later reruns repeat. Not on a waterfall run.'),
+          + 'requests at once (its batch size), which later reruns and auto-run batches repeat. Not on a '
+          + 'waterfall run.'),
       webhook_id: webhookId,
     }),
     responses: rerun,

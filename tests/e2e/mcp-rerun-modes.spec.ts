@@ -1,3 +1,4 @@
+// Over 200 lines: every rerun mode's contract over MCP and REST, its cases sharing one set of helpers.
 import { test, expect } from '@playwright/test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -145,7 +146,7 @@ test('v1 AI rerun validates mode and keeps its back-compat default', async () =>
   expect((await omitted.json()).error).toContain('mode')
 })
 
-test('an AI rerun takes a new concurrency; other runs refuse it', async () => {
+test('an AI rerun takes a new concurrency; a pause refuses it and an HTTP API rerun takes it', async () => {
   test.setTimeout(90_000)
   const api = await authedApi()
   const { sheetId } = await seedSheet(api, 2)

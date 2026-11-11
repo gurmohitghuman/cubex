@@ -83,8 +83,18 @@ async function main() {
       batchWords('openai/gpt-4o-mini:batch:thinking:nitro', 'openai/gpt-4o-mini:thinking:nitro')]), refusals)
   check('only a :batch variant is refused that way',
     [batchOnlyRefusal('openai/gpt-4o-mini'), batchOnlyRefusal('meta/llama-4:free:nitro'),
-      batchOnlyRefusal('@preset/batch'), batchOnlyRefusal('batch'), batchOnlyRefusal(':batch'),
+      batchOnlyRefusal('@preset/batch'), batchOnlyRefusal('batch'),
       batchOnlyRefusal('openai/gpt-4o-mini:batched')].every(r => r === null))
+  // Odd ids: :batch twice, an empty variant, a catalog variant after it, capitals. The id named drops every
+  // :batch and empty part (so it is never refused itself); with no model name there is none to name.
+  const odd = ['a/b:batch:batch', 'a/b::batch', 'a/b:batch:free', 'a/b:BATCH', ':batch'].map(id => batchOnlyRefusal(id))
+  const oddWords = [batchWords('a/b:batch:batch', 'a/b'), batchWords('a/b::batch', 'a/b'),
+    batchWords('a/b:batch:free', 'a/b:free'), batchWords('a/b:BATCH', 'a/b'), 'The model ":batch" is a batch-only '
+      + "variant: it runs only through OpenRouter's batch API, which Cubex doesn't use. Choose another model."]
+  check('odd :batch ids are refused, naming a model id with no :batch in it, or none', JSON.stringify(odd)
+    === JSON.stringify(oddWords) && ['a/b', 'a/b:free'].every(id => batchOnlyRefusal(id) === null), odd)
+  check('odd :batch ids are never listed, even when the list has them',
+    ['a/b:batch:batch', 'a/b::batch', 'a/b:batch:free', 'a/b:BATCH'].every(id => !modelListed(id, new Set([id]))))
   check('without a list, a :batch variant is still refused and nothing else is',
     modelGone(null, 'openai/gpt-4o-mini:batch:nitro', 'Fix.') === batchWords('openai/gpt-4o-mini:batch:nitro',
       'openai/gpt-4o-mini:nitro') && modelGone(null, 'nobody/none', 'Fix.') === null)
