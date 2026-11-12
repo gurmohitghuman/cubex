@@ -31,7 +31,7 @@ import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
 import { renameSetupVersionRefs } from './setup-version-rename';
-import { renameTransformPasses } from './column-transform-passes';
+import { renameTransformPasses } from './column-transform-pass-moves';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }

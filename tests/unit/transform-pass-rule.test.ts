@@ -4,8 +4,9 @@
 // swapped, with {{ T }} for {{T}}, or another operation. The pass follows a
 // rename of its column: the call on the new name is refused naming the cursor,
 // and going on with it ends every row exactly once. A cursor the pass answered
-// before its last stop is refused, naming the newer one. A column deleted and
-// added back empty keeps no record: the call without cursor runs from the top.
+// before its last stop is refused, naming the newer one. A column deleted (to
+// the trash) and added back empty has no pass: the call without cursor runs
+// from the top, the old pass staying in the trash with its column.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -56,6 +57,8 @@ const cells = (id: string) => db.prepare('SELECT group_concat(data) FROM rows WH
 const ending = (id: string, t: string, glob: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
   AND json_extract(data, ?) GLOB ?`).pluck().get(id, `$."${t}"`, glob) as number
 const records = (id: string) => db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(id)
+const live = (id: string) => db.prepare(`SELECT count(*) FROM transform_passes WHERE sheet_id = ?
+  AND trash_id IS NULL`).pluck().get(id)
 // The n-th row written fails: 251, its second page; 501, its third.
 async function stoppedAt(p: Params, n = 251) {
   fault.arm(n)
@@ -106,18 +109,19 @@ async function main() {
     assert.equal(ending(sid, 'T2', '*-x-y'), ROWS)
   })
 
-  await check('deleted and added back empty: no record is left, and the call without cursor runs from the top',
-    async () => {
-      const p = { sheetId: redo, operation: 'upper' as const, sourceColumn: 'S', targetColumn: 'U' }
-      await stoppedAt(p)
-      assert.equal(records(redo), 1)
-      assert.ok('ok' in await deleteSheetColumn(redo, uid, 'U'))
-      assert.equal(records(redo), 0, 'it went with the column')
-      assert.ok('ok' in addSheetColumn(redo, uid, 'U'))
-      assert.deepEqual(await transformColumn(uid, p), { ok: { updated: ROWS, created_column: null } })
-      assert.equal(ending(redo, 'U', 'S*'), ROWS)
-      assert.equal(records(redo), 0)
-    })
+  await check('deleted to the trash and added back empty: the new column has no pass, the call without cursor runs '
+    + 'from the top', async () => {
+    const p = { sheetId: redo, operation: 'upper' as const, sourceColumn: 'S', targetColumn: 'U' }
+    await stoppedAt(p)
+    assert.equal(records(redo), 1)
+    const out = await deleteSheetColumn(redo, uid, 'U')
+    assert.ok('ok' in out && out.trashId !== null, JSON.stringify(out))
+    assert.deepEqual([live(redo), records(redo)], [0, 1], 'it went to the trash with the column')
+    assert.ok('ok' in addSheetColumn(redo, uid, 'U'))
+    assert.deepEqual(await transformColumn(uid, p), { ok: { updated: ROWS, created_column: null } })
+    assert.equal(ending(redo, 'U', 'S*'), ROWS)
+    assert.deepEqual([live(redo), records(redo)], [0, 1])
+  })
 }
 
 main()

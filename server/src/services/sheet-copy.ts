@@ -6,7 +6,9 @@
 // a run's own words (⏳, ❌, ⏭️, ➕) is empty. The rows keep their order, at
 // positions 0, 1, 2…. The sheet, its columns and the journal are made in one
 // transaction, then the rows go in a slice at a time (sheet-copy-job.ts),
-// and the answer comes once they are all in. A restart finishes the copy.
+// and the answer comes once they are all in. A restart finishes the copy. An
+// unfinished transform_column pass into a column it copies is the copy's too,
+// as a pass of its own (column-transform-pass-moves.ts).
 import { db } from '../lib/db';
 import { validateSheetName } from '../lib/sheet-validation';
 import { normalizeNameSpacing } from '../lib/name-safety';
@@ -18,6 +20,7 @@ import { countOf, logSheetChange } from '../lib/change-log';
 import { makeRateWindow } from '../lib/rate-window';
 import { SHEET_COPIES_PER_MIN } from '../lib/api-v1-constants';
 import { BEING_COPIED, COPYING_INTO, runSheetCopy } from './sheet-copy-job';
+import { copyTransformPasses } from './column-transform-pass-moves';
 
 // Copies a token starts, per minute (MCP and /api/v1 take a slot before copying).
 export const sheetCopyWindow = makeRateWindow(SHEET_COPIES_PER_MIN);
@@ -68,6 +71,8 @@ export async function copySheetValues(
       const created = createSheetTxn(source.table_id, userId, finalName, sheetId, { seed: false });
       if (!created.ok) { taken = finalName; return; }
       appendColumnsToOrder(created.sheetId, userId, columns);
+      // An unfinished transform_column pass into a column it copies: the copy's own, at the same rows.
+      copyTransformPasses(sheetId, created.sheetId, userId, columns);
       // Said again at the end when fewer rows went in (sheet-copy-job.ts finishCopy).
       const changeId = logSheetChange(created.sheetId, userId, 'sheet_copied',
         `Copied the values of ${countOf(n, 'row')} from "${source.name}"`,

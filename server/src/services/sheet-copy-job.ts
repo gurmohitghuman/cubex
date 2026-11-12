@@ -20,6 +20,7 @@ import { stayBusyToFinish, whenSheetFree, withSheetRead } from '../lib/sheet-bus
 import { copiedCells } from '../lib/sheet-copy';
 import { orderedUuid } from '../lib/ordered-id';
 import { countOf, rewriteSheetChange } from '../lib/change-log';
+import { copiedPassMapper } from './column-transform-pass-moves';
 
 // What the two sheets are busy with, as their busy message says.
 export const COPYING_INTO = 'filling with copied values';
@@ -46,6 +47,7 @@ export async function runSheetCopy(sheetId: string, retryMs = HEAVY_JOB_RETRY_MS
     AND row_index > ? AND row_index <= ? AND rowid <= ? ORDER BY row_index LIMIT ?`);
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
   const advance = db.prepare('UPDATE sheet_copy_jobs SET after_row = ?, copied = ? WHERE sheet_id = ?');
+  const passes = copiedPassMapper(job.source_sheet_id, sheetId, job.user_id);
   // One slice: up to HEAVY_SLICE_ROWS rows or SHEET_COPY_SLICE_CHARS of their data. True while more are left.
   const slice = db.transaction((): boolean => {
     const at = loadJob(sheetId)!;
@@ -62,10 +64,13 @@ export async function runSheetCopy(sheetId: string, retryMs = HEAVY_JOB_RETRY_MS
     }
     if (rows.length === 0) return false;
     let next = at.copied;
+    const placed: Array<{ from: number; to: number }> = [];
     for (const row of rows) {
       const cells = copiedCells(parseRow(row.data), columns);
+      placed.push({ from: row.i, to: next });
       insert.run(orderedUuid(), sheetId, job.user_id, next++, JSON.stringify(cells));
     }
+    passes(placed);
     advance.run(rows[rows.length - 1].i, next, sheetId);
     return true;
   });

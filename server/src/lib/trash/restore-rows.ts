@@ -17,6 +17,7 @@ import { appendColumnsToOrder, getSheetColumns } from '../sql-helpers';
 import { nextRowIndex } from '../sheet-busy';
 import { RUNNING_MARK } from '../run-markers';
 import type { TrashItem } from './store';
+import { rowsMovedUnderPasses } from '../../services/column-transform-pass-moves';
 
 export interface ColumnPlan { map: Map<string, string>; added: string[]; dropped: string[] }
 
@@ -121,6 +122,7 @@ export function restoreSlice(
     const placeTaken = db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index = ?').pluck();
     let bytes = 0;
     const ids: string[] = [];
+    const moved: Array<{ from: number; to: number }> = [];
     rows.forEach((r, k) => {
       let at = item.restore_at === null ? r.row_index : item.restore_at + item.restored + k;
       // A place taken after all (a row resurrected by a stale tab): the end.
@@ -128,8 +130,11 @@ export function restoreSlice(
       const id = idTaken.get(r.row_id) ? uuidv4() : r.row_id;
       insert.run(id, sheetId, userId, at, cellsBack(r.data, plan));
       ids.push(id);
+      if (at !== r.row_index) moved.push({ from: r.row_index, to: at });
       bytes += Buffer.byteLength(r.data, 'utf8');
     });
+    // An unfinished transform_column pass whose cursor a row crossed can't go on from it.
+    rowsMovedUnderPasses(sheetId, userId, moved);
     // Clean, formula and lookup columns work restored rows out again (their
     // columns may have changed meanwhile). Rows at the end are new to them;
     // rows back at old places, under their fence, are queued (the auto-run

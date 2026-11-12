@@ -2,7 +2,8 @@
 // stopped by its time budget or its row cap keeps the rows it wrote and answers
 // next_cursor with a note; the same call with that cursor goes on, so a
 // transform that reads its own target still changes each row once. A cursor
-// from before a sort, or one it never gave, is refused; a busy sheet is refused.
+// from before a sort (which ends its pass), or one no call gave, is refused; a
+// busy sheet is refused.
 // A finished call answers {updated, created_column} as before. A new target
 // column that got no value is listed: the app, REST and MCP show it, and its
 // cells read as empty, with nothing stored in the rows.
@@ -24,6 +25,7 @@ import cookieMod from '../../server/src/lib/cookie'
 import mcpMod from '../../server/src/mcp/build-server'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import appReadMod from '../../server/src/routes/sheets-read'
+import { malformed, notOpen } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn, TRANSFORM_STOPPED_NOTE } =
@@ -73,7 +75,7 @@ async function cutShort(cursor?: string) {
 
 async function main() {
   await check('a call its time budget stops keeps its rows and answers next_cursor and the note; the calls after it '
-    + 'go on, the row cap stopping one, and every row changes once', async () => {
+    + 'go on, and every row changes once', async () => {
     const first = await cutShort()
     assert.ok('ok' in first, JSON.stringify(first))
     assert.deepEqual(Object.keys(first.ok), ['updated', 'created_column', 'next_cursor', 'note'])
@@ -90,10 +92,31 @@ async function main() {
       updated.push(out.ok.updated)
       cursor = out.ok.next_cursor
     }
-    assert.ok(updated.includes(TRANSFORM_MAX_ROWS), `a call stopped at the row cap: ${updated}`)
     assert.equal(updated.reduce((a, b) => a + b, 0), ROWS)
     const once = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.N') GLOB 'r*x'
       AND json_extract(data, '$.N') NOT GLOB '*xx'`).pluck().get(big)
+    assert.equal(once, ROWS)
+  })
+
+  await check(`with the clock held still, the row cap stops each call: ${TRANSFORM_MAX_ROWS} rows, then `
+    + `${TRANSFORM_MAX_ROWS}, then the rest, every row once`, async () => {
+    // The time budget never runs out, however slow the disk: only the row cap stops a call.
+    const held = Date.now()
+    Date.now = () => held
+    try {
+      const answers = []
+      for (let cursor: string | undefined, n = 0; n === 0 || cursor; n++) {
+        const out = await transformColumn(uid, { ...again, template: '{{N}}y', ...(cursor ? { cursor } : {}) })
+        assert.ok('ok' in out, JSON.stringify(out))
+        answers.push(out.ok)
+        cursor = out.ok.next_cursor
+      }
+      const rest = ROWS - 2 * TRANSFORM_MAX_ROWS
+      assert.deepEqual(answers.map(a => a.updated), [TRANSFORM_MAX_ROWS, TRANSFORM_MAX_ROWS, rest])
+      assert.deepEqual(answers.map(a => a.note), [TRANSFORM_STOPPED_NOTE, TRANSFORM_STOPPED_NOTE, undefined])
+    } finally { Date.now = () => realNow() + shiftMs }
+    const once = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.N') GLOB 'r*xy'
+      AND json_extract(data, '$.N') NOT GLOB '*yy'`).pluck().get(big)
     assert.equal(once, ROWS)
   })
 
@@ -102,12 +125,10 @@ async function main() {
     assert.ok('ok' in stopped && stopped.ok.next_cursor)
     const before = db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id = ?').pluck().get(big)
     assert.ok('ok' in await physicalSortSheet(big, uid, 'N', 'desc'))
-    assert.deepEqual(await transformColumn(uid, { ...again, cursor: stopped.ok.next_cursor }), { fail: 'invalid',
-      error: "The sheet's rows were sorted or replaced since that cursor was given. Run the transform again "
-        + 'without cursor.' })
+    // The sort ended the pass: its cursor is refused in words naming no cursor.
+    assert.deepEqual(await transformColumn(uid, { ...again, cursor: stopped.ok.next_cursor }), notOpen)
     for (const cursor of ['abc', '1', '1:2:3', '']) {
-      assert.deepEqual(await transformColumn(uid, { ...again, cursor }),
-        { fail: 'invalid', error: 'cursor must be the next_cursor a transform_column call answered.' })
+      assert.deepEqual(await transformColumn(uid, { ...again, cursor }), malformed)
     }
     const after = db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id = ?').pluck().get(big)
     assert.equal((after as string).length, (before as string).length, 'nothing more was written')

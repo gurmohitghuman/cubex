@@ -1,11 +1,13 @@
 // Nothing is left in transform_passes once a pass can no longer be gone on with
 // (services/column-transform-passes.ts, migration 056). Each case stops a pass
 // on an error after 250 rows (its record kept), then: the pass completes; a
-// restart: true runs to the end; its column is deleted; its sheet goes to the
-// trash; its table goes to the trash; its sheet is deleted for good (Settings
-// keeps 0 days); the rows are sorted, replaced by a CSV import, or have their
-// duplicates removed. Each leaves no record for the sheet. A record found whose
-// cursor no longer holds is deleted when read, and the call runs.
+// restart: true runs to the end; its column is deleted for good, or goes to the
+// trash (the record with it) and is purged; its sheet or its table goes to the
+// trash (the record stays) and is purged; its sheet is deleted for good
+// (Settings keeps 0 days); the rows are sorted, replaced by a CSV import, or
+// have their duplicates removed (the record of a column in the trash too).
+// Each leaves no record for the sheet. A record found whose cursor no longer
+// holds is deleted when read, and the call runs.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -17,6 +19,7 @@ import importMod from '../../server/src/services/csv-import'
 import parseMod from '../../server/src/lib/csv-import-parse'
 import dedupeMod from '../../server/src/services/dedupe-remove'
 import trashMod from '../../server/src/services/trash-sheets'
+import purgeMod from '../../server/src/services/trash-purge'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
@@ -29,6 +32,7 @@ const { scanCsvText } = parseMod as typeof import('../../server/src/lib/csv-impo
 const { removeDuplicates } = dedupeMod as typeof import('../../server/src/services/dedupe-remove')
 const { trashSheet, trashTable } = trashMod as typeof import('../../server/src/services/trash-sheets')
 const { getTrashDays, setTrashDays } = storeMod as typeof import('../../server/src/lib/trash/store')
+const { purgeTrashItems } = purgeMod as typeof import('../../server/src/services/trash-purge')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -72,6 +76,21 @@ async function stopped(id: string): Promise<string> {
   return out.stopped.next_cursor
 }
 const ok = (out: object) => assert.ok('ok' in out, JSON.stringify(out))
+// Settings keeping deleted things 0 days while `fn` runs.
+async function forGood<T>(fn: () => T | Promise<T>): Promise<T> {
+  const days = getTrashDays(uid)
+  setTrashDays(uid, 0)
+  try { return await fn() } finally { setTrashDays(uid, days) }
+}
+// The Trash page's "Delete for good", waited for.
+async function purged(id: number) {
+  assert.deepEqual(purgeTrashItems(uid, [id]), [id])
+  const left = db.prepare('SELECT count(*) FROM trash_items WHERE id = ?').pluck()
+  for (const until = Date.now() + 10_000; left.get(id) !== 0 && Date.now() < until;) {
+    await new Promise(r => setTimeout(r, 20))
+  }
+  assert.equal(left.get(id), 0, 'purged')
+}
 
 async function main() {
   await check('the pass completes', async () => {
@@ -85,46 +104,63 @@ async function main() {
     ok(await transformColumn(uid, { ...call(id), restart: true }))
     assert.equal(records(id), 0)
   })
-  await check('its column is deleted', async () => {
+  await check('its column is deleted for good', async () => {
     const id = sheet()
     await stopped(id)
-    assert.ok('ok' in await deleteSheetColumn(id, uid, 'T'))
+    const out = await forGood(() => deleteSheetColumn(id, uid, 'T'))
+    assert.ok('ok' in out && out.trashId === null, JSON.stringify(out))
     assert.equal(records(id), 0)
   })
-  await check('its sheet goes to the trash', async () => {
+  await check('its column goes to the trash with it and is purged', async () => {
+    const id = sheet()
+    await stopped(id)
+    const out = await deleteSheetColumn(id, uid, 'T')
+    assert.ok('ok' in out && out.trashId !== null, JSON.stringify(out))
+    assert.equal(records(id), 1, 'in the trash with its column')
+    await purged(out.trashId!)
+    assert.equal(records(id), 0)
+  })
+  await check('its sheet goes to the trash, keeping it, and is purged', async () => {
     const id = sheet()
     await stopped(id)
     const out = trashSheet(uid, tid, id)
     assert.ok('ok' in out && out.ok.trashId !== null, JSON.stringify(out))
+    assert.equal(records(id), 1, 'kept in the trash')
+    await purged(out.ok.trashId!)
     assert.equal(records(id), 0)
   })
-  await check('its table goes to the trash', async () => {
+  await check('its table goes to the trash, keeping it, and is purged', async () => {
     const id = sheet(other)
     await stopped(id)
-    ok(trashTable(uid, other))
+    const out = trashTable(uid, other)
+    assert.ok('ok' in out && out.ok.trashId !== null, JSON.stringify(out))
+    assert.equal(records(id), 1, 'kept in the trash')
+    await purged(out.ok.trashId!)
     assert.equal(records(id), 0)
   })
   await check('its sheet is deleted for good', async () => {
     const id = sheet()
     await stopped(id)
-    const days = getTrashDays(uid)
-    setTrashDays(uid, 0)
-    try {
+    await forGood(async () => {
       const out = trashSheet(uid, tid, id)
       assert.ok('ok' in out && out.ok.trashId === null, JSON.stringify(out))
-      assert.equal(records(id), 0, 'gone with the delete')
       const left = db.prepare('SELECT count(*) FROM sheets WHERE id = ?').pluck()
       for (const until = Date.now() + 10_000; left.get(id) !== 0 && Date.now() < until;) {
         await new Promise(r => setTimeout(r, 20))
       }
       assert.equal(left.get(id), 0, 'the sheet was deleted for good')
       assert.equal(records(id), 0)
-    } finally { setTrashDays(uid, days) }
+    })
   })
-  await check('its rows are sorted', async () => {
+  await check('its rows are sorted, its column in the trash or not', async () => {
     const id = sheet()
     await stopped(id)
     ok(await physicalSortSheet(id, uid, 'T', 'desc'))
+    assert.equal(records(id), 0)
+    await stopped(id)
+    ok(await deleteSheetColumn(id, uid, 'T'))
+    assert.equal(records(id), 1, 'in the trash with its column')
+    ok(await physicalSortSheet(id, uid, 'S', 'desc'))
     assert.equal(records(id), 0)
   })
   await check('its rows are replaced by a CSV import', async () => {

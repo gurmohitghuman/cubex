@@ -29,14 +29,10 @@ export async function runInCheckpointedSlices(step: () => boolean): Promise<void
 // one is off while a slice runs, so it never copies the WAL back inside the
 // slice's commit, and the last slice is checkpointed too, so the next commit,
 // whoever makes it, doesn't inherit its pages (lib/placeholder-cells.ts).
-// `wrote`, when given, says whether the slice just run wrote anything: after
-// one that didn't, the checkpoint and its turn are skipped (a transform whose
-// where matches nothing in a million rows paid 4,000 of them).
-export async function runInCheckpointedRowSlices(step: () => boolean, wrote?: () => boolean): Promise<void> {
+export async function runInCheckpointedRowSlices(step: () => boolean): Promise<void> {
   for (let more = true; more;) {
     more = withoutAutoCheckpoint(step);
     await yieldToRequests();
-    if (wrote && !wrote()) continue;
     db.pragma('wal_checkpoint(PASSIVE)');
     await yieldToRequests();
   }

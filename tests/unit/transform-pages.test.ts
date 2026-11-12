@@ -4,14 +4,15 @@
 // that of a page, not of the sheet. A where matching nothing writes nothing (no
 // '' into every row: the new column is only listed); one matching every row
 // writes every row exactly once over calls of at most TRANSFORM_MAX_ROWS rows,
-// each going on from the call before's next_cursor. No page's commit runs
-// SQLite's own WAL checkpoint (it copied 2,000 frames back inside about one
-// page commit in fifty, and on a slower CI disk the server was held 743 ms):
-// the WAL never holds the frames that start it. A page that wrote nothing is
-// not checkpointed (4,000 such checkpoints and their turns took a where matching
-// nothing in a million rows to 1.7 s), also once the pass has written rows.
-// Numbers are printed, the longest page transaction and the longest checkpoint
-// among them (sqlite-write-probe.ts).
+// each going on from the call before's next_cursor. No checkpoint runs on the
+// API connection (a checkpoint's disk sync held a slow CI disk's server 628 ms):
+// the WAL is copied back on the checkpoint worker's thread
+// (lib/wal-checkpointer.ts), and no page's commit runs SQLite's own checkpoint
+// (it copied 2,000 frames back inside about one page commit in fifty): the WAL
+// never holds the frames that start it. A pass that writes nothing asks for no
+// checkpoint; one row written, for one, at the end of its call. Numbers are
+// printed: the longest page transaction, the worker's checkpoints and waits
+// (sqlite-write-probe.ts).
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
@@ -23,12 +24,15 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { TRANSFORM_MAX_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { default: sheetsRouter } = sheetsMod as unknown as { default: express.Router }
+const { closeWalCheckpointer, takeWalCheckpointerStats, walCheckpointerIdle } =
+  walMod as typeof import('../../server/src/lib/wal-checkpointer')
 type Params = import('../../server/src/services/column-transform').TransformParams
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
@@ -71,7 +75,9 @@ async function main() {
     const calls: Array<{ updated: number; created_column: string | null; next_cursor?: string }> = []
     let running = true, answered = 0, slowest = 0
     // Emptying the WAL is the test's own work: done before anything is timed.
+    await walCheckpointerIdle()
     probe.reset()
+    takeWalCheckpointerStats()
     const pinging = (async () => {
       while (running) {
         const t0 = performance.now()
@@ -112,13 +118,16 @@ async function main() {
     }
     const ms = performance.now() - t0
     await pinging
+    // The checkpoint the last call asked for, counted once it ends.
+    await walCheckpointerIdle()
     const mb = (n: number) => Math.round(n / 1048576)
     const w = probe.read()
+    const k = takeWalCheckpointerStats()
     const stats = { calls: calls.length, ms: Math.round(ms), answered, slowestMs: Math.round(slowest),
       loopMaxMs: Math.round(loopMax), heapMb: mb(heap), rssMb: mb(rss), pages: w.transactions,
-      longestPageMs: Math.round(w.longestTransactionMs), checkpoints: w.checkpoints,
-      longestCheckpointMs: Math.round(w.longestCheckpointMs), mostCheckpointFrames: w.mostCheckpointFrames,
-      pageCommitsWritingDbFile: w.transactionsWritingMainFile, mostWalFrames: w.mostWalFrames }
+      longestPageMs: Math.round(w.longestTransactionMs), mostPageFrames: w.mostTransactionFrames,
+      workerCheckpoints: k.checkpoints - k.onThisThread, onThisThread: k.onThisThread, waits: k.pauses,
+      waitedMs: k.pausedMs, mainCheckpoints: w.checkpoints, mostWalFrames: w.mostWalFrames }
     console.log('     ', params.targetColumn, JSON.stringify(stats))
     return { calls, stats }
   }
@@ -133,18 +142,18 @@ async function main() {
       assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
         + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
       assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
-      assert.equal(stats.checkpoints, 0, `${stats.checkpoints} checkpoints after pages that wrote nothing`)
+      assert.equal(stats.workerCheckpoints + stats.mainCheckpoints, 0,
+        `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
       assert.deepEqual(calls[0].created_column, 'Nothing')
       assert.equal(stored('Nothing'), 0, 'no row stores the new column')
       assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
 
-  await check('a where matching only the first row: a checkpoint after the page that wrote it and the one that '
-    + 'ended the pass, none after the pages between', async () => {
+  await check('a where matching only the first row: one checkpoint, on the worker, once the call ends', async () => {
     const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
       targetColumn: 'First', where: [{ column: 'Name', operator: 'eq', value: 'p0' }] })
     assert.equal(calls.reduce((n, c) => n + c.updated, 0), 1)
-    assert.equal(stats.checkpoints, 2, `${stats.checkpoints} checkpoints`)
+    assert.deepEqual([stats.workerCheckpoints, stats.onThisThread, stats.mainCheckpoints], [1, 0, 0])
     assert.equal(stored('First'), 1)
   })
 
@@ -161,10 +170,13 @@ async function main() {
       assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
       assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
         + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
+      assert.equal(stats.mainCheckpoints, 0, 'no checkpoint on the API connection')
+      assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
       assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
 
   server.close()
+  await closeWalCheckpointer()
 }
 
 main()

@@ -1,18 +1,19 @@
-// A transform_column cursor belongs to the call that answered it
+// A transform_column cursor belongs to the pass that answered it
 // (services/column-transform-passes.ts): used on another sheet, or with another
 // target column, operation, operation parameter or where, it is refused and
-// nothing is written. Into a column with no unfinished pass, the refusal says
-// the cursor is another call's; into one with an unfinished pass, it names
-// that pass's cursor and restart. The same call with where's keys in another
-// order, or with a parameter its operation doesn't use, is the same call: its
-// cursor goes on.
+// nothing is written. On another sheet, the refusal says so; into another
+// column, it names the column whose pass it is; into its own column with other
+// arguments, it says they differ from the pass's own and offers restart; a
+// cursor other than the one a column's open pass last answered gets that pass's
+// cursor and restart. The same call with where's keys in another order, or with
+// a parameter its operation doesn't use, is the same call: its cursor goes on.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
-import { unfinished } from './transform-pass-words'
+import { otherArgs, otherColumn, otherSheet, unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -44,15 +45,25 @@ for (const [n, id] of [a, b].entries()) {
     for (let i = 0; i < ROWS; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ N: `r${i}`, M: `m${i}` }))
   })()
 }
-const OTHER = 'This cursor belongs to another transform_column call (another sheet or other arguments). Call '
-  + 'again without cursor to start over.'
 const cells = () => db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id IN (?, ?) ORDER BY rowid')
   .pluck().get(a, b) as string
-// A call its time budget stops after its first page: its next_cursor.
+// A call its time budget stops after its first page, however many turns that page yields: the page's read
+// moves the clock past the budget. Its next_cursor.
+const prepare = db.prepare.bind(db)
+let shiftOnRead = false
+db.prepare = ((sql: string) => {
+  const stmt = prepare(sql)
+  if (!sql.startsWith('SELECT rowid AS rid, data FROM rows')) return stmt
+  const all = stmt.all.bind(stmt)
+  Object.assign(stmt, { all: (...a: unknown[]) => {
+    if (shiftOnRead) { shiftOnRead = false; shiftMs += TRANSFORM_MAX_CALL_MS }
+    return all(...a)
+  } })
+  return stmt
+}) as typeof db.prepare
 async function cursorOf(p: Params): Promise<string> {
-  const call = transformColumn(uid, p)
-  setImmediate(() => { shiftMs += TRANSFORM_MAX_CALL_MS })
-  const out = await call
+  shiftOnRead = true
+  const out = await transformColumn(uid, p)
   assert.ok('ok' in out && out.ok.next_cursor && out.ok.updated === 250, JSON.stringify(out))
   return out.ok.next_cursor
 }
@@ -68,21 +79,20 @@ async function main() {
     const t = await cursorOf(template)
     const s = await cursorOf(split)
     const before = cells()
-    const other = { fail: 'invalid', error: OTHER }
     // Into N and Part, each pass stopped after 250 rows is unfinished.
-    const intoN = unfinished('N', 250, t), intoPart = unfinished('Part', 250, s)
+    const intoN = otherArgs('N'), intoPart = otherArgs('Part')
     const others: Array<[string, Params, object]> = [
-      ['another sheet', { ...template, sheetId: b, cursor: t }, other],
-      ['another target', { ...template, targetColumn: 'M', cursor: t }, other],
+      ['another sheet', { ...template, sheetId: b, cursor: t }, otherSheet],
+      ['another target', { ...template, targetColumn: 'M', cursor: t }, otherColumn('N', 'M')],
       ['another operation', { ...template, operation: 'upper', sourceColumn: 'N', cursor: t }, intoN],
       ['another template', { ...template, template: '{{N}}y', cursor: t }, intoN],
       ['another where', { ...template, where: [{ column: 'N', operator: 'contains', value: 'r' }], cursor: t }, intoN],
       ['no where', { ...template, where: undefined, cursor: t }, intoN],
-      ['the split on another sheet', { ...split, sheetId: b, cursor: s }, other],
+      ['the split on another sheet', { ...split, sheetId: b, cursor: s }, otherSheet],
       ['another source', { ...split, sourceColumn: 'M', cursor: s }, intoPart],
       ['another pattern', { ...split, pattern: '1', cursor: s }, intoPart],
       ['another index', { ...split, index: 0, cursor: s }, intoPart],
-      ['the other call\'s cursor', { ...split, cursor: t }, intoPart],
+      ['the other call\'s cursor', { ...split, cursor: t }, unfinished('Part', 250, s)],
     ]
     const accepted: string[] = []
     for (const [what, p, refused] of others) {

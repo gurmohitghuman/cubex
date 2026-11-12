@@ -18,6 +18,7 @@ import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
+import { closeWalCheckpointer } from './wal-checkpointer';
 
 // Run any value through redactSecrets before logging, so a stack trace or
 // rejection reason that happens to embed a Bearer token / sk-... key /
@@ -100,6 +101,9 @@ export const installShutdownHandlers = (server: Server) => {
     if (webhookBucketSweep) { clearInterval(webhookBucketSweep); webhookBucketSweep = null; }
     try { await stopQueue(); }
     catch (err) { console.error('Queue shutdown failed:', err); }
+    // The checkpoint worker closes its connection (lib/wal-checkpointer.ts).
+    try { await closeWalCheckpointer(); }
+    catch (err) { console.error('Closing the WAL checkpoint worker failed:', err); }
     // Refresh planner stats so the next boot inherits up-to-date metadata.
     // Best effort — never block shutdown on it.
     try { db.pragma('optimize'); }

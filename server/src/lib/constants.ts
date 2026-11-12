@@ -28,6 +28,8 @@ export * from './constants-ai-visibility';
 export * from './constants-spend';
 // The HTTP server's timeouts, same split (a file of its own: lib/server-timeouts.ts reads nothing else).
 export * from './constants-server';
+// The WAL checkpoint worker's marks, same split.
+export * from './constants-wal';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes

@@ -29,7 +29,7 @@ import { autorunRunBlock } from './autorun-block';
 import { lastKeptField } from './enrich-list-guard';
 import { deleteViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
-import { deleteTransformPasses } from './column-transform-passes';
+import { trashTransformPasses } from './column-transform-pass-moves';
 import { getTrashDays, trashKeeps } from '../lib/trash/store';
 import { moveWithin, openColumnItem } from './column-trash';
 
@@ -232,8 +232,8 @@ export async function deleteSheetColumn(
       deleteRunInputKey(sheetId, userId, columnName);
       // An undo never writes it again, nor a column made later under its name.
       deleteUndoColumn(sheetId, userId, columnName);
-      // Nor does an unfinished transform_column pass's cursor.
-      deleteTransformPasses(sheetId, userId, columnName);
+      // An unfinished transform_column pass into it goes with it: into its trash item, or for good.
+      trashTransformPasses(sheetId, userId, columnName, trashId);
       if (nextColumnOrder !== undefined) {
         db.prepare('UPDATE sheets SET column_order = ? WHERE id = ? AND user_id = ?')
           .run(nextColumnOrder, sheetId, userId);

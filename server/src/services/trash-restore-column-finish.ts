@@ -20,6 +20,7 @@ import { formulaKind } from './formula-kind';
 import { lookupKind } from './lookup-kind';
 import { lookupFillStarted } from './lookup-fill-changes';
 import { writeColumnSetup, type SetupPlan } from './trash-restore-column-setup';
+import { restoreTransformPasses } from './column-transform-pass-moves';
 
 export interface FillStart { sheetId: string; table: string; id: string }
 export interface Finished {
@@ -37,6 +38,8 @@ export function finishColumnRestore(itemId: number, sheetId: string, userId: str
   let written: { runId: string | null; fill: { table: string; id: string } | null } = { runId: null, fill: null };
   if (!into) {
     position = listAt(sheetId, userId, name, item.column_position);
+    // Its unfinished transform_column pass, if it had one, under the name it comes back as.
+    restoreTransformPasses(itemId, sheetId, userId, name);
     if (own.description) writeColumnDescription(sheetId, userId, name, own.description);
     written = writeColumnSetup(sheetId, userId, own, name, plan, item.restore_keys === 1);
   }

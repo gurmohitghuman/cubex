@@ -5,18 +5,15 @@
 // (column-transform-pages.ts), writing at most TRANSFORM_MAX_ROWS rows or
 // working TRANSFORM_MAX_CALL_MS; stopped with rows left, it answers next_cursor
 // (or, a page failing after others committed, `stopped` with the rows written).
-// Until a pass that wrote rows gets to the end, whatever stopped it, a call into
-// its column without its cursor answers `unfinished`; restart: true starts over
+// Until a pass gets to the end, whatever stopped it, a call into its column
+// without its cursor answers `unfinished`; restart: true starts over, and a
+// cursor goes on only while it is the one its open pass last answered
 // (column-transform-passes.ts). A new target column is only added to
 // column_order: rows it wrote nothing in read it as empty, as with add_column.
 // Bumps data_version, never row_generation (what a row_index means is
-// unchanged; bumping it would 409 in-flight autosaves). A cursor names the
-// row_generation it was given at, so one from before a sort or a replace is
-// refused rather than re-meant, and the call it came from.
+// unchanged; bumping it would 409 in-flight autosaves).
 import { db } from '../lib/db';
-import {
-  TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_SETTLE_RETRY_MS, TRANSFORM_SETTLE_TRIES,
-} from '../lib/api-v1-constants';
+import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
@@ -32,9 +29,9 @@ import {
   applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
 import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
-import {
-  passTracker, startPass, stoppedOnErrorWords, transformCursor, type PassStart, type Unfinished,
-} from './column-transform-passes';
+import { passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
+import { stoppedOnErrorWords } from './column-transform-pass-words';
+import { settle, stopAt } from './column-transform-end';
 import { redactError } from '../lib/redact';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
@@ -55,7 +52,7 @@ export interface TransformParams {
   index?: number;
   template?: string;
   where?: WhereItem[];
-  // next_cursor of the call before: go on after the last row it looked at.
+  // The latest next_cursor of its pass: go on after the last row it looked at.
   cursor?: string;
   // Start over from the first row, discarding the column's unfinished pass.
   restart?: boolean;
@@ -91,38 +88,26 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
       // Open grids and readers learn of a column added or pages written, whatever stopped the call.
       if ((walked !== undefined && !walked.failed) || added || (walked?.pages ?? 0) > 0) settle(p.sheetId, userId);
     }
+    const rows = plan.base + walked.updated;
     if (walked.failed) {
       // A first page that failed, or a pass with no row written yet: the call fails as any other.
-      if (walked.pages === 0 || plan.base + walked.updated === 0) throw walked.failed.error;
-      const rows = plan.base + walked.updated;
-      const next = transformCursor(plan.generation, walked.stoppedAfter, plan.key);
+      const next = track.held();
+      if (walked.pages === 0 || rows === 0 || next === null) throw walked.failed.error;
       console.error(`transform_column on sheet ${p.sheetId} stopped on an error after ${rows} rows:`,
         redactError(walked.failed.error));
+      // The cursor its record holds: after the last page that wrote (the pages after it wrote nothing).
       return { stopped: { error: stoppedOnErrorWords(rows, next, walked.failed.error), next_cursor: next,
         rows_done: rows } };
     }
     const ok = { updated: walked.updated, created_column: plan.targetExists ? null : plan.targetColumn };
-    return walked.stoppedAfter === null ? { ok } : { ok: { ...ok,
-      next_cursor: transformCursor(plan.generation, walked.stoppedAfter, plan.key), note: TRANSFORM_STOPPED_NOTE } };
+    if (walked.stoppedAfter === null) return { ok };
+    // Stopped with rows left, even before writing a row: the record holds the cursor it answers.
+    return { ok: { ...ok, next_cursor: stopAt(track, walked.stoppedAfter, walked.updated),
+      note: TRANSFORM_STOPPED_NOTE } };
   });
   if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };
   if ('busy' in out) return { fail: 'busy', error: out.busy };
   return out;
-}
-
-// data_version after a call. Refused (a write lock held past busy_timeout), it
-// is tried again TRANSFORM_SETTLE_RETRY_MS later, up to TRANSFORM_SETTLE_TRIES
-// times in all, so readers learn of the rows written once the lock is let go.
-function settle(sheetId: string, userId: string, tries = 1): void {
-  try {
-    db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
-      WHERE id = ? AND user_id = ?`).run(sheetId, userId);
-  } catch (error) {
-    const again = tries < TRANSFORM_SETTLE_TRIES;
-    console.error(`transform_column could not mark sheet ${sheetId} changed${again ? ' (tries again)' : ''}:`,
-      redactError(error));
-    if (again) setTimeout(() => settle(sheetId, userId, tries + 1), TRANSFORM_SETTLE_RETRY_MS).unref();
-  }
 }
 
 // What the call writes, checked with the sheet held (nothing can change it until the call ends).

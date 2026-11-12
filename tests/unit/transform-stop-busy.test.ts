@@ -3,11 +3,13 @@
 // connection takes the write lock after the first page and holds it past
 // busy_timeout: the second page fails with SQLITE_BUSY, the call answers
 // next_cursor and rows_done in words naming it, data_version moves once the
-// lock is let go, and going on with the cursor changes every row once. A sort
+// lock is let go (tried again on a timer, never waiting on the event loop), and
+// going on with the cursor changes every row once. A sort
 // deletes the record (its cursor is refused too), so the same call without
 // cursor starts over instead of being refused for good. When the data_version
-// write itself meets the lock past busy_timeout, it is tried again and moves
-// once the lock is let go, with no other call.
+// write itself meets the lock (held for seconds), it never waits on the event
+// loop: it is tried again on a timer and moves once the lock is let go, with no
+// other call, the loop never held 200 ms meanwhile.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { Worker } from 'node:worker_threads'
@@ -40,10 +42,11 @@ db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
 const addSheet = db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,?,?)')
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+// late: one page, so its call ends after it.
 for (const [n, id] of [busy, sorted, late].entries()) {
   addSheet.run(id, tid, uid, `S${n}`, n, JSON.stringify(['T']))
   db.transaction(() => {
-    for (let i = 0; i < ROWS; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ T: `t${i}` }))
+    for (let i = 0; i < (id === late ? 100 : ROWS); i++) insert.run(uuid(), id, uid, i, JSON.stringify({ T: `t${i}` }))
   })()
 }
 const again = (sheetId: string) => ({ sheetId, operation: 'template' as const, template: '{{T}}-x', targetColumn: 'T' })
@@ -51,6 +54,13 @@ const dataVersion = (id: string) => db.prepare('SELECT data_version FROM sheets 
 const suffixed = (id: string, glob: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
   AND json_extract(data, '$.T') GLOB ?`).pluck().get(id, glob) as number
 const records = (id: string) => db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(id)
+// data_version past `before` within 5 s.
+async function movedFrom(id: string, before: number) {
+  for (const until = Date.now() + 5000; dataVersion(id) === before && Date.now() < until;) {
+    await new Promise(r => setTimeout(r, 50))
+  }
+  return dataVersion(id) > before
+}
 const stoppedOn = async (id: string) => {
   fault.arm(251)
   try { return await transformColumn(uid, again(id)) } finally { fault.disarm() }
@@ -76,7 +86,7 @@ function lockHolder(holdMs = 6500) {
     assert.equal(Atomics.wait(flags, 1, 0, 3000), 'ok', 'the other connection took the lock')
   } }
 }
-// The lock is taken at the first checkpoint, after the first page.
+// The lock is taken where the call first reads the WAL's size (or checkpoints), after its first page.
 async function lockedAfterFirstPage(holder: ReturnType<typeof lockHolder>, id: string) {
   const pragma = db.pragma.bind(db)
   let armed = true
@@ -102,7 +112,7 @@ async function main() {
       + `Those rows are written. Call transform_column again with the same arguments and cursor set to "${cursor}" `
       + 'to go on. Don\'t start over without cursor: that would apply the operation to those rows again.',
     next_cursor: cursor, rows_done: 250 })
-    assert.ok(dataVersion(busy) > before, 'data_version moved')
+    assert.ok(await movedFrom(busy, before), 'data_version moved')
     assert.equal(suffixed(busy, 't*-x'), 250)
     assert.ok('unfinished' in await transformColumn(uid, again(busy)))
     assert.deepEqual(await transformColumn(uid, { ...again(busy), cursor }),
@@ -123,23 +133,26 @@ async function main() {
     assert.equal(records(sorted), 0)
   })
 
-  await check('the data_version write meeting the lock past busy_timeout is tried again, and moves once the lock '
-    + 'is let go', async () => {
-    // A short busy_timeout keeps the test short: the second page and the data_version write both give up while
-    // the other connection still holds the lock.
-    const timeout = db.pragma('busy_timeout', { simple: true }) as number
-    db.pragma('busy_timeout = 300')
-    const holder = lockHolder(1500)
+  await check('the data_version write meeting a lock held for seconds never holds the event loop: it is tried '
+    + 'again, and moves once the lock is let go', async () => {
+    // The call's one page commits, then the other connection takes the lock and holds it 3 s.
+    const holder = lockHolder(3000)
     const before = dataVersion(late)
-    let out
-    try { out = await lockedAfterFirstPage(holder, late) } finally { db.pragma(`busy_timeout = ${timeout}`) }
-    assert.ok('stopped' in out && out.stopped.rows_done === 250, JSON.stringify(out))
-    assert.equal(dataVersion(late), before, 'not yet: the lock is still held')
-    await holder.exited
-    for (const until = Date.now() + 5000; dataVersion(late) === before && Date.now() < until;) {
-      await new Promise(r => setTimeout(r, 50))
-    }
-    assert.ok(dataVersion(late) > before, 'data_version moved once the lock was let go')
+    let lastTick = Date.now(), loopMax = 0
+    const sampler = setInterval(() => {
+      const now = Date.now()
+      loopMax = Math.max(loopMax, now - lastTick)
+      lastTick = now
+    }, 5)
+    try {
+      const out = await lockedAfterFirstPage(holder, late)
+      assert.deepEqual(out, { ok: { updated: 100, created_column: null } })
+      assert.equal(dataVersion(late), before, 'not yet: the lock is still held')
+      await holder.exited
+      assert.ok(await movedFrom(late, before), 'data_version moved once the lock was let go')
+    } finally { clearInterval(sampler) }
+    console.log(`      the event loop was held at most ${loopMax} ms`)
+    assert.ok(loopMax < 200, `the event loop was held ${loopMax} ms`)
   })
 }
 

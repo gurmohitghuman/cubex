@@ -42,8 +42,9 @@ export const TRANSFER_SCAN_BATCH = 250;
 export const TRANSFORM_MAX_REGEX_LEN = 200;
 export const TRANSFORM_REGEX_INPUT_CAP = 10000;
 // A call walks the sheet TRANSFORM_PAGE_ROWS rows at a time, each page read, worked
-// out and written in one short transaction and checkpointed after it, the server
-// answering other requests between pages (services/column-transform-pages.ts).
+// out and written in one short transaction, the server answering other requests
+// between pages and the WAL copied back on the checkpoint worker's thread
+// (services/column-transform-pages.ts, lib/wal-checkpointer.ts).
 // It stops once it has written TRANSFORM_MAX_ROWS rows (as transfer_rows takes at
 // most TRANSFER_MAX_ROWS) or worked TRANSFORM_MAX_CALL_MS, checked before each
 // page; its next_cursor goes on.
@@ -54,10 +55,11 @@ export const TRANSFORM_PAGE_ROWS = 250;
 export const TRANSFORM_MAX_ROWS = 10_000;
 export const TRANSFORM_MAX_CALL_MS = 2000;
 export const TRANSFORM_QUEUED_ROWS = 2000;
-// A call's data_version bump that a write lock held past busy_timeout refuses is
-// tried again this much later, up to this many times in all.
-export const TRANSFORM_SETTLE_RETRY_MS = 1000;
-export const TRANSFORM_SETTLE_TRIES = 10;
+// A call's data_version bump is tried without waiting for the write lock; refused
+// (another connection holds it), it is tried again this much later, up to this
+// many times in all (a minute).
+export const TRANSFORM_SETTLE_RETRY_MS = 500;
+export const TRANSFORM_SETTLE_TRIES = 120;
 
 // PATCH /v1/rows/:id — at most one value per possible column.
 export const API_V1_MAX_PATCH_CELLS = 80;
