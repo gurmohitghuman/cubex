@@ -50,7 +50,9 @@ export function restoreSheetItem(
   userId: string, itemId: number, later?: Restarted,
 ): { ok: SheetRestored } | RestoreFail {
   const item = getTrashItem(itemId, userId);
-  if (!item || item.kind === 'rows') return { fail: 'not_found', message: 'Nothing in the trash with that id.' };
+  if (!item || (item.kind !== 'sheet' && item.kind !== 'table')) {
+    return { fail: 'not_found', message: 'Nothing in the trash with that id.' };
+  }
   if (item.state !== 'kept') return { fail: 'conflict', message: 'This is being deleted.' };
   const restarted = later ?? nothingRestarted();
   const out = item.kind === 'sheet' ? restoreSheet(userId, item, restarted) : restoreTable(userId, item, restarted);

@@ -1,21 +1,23 @@
-// The trash's records (migration 036): one trash_items row per deletion, and
-// the setting for how long they are kept. Services: trash-rows.ts (rows into
-// a batch), trash-sheets.ts (a sheet or table kept whole), trash-restore*.ts,
-// trash-purge.ts (gone for good), trash-read.ts.
+// The trash's records (migrations 036 and 054): one trash_items row per
+// deletion, and the setting for how long they are kept. Services: trash-rows.ts
+// (rows into a batch), trash-sheets.ts (a sheet or table kept whole),
+// column-trash.ts (a column and its cells), trash-restore*.ts, trash-purge.ts
+// (deleted), trash-read.ts.
 import { db } from '../db';
 import { currentActor } from '../actor';
 import { TRASH_DAYS_DEFAULT, TRASH_DAYS_MAX } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
 
-export type TrashKind = 'rows' | 'sheet' | 'table';
+export type TrashKind = 'rows' | 'sheet' | 'table' | 'column';
+export const TRASH_KINDS: readonly TrashKind[] = ['rows', 'sheet', 'table', 'column'];
 // How the rows went: the grid, delete_rows (REST/MCP), removing duplicates,
 // auto-dedupe as rows arrived, a CSV import replacing the rows, transfer_rows
 // moving them out, a list job's rerun replacing the rows it added before; or
-// the sheet or table itself was deleted.
+// the sheet, table or column itself was deleted.
 export type TrashHow =
-  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table';
+  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table' | 'column';
 export const TRASH_HOWS: readonly TrashHow[] =
-  ['grid', 'api', 'duplicates', 'auto_dedupe', 'import', 'transfer', 'rerun', 'sheet', 'table'];
+  ['grid', 'api', 'duplicates', 'auto_dedupe', 'import', 'transfer', 'rerun', 'sheet', 'table', 'column'];
 export type TrashState = 'moving' | 'kept' | 'restoring' | 'purging';
 
 export interface TrashItem {
@@ -23,6 +25,11 @@ export interface TrashItem {
   table_name: string; sheet_name: string | null; how: TrashHow; via: string; token_name: string | null;
   row_count: number; bytes: number; columns: string; row_generation: number | null; top_index: number | null;
   state: TrashState; restore_at: number | null; restored: number; deleted_at: string; seq_high: number;
+  // A column (migration 054): its name and place, its setup and what referred to it (JSON), and a restore's
+  // name and counts.
+  column_name: string | null; column_position: number | null; column_setup: string | null;
+  column_dropped: string | null; restore_name: string | null; restore_skipped: number; restore_kept: number;
+  restore_keys: number; restore_cursor: number; restore_into: number;
 }
 
 export function getTrashDays(userId: string): number {
@@ -80,6 +87,14 @@ export function setTrashState(id: number, state: TrashState): void {
 
 // Whether something deleted now is kept: Settings keeps it at least a day.
 export const trashKeeps = (userId: string): boolean => getTrashDays(userId) > 0;
+
+// The names a column restore is putting cells back under (services/trash-restore-column.ts): the column is listed
+// only once they are all back, so until then the name is taken, or a column made under it would get those cells.
+export function restoringColumnNames(sheetId: string, userId: string): string[] {
+  return db.prepare(`SELECT restore_name FROM trash_items WHERE sheet_id = ? AND user_id = ? AND kind = 'column'
+    AND state = 'restoring' AND restore_into = 0 AND restore_name IS NOT NULL`).pluck()
+    .all(sheetId, userId) as string[];
+}
 
 // Today's batch of a sheet's rows that went one way (auto-dedupe, a rerun
 // replacing them), while the sheet keeps its row order: a restore puts rows

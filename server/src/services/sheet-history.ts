@@ -19,7 +19,8 @@ export interface SheetChange {
   column: string | null;
   summary: string;
   detail: Record<string, unknown> | null;
-  // A line about something in the trash: whether it is still there to restore.
+  // A line about something in the trash: whether it is still there (or still moving in, as a big column's
+  // cells do for a while after its delete answers).
   in_trash?: boolean;
 }
 
@@ -69,12 +70,13 @@ function parseDetail(raw: string | null): Record<string, unknown> | null {
   } catch { return null; }
 }
 
-// Of the trash items these lines name, the ones still in the trash whole.
+// Of the trash items these lines name, the ones in the trash: kept whole, or still moving in (list_trash
+// shows those as "moving"). One being restored or deleted for good is on its way out.
 function trashStillThere(rows: ChangeRow[]): Set<number> {
   const ids = rows.map(r => parseDetail(r.detail)?.trash_id).filter((v): v is number => typeof v === 'number');
   if (ids.length === 0) return new Set();
   return new Set(db.prepare(`SELECT id FROM trash_items WHERE id IN (SELECT value FROM json_each(?))
-    AND state = 'kept'`).pluck().all(JSON.stringify(ids)) as number[]);
+    AND state IN ('kept', 'moving')`).pluck().all(JSON.stringify(ids)) as number[]);
 }
 
 // A history read's query (?before=&limit=&column=, or the same as JSON).

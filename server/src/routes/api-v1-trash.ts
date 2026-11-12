@@ -1,4 +1,4 @@
-// /v1/trash: what was deleted (rows, sheets, tables), kept for the days set in
+// /v1/trash: what was deleted (rows, sheets, tables, columns), kept for the days set in
 // Settings, and putting it back. GET /trash (q, kind, sheet_id, before, limit),
 // GET /trash/:id, GET /trash/:id/rows (after, limit, column, contains),
 // GET /trash/:id/csv, POST /trash/restore { trash_ids }, POST /trash/:id/restore
@@ -19,6 +19,9 @@ import { historyAsk, readSheetHistory } from '../services/sheet-history';
 
 const router = express.Router();
 const idOf = (req: TokenAuthRequest) => Number(req.params.id);
+// A restored column's dropped references in REST's words; its HTTP setup keeps saved keys only with 'secrets'.
+const asking = (req: TokenAuthRequest) =>
+  ({ surface: 'rest' as const, hasSecretsScope: req.tokenScopes?.has('secrets') === true });
 
 router.get('/trash', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
@@ -69,7 +72,7 @@ router.post('/trash/restore', requireScope('write'), async (req: TokenAuthReques
   try {
     const ids = parseTrashIds((req.body ?? {}).trash_ids);
     if (!ids) return res.status(400).json({ error: `trash_ids must list 1 to ${TRASH_IDS_MAX} trash ids.` });
-    res.json({ results: await restoreFromTrash(req.userId!, holdersFirst(req.userId!, ids)) });
+    res.json({ results: await restoreFromTrash(req.userId!, holdersFirst(req.userId!, ids), asking(req)) });
   } catch (error) {
     console.error('POST /v1/trash/restore error:', error);
     res.status(500).json({ error: 'Failed to restore' });
@@ -81,9 +84,10 @@ router.post('/trash/:id/restore', requireScope('write'), async (req: TokenAuthRe
     const seqs = (req.body ?? {}).seqs;
     if (seqs !== undefined && !Array.isArray(seqs)) return res.status(400).json({ error: 'seqs must be a list.' });
     if (seqs === undefined) {
-      const [result] = await restoreFromTrash(req.userId!, [idOf(req)]);
+      const [result] = await restoreFromTrash(req.userId!, [idOf(req)], asking(req));
       if (result.restored) return res.json(result.restored);
-      const status = result.fail === 'not_found' ? 404 : result.fail === 'bad_request' ? 400 : 409;
+      const status = result.fail === 'not_found' ? 404 : result.fail === 'bad_request' ? 400
+        : result.fail === 'forbidden' ? 403 : 409;
       return res.status(status).json({
         error: result.error, ...(result.busy ? { busy: true } : {}),
         ...(result.blocking_run ? { blocking_run: result.blocking_run } : {}),

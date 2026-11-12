@@ -17,7 +17,9 @@ interface Props {
 const SHOWN_COLUMNS = 8
 
 // Inside a batch of deleted rows: its rows as they were, a page at a time, a
-// search in one column (or any cell), and restoring the rows picked.
+// search in one column (or any cell), and restoring the rows picked. Inside a
+// deleted column: its cells with the row each came from (it comes back whole,
+// from the list, so nothing is picked here).
 export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, onDownload }) => {
   const [column, setColumn] = useState('')
   const [text, setText] = useState('')
@@ -27,6 +29,7 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [restoring, setRestoring] = useState(false)
   const columns = entry?.columns ?? []
+  const whole = entry?.kind === 'column'
 
   const load = async (after?: number) => {
     if (!entry) return
@@ -73,7 +76,9 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
     <Drawer isOpen={!!entry} onClose={onClose} panelClassName="max-w-4xl">
       <DrawerHeader icon={<Rows className="h-5 w-5 text-gray-700" />} title={entry ? titleOf(entry) : ''}
         onClose={onClose}
-        description="The rows as they were deleted. Restore the ones you pick, or the whole batch from the list." />
+        description={whole ? 'Its cells as they were deleted, with the row each came from. Restore the column '
+          + 'from the list: it comes back whole.'
+          : 'The rows as they were deleted. Restore the ones you pick, or the whole batch from the list.'} />
       <DrawerBody>
         <div className="flex flex-wrap items-center gap-2">
           <Select className="w-auto py-1 text-sm" value={column} onChange={setColumn}
@@ -89,12 +94,14 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
               <Download className="h-3 w-3" /><span>Download CSV</span>
             </button>
           )}
-          <button type="button" className="btn-primary flex items-center gap-1 disabled:opacity-50"
-            disabled={picked.size === 0 || restoring} onClick={() => void restorePicked()}
-            data-testid="trash-rows-restore">
-            {restoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArchiveRestore className="h-3 w-3" />}
-            <span>Restore {picked.size > 0 ? plural(picked.size, 'row') : 'picked rows'}</span>
-          </button>
+          {!whole && (
+            <button type="button" className="btn-primary flex items-center gap-1 disabled:opacity-50"
+              disabled={picked.size === 0 || restoring} onClick={() => void restorePicked()}
+              data-testid="trash-rows-restore">
+              {restoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArchiveRestore className="h-3 w-3" />}
+              <span>Restore {picked.size > 0 ? plural(picked.size, 'row') : 'picked rows'}</span>
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto border border-gray-200">
@@ -102,6 +109,7 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-2 py-1.5 w-6" />
+                {whole && <th className="px-2 py-1.5 text-left font-medium text-gray-700">Row</th>}
                 {shown.map(c => <th key={c} className="px-2 py-1.5 text-left font-medium text-gray-700">{c}</th>)}
               </tr>
             </thead>
@@ -109,9 +117,10 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
               {rows.map(r => (
                 <tr key={r.seq} className="border-t border-gray-100">
                   <td className="px-2 py-1">
-                    <input type="checkbox" checked={picked.has(r.seq)} onChange={() => toggle(r.seq)}
-                      aria-label="Pick this row" />
+                    {!whole && <input type="checkbox" checked={picked.has(r.seq)} onChange={() => toggle(r.seq)}
+                      aria-label="Pick this row" />}
                   </td>
+                  {whole && <td className="px-2 py-1 text-gray-500" title={r.row_id}>{r.old_row_index + 1}</td>}
                   {shown.map(c => (
                     <td key={c} className="px-2 py-1 max-w-[14rem] truncate text-gray-800" title={r.cells[c] ?? ''}>
                       {r.cells[c] ?? ''}

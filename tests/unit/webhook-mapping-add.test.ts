@@ -20,6 +20,7 @@ import busyMod from '../../server/src/lib/sheet-busy'
 import sqlMod from '../../server/src/lib/row-filter/sql'
 import countsMod from '../../server/src/services/column-counts'
 import csvMod from '../../server/src/lib/csv-write'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
@@ -29,6 +30,7 @@ const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-b
 const { compileWhere } = sqlMod as typeof import('../../server/src/lib/row-filter/sql')
 const { columnCounts } = countsMod as typeof import('../../server/src/services/column-counts')
 const { csvLine } = csvMod as typeof import('../../server/src/lib/csv-write')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -72,6 +74,7 @@ app.use(cookieParser())
 app.use(express.json())
 app.use('/api/sheets', webhookRoutes)
 const server = app.listen(0, '127.0.0.1')
+applyServerTimeouts(server)
 await new Promise(r => server.once('listening', r))
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`

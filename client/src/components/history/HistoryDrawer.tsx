@@ -123,7 +123,7 @@ export const HistoryDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) => 
           <button type="button" className="btn-secondary" onClick={() => void load(next)}>Load older</button>
         )}
         <p className="text-xs text-gray-500 pt-2 border-t border-gray-200">
-          Cell edits aren&apos;t listed. Deleted rows, sheets and tables are in the trash.
+          Cell edits aren&apos;t listed. Deleted rows, columns, sheets and tables are in the trash.
         </p>
       </DrawerBody>
     </Drawer>

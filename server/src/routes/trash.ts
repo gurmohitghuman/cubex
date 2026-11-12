@@ -56,8 +56,8 @@ router.get('/:id/csv', async (req: AuthRequest, res) => {
   }
 });
 
-// { ids: [...] }: tables first, then sheets, then rows, so one restored with
-// what holds it goes through.
+// { ids: [...] }: tables first, then sheets, then columns and rows (newest
+// deletion first), so one restored with what holds it goes through.
 router.post('/restore', async (req: AuthRequest, res) => {
   try {
     const ids = parseTrashIds((req.body ?? {}).ids);

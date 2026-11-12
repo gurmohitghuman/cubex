@@ -22,6 +22,7 @@ import tokenStartMod from '../../server/src/services/run-start-token-http'
 import keysMod from '../../server/src/services/saved-keys'
 import v1Mod from '../../server/src/routes/api-v1-run-control'
 import mcpMod from '../../server/src/mcp/build-server'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { seedProcessingPlaceholders } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { clearRunPlaceholders } = placeholdersMod as typeof import('../../server/src/lib/run-placeholders')
 const { MCP_RUN_STARTS_PER_MIN } = constMod as typeof import('../../server/src/lib/api-v1-constants')
@@ -29,6 +30,7 @@ const { tokenStartHttpRun } = tokenStartMod as typeof import('../../server/src/s
 const { createSavedKey } = keysMod as typeof import('../../server/src/services/saved-keys')
 const { default: v1Router } = v1Mod as unknown as { default: express.Router }
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 const { db, uid, ok, done, idle, sheet } = undoKit('http-held-inputs-token')
 console.error = () => {}
 
@@ -44,6 +46,7 @@ app.use('/v1', (req, _res, next) => {
   next()
 }, v1Router)
 const server = app.listen(0)
+applyServerTimeouts(server)
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const mcp = buildMcpServer({ userId: uid, tokenId: 'tok-mcp', tokenName: 'n', scopes: SCOPES })
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()

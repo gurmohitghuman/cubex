@@ -21,6 +21,7 @@ import migMod from '../../server/src/db/migrate'
 import viewsMod from '../../server/src/services/views'
 import mcpMod from '../../server/src/mcp/build-server'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createView } = viewsMod as typeof import('../../server/src/services/views')
@@ -67,6 +68,7 @@ async function main() {
   app.use(sheetsRouter)
   // Only this machine can reach it (every request is signed in); the port is read once it listens.
   const http = app.listen(0, '127.0.0.1')
+  ;(timeoutsMod as typeof import('../../server/src/lib/server-timeouts')).applyServerTimeouts(http)
   await once(http, 'listening')
   const base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`
   const mcp = buildMcpServer({ userId: uid, tokenId: 't', tokenName: 'n', scopes: new Set(['read']) })

@@ -46,6 +46,10 @@ const waitsForABatch = async (a: string, o: string, id: string, returnColumn: st
   return { run, slow }
 }
 
+// The delete puts the column in the trash (migration 054): its answer names that item.
+const trashedColumn = (sid: string, column: string) => db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ?
+  AND kind = 'column' AND column_name = ? ORDER BY id DESC LIMIT 1`).pluck().get(sid, column) as number
+
 await ok('a formula column it reads that fills again while it waits for an auto-run batch run: every row again',
   async () => {
     const a = place().sid, o = place().sid
@@ -205,7 +209,7 @@ await ok('a lookup deleted while it waits loses what it kept once its wait sees 
   const { run, slow } = await waitsForABatch(a, o, id, 'Name')
   try {
     assert.ok(lookupFillsKept().lookups.includes(id))
-    assert.deepEqual(await deleteSheetColumn(a, uid, 'Who'), { ok: true })
+    assert.deepEqual(await deleteSheetColumn(a, uid, 'Who'), { ok: true, trashId: trashedColumn(a, 'Who') })
     await until('it is forgotten', () => !lookupFillsKept().lookups.includes(id), 3_000)
   } finally {
     slow.restore()

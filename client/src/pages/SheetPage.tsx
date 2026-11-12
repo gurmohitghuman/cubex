@@ -138,7 +138,7 @@ export const SheetPage: React.FC = () => {
     waitForSaves: cellOps.waitForSaves,
     dropPendingForColumn: cellOps.dropPendingForColumn,
     renamePendingColumn: cellOps.renamePendingColumn,
-    setAutosavePaused: cellOps.setAutosavePaused,
+    setAutosavePaused: cellOps.setAutosavePaused, reloadActiveSheet,
   })
 
   const onEnrichPaused = useEnrichPauseToast(currentSheetIdRef, modals)

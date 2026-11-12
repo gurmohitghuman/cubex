@@ -1,8 +1,10 @@
 import { db } from './db';
+import { COLUMN_TRASH_SLICE_ROWS } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
 import { runInputPath } from './run-inputs/stale-sql';
+import { copyCellsToItem, purgeTrashItem, sealColumnItem } from './trash/column-move';
 
 // Copying or removing a key across every row of a big sheet is a heavy job, so
 // it runs in slices between requests (lib/slices.ts). A removal is recorded in
@@ -34,9 +36,17 @@ export async function copyColumnKey(sheetId: string, userId: string, from: strin
   `).run(toPath, fromPath, rowIds.length > 0 ? rowIds[rowIds.length - 1] : 0, sheetId, userId, fromPath);
 }
 
-export function recordPurge(sheetId: string, userId: string, name: string): void {
-  db.prepare('INSERT OR IGNORE INTO column_purges (sheet_id, user_id, column_name) VALUES (?, ?, ?)')
-    .run(sheetId, userId, name);
+// trashId: a column delete whose cells go to that trash item (lib/trash/column-move.ts) as they are stripped.
+// That one is a plain INSERT: a strip of the name still pending would keep its own record and never fill the
+// item, so it fails loudly (services/column-delete.ts refuses such a delete before it gets here).
+export function recordPurge(sheetId: string, userId: string, name: string, trashId: number | null = null): void {
+  if (trashId === null) {
+    db.prepare('INSERT OR IGNORE INTO column_purges (sheet_id, user_id, column_name) VALUES (?, ?, ?)')
+      .run(sheetId, userId, name);
+    return;
+  }
+  db.prepare('INSERT INTO column_purges (sheet_id, user_id, column_name, trash_id) VALUES (?, ?, ?, ?)')
+    .run(sheetId, userId, name, trashId);
 }
 
 export function forgetPurge(sheetId: string, name: string): void {
@@ -51,7 +61,10 @@ export function pendingPurges(sheetId: string): Set<string> {
 // Removes the key from every row, then forgets the record. Call recordPurge
 // first, in the same transaction that stops the sheet listing the column. The
 // same pass drops deleted run columns' keys from run_inputs (run_input_purges,
-// lib/run-inputs/keys.ts), in the same row write.
+// lib/run-inputs/keys.ts), in the same row write. When the record names a
+// trash item still filling (a column deleted to the trash), each slice first
+// copies its rows' cells into it, in the same transaction, and the last one
+// seals it.
 export async function purgeColumnKey(sheetId: string, userId: string, name: string): Promise<void> {
   const dead = db.prepare('SELECT key FROM run_input_purges WHERE sheet_id = ?').pluck().all(sheetId) as number[];
   const strip = dead.length === 0 ? db.prepare(`
@@ -68,11 +81,29 @@ export async function purgeColumnKey(sheetId: string, userId: string, name: stri
   // Only rows holding the cell or a dead key are written.
   const path = jsonPath(name);
   const keys = dead.map(runInputPath);
-  await eachRowIdSlice(await sheetRowIds(sheetId, userId), ids => {
+  const item = purgeTrashItem(sheetId, name);
+  const stripSlice = (ids: string) => {
     if (dead.length === 0) strip.run(path, ids, sheetId, userId, path);
     else strip.run(path, ...keys, path, ids, sheetId, userId, path, ...keys);
-  });
-  forgetPurge(sheetId, name);
+  };
+  const rowIds = await sheetRowIds(sheetId, userId);
+  if (item === null) await eachRowIdSlice(rowIds, stripSlice);
+  else {
+    // The cells are written twice (into the trash, out of the rows): smaller slices, each checkpointed.
+    await eachRowIdSlice(rowIds, ids => {
+      db.transaction(() => {
+        copyCellsToItem(item, sheetId, userId, name, path, ids);
+        stripSlice(ids);
+      }).immediate();
+    }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true });
+  }
+  if (item === null) forgetPurge(sheetId, name);
+  else {
+    db.transaction(() => {
+      sealColumnItem(item);
+      forgetPurge(sheetId, name);
+    }).immediate();
+  }
   if (dead.length > 0) {
     db.prepare('DELETE FROM run_input_purges WHERE sheet_id = ? AND key IN (SELECT value FROM json_each(?))')
       .run(sheetId, JSON.stringify(dead));

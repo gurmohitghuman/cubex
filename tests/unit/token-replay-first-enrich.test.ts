@@ -9,6 +9,8 @@ import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { tregKit, type Args, type Start } from './token-replay-treg-kit'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 const k = await tregKit('token-replay-first-enrich')
 const { db, uid, ok, done, idle, TRIES, runsOn, replays, preUpgradeRow, hook, caller, fresh, tregDown } = k
@@ -25,6 +27,7 @@ app.use('/v1', (req, _res, next) => {
   next()
 }, v1Enrich)
 const server = app.listen(0)
+applyServerTimeouts(server)
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const start: Start = a => tokenStartEnrichmentRun(caller('tok-enrich'), a)
 const email = (sid: string, more: Args = {}) => ({ sheet_id: sid, tool_id: 'treg.people.email.find',
