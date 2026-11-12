@@ -5,15 +5,16 @@
 //
 // What it checks, on the source only (the TypeScript parser, no database), in each .ts file under both folders:
 // - each call of `<anything>.transaction(...)` is begun with .immediate(): called as `.transaction(f).immediate()`,
-//   or kept in a const whose every use (one at least, in the block declaring it) is `<name>.immediate(...)`. A
-//   plain call, .exclusive(), .default() or the transaction passed on fails;
+//   or kept in a const, not exported, whose every use (one at least, in the block declaring it) is
+//   `<name>.immediate(...)`. A plain call, .exclusive(), .default(), the transaction passed on, kept in a let or
+//   exported (its uses in other files aren't followed) fails;
 // - each readTransaction call matches a READS entry (file, the named function holding it, how many it holds);
-//   readTransaction used other than called fails;
+//   readTransaction used other than called, or renamed on import or destructuring, fails;
 // - a transaction begun deferred on purpose matches a DEFERRED entry: `.transaction(f).deferred`, or an exec or
 //   prepare whose first argument is a literal BEGIN (not BEGIN IMMEDIATE or EXCLUSIVE).
 // An entry matching no call, or fewer calls than are there, fails. A fixture proves each rule catches its case.
-// What it can't see: a transaction kept in a let or object and begun later, BEGIN built from pieces, and
-// transactions in tests/e2e, scripts or other connections' files outside these folders.
+// What it can't see: BEGIN built from pieces, `db['transaction']` or a `transaction` taken out of the connection
+// (destructured, or bound as tests do to wrap it), and anything outside these two folders (tests/e2e, scripts).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -67,6 +68,8 @@ function keptImmediate(call: ts.CallExpression): boolean {
   const decl = call.parent
   if (!ts.isVariableDeclaration(decl) || decl.initializer !== call || !ts.isIdentifier(decl.name)) return false
   if (!(decl.parent.flags & ts.NodeFlags.Const)) return false
+  // Exported, it can be begun in another file, which this doesn't follow.
+  if (ts.getCombinedModifierFlags(decl) & ts.ModifierFlags.Export) return false
   const name = decl.name.text
   let block: ts.Node = decl
   while (!ts.isBlock(block) && !ts.isSourceFile(block) && !ts.isModuleBlock(block)) block = block.parent
@@ -105,7 +108,7 @@ function scan(file: string, text: string): Scan {
     if (ts.isIdentifier(n) && n.text === 'readTransaction') {
       const p = n.parent
       if (ts.isCallExpression(p) && p.expression === n) out.reads.push(spot(n))
-      else if (!ts.isFunctionDeclaration(p) && !ts.isImportSpecifier(p) && !ts.isBindingElement(p)) {
+      else if (!ts.isFunctionDeclaration(p) && !((ts.isImportSpecifier(p) || ts.isBindingElement(p)) && p.name === n)) {
         out.bad.push({ ...spot(n), what: 'readTransaction used other than called' })
       }
     }
@@ -145,11 +148,15 @@ const BAD = [
   'db.transaction(() => 1).default()',
   'run(db.transaction(() => 1))',
   'const r = readTransaction; r(() => 1)()',
+  'export const e = db.transaction(() => 1); e.immediate()',
+  "import { readTransaction as rt } from './db-transaction'; rt(() => 1)()",
+  'const { readTransaction: rb } = mod; rb(() => 1)()',
 ]
 const DEFERS = ['db.transaction(() => 1).deferred()', 'const d = db.transaction(() => 1).deferred', "db.exec('BEGIN')",
   'db.prepare(`BEGIN DEFERRED`).run()', "conn.exec(' begin transaction')"]
 const GOOD = `db.transaction(() => 1).immediate()
 const p = db.transaction((n: number) => n); p.immediate(2); p.immediate(3)
+o.p(); ({ p: 1 })
 function f() { return readTransaction(() => 1)() }
 db.exec('BEGIN IMMEDIATE')
 db.prepare("SELECT 'BEGIN'").get()`
