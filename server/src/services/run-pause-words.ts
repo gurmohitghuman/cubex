@@ -4,6 +4,9 @@
 // enrichment and waterfall runners, the list source), and a resume clears both (services/run-lifecycle.ts).
 // A person's pause saves no reason, so it has no words. An AI or HTTP API run stopped by its access token's
 // spend cap saves no words either: they're worked out from the token when read, so a cap raised since says so.
+// An enrichment or waterfall run at its token's cap saved its words (services/token-spend.ts tokenRowsThatFit),
+// which can say the cap has no room for one more row at its most: that needs the row's cost, which the run
+// doesn't keep, so those words stay as saved after a raise (get_run_status gives the same; Resume works).
 import { spendCapRefusal } from './token-spend';
 
 const CAP_RAISED = "Its access token's spend cap was raised: resume the run to go on.";

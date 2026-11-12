@@ -3,7 +3,7 @@ import { authedApi, makeAccessToken } from './helpers'
 import { MOCK_TEAM_KEY, mockTreg, setTregKey } from './helpers-treg'
 import { freshTreg, runStatus, seedLeadRows, startRun, waitRun } from './helpers-enrich'
 import { mcpClient, call } from './helpers-mcp'
-import { expectLine, listed, openSheet, pausedLine, putPause } from './helpers-paused'
+import { clearTokenCaps, expectLine, listed, openSheet, pausedLine, putPause, tokenCap } from './helpers-paused'
 
 // Enrichment runs that paused themselves, on the sheet (components/sheet/PausedRunsNotice.tsx): the line under
 // the header names the column and says why and what to change, in the words the run saved. Its Resume carries
@@ -27,6 +27,7 @@ const findRun = (over: Record<string, unknown> = {}) => ({
 
 test.describe.configure({ mode: 'serial' })
 test.beforeAll(async () => { api = await authedApi() })
+test.afterEach(async () => { await clearTokenCaps(api) })
 test.afterAll(async () => { await setTregKey(api, MOCK_TEAM_KEY) })
 
 async function pausedOn(state: Record<string, unknown>, reason: string, over: Record<string, unknown> = {}) {
@@ -121,7 +122,7 @@ test("token_cap: an agent's run at its token's cap; raised, the line's Resume fi
   const name = 'sheet paused enrichment cap'
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], name))
   const tok = ((await (await api.get('/api/settings/access-tokens')).json()) as Array<any>).find(t => t.name === name)
-  const cap = (usd: number) => api.patch(`/api/settings/access-tokens/${tok.id}`, { data: { spend_cap_usd: usd } })
+  const cap = tokenCap(api, tok.id)
   expect((await cap(0.02)).ok()).toBeTruthy()
   const started = await call(client, 'run_enrichment', { sheet_id: sheetId, tool_id: 'treg.people.email.find',
     column_name: COLUMN, inputs: { full_name: 'Name', domain: 'Website' },

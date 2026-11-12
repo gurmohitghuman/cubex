@@ -52,6 +52,19 @@ export function putPause(table: 'ai_runs' | 'http_runs', runId: string, reason: 
   } finally { db.close() }
 }
 
+// An access token's spend cap set by a test, cleared after each test whether it passed or not (clearTokenCaps in
+// an afterEach): a capped token left behind is one more capped row in Settings, and token-spend.spec.ts expects to
+// find its own alone.
+const capped = new Set<string>()
+export function tokenCap(api: APIRequestContext, tokenId: string) {
+  capped.add(tokenId)
+  return (usd: number) => api.patch(`/api/settings/access-tokens/${tokenId}`, { data: { spend_cap_usd: usd } })
+}
+export async function clearTokenCaps(api: APIRequestContext) {
+  for (const id of capped) await api.patch(`/api/settings/access-tokens/${id}`, { data: { spend_cap_usd: null } })
+  capped.clear()
+}
+
 // The notice shows its words as text: no element came from them and nothing in them ran.
 export async function expectPlainText(page: Page, runId: string) {
   const line = pausedLine(page, runId)

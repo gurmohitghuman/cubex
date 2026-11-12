@@ -3,7 +3,7 @@ import Database from 'better-sqlite3'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, seedSheet, makeAccessToken, assertTestDb } from './helpers'
 import { mcpClient, call } from './helpers-mcp'
-import { expectLine, listed, openSheet, pausedLine, putPause } from './helpers-paused'
+import { clearTokenCaps, expectLine, listed, openSheet, pausedLine, putPause, tokenCap } from './helpers-paused'
 
 // AI runs that paused themselves, on the sheet (components/sheet/PausedRunsNotice.tsx): the line under the
 // header names the run's column and says why and what to change, and its Resume carries the run on (at its
@@ -29,6 +29,7 @@ test.beforeAll(async () => {
   client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], TOKEN))
   expect((await api.put('/api/settings/openrouter-key', { data: { apiKey: FAKE_KEY } })).ok()).toBeTruthy()
 })
+test.afterEach(async () => { await clearTokenCaps(api) })
 test.afterAll(async () => { await api.delete('/api/settings/openrouter-key') })
 
 const statusOf = async (sheetId: string, runId: string) => {
@@ -116,7 +117,7 @@ test("token_cap (put in place): the words come from the token's cap as it is now
   const { tableId, sheetId } = await seedSheet(api, 7)
   const runId = await braked(sheetId, 'Agent')
   const tok = ((await (await api.get('/api/settings/access-tokens')).json()) as Array<any>).find(t => t.name === TOKEN)
-  const cap = (usd: number) => api.patch(`/api/settings/access-tokens/${tok.id}`, { data: { spend_cap_usd: usd } })
+  const cap = tokenCap(api, tok.id)
   expect((await cap(0)).ok()).toBeTruthy()
   putPause('ai_runs', runId, 'token_cap', 'placeholder')
   setRun(runId, 'UPDATE ai_runs SET error_message = NULL, access_token_id = ? WHERE id = ?', tok.id)
@@ -135,5 +136,4 @@ test("token_cap (put in place): the words come from the token's cap as it is now
   await resumeLine(page, runId, 'Agent (Output)')
   await ended(sheetId, runId)
   await expect(pausedLine(page, runId)).toBeHidden({ timeout: 15_000 })
-  await api.patch(`/api/settings/access-tokens/${tok.id}`, { data: { spend_cap_usd: null } })
 })
