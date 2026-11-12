@@ -11,7 +11,7 @@ interface Props {
   access: EnrichToolAccess | null
   order: string[]
   skip: string[]
-  stopAtFirst: boolean
+  stopAtFirst?: boolean            // left out: no "Stop after the first provider" (a waterfall's email check)
   sent: Set<string>
   update: (patch: { providerOrder?: string[]; skipProviders?: string[]; stopAtFirst?: boolean }) => void
 }
@@ -83,14 +83,18 @@ export const ProvidersPane: React.FC<Props> = (p) => {
           {ordered.map((r, i) => item(r, true, i))}
         </ul>
       </section>
-      <label className="flex items-start gap-2 text-sm text-gray-700">
-        <input type="checkbox" checked={p.stopAtFirst} onChange={e => p.update({ stopAtFirst: e.target.checked })}
-          className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" />
-        <span>
-          Stop after the first provider
-          <span className="block text-xs text-gray-500">Only the first provider that can answer runs. Cheaper, but finds less.</span>
-        </span>
-      </label>
+      {p.stopAtFirst !== undefined && (
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={p.stopAtFirst} onChange={e => p.update({ stopAtFirst: e.target.checked })}
+            className="mt-0.5 border-gray-300 text-cube-black focus:ring-black" />
+          <span>
+            Stop after the first provider
+            <span className="block text-xs text-gray-500">
+              Only the first provider that can answer runs. Cheaper, but finds less.
+            </span>
+          </span>
+        </label>
+      )}
     </div>
   )
 }

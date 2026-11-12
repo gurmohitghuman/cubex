@@ -56,7 +56,8 @@ export async function runCheck(a: {
   // An address the verify can't take, now or on a retry: the value fails its check.
   if (!built.ok) return { outcome: 'failed', verdict: "the verify can't take this address", costUsd: 0 };
   const parts = {
-    method: built.method, path: built.path, query: built.query, body: built.body, prefer: [], exclude: b.exclude,
+    method: built.method, path: built.path, query: built.query, body: built.body, prefer: b.prefer ?? [],
+    exclude: b.exclude,
   };
   const r = await runStep(a.ctx, {
     toolId: b.tool.id, attempt: `w${a.step.id}.c1`, rowIndex: a.row.rowIndex, rowId: a.row.rowId, parts,

@@ -5,7 +5,9 @@
 // drawer's estimate, so the run spends what the estimate said it could.
 import { ENRICH_FEATURED, ENRICH_VERIFY_TOOL_ID, TREG_BASE_URL } from '../lib/constants';
 import { toolTitle } from '../lib/enrich-tool-label';
-import { defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, type ProviderPick } from '../lib/enrich-estimate';
+import {
+  defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, verifyPick, type ProviderPick,
+} from '../lib/enrich-estimate';
 import { missingInputs } from '../lib/enrich-request';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
 import {
@@ -95,6 +97,10 @@ export async function buildEnrichmentConfig(
     const v = await getTool(ENRICH_VERIFY_TOOL_ID);
     if (!('ok' in v)) return bad(`Can't load the email checker: ${v.message}`);
     verify = v.ok;
+    // The run's skips keep those providers out of its checks too; its order is for the finds.
+    if (noProviderCanRun(verify, verifyPick(input.skipProviders))) {
+      return bad('No provider can verify the email with these switches. Switch providers on.');
+    }
   }
   const filled = inputTemplatesFor(input, tool, columns);
   if ('fail' in filled) return filled;
@@ -137,7 +143,8 @@ export async function buildEnrichmentConfig(
     cap = input.maxCostPerRowUsd ?? (list?.provider
       ? (await listRowPrices(tool, list.provider, given, input.list!.maxItems)).highUsd
       : verify
-        ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick), defaultMaxCostPerRow(verify, { given: ['email'] }))
+        ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick),
+          defaultMaxCostPerRow(verify, verifyPick(input.skipProviders)))
         : defaultMaxCostPerRow(tool, pick));
   }
   const sized = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
@@ -172,7 +179,7 @@ export async function buildEnrichmentConfig(
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test, where: input.conditions },
     email: verify && input.email ? {
       strategy: input.email.accept, guess: input.email.guess, pattern: input.email.pattern,
-      verifyTool: requestToolOf(verify), verifyExclude: routeFor(verify, [], [], false).exclude,
+      verifyTool: requestToolOf(verify), verifyExclude: routeFor(verify, [], input.skipProviders, false).exclude,
       verifyKind: verify.kind,
     } : null,
   };

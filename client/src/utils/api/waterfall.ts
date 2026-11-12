@@ -28,8 +28,11 @@ export interface LookupChoices {
 }
 export type StepChoices = EnrichmentChoices | AiChoices | HttpChoices | FormulaChoices | LookupChoices
 export type EmailAccept = 'safest' | 'balanced' | 'wide'
-// A check on the value a step finds: treg's email verify, or a formula over {{value}} (truthy passes).
-export type CheckChoices = { kind: 'verify'; accept: EmailAccept } | { kind: 'formula'; formula: string }
+// A check on the value a step finds: treg's email verify (its providers picked as a find step's; a check saved
+// before it could pick them has neither list), or a formula over {{value}} (truthy passes).
+export type CheckChoices =
+  | { kind: 'verify'; accept: EmailAccept; providerOrder?: string[]; skipProviders?: string[] }
+  | { kind: 'formula'; formula: string }
 
 export interface StepInput {
   id: string | null; label: string | null; on: boolean; requires: string[][] | null; choices: StepChoices

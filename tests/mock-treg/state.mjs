@@ -47,6 +47,9 @@ export const state = defaults()
 const requests = []
 // Every charge: { key, toolId, costMicro }. GET /__mock/billing.
 export const billing = []
+// Every provider a routed call asked: { toolId, provider }. GET /__mock/providers. One skipped by the route's
+// exclude, or past its max cost, is never asked, so it's never here.
+export const providerCalls = []
 
 // What specs assert on: which routes Cubex called and with which headers. The
 // key itself is never kept, only whether one was sent.
@@ -70,9 +73,11 @@ export function adminRoute(req, url, body, send) {
     Object.assign(state, defaults())
     requests.length = 0
     billing.length = 0
+    providerCalls.length = 0
     return send(200, state)
   }
   if (url.pathname === '/__mock/requests' && req.method === 'GET') return send(200, requests)
   if (url.pathname === '/__mock/billing' && req.method === 'GET') return send(200, billing)
+  if (url.pathname === '/__mock/providers' && req.method === 'GET') return send(200, providerCalls)
   return send(404, { error: 'unknown mock route' })
 }

@@ -22,6 +22,9 @@ export const mockTreg = {
   reset: () => withMock(async c => { expect((await c.post('/__mock/reset')).ok()).toBeTruthy() }),
   set: (patch: Record<string, unknown>) => withMock(async c => { expect((await c.post('/__mock/state', { data: patch })).ok()).toBeTruthy() }),
   requests: () => withMock(async c => (await (await c.get('/__mock/requests')).json()) as MockRequest[]),
+  // Each provider a routed call asked (tests/mock-treg/waterfall.mjs): a skipped one never shows here.
+  providers: () => withMock(async c =>
+    (await (await c.get('/__mock/providers')).json()) as Array<{ toolId: string; provider: string }>),
 }
 
 export async function setTregKey(api: APIRequestContext, key: string | null) {

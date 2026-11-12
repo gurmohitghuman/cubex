@@ -3,6 +3,7 @@ import type { CheckChoices, EmailAccept, ResultType } from '@/utils/api/waterfal
 import type { DraftInput } from './draft'
 import { FormulaField } from './FormulaField'
 import { Select } from '@/components/ui/Select'
+import { StepProviders } from './StepProviders'
 
 interface Props {
   check: CheckChoices | null
@@ -11,14 +12,16 @@ interface Props {
   onChange: (check: CheckChoices | null) => void
 }
 
+const VERIFY_TOOL = 'treg.people.email.verify'
+const EMAIL = new Set(['email'])
 const ACCEPT: Array<[EmailAccept, string]> = [
   ['safest', 'Valid only'], ['balanced', 'Valid or catch-all'], ['wide', 'Valid, catch-all or risky'],
 ]
 
 // A check on the value the step finds, before it counts: treg's email verify
-// (a work email only; each check costs what treg charges) or a formula over
-// {{value}} whose result is true. A value that fails is rejected and the next
-// step runs.
+// (a work email only; each check costs what treg charges; its own providers,
+// switched off or put first as a find step's) or a formula over {{value}}
+// whose result is true. A value that fails is rejected and the next step runs.
 export const CheckField: React.FC<Props> = ({ check, resultType, inputs, onChange }) => {
   const kind = check?.kind ?? ''
   const pick = (v: string) => onChange(v === 'verify' ? { kind: 'verify', accept: 'safest' }
@@ -34,9 +37,15 @@ export const CheckField: React.FC<Props> = ({ check, resultType, inputs, onChang
         ]} />
       </label>
       {check?.kind === 'verify' && (
-        <Select<string> className="w-full" value={check.accept} label="Accept"
-          onChange={v => onChange({ kind: 'verify', accept: v as EmailAccept })}
-          options={ACCEPT.map(([v, l]) => ({ value: v, label: l }))} />
+        <>
+          <Select<string> className="w-full" value={check.accept} label="Accept"
+            onChange={v => onChange({ ...check, accept: v as EmailAccept })}
+            options={ACCEPT.map(([v, l]) => ({ value: v, label: l }))} />
+          <StepProviders toolId={VERIFY_TOOL} title="Verify providers" sent={EMAIL} order={check.providerOrder ?? []}
+            skip={check.skipProviders ?? []} onChange={({ providerOrder, skipProviders }) => onChange({
+              ...check, ...(providerOrder ? { providerOrder } : {}), ...(skipProviders ? { skipProviders } : {}),
+            })} />
+        </>
       )}
       {check?.kind === 'formula' && (
         <FormulaField formula={check.formula} names={['value', ...inputs.map(i => i.key)]} label="Check formula"

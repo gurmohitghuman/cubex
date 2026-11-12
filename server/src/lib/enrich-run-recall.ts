@@ -74,7 +74,9 @@ export function recallChoices(config: EnrichRunConfig, statusColumn: string): Re
   }
   return {
     toolId: e.toolId, toolName: e.toolName, preset: e.preset, columnName: statusColumn, inputs,
-    cleanDomains: e.cleanDomains, providerOrder: [...e.route.prefer], skipProviders: [...e.route.exclude],
+    cleanDomains: e.cleanDomains, providerOrder: [...e.route.prefer],
+    // A verified email run's skips that only check (no finder of that name) are kept on its checks.
+    skipProviders: [...new Set([...e.route.exclude, ...(e.email?.verifyExclude ?? [])])],
     stopAtFirst: e.route.stopAtFirst,
     email: e.email ? { accept: e.email.strategy, guess: e.email.guess, pattern: e.email.pattern } : null,
     outputs: config.responseMapping.map(m => recallOutput(m, new Set(e.answerFields ?? []))),
