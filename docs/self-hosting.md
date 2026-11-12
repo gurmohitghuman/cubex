@@ -241,6 +241,7 @@ It returns `200` with `"status": "ok"` when the database, the run queue and the 
 | Enrichment runs pause with "Can't reach treg", or `/api/health` says `"treg": "unreachable"` | The server can't reach treg.to. Check with `curl -sI https://treg.to` on the server. If that fails, allow outgoing HTTPS in your provider's firewall (see step 2). Then click **Resume** on the run; auto-runs try again on their own a few minutes later. |
 | Large CSV imports fail | Something between your browser and Cubex limits upload size: nginx (see below) or Cloudflare's proxy (100 MB on the free plan). Caddy has no limit. |
 | You forgot the password | Run `cubex reset-password` on the server. It signs out every browser. |
+| `cubex logs` says "The WAL checkpoint worker could not start" | The install is missing a file. Cubex keeps working, but big column transforms (`transform_column`) then copy the database's write-ahead log back on the main thread, so the server can answer more slowly while one runs. Run `cubex update` (or install Cubex again) to fix it. |
 
 ## Other setups
 

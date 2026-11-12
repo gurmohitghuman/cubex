@@ -128,11 +128,19 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
   }
 
   const columns = getSheetColumns(p.sheetId, userId, false);
-  // template pulls from the whole row; every other op reads source_column.
+  // template pulls from the whole row; every other op reads source_column. Each column a call reads must be
+  // the sheet's (where's too: prepareWhere), or it would write from an empty value (a column renamed since a
+  // pass stopped, for one).
   if (p.operation !== 'template') {
     if (!p.sourceColumn) return { fail: 'invalid', error: 'source_column is required for this operation.' };
     if (!columns.includes(p.sourceColumn)) {
       return { fail: 'invalid', error: `Source column "${p.sourceColumn}" not found.` };
+    }
+  } else {
+    const missing = templateColumns(p.template!).filter(c => !columns.includes(c));
+    if (missing.length > 0) {
+      const named = missing.map(c => `"${c}"`).join(', ');
+      return { fail: 'invalid', error: `Template column${missing.length === 1 ? '' : 's'} ${named} not found.` };
     }
   }
   let filter = { sql: '1', params: [] as unknown[] };

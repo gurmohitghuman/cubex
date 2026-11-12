@@ -7,9 +7,11 @@
 // server), and the WAL is copied back on the checkpoint worker's thread
 // (lib/wal-checkpointer.ts) once enough of it waits: a checkpoint after every
 // page, on this thread, held the server about 50 ms each on a slow disk. Past
-// its bound the walk waits for the worker between pages. A page that wrote
-// nothing doesn't grow the WAL. One page of rows is in memory at a time,
-// whatever the sheet's size. A page first reads its window off the (sheet_id,
+// its bound the walk waits for the worker before a page, and stops there, as at
+// its time limit, when the call's time runs out first or, past its first page,
+// when a reader holds the frames the worker would copy (lib/wal-checkpointer.ts).
+// A page that wrote nothing doesn't grow the WAL. One page of rows is in memory
+// at a time, whatever the sheet's size. A page first reads its window off the (sheet_id,
 // user_id, row_index) index, then only the rows in that window that pass
 // `where`: a where that matches nothing still looks at one window a page, never
 // the rest of the sheet in one statement. The call stops before a page once it
@@ -92,9 +94,11 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     return !done;
   };
   try {
-    for (let more = true; more;) {
-      // Only a page that wrote grew the WAL.
-      if (wrote) await walRoom(startedAt + TRANSFORM_MAX_CALL_MS);
+    for (let first = true, more = true; more; first = false) {
+      // Only a page that wrote grew the WAL, and the call before may have stopped with it past its bound. A wait
+      // that can't end stops the call, but only after its first page, so each call goes on (the time limit
+      // still stops it before a page).
+      if ((wrote || first) && !(await walRoom(startedAt + TRANSFORM_MAX_CALL_MS)) && !first) break;
       more = withoutAutoCheckpoint(step);
       await yieldToRequests();
     }

@@ -20,13 +20,13 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       `${TRANSFORM_MAX_CALL_MS / 1000} seconds; the rows it wrote stay written. When it stops with rows left, the ` +
       'answer has next_cursor: call again with the same arguments and cursor set to it to go on. If it stops on ' +
       'an error after writing rows, the error carries next_cursor and rows_done: go on with that cursor, never ' +
-      'start over (the rows written would get the operation twice). Until that pass gets to the end, any call ' +
-      'writing the same column without its cursor is refused with the cursor and rows_done; restart: true ' +
-      'starts the column over from the first row instead. A cursor works only while its pass is open and only ' +
-      'as the latest one the pass answered; the pass ends when it reaches the end or restarts, when its column ' +
-      'is deleted for good, or when its rows are reordered (a sort, a replace or an import undone, removed ' +
-      'duplicates, rows restored to other places). Sent to the trash with its column or sheet, it comes back with ' +
-      'the restore; a copy of the sheet gets a pass of its own.',
+      'start over (the rows written would get the operation twice). Until a pass that wrote rows gets to the end, ' +
+      'any call writing the same column without its cursor is refused with the cursor and rows_done; restart: ' +
+      'true starts the column over from the first row instead. A cursor works only while its pass is open and ' +
+      'only as the latest one the pass answered; the pass ends when it reaches the end or restarts, or when its ' +
+      'column is deleted for good. If its rows move (a sort, a replace or an import undone, removed duplicates, ' +
+      'rows restored to other places), every call into its column is refused until restart: true. Sent to the ' +
+      'trash with its column or sheet, it comes back with the restore; a copy of the sheet gets a pass of its own.',
     inputSchema: {
       sheet_id: z.string(),
       target_column: z.string().describe('Column to write into; created if it does not exist'),

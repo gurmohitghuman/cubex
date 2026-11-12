@@ -5,8 +5,8 @@
 // next_cursor and rows_done in words naming it, data_version moves once the
 // lock is let go (tried again on a timer, never waiting on the event loop), and
 // going on with the cursor changes every row once. A sort
-// deletes the record (its cursor is refused too), so the same call without
-// cursor starts over instead of being refused for good. When the data_version
+// marks the record: the same call is refused, without its cursor or with it,
+// writing nothing, until restart: true starts over. When the data_version
 // write itself meets the lock (held for seconds), it never waits on the event
 // loop: it is tried again on a timer and moves once the lock is let go, with no
 // other call, the loop never held 200 ms meanwhile.
@@ -19,6 +19,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import sortMod from '../../server/src/services/sheet-sort'
 import { transformPageFault } from './transform-page-fault'
+import { moved } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -86,15 +87,21 @@ function lockHolder(holdMs = 6500) {
     assert.equal(Atomics.wait(flags, 1, 0, 3000), 'ok', 'the other connection took the lock')
   } }
 }
-// The lock is taken where the call first reads the WAL's size (or checkpoints), after its first page.
+// The lock is taken where the call first reads the WAL's size (or checkpoints) once its first page wrote a row.
 async function lockedAfterFirstPage(holder: ReturnType<typeof lockHolder>, id: string) {
-  const pragma = db.pragma.bind(db)
-  let armed = true
+  const [pragma, prepare] = [db.pragma, db.prepare]
+  let armed = true, wrote = false
+  db.prepare = ((sql: string) => {
+    const stmt = prepare.call(db, sql)
+    if (!sql.startsWith('UPDATE rows SET data = json_set(data, ?, ?)')) return stmt
+    const run = stmt.run.bind(stmt)
+    return Object.assign(stmt, { run: (...a: unknown[]) => { wrote = true; return run(...a) } })
+  }) as typeof db.prepare
   db.pragma = ((src: string, opts?: object) => {
-    if (armed && src.startsWith('wal_checkpoint')) { armed = false; holder.lockNow() }
-    return pragma(src, opts)
+    if (armed && wrote && src.startsWith('wal_checkpoint')) { armed = false; holder.lockNow() }
+    return pragma.call(db, src, opts)
   }) as typeof db.pragma
-  try { return await transformColumn(uid, again(id)) } finally { db.pragma = pragma as typeof db.pragma }
+  try { return await transformColumn(uid, again(id)) } finally { db.pragma = pragma; db.prepare = prepare }
 }
 
 async function main() {
@@ -121,15 +128,19 @@ async function main() {
     assert.equal(suffixed(busy, '*-x-x'), 0)
   })
 
-  await check('a sort deletes the record: its cursor is refused and the call without cursor runs', async () => {
+  await check('a sort marks the record: the call is refused without its cursor and with it, writing nothing; '
+    + 'restart: true runs', async () => {
     const out = await stoppedOn(sorted)
     assert.ok('stopped' in out, JSON.stringify(out))
     assert.ok('unfinished' in await transformColumn(uid, again(sorted)))
     assert.ok('ok' in await physicalSortSheet(sorted, uid, 'T', 'desc'))
-    assert.equal(records(sorted), 0, 'deleted with the sort')
-    assert.equal((await transformColumn(uid, { ...again(sorted), cursor: out.stopped.next_cursor }) as
-      { fail: string }).fail, 'invalid')
-    assert.deepEqual(await transformColumn(uid, again(sorted)), { ok: { updated: ROWS, created_column: null } })
+    assert.equal(records(sorted), 1, 'kept, marked')
+    assert.deepEqual(await transformColumn(uid, again(sorted)), moved('T', 250))
+    assert.deepEqual(await transformColumn(uid, { ...again(sorted), cursor: out.stopped.next_cursor }),
+      moved('T', 250))
+    assert.equal(suffixed(sorted, 't*-x'), 250, 'nothing written')
+    assert.deepEqual(await transformColumn(uid, { ...again(sorted), restart: true }),
+      { ok: { updated: ROWS, created_column: null } })
     assert.equal(records(sorted), 0)
   })
 

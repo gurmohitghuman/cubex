@@ -3,11 +3,13 @@
 // older cursor of a finished pass; the cursor of a pass restart: true discarded (naming the open pass's cursor
 // while there is one; nothing skipped), the same call stopped at the same row too (each pass has its own cursor,
 // and once the pass ends both are over, the same call's pass on another sheet notwithstanding); the kept cursor
-// on the old name after a rename (no column made under it);
+// on the old name after a rename (no column made under it; a template naming T there is refused naming T);
 // the kept cursor after its column was deleted for good and added back; a cursor edited ahead of the pass, or a
 // malformed one, while the pass is open (naming its cursor); the pass's cursor with a source column renamed
-// since (its arguments differ). A call its time budget stops before writing a row answers a cursor its open pass
-// holds: it goes on, and every matching row is written once.
+// since (its arguments differ), and the same call naming the old name (the template's column is gone: refused
+// naming it, as a template naming any column the sheet doesn't have is, and a source or where column). A call
+// its time budget stops before writing a row answers a cursor its open pass holds: it goes on, and every
+// matching row is written once (a call without cursor then: transform-pass-zero.test.ts).
 // Over 200 lines: one fixture and the cases of the cursor rule, read top to bottom.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
@@ -90,6 +92,7 @@ async function stopped(p: Params, n = 251) {
     return out.stopped.next_cursor
   } finally { fault.disarm() }
 }
+const missing = (error: string) => ({ fail: 'invalid', error })
 async function refused(p: Params, answer: object) {
   const before = cells(p.sheetId)
   assert.deepEqual(await transformColumn(uid, p), answer)
@@ -145,7 +148,9 @@ async function main() {
       const sid = sheet()
       const cursor = await stopped(call(sid))
       assert.deepEqual(await renameSheetColumn(sid, uid, 'T', 'T2'), { ok: true, newName: 'T2' })
-      await refused({ ...call(sid), cursor }, otherColumn('T2', 'T'))
+      await refused({ ...call(sid), cursor }, missing('Template column "T" not found.'))
+      await refused({ sheetId: sid, operation: 'upper', sourceColumn: 'S', targetColumn: 'T', cursor },
+        otherColumn('T2', 'T'))
       assert.deepEqual(columns(sid), ['S', 'T2'])
       assert.deepEqual(await transformColumn(uid, { ...call(sid, 'T2'), cursor }),
         { ok: { updated: ROWS - 250, created_column: null } })
@@ -179,18 +184,27 @@ async function main() {
     const kept = await stopped(p)
     assert.deepEqual(await renameSheetColumn(src, uid, 'S', 'S2'), { ok: true, newName: 'S2' })
     await refused({ ...p, template: '{{S2}}-x', cursor: kept }, otherArgs('T'))
-    await refused({ ...p, cursor: 'abc' }, unfinished('T', 250, kept))
+    await refused({ ...p, template: '{{S2}}-x', cursor: 'abc' }, unfinished('T', 250, kept))
+    await refused({ ...p, cursor: kept }, missing('Template column "S" not found.'))
+    assert.equal(ending(src, 'T', '-x'), 0, 'no row written from the missing column')
+    await refused({ ...p, template: '{{Nope}} {{S2}} {{ Gone }}', targetColumn: 'U' },
+      missing('Template columns "Nope", "Gone" not found.'))
+    assert.deepEqual(columns(src), ['S2', 'T'])
+    await refused({ sheetId: src, operation: 'upper', sourceColumn: 'S', targetColumn: 'T', cursor: kept },
+      missing('Source column "S" not found.'))
+    await refused({ ...p, template: '{{S2}}-x', where: [{ column: 'S', operator: 'not_empty' }], cursor: kept },
+      missing('Unknown column(s): S'))
   })
 
-  await check('a call its time budget stops before writing a row answers a cursor its open pass holds: the call '
-    + 'without it is refused, and going on writes every matching row once', async () => {
+  await check('a call its time budget stops before writing a row answers a cursor its open pass holds: another '
+    + 'cursor is refused naming it, and going on writes every matching row once', async () => {
     const BIG = 5000
     const sid = sheet(BIG, i => (i >= 4000 ? `late${i}` : `s${i}`))
     const p: Params = { ...call(sid), where: [{ column: 'S', operator: 'starts_with', value: 'late' }] }
     shiftOnRead = true
     const first = await transformColumn(uid, p)
     assert.ok('ok' in first && first.ok.updated === 0 && first.ok.next_cursor, JSON.stringify(first))
-    await refused(p, unfinished('T', 0, first.ok.next_cursor))
+    await refused({ ...p, cursor: 'abc' }, unfinished('T', 0, first.ok.next_cursor))
     let written = 0
     for (let cursor: string | undefined = first.ok.next_cursor; cursor;) {
       const out = await transformColumn(uid, { ...p, cursor })

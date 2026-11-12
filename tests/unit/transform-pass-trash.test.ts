@@ -4,7 +4,7 @@
 // while a column of its name was added meanwhile, which has no pass and runs from the top. Each time, the call
 // without cursor is refused and writes nothing, and going on with the cursor ends every row exactly once. Purged
 // for good (the sheet, the column), no record is left. Rows deleted under the cursor and restored from the trash
-// to the end of the sheet end the pass: its cursor is refused, and no row gets the operation twice.
+// to the end of the sheet mark the pass: its cursor is refused, and no row gets the operation twice.
 import assert from 'node:assert/strict'
 import transformMod from '../../server/src/services/column-transform'
 import renameMod from '../../server/src/services/column-rename'
@@ -14,7 +14,7 @@ import purgeMod from '../../server/src/services/trash-purge'
 import writeMod from '../../server/src/services/rows-write'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
-import { notOpen, unfinished } from './transform-pass-words'
+import { moved, unfinished } from './transform-pass-words'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { addSheetColumn } = addMod as typeof import('../../server/src/services/column-add')
@@ -123,8 +123,8 @@ async function main() {
     assert.equal(records(b), 0)
   })
 
-  await ok('rows deleted under the cursor and restored to the end of the sheet: the cursor is refused, no row '
-    + 'gets the operation twice', async () => {
+  await ok('rows deleted under the cursor and restored to the end of the sheet: the call with its cursor is '
+    + 'refused naming the 250 rows, no row gets the operation twice', async () => {
     const sid = fresh()
     const cursor = await stopped(call(sid))
     const ids = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND row_index >= 200 ORDER BY row_index')
@@ -134,8 +134,9 @@ async function main() {
     assert.ok('ok' in appendRows(sid, uid, Array.from({ length: 10 }, (_, i) => ({ S: `n${i}`, T: `n${i}` }))))
     await restored(gone.ok.trashId!)
     const before = cells(sid)
-    assert.deepEqual(await transformColumn(uid, { ...call(sid), cursor }), notOpen)
+    assert.deepEqual(await transformColumn(uid, { ...call(sid), cursor }), moved('T', 250))
     assert.equal(cells(sid), before, 'nothing written')
+    assert.equal(records(sid), 1, 'kept, marked')
     assert.equal(ending(sid, 'T', '*-x-x'), 0)
   })
   done()

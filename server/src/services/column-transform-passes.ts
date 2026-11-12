@@ -9,15 +9,19 @@
 // stopped the pass (its call's limit, an error, a server that stopped during a
 // call), every call that writes that column without the pass's cursor is
 // refused, whatever its other arguments, so no operation reaches those rows
-// twice; restart: true discards it. Where else it goes, and how it follows its
-// column and sheet: column-transform-pass-moves.ts.
+// twice; restart: true discards it. A pass that wrote no row can't get a row
+// twice: a call without cursor starts a new pass in its place. Rows moved under
+// its cursor (moved_at, or a cursor of an older row_generation) leave it unable
+// to go on: every call into the column is refused, with its cursor or without,
+// until restart: true. Where else it goes, and how it follows its column and
+// sheet: column-transform-pass-moves.ts.
 //
 // A pass has a random id. The cursor is the row_generation, the last row_index
 // looked at and 12 characters of a hash of the call and the pass id, so a
 // cursor names one pass, and is taken only while it is the one its open pass
 // last answered: an older or edited one is refused naming the pass's own, and
-// one whose pass is over (it reached the end, was restarted, its column was
-// deleted for good, its rows reordered) is refused, writing nothing. The hash
+// one whose pass is over (it reached the end, was restarted, its column or
+// sheet was deleted for good) is refused, writing nothing. The hash
 // names the target, wherever the call refers to it, as the pass first named it
 // (the record keeps that name), so a cursor still goes on after the target's
 // rename.
@@ -26,7 +30,7 @@ import { db } from '../lib/db';
 import { templateParts, type TransformOp } from '../lib/transform-ops';
 import { groupItems, isGroup, isOrGroup, type WhereItem } from '../lib/row-filter/where';
 import {
-  MALFORMED, NOT_OPEN, OTHER_SHEET, inTrash, otherArgs, otherColumn, unfinishedWords,
+  MALFORMED, NOT_OPEN, OTHER_SHEET, inTrash, movedWords, otherArgs, otherColumn, unfinishedWords,
 } from './column-transform-pass-words';
 
 const CURSOR = /^(\d+):(-?\d+):([0-9a-f]{12})$/;
@@ -63,7 +67,7 @@ export const passHash = (key: string, passId: string): string =>
 export const transformCursor = (generation: number, after: number, key: string, passId: string): string =>
   `${generation}:${after}:${passHash(key, passId)}`;
 
-interface PassRecord { pass_id: string; cursor: string; rows_done: number; started_as: string }
+interface PassRecord { pass_id: string; cursor: string; rows_done: number; started_as: string; moved: boolean }
 // The refusal of a call while another pass into its column is unfinished.
 export interface Unfinished { error: string; next_cursor: string; rows_done: number }
 // Where a call starts: after its cursor, or from the top. `base`: the rows its
@@ -76,15 +80,20 @@ interface Scope { sheetId: string; userId: string; targetColumn: string; generat
 
 const liveWhere = 'WHERE sheet_id = ? AND user_id = ? AND target_column = ? AND trash_id IS NULL';
 
-// The column's unfinished pass. One whose column is gone or whose cursor no
-// longer holds (its rows reordered since) can't be gone on with: it goes.
+// The column's unfinished pass, `moved` when rows moved under its cursor since
+// (marked, or its cursor is of an older row_generation). One whose column is
+// gone for good (a replace dropped it) goes.
 function unfinishedPass(s: Scope): PassRecord | undefined {
   const at = [s.sheetId, s.userId, s.targetColumn];
-  const rec = db.prepare(`SELECT pass_id, cursor, rows_done, started_as FROM transform_passes ${liveWhere}`)
-    .get(...at) as PassRecord | undefined;
-  if (!rec || (s.targetExists && Number(CURSOR.exec(rec.cursor)?.[1]) === s.generation)) return rec;
-  db.prepare(`DELETE FROM transform_passes ${liveWhere}`).run(...at);
-  return undefined;
+  const rec = db.prepare(`SELECT pass_id, cursor, rows_done, started_as, moved_at FROM transform_passes
+    ${liveWhere}`).get(...at) as (Omit<PassRecord, 'moved'> & { moved_at: string | null }) | undefined;
+  if (!rec) return undefined;
+  if (!s.targetExists) {
+    db.prepare(`DELETE FROM transform_passes ${liveWhere}`).run(...at);
+    return undefined;
+  }
+  const { moved_at: movedAt, ...pass } = rec;
+  return { ...pass, moved: movedAt !== null || Number(CURSOR.exec(rec.cursor)?.[1]) !== s.generation };
 }
 
 // The pass a cursor's hash names, wherever it is now (its cursors all end in it).
@@ -104,21 +113,24 @@ function noPassWords(s: Scope, cursor: string): string {
   return other.trash_id !== null ? inTrash(other.target_column) : otherColumn(other.target_column, s.targetColumn);
 }
 
-// Where a call starts, or why it can't. restart: from the top, the column's
-// unfinished pass discarded by its first page (passTracker).
+// Where a call starts, or why it can't. From the top (restart, or a call
+// without cursor in place of a pass that wrote no row), the column's unfinished
+// pass is discarded by its first page (passTracker).
 export function startPass(s: Scope, call: TransformCall, opts: { cursor?: string; restart?: boolean }):
   PassStart | { invalid: string } | { unfinished: Unfinished } {
   const rec = unfinishedPass(s);
   const top = (): PassStart => ({ after: -1, base: 0, key: transformCallKey(call, s.targetColumn),
     targetAs: s.targetColumn, passId: newPassId(), held: null });
   if (opts.restart) return top();
-  const refusal = rec && { unfinished: { error: unfinishedWords(s.targetColumn, rec.rows_done, rec.cursor),
-    next_cursor: rec.cursor, rows_done: rec.rows_done } };
-  if (opts.cursor === undefined) return refusal || top();
-  if (!rec) return { invalid: noPassWords(s, opts.cursor) };
+  if (!rec) return opts.cursor === undefined ? top() : { invalid: noPassWords(s, opts.cursor) };
+  if (opts.cursor === undefined && rec.rows_done === 0) return top();
+  if (rec.moved) return { invalid: movedWords(s.targetColumn, rec.rows_done) };
   // Only the cursor the pass last answered goes on: an older one would reach rows again, one edited ahead
   // would skip rows.
-  if (opts.cursor !== rec.cursor) return refusal!;
+  if (opts.cursor !== rec.cursor) {
+    return { unfinished: { error: unfinishedWords(s.targetColumn, rec.rows_done, rec.cursor),
+      next_cursor: rec.cursor, rows_done: rec.rows_done } };
+  }
   const key = transformCallKey(call, rec.started_as);
   if (passHash(key, rec.pass_id) !== CURSOR.exec(rec.cursor)![3]) return { invalid: otherArgs(s.targetColumn) };
   return { after: Number(CURSOR.exec(rec.cursor)![2]), base: rec.rows_done, key, targetAs: rec.started_as,
@@ -129,8 +141,9 @@ export function startPass(s: Scope, call: TransformCall, opts: { cursor?: string
 // transaction, the pass after it (`after` null: the pass is done); answers
 // the cursor it wrote, or whether it deleted the record. A page that wrote no
 // rows leaves the record as it was, so a where matching few rows doesn't write
-// after every page. A pass started from the top drops, on its first page, the
-// record of the pass restart discards. stop: the call stopped with rows left at
+// after every page. A pass started from the top drops or overwrites, on its
+// first page, the record of the pass it replaces (its mark too: the new pass
+// can go on). stop: the call stopped with rows left at
 // `after`, in a transaction of its own; the cursor it answers. held: the cursor
 // the record holds, as far as committed pages say (committed() after each).
 export function passTracker(s: Scope & PassStart) {
@@ -140,7 +153,8 @@ export function passTracker(s: Scope & PassStart) {
     call_key, cursor, rows_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (sheet_id, user_id, target_column) WHERE trash_id IS NULL DO UPDATE SET pass_id = excluded.pass_id,
     started_as = excluded.started_as, call_key = excluded.call_key, cursor = excluded.cursor,
-    rows_done = excluded.rows_done, updated_at = datetime('now')`);
+    rows_done = excluded.rows_done, updated_at = datetime('now'),
+    moved_at = CASE WHEN transform_passes.pass_id = excluded.pass_id THEN transform_passes.moved_at END`);
   let first = s.after === -1;
   let held = s.held;
   let pending: string | null | undefined;

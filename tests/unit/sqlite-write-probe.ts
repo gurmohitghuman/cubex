@@ -1,10 +1,12 @@
 // What the code under test does to SQLite while a test measures it, on the test's own connection: each
 // transaction's time (a transform page is one) and the most WAL frames one added, each WAL checkpoint run on
 // this connection with its time and frames copied, how many transactions wrote the main database file (in WAL
-// mode a commit writes only the -wal file, so that is SQLite's own checkpoint running inside the commit), and
-// the most frames the WAL held. A NOOP checkpoint (wal_checkpoint(NOOP): it only reads the WAL's size, copying
-// nothing, lib/wal-checkpointer.ts) is counted apart, as a read. db.transaction, db.pragma, db.prepare and
-// db.exec are wrapped on the connection: the app calls them at run time, so its code is unchanged.
+// mode a commit writes only the -wal file, so that is SQLite's own checkpoint running inside the commit), the
+// most frames the WAL held, and the most frames not all copied back a transaction found in the WAL before adding
+// its own (one finding them all copied starts the WAL over: none). A NOOP checkpoint (wal_checkpoint(NOOP): it
+// only reads the WAL's size, copying nothing, lib/wal-checkpointer.ts) is counted apart, as a read.
+// db.transaction, db.pragma, db.prepare and db.exec are wrapped on the connection: the app calls them at run
+// time, so its code is unchanged.
 import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import type Database from 'better-sqlite3'
@@ -12,7 +14,7 @@ import type Database from 'better-sqlite3'
 export interface WriteProbeStats {
   transactions: number; longestTransactionMs: number; transactionsWritingMainFile: number
   mostTransactionFrames: number; checkpoints: number; longestCheckpointMs: number; mostCheckpointFrames: number
-  walReads: number; mostWalFrames: number
+  walReads: number; mostWalFrames: number; mostWalFramesBeforeWrite: number
 }
 
 const NOOP = /^\s*(PRAGMA\s+)?wal_checkpoint\s*\(\s*noop\s*\)\s*;?\s*$/i
@@ -27,22 +29,26 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string) {
   }
   const zero = (): WriteProbeStats => ({ transactions: 0, longestTransactionMs: 0, transactionsWritingMainFile: 0,
     mostTransactionFrames: 0, checkpoints: 0, longestCheckpointMs: 0, mostCheckpointFrames: 0, walReads: 0,
-    mostWalFrames: 0 })
+    mostWalFrames: 0, mostWalFramesBeforeWrite: 0 })
   let s = zero()
   const pragma = db.pragma.bind(db)
-  // Frames in the WAL now (SQLite starts it over from its first frame once all were copied).
-  const walLog = () => (pragma('wal_checkpoint(NOOP)') as Array<{ log: number }>)[0]?.log ?? 0
+  // Frames in the WAL now, and of them copied back (SQLite starts it over from its first frame once all were).
+  const wal = () => (pragma('wal_checkpoint(NOOP)') as Array<{ log: number; checkpointed: number }>)[0]
+    ?? { log: 0, checkpointed: 0 }
   const timed = (f: (...a: unknown[]) => unknown) => (...a: unknown[]) => {
     const before = mtime()
-    const log0 = walLog()
+    const w0 = wal()
     const t0 = performance.now()
     try { return f(...a) } finally {
       s.transactions++
       s.longestTransactionMs = Math.max(s.longestTransactionMs, performance.now() - t0)
       if (mtime() !== before) s.transactionsWritingMainFile++
-      const log1 = walLog()
-      s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= log0 ? log1 - log0 : log1)
+      const log1 = wal().log
+      s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
       s.mostWalFrames = Math.max(s.mostWalFrames, walFrames())
+      if (log1 > w0.log && w0.checkpointed < w0.log) {
+        s.mostWalFramesBeforeWrite = Math.max(s.mostWalFramesBeforeWrite, w0.log)
+      }
     }
   }
   const transaction = db.transaction.bind(db)

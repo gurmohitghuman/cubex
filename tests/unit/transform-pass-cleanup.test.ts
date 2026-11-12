@@ -1,13 +1,16 @@
-// Nothing is left in transform_passes once a pass can no longer be gone on with
+// Over 200 lines: one fixture and every way a pass's record ends or stays, read top to bottom.
+// What ends a transform_column pass's record in transform_passes
 // (services/column-transform-passes.ts, migration 056). Each case stops a pass
 // on an error after 250 rows (its record kept), then: the pass completes; a
 // restart: true runs to the end; its column is deleted for good, or goes to the
 // trash (the record with it) and is purged; its sheet or its table goes to the
 // trash (the record stays) and is purged; its sheet is deleted for good
-// (Settings keeps 0 days); the rows are sorted, replaced by a CSV import, or
-// have their duplicates removed (the record of a column in the trash too).
-// Each leaves no record for the sheet. A record found whose cursor no longer
-// holds is deleted when read, and the call runs.
+// (Settings keeps 0 days); a CSV import replaces the rows without its column.
+// Each leaves no record for the sheet. Rows moved under it (sorted, replaced by
+// a CSV import keeping the column, duplicates removed) keep the record, marked
+// (the record of a column in the trash too): the call is refused, and only
+// restart: true ends it. A record whose cursor is of an older row_generation
+// reads as marked, and is kept.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -76,6 +79,17 @@ async function stopped(id: string): Promise<string> {
   return out.stopped.next_cursor
 }
 const ok = (out: object) => assert.ok('ok' in out, JSON.stringify(out))
+const markedRecords = (id: string) => db.prepare(`SELECT count(*) FROM transform_passes WHERE sheet_id = ?
+  AND moved_at IS NOT NULL`).pluck().get(id)
+// Kept, marked: the call is refused naming the rows done, until restart: true runs it and ends the record.
+async function movedUntilRestart(id: string) {
+  assert.equal(records(id), 1, 'kept')
+  const out = await transformColumn(uid, call(id)) as { fail?: string; error?: string }
+  assert.ok(out.fail === 'invalid' && out.error?.startsWith('Rows of this sheet moved'), JSON.stringify(out))
+  assert.equal(records(id), 1)
+  ok(await transformColumn(uid, { ...call(id), restart: true }))
+  assert.equal(records(id), 0)
+}
 // Settings keeping deleted things 0 days while `fn` runs.
 async function forGood<T>(fn: () => T | Promise<T>): Promise<T> {
   const days = getTrashDays(uid)
@@ -152,39 +166,48 @@ async function main() {
       assert.equal(records(id), 0)
     })
   })
-  await check('its rows are sorted, its column in the trash or not', async () => {
+  await check('its rows are sorted, its column in the trash or not: kept, marked, until restart', async () => {
     const id = sheet()
     await stopped(id)
     ok(await physicalSortSheet(id, uid, 'T', 'desc'))
-    assert.equal(records(id), 0)
+    assert.equal(markedRecords(id), 1)
+    await movedUntilRestart(id)
     await stopped(id)
     ok(await deleteSheetColumn(id, uid, 'T'))
     assert.equal(records(id), 1, 'in the trash with its column')
     ok(await physicalSortSheet(id, uid, 'S', 'desc'))
-    assert.equal(records(id), 0)
+    assert.equal(markedRecords(id), 1, 'marked in the trash')
   })
-  await check('its rows are replaced by a CSV import', async () => {
+  await check('its rows are replaced by a CSV import keeping its column: kept, marked, until restart', async () => {
     const id = sheet()
     await stopped(id)
     ok(await importCsv(id, uid, await scanCsvText('S,T\na,b\n'), true))
+    await movedUntilRestart(id)
+  })
+  await check('its rows are replaced by a CSV import without its column: the record goes with it', async () => {
+    const id = sheet()
+    await stopped(id)
+    ok(await importCsv(id, uid, await scanCsvText('S\na\n'), true))
+    assert.equal(records(id), 1, 'left until read')
+    assert.deepEqual(await transformColumn(uid, { sheetId: id, operation: 'upper', sourceColumn: 'S',
+      targetColumn: 'T' }), { ok: { updated: 1, created_column: 'T' } })
     assert.equal(records(id), 0)
   })
-  await check('its duplicates are removed', async () => {
+  await check('its duplicates are removed: kept, marked, until restart', async () => {
     const id = sheet()
     await stopped(id)
     const out = await removeDuplicates(uid, id, { columns: ['S'] })
     assert.ok('ok' in out && out.ok.removed === 1, JSON.stringify(out))
-    assert.equal(records(id), 0)
+    await movedUntilRestart(id)
   })
-  await check('a record whose cursor no longer holds is deleted when read, and the call runs', async () => {
-    // Made here by a sort with the trigger that deletes such a record dropped (last: it stays dropped).
+  await check('a record whose cursor is of an older row_generation reads as marked and is kept', async () => {
+    // Made here by a sort with the trigger that marks such a record dropped (last: it stays dropped).
     db.exec('DROP TRIGGER IF EXISTS transform_passes_row_generation')
     const id = sheet()
     await stopped(id)
     ok(await physicalSortSheet(id, uid, 'T', 'desc'))
-    assert.equal(records(id), 1, 'left by the sort')
-    assert.deepEqual(await transformColumn(uid, call(id)), { ok: { updated: ROWS, created_column: null } })
-    assert.equal(records(id), 0)
+    assert.equal(markedRecords(id), 0, 'not marked by the sort')
+    await movedUntilRestart(id)
   })
 }
 

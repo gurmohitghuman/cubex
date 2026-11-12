@@ -1,9 +1,10 @@
 // transform_column's per-call limits (services/column-transform.ts): a call
 // stopped by its time budget or its row cap keeps the rows it wrote and answers
 // next_cursor with a note; the same call with that cursor goes on, so a
-// transform that reads its own target still changes each row once. A cursor
-// from before a sort (which ends its pass), or one no call gave, is refused; a
-// busy sheet is refused.
+// transform that reads its own target still changes each row once. After a
+// sort, the pass's cursor and every other call into its column are refused,
+// naming the rows done; a cursor no call gave is refused; a busy sheet is
+// refused.
 // A finished call answers {updated, created_column} as before. A new target
 // column that got no value is listed: the app, REST and MCP show it, and its
 // cells read as empty, with nothing stored in the rows.
@@ -25,7 +26,7 @@ import cookieMod from '../../server/src/lib/cookie'
 import mcpMod from '../../server/src/mcp/build-server'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import appReadMod from '../../server/src/routes/sheets-read'
-import { malformed, notOpen } from './transform-pass-words'
+import { malformed, moved } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn, TRANSFORM_STOPPED_NOTE } =
@@ -125,11 +126,11 @@ async function main() {
     assert.ok('ok' in stopped && stopped.ok.next_cursor)
     const before = db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id = ?').pluck().get(big)
     assert.ok('ok' in await physicalSortSheet(big, uid, 'N', 'desc'))
-    // The sort ended the pass: its cursor is refused in words naming no cursor.
-    assert.deepEqual(await transformColumn(uid, { ...again, cursor: stopped.ok.next_cursor }), notOpen)
-    for (const cursor of ['abc', '1', '1:2:3', '']) {
-      assert.deepEqual(await transformColumn(uid, { ...again, cursor }), malformed)
-    }
+    // Rows moved under the pass: its cursor and any other call into N are refused, naming no cursor.
+    const noPass = { sheetId: small, operation: 'upper' as const, sourceColumn: 'Name', targetColumn: 'Name' }
+    const sent = [stopped.ok.next_cursor, undefined, 'abc', '1', '1:2:3', ''], rows = stopped.ok.updated
+    for (const cursor of sent) assert.deepEqual(await transformColumn(uid, { ...again, cursor }), moved('N', rows))
+    for (const cursor of sent.slice(2)) assert.deepEqual(await transformColumn(uid, { ...noPass, cursor }), malformed)
     const after = db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id = ?').pluck().get(big)
     assert.equal((after as string).length, (before as string).length, 'nothing more was written')
   })

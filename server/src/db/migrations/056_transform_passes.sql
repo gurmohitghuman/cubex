@@ -19,10 +19,12 @@
 -- as, and a purge of the item drops it (the foreign key), as a delete for good
 -- of the column does. A sheet or table in the trash keeps its records; deleted
 -- for good, the foreign key drops them. A copy of the sheet's values gets
--- records of its own. Any change of the sheet's row_generation (a sort, a
--- replace, an import undone, duplicates removed) makes the cursors meaningless
--- and drops all the sheet's records, the trash's included (the trigger below),
--- as rows restored from the trash across a cursor drop that pass's.
+-- records of its own. Rows moving under its cursor mark it (moved_at), never
+-- drop it: any change of the sheet's row_generation (a sort, a replace, an
+-- import undone, duplicates removed) marks all the sheet's records, the trash's
+-- included (the trigger below), and rows restored from the trash across a
+-- cursor mark that pass's. A marked pass can't go on: every call into its column
+-- is refused, naming the rows it had done, until restart: true discards it.
 CREATE TABLE transform_passes (
   pass_id TEXT PRIMARY KEY,              -- random, folded into the pass's cursors
   sheet_id TEXT NOT NULL REFERENCES sheets(id) ON DELETE CASCADE,
@@ -33,6 +35,7 @@ CREATE TABLE transform_passes (
   call_key TEXT NOT NULL,                -- the hash of the call's arguments (target as started_as)
   cursor TEXT NOT NULL,                  -- the next_cursor the pass last answered
   rows_done INTEGER NOT NULL,            -- rows the pass has written, over all its calls
+  moved_at TEXT,                         -- when rows moved under its cursor (NULL: it can go on)
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX idx_transform_passes_column ON transform_passes(sheet_id, user_id, target_column)
@@ -41,9 +44,10 @@ CREATE INDEX idx_transform_passes_sheet ON transform_passes(sheet_id);
 CREATE INDEX idx_transform_passes_trash ON transform_passes(trash_id) WHERE trash_id IS NOT NULL;
 
 -- Every place that moves row_generation (a sort, a replace, an import undone, a
--- duplicates removal), in the same statement.
+-- duplicates removal), in the same statement: the sheet's passes are marked,
+-- the ones of its columns in the trash too.
 CREATE TRIGGER transform_passes_row_generation AFTER UPDATE OF row_generation ON sheets
 WHEN NEW.row_generation IS NOT OLD.row_generation
 BEGIN
-  DELETE FROM transform_passes WHERE sheet_id = NEW.id;
+  UPDATE transform_passes SET moved_at = datetime('now') WHERE sheet_id = NEW.id AND moved_at IS NULL;
 END;

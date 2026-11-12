@@ -9,14 +9,16 @@
 //   the column is deleted for good (column-delete.ts);
 // - its sheet or table sent to the trash keeps it, and deleted for good drops it
 //   (the foreign key);
-// - rows moving under its cursor drop it, the trash's records included: a sort,
-//   a replace, an import undone or duplicates removed drop every record of the
-//   sheet (056's trigger on row_generation); rows restored from the trash away
-//   from their old places, a record whose cursor one of them crosses
+// - rows moving under its cursor mark it (moved_at), never drop it, so the rows
+//   it did are never done again without restart: true: a sort, a replace, an
+//   import undone or duplicates removed mark every record of the sheet, the
+//   trash's included (056's trigger on row_generation); rows restored from the
+//   trash away from their old places, a record whose cursor one of them crosses
 //   (lib/trash/restore-rows.ts);
 // - a copy of the sheet's values gets a record of its own for each one whose
 //   column it copies, with a new pass id, its cursor at the copy's last row that
-//   came from before the original's (services/sheet-copy*.ts).
+//   came from before the original's, marked if the original is
+//   (services/sheet-copy*.ts).
 import { db } from '../lib/db';
 import { newPassId, transformCursor } from './column-transform-passes';
 
@@ -43,33 +45,36 @@ export function restoreTransformPasses(itemId: number, sheetId: string, userId: 
 
 // Rows restored from the trash away from their old places, in that restore's transaction
 // (lib/trash/restore-rows.ts): a pass whose cursor one of them crosses (it had reached the row's old place,
-// or the row lands where it had reached) would apply the operation to it twice, or skip it: it goes.
+// or the row lands where it had reached) would apply the operation to it twice, or skip it: it is marked.
+// One no row crosses goes on.
 export function rowsMovedUnderPasses(sheetId: string, userId: string, moved: Array<{ from: number; to: number }>):
   void {
   if (moved.length === 0) return;
-  const passes = db.prepare('SELECT pass_id, cursor FROM transform_passes WHERE sheet_id = ? AND user_id = ?')
-    .all(sheetId, userId) as Array<{ pass_id: string; cursor: string }>;
-  const drop = db.prepare('DELETE FROM transform_passes WHERE pass_id = ?');
+  const passes = db.prepare(`SELECT pass_id, cursor FROM transform_passes WHERE sheet_id = ? AND user_id = ?
+    AND moved_at IS NULL`).all(sheetId, userId) as Array<{ pass_id: string; cursor: string }>;
+  const mark = db.prepare("UPDATE transform_passes SET moved_at = datetime('now') WHERE pass_id = ?");
   for (const p of passes) {
     const reached = Number(CURSOR_AFTER.exec(p.cursor)?.[1] ?? -1);
-    if (moved.some(m => m.from <= reached || m.to <= reached)) drop.run(p.pass_id);
+    if (moved.some(m => m.from <= reached || m.to <= reached)) mark.run(p.pass_id);
   }
 }
 
-interface Copied { target_column: string; started_as: string; call_key: string; rows_done: number; after: number }
+interface Copied {
+  target_column: string; started_as: string; call_key: string; rows_done: number; moved_at: string | null;
+}
 
 // In a sheet copy's first transaction: a record for the copy for each open pass of the source into a column it
 // copies, its cursor before the copy's first row (the copy's slices move it: copiedPassMapper).
 export function copyTransformPasses(source: string, copy: string, userId: string, columns: string[]): void {
   const generation = db.prepare('SELECT row_generation FROM sheets WHERE id = ?').pluck().get(copy) as number;
-  const passes = db.prepare(`SELECT target_column, started_as, call_key, rows_done FROM transform_passes
+  const passes = db.prepare(`SELECT target_column, started_as, call_key, rows_done, moved_at FROM transform_passes
     WHERE sheet_id = ? AND user_id = ? AND trash_id IS NULL`).all(source, userId) as Copied[];
   const put = db.prepare(`INSERT INTO transform_passes (pass_id, sheet_id, user_id, target_column, started_as,
-    call_key, cursor, rows_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    call_key, cursor, rows_done, moved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (const p of passes.filter(q => columns.includes(q.target_column))) {
     const id = newPassId();
     put.run(id, copy, userId, p.target_column, p.started_as, p.call_key,
-      transformCursor(generation, -1, p.call_key, id), p.rows_done);
+      transformCursor(generation, -1, p.call_key, id), p.rows_done, p.moved_at);
   }
 }
 

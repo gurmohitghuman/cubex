@@ -3,10 +3,13 @@
 // as a disk sync might, so the worker falls behind the pages. The walk waits
 // for it between pages, never on the event loop: the loop is never held 200 ms,
 // no checkpoint runs on the API connection (only SQLite's NOOP, which reads the
-// WAL's size), the WAL never holds more than WAL_PAUSE_FRAMES and one page, and
+// WAL's size), the WAL never holds more than WAL_PAUSE_FRAMES and one page (no
+// page begins with WAL_PAUSE_FRAMES uncopied, the next call's first one too), and
 // every row is written exactly once. With no worker (its file can't load), the
-// checkpoints run on the API thread, as before; closed, a later use starts a
-// new worker.
+// checkpoints run on the API thread, as before, a start tried once and logged
+// once for the whole pass (not once per checkpoint); closed, a later use starts
+// a new worker. A worker that stops is started once more; stopped again, the
+// checkpoints stay on the API thread, logged once.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -20,14 +23,19 @@ const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { WAL_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
-const { closeWalCheckpointer, setCheckpointDelayForTests, setCheckpointWorkerFileForTests,
-  takeWalCheckpointerStats, walCheckpointerIdle } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests, setCheckpointWorkerFileForTests,
+  stopCheckpointWorkerForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
+  walMod as typeof import('../../server/src/lib/wal-checkpointer')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 console.warn = () => {}
 const quiet = console.error
-console.error = (...a: unknown[]) => { if (!String(a[0]).includes('checkpoint')) quiet(...a) }
+const logged: string[] = []
+console.error = (...a: unknown[]) => {
+  if (String(a[0]).includes('checkpoint')) logged.push(String(a[0]))
+  else quiet(...a)
+}
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -89,7 +97,8 @@ async function main() {
       const k = takeWalCheckpointerStats()
       console.log('     ', JSON.stringify({ ...run, checkpoints: k.checkpoints, onThisThread: k.onThisThread,
         waits: k.pauses, waitedMs: k.pausedMs, mainCheckpoints: w.checkpoints, walReads: w.walReads,
-        mostPageFrames: w.mostTransactionFrames, mostWalFrames: w.mostWalFrames }))
+        mostPageFrames: w.mostTransactionFrames, mostWalFrames: w.mostWalFrames,
+        mostBeforeWrite: w.mostWalFramesBeforeWrite }))
       assert.ok(run.loopMaxMs < 200, `the event loop was held ${run.loopMaxMs} ms`)
       assert.equal(w.checkpoints, 0, 'a checkpoint ran on the API connection')
       assert.ok(w.walReads > 0)
@@ -97,20 +106,27 @@ async function main() {
       assert.equal(k.onThisThread, 0)
       assert.ok(w.mostWalFrames <= WAL_PAUSE_FRAMES + w.mostTransactionFrames,
         `the WAL held ${w.mostWalFrames} frames, past ${WAL_PAUSE_FRAMES} and a page (${w.mostTransactionFrames})`)
+      // A call that stopped while a checkpoint still ran: the next one waits for it before its first page.
+      assert.ok(w.mostWalFramesBeforeWrite < WAL_PAUSE_FRAMES, `a page began with ${w.mostWalFramesBeforeWrite} frames`)
       assert.equal(once('x'), ROWS)
     } finally { setCheckpointDelayForTests(0) }
   })
 
-  await check('no worker (its file fails to load): the checkpoints run on the API thread; closed, a later use '
-    + 'starts a new worker', async () => {
+  await check('no worker (its file fails to load): one start is tried and logged once, and the checkpoints run '
+    + 'on the API thread; closed, a later use starts a new worker', async () => {
     await closeWalCheckpointer()
     setCheckpointWorkerFileForTests(`${process.env.DB_PATH}-no-such-worker.js`)
     try {
       takeWalCheckpointerStats()
+      logged.length = 0
       await pass('y')
       await walCheckpointerIdle()
       const k = takeWalCheckpointerStats()
-      assert.ok(k.checkpoints > 0 && k.onThisThread === k.checkpoints, JSON.stringify(k))
+      console.log('     ', JSON.stringify({ ...k, logged }))
+      assert.ok(k.checkpoints > 1 && k.onThisThread === k.checkpoints, JSON.stringify(k))
+      assert.equal(k.starts, 1, 'a worker start tried once')
+      assert.equal(logged.length, 1, `logged ${logged.length} times`)
+      assert.match(logged[0], /could not start, so checkpoints run on the main thread until Cubex restarts/)
       assert.equal(once('xy'), ROWS)
     } finally { setCheckpointWorkerFileForTests(null) }
     await closeWalCheckpointer()
@@ -120,6 +136,25 @@ async function main() {
     const k = takeWalCheckpointerStats()
     assert.ok(k.checkpoints > 0 && k.onThisThread === 0, JSON.stringify(k))
     assert.equal(once('xyz'), ROWS)
+  })
+
+  await check('a worker that stops is started once more; stopped again, the checkpoints stay on the API thread, '
+    + 'logged once', async () => {
+    takeWalCheckpointerStats()
+    logged.length = 0
+    await checkpointInBackground()
+    await stopCheckpointWorkerForTests()
+    await checkpointInBackground()
+    await stopCheckpointWorkerForTests()
+    await checkpointInBackground()
+    await checkpointInBackground()
+    const k = takeWalCheckpointerStats()
+    console.log('     ', JSON.stringify({ ...k, logged }))
+    assert.equal(k.starts, 1, 'started once more after it stopped, never again')
+    assert.equal(k.onThisThread, 2)
+    assert.equal(logged.length, 1, `logged ${logged.length} times`)
+    assert.match(logged[0], /stopped again, so checkpoints run on the main thread until Cubex restarts/)
+    setCheckpointWorkerFileForTests(null)
   })
   await closeWalCheckpointer()
 }
