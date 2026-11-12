@@ -35,7 +35,7 @@ const setUp = (sid: string, column: string, f: AiFill | HttpFill) => db.transact
   appendColumnsToOrder(sid, uid, [column])
   if (f.kind === 'ai') writeAiSetup(sid, uid, column, f)
   else writeHttpSetup(sid, uid, column, f, order(sid), true)
-})()
+}).immediate()
 const linked = (sid: string, master: string) => db.prepare(`SELECT extracted_column_name FROM
   http_column_associations WHERE sheet_id = ? AND master_column_name = ? ORDER BY 1`).pluck().all(sid, master)
 const runOf = (table: 'ai_runs' | 'http_runs', id: string) => db.prepare(`SELECT * FROM ${table} WHERE id = ?`)

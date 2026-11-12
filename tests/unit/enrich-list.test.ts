@@ -164,7 +164,7 @@ async function main() {
   check('without fields it waits', 'wait' in addListItems(j4))
   const held = fieldlessRuns(src, uid, 'People')
   check('the column finds its runs without fields', held.some(r => r.id === r4))
-  db.transaction(() => giveFields(uid, held, [{ path: '$.name', columnName: 'Name' }], null))()
+  db.transaction(() => giveFields(uid, held, [{ path: '$.name', columnName: 'Name' }], null)).immediate()
   check('picked fields release the results', (db.prepare('SELECT wait_reason FROM enrichment_list_items WHERE id = ?')
     .pluck().get(j4)) === null)
   check('and their rows say the rows are on their way', cell(rowIds[2]) === '➕ Adding 1 row…')
@@ -206,7 +206,8 @@ async function main() {
 
   // A full sheet with a long queue never holds rows into another sheet.
   const r9 = run(list(), 'paused')
-  const queued = db.transaction(() => Array.from({ length: 205 }, () => journal(r9, rowIds[2], ['Q'], 'room')))()
+  const queued = db.transaction(() => Array.from({ length: 205 }, () => journal(r9, rowIds[2], ['Q'], 'room')))
+    .immediate()
   const r10 = run(list({ destSheetId: other }), 'completed', other)
   db.prepare("UPDATE rows SET data = json_set(data, '$.People', '➕ Adding 1 row…') WHERE id = ?").run(rowIds[0])
   journal(r10, rowIds[0], ['Elsewhere'], null, other)
@@ -252,17 +253,17 @@ async function main() {
 
   // Renames and deletes follow both sheets.
   const r7 = run(list())
-  db.transaction(() => renameHttpRunColumnRefs(dest, uid, 'Name', 'Full name'))()
-  db.transaction(() => renameHttpRunColumnRefs(src, uid, 'Company', 'Org'))()
+  db.transaction(() => renameHttpRunColumnRefs(dest, uid, 'Name', 'Full name')).immediate()
+  db.transaction(() => renameHttpRunColumnRefs(src, uid, 'Company', 'Org')).immediate()
   const listOfRun = (id: string) =>
     JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(id) as string).enrichment.list
   const cfg7 = listOfRun(r7)
   check('a rename rewrites kept fields (destination) and copied columns (source)',
     cfg7.fields[0].columnName === 'Full name' && cfg7.copy[0].from === 'Org')
-  db.transaction(() => deleteHttpRunColumnRefs(dest, uid, 'Company'))()
+  db.transaction(() => deleteHttpRunColumnRefs(dest, uid, 'Company')).immediate()
   const cfg7b = listOfRun(r7)
   check('a deleted destination column is no longer filled', cfg7b.copy.length === 0)
-  db.transaction(() => deleteHttpRunColumnRefs(dest, uid, 'Full name'))()
+  db.transaction(() => deleteHttpRunColumnRefs(dest, uid, 'Full name')).immediate()
   check('the last kept field deleted: fields to pick again, never blank rows', listOfRun(r7).fields === null)
   db.prepare("UPDATE rows SET data = json_set(data, '$.People', '➕ Adding 1 row…') WHERE id = ?").run(rowIds[2])
   const j7 = journal(r7, rowIds[2], ['Nobody'])
@@ -279,7 +280,7 @@ async function main() {
     (activeRunInputError(src, uid, 'Company', 'rename') ?? '').includes('copies it into the rows it adds'))
   db.prepare("UPDATE rows SET data = json_set(data, '$.People', '➕ Adding 1 row…') WHERE id = ?").run(rowIds[0])
   journal(r8, rowIds[0], ['Z'])
-  const cancelled = db.transaction(() => abortListRunsInto([dest]))()
+  const cancelled = db.transaction(() => abortListRunsInto([dest])).immediate()
   check('deleting the destination cancels its list runs and tells their rows',
     cancelled.includes(r8) && (db.prepare('SELECT status FROM http_runs WHERE id = ?').pluck().get(r8)) === 'cancelled'
     && cell(rowIds[0]).startsWith('❌ Rows not added: the sheet for them was deleted'))

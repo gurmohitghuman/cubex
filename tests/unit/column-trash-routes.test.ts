@@ -31,7 +31,7 @@ async function syncInTrash() {
     appendColumnsToOrder(sid, uid, ['Sync'])
     writeHttpSetup(sid, uid, 'Sync', { kind: 'http', mode: 'http', config, allowSecrets: 1, destSheetId: null,
       extracted: [] }, order(sid), true)
-  })()
+  }).immediate()
   db.prepare(`UPDATE rows SET data = json_set(data, '$.Sync', '✅ Success') WHERE sheet_id = ?`).run(sid)
   const del = await without.rest('DELETE', `/sheets/${sid}/columns/Sync`)
   assert.equal(del.status, 200, JSON.stringify(del.body))

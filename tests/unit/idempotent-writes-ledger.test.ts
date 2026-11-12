@@ -55,7 +55,7 @@ function fill(u: string, tieLast: boolean) {
       const secs = 100 + (tieLast ? Math.min(i, MAX - 3) : i)
       insert.run(uuid(), u, `filler-${i}`, 'cells_update_batch', `-${secs} seconds`)
     }
-  })()
+  }).immediate()
 }
 
 await ok('the cap keeps the newest row-write keys whatever run keys came in since', () => {
@@ -133,7 +133,7 @@ await ok('the sweep goes a slice at a time, appends in small slices, yielding an
   const u = user(), n = IDEMPOTENT_WRITE_PRUNE_APPENDS * 2 + 10
   db.transaction(() => {
     for (let i = 0; i < n; i++) insert.run(uuid(), u, `old-append-${i}`, 'rows_append', '-30 hours')
-  })()
+  }).immediate()
   const pragma = db.pragma
   const calls: string[] = []
   db.pragma = ((source: string, options?: unknown) => {

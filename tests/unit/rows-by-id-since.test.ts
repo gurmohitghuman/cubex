@@ -114,7 +114,7 @@ const refused = async (body: Record<string, unknown>, pattern: RegExp) => {
 
 async function main() {
   const gone = S.ids[4]
-  db.transaction(() => deleteRowsToTrash(S.sid, uid, 'grid', { indexes: [4] }))()
+  db.transaction(() => deleteRowsToTrash(S.sid, uid, 'grid', { indexes: [4] })).immediate()
 
   await check('row_ids: the rows in the order asked, and missing for every id that is no row here', async () => {
     const asked = [S.ids[3], S.ids[0], 'no-such-row', gone, OTHER.ids[0], S.ids[2]]
@@ -216,7 +216,7 @@ async function main() {
   })
 
   await check('deleted rows do not come back; a time ahead answers nothing with as_of = that time', async () => {
-    db.transaction(() => deleteRowsToTrash(U.sid, uid, 'grid', { indexes: [1] }))()
+    db.transaction(() => deleteRowsToTrash(U.sid, uid, 'grid', { indexes: [1] })).immediate()
     const r = await okRows({ updated_since: '2026-01-01T10:00:00Z' }, U.sid)
     assert.ok(!r.rows.some(x => x.id === U.ids[1]))
     const ahead = await okRows({ updated_since: '2099-01-01T00:00:00Z' }, U.sid)

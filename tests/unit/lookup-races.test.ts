@@ -50,7 +50,7 @@ async function main() {
     for (let i = 0; i < N; i++) {
       ins.run(uuid(), S, uid, i, JSON.stringify({ Site: `s${i}.com`, Rank: String((i * 7919) % N).padStart(6, '0') }))
     }
-  })()
+  }).immediate()
   db.transaction(() => ensureLookupSource(uid, S, 'Site', false)).immediate()
   const sorting = physicalSortSheet(S, uid, 'Rank', 'asc')
   await new Promise(r => setImmediate(r))

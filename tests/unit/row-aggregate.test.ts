@@ -64,7 +64,7 @@ db.transaction(() => {
     rows.push(data)
     insert.run(uuid(), sid, uid, i * 2, JSON.stringify(data))
   }
-})()
+}).immediate()
 
 const query = async (body: Record<string, unknown>) => {
   const parsed = parseRowQueryBody(body, 500)

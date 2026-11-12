@@ -62,7 +62,7 @@ addSheet.run(filler, tid, uid, 'Filler', 1, JSON.stringify(['N']))
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ N: `r${i}` }))
-})()
+}).immediate()
 let next = 0
 // Frames for the worker to copy: `count` rows in one transaction on the API connection, before the call.
 const fill = db.transaction((count: number) => {

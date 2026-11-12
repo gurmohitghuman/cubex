@@ -214,7 +214,7 @@ await check('a filtered read in slices finds the rows one query would, across sl
   // 60,001 rows, numbered with gaps (as after deletes); every third one passes.
   db.transaction(() => {
     for (let i = 0; i <= 60_000; i++) insert.run(uuid(), big, uid, i * 2, JSON.stringify({ n: String(i % 3) }))
-  })()
+  }).immediate()
   const prepared = prepareWhere(big, uid, [{ column: 'n', operator: 'eq', value: '0' }])
   assert.ok('ok' in prepared)
   const f = prepared.ok.filter

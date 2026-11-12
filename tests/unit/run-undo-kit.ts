@@ -40,7 +40,7 @@ export function undoKit(name: string) {
     db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)')
       .run(sid, tid, uid, `S_${sid.slice(0, 8)}`, JSON.stringify(columns))
     const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-    db.transaction(() => rows.forEach((r, i) => ins.run(uuid(), sid, uid, i, JSON.stringify(r))))()
+    db.transaction(() => rows.forEach((r, i) => ins.run(uuid(), sid, uid, i, JSON.stringify(r)))).immediate()
     return sid
   }
   const cells = (sid: string, column: string) => (db.prepare(`SELECT json_extract(data, ?) FROM rows
@@ -71,7 +71,7 @@ export function undoKit(name: string) {
         const stamp = opts.stamp ? { path: opts.stamp, fp: `fp-${id.slice(0, 4)}` } : undefined
         writeRunCells({ kind, id }, sid, uid, Number(i), columns.map((c, k) => [c, values[k]]), stamp)
       }
-    })()
+    }).immediate()
     await clearProcessingPlaceholders(sid, uid, columns)
     const status = opts.status ?? 'completed'
     db.prepare(`UPDATE ${kind === 'ai' ? 'ai_runs' : 'http_runs'} SET status = ? WHERE id = ?`).run(status, id)

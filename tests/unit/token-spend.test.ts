@@ -169,7 +169,7 @@ await ok('spend never goes down: undo, deleted rows, column and sheet, the trash
   assert.ok('ok' in undone, JSON.stringify(undone))
   await idle(sid)
   assert.equal(spentOf(t), before, 'undo')
-  db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 1] }))()
+  db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 1] })).immediate()
   await idle(sid)
   assert.equal(spentOf(t), before, 'rows deleted')
   const col = await deleteSheetColumn(sid, uid, 'Out')

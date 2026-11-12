@@ -43,7 +43,7 @@ export function setTrashDays(userId: string, days: number): void {
     db.prepare('INSERT INTO settings (id, user_id) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING')
       .run(uuidv4(), userId);
     db.prepare("UPDATE settings SET trash_days = ?, updated_at = datetime('now') WHERE user_id = ?").run(days, userId);
-  })();
+  }).immediate();
 }
 
 export function getTrashItem(id: number, userId: string): TrashItem | undefined {

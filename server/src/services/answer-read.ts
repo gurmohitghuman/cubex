@@ -4,6 +4,7 @@
 // what it cost and each call it made (the ledger, by the row's stable id).
 // HTTP API columns get the result and the full response. A pure read.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { parseStored, readStored } from '../lib/answer-store';
 import { answerSource, callSteps, triedProviders, type Access, type CallStep, type LedgerRow, type TriedProvider }
@@ -61,7 +62,7 @@ function rowCells(sheetId: string, userId: string, rowIndex: number): { id: stri
 export function readAnswer(
   userId: string, sheetId: string, column: string, rowIndex: number,
 ): { ok: AnswerView } | RunFail {
-  return db.transaction(() => readAnswerNow(userId, sheetId, column, rowIndex))();
+  return readTransaction(() => readAnswerNow(userId, sheetId, column, rowIndex))();
 }
 
 const reusedInfo = (userId: string, from: unknown): EnrichAnswerInfo['reused'] => {

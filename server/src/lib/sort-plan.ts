@@ -128,7 +128,7 @@ async function eachPlanSlice(plan: SortPlan, apply: (i: number) => void): Promis
   let i = 0;
   await runInSlices(() => {
     const end = Math.min(n, i + HEAVY_SLICE_ROWS);
-    db.transaction(() => { for (; i < end; i++) apply(i); })();
+    db.transaction(() => { for (; i < end; i++) apply(i); }).immediate();
     return i < n;
   });
 }

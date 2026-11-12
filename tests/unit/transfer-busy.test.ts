@@ -45,7 +45,7 @@ const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data)
 db.transaction(() => {
   insert.run(rowId, src, uid, 0, JSON.stringify({ Name: 'Ada', Fresh: 'new' }))
   for (let i = 0; i < DEST_ROWS; i++) insert.run(uuid(), dest, uid, i, JSON.stringify({ Name: `d${i}` }))
-})()
+}).immediate()
 const minted = generateAccessToken()
 db.prepare(`INSERT INTO access_tokens (id, user_id, name, token_hash, token_prefix, scopes)
   VALUES (?,?,?,?,?,?)`).run(uuid(), uid, 'unit', minted.tokenHash, minted.tokenPrefix, 'read,write')

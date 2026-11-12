@@ -171,7 +171,7 @@ await check('a deleted run column\'s key leaves every row with the column\'s pur
   const holding = () => (db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ?
     AND json_type(run_inputs, '$."' || ? || '"') IS NOT NULL`).pluck().get(sid, String(key))) as number
   assert.equal(holding(), 5)
-  db.transaction(() => { deleteRunInputKey(sid, uid, 'Lookup'); recordPurge(sid, uid, 'Lookup') })()
+  db.transaction(() => { deleteRunInputKey(sid, uid, 'Lookup'); recordPurge(sid, uid, 'Lookup') }).immediate()
   assert.equal(columnStaleCheck(sid, uid, 'Lookup'), null)
   await purgeColumnKey(sid, uid, 'Lookup')
   assert.equal(holding(), 0)

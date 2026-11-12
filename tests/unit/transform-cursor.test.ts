@@ -62,7 +62,7 @@ const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data)
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), big, uid, i, JSON.stringify({ N: `r${i}` }))
   for (let i = 0; i < 3; i++) insert.run(uuid(), small, uid, i, JSON.stringify({ Name: `s${i}` }))
-})()
+}).immediate()
 // Appends "x" to N: reading its own target, a row changed twice would end "xx".
 const again = { sheetId: big, operation: 'template' as const, template: '{{N}}x', targetColumn: 'N' }
 // A call whose time budget runs out after its first pages. The WAL is started over first, on the worker: with every

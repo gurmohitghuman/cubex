@@ -91,7 +91,7 @@ async function hold(sid: string, rows: number) {
           .run(value(i), sid, i)
       }
       db.prepare(`UPDATE http_runs SET status = 'completed' WHERE id = ?`).run(run)
-    })(),
+    }).immediate(),
   }
 }
 // An HTTP API run "Ask" posting {"a": "{{Answer}}", "i": "{{I}}"} to `path`, queued with its ⏳.

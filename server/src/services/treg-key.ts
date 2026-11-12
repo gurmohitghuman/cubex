@@ -30,7 +30,7 @@ export function saveTregToken(userId: string, token: string): void {
     ensureSettingsRow(userId);
     db.prepare("UPDATE settings SET treg_token_encrypted = ?, updated_at = datetime('now') WHERE user_id = ?")
       .run(ciphertext, userId);
-  })();
+  }).immediate();
 }
 
 export function clearTregToken(userId: string): void {
@@ -50,7 +50,7 @@ export function setDailyLimitMicro(userId: string, micro: number | null): void {
     ensureSettingsRow(userId);
     db.prepare("UPDATE settings SET enrich_daily_limit_micro = ?, updated_at = datetime('now') WHERE user_id = ?")
       .run(micro, userId);
-  })();
+  }).immediate();
 }
 
 export function spentTodayMicro(userId: string, now = nowDate()): number {

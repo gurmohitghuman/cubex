@@ -46,7 +46,7 @@ for (const [n, id] of [sid, redo].entries()) {
   addSheet.run(id, tid, uid, `S${n}`, n, JSON.stringify(['S', 'T']))
   db.transaction(() => {
     for (let i = 0; i < ROWS; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ S: `s${i}`, T: `t${i}` }))
-  })()
+  }).immediate()
 }
 // Reads its own target: a row the operation reached twice ends "-x-x".
 const where = (t: string) =>

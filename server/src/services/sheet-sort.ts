@@ -144,7 +144,7 @@ async function carryOut(
     fence(!!opts.bumpDataVersion);
     autorunAfterReorder(sheetId, userId, plan.rowIds.length);
     touchSheet(sheetId, userId);
-  })();
+  }).immediate();
 }
 
 type SortJob = ReturnType<typeof sortJobs>[number];

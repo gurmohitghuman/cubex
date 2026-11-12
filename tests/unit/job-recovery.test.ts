@@ -53,7 +53,8 @@ function plainSheet(n: number): string {
   const sid = uuid()
   db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)').run(sid, tid, uid, `S_${sid.slice(0, 8)}`, '["a"]')
   const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-  db.transaction(() => { for (let i = 0; i < n; i++) ins.run(uuid(), sid, uid, i, JSON.stringify({ a: `v${i}` })) })()
+  db.transaction(() => { for (let i = 0; i < n; i++) ins.run(uuid(), sid, uid, i, JSON.stringify({ a: `v${i}` })) })
+    .immediate()
   return sid
 }
 const indexes = (sid: string) => db.prepare('SELECT row_index FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck().all(sid) as number[]

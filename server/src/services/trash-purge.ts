@@ -58,7 +58,7 @@ export function purgeTrashItems(userId: string, ids: number[]): number[] {
   const marked: number[] = [];
   const mark = db.prepare(`UPDATE trash_items SET state = 'purging' WHERE id = ? AND user_id = ?
     AND state IN ('kept', 'purging')`);
-  db.transaction(() => { for (const id of ids) if (mark.run(id, userId).changes > 0) marked.push(id); })();
+  db.transaction(() => { for (const id of ids) if (mark.run(id, userId).changes > 0) marked.push(id); }).immediate();
   if (marked.length > 0) kickTrashPurge();
   return marked;
 }
@@ -99,7 +99,7 @@ async function deleteInSlices(sql: string, params: unknown[], size: number): Pro
 async function purgeSheet(sheetId: string, userId: string, itemId: number | null): Promise<boolean> {
   if (sheetHeld(sheetId)) return false;
   const name = db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(sheetId) as string | undefined;
-  if (name !== undefined) db.transaction(() => lookupsLoseSheet(sheetId, name))();
+  if (name !== undefined) db.transaction(() => lookupsLoseSheet(sheetId, name)).immediate();
   for (const batch of db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind IN ('rows', 'column')`).pluck()
     .all(sheetId) as number[]) {
     db.prepare(`UPDATE trash_items SET state = 'purging' WHERE id = ?`).run(batch);
@@ -119,7 +119,7 @@ async function purgeSheet(sheetId: string, userId: string, itemId: number | null
   db.transaction(() => {
     db.prepare('DELETE FROM sheets WHERE id = ? AND user_id = ?').run(sheetId, userId);
     if (itemId !== null) db.prepare('DELETE FROM trash_items WHERE id = ?').run(itemId);
-  })();
+  }).immediate();
   return true;
 }
 
@@ -134,5 +134,5 @@ async function purgeTable(tableId: string, userId: string, itemId: number): Prom
   db.transaction(() => {
     db.prepare('DELETE FROM tables WHERE id = ? AND user_id = ?').run(tableId, userId);
     db.prepare('DELETE FROM trash_items WHERE id = ?').run(itemId);
-  })();
+  }).immediate();
 }

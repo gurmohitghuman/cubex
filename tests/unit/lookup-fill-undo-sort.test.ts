@@ -32,7 +32,7 @@ await ok('a run on a column it reads undone while it waits for an auto-run batch
   // A run wrote M into Name there, as runs write (its journal keeps N0..N2).
   const written = httpRun(o, 'Name', false)
   db.transaction(() => [0, 1, 2].forEach(i => writeRunCells({ kind: 'http', id: written }, o, uid, i * 2,
-    [['Name', `M${i}`]])))()
+    [['Name', `M${i}`]]))).immediate()
   endRun(written)
   const id = await lookup(a, o, 'Who', 'value', 'Name')
   assert.deepEqual(cells(a, 'Who'), ['M0', 'M1', 'M2'])

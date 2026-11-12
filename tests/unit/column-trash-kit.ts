@@ -61,7 +61,7 @@ export function columnTrashKit(name: string) {
     db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)')
       .run(sid, tid, uid, sheetName ?? `S_${sid.slice(0, 8)}`, JSON.stringify(columns))
     const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-    db.transaction(() => rows.forEach((r, i) => ins.run(`r${i}-${sid}`, sid, uid, i, JSON.stringify(r))))()
+    db.transaction(() => rows.forEach((r, i) => ins.run(`r${i}-${sid}`, sid, uid, i, JSON.stringify(r)))).immediate()
     return sid
   }
   const order = (sid: string) => JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck()

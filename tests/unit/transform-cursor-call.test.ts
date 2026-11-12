@@ -43,7 +43,7 @@ for (const [n, id] of [a, b].entries()) {
   addSheet.run(id, tid, uid, `S${n}`, n, JSON.stringify(['N', 'M']))
   db.transaction(() => {
     for (let i = 0; i < ROWS; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ N: `r${i}`, M: `m${i}` }))
-  })()
+  }).immediate()
 }
 const cells = () => db.prepare('SELECT group_concat(data) FROM rows WHERE sheet_id IN (?, ?) ORDER BY rowid')
   .pluck().get(a, b) as string

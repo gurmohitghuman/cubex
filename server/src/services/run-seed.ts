@@ -97,7 +97,7 @@ async function seedAndEnqueue(args: Parameters<typeof seedThenEnqueue>[0]): Prom
     ).run(notMet, args.rule ? 1 : 0, notMet, args.runId);
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(args.sheetId, args.userId);
     return r.changes > 0;
-  })();
+  }).immediate();
   if (!ready) return;
   // Queueing doesn't need the rows to hold still, so the sheet is released now.
   args.enqueue().then(

@@ -46,7 +46,7 @@ async function referenced() {
       temperature: null, maxChars: null, concurrency: null, webSearch: false, webFetch: false,
       outputColumns: [{ columnName: 'Email', type: 'text', description: 'their email' }], dataColumn: null,
       searchEngine: null, searchMode: null, maxSearchesPerRow: null, searchEngineUsed: null, runIf: null })
-  })()
+  }).immediate()
   const b = sheet(['Company'], [{ Company: 'Acme' }], `Accounts${n}`)
   db.transaction(() => {
     appendColumnsToOrder(b, uid, ['People'])
@@ -55,7 +55,7 @@ async function referenced() {
         enrichment: { toolId: 'people.list',
           list: { fields: [{ path: '$.email', columnName: 'Email' }], copy: [] } } } },
     ['Company', 'People'], true)
-  })()
+  }).immediate()
   no(await startFormulaColumn(uid, a, { column: 'Domain', formula: '{{Email}}.split("@")[1]' }))
   await idle(a)
   const c = sheet(['Key'], [{ Key: 'ann@acme.com' }], `Contacts${n}`)
@@ -66,7 +66,8 @@ async function referenced() {
     matchColumn: 'Name', returns: 'value', returnColumn: 'Email' }))
   await idle(c)
   no(setAutoDedupe(uid, a, { column: 'Email' }))
-  db.transaction(() => journalRowWrite({ kind: 'http', id: enrich }, a, uid, 0, [['Email', 'x@y.co']], null))()
+  db.transaction(() => journalRowWrite({ kind: 'http', id: enrich }, a, uid, 0, [['Email', 'x@y.co']], null))
+    .immediate()
   await idle(a)
   return { a, b, c, hook: hook.name }
 }
@@ -179,7 +180,7 @@ await ok("its own auto-run, and an AI column's (Data) column (web search turned 
       temperature: null, maxChars: null, concurrency: null, webSearch: true, webFetch: false, outputColumns: null,
       dataColumn: null, searchEngine: null, searchMode: null, maxSearchesPerRow: null, searchEngineUsed: null,
       runIf: null })
-  })()
+  }).immediate()
   const data = (await del(a, 'Notes (Data)'))!
   assert.deepEqual(JSON.parse(k.item(data)!.column_dropped), [{ kind: 'ai_data', column: 'Notes (Output)',
     search_off: true }])

@@ -140,7 +140,7 @@ async function main() {
   const q1 = run('Q', waterfall)
   answer(q1, 9, routed(9))
   await pruneSupersededAnswers()
-  db.transaction(() => renameHttpRunColumnRefs(sheetId, uid, 'Q', 'Q2'))()
+  db.transaction(() => renameHttpRunColumnRefs(sheetId, uid, 'Q', 'Q2')).immediate()
   const q2 = run('Q', waterfall)
   answer(q2, 9, routed(19))
   await pruneSupersededAnswers()

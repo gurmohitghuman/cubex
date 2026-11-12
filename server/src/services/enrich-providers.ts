@@ -57,7 +57,7 @@ export function noteProviderTries(ctx: RunCtx, toolId: string, tries: ProviderTr
           t.outcome === 'error' ? 1 : 0, t.status === 429 ? 1 : 0, t.outcome === 'skipped' ? 1 : 0, t.chargedMicro);
       }
       for (const [provider, until] of cooled) cool.run(iso(until), ctx.runId, provider);
-    })();
+    }).immediate();
   } catch (error) {
     console.error(`Enrichment run ${ctx.runId}: counting providers failed:`, (error as Error).message);
   }

@@ -42,7 +42,7 @@ const other = (n: number, down = false) => {
       const at = down ? n - 1 - i : i
       ins.run(uuid(), o, uid, i, JSON.stringify({ Email: `u${at}@a.com`, Name: `Old ${at}` }))
     }
-  })()
+  }).immediate()
   return o
 }
 // A rerun of Name on o as a worker has it: ⏳ on every row, what Name held kept in its journal first.

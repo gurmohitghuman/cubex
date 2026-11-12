@@ -88,7 +88,7 @@ export function upsertCellsBatch(
       );
     }
   });
-  tx();
+  tx.immediate();
 }
 
 // Delete ai_results / http_results that reference the given row_index values of

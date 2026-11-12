@@ -45,7 +45,7 @@ db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) 
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ T: `t${i}` }))
-})()
+}).immediate()
 // Reads its own target: a row the operation reached twice ends "-x-x".
 const call = { sheet_id: sid, operation: 'template', template: '{{T}}-x', target_column: 'T' }
 const state = () => db.prepare(`SELECT group_concat(data), (SELECT data_version FROM sheets WHERE id = ?)

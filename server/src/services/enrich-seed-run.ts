@@ -140,7 +140,7 @@ export function seedEnrichmentThenEnqueue(job: SeedJob): void {
         db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
           .run(job.sheetId, job.userId);
         return r.changes > 0;
-      })();
+      }).immediate();
       if (ready && done.seeded > 0) await enqueueHTTPRun(job.runId);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

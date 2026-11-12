@@ -5,6 +5,7 @@
 // otherwise (a column nobody looks up yet) it reads the other sheet's first
 // LOOKUP_PREVIEW_OTHER_ROWS rows and says how many it checked.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import {
   LOOKUP_MAX_MATCHES, LOOKUP_PREVIEW_CELL_CHARS, LOOKUP_PREVIEW_OTHER_ROWS, LOOKUP_PREVIEW_ROWS,
   LOOKUP_PREVIEW_SCAN_ROWS,
@@ -83,7 +84,7 @@ export function previewLookupColumn(
   const indexed = !!src && (s.match === 'equals' || src.with_text === 1) && !lookupSheetBlocked(s.otherSheetId)
     && lookupSourceState(src) === 'ready';
   // One read transaction: the keys and the rows they point at agree.
-  const cells = db.transaction(() => {
+  const cells = readTransaction(() => {
     const matches = indexed
       ? picked.map(p => (s.match === 'equals' ? matchEquals : matchContains)(src!.id, p.value, lookupNeed(ask)))
       : scanMatches(s, userId, picked.map(p => p.value), ask);

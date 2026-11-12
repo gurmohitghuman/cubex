@@ -17,6 +17,7 @@
 // a name that moved. A sheet or column that is gone pauses the run ('setup'),
 // and so does a sheet in the trash; once it's restored, Resume goes on.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import {
   LOOKUP_CACHE_ENTRIES, LOOKUP_CONTAINS_MIN_CHARS, LOOKUP_MAX_MATCHES, LOOKUP_STEP_MS, LOOKUP_STEP_ROUND_MS,
   LOOKUP_STEP_ROWS, LOOKUP_WAIT_POLL_MS,
@@ -153,7 +154,7 @@ export class RunLookups {
   private match(stepId: string, c: LookupChoices, src: LookupSource, value: string): Found | null {
     if (lookupSourceState(src) === 'changed'
       && !db.transaction(() => drainWithin(c.sheetId, this.userId, LOOKUP_STEP_MS)).immediate()) return null;
-    return db.transaction((): Found | null => {
+    return readTransaction((): Found | null => {
       const state = lookupSourceState(src);
       if (state === 'building' || state === 'reordering') return null;
       const version = db.prepare('SELECT version FROM lookup_sources WHERE id = ?').pluck().get(src.id) as number;

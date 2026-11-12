@@ -65,7 +65,7 @@ function sheet(tableId = tid): string {
     for (let i = 0; i < ROWS; i++) {
       insert.run(uuid(), id, uid, i, JSON.stringify({ S: `s${i === ROWS - 1 ? 0 : i}`, T: `t${i}` }))
     }
-  })()
+  }).immediate()
   return id
 }
 const call = (sheetId: string) => ({ sheetId, operation: 'template' as const, template: '{{T}}-x', targetColumn: 'T' })

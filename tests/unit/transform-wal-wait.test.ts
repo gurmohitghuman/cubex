@@ -48,7 +48,7 @@ db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) 
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ N: `r${i}`, Notes: NOTES }))
-})()
+}).immediate()
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 // Reads its own target: a row written twice would end with its suffix twice.
 const call = (suffix: string, cursor?: string) => transformColumn(uid, { sheetId: sid, operation: 'template',

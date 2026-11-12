@@ -58,7 +58,7 @@ const answer = (id: string, sid: string, row: number, value: string) => db.trans
   db.prepare(`INSERT INTO http_results (id,run_id,user_id,row_index,status) VALUES (?,?,?,?,'completed')`)
     .run(uuid(), id, uid, row)
   writeRunCells({ kind: 'http', id }, sid, uid, row, [['V', value]])
-})()
+}).immediate()
 const cancel = async (id: string) => {
   assert.deepEqual(await cancelRun('http', id, uid), { ok: true })
   await until('its clear is done', () => workOf('http', id) === null)
@@ -122,7 +122,7 @@ await ok('an "Only run if" rule marked a row at its start: a cell it wrote, so i
     journalSeed({ kind: 'http', id }, sid, uid, { rowids: JSON.stringify([r1]) }, [['V', PLACEHOLDER]])
     db.prepare(`UPDATE rows SET data = json_set(data, '$.V', CASE rowid WHEN ? THEN ? ELSE ? END)
       WHERE sheet_id = ?`).run(r0, CONDITION_NOT_MET, PLACEHOLDER, sid)
-  })()
+  }).immediate()
   await cancel(id)
   assert.deepEqual(cells(sid, 'V'), [CONDITION_NOT_MET, 'v1'])
   assert.equal(journal('http', id)!.state, 'kept')
@@ -172,7 +172,7 @@ async function widePages(mark: boolean) {
     const last = JSON.stringify(rowids.slice(-1))
     journalSeed({ kind: 'http', id }, sid, uid, { rowids: last }, [['C1', CONDITION_NOT_MET], ['C2', ''], ['C3', '']])
     set.run(CONDITION_NOT_MET, '', '', last)
-  })()
+  }).immediate()
   // Each read of the check's pages: where it went on from and how many rows it asked for.
   const pages: Array<[number, number]> = []
   const prepare = db.prepare

@@ -174,9 +174,9 @@ export async function importCsv(
       });
       for await (const row of csv.rows()) {
         batch.push(row);
-        if (batch.length >= HEAVY_SLICE_ROWS) { flush(); await yieldToRequests(); }
+        if (batch.length >= HEAVY_SLICE_ROWS) { flush.immediate(); await yieldToRequests(); }
       }
-      flush();
+      flush.immediate();
       if (!replace && opts.skipAutorun) await autorunSkipImport(sheetId, userId, startingRow, next - 1);
       if (replace) await autorunDropPending(sheetId, userId);
 

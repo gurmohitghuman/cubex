@@ -88,7 +88,7 @@ export function insertSetupRun(p: {
       p.webhookId ?? null, actorTokenId());
     db.prepare(`UPDATE setups SET use_count = use_count + 1, last_used_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(p.setupId, p.userId);
-  })();
+  }).immediate();
   return id;
 }
 

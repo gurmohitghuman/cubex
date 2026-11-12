@@ -83,7 +83,7 @@ const seed = (kind: Kind, id: string, sid: string, columns: string[]) => seedPro
   live: () => true,
 })
 const answer = (kind: Kind, id: string, sid: string, row: number, cells: Array<[string, unknown]>) =>
-  db.transaction(() => writeRunCells({ kind, id }, sid, uid, row, cells as Array<[string, string]>))()
+  db.transaction(() => writeRunCells({ kind, id }, sid, uid, row, cells as Array<[string, string]>)).immediate()
 // Cancelled through the code that cancels it; its clear runs in the background.
 const cancel = async (kind: Kind, id: string) => {
   assert.deepEqual(await cancelRun(kind, id, uid), { ok: true })

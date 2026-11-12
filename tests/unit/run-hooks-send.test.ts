@@ -86,7 +86,7 @@ async function main() {
     created_at) VALUES (?, ?, ?, 'run.finished', '{}', 'delivered', 0, ?)`)
   db.transaction(() => {
     for (let i = 0; i < 60; i++) ins.run(uuid(), uid, every, `2026-01-01T00:00:${String(i).padStart(2, '0')}.000Z`)
-  })()
+  }).immediate()
   await testRunWebhook(uid, every)
   const kept = db.prepare(`SELECT COUNT(*) FROM run_webhook_deliveries WHERE webhook_id = ?
     AND state IN ('delivered', 'failed')`).pluck().get(every)

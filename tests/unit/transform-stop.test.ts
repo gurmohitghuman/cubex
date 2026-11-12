@@ -50,7 +50,7 @@ db.transaction(() => {
   for (let i = 0; i < 300; i++) insert.run(uuid(), fresh, uid, i, JSON.stringify({ T: `f${i}` }))
   // Only rows 300 on match the where below: the first page writes none.
   for (let i = 0; i < 600; i++) insert.run(uuid(), late, uid, i, JSON.stringify({ T: `l${i}`, K: i < 300 ? 'n' : 'y' }))
-})()
+}).immediate()
 // Reads its own target: a row the operation reached twice ends "-x-x".
 const again = { sheetId: sid, operation: 'template' as const, template: '{{T}}-x', targetColumn: 'T' }
 const dataVersion = (id: string) => db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck().get(id) as number

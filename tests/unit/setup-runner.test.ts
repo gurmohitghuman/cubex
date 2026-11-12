@@ -132,7 +132,7 @@ async function main() {
   db.transaction(() => {
     setCleanAutorun(sheetId, uid, 'Trimmed', 'Name', true)
     setCleanAutorun(sheetId, uid, 'Lower', 'Trimmed', true)
-  })()
+  }).immediate()
   const filledAt = db.prepare('SELECT updated_at FROM clean_columns WHERE sheet_id = ? AND column_name = ?').pluck()
   const before = filledAt.get(sheetId, 'Trimmed')
   addRow(sheetId, ' Cy ')

@@ -45,7 +45,7 @@ export function trashKit(name: string) {
       for (let i = 0; i < n; i += 3) {
         db.prepare('INSERT INTO ai_results (id,run_id,user_id,row_index) VALUES (?,?,?,?)').run(uuid(), ai, uid, i * 2)
       }
-    })()
+    }).immediate()
     return sid
   }
   const rowsOf = (sid: string) => db.prepare(`SELECT id, row_index, data FROM rows WHERE sheet_id = ?
@@ -53,6 +53,6 @@ export function trashKit(name: string) {
   const item = (id: number) => db.prepare('SELECT * FROM trash_items WHERE id = ?').get(id) as
     { row_count: number; state: string; how: string; columns: string; bytes: number } | undefined
   const del = (sid: string, indexes: number[], cont?: number) =>
-    db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes }, cont))()
+    db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes }, cont)).immediate()
   return { db, uid, tid, ok, done, idle, fixture, rowsOf, item, del }
 }

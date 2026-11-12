@@ -127,7 +127,7 @@ const many = Array.from({ length: 45_000 }, (_, i) => odd[i % odd.length])
 const insertRow = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   many.forEach((cell, i) => insertRow.run(uuid(), oddSheet, uid, i * 3, JSON.stringify({ S: cell })))
-})()
+}).immediate()
 const oddCounts = await enrichRowCounts(oddSheet, uid, 'S', { mode: 'all', rowIndexes: null })
 const tally = (st: 'not_enriched' | 'no_result' | 'failed') => many.filter(c => statusMatches(c, st)).length
 check('SQL count == seeding rule, with odd blanks and sparse row numbers over several slices',
