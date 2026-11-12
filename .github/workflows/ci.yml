@@ -43,7 +43,7 @@ jobs:
           # run past 25 minutes.
           - os: windows-latest
             name: Typecheck + Unit tests + Build (Windows)
-            timeout: 35
+            timeout: 45
 
     steps:
       - name: Check out code

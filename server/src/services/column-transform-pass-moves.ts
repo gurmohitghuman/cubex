@@ -8,8 +8,10 @@
 //   .ts); purged with the trash item (the foreign key), or deleted at once when
 //   the column is deleted for good (column-delete.ts);
 // - its column leaving column_order without a delete (a CSV replace or an
-//   import undone lists the file's columns) is gone for good, as one deleted
-//   for good: it goes in that transaction (forgetUnlistedTransformPasses);
+//   import undone lists the file's columns, a transfer into a sheet still as
+//   created lists what it brings, not "Column 1") is gone for good, as one
+//   deleted for good: it goes in that transaction (forgetUnlistedTransformPasses;
+//   tests/unit/column-order-writers.test.ts checks every writer of the list);
 // - its sheet or table sent to the trash keeps it, and deleted for good drops it
 //   (the foreign key);
 // - rows moving under its cursor mark it (moved_at), never drop it, so the rows

@@ -49,3 +49,7 @@ export const otherArgs = (col: string) => invalid('This cursor is the unfinished
   + 'or where). Nothing was written. Call again with that pass\'s own arguments to go on; if a column it reads was '
   + 'renamed since, or to run the column with these arguments, call with restart: true and no cursor to start '
   + 'over from the first row, applying the operation to every row again.')
+// A cursor's template reading the target by the name its pass started under: name it as it is now.
+export const targetRenamed = (was: string, now: string) => invalid(`This cursor's pass read "${was}" in its `
+  + `template, and that column is now "${now}". Nothing was written. To go on, send the same call with {{${now}}} `
+  + `in place of {{${was}}} and the same cursor.`)

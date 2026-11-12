@@ -23,6 +23,12 @@ export const otherArgs = (col: string) => `This cursor is the unfinished transfo
   + 'since, or to run the column with these arguments, call with restart: true and no cursor to start over from '
   + 'the first row, applying the operation to every row again.';
 
+// A cursor's template naming the target by the name its pass started under, renamed since: the same call
+// naming it as it is now goes on.
+export const targetRenamedWords = (was: string, now: string) => `This cursor's pass read "${was}" in its template, `
+  + `and that column is now "${now}". Nothing was written. To go on, send the same call with {{${now}}} in place `
+  + `of {{${was}}} and the same cursor.`;
+
 // The refusal of every call into a column whose pass rows moved under (it had written `rows`; with none, only
 // a call with a cursor is refused: one without starts a new pass), naming no cursor.
 export function movedWords(column: string, rows: number): string {

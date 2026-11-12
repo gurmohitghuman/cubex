@@ -133,31 +133,38 @@ function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'> {
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-// Between a bulk writer's transactions: true to go on, false to stop now. `until`
-// (ms since the epoch): the writer's own deadline. A wait stops there, even
-// while a slow checkpoint still runs, and at once when a checkpoint copied
-// nothing with no other checkpoint holding the lock: a reader still reads those
-// frames (a backup, a sqlite3 shell), and waiting wouldn't free them.
-export async function walRoom(until: number): Promise<boolean> {
+// Between a bulk writer's transactions: 'room' to go on; 'late' once `until` (ms
+// since the epoch), the writer's own deadline, comes, even while a slow
+// checkpoint still runs; 'held' at once when a checkpoint asked for after the
+// WAL's size was read copied nothing, with no other checkpoint holding the lock:
+// a reader still reads those frames (a backup, a sqlite3 shell), and waiting
+// wouldn't free them. A checkpoint already running when the size was read may
+// have copied before it, its answer still on its way to this thread (a page
+// kept the thread busy): it never saw the frames written since, so its "nothing
+// more" says nothing about them, and another checkpoint is asked for.
+export type WalRoom = 'room' | 'late' | 'held';
+export async function walRoom(until: number): Promise<WalRoom> {
   const startedAt = Date.now();
   let paused = false;
   try {
     for (let s = walState(); s;) {
+      const earlier = running;
       if (s.log - s.checkpointed >= WAL_CHECKPOINT_FRAMES) void checkpointInBackground();
-      if (s.log < WAL_PAUSE_FRAMES || s.checkpointed >= s.log) return true;
-      if (Date.now() >= until) return false;
+      if (s.log < WAL_PAUSE_FRAMES || s.checkpointed >= s.log) return 'room';
+      if (Date.now() >= until) return 'late';
       paused = true;
-      const r = await byDeadline(checkpointInBackground(), until);
-      if (r === 'late') return false;
+      const asked = checkpointInBackground();
+      const r = await byDeadline(asked, until);
+      if (r === 'late') return 'late';
       const after = walState();
-      if (after && after.log === s.log && after.checkpointed === s.checkpointed) {
-        if (r && !r.busy) return false;
+      if (asked !== earlier && after && after.log === s.log && after.checkpointed === s.checkpointed) {
+        if (r && !r.busy) return 'held';
         // Another checkpoint held the lock: a moment later.
         await byDeadline(new Promise<void>(res => setTimeout(res, WAL_PAUSE_RETRY_MS)), until);
       }
       s = after;
     }
-    return true;
+    return 'room';
   } finally {
     if (paused) { stats.pauses++; stats.pausedMs += Date.now() - startedAt; }
   }

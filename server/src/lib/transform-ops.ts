@@ -132,6 +132,10 @@ export const templateColumns = (template: string): string[] =>
 // written (untrimmed) and the text after it, in turn.
 export const templateParts = (template: string): string[] => template.split(TEMPLATE_TOKEN);
 
+// The template with each {{column}} token that reads `from` (as applyTemplate reads it) reading `to` instead.
+export const templateRenamed = (template: string, from: string, to: string): string =>
+  template.replace(TEMPLATE_TOKEN, (token, raw: string) => (raw.trim() === from ? `{{${to}}}` : token));
+
 // template: substitute {{column}} tokens from the whole row. An unknown column
 // substitutes '' (blank), matching the HTTP request-template convention (not a
 // "[MISSING]" marker).

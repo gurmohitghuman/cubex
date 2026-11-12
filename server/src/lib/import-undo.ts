@@ -86,6 +86,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
         `UPDATE sheets SET column_order = ?, empty_filter = NULL, column_filters = NULL, row_filter = NULL,
            row_generation = row_generation + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
       ).run(replaceColumnOrder(job), job.sheet_id, job.user_id);
+      forgetUnlistedTransformPasses(job.sheet_id, job.user_id);
       if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(job.sheet_id, job.user_id)) {
         db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
           .run(orderedUuid(), job.sheet_id, job.user_id);
@@ -102,7 +103,6 @@ export async function undoImport(job: ImportJob): Promise<void> {
       forgetUnlistedAutoDedupe(job.sheet_id, job.user_id);
       forgetUnlistedRunInputKeys(job.sheet_id, job.user_id);
       forgetUnlistedUndoColumns(job.sheet_id, job.user_id);
-      forgetUnlistedTransformPasses(job.sheet_id, job.user_id);
     }
     else autorunRowsRemoved(job.sheet_id, job.user_id);
     db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')

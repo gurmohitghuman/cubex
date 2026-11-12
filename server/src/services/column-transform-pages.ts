@@ -95,10 +95,13 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   };
   try {
     for (let first = true, more = true; more; first = false) {
-      // Only a page that wrote grew the WAL, and the call before may have stopped with it past its bound. A wait
-      // that can't end stops the call, but only after its first page, so each call goes on (the time limit
-      // still stops it before a page).
-      if ((wrote || first) && !(await walRoom(startedAt + TRANSFORM_MAX_CALL_MS)) && !first) break;
+      // Only a page that wrote grew the WAL, and the call before may have stopped with it past its bound. The
+      // call's time running out in the wait stops it before any page, its first too; a reader holding the frames
+      // stops it only after its first page, so each call goes on.
+      if (wrote || first) {
+        const room = await walRoom(startedAt + TRANSFORM_MAX_CALL_MS);
+        if (room === 'late' || (room === 'held' && !first)) break;
+      }
       more = withoutAutoCheckpoint(step);
       await yieldToRequests();
     }

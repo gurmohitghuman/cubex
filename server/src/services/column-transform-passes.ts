@@ -97,6 +97,11 @@ function unfinishedPass(s: Scope, peek: boolean): PassRecord | undefined {
   return { ...pass, moved: movedAt !== null || Number(CURSOR.exec(rec.cursor)?.[1]) !== s.generation };
 }
 
+// The name the column's unfinished pass first named its target by, if the column has one.
+export const passStartedAs = (sheetId: string, userId: string, column: string): string | undefined =>
+  db.prepare(`SELECT started_as FROM transform_passes ${liveWhere}`).pluck().get(sheetId, userId, column) as
+    string | undefined;
+
 // The pass a cursor's hash names, wherever it is now (its cursors all end in it).
 function passByHash(userId: string, hash: string) {
   return db.prepare(`SELECT sheet_id, target_column, trash_id FROM transform_passes

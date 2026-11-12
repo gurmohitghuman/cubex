@@ -1,15 +1,15 @@
 // transform_column on 300,000 rows (services/column-transform-pages.ts) walks the sheet a page at a time:
 // while its calls run, the server answers a REST read within 200 ms and the event loop is never held 200 ms,
 // memory stays that of a page, not of the sheet, and one matching every row writes every row exactly once
-// over calls of at most TRANSFORM_MAX_ROWS rows, each going on from the call before's next_cursor. Those cases
-// are there for size: Linux only (transform-platform.ts; on Windows, the bounds on a slow disk are
-// transform-wal-slow's, every row once at the row cap transform-cursor's). On 1,000 rows, everywhere: a where
-// matching nothing writes nothing (no '' into every row: the new column is only listed) and asks for no
-// checkpoint; one row written asks for one, on the worker, at the end of its call. No checkpoint runs on the
-// API connection (a checkpoint's disk sync held a slow CI disk's server 628 ms): the WAL is copied back on the
-// checkpoint worker's thread (lib/wal-checkpointer.ts), and no page's commit runs SQLite's own checkpoint (it
-// copied 2,000 frames back inside about one page commit in fifty): the WAL never holds the frames that start
-// it. Numbers are printed: the longest page transaction, the worker's checkpoints and waits
+// over calls of at most TRANSFORM_MAX_ROWS rows, each going on from the call before's next_cursor. Both
+// platforms run them: they caught the checkpoint stall, and their 33 or 34 WAL restarts a pass are the only
+// ones that exercise the restart's header sync that often. On 1,000 rows: a where matching nothing writes
+// nothing (no '' into every row: the new column is only listed) and asks for no checkpoint; one row written
+// asks for one, on the worker, at the end of its call. No checkpoint runs on the API connection (a
+// checkpoint's disk sync held a slow CI disk's server 628 ms): the WAL is copied back on the checkpoint
+// worker's thread (lib/wal-checkpointer.ts), and no page's commit runs SQLite's own checkpoint (it copied
+// 2,000 frames back inside about one page commit in fifty): the WAL never holds the frames that start it.
+// Numbers are printed: the longest page transaction, the worker's checkpoints and waits
 // (sqlite-write-probe.ts).
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -24,7 +24,6 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import { sqliteWriteProbe } from './sqlite-write-probe'
-import { onWindows, sizeCase } from './transform-platform'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -40,8 +39,6 @@ console.warn = () => {}
 
 const ROWS = 300_000
 const FEW = 1_000
-// The big sheet only where its cases run.
-const BIG = onWindows ? 0 : ROWS
 const NOTES = 'n'.repeat(200)
 const uid = uuid(), tid = uuid(), sid = uuid(), small = uuid(), few = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
@@ -52,7 +49,7 @@ addSheet.run(small, tid, uid, 'Small', 1, JSON.stringify(['Name']))
 addSheet.run(few, tid, uid, 'Few', 2, JSON.stringify(['Name', 'Notes']))
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
-  for (let i = 0; i < BIG; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
+  for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < FEW; i++) insert.run(uuid(), few, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < 5; i++) insert.run(uuid(), small, uid, i, JSON.stringify({ Name: `s${i}` }))
 })()
@@ -155,37 +152,37 @@ async function main() {
   })
 
   const NONE = `a where matching none of ${ROWS} rows: nothing written, the server answers, memory stays a page's`
-  if (sizeCase(`300,000-row volume case, ${NONE}`)) await check(NONE, async () => {
-      const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
-        targetColumn: 'Nothing', where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
-      assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
-      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
-        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
-      assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
-      assert.equal(stats.workerCheckpoints + stats.mainCheckpoints, 0,
-        `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
-      assert.deepEqual(calls[0].created_column, 'Nothing')
-      assert.equal(stored('Nothing'), 0, 'no row stores the new column')
-      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
-    })
+  await check(NONE, async () => {
+    const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
+      targetColumn: 'Nothing', where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
+    assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
+    assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+      + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
+    assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
+    assert.equal(stats.workerCheckpoints + stats.mainCheckpoints, 0,
+      `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
+    assert.deepEqual(calls[0].created_column, 'Nothing')
+    assert.equal(stored('Nothing'), 0, 'no row stores the new column')
+    assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+  })
 
   const EVERY = `a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`
-  if (sizeCase(`300,000-row volume case, ${EVERY}`)) await check(EVERY, async () => {
-      const { calls, stats } = await measured({ sheetId: sid, operation: 'template', template: '{{Name}}!',
-        targetColumn: 'Every', where: [{ column: 'Name', operator: 'not_empty' }] })
-      assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)
-      assert.ok(calls.every(c => c.updated <= TRANSFORM_MAX_ROWS), JSON.stringify(calls.map(c => c.updated)))
-      assert.deepEqual(calls.map(c => c.created_column), ['Every', ...calls.slice(1).map(() => null)])
-      const right = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
-        AND json_extract(data, '$.Every') = json_extract(data, '$.Name') || '!'`).pluck().get(sid)
-      assert.equal(right, ROWS)
-      assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
-      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
-        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
-      assert.equal(stats.mainCheckpoints, 0, 'no checkpoint on the API connection')
-      assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
-      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
-    })
+  await check(EVERY, async () => {
+    const { calls, stats } = await measured({ sheetId: sid, operation: 'template', template: '{{Name}}!',
+      targetColumn: 'Every', where: [{ column: 'Name', operator: 'not_empty' }] })
+    assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)
+    assert.ok(calls.every(c => c.updated <= TRANSFORM_MAX_ROWS), JSON.stringify(calls.map(c => c.updated)))
+    assert.deepEqual(calls.map(c => c.created_column), ['Every', ...calls.slice(1).map(() => null)])
+    const right = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
+      AND json_extract(data, '$.Every') = json_extract(data, '$.Name') || '!'`).pluck().get(sid)
+    assert.equal(right, ROWS)
+    assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
+    assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+      + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
+    assert.equal(stats.mainCheckpoints, 0, 'no checkpoint on the API connection')
+    assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
+    assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+  })
 
   server.close()
   await closeWalCheckpointer()

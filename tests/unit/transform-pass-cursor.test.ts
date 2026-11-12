@@ -4,7 +4,8 @@
 // while there is one; nothing skipped), the same call stopped at the same row too (each pass has its own cursor,
 // and once the pass ends both are over, the same call's pass on another sheet notwithstanding); the kept cursor
 // on the old name after a rename (no column made under it; a template naming T there is answered naming the pass
-// into T2, read before the template, and refused naming T without cursor);
+// into T2, read before the template, and refused naming T without cursor; the same call into T2 is told to read
+// {{T2}}, with which it goes on, unless its other arguments differ too);
 // the kept cursor after its column was deleted for good and added back; a cursor edited ahead of the pass, or a
 // malformed one, while the pass is open (naming its cursor); the pass's cursor with a source column renamed
 // since (its arguments differ), and the same call naming the old name (the template's column is gone: refused
@@ -23,7 +24,7 @@ import deleteMod from '../../server/src/services/column-delete'
 import addMod from '../../server/src/services/column-add'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
-import { notOpen, otherArgs, otherColumn, unfinished } from './transform-pass-words'
+import { notOpen, otherArgs, otherColumn, targetRenamed, unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -154,6 +155,9 @@ async function main() {
       await refused({ sheetId: sid, operation: 'upper', sourceColumn: 'S', targetColumn: 'T', cursor },
         otherColumn('T2', 'T'))
       assert.deepEqual(columns(sid), ['S', 'T2'])
+      await refused({ ...call(sid, 'T2'), template: '{{T}}-x', cursor }, targetRenamed('T', 'T2'))
+      await refused({ ...call(sid, 'T2'), template: '{{ T }}-x', cursor }, targetRenamed('T', 'T2'))
+      await refused({ ...call(sid, 'T2'), template: '{{T}}-y', cursor }, otherArgs('T2'))
       assert.deepEqual(await transformColumn(uid, { ...call(sid, 'T2'), cursor }),
         { ok: { updated: ROWS - 250, created_column: null } })
       assert.equal(ending(sid, 'T2', 't*-x'), ROWS)

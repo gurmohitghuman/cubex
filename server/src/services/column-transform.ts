@@ -27,11 +27,11 @@ import { sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { prepareWhere } from './row-filter';
 import { allOffError, type WhereItem } from '../lib/row-filter/where';
 import {
-  applyCellOp, applyTemplate, templateColumns, validateRegexPattern, type TransformOp,
+  applyCellOp, applyTemplate, templateColumns, templateRenamed, validateRegexPattern, type TransformOp,
 } from '../lib/transform-ops';
 import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
-import { passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
-import { stoppedOnErrorWords } from './column-transform-pass-words';
+import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
+import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
 import { settle, stopAt } from './column-transform-end';
 import { redactError } from '../lib/redact';
 
@@ -147,7 +147,7 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
     if (missing.length > 0) {
       // A cursor's pass answers first, read only: a target renamed since is named as it is now.
       const pass = p.cursor === undefined || p.restart ? null : peekPass(userId, p, columns);
-      if (pass) return pass;
+      if (pass) return targetReadAsStarted(userId, p, columns, missing) ?? pass;
       const named = missing.map(c => `"${c}"`).join(', ');
       return { fail: 'invalid', error: `Template column${missing.length === 1 ? '' : 's'} ${named} not found.` };
     }
@@ -211,4 +211,16 @@ function peekPass(userId: string, p: TransformParams, columns: string[]): Fail |
   { ...p, targetColumn: name.name }, { cursor: p.cursor, peek: true });
   if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
   return 'unfinished' in start ? start : null;
+}
+
+// A cursor's template whose only missing column is the name its pass first named the target by (renamed since):
+// when the same call naming the target as it is now would go on, the refusal says so, not to start over.
+function targetReadAsStarted(userId: string, p: TransformParams, columns: string[], missing: string[]): Fail | null {
+  const target = sanitizeAndValidateColumnName(p.targetColumn);
+  if ('error' in target || missing.length !== 1) return null;
+  const was = passStartedAs(p.sheetId, userId, target.name);
+  if (was !== missing[0]) return null;
+  const now = { ...p, template: templateRenamed(p.template!, was, target.name) };
+  return peekPass(userId, now, columns) === null ? { fail: 'invalid', error: targetRenamedWords(was, target.name) }
+    : null;
 }

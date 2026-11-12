@@ -26,6 +26,7 @@ import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
+import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 
 export type { TransferRequest } from './transfer-ledger';
 
@@ -152,6 +153,8 @@ function executeTransfer(
     'DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?',
   ).run(request.destinationSheetId, userId, SEED_ROW_COUNT);
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
+  // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
+  forgetUnlistedTransformPasses(request.destinationSheetId, userId);
   // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
   const auto = autoDedupeAnswer(userId, settleRows(request.destinationSheetId, userId, rids, 'arrived'), added,
     surface);
