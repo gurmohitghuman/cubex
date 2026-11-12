@@ -1,3 +1,4 @@
+// Over 200 lines: the AI panel's draft, its config, its two hashes and its reads and writes, in one place.
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
@@ -35,6 +36,9 @@ export interface DraftConfig {
   // "Only run if" rule as stored (lib/run-condition.ts), or null. Absent on
   // drafts saved before rules.
   runIf?: string | null;
+  // Web fetch limits (lib/web-fetch-options.ts); null or absent: none.
+  maxContentTokens?: number | null;
+  maxPagesPerRow?: number | null;
 }
 
 // A draft's config from a parsed /ai/preview request and the model it resolved to.
@@ -43,6 +47,7 @@ export function draftConfigFrom(p: {
   useOpenRouterWebSearch: boolean; useWebFetch: boolean; safeMaxChars: number | null; safeConcurrency: number;
   search: { engine: string; mode: string | null; maxPerRow: number | null } | null;
   runIf?: string | null;
+  fetchLimits?: { maxContentTokens: number | null; maxPagesPerRow: number | null };
 }, model: string): DraftConfig {
   return {
     columnName: p.cleanColumnName, prompt: p.prompt, systemPrompt: p.systemPrompt || null,
@@ -51,6 +56,9 @@ export function draftConfigFrom(p: {
     maxChars: p.safeMaxChars, concurrency: p.safeConcurrency,
     searchEngine: p.search?.engine ?? null, searchMode: p.search?.mode ?? null, maxSearchesPerRow: p.search?.maxPerRow ?? null,
     runIf: p.runIf ?? null,
+    ...(p.useWebFetch && p.fetchLimits ? {
+      maxContentTokens: p.fetchLimits.maxContentTokens, maxPagesPerRow: p.fetchLimits.maxPagesPerRow,
+    } : {}),
   };
 }
 
@@ -97,6 +105,9 @@ export function computeConfigHash(c: DraftConfig): string {
     // A rule picks which rows a preview samples and a run fills; only hashed
     // when set, so drafts without one hash as before.
     ...(c.runIf ? [c.runIf] : []),
+    // Web fetch limits change what a row reads: hashed only when set, so other drafts hash as before.
+    ...(c.useWebFetch && (c.maxContentTokens || c.maxPagesPerRow)
+      ? [{ maxContentTokens: c.maxContentTokens ?? null, maxPagesPerRow: c.maxPagesPerRow ?? null }] : []),
   ]));
 }
 

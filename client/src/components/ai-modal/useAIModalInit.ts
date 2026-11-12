@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { sheetsAPI, webSearchFrom, type WebSearchSettings } from '@/utils/api'
+import {
+  sheetsAPI, webSearchFrom, fetchLimitsFrom, type FetchLimitSettings, type WebSearchSettings,
+} from '@/utils/api'
 import { clampConcurrency } from './types'
 
 // Setters the init effect drives. Grouped so the modal passes one object instead
@@ -13,6 +15,7 @@ interface InitSetters {
   setUseOpenRouterWebSearch: (v: boolean) => void
   setWebSearch: (v: WebSearchSettings) => void
   setUseWebFetch: (v: boolean) => void
+  setFetchLimits: (v: FetchLimitSettings) => void
   setConcurrency: (v: number) => void
   setRunIf: (v: string) => void
   // Called BEFORE an edit-mode payload is applied. Closing the drawer keeps
@@ -107,6 +110,7 @@ export function useAIModalInit(
         if (typeof init.useOpenRouterWebSearch === 'boolean') s.setUseOpenRouterWebSearch(init.useOpenRouterWebSearch)
         s.setWebSearch(webSearchFrom(init.searchEngine, init.searchMode, init.maxSearchesPerRow))
         if (typeof init.useWebFetch === 'boolean') s.setUseWebFetch(init.useWebFetch)
+        s.setFetchLimits(fetchLimitsFrom(init.maxContentTokens, init.maxPagesPerRow))
         if (typeof init.runIf === 'string') s.setRunIf(init.runIf)
         if (typeof init.concurrency === 'number') { explicitConcurrency.current = true; s.setConcurrency(clampConcurrency(init.concurrency)) }
       }

@@ -8,7 +8,11 @@ import {
   MAX_ROWS_PER_SHEET, HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_REQUEST_TIMEOUT_MS,
   CURL_MAX_CHARS, HTTP_RETRY_DEFAULT, HTTP_RETRY_MAX, HTTP_STATUS_PATH, RUN_SPEND_LIMIT_MAX_USD,
 } from '../lib/constants';
-import { PREVIEW_MAX_ROWS, MAX_AI_CONCURRENCY, FREE_MODEL_CONCURRENCY_WARN, MAX_SEARCHES_PER_ROW } from '../lib/constants-ai';
+import {
+  PREVIEW_MAX_ROWS, MAX_AI_CONCURRENCY, FREE_MODEL_CONCURRENCY_WARN, MAX_SEARCHES_PER_ROW,
+  WEB_FETCH_MAX_CONTENT_TOKENS_MIN, WEB_FETCH_MAX_CONTENT_TOKENS_MAX, WEB_FETCH_MAX_PAGES_PER_ROW,
+} from '../lib/constants-ai';
+import { MAX_CONTENT_TOKENS_RANGE, MAX_PAGES_RANGE } from '../lib/web-fetch-options';
 import { MCP_EFFICIENT_ROWS_ENABLED } from '../lib/api-v1-constants';
 import { SEARCH_ENGINES, SEARCH_MODES } from '../lib/web-search-options';
 import { tokenStartAiRun, type TokenAiRunArgs } from '../services/run-start-token';
@@ -70,10 +74,28 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           `Hard limit on searches per row (1-${MAX_SEARCHES_PER_ROW}; needs web_search). OpenRouter enforces it on exa, parallel and perplexity, and on Anthropic models' own search; a row that reaches it is made to answer. `
           + "Other models' own search (OpenAI, Google, xAI) can't be limited: with search_engine auto Cubex then uses Exa (web_search.switched is true in the response), with native the run is refused."),
         web_fetch: lenientBoolean().optional().describe('Let the model open web pages, limited per row to the sites in the cells the prompt references (a URL or a bare domain such as stripe.com). With output_columns, the "(Data)" column lists the pages it used.'),
+        max_content_tokens: lenientInt(WEB_FETCH_MAX_CONTENT_TOKENS_MIN, WEB_FETCH_MAX_CONTENT_TOKENS_MAX,
+          `max_content_tokens must be ${MAX_CONTENT_TOKENS_RANGE}.`).optional().describe(
+          `Cut each page web_fetch reads to about this many tokens (${WEB_FETCH_MAX_CONTENT_TOKENS_MIN}-`
+          + `${WEB_FETCH_MAX_CONTENT_TOKENS_MAX}; needs web_fetch). A page's text goes into the prompt, so this `
+          + 'bounds what a row costs. With this or max_pages_per_row the pages are read through Exa ($0.001 a '
+          + 'page), since a model\'s own fetch doesn\'t cut pages; an OpenRouter workspace that limits web fetch '
+          + 'engines must allow Exa, or the run pauses (pause_reason web_engine). Reruns and saved setups keep it.'),
+        max_pages_per_row: lenientInt(1, WEB_FETCH_MAX_PAGES_PER_ROW, `max_pages_per_row must be ${MAX_PAGES_RANGE}.`)
+          .optional().describe(`Most pages web_fetch may read for one row (1-${WEB_FETCH_MAX_PAGES_PER_ROW}, `
+          + 'Cubex\'s own cap: Exa has none; needs web_fetch); further fetches are refused and the model answers '
+          + 'from what it read. Read through Exa, as with max_content_tokens.'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids (from read_rows) to run; omit for all rows'),
         run_if: runIfSchema,
-        estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, model, estimated_cost_usd:{low,high}, web_fees_usd, web_search:{engine, runs_on, mode, price_per_search_usd, searches_per_row, switched, ...}, ... } and start nothing. No AI calls, no columns created. In web_search, engine is what the run sends, runs_on is what runs the searches, and mode is the one billed (the engine\'s default when you chose none). in_flight {concurrency, reserve_at_concurrency_usd, account_balance_usd, concurrency_ceiling, note, warning}: OpenRouter holds each running call\'s possible cost and lets the account hold only part of its balance at once, so a high concurrency can be refused (402) before the balance runs out; follow its warning. own_provider_key: true when your latest run on this model ran on your own provider key (BYOK).'),
-        preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt on the first N rows (max ${PREVIEW_MAX_ROWS}) with the same web tools, and return the sample outputs (with their sources, search words and cost) + MEASURED cost + full-run projection. Nothing is created or saved: validate a prompt before the full run. On your own provider key (BYOK) cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add what the provider bills.`),
+        estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, model, estimated_cost_usd:{low,high}, web_fees_usd, web_search:{engine, runs_on, mode, price_per_search_usd, searches_per_row, switched, ...}, ... } and start nothing. No AI calls, no columns created. In web_search, engine is what the run sends, runs_on is what runs the searches, and mode is the one billed (the engine\'s default when you chose none). in_flight {concurrency, reserve_at_concurrency_usd, account_balance_usd, concurrency_ceiling, note, warning}: OpenRouter holds each running call\'s possible cost and lets the account hold only part of its balance at once, so a high concurrency can be refused (402) before the balance runs out; follow its warning. own_provider_key: true when your latest run on this model ran on your own provider key (BYOK).'
+          + ' in_flight comes back on your own provider key too: a row your key can\'t serve falls back to '
+          + 'OpenRouter credits and is held. assumptions.history_from says where the output size came from: column '
+          + '(this column\'s past runs), prompt (past runs of this prompt on this model), preview (previews of it), '
+          + 'model (any run on this model), or null (a default); history_rows is how many rows.'),
+        preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt on the first N rows (max ${PREVIEW_MAX_ROWS}) with the same web tools, and return the sample outputs (with their sources, search words and cost) + MEASURED cost + full-run projection. Nothing is created or saved: validate a prompt before the full run. On your own provider key (BYOK) cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add what the provider bills.`
+          + ' Each row also has paid_with ("own_key", "credits" when OpenRouter fell back to its credits, null when '
+          + 'it didn\'t say) and tokens {input, output, reasoning} (null where not reported). Later estimates of '
+          + 'this prompt use what the preview measured.'),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run (safe retries after a timeout/limit).'),
         webhook_id: webhookIdSchema,
         max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional().describe(

@@ -53,11 +53,21 @@ async function readFresh(key: string): Promise<OpenRouterBalanceRead> {
 }
 
 export async function readOpenRouterBalance(userId: string): Promise<OpenRouterBalanceRead> {
+  return (await readOpenRouterBalanceAt(userId)).read;
+}
+
+// The read and when Cubex made it (ms since the epoch; the cached read's time
+// when it served from the cache), null when there was nothing to read.
+export async function readOpenRouterBalanceAt(userId: string):
+  Promise<{ read: OpenRouterBalanceRead; at: number | null }> {
   const key = getOpenRouterApiKey(userId);
-  if (!key) return { fail: 'no_key', message: 'No OpenRouter key saved. Add one in Settings.' };
+  if (!key) return { read: { fail: 'no_key', message: 'No OpenRouter key saved. Add one in Settings.' }, at: null };
   const hit = cache.get(userId);
-  if (hit && hit.key === key && Date.now() - hit.at < OPENROUTER_BALANCE_CACHE_MS) return hit.read;
+  if (hit && hit.key === key && Date.now() - hit.at < OPENROUTER_BALANCE_CACHE_MS) {
+    return { read: hit.read, at: hit.at };
+  }
   const read = await readFresh(key);
-  cache.set(userId, { at: Date.now(), key, read });
-  return read;
+  const at = Date.now();
+  cache.set(userId, { at, key, read });
+  return { read, at };
 }

@@ -6,6 +6,7 @@ import { markAutorunInputs } from '../lib/autorun-mark';
 import type { RowStamp } from '../lib/run-inputs/stamp';
 import { writeRunCells } from '../lib/run-cells-write';
 import { redactError } from '../lib/redact';
+import type { PaidWith } from '../lib/responses-adapter';
 
 // Thrown inside the success-path write transaction when a re-check finds the run
 // is no longer ours (cancel/resume raced us). Rolls the txn back; processRow's
@@ -53,12 +54,17 @@ export interface RowTokenUsage {
   // [{query, ran}] (lib/responses-adapter.ts). null without web search.
   webSearches?: number | null;
   searchQueries?: string | null;
+  // Reasoning tokens among the output, and who paid (migration 055).
+  reasoningTokens?: number | null;
+  paidWith?: PaidWith | null;
 }
 
-// The ai_results spend columns, in INSERT order: tokens, cost, searches, queries, provider cost.
+// The ai_results spend columns, in INSERT order: tokens, cost, searches,
+// queries, provider cost, reasoning tokens, payer.
 export const usageColumns = (u?: RowTokenUsage) => [
   u?.promptTokens ?? null, u?.completionTokens ?? null, u?.costUsd ?? null,
   u?.webSearches ?? null, u?.searchQueries ?? null, u?.providerCostUsd ?? null,
+  u?.reasoningTokens ?? null, u?.paidWith ?? null,
 ];
 
 // A call that came back (billed) for a row a pause, cancel or resume then
@@ -102,8 +108,9 @@ export function writeSuccess(
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd,
+        reasoning_tokens, paid_with)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, result, scrapedDataJson,
       ...usageColumns(usage),
@@ -137,8 +144,9 @@ export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTok
     if (shouldStop(ctx.runId, ctx.myGeneration)) { recordDroppedCall(ctx, usage); return; }
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
-      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd,
+        reasoning_tokens, paid_with)
+      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
     const failed = `❌ Error: ${errorMessage}`;
     writeCells(ctx, ctx.needsDataColumn

@@ -11,6 +11,7 @@ import {
 } from '../lib/cost-ceiling';
 import type { AiEstimate } from './run-estimate';
 import type { TokenAiRunArgs } from './run-start-token';
+import { hasFetchLimits, type FetchLimits } from '../lib/web-fetch-options';
 
 export interface AiRunLimits { ceiling: CeilingArgs; spendLimitUsd: number | null; any: boolean }
 
@@ -27,7 +28,8 @@ export function aiRunLimitsOf(a: { max_cost_usd?: unknown; allow_unpriced?: unkn
   };
 }
 
-// What the ceiling reads from an AI estimate: its high end, what has no price
+// What the ceiling reads from an AI estimate: its high end (a model's own web
+// fetch in it at up to $0.001 a page: lib/ai-web-cost.ts), what has no price
 // (the model, or web search fees Cubex can't price and hasn't measured), and
 // one row's most, which the run's spend limit keeps room for (the ceiling is
 // that limit).
@@ -50,6 +52,7 @@ export function aiCeilingCheck(e: AiEstimate, c: CeilingArgs): { estimate: objec
 // a retry sending "true" (or a cap of "1") replays a start that sent true (or 1).
 export function aiRunRequestHash(sheetId: string, a: TokenAiRunArgs, parsed: {
   useOpenRouterWebSearch: boolean; useWebFetch: boolean; search: unknown; runIf: string | null | undefined;
+  fetchLimits?: FetchLimits;
 }, limits: AiRunLimits): string {
   return runRequestHash('ai_run', {
     sheet_id: sheetId, column_name: a.column_name, prompt: a.prompt, system_prompt: a.system_prompt,
@@ -58,6 +61,8 @@ export function aiRunRequestHash(sheetId: string, a: TokenAiRunArgs, parsed: {
     web_search: parsed.useOpenRouterWebSearch, web_fetch: parsed.useWebFetch,
     ...(parsed.useOpenRouterWebSearch ? { search: parsed.search } : {}),
     ...(parsed.runIf ? { run_if: parsed.runIf } : {}),
+    // Only when set, so a start without them hashes as before.
+    ...(hasFetchLimits(parsed.fetchLimits) ? { fetch_limits: parsed.fetchLimits } : {}),
     ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
     ...(limits.ceiling.maxCostUsd !== null ? { max_cost_usd: limits.ceiling.maxCostUsd } : {}),
     // allow_unpriced does nothing without max_cost_usd, so only then does it count.

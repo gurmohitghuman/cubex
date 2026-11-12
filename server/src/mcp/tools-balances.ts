@@ -3,6 +3,7 @@
 // anything (services/balances.ts; GET /v1/balances is the same read).
 import { McpServer } from '@modelcontextprotocol/server';
 import { readBalances } from '../services/balances';
+import { OPENROUTER_BALANCE_CACHE_MS } from '../lib/constants';
 import { McpAuthCtx, ok, missingScope, registerTool } from './tool-helpers';
 
 export function registerBalanceTools(server: McpServer, ctx: McpAuthCtx) {
@@ -11,7 +12,10 @@ export function registerBalanceTools(server: McpServer, ctx: McpAuthCtx) {
       'What the account can spend, read live: treg {balance_usd, on_hold_usd} for enrichments, '
       + 'enrichment_daily_limit {limit_usd, used_today_usd, remaining_usd}, and openrouter for AI runs '
       + '{balance_usd (account credits, often null: OpenRouter shares it only with a management key), '
-      + 'key_limit_usd, key_limit_remaining_usd, key_usage_usd, byok_usage_usd, available_usd}. A part that '
+      + 'key_limit_usd, key_limit_remaining_usd, key_usage_usd, byok_usage_usd, available_usd, checked_at (when '
+      + `Cubex read them; a read is reused for ${OPENROUTER_BALANCE_CACHE_MS / 1000} seconds)}: OpenRouter's numbers `
+      + 'can lag behind runs that just '
+      + 'finished, while access_token.spent_usd is live. A part that '
       + 'is not set up or can\'t be reached says so in error. Read-only: starts nothing and costs nothing. Use it '
       + 'before a large run, or when a run paused on balance. OpenRouter holds each running AI call\'s possible '
       + 'cost, so a high concurrency needs more free credit than the run will spend: run_ai_column\'s '

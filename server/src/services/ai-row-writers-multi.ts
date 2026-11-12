@@ -52,8 +52,9 @@ export function writeMultiSuccess(
     if (shouldStop(ctx.runId, ctx.myGeneration)) throw STOP_SENTINEL;
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, scraped_data,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd,
+        reasoning_tokens, paid_with)
+      VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, rawJson, sources?.json ?? null,
       ...usageColumns(usage));
 
@@ -87,8 +88,9 @@ export function writeMultiFailure(
     if (shouldStop(ctx.runId, ctx.myGeneration)) { recordDroppedCall(ctx, usage); return; }
     db.prepare(`
       INSERT INTO ai_results (id, run_id, user_id, row_index, input_values, output_value, status, error_message,
-        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd)
-      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?)
+        prompt_tokens, completion_tokens, cost_usd, web_searches, web_search_queries, provider_cost_usd,
+        reasoning_tokens, paid_with)
+      VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
 
     const pairs: Array<[string, string]> = outputColumns.map(col => [col, '']);

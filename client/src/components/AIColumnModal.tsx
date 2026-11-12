@@ -1,7 +1,10 @@
 // Over 200 lines: the one AI Column drawer, its state and the hooks it wires; the steps live apart.
 import React, { useState } from 'react'
 import { Bot } from 'lucide-react'
-import { aiAPI, DEFAULT_WEB_SEARCH, webSearchFrom, type WebSearchSettings } from '@/utils/api'
+import {
+  aiAPI, DEFAULT_WEB_SEARCH, webSearchFrom, fetchLimitsFrom, NO_FETCH_LIMITS, type FetchLimitSettings,
+  type WebSearchSettings,
+} from '@/utils/api'
 import { Drawer, DrawerHeader } from './Drawer'
 
 import { Step, DEFAULT_SYSTEM_PROMPT, DEFAULT_CONCURRENCY, clampConcurrency } from './ai-modal/types'
@@ -50,6 +53,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   // Web search engine, mode and per-row limit (sent only with web search on).
   const [webSearch, setWebSearch] = useState<WebSearchSettings>(DEFAULT_WEB_SEARCH)
   const [useWebFetch, setUseWebFetch] = useState(false)
+  // Web fetch limits: tokens per page and pages per row (sent only with web fetch on).
+  const [fetchLimits, setFetchLimits] = useState<FetchLimitSettings>(NO_FETCH_LIMITS)
   const [concurrency, setConcurrency] = useState(DEFAULT_CONCURRENCY)
   // "Only run if" rule ('' = every row).
   const [runIf, setRunIf] = useState('')
@@ -70,7 +75,8 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
 
   const h = useAIRunHandlers({
     isOpen, sheetId, rowGeneration, columnName, prompt, systemPrompt, model: sel.model,
-    useOpenRouterWebSearch, webSearch, useWebFetch, concurrency, runIf, outputColumns, outputsError, nameError,
+    useOpenRouterWebSearch, webSearch, useWebFetch, fetchLimits, concurrency, runIf, outputColumns, outputsError,
+    nameError,
     previewSize, temperature, maxChars,
     setStep, onSuccess, onClose, onRunStarted, resetState: () => resetState(),
   })
@@ -84,7 +90,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
     sel.setModel(defaultAiModel || sel.accountDefaultModel || '')
     sel.resetPicked()
     setUseOpenRouterWebSearch(false); setWebSearch(DEFAULT_WEB_SEARCH); setUseWebFetch(false); setConcurrency(DEFAULT_CONCURRENCY)
-    setRunIf(''); setOutputColumns([])
+    setFetchLimits(NO_FETCH_LIMITS); setRunIf(''); setOutputColumns([])
     h.setPreviewResults([]); h.setCurrentRun(null); h.setIsPolling(false)
     try { localStorage.removeItem('ai_modal_initial') } catch {}
   }
@@ -92,7 +98,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
   // Prefill on open from edit-mode payload or sheet defaults (once per open).
   const init = useAIModalInit(isOpen, sheetId, defaultAiModel, defaultAiConcurrency, sel.accountDefaultModel, {
     setColumnSuggestions, setColumnName, setPrompt, setSystemPrompt, setModel: sel.setModel, setEditingName,
-    setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setConcurrency, setRunIf,
+    setUseOpenRouterWebSearch, setWebSearch, setUseWebFetch, setFetchLimits, setConcurrency, setRunIf,
     onEditPrefill: () => resetState(),
     // Retained config = the modal reopened with a kept draft still in state.
     // Reading current columnName/prompt is safe: the init effect runs on the
@@ -123,6 +129,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
       init.noteExplicitConcurrency(); setConcurrency(clampConcurrency(c.concurrency))
       setUseOpenRouterWebSearch(c.useOpenRouterWebSearch); setUseWebFetch(c.useWebFetch)
       setWebSearch(webSearchFrom(c.searchEngine, c.searchMode, c.maxSearchesPerRow))
+      setFetchLimits(fetchLimitsFrom(c.maxContentTokens, c.maxPagesPerRow))
       setRunIf(c.runIf ?? '')
     },
     applyPreview: (rows, target, c) => { h.hydratePreview(rows, target, c); setStep('preview') },
@@ -165,6 +172,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             useOpenRouterWebSearch={useOpenRouterWebSearch} setUseOpenRouterWebSearch={setUseOpenRouterWebSearch}
             webSearch={webSearch} setWebSearch={setWebSearch}
             useWebFetch={useWebFetch} setUseWebFetch={setUseWebFetch}
+            fetchLimits={fetchLimits} setFetchLimits={setFetchLimits}
             columnSuggestions={columnSuggestions}
             runIf={runIf} setRunIf={setRunIf} active={isOpen}
             outputColumns={outputColumns} setOutputColumns={setOutputColumns} outputsError={outputsError}

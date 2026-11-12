@@ -39,7 +39,7 @@ function send(res: express.Response, r: TokenRunResult) {
 // POST /v1/sheets/:id/ai-runs
 // Body: { column_name, prompt, output_columns?, model?, system_prompt?,
 //         temperature?, web_search?, search_engine?, search_mode?,
-//         max_searches_per_row?, web_fetch?, max_chars?, concurrency?,
+//         max_searches_per_row?, web_fetch?, max_content_tokens?, max_pages_per_row?, max_chars?, concurrency?,
 //         target_row_ids?, estimate_only?, preview_rows?, idempotency_key?, webhook_id?,
 //         max_cost_usd?, allow_unpriced?, spend_limit_usd? }
 router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthRequest, res) => {

@@ -57,6 +57,8 @@ export async function aiEstimate(
     useOpenRouterWebSearch: s.webSearch, useWebFetch: s.webFetch, outputColumns: s.outputColumns ?? undefined,
     maxChars: s.maxChars, targetRowIndexes: rowIndexes ?? undefined, search: s.search as SearchOptions | null,
     runIf: ruleOk ? s.runIf : null, concurrency: resolveAiConcurrency(s.concurrency ?? undefined, sheetId, userId),
+    // History is found by the prompt as the step's start stores it, not the one rewritten for pricing.
+    fetchLimits: s.fetchLimits, historyColumn: mainColumn(s), historyPrompt: s.prompt,
   });
 }
 
@@ -96,7 +98,7 @@ export async function estimateSetup(
     steps.push({
       ...base, rows: out.ok.rows_to_process, low_usd: cost ? round(cost.low) : null,
       high_usd: cost ? round(cost.high) : null, row_most_usd: cost ? rowMostOf(out.ok) : null,
-      note: cost ? null : 'No price is known for its model.',
+      note: [cost ? null : 'No price is known for its model.', out.fetchNote].filter(Boolean).join(' ') || null,
     });
   }
   const priced = steps.filter(s => s.low_usd !== null);

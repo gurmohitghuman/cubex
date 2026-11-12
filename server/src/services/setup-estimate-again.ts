@@ -63,6 +63,6 @@ export async function estimateAgain(
   return {
     ...base, rows: out.ok.rows_to_process, low_usd: cost ? round(cost.low) : null,
     high_usd: cost ? round(cost.high) : null, row_most_usd: cost ? rowMostOf(out.ok) : null,
-    note: notes(!cost && 'No price is known for its model.', running),
+    note: notes(!cost && 'No price is known for its model.', out.fetchNote, running),
   };
 }

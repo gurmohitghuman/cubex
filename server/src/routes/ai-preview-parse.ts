@@ -5,6 +5,7 @@ import type { SearchOptions } from '../lib/web-search-options';
 import { parseOutputColumns, parseWebOptions } from './ai-run-parse';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import { parseRuleField } from '../lib/run-condition';
+import type { FetchLimits } from '../lib/web-fetch-options';
 
 // Parse + validate + numeric-bound the /ai/preview request body. Split out of
 // ai-preview.ts (200-line guardrail) — a self-contained "trust the client's
@@ -30,6 +31,8 @@ export interface PreviewParams {
   safeConcurrency: number;
   safeMaxChars: number | null;
   search: SearchOptions | null;
+  // Web fetch limits (lib/web-fetch-options.ts).
+  fetchLimits: FetchLimits;
   // "Only run if" rule text: the preview samples rows that pass it.
   runIf: string | null;
   // Several typed columns from one answer per row, as the run would fill them.

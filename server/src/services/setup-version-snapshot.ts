@@ -15,13 +15,14 @@ import { httpRunMode } from '../lib/http-run-mode';
 import { isFollowKind } from '../lib/autorun-kick';
 import { sheetEntries, whereOf } from './autorun-entry';
 import type { AutoRunSnap, Fill, HttpFill, VersionSpec } from '../lib/setup-versions/spec';
+import { hasFetchLimits, runFetchLimits } from '../lib/web-fetch-options';
 
 interface AiRunRow {
   column_name: string; prompt: string; system_prompt: string | null; model: string | null; temperature: number | null;
   max_chars: number | null; concurrency: number | null; use_openrouter_web_search: number; use_web_fetch: number;
   output_columns: string | null; data_column: string | null; web_search_engine: string | null;
   web_search_mode: string | null; web_search_max_per_row: number | null; web_search_engine_used: string | null;
-  run_if: string | null;
+  run_if: string | null; web_fetch_max_content_tokens: number | null; web_fetch_max_pages: number | null;
 }
 
 const parsed = <T>(raw: string | null, fallback: T): T => {
@@ -32,7 +33,7 @@ function aiFills(sheetId: string, userId: string, listed: Set<string>, fills: Ma
   // One newest run per AI column (MAX(rowid) is the newest insert), its settings only.
   const runs = db.prepare(`SELECT column_name, prompt, system_prompt, model, temperature, max_chars, concurrency,
       use_openrouter_web_search, use_web_fetch, output_columns, data_column, web_search_engine, web_search_mode,
-      web_search_max_per_row, web_search_engine_used, run_if
+      web_search_max_per_row, web_search_engine_used, run_if, web_fetch_max_content_tokens, web_fetch_max_pages
     FROM ai_runs WHERE rowid IN (
     SELECT MAX(rowid) FROM ai_runs WHERE sheet_id = ? AND user_id = ? GROUP BY column_name)`)
     .all(sheetId, userId) as AiRunRow[];
@@ -46,6 +47,7 @@ function aiFills(sheetId: string, userId: string, listed: Set<string>, fills: Ma
       outputColumns: Array.isArray(outputs) && outputs.length ? outputs.map(o => ({ ...o })) : null,
       dataColumn: r.data_column, searchEngine: r.web_search_engine, searchMode: r.web_search_mode,
       maxSearchesPerRow: r.web_search_max_per_row, searchEngineUsed: r.web_search_engine_used, runIf: r.run_if,
+      ...(r.use_web_fetch && hasFetchLimits(runFetchLimits(r)) ? { fetchLimits: runFetchLimits(r) } : {}),
     });
   }
 }

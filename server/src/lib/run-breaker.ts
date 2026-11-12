@@ -12,8 +12,9 @@ export type RowOutcome =
   | { kind: 'done' }                                          // its answer was written
   // its ❌ was written; maybeBilled: an AI call that may be billed with no cost Cubex saw (ai-row-outcome.ts)
   | { kind: 'failed'; message: string; provider: boolean; maybeBilled?: boolean }
-  // a stop: nothing written; maybeBilled: its AI call was cut off and may still be billed, as a failed one's
-  | { kind: 'dropped'; maybeBilled?: boolean };
+  // a stop: nothing written; maybeBilled: its AI call was cut off and may still be billed, as a failed one's;
+  // webEngine: OpenRouter's words refusing the run's web fetch engine (lib/web-engine-refusal.ts), so the run pauses
+  | { kind: 'dropped'; maybeBilled?: boolean; webEngine?: string };
 
 export const DONE: RowOutcome = { kind: 'done' };
 export const DROPPED: RowOutcome = { kind: 'dropped' };

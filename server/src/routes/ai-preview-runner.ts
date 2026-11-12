@@ -1,10 +1,12 @@
+// Over 200 lines: one preview row's call, its one retry and its result, shared by the app's preview and preview_rows.
 import type OpenAI from 'openai';
 import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { aiMaxTokens } from '../lib/constants';
 import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig } from '../lib/ai-web-tools';
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
-import type { SearchQueryLog } from '../lib/responses-adapter';
+import type { FetchLimits } from '../lib/web-fetch-options';
+import { tokensOf, type PaidWith, type RowTokens, type SearchQueryLog } from '../lib/responses-adapter';
 import { billedUsage, sendModelCall, type ModelCall } from '../services/ai-model-call';
 import { buildMultiOutputInstruction, parseMultiOutput, type OutputColumnSpec } from '../lib/ai-multi-output';
 import { computeInputHash, type DraftPreviewRow } from '../lib/ai-drafts';
@@ -20,6 +22,7 @@ interface PreviewArgs {
   // The run's search settings as planned (web-search-plan.ts); null: no search.
   search: SearchToolConfig | null
   useWebFetch: boolean
+  fetchLimits?: FetchLimits | null
   // Structured (multi-column) preview: the model returns JSON, so the text must
   // NOT be markdown-cleaned — cleaning breaks ```json fences and strips * / # /
   // backticks out of JSON string values. Defaults to prose behavior.
@@ -45,12 +48,20 @@ export interface PreviewRowResult {
   costUsd?: number
   // On the user's own provider key (BYOK): what that provider charged.
   providerCostUsd?: number
+  // A call that came back (failed rows too): its tokens, null where not reported,
+  // and who paid when OpenRouter says (lib/responses-adapter.ts).
+  tokens?: RowTokens
+  paidWith?: PaidWith
   // With web search: every search call and how many ran.
   searchQueries?: SearchQueryLog[]
   webSearches?: number
   // A structured preview: the answer's typed fields, one per output column.
   fields?: Record<string, string>
 }
+
+// The tokens and payer of a call that came back.
+const callSpend = (u: Parameters<typeof tokensOf>[0] & { paidWith?: PaidWith | null }) =>
+  ({ tokens: tokensOf(u), ...(u.paidWith ? { paidWith: u.paidWith } : {}) });
 
 // A structured (output columns) preview: the JSON instruction the run appends
 // (ai-row-multi.ts), and each answer parsed into its typed fields; a reply that
@@ -118,9 +129,10 @@ export const processOneRow = async (
     // answer; maxChars raises it up to a ceiling.
     const input = {
       model: args.model, messages, temperature: args.safeTemperature, maxTokens: aiMaxTokens(args.maxChars),
-      tools: buildWebTools(args.prompt, row.data, { search: args.search, fetch: args.useWebFetch }),
+      tools: buildWebTools(args.prompt, row.data,
+        { search: args.search, fetch: args.useWebFetch, fetchLimits: args.fetchLimits }),
       searchReplay: args.search ? searchReplayFor(args.search) : null,
-      maxToolCalls: toolCallBudget(args.search, args.useWebFetch),
+      maxToolCalls: toolCallBudget(args.search, args.useWebFetch, args.fetchLimits),
     };
 
     // 60s timeout per preview row. The OpenAI SDK's default would let a stuck request
@@ -181,6 +193,7 @@ export const processOneRow = async (
       ...(costUsd !== null ? { costUsd } : {}),
       ...(providerCostUsd !== null ? { providerCostUsd } : {}),
       ...(call.search ? { searchQueries: call.search.queries, webSearches: call.search.searches } : {}),
+      ...callSpend(call.usage),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -191,6 +204,7 @@ export const processOneRow = async (
       rowIndex: row.rowIndex, value: '', error: `Failed to generate preview: ${msg}`,
       ...(usage?.costUsd != null ? { costUsd: usage.costUsd } : {}),
       ...(usage?.providerCostUsd != null ? { providerCostUsd: usage.providerCostUsd } : {}),
+      ...(usage ? callSpend(usage) : {}),
     };
   }
 };

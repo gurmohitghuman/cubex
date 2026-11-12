@@ -8,6 +8,7 @@ import {
 import { ENGINES } from '../lib/ai-visibility/engines';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
+import { OPENROUTER_BALANCE_CACHE_MS } from '../lib/constants';
 
 const idempotency = z.object({
   'Idempotency-Key': z.string().max(200).optional()
@@ -48,6 +49,9 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/balances', operationId: 'getBalances', tag: 'enrich', scope: 'read',
     summary: 'The treg balance, the daily enrichment limit, and what OpenRouter reports for the saved key.',
+    description: "As MCP's get_balances. openrouter.checked_at is when Cubex read OpenRouter's numbers (a read is "
+      + `reused for ${OPENROUTER_BALANCE_CACHE_MS / 1000} seconds); they can lag behind runs that just finished, `
+      + 'while access_token.spent_usd is live.',
   }),
   op({
     method: 'get', path: '/enrichments', operationId: 'searchEnrichments', tag: 'enrich', scope: 'read',

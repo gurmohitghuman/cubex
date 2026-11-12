@@ -1,9 +1,9 @@
 // The run controls' words (client/src/lib/run-controls-copy.ts): the column
 // menu's items with their numbers, the header badge, a run's confirm from its
-// estimate and a cell's play button. Pure, no DB.
+// estimate, a cell's play button and which pauses show their reason. Pure, no DB.
 import assert from 'node:assert/strict'
 import {
-  confirmMessage, costText, failedBadge, rowCostLabel, rowCostShort, runItemLabel,
+  confirmMessage, costText, failedBadge, rowCostLabel, rowCostShort, runItemLabel, selfPaused,
 } from '../../client/src/lib/run-controls-copy'
 import type { RunControlEstimate } from '../../client/src/utils/api/run-controls'
 
@@ -61,6 +61,12 @@ check('a cell\'s play button', () => {
   assert.equal(rowCostShort(est({ rows: 1, basis: 'average_max', lowUsd: 0.01, highUsd: 0.05 })), '~$0.010, max $0.050')
   assert.equal(rowCostShort(est({ rows: 1, kind: 'http', lowUsd: null, highUsd: null })), '1 request')
   assert.equal(rowCostShort(est({ rows: 1, reusedRows: 1 })), '$0')
+})
+
+check('a run that paused itself shows why, a refused web fetch engine included', () => {
+  for (const reason of ['provider_errors', 'storage', 'stalled', 'web_engine']) assert.ok(selfPaused(reason), reason)
+  assert.equal(selfPaused('user'), false)
+  assert.equal(selfPaused(null), false)
 })
 
 if (failures > 0) {

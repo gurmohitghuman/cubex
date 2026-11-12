@@ -39,13 +39,15 @@ export function runHeartbeat(table: 'ai_runs' | 'http_runs', runId: string, gene
 
 // Why a run's loop stopped starting rows on its own: its access token's spend
 // cap, its own spend limit (an AI run's, services/ai-spend-gate.ts), its
-// provider failing row after row (lib/run-breaker.ts), or a database
-// that can't be written (lib/storage-failure.ts).
+// provider failing row after row (lib/run-breaker.ts), a database that can't
+// be written (lib/storage-failure.ts), or an AI run's web fetch engine refused
+// by the OpenRouter workspace (lib/web-engine-refusal.ts).
 export type LoopEnd =
   | { reason: 'token_cap'; message: null }
   | { reason: 'spend_limit'; message: string }
   | { reason: 'provider_errors'; message: string }
-  | { reason: 'storage'; message: string };
+  | { reason: 'storage'; message: string }
+  | { reason: 'web_engine'; message: string };
 
 export const storageEnd = (error: unknown): LoopEnd => ({
   reason: 'storage',

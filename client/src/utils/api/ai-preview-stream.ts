@@ -20,6 +20,8 @@ export interface PreviewStreamParams {
   searchEngine?: string
   searchMode?: string
   maxSearchesPerRow?: number
+  maxContentTokens?: number
+  maxPagesPerRow?: number
   runIf?: string
   // Several typed columns from one answer per row (absent: one column).
   outputColumns?: OutputColumnDraft[]
