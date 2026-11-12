@@ -7,6 +7,7 @@
 // same runs the column dialogs and agents start.
 import type { OutputColumnSpec } from '../ai-multi-output';
 import type { RecalledChoices } from '../enrich-run-recall';
+import type { FetchLimits } from '../web-fetch-options';
 
 // Auto-run as it was on the column: its rule and its daily cap (dollars for
 // an enrichment, rows for an HTTP API column).
@@ -28,6 +29,8 @@ export interface AiStep {
   search: { engine: string; mode: string | null; maxPerRow: number | null } | null;
   outputColumns: OutputColumnSpec[] | null;
   runIf: string | null;
+  // Web fetch limits (lib/web-fetch-options.ts); absent: none (setups saved before them too).
+  fetchLimits?: FetchLimits;
 }
 
 export interface HttpStep {

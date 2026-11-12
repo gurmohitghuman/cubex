@@ -57,6 +57,7 @@ export async function aiEstimate(
     useOpenRouterWebSearch: s.webSearch, useWebFetch: s.webFetch, outputColumns: s.outputColumns ?? undefined,
     maxChars: s.maxChars, targetRowIndexes: rowIndexes ?? undefined, search: s.search as SearchOptions | null,
     runIf: ruleOk ? s.runIf : null, concurrency: resolveAiConcurrency(s.concurrency ?? undefined, sheetId, userId),
+    fetchLimits: s.fetchLimits, historyColumn: mainColumn(s),
   });
 }
 

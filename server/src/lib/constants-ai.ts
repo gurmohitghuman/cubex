@@ -76,12 +76,19 @@ export const AI_ESTIMATE_SAMPLE_ROWS = 50;
 // Finished rows on a model before estimate_only trusts their token counts over
 // defaults. 20 meant a 10-row trial run never counted, so the next estimate
 // still said "no history"; five real rows are a better guess than the default.
-// (Previews save nothing, so only runs add history.)
+// (Preview rows count too: services/ai-preview-history.ts.)
 export const AI_ESTIMATE_MIN_HISTORY = 5;
 // That history is read in bounded slices (services/ai-token-history.ts): the
 // latest runs on the model, and at most this many finished rows of each.
 export const AI_ESTIMATE_HISTORY_RUNS = 20;
 export const AI_ESTIMATE_HISTORY_ROWS_PER_RUN = 50;
+// The column and prompt steps of that history look at most this many of the
+// newest matching runs for ones that finished a row (auto-run makes one run a
+// batch, so a column can hold thousands).
+export const AI_ESTIMATE_HISTORY_SCAN_RUNS = 200;
+// Preview rows kept for estimates (migration 055's ai_preview_tokens): the
+// newest this many per user; an estimate reads at most ROWS_PER_RUN of them.
+export const AI_PREVIEW_HISTORY_MAX_ROWS = 2_000;
 export const AI_ESTIMATE_CHARS_PER_TOKEN = 4;
 export const AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW = 100;
 export const AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH = 600;
@@ -166,8 +173,19 @@ export const SEARCH_CATALOG_RETRY_MS = 60_000;
 // searches; a model's own search has no such stop. A per-row cap replaces both.
 export const WEB_SEARCHES_PER_ROW = { low: 1, high: 2 };
 export const WEB_SEARCHES_PER_ROW_NATIVE = { low: 1, high: 3 };
-// Fetch is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine).
+// Fetch is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine;
+// a model's own fetch is billed at its provider's price, which OpenRouter
+// passes through: https://openrouter.ai/docs/guides/features/server-tools/web-fetch).
 export const WEB_FETCH_USD_PER_PAGE = 0.001;
+// The web fetch limits a run can send (max_content_tokens per page, max_uses
+// as pages per row). OpenRouter caps its own and native fetchers at 50
+// fetches a request; its docs give no range for the token limit.
+export const WEB_FETCH_MAX_CONTENT_TOKENS_MIN = 100;
+export const WEB_FETCH_MAX_CONTENT_TOKENS_MAX = 100_000;
+export const WEB_FETCH_MAX_PAGES_PER_ROW = 50;
+// The engine a run with a fetch limit fetches through: a model's own fetch
+// doesn't cut pages to a token limit, Exa does (and takes max_uses).
+export const WEB_FETCH_LIMITED_ENGINE = 'exa';
 export const WEB_FETCH_PAGES_PER_ROW = { low: 1, high: 3 };
 // Input tokens the found or fetched text adds to a row's prompt, when there's
 // no history of runs with the same web tools to go by.

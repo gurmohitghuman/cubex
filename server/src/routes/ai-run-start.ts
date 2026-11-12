@@ -32,6 +32,7 @@ router.post('/run', async (req: AuthRequest, res) => {
       safeConcurrency: parsed.safeConcurrency,
       safeMaxChars: parsed.safeMaxChars,
       search: parsed.search,
+      fetchLimits: parsed.fetchLimits,
       runIf: parsed.runIf,
       // The dialog's output columns: one answer per row fills them all (ai-run-start-multi.ts).
       outputColumns: parsed.outputColumns,

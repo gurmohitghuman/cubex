@@ -32,6 +32,7 @@ import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planIfSearching } from './web-search-catalog';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
+import { runInsertExtras } from '../lib/web-fetch-options';
 
 export type { AiRunStartParams, AiRunStartOutcome };
 
@@ -125,8 +126,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, placeholder_work,
       web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
-      spend_limit_usd
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
+      spend_limit_usd, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Cap check + mutation in ONE immediate() txn — otherwise two concurrent
@@ -154,6 +155,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
         targets ? JSON.stringify(targets) : null,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
         rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
+        ...runInsertExtras(p.prompt, !!p.useWebFetch, p.fetchLimits),
       );
       // Credit reuse: promote still-valid persisted preview results into this
       // run's cells + ai_results, BEFORE placeholder seeding, so the worker's
@@ -166,6 +168,9 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
           model: resolvedModel, temperature: p.safeTemperature,
           useOpenRouterWebSearch: !!p.useOpenRouterWebSearch, useWebFetch: !!p.useWebFetch,
           maxChars: p.safeMaxChars, concurrency: resolvedConcurrency, runIf: rule.ok?.rule ?? null,
+          ...(p.useWebFetch && p.fetchLimits ? {
+            maxContentTokens: p.fetchLimits.maxContentTokens, maxPagesPerRow: p.fetchLimits.maxPagesPerRow,
+          } : {}),
         },
       });
       if (promotedRows.length > 0) {

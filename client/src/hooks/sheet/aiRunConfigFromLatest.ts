@@ -26,5 +26,8 @@ export function aiRunConfigFromLatest(latest: AIRun, columnName: string) {
       ...(r.web_search_mode ? { searchMode: r.web_search_mode } : {}),
       ...(r.web_search_max_per_row ? { maxSearchesPerRow: r.web_search_max_per_row } : {}),
     } : {}),
+    // Its web fetch limits (migration 055); absent without them.
+    ...(r.use_web_fetch && r.web_fetch_max_content_tokens ? { maxContentTokens: r.web_fetch_max_content_tokens } : {}),
+    ...(r.use_web_fetch && r.web_fetch_max_pages ? { maxPagesPerRow: r.web_fetch_max_pages } : {}),
   }
 }

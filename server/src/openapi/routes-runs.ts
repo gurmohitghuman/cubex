@@ -90,6 +90,8 @@ export const runRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/ai-runs/{id}', operationId: 'getAiRun', tag: 'runs', scope: 'read',
     summary: "An AI run's state, progress, cost so far and error.",
+    description: 'As MCP\'s get_run_status. rows_paid_with {own_key, credits} counts rows per payer as OpenRouter '
+      + 'reported it (absent when no row said): credits on an own-key run means OpenRouter fell back to its credits.',
   }),
   op({
     method: 'get', path: '/http-runs/{id}', operationId: 'getHttpRun', tag: 'runs', scope: 'read',
@@ -98,6 +100,9 @@ export const runRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/ai-runs/{id}/results', operationId: 'getAiRunResults', tag: 'runs', scope: 'read',
     summary: "An AI run's results and errors, row by row, a page at a time.",
+    description: 'As MCP\'s get_run_results. Each row has cost_usd, provider_cost_usd on the user\'s own provider '
+      + 'key (null when OpenRouter didn\'t say what the provider charged), paid_with ("own_key", "credits" or null) '
+      + 'and tokens {input, output, reasoning} (null where not reported).',
     query: resultsPage,
   }),
   op({

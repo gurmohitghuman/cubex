@@ -2,6 +2,7 @@ import { db } from './db';
 import { renamePromptColumnRefs } from './column-ref-rename';
 import { renameRuleColumn } from './run-condition';
 import { computeConfigHash, type DraftConfig } from './ai-drafts';
+import { promptHash } from './ai-prompt-hash';
 
 // Structured-AI-run ↔ column lifecycle cascade — the AI twin of lib/http-columns.ts,
 // for the parts single-column rename/delete already handle via ai_runs.column_name
@@ -69,11 +70,12 @@ export function renameAiRunColumnRefs(
   // follow the rename, or a re-run would reject them as referencing an unknown column.
   const runs = db.prepare('SELECT id, prompt, run_if FROM ai_runs WHERE sheet_id = ? AND user_id = ?')
     .all(sheetId, userId) as Array<{ id: string; prompt: string; run_if: string | null }>;
-  const setPrompt = db.prepare('UPDATE ai_runs SET prompt = ?, run_if = ? WHERE id = ?');
+  // The prompt's hash follows it (migration 055: estimates find a prompt's runs by it).
+  const setPrompt = db.prepare('UPDATE ai_runs SET prompt = ?, run_if = ?, prompt_hash = ? WHERE id = ?');
   for (const r of runs) {
     const prompt = renamePromptColumnRefs(r.prompt, oldName, newName);
     const runIf = r.run_if === null ? null : renameRuleColumn(r.run_if, oldName, newName);
-    if (prompt !== r.prompt || runIf !== r.run_if) setPrompt.run(prompt, runIf, r.id);
+    if (prompt !== r.prompt || runIf !== r.run_if) setPrompt.run(prompt, runIf, promptHash(prompt), r.id);
   }
   // And the sheet's saved AI-panel draft, so reopening the panel restores a
   // prompt that still runs. Its previews stay reusable: the rewritten prompt

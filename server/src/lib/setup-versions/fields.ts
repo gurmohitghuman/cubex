@@ -27,6 +27,8 @@ function aiRows(f: AiFill): Row[] {
     ['Search mode', f.webSearch ? f.searchMode : null],
     ['Searches per row', f.webSearch ? text(f.maxSearchesPerRow) : null],
     ['Web fetch', onOff(f.webFetch)],
+    ['Tokens per page', f.webFetch ? text(f.fetchLimits?.maxContentTokens) : null],
+    ['Pages per row', f.webFetch ? text(f.fetchLimits?.maxPagesPerRow) : null],
     ['Output columns', f.outputColumns?.length
       ? f.outputColumns.map(o => `${o.columnName} (${o.type})`).join(', ') : null],
     ['Only run if', f.runIf],

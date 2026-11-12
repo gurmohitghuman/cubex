@@ -9,6 +9,7 @@ import type { OutputColumnSpec } from '../ai-multi-output';
 import { aiRunDataColumn } from '../ai-data-column';
 import type { EnrichCondition } from '../enrich-run-config';
 import type { LookupMatch, LookupReturns } from '../lookup-columns';
+import type { FetchLimits } from '../web-fetch-options';
 
 export interface AiFill {
   kind: 'ai';
@@ -19,6 +20,8 @@ export interface AiFill {
   searchEngine: string | null; searchMode: string | null; maxSearchesPerRow: number | null;
   searchEngineUsed: string | null; // the engine its runs resolved to (reruns copy it: per-row search caps read it)
   runIf: string | null;
+  // Web fetch limits; absent when none, so versions saved before them compare the same.
+  fetchLimits?: FetchLimits;
 }
 
 export type HttpMode = 'http' | 'enrichment' | 'waterfall';

@@ -19,10 +19,11 @@ import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '
 import type { SearchOptions } from '../lib/web-search-options';
 import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
 import { checkRunRule } from './run-rule';
-import { ranOnOwnKey, tokenHistory } from './ai-token-history';
+import { ranOnOwnKey, tokenHistory, type HistoryFrom } from './ai-token-history';
 import { estimateWebWork, webNote, webSearchEstimate } from './run-estimate-web';
 import { inFlightFor } from './ai-in-flight';
 import type { InFlight } from '../lib/ai-in-flight';
+import type { FetchLimits } from '../lib/web-fetch-options';
 
 export interface AiEstimateInput {
   sheetId: string;
@@ -37,6 +38,10 @@ export interface AiEstimateInput {
   search?: SearchOptions | null;
   runIf?: string | null;
   concurrency: number;            // resolved: explicit, else the sheet's default
+  // The column the run fills as its runs name it ("<name> (Output)", or "(Status)" with output columns): its own
+  // runs' token history comes first (ai-token-history.ts).
+  historyColumn?: string | null;
+  fetchLimits?: FetchLimits;      // web fetch limits (lib/web-fetch-options.ts)
 }
 
 export interface AiEstimate {
@@ -77,9 +82,17 @@ export interface AiEstimate {
     output_tokens: Range;
     sampled_rows: number;
     history_rows: number;
+    // Which runs the output size came from (null: none, a default): this column's own runs, runs of the same
+    // prompt, previews of it, or every run on the model.
+    history_from: HistoryFrom | null;
   };
   note: string;
 }
+
+const HISTORY_WORDS: Record<HistoryFrom, string> = {
+  column: 'your past runs of this column', prompt: 'your past runs of this prompt on this model',
+  preview: 'your previews of this prompt on this model', model: 'your past runs on this model',
+};
 
 export type AiEstimateOutcome =
   | { fail: 'not_found' | 'bad_request' | 'no_rows'; message: string }
@@ -120,12 +133,15 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
   // The engine the searches would run on and its price: the plan a run would
   // store. Refused the same way a run would be (a cap that can't hold).
-  const webEst = await estimateWebWork(userId, model, web, input.search);
+  const webEst = await estimateWebWork(userId, model, web, input.search, input.fetchLimits);
   if ('error' in webEst) return { fail: 'bad_request', message: webEst.error };
   const w = webEst.ok;
-  const history = model ? tokenHistory(userId, model, web, w.plan?.used ?? null) : null;
-  const out = history?.output
-    ?? { range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0, basis: 'heuristic-no-history' as const };
+  const history = model ? tokenHistory(userId, model, web, w.plan?.used ?? null,
+    { sheetId: input.sheetId, column: input.historyColumn ?? null, prompt: input.prompt }) : null;
+  const out = history?.output ?? {
+    range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0,
+    basis: 'heuristic-no-history' as const, from: null,
+  };
   // What the web tools read lands in the prompt: past rows with the same tools
   // measured it (never less than this prompt alone, which can outgrow theirs);
   // otherwise the heuristic on top of this prompt.
@@ -173,20 +189,21 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   if (out.basis === 'heuristic-no-history') {
     notes.push('No token history for this model yet; output size is a rough default. Run preview_rows for a measured per-row cost.');
   } else {
-    notes.push('Output size estimated from your past runs on this model. Run preview_rows for exact measured cost.');
+    notes.push(`Output size estimated from ${HISTORY_WORDS[out.from ?? 'model']}. `
+      + 'Run preview_rows for exact measured cost.');
   }
   if (!model) notes.push('No model resolved — set a model to price this run.');
   else if (!pricingAvailable) notes.push('OpenRouter pricing was unavailable; row count is exact, cost is not shown.');
   if (fees) notes.push(webNote(w, fees, !!history?.webInput));
-  // On the user's own provider key OpenRouter holds nothing in flight, unless
-  // a paid plugin (web search or fetch) runs too.
+  // Shown on the user's own provider key too: a row the key can't serve falls
+  // back to OpenRouter's credits, and those rows have been refused with 402.
   const ownKey = !!model && ranOnOwnKey(userId, model);
   if (ownKey) {
     notes.push('Your latest run on this model ran on your own provider key (BYOK): estimated_cost_usd is what that '
       + 'provider bills your key at its list price, and OpenRouter charges only its BYOK fee (cost_usd, often $0).');
   }
-  const inFlight = pricingAvailable && !(ownKey && !usesWeb)
-    ? await inFlightFor(userId, model, inputTokens.high, input.maxChars, input.concurrency) : null;
+  const inFlight = pricingAvailable
+    ? await inFlightFor(userId, model, inputTokens.high, input.maxChars, input.concurrency, ownKey) : null;
   if (inFlight?.warning) notes.push(inFlight.warning);
 
   return {
@@ -209,6 +226,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
         output_tokens: out.range,
         sampled_rows: sample.length,
         history_rows: out.historyRows,
+        history_from: out.from,
       },
       note: notes.join(' '),
     },

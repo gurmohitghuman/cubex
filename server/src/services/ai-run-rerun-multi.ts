@@ -26,6 +26,7 @@ import { rerunConcurrency, type AiRerunParams, type RerunOutcome } from './ai-ru
 import { NO_TARGET_ROWS } from './rerun-targets';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
+import { runFetchLimits, runInsertExtras } from '../lib/web-fetch-options';
 
 // For a caller holding only a base name (the sheet menu before it sent the
 // exact header): the run whose status or "(Data)" column that base names.
@@ -120,8 +121,9 @@ export async function rerunAiMultiColumn(
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows,
           processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
-          spend_limit_usd
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
+          spend_limit_usd, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?)
       `).run(
         runId, p.sheetId, userId, statusColumn, latest.prompt, latest.system_prompt, model, latest.temperature,
         latest.use_openrouter_web_search, latest.use_web_fetch, latest.max_chars, concurrency.value,
@@ -129,6 +131,7 @@ export async function rerunAiMultiColumn(
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
         latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
         actorTokenId(), p.spendLimitUsd ?? null,
+        ...runInsertExtras(latest.prompt, !!latest.use_web_fetch, runFetchLimits(latest)),
       );
     }).immediate();
     if (capExceeded) return {

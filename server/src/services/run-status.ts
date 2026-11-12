@@ -13,6 +13,7 @@ import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-sta
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
 import { spendCapRefusal } from './token-spend';
 import { resumeLeastPart } from './ai-run-floor';
+import { tokensOf, type PaidWith, type RowTokens } from '../lib/responses-adapter';
 
 export interface RunSummary {
   id: string;
@@ -40,6 +41,9 @@ export interface RunSummary {
   // AI rows on the user's own provider key (BYOK): what that provider charged;
   // cost_usd is then OpenRouter's fee alone. Absent when no row ran that way.
   provider_cost_usd?: number;
+  // AI rows per payer (migration 055): own_key, or OpenRouter credits (a row
+  // the own key couldn't serve falls back to them). Absent when no row said.
+  rows_paid_with?: { own_key: number; credits: number };
   searches?: number | null;
   enrichment?: Record<string, unknown>;
   // A waterfall run: its result type, spend (treg and AI) against its limit,
@@ -186,7 +190,10 @@ export interface RunResultsPage {
     // every search call ({query, ran}); the last two only with web search.
     // Enrichments: what the row's treg calls cost, and who found it.
     cost_usd?: number | null;
-    provider_cost_usd?: number;                  // AI on the user's own provider key: what it charged
+    // AI on the user's own provider key: what it charged (null: OpenRouter didn't say).
+    provider_cost_usd?: number | null;
+    paid_with?: PaidWith | null;                 // AI: who paid (null: an older row, or OpenRouter didn't say)
+    tokens?: RowTokens;                          // AI: input, output and reasoning tokens (null: not reported)
     found_by?: string | null;
     answered_by?: string | null;                 // a waterfall row: the step that answered
     trace?: unknown;                             // a waterfall row: what each step did
@@ -225,7 +232,8 @@ export function getAiRunResults(
   const f = statusClause(filter);
   const rows = db.prepare(`
     SELECT res.row_index, res.status, res.output_value, res.error_message, r.id AS row_id,
-           res.cost_usd, res.web_searches, res.web_search_queries, res.provider_cost_usd
+           res.cost_usd, res.web_searches, res.web_search_queries, res.provider_cost_usd, res.paid_with,
+           res.prompt_tokens, res.completion_tokens, res.reasoning_tokens
     FROM ai_results res
     LEFT JOIN rows r ON r.sheet_id = ? AND r.user_id = res.user_id AND r.row_index = res.row_index
     WHERE res.run_id = ? AND res.user_id = ? AND res.row_index > ? ${f.sql}
@@ -237,7 +245,12 @@ export function getAiRunResults(
       return {
         row_id: r.row_id ?? null, row_index: r.row_index, status: r.status,
         value: r.output_value, error_message: r.error_message, cost_usd: r.cost_usd ?? null,
-        ...(r.provider_cost_usd === null ? {} : { provider_cost_usd: r.provider_cost_usd }),
+        // On the own key always (null: OpenRouter didn't say what the provider charged).
+        ...(r.provider_cost_usd === null && r.paid_with !== 'own_key'
+          ? {} : { provider_cost_usd: r.provider_cost_usd }),
+        paid_with: r.paid_with ?? null,
+        tokens: tokensOf({ promptTokens: r.prompt_tokens, completionTokens: r.completion_tokens,
+          reasoningTokens: r.reasoning_tokens }),
         ...(queries ? { searches: r.web_searches ?? 0, search_queries: queries } : {}),
       };
     }),

@@ -2,6 +2,7 @@ import { RunFail } from './run-shared';
 import { OutputColumnSpec } from '../lib/ai-multi-output';
 import type { SearchOptions } from '../lib/web-search-options';
 import type { SearchPlan } from '../lib/web-search-plan';
+import type { FetchLimits } from '../lib/web-fetch-options';
 
 // Params/outcome for startAiRun (services/ai-run-start.ts). Split out to keep
 // that file focused on the flow; callers import the function, not these types.
@@ -32,6 +33,8 @@ export interface AiRunStartParams {
   runIf?: string | null;
   // The run's hard spend limit in USD (services/ai-spend-gate.ts); null/undefined: none.
   spendLimitUsd?: number | null;
+  // Web fetch limits (lib/web-fetch-options.ts), kept on the run; undefined: none.
+  fetchLimits?: FetchLimits;
 }
 
 export type AiRunStartOutcome =

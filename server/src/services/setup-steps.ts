@@ -20,6 +20,7 @@ import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import { stepColumns, type AiStep, type AutoRunSpec, type SetupStep, type StepKind } from '../lib/setups/spec';
 import { entryFor, newestRunOf, whereOf } from './autorun-entry';
 import { isWaterfallConfig } from '../lib/waterfall/config';
+import { hasFetchLimits, runFetchLimits } from '../lib/web-fetch-options';
 
 export interface Candidate {
   kind: StepKind;
@@ -34,6 +35,7 @@ interface AiRunRow {
   max_chars: number | null; concurrency: number | null; use_openrouter_web_search: number; use_web_fetch: number;
   output_columns: string | null; data_column: string | null; web_search_engine: string | null;
   web_search_mode: string | null; web_search_max_per_row: number | null; run_if: string | null;
+  web_fetch_max_content_tokens: number | null; web_fetch_max_pages: number | null;
 }
 
 function autoRunOf(sheetId: string, userId: string, column: string): AutoRunSpec | null {
@@ -65,6 +67,7 @@ function aiCandidate(run: AiRunRow, listed: Set<string>): Candidate {
       ? { engine: run.web_search_engine ?? 'auto', mode: run.web_search_mode, maxPerRow: run.web_search_max_per_row }
       : null,
     outputColumns: outputs?.length ? outputs.map(o => ({ ...o })) : null, runIf: run.run_if,
+    ...(run.use_web_fetch && hasFetchLimits(runFetchLimits(run)) ? { fetchLimits: runFetchLimits(run) } : {}),
   };
   const data = aiRunDataColumn(run);
   const actual = [run.column_name, ...(outputs ?? []).map(o => o.columnName), ...(data ? [data] : [])];
@@ -114,7 +117,7 @@ export function sheetCandidates(sheetId: string, userId: string): Candidate[] {
   // megabytes after a rerun of a big sheet: using a setup reads this on every price).
   const aiRuns = db.prepare(`SELECT column_name, prompt, system_prompt, model, temperature, max_chars, concurrency,
       use_openrouter_web_search, use_web_fetch, output_columns, data_column, web_search_engine, web_search_mode,
-      web_search_max_per_row, run_if
+      web_search_max_per_row, run_if, web_fetch_max_content_tokens, web_fetch_max_pages
     FROM ai_runs WHERE rowid IN (
     SELECT MAX(rowid) FROM ai_runs WHERE sheet_id = ? AND user_id = ? GROUP BY column_name)`)
     .all(sheetId, userId) as AiRunRow[];

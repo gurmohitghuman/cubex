@@ -131,8 +131,8 @@ const capped = {
 const c1 = completionFromResponse(capped)
 check('answer = the message after the last tool call', extractCompletionText(c1) === 'Ada Lovelace is the CEO of Acme, headquartered in London.')
 check('Responses citations read like chat ones', JSON.stringify(citationsFromCompletion(c1).map(c => c.url)) === '["https://techcrunch.com/a"]')
-check('usage: tokens and cost', JSON.stringify(usageOf(c1))
-  === JSON.stringify({ promptTokens: 6945, completionTokens: 420, costUsd: 0.00174595, providerCostUsd: null }))
+check('usage: tokens and cost', JSON.stringify(usageOf(c1)) === JSON.stringify({ promptTokens: 6945,
+  completionTokens: 420, reasoningTokens: null, costUsd: 0.00174595, providerCostUsd: null, paidWith: null }))
 // On the user's own provider key: OpenRouter's fee in cost, the provider's bill in upstream_inference_cost.
 const byok = usageOf({ usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0, is_byok: true,
   cost_details: { upstream_inference_cost: 0.0042 } } })
@@ -183,8 +183,8 @@ check('a 400 naming temperature, in the message or the provider detail', refuses
   && !refusesTemperature({ status: 400, message: '400 Provider returned error', error: { metadata: { raw: 'bad tools' } } })
   && !refusesTemperature({ status: 500, message: 'temperature' }))
 check('malformed usage is null, never a failure', JSON.stringify(usageOf({ usage: { prompt_tokens: 'x', cost: -1,
-  is_byok: true, cost_details: 'x' } }))
-  === JSON.stringify({ promptTokens: null, completionTokens: null, costUsd: null, providerCostUsd: null }))
+  is_byok: true, cost_details: 'x' } })) === JSON.stringify({ promptTokens: null, completionTokens: null,
+  reasoningTokens: null, costUsd: null, providerCostUsd: null, paidWith: 'own_key' }))
 
 // --- the "(Data)" cell ----------------------------------------------------------
 check('rows from before searches were logged keep the old cell', aiDataCellSummary([{ title: 'A' }, { title: 'B' }]) === '📊 Searched 2 sources: A, B')

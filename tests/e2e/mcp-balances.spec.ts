@@ -53,3 +53,30 @@ test('estimate_only reports the in-flight hold at the run\'s concurrency', async
   await client.close()
   await api.dispose()
 })
+
+// When Cubex read OpenRouter's numbers (checked_at), on MCP and REST: a read is reused for a short while, so two
+// reads close together say the same time. With no key saved nothing is read, so there is no time to give. The key
+// here is fake: OpenRouter refuses it (or can't be reached), and that answer is dated too.
+test("get_balances says when Cubex read OpenRouter's numbers", async () => {
+  const api = await authedApi()
+  await api.delete('/api/settings/openrouter-key')
+  const token = await makeAccessToken(api, ['read'], 'e2e balances checked')
+  const client = await mcpClient(token)
+  expect((await call(client, 'get_balances', {})).openrouter.checked_at).toBeUndefined()
+  expect((await api.put('/api/settings/openrouter-key', { data: { apiKey: 'sk-or-v1-balances-e2e' } })).ok())
+    .toBeTruthy()
+  try {
+    const before = Date.now()
+    const first = (await call(client, 'get_balances', {})).openrouter
+    const at = Date.parse(first.checked_at)
+    expect(at).toBeGreaterThanOrEqual(before - 1000)
+    expect(at).toBeLessThanOrEqual(Date.now())
+    expect(new Date(at).toISOString()).toBe(first.checked_at)
+    const v1 = await (await api.get(`${BASE}/api/v1/balances`, { headers: { Authorization: `Bearer ${token}` } }))
+      .json()
+    expect(v1.openrouter.checked_at).toBe(first.checked_at)
+  } finally {
+    await api.delete('/api/settings/openrouter-key')
+    await client.close()
+  }
+})

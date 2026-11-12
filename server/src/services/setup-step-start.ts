@@ -32,7 +32,8 @@ export async function startSetupStep(
         maxChars: step.maxChars ?? undefined, useOpenRouterWebSearch: step.webSearch, useWebFetch: step.webFetch,
         outputColumns: step.outputColumns ?? undefined, searchEngine: step.search?.engine,
         searchMode: step.search?.mode ?? undefined, maxSearchesPerRow: step.search?.maxPerRow ?? undefined,
-        runIf: step.runIf,
+        runIf: step.runIf, maxContentTokens: step.fetchLimits?.maxContentTokens ?? undefined,
+        maxPagesPerRow: step.fetchLimits?.maxPagesPerRow ?? undefined,
       });
       if (!parsed.ok) return { fail: 'bad_request', message: parsed.error };
       const out = await startAiRun(userId, { ...parsed, targetRowIndexes: targets, spendLimitUsd: opts.spendLimitUsd });

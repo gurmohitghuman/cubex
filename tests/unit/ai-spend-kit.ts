@@ -25,16 +25,30 @@ export interface StandIn {
   // Per call (1-based): 'ok', 'cut' (a 200 whose body breaks off: the call may be billed), 'reset' (the
   // connection is reset, no answer), or wait for a promise (then answer as it says, 'ok' by default).
   answer: (n: number) => Answer | Promise<Answer | void>
+  // Per call (1-based): fields merged into its usage block (is_byok, cost_details, completion_tokens_details...).
+  usage: (n: number) => Record<string, unknown>
+  // Every chat call's request body, parsed, in order.
+  bodies: Array<Record<string, any>>
+  // GETs answered with this JSON, by the end of their path (e.g. '/tools/openrouter:web_fetch').
+  gets: Record<string, unknown>
 }
 type Answer = 'ok' | 'cut' | 'reset'
 
 export async function startStandIn(): Promise<StandIn & { close: () => void }> {
   const s: StandIn = {
     costUsd: 0.005, delayMs: 50, models: 'ok', modelsFailFirst: 0, modelsHits: 0, calls: 0, answer: () => 'ok',
+    usage: () => ({}), bodies: [], gets: {},
   }
   const server = http.createServer((req, res) => {
-    req.resume()
+    const chunks: Buffer[] = []
+    req.on('data', c => chunks.push(c))
     req.on('end', async () => {
+      const got = Object.keys(s.gets).find(k => req.method === 'GET' && req.url?.endsWith(k))
+      if (got) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(s.gets[got]))
+        return
+      }
       if (req.method === 'GET' && req.url?.endsWith('/models')) {
         s.modelsHits++
         if (s.models === 'fail' || s.modelsFailFirst > 0) {
@@ -51,6 +65,7 @@ export async function startStandIn(): Promise<StandIn & { close: () => void }> {
         return
       }
       if (!req.url?.includes('/chat/completions')) { res.writeHead(404).end(); return }
+      try { s.bodies.push(JSON.parse(Buffer.concat(chunks).toString('utf8'))) } catch { s.bodies.push({}) }
       const n = ++s.calls
       const how = (await s.answer(n)) ?? 'ok'
       await new Promise(r => setTimeout(r, s.delayMs))
@@ -60,7 +75,7 @@ export async function startStandIn(): Promise<StandIn & { close: () => void }> {
       res.end(JSON.stringify({
         id: `gen-${n}`, object: 'chat.completion', created: 0, model: PRICED,
         choices: [{ index: 0, message: { role: 'assistant', content: 'Hello' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: s.costUsd },
+        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: s.costUsd, ...s.usage(n) },
       }))
     })
   })

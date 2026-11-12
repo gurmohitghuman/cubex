@@ -22,9 +22,11 @@ import { webSearchSummary } from '../lib/web-search-plan';
 import { planIfSearching } from './web-search-catalog';
 import { checkRunRule } from './run-rule';
 import { rowsByIndex, scanRule } from './run-condition-rows';
-import { previewCosts } from './run-preview-cost';
+import { previewCosts, spendOf } from './run-preview-cost';
+import { savePreviewTokens } from './ai-preview-history';
 import { addCall, noSpend, recordCallUsage } from './usage-calls';
 import { acquirePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER, releasePreviewSlot } from '../lib/ai-preview-concurrency';
+import type { FetchLimits } from '../lib/web-fetch-options';
 
 export interface PreviewInput {
   sheetId: string;
@@ -41,6 +43,7 @@ export interface PreviewInput {
   runIf?: string | null;
   concurrency: number;            // the full run's, resolved (explicit, else the sheet's default)
   columnName?: string;            // the column it previews, for its usage record
+  fetchLimits?: FetchLimits;      // web fetch limits, as the run would send them
 }
 
 export type PreviewOutcome =
@@ -135,7 +138,7 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   const results = await Promise.all(sample.map(row => processOneRow(row, openai, {
     prompt: input.prompt, columns, promptSuffix: instruction, systemPrompt: input.systemPrompt, model,
     safeTemperature: 0.7, maxChars: input.maxChars ?? undefined,
-    search: planned.ok, useWebFetch: web.fetch,
+    search: planned.ok, useWebFetch: web.fetch, fetchLimits: input.fetchLimits,
     // Structured preview parses JSON below — keep the text verbatim, exactly as
     // the real structured run does (services/ai-row-multi.ts).
     rawText: !!specs,
@@ -145,19 +148,19 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   // With a web tool, each row also lists the sources its "(Data)" cell would show.
   // Each row also says what it cost and, with search, what it searched for.
   const preview = results.map((r, i) => {
-    if (r.error) return { row_index: r.rowIndex, error: r.error, cost_usd: r.costUsd ?? null };
+    if (r.error) return { row_index: r.rowIndex, error: r.error, cost_usd: r.costUsd ?? null, ...spendOf(r) };
     const fetchHosts = web.fetch ? extractAllowedDomainsFromRow(input.prompt, sample[i].data) : [];
     const cited = withSourceUrls(r.citations ?? [], specs ? sourcesFromOutput(r.value) : [], fetchHosts);
     const extra = {
       ...(web.search || web.fetch ? { sources: cited.map(c => c.url) } : {}),
       ...(r.searchQueries ? { searches: r.webSearches ?? 0, search_queries: r.searchQueries } : {}),
       cost_usd: r.costUsd ?? null,
-      ...(r.providerCostUsd !== undefined ? { provider_cost_usd: r.providerCostUsd } : {}),
+      ...spendOf(r),
     };
     if (specs) {
       const parsed = parseMultiOutput(r.value, specs);
       return 'error' in parsed
-        ? { row_index: r.rowIndex, error: parsed.error, cost_usd: r.costUsd ?? null }
+        ? { row_index: r.rowIndex, error: parsed.error, cost_usd: r.costUsd ?? null, ...spendOf(r) }
         : { row_index: r.rowIndex, fields: parsed.ok, ...extra };
     }
     return { row_index: r.rowIndex, output: r.value, ...extra };
@@ -167,6 +170,10 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   const spent = noSpend();
   for (const r of results) addCall(spent, r, true);
   recordCallUsage(userId, input.sheetId, input.columnName ?? null, 'preview', spent);
+  // What the rows measured, for later estimates of this prompt (services/ai-preview-history.ts).
+  savePreviewTokens(userId, input.sheetId, {
+    model, prompt: input.prompt, webSearch: web.search, webFetch: web.fetch, engineUsed: planned.ok?.used ?? null,
+  }, results);
 
   const costs = await previewCosts(userId, results, model, count, {
     maxChars: input.maxChars, concurrency: input.concurrency, web: web.search || web.fetch,

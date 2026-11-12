@@ -32,6 +32,7 @@ import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planIfSearching } from './web-search-catalog';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
+import { runInsertExtras } from '../lib/web-fetch-options';
 
 
 export async function startAiMultiRun(
@@ -127,8 +128,9 @@ export async function startAiMultiRun(
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
       status, total_rows, processed_rows, target_rows, output_columns, status_column, data_column, placeholder_work,
       web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
-      spend_limit_usd
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
+      spend_limit_usd, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?)
   `);
 
   // Cap check + run row + column_order append in ONE immediate txn (two
@@ -149,6 +151,7 @@ export async function startAiMultiRun(
         JSON.stringify(specs), statusColumn, dataColumn,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
         rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
+        ...runInsertExtras(p.prompt, !!p.useWebFetch, p.fetchLimits),
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();
