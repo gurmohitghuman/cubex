@@ -75,17 +75,17 @@ async function main() {
 
   // --- A destination's rename: paged, and a restart finishes it ------------------
   const MANY = RUNS_PAGE * 2 + 50
-  db.transaction(() => { for (let i = 0; i < MANY; i++) run(dest, ['Name', 'Title']) })()
+  db.transaction(() => { for (let i = 0; i < MANY; i++) run(dest, ['Name', 'Title']) }).immediate()
   const bad = uuid()
   insertRun.run(bad, src, uid, 'not json', 'completed', 'People', dest)
-  db.transaction(() => RW.recordRunRewrite(dest, uid, 'Name', 'Full name'))()
+  db.transaction(() => RW.recordRunRewrite(dest, uid, 'Name', 'Full name')).immediate()
   check('the switch only records the rewrite of the runs into the sheet (none read in it)',
     fieldNames().size === 1 && fieldNames().has('Name+Title') && pending() === 1)
   // A crash after the first page of runs into the sheet committed.
   db.transaction(() => {
     const next = renameListDestPage(dest, uid, 'Name', 'Full name', Number.MAX_SAFE_INTEGER, RUNS_PAGE)
     db.prepare('UPDATE run_config_rewrites SET before_rowid = 0, dest_before_rowid = ?').run(next)
-  })()
+  }).immediate()
   check('half-way: the newest page renamed, the rest not yet', fieldNames().has('Full name+Title')
     && fieldNames().has('Name+Title'))
   RW.resumeRunRewrites()
@@ -111,9 +111,9 @@ async function main() {
 
   // --- Renames and a delete, in order --------------------------------------------
   await withSheetBusy(dest, 'testing', async () => {
-    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Title', 'Role'))()
-    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Role', 'Job'))()
-    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Full name', null))()
+    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Title', 'Role')).immediate()
+    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Role', 'Job')).immediate()
+    db.transaction(() => RW.recordRunRewrite(dest, uid, 'Full name', null)).immediate()
     await RW.finishRunRewrites(dest)
   })
   check('a rename, a rename again and a delete before the pages finish land in order',

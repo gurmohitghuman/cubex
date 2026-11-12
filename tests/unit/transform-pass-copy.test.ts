@@ -42,7 +42,7 @@ db.transaction(() => {
   for (let i = 0; i < ROWS; i++) {
     insert.run(uuid(), src, uid, i * 3, JSON.stringify({ S: `s${i}`, T: `t${i}`, F: FILLER }))
   }
-})()
+}).immediate()
 
 const call = (sheetId: string): Params => ({ sheetId, operation: 'template', template: '{{T}}-x', targetColumn: 'T' })
 const cells = (id: string) => db.prepare(`SELECT group_concat(json_extract(data, '$.T')) FROM rows

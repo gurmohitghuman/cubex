@@ -53,7 +53,7 @@ function sortFixture(n: number) {
     for (let i = 0; i < n; i += 5) db.prepare('INSERT INTO http_results (id,run_id,user_id,row_index) VALUES (?,?,?,?)').run(uuid(), http, uid, i * 2)
     db.prepare('INSERT INTO http_results (id,run_id,user_id,row_index) VALUES (?,?,?,?)').run(uuid(), http, uid, n * 2 + 1)
     db.prepare('INSERT INTO http_results (id,run_id,user_id,row_index) VALUES (?,?,?,?)').run(uuid(), http, uid, -7)
-  })()
+  }).immediate()
   const links = db.prepare(`
     SELECT 'ai' AS t, res.id AS res, r.id AS row FROM ai_results res JOIN rows r ON r.sheet_id = ? AND r.row_index = res.row_index WHERE res.run_id = ?
     UNION ALL SELECT 'http', res.id, r.id FROM http_results res JOIN rows r ON r.sheet_id = ? AND r.row_index = res.row_index WHERE res.run_id = ?
@@ -112,7 +112,7 @@ async function interruptedSort(stopAt: P.SortStage, partial: (plan: P.SortPlan, 
 }
 const half = (plan: P.SortPlan, sql: string, arg: (i: number) => number[]) => {
   const st = db.prepare(sql)
-  db.transaction(() => { for (let i = 0; i < plan.rowIds.length / 2; i++) st.run(...arg(i)) })()
+  db.transaction(() => { for (let i = 0; i < plan.rowIds.length / 2; i++) st.run(...arg(i)) }).immediate()
 }
 const up = (plan: P.SortPlan) => half(plan, 'UPDATE rows SET row_index = ? WHERE rowid = ?', i => [plan.base + plan.newAt[i], plan.rowIds[i]])
 

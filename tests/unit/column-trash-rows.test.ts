@@ -32,7 +32,7 @@ const leads = () => sheet(['Email', 'Notes', 'Name'], [
 await ok('rows deleted after their column: restored later, the leftover cells go into the column', async () => {
   const sid = leads()
   const id = (await del(sid, 'Notes'))!
-  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] }))().trashId!
+  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] })).immediate().trashId!
   const got = (await restoreOne(id)).restored as any
   assert.deepEqual([got.name, got.cells_restored, got.cells_skipped], ['Notes', 1, 2])
   assert.equal(getTrashEntry(uid, id)!.note, 'Its other cells went back to "Notes". These stayed: their rows were '
@@ -55,7 +55,7 @@ await ok('rows deleted after their column: restored later, the leftover cells go
 await ok('... restored with the column in one request, the rows go first and every cell comes back', async () => {
   const sid = leads()
   const id = (await del(sid, 'Notes'))!
-  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] }))().trashId!
+  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] })).immediate().trashId!
   const results = await restore([id, rows])
   assert.deepEqual(results.map(r => r.trash_id), [rows, id], 'the newest deletion first')
   assert.ok(results.every(r => r.restored), JSON.stringify(results))
@@ -97,7 +97,7 @@ await ok('leftovers whose column is gone or renamed since come back as a column 
     for (const gone of ['deleted', 'renamed']) {
       const sid = leads()
       const id = (await del(sid, 'Notes'))!
-      const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] }))().trashId!
+      const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 4] })).immediate().trashId!
       assert.equal(((await restoreOne(id)).restored as any).cells_skipped, 2)
       if (gone === 'deleted') await del(sid, 'Notes')
       else assert.ok('ok' in await renameSheetColumn(sid, uid, 'Notes', 'Remarks'))
@@ -116,7 +116,7 @@ await ok('leftovers whose column is gone or renamed since come back as a column 
 async function rowsThenColumn() {
   const sid = leads()
   writeColumnDescription(sid, uid, 'Notes', 'Kept notes')
-  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 3] }))().trashId!
+  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0, 3] })).immediate().trashId!
   const column = (await del(sid, 'Notes'))!
   return { sid, rows, column }
 }
@@ -161,8 +161,8 @@ await ok('... restored together (or the column first), the rows come back into t
 
 await ok('batches of rows alone are restored newest deletion first, whatever order they are given in', async () => {
   const sid = leads()
-  const older = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0] }))().trashId!
-  const newer = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [1] }))().trashId!
+  const older = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [0] })).immediate().trashId!
+  const newer = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [1] })).immediate().trashId!
   assert.ok(newer > older)
   assert.deepEqual(holdersFirst(uid, [older, newer]), [newer, older])
   assert.deepEqual(holdersFirst(uid, [newer, older]), [newer, older])

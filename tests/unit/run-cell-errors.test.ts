@@ -50,7 +50,7 @@ function column(rows: number, runs: number, results: Record<number, number[]>) {
       res.run(uuid(), runId, uid, rows + k, 'completed', null)
       for (const i of results[k] ?? []) res.run(uuid(), runId, uid, i, 'failed', `HTTP 503 from run ${k} at row ${i}`)
     }
-  })()
+  }).immediate()
   return { sid, ids }
 }
 async function errorsOf(sid: string, ids: string[]): Promise<string[]> {

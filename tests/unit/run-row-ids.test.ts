@@ -36,7 +36,7 @@ db.transaction(() => {
     ids.push(id)
     insert.run(id, sid, uid, i * 2, JSON.stringify({ Name: `N${i}` }))
   }
-})()
+}).immediate()
 const elsewhere = uuid()
 insert.run(elsewhere, other, uid, 0, '{}')
 

@@ -60,7 +60,7 @@ db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < FEW; i++) insert.run(uuid(), few, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < 5; i++) insert.run(uuid(), small, uid, i, JSON.stringify({ Name: `s${i}` }))
-})()
+}).immediate()
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 
 let failures = 0

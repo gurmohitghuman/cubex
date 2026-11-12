@@ -92,7 +92,7 @@ await ok('a rename is followed; a deleted column is never written again, nor one
     deleteUndoColumn(sid, uid, 'B')
     db.prepare(`UPDATE rows SET data = json_set(data, '$.B', 'B1') WHERE sheet_id = ?`).run(sid)
     db.prepare('UPDATE http_runs SET master_column_name = ? WHERE id = ?').run('A2', runId)
-  })()
+  }).immediate()
   await undo('http', runId)
   assert.deepEqual(cells(sid, 'A2'), ['a0', 'a1'])
   assert.deepEqual(cells(sid, 'B'), ['B1', 'B1'])

@@ -226,7 +226,7 @@ async function main() {
   const tw = token(1)
   const fall = enrichRun(tw, 1)
   db.prepare('UPDATE http_runs SET worker_generation = 1 WHERE id = ?').run(fall)
-  db.transaction(() => setRunHold(fall, uid, 1, 20_000, 70_000))()
+  db.transaction(() => setRunHold(fall, uid, 1, 20_000, 70_000)).immediate()
   check("a run's AI part holds room under its token's cap, its treg part under today's limit too",
     tokenHeldMicro(uid, tw) === 90_000 && heldMicro(uid, fall) === 20_000)
   db.prepare('DELETE FROM enrich_holds WHERE run_id = ?').run(fall)

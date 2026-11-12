@@ -110,7 +110,7 @@ async function hold(sid: string, column: string) {
       db.prepare(`UPDATE rows SET data = json_set(data, ?, row_index || '.example') WHERE sheet_id = ?`)
         .run(`$."${column}"`, sid)
       db.prepare(`UPDATE http_runs SET status = 'completed' WHERE id = ?`).run(run)
-    })(),
+    }).immediate(),
     stop: () => db.prepare(`UPDATE http_runs SET status = 'cancelled', placeholder_work = 'clearing'
       WHERE id = ?`).run(run),
     back: () => clearRunPlaceholders('http', run),

@@ -74,7 +74,7 @@ export function runMigrations() {
         }
         insertMigration.run(file);
       });
-      tx();
+      tx.immediate();
     } finally {
       if (keysOff) db.pragma('foreign_keys = ON');
     }

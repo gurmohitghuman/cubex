@@ -172,7 +172,7 @@ await ok('a restore past its wait whose setup can no longer come back at the end
     appendColumnsToOrder(sid, uid, ['Owner'])
     writeLookupSetup(sid, uid, 'Owner', { kind: 'lookup', source: 'Domain', otherSheetId: accounts,
       matchColumn: 'Domain', match: 'equals', returns: 'value', returnColumns: ['Owner'], limit: 1 }, false)
-  })()
+  }).immediate()
   const id = (await del(sid, 'Owner'))!
   const got = (await restoreOne(id)).restored as any
   assert.deepEqual([got.state, got.setup.kind, got.setup.note], ['restoring', 'lookup', 'Its setup comes back '

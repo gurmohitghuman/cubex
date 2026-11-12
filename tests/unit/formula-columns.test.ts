@@ -231,7 +231,7 @@ async function main() {
 
   // Big JSON cells: a slice reads only what it can work out, so the fill stays quick.
   const big = JSON.stringify({ emails: [{ type: 'work', value: 'big@x.com' }], pad: 'p'.repeat(60_000) })
-  db.transaction(() => { for (let k = 0; k < 600; k++) addRow({ Response: big, Name: `b${k}` }) })()
+  db.transaction(() => { for (let k = 0; k < 600; k++) addRow({ Response: big, Name: `b${k}` }) }).immediate()
   const tBig = Date.now()
   await create('Big work email', '{{Response}}?.emails?.[0]?.value')
   check(`600 rows of 60 KB JSON filled in ${Date.now() - tBig} ms`, formulaColumnFor(sheetId, uid, 'Big work email')
@@ -240,7 +240,7 @@ async function main() {
 
   // Many rows: time-bounded slices still reach every row.
   const many = db.transaction(() => { for (let k = 0; k < 12_000; k++) addRow({ Name: `n${k}`, Score: String(k) }) })
-  many()
+  many.immediate()
   const t1 = Date.now()
   await create('Double', 'Number({{Score}}) * 2')
   const d = formulaColumnFor(sheetId, uid, 'Double')

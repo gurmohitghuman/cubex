@@ -107,7 +107,7 @@ async function goOn(job: UndoJob, run: RunInfo): Promise<void> {
     logSheetChange(job.sheetId, job.userId, 'run_undone',
       `Undid the run of "${run.column ?? 'a deleted column'}": ${countOf(n.restored, 'cell')} back${left}`,
       { column: run.column, detail: { run_id: run.id, kind: run.kind, ...n } });
-  })();
+  }).immediate();
   kickUndoDrops();
 }
 

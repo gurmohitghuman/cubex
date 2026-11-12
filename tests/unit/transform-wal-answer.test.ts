@@ -52,7 +52,7 @@ function sheet(name: string, rows: number): string {
     .run(id, tid, uid, name, JSON.stringify(['N', 'Notes']))
   db.transaction(() => {
     for (let i = 0; i < rows; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ N: `r${i}`, Notes: NOTES }))
-  })()
+  }).immediate()
   return id
 }
 // Each case its own sheet, so one failing leaves the other's as it was.

@@ -74,7 +74,7 @@ function sheet(rows = ROWS, s = (i: number) => `s${i}`): string {
   addSheet.run(id, tid, uid, `S${made}`, made++, JSON.stringify(['S', 'T']))
   db.transaction(() => {
     for (let i = 0; i < rows; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ S: s(i), T: `t${i}` }))
-  })()
+  }).immediate()
   return id
 }
 // Reads its own target: a row the operation reached twice ends "-x-x".

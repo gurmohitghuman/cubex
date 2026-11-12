@@ -139,7 +139,7 @@ async function main() {
   db.prepare(`UPDATE http_runs SET status = 'running', worker_generation = 2,
     updated_at = datetime('now', '-1 hour') WHERE id = ?`).run(p)
   check("an older worker's hold stops counting once the run moved on", heldMicro(uid) === 0)
-  db.transaction(() => setRunHold(a, uid, 1, 0))()
+  db.transaction(() => setRunHold(a, uid, 1, 0)).immediate()
   check('taking a hold clears the ones that no longer count', holds() === 0)
   db.prepare('INSERT INTO enrich_holds (run_id, worker_generation, user_id, hold_micro) VALUES (?,?,?,?)')
     .run(p, 2, uid, 20_000)

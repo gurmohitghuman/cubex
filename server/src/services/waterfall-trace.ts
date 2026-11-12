@@ -4,6 +4,7 @@
 // what it did for the row: answered, missed, skipped for missing inputs,
 // failed, or not reached because an earlier step answered. A pure read.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { parseStored, readStored } from '../lib/answer-store';
 import { waterfallConfigOf, type StepKind } from '../lib/waterfall/config';
@@ -42,7 +43,7 @@ export function storedTrace(raw: string | null): Trace | null {
 export function readWaterfallTrace(
   userId: string, sheetId: string, column: string, rowIndex: number,
 ): { ok: WaterfallTraceView } | RunFail {
-  return db.transaction((): { ok: WaterfallTraceView } | RunFail => {
+  return readTransaction((): { ok: WaterfallTraceView } | RunFail => {
     if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
     const owner = columnRuns(sheetId, userId, column);
     if (!owner) return { fail: 'bad_request', message: `"${column}" isn't a waterfall column.` };

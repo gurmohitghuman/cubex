@@ -72,7 +72,7 @@ async function eachSlice(
   for (let after = 0; ;) {
     const rows = slice.all(sheetId, userId, after, HEAVY_SLICE_ROWS) as Array<[number, number]>;
     if (rows.length === 0) return;
-    db.transaction(() => apply(rows))();
+    db.transaction(() => apply(rows)).immediate();
     after = rows[rows.length - 1][0];
     await yieldToRequests();
   }

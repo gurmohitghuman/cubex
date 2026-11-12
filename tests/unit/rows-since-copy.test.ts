@@ -131,7 +131,7 @@ async function main() {
   await check('pruning a copy: return_mode ids and row_ids missing name the rows gone', async () => {
     const S = sheet(['N'], ['a', 'b', 'c', 'd'].map(N => ({ N })))
     const copy = new Map((await read(S.sid, { updated_since: SINCE })).rows.map(r => [r.id, r.data]))
-    db.transaction(() => deleteRowsToTrash(S.sid, uid, 'grid', { indexes: [1, 3] }))()
+    db.transaction(() => deleteRowsToTrash(S.sid, uid, 'grid', { indexes: [1, 3] })).immediate()
     assert.equal((await read(S.sid, { updated_since: SINCE })).rows.length, 2, 'deleted rows never show')
     const live = new Set<string>()
     let cursor: number | null | undefined

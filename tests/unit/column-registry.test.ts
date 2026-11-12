@@ -44,7 +44,7 @@ function sheet(columnOrder: string | null, rows: string[]): string {
   db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)')
     .run(sid, tid, uid, `S_${sid.slice(0, 8)}`, columnOrder)
   const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-  db.transaction(() => rows.forEach((data, i) => ins.run(uuid(), sid, uid, i, data)))()
+  db.transaction(() => rows.forEach((data, i) => ins.run(uuid(), sid, uid, i, data))).immediate()
   return sid
 }
 const order = (cols: unknown[]) => JSON.stringify(cols)

@@ -55,7 +55,7 @@ for (const renamed of [false, true]) {
         webSearch: false, webFetch: false,
         outputColumns: null, dataColumn: null, searchEngine: null, searchMode: null, maxSearchesPerRow: null,
         searchEngineUsed: null, runIf: null })
-    })()
+    }).immediate()
     db.prepare(`UPDATE rows SET data = json_set(data, '$.Pitch', 'hi ' || json_extract(data, '$.Name'))
       WHERE sheet_id = ?`).run(sid)
     const id = (await del(sid, 'Pitch'))!
@@ -91,7 +91,7 @@ for (const renamed of [false, true]) {
         appendColumnsToOrder(sid, uid, ['Lookup', 'Title'])
         writeHttpSetup(sid, uid, 'Lookup', { kind: 'http', mode: 'http', config, allowSecrets: 1, destSheetId: null,
           extracted: ['Title'] }, order(sid), true)
-      })()
+      }).immediate()
       db.prepare(`UPDATE rows SET data = json_set(data, '$.Lookup', '✅', '$.Title', 'CEO') WHERE sheet_id = ?`).run(sid)
       const id = (await del(sid, 'Lookup'))!
       if (renamed) take(sid, 'Lookup')
@@ -179,7 +179,7 @@ await ok('restored with rows of its sheet in one request, a formula column fills
   const sid = people()
   assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'Domain', formula: '{{Email}}.split("@")[1]' }))
   await idle(sid)
-  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [2] }))().trashId!
+  const rows = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [2] })).immediate().trashId!
   const id = (await del(sid, 'Domain'))!
   const results = await restore([rows, id])
   assert.deepEqual(results.map(r => r.trash_id), [id, rows])
@@ -238,7 +238,7 @@ await ok("an HTTP request reading a saved key needs the secrets scope to come ba
     appendColumnsToOrder(sid, uid, ['Sync'])
     writeHttpSetup(sid, uid, 'Sync', { kind: 'http', mode: 'http', config, allowSecrets: 1, destSheetId: null,
       extracted: [] }, order(sid), true)
-  })()
+  }).immediate()
   const id = (await del(sid, 'Sync'))!
   const refused = await restoreOne(id, { surface: 'mcp', hasSecretsScope: false })
   assert.deepEqual([refused.fail, refused.error], ['forbidden',

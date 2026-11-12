@@ -191,7 +191,7 @@ check('a non-string is refused', webhookIdProblem(uid, 42) !== null)
     VALUES (?, ?, ?, 'run.finished', '{}', 'pending', ?)`)
   db.transaction(() => {
     for (let i = 0; i < RUN_HOOK_MAX_WAITING; i++) ins.run(uuid(), uid, named, Date.now() + 3_600_000)
-  })()
+  }).immediate()
   const r = aiRun()
   db.prepare('UPDATE ai_runs SET webhook_id = ? WHERE id = ?').run(named, r)
   set('ai_runs', r, 'completed')

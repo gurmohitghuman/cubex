@@ -30,7 +30,7 @@ export async function saveDedupePlan(
           insert.run(sheetId, chunk++, Buffer.from(rowIds.slice(i, end).buffer));
           i = end;
         }
-      })();
+      }).immediate();
       return i < rowIds.length;
     });
     db.prepare("UPDATE dedupe_jobs SET stage = 'deleting' WHERE sheet_id = ?").run(sheetId);

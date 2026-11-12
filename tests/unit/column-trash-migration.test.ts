@@ -21,7 +21,7 @@ for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.sql') && f < '05
   const sql = fs.readFileSync(path.join(dir, file), 'utf8')
   const off = sql.startsWith('-- cube:foreign-keys-off')
   if (off) db.pragma('foreign_keys = OFF')
-  db.transaction(() => { db.exec(sql); db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file) })()
+  db.transaction(() => { db.exec(sql); db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file) }).immediate()
   if (off) db.pragma('foreign_keys = ON')
 }
 assert.equal(db.prepare("SELECT COUNT(*) FROM _migrations WHERE name LIKE '054%'").pluck().get(), 0)

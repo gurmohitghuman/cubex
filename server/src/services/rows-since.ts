@@ -20,6 +20,7 @@
 // so a placeholder kept in a copy would never be answered again. `filling`
 // names those columns instead: the rows the fill changes come in a later read.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { fillingColumns } from '../lib/field-fill-columns';
 import { ROWS_SINCE_AS_OF_SLACK_SECONDS } from '../lib/constants-query';
@@ -53,7 +54,7 @@ export function readRowsSince(sheetId: string, userId: string, q: RowQuery): Row
   if (at && at.sheet !== sheetId) return { fail: 'invalid', error: OTHER_SHEET };
   const limit = q.limit ?? API_V1_DEFAULT_ROWS_PAGE;
   // One snapshot: the page, the versions, the columns filling and the time it was read at.
-  return db.transaction((): RowQueryResult => {
+  return readTransaction((): RowQueryResult => {
     const versions = versionsOf(sheetId, userId);
     if (!versions) return { fail: 'invalid', error: 'Sheet not found' };
     const columns = getSheetColumns(sheetId, userId, false);

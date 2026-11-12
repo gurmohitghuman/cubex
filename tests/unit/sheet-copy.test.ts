@@ -68,7 +68,7 @@ function fixture(n: number) {
         Status: status, Score: i, Ghost: 'unlisted',
       }))
     }
-  })()
+  }).immediate()
   return { tid, src, other }
 }
 const rowsOf = (sid: string) => db.prepare(

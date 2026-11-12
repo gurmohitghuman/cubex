@@ -37,7 +37,8 @@ db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 
 db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,?,?)')
   .run(sid, tid, uid, 'S', 0, JSON.stringify(['N']))
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-db.transaction(() => { for (let i = 0; i < 600; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ N: 'n' })) })()
+db.transaction(() => { for (let i = 0; i < 600; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ N: 'n' })) })
+  .immediate()
 // A row it changed no longer matches its where.
 const call: Params = { sheetId: sid, operation: 'template', template: '{{N}}x', targetColumn: 'N',
   where: [{ column: 'N', operator: 'eq', value: 'n' }] }

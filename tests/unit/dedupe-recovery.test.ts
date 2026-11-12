@@ -69,7 +69,7 @@ function fixture(n: number, pool: number) {
       db.prepare('INSERT INTO http_results (id,run_id,user_id,row_index) VALUES (?,?,?,?)')
         .run(uuid(), http, uid, i * 2)
     }
-  })()
+  }).immediate()
   return sid
 }
 
@@ -214,7 +214,7 @@ await ok('resume: half-way through deleting; a row added since under a planned r
     db.prepare('DELETE FROM rows WHERE rowid IN (SELECT value FROM json_each(?))')
       .run(JSON.stringify(Array.from(first.rowIds)))
     J.dropDedupeChunk(sid, first.chunk)
-  })()
+  }).immediate()
   // A planned row of a later chunk moved above the floor, as a row appended
   // since that got a deleted row's rowid would sit.
   const lateRowid = found.remove[found.remove.length - 1]

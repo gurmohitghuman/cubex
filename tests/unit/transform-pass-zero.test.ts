@@ -58,7 +58,7 @@ function sheet(): string {
     for (let i = 0; i < ROWS; i++) {
       insert.run(uuid(), id, uid, i, JSON.stringify({ S: i >= 4000 ? `late${i}` : `s${i}`, T: `t${i}` }))
     }
-  })()
+  }).immediate()
   return id
 }
 const late = (sheetId: string): Params => ({ sheetId, operation: 'template', template: '{{T}}-x', targetColumn: 'T',

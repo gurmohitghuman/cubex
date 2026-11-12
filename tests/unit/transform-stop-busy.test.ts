@@ -48,7 +48,7 @@ for (const [n, id] of [busy, sorted, late].entries()) {
   addSheet.run(id, tid, uid, `S${n}`, n, JSON.stringify(['T']))
   db.transaction(() => {
     for (let i = 0; i < (id === late ? 100 : ROWS); i++) insert.run(uuid(), id, uid, i, JSON.stringify({ T: `t${i}` }))
-  })()
+  }).immediate()
 }
 const again = (sheetId: string) => ({ sheetId, operation: 'template' as const, template: '{{T}}-x', targetColumn: 'T' })
 const dataVersion = (id: string) => db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck().get(id) as number

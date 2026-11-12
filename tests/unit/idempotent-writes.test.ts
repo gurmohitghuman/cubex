@@ -219,7 +219,7 @@ ok('run and transfer keys keep their 1,000 window: row-write keys don\'t count i
       for (let i = 0; i < 1010; i++) insert.run(uuid(), user, `w-${i}`, 'rows_append', '-1 minutes')
       insert.run(uuid(), user, 'run-mid', 'ai_run', '-2 hours')
       for (let i = 0; i < 30; i++) insert.run(uuid(), user, `old-${i}`, 'rows_append', '-3 hours')
-    })()
+    }).immediate()
     prune(user)
     assert.ok(db.prepare(`SELECT 1 FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = 'run-mid'`)
       .get(user), 'the run key stays')

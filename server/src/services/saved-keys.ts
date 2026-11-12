@@ -3,6 +3,7 @@
 // Values are stored encrypted only (lib/crypto.ts) and never returned.
 import { timingSafeEqual } from 'node:crypto';
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import { decrypt, encrypt } from '../lib/crypto';
 import { API_KEY_NAME_MAX, API_KEY_NAME_PATTERN, MIN_API_KEY_VALUE_LENGTH } from '../lib/constants';
 import { templateTokenIs } from '../lib/template-token-match';
@@ -95,8 +96,8 @@ export function saveImportedKeys(
   const batch = new Map<string, string>();
   try {
     // A save reads the saved keys before it writes, so it takes the write lock first; a dry run only reads.
-    const save = db.transaction(() => keys.map(k => saveOne(userId, columns, k, batch, dryRun)));
-    return { ok: dryRun ? save() : save.immediate() };
+    const each = () => keys.map(k => saveOne(userId, columns, k, batch, dryRun));
+    return { ok: dryRun ? readTransaction(each)() : db.transaction(each).immediate() };
   } catch (e) {
     if (e instanceof KeyRefused) return { fail: e.fail, message: e.message };
     throw e;

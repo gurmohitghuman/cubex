@@ -125,7 +125,7 @@ async function runGoing(kind: Kind, sid: string): Promise<string> {
       : [['Status', '✅'], ['Answer', 'New A']]
     writeRunCells({ kind, id }, sid, uid, 0, result)
     markAutorunInputs(sid, uid, result.map(([c]) => c), { indexes: [0] })
-  })()
+  }).immediate()
   await tick(sid, 'F'); await tick(sid, 'Low'); await tick(sid, 'F2')
   assert.deepEqual(cells(sid, 'F'), ['has New A', 'has Old B', 'has Old C'], 'seeding queues nothing')
   assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'HAS OLD B', 'HAS OLD C'])

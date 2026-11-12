@@ -29,7 +29,7 @@ export function setReuseDays(userId: string, days: number): void {
     ensureSettingsRow(userId);
     db.prepare("UPDATE settings SET enrich_reuse_days = ?, updated_at = datetime('now') WHERE user_id = ?")
       .run(days, userId);
-  })();
+  }).immediate();
 }
 
 // The oldest answer a row may still reuse (null: reuse is off).

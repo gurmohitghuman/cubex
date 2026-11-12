@@ -42,7 +42,7 @@ await ok('a CSV replace cut short while moving the old rows: the restart moves t
   const ids = rowsOf(sid).map(r => r.id)
   // The replace had moved some old rows into its batch when the server stopped.
   const batch = openSlicedBatch(sid, uid, 'import')!
-  db.transaction(() => deleteRowsToTrashSlice(sid, batch, [0, 2, 4]))()
+  db.transaction(() => deleteRowsToTrashSlice(sid, batch, [0, 2, 4])).immediate()
   db.prepare(`INSERT INTO import_jobs (sheet_id, user_id, is_replace, first_row, end_row, columns)
     VALUES (?, ?, 1, 0, 60, '["Email"]')`).run(sid, uid)
   const job = db.prepare('SELECT * FROM import_jobs WHERE sheet_id = ?').get(sid) as Parameters<typeof undoImport>[0]

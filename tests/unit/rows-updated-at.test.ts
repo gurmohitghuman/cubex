@@ -135,7 +135,7 @@ await ok("a derived column's cell writer: an emptied cell (its key removed) and 
   const values = ['', 'same', 'new']
   const pass = { compute: (inputs: unknown[][]) => inputs.map((_, k) => ({ value: values[k], filled: !!values[k] })),
     prepare: async () => {}, failure: () => null, dispose: () => {} }
-  const counts = db.transaction(() => writeDerivedCells(uid, jsonPath('D'), rows, pass))()
+  const counts = db.transaction(() => writeDerivedCells(uid, jsonPath('D'), rows, pass)).immediate()
   assert.deepEqual([counts.done, counts.changed.length], [3, 2])
   assert.deepEqual(changed(sid, now), [0, 2], 'the unchanged row is not written')
   const data = db.prepare('SELECT data FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck().all(sid) as string[]
@@ -203,7 +203,7 @@ await ok("a column delete that also drops dead run-input keys stamps only the ro
 await ok('rows restored from the trash count as changed now, not at their old time', async () => {
   const sid = sheet([{ A: '1' }, { A: '2' }, { A: '3' }], ['A'])
   past(sid)
-  const item = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [1] }))().trashId!
+  const item = db.transaction(() => deleteRowsToTrash(sid, uid, 'grid', { indexes: [1] })).immediate().trashId!
   const now = clock()
   const out = await restoreRows(uid, item)
   assert.ok('ok' in out, JSON.stringify(out))

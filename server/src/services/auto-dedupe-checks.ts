@@ -108,7 +108,7 @@ export async function runChecks(
   const out: ChecksRun = { removed: 0, trashId: null, left: false };
   // Open tabs reload once the rows are gone, not after every slice.
   const done = (r: ChecksRun): ChecksRun => {
-    if (r.removed > 0) db.transaction(() => bumpDataVersion(sheetId, userId))();
+    if (r.removed > 0) db.transaction(() => bumpDataVersion(sheetId, userId)).immediate();
     return r;
   };
   for (;;) {

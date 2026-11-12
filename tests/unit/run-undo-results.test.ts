@@ -114,7 +114,8 @@ await ok('a run started before runs could be undone keeps nothing and writes as 
   db.prepare(`UPDATE rows SET data = json_set(data, '$.P', '⏳ Processing...') WHERE sheet_id = ?`).run(sid)
   const rowids = JSON.stringify(db.prepare('SELECT rowid FROM rows WHERE sheet_id = ?').pluck().all(sid))
   // A re-seed after the restart keeps nothing either.
-  db.transaction(() => journalSeed({ kind: 'http', id: runId }, sid, uid, { rowids }, [['P', '⏳ Processing...']]))()
+  db.transaction(() => journalSeed({ kind: 'http', id: runId }, sid, uid, { rowids }, [['P', '⏳ Processing...']]))
+    .immediate()
   assert.equal(writeRunCells({ kind: 'http', id: runId }, sid, uid, 0, [['P', 'answer']]), true)
   assert.deepEqual(cells(sid, 'P'), ['answer', '⏳ Processing...'])
   assert.equal(journal('http', runId), undefined)

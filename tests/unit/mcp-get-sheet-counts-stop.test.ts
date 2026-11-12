@@ -26,7 +26,7 @@ db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) 
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ val: `v${i}` }))
-})()
+}).immediate()
 
 type Handler = (args: unknown, mcp: ServerContext) => Promise<{ content: Array<{ text: string }>; isError?: boolean }>
 const handlers: Record<string, Handler> = {}

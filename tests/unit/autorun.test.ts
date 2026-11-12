@@ -103,15 +103,15 @@ async function main() {
   const off = entry('Other', ['Website'], 0)
   const pending = (id: string) =>
     db.prepare('SELECT row_id FROM autorun_pending WHERE autorun_id = ?').pluck().all(id) as string[]
-  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Notes'], { indexes: [0, 1, 2, 3] }))()
+  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Notes'], { indexes: [0, 1, 2, 3] })).immediate()
   check('a column no auto-run reads queues nothing', pending(on).length === 0)
-  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [0, 1, 2] }))()
+  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [0, 1, 2] })).immediate()
   const q = pending(on)
   check('an input written queues the rows not run yet (empty or ❌), never a ✅ row',
     q.length === 2 && q.includes(ids[0]) && q.includes(ids[2]) && !q.includes(ids[1]))
   check('an auto-run that is off queues nothing', pending(off).length === 0)
   db.transaction(() => mark.markAutorunEdits(sheetId, uid,
-    [{ column: 'Notes', rowId: ids[3] }, { column: 'Name', rowId: ids[4] }]))()
+    [{ column: 'Notes', rowId: ids[3] }, { column: 'Name', rowId: ids[4] }])).immediate()
   check('a batch of edits queues a row only for the columns written in it',
     pending(on).includes(ids[4]) && !pending(on).includes(ids[3]))
   // An "Only run if" kept row 3 out of a run; row 4 ran and found nothing.
@@ -119,18 +119,18 @@ async function main() {
     db.prepare(`UPDATE rows SET data = json_set(data, '$."Work email"', ?) WHERE id = ?`).run(st, id)
   setStatus(ids[3], '⏭️ Condition not met'); setStatus(ids[4], '⏭️ Not found')
   db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(on)
-  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [3, 4] }))()
+  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [3, 4] })).immediate()
   const kept = pending(on)
   db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(on)
   db.transaction(() => mark.markAutorunEdits(sheetId, uid,
-    [{ column: 'Name', rowId: ids[3] }, { column: 'Name', rowIndex: 4 }]))()
+    [{ column: 'Name', rowId: ids[3] }, { column: 'Name', rowIndex: 4 }])).immediate()
   check('"⏭️ Condition not met" is queued again when an input is written, a real ⏭️ result is not',
     kept.join() === ids[3] && pending(on).join() === ids[3])
 
   // --- The watermark -------------------------------------------------------------
   const wOf = () => db.prepare('SELECT watermark_row_index FROM autorun_columns WHERE id = ?').pluck().get(on) as number
   db.prepare('DELETE FROM rows WHERE sheet_id = ? AND row_index IN (3, 4)').run(sheetId)
-  db.transaction(() => mark.autorunRowsRemoved(sheetId, uid))()
+  db.transaction(() => mark.autorunRowsRemoved(sheetId, uid)).immediate()
   check('a tail delete lowers the fence, so an append reusing row 3 is new', wOf() === 2)
   const appended = uuid(), keptOut = uuid(), notFound = uuid()
   const addRow = (id: string, i: number, data: object) => db.prepare(
@@ -149,7 +149,7 @@ async function main() {
   check('after the sort the fence is the sorted count', wOf() === rows.length - 1)
   mark.autorunAfterReplace(sheetId, uid, null)
   check('a CSV replace makes every row new and empties the queue', wOf() === -1 && pending(on).length === 0)
-  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [0, 3] }))()
+  db.transaction(() => mark.markAutorunInputs(sheetId, uid, ['Website'], { indexes: [0, 3] })).immediate()
   const queued = pending(on).length
   await mark.autorunDropPending(sheetId, uid, on)
   check('the queue drops in slices before a replace or a fresh turn-on', queued === 2 && pending(on).length === 0)

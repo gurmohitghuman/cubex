@@ -155,7 +155,7 @@ export async function openSpendGate(
         db.transaction(() => {
           if (cutOff) addCutOff(run, micro);
           setHold(run, generation, out + unsaved);
-        })();
+        }).immediate();
       } catch (error) {
         if (cutOff) unsaved += micro;
         console.error(`AI run ${run.id}: giving a row's hold back failed:`, redactError(error));
@@ -167,7 +167,7 @@ export async function openSpendGate(
           if (unsaved > 0) addCutOff(run, unsaved);
           db.prepare('DELETE FROM ai_run_holds WHERE run_id = ? AND worker_generation = ? AND user_id = ?')
             .run(run.id, generation, run.user_id);
-        })();
+        }).immediate();
       } catch (error) { console.error(`AI run ${run.id}: dropping its hold failed:`, redactError(error)); }
     },
   };

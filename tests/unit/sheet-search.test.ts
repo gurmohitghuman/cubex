@@ -49,7 +49,7 @@ db.transaction(() => {
     db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
       .run(uuid(), sid, uid, i * 3, JSON.stringify(data))
   }
-})()
+}).immediate()
 // The view: Keep is "y" (a column filter), Hidden hidden.
 listViews(sid, uid)
 db.prepare("UPDATE sheet_views SET hidden_columns = '[\"Hidden\"]' WHERE sheet_id = ?").run(sid)

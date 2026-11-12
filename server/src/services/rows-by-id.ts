@@ -8,6 +8,7 @@
 // With max_chars_per_cell that cap counts the rows as cut and each one's
 // cut_cells entry, and cut_cells keeps only the rows returned.
 import { db } from '../lib/db';
+import { readTransaction } from '../lib/db-transaction';
 import { getSheetColumns, parseRowData } from '../lib/sql-helpers';
 import { isoTime } from '../lib/row-since';
 import { validateQuery, type RowQuery } from './row-query-input';
@@ -26,7 +27,7 @@ export const ROWS_BY_ID_SQL = `SELECT id, row_index, data, updated_at FROM rows
 export function readRowsById(sheetId: string, userId: string, q: RowQuery): RowQueryResult {
   const ids = q.rowIds!;
   // One snapshot: the rows and the versions they answer with.
-  return db.transaction((): RowQueryResult => {
+  return readTransaction((): RowQueryResult => {
     const versions = versionsOf(sheetId, userId);
     if (!versions) return { fail: 'invalid', error: 'Sheet not found' };
     const columns = getSheetColumns(sheetId, userId, false);
