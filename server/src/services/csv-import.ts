@@ -34,6 +34,7 @@ import { forgetUnlistedAutoDedupe } from '../lib/auto-dedupe/refs';
 import { checkImportedRows, queueImportedRows, type ImportDedupe } from './auto-dedupe-import';
 import { forgetUnlistedRunInputKeys } from '../lib/run-inputs/keys';
 import { forgetUnlistedUndoColumns } from '../lib/run-undo/columns';
+import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
 import { GarbledTally, type GarbledSamples } from '../lib/garbled-cells';
@@ -206,6 +207,7 @@ export async function importCsv(
           forgetUnlistedAutoDedupe(sheetId, userId);
           forgetUnlistedRunInputKeys(sheetId, userId);
           forgetUnlistedUndoColumns(sheetId, userId);
+          forgetUnlistedTransformPasses(sheetId, userId);
         } else if (csvColumns.length > 0) appendColumnsToOrder(sheetId, userId, csvColumns);
         else touchSheet(sheetId, userId);
         if (opts.bumpDataVersion) {

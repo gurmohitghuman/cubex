@@ -64,6 +64,8 @@ router.post('/sheets/:sourceId/rows/transfer', requireScope('write'), async (req
       idempotencyKey: key,
     };
     const result = transferRows(req.userId!, request);
+    // A busy sheet answers as the busy check in front of every v1 sheet route does.
+    if ('fail' in result && result.fail === 'busy') return res.status(409).json({ error: result.error, busy: true });
     if ('fail' in result) {
       const status = result.fail === 'not_found' ? 404
         : ['conflict', 'active_run', 'active'].includes(result.fail) ? 409

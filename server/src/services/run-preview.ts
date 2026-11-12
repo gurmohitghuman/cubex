@@ -94,8 +94,8 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   if (refsError) return { fail: 'bad_request', message: refsError };
   const model = resolveAiModel(input.model, input.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
-  const gone = await modelProblem(model);
-  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
+  const gone = await modelProblem(model, 'Choose another model.');
+  if (gone) return { fail: 'bad_request', message: gone };
   // The engine, mode and cap the run would get (lib/web-search-plan.ts).
   const planned = await planIfSearching(userId, model, !!input.useOpenRouterWebSearch, input.search);
   if ('error' in planned) return { fail: 'bad_request', message: planned.error };

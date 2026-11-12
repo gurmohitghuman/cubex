@@ -46,6 +46,8 @@ export interface HttpRerunParams extends RerunScope {
   // no-secrets caller must never cause saved-key fallback). undefined = copy
   // the parent (UI/cookie reruns, which carry full owner authority).
   forceAllowSecrets?: boolean;
+  // Requests at once for the new run (control_run's and the REST rerun's concurrency): its config keeps it.
+  batchSize?: number;
 }
 
 export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promise<RerunOutcome> {
@@ -53,6 +55,8 @@ export async function rerunHttpColumn(userId: string, p: HttpRerunParams): Promi
   const basis = httpRerunChecks(userId, p);
   if ('fail' in basis) return basis;
   const { cleanMaster, latestRun, config, extractedColumns } = basis;
+  // control_run's and the REST rerun's concurrency: the new run's requests at once, kept in its config.
+  if (p.batchSize !== undefined) config.batchSize = p.batchSize;
   const allColumns = [cleanMaster, ...extractedColumns];
   // The column's "Only run if" rule applies to its reruns too.
   const rule = startRunRule(p.sheetId, userId, config.runIf, { stored: true });

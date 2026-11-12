@@ -1,3 +1,4 @@
+// Over 200 lines: every rerun mode's contract over MCP and REST, its cases sharing one set of helpers.
 import { test, expect } from '@playwright/test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -145,7 +146,7 @@ test('v1 AI rerun validates mode and keeps its back-compat default', async () =>
   expect((await omitted.json()).error).toContain('mode')
 })
 
-test('an AI rerun takes a new concurrency; other runs refuse it', async () => {
+test('an AI rerun takes a new concurrency; a pause refuses it and an HTTP API rerun takes it', async () => {
   test.setTimeout(90_000)
   const api = await authedApi()
   const { sheetId } = await seedSheet(api, 2)
@@ -189,13 +190,14 @@ test('an AI rerun takes a new concurrency; other runs refuse it', async () => {
   const kept = parseResult(await rerun(lower.run_id, { mode: 'all' }))
   expect((await settle(kept.run_id)).concurrency).toBe(1)
 
-  // Only an AI or enrichment rerun takes it.
+  // A rerun takes it (an HTTP API one too), and an HTTP API or enrichment resume; a pause doesn't.
   const paused = await call('control_run', { run_type: 'ai', run_id: kept.run_id, action: 'pause', concurrency: 3 })
-  expect(errorText(paused)).toContain('applies only to rerunning an AI or enrichment run')
+  expect(JSON.parse(errorText(paused)).error).toBe('concurrency applies only to rerunning an AI, HTTP API or '
+    + 'enrichment run, or resuming an HTTP API or enrichment run.')
   const http = await call('control_run', {
     run_type: 'http', run_id: '00000000-0000-4000-8000-000000000000', action: 'rerun', concurrency: 3,
   })
-  expect(errorText(http)).toContain('applies only to rerunning an AI or enrichment run')
+  expect(JSON.parse(errorText(http)).error).toBe('HTTP run not found')
 
   // v1: a number, from 1 to 100.
   const v1 = async (data: Record<string, unknown>) => {

@@ -53,6 +53,13 @@ export const err = (message: string): ToolResult => ({
   isError: true,
 });
 
+// An error that also carries what the caller needs to go on (a cursor, a
+// count), as structuredContent mirrored as text.
+export const errWith = (message: string, extra: Record<string, unknown>): ToolResult => {
+  const data = { error: message, ...extra };
+  return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: true };
+};
+
 // Scope gate: null when allowed, an isError result naming the missing scope
 // otherwise (so the agent can tell the user which token setting to change).
 export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ToolResult | null {

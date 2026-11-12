@@ -11,9 +11,9 @@ export type TransformOp =
 
 // ReDoS guard. Node's regex engine cannot be interrupted, so one catastrophic
 // pattern pins the whole event loop — and transform runs the match INSIDE a
-// BEGIN IMMEDIATE txn (services/column-transform.ts), so it would hold the
-// SQLite writer lock while it hangs: an app-wide stall from one write-scoped
-// token. Two lines of defense, both structural:
+// page's BEGIN IMMEDIATE txn (services/column-transform-pages.ts), so it would
+// hold the SQLite writer lock while it hangs: an app-wide stall from one
+// write-scoped token. Two lines of defense, both structural:
 //
 //   1. This validator: reject a quantifier applied to a group that itself
 //      contains a quantifier, AT ANY NESTING DEPTH.
@@ -127,6 +127,14 @@ const TEMPLATE_TOKEN = /\{\{([^{}]+)\}\}/g;
 // The columns a template reads, as applyTemplate reads them (each once).
 export const templateColumns = (template: string): string[] =>
   [...new Set([...template.matchAll(TEMPLATE_TOKEN)].map(m => m[1].trim()))];
+
+// A template cut at its {{column}} tokens: text, then each token's name as
+// written (untrimmed) and the text after it, in turn.
+export const templateParts = (template: string): string[] => template.split(TEMPLATE_TOKEN);
+
+// The template with each {{column}} token that reads `from` (as applyTemplate reads it) reading `to` instead.
+export const templateRenamed = (template: string, from: string, to: string): string =>
+  template.replace(TEMPLATE_TOKEN, (token, raw: string) => (raw.trim() === from ? `{{${to}}}` : token));
 
 // template: substitute {{column}} tokens from the whole row. An unknown column
 // substitutes '' (blank), matching the HTTP request-template convention (not a

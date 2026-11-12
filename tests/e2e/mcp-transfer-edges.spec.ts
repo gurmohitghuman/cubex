@@ -9,12 +9,6 @@ import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 // ("constructor", "toString") on sparse rows must not leak inherited members
 // into filters or projections.
 
-
-test.skip(
-  !['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase()),
-  'requires MCP_EFFICIENT_ROWS_ENABLED=1 in the harness env',
-)
-
 // Delegates to helpers.makeAccessToken, which mints straight into the test DB.
 async function makeToken(api: APIRequestContext): Promise<string> {
   return makeAccessToken(api, ['read', 'write'], 'transfer edges')

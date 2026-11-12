@@ -120,8 +120,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
   // through sheet/account defaults, never a hardcoded fallback.
   const model = latestRun.model || resolveAiModel(undefined, p.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
-  const gone = modelGone(models, model);
-  if (gone) return { fail: 'bad_request', message: `${gone} Edit the column to choose another model.` };
+  const gone = modelGone(models, model, 'Edit the column to choose another model.');
+  if (gone) return { fail: 'bad_request', message: gone };
 
   // Inherit Data-column behavior from the original run. If the user enabled
   // web search the first time, the (Data) column already exists and rerun

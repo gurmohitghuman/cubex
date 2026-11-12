@@ -15,8 +15,6 @@ if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway D
 const server = buildMcpServer({ userId: 'u', tokenId: 't', tokenName: 'n', scopes: new Set() })
 const tools = (server as unknown as { _registeredTools: Record<string, { title?: string; annotations?: Record<string, unknown> }> })._registeredTools
 const registered = Object.keys(tools)
-// transfer_rows and transform_column register only with MCP_EFFICIENT_ROWS_ENABLED.
-const optional = new Set(['transfer_rows', 'transform_column'])
 
 assert.ok(registered.length >= 20, `found ${registered.length} tools`)
 for (const name of registered) {
@@ -24,7 +22,7 @@ for (const name of registered) {
   assert.equal(typeof tools[name].annotations?.readOnlyHint, 'boolean', `${name} says whether it is read-only`)
 }
 for (const name of Object.keys(TOOL_ANNOTATIONS)) {
-  assert.ok(registered.includes(name) || optional.has(name), `${name} in the table is a real tool`)
+  assert.ok(registered.includes(name), `${name} in the table is a real tool`)
 }
 for (const name of ['list_tables', 'read_rows', 'export_csv', 'get_run_status']) {
   assert.equal(tools[name].annotations?.readOnlyHint, true, `${name} is read-only`)

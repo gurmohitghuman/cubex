@@ -20,6 +20,7 @@ import type { RunFail } from './run-shared';
 import { redactSecrets } from '../lib/redact';
 import { actorSpendRefusal } from './token-spend';
 import { addCall, noSpend, recordCallUsage } from './usage-calls';
+import { batchOnlyRefusal } from '../lib/ai-model-check';
 
 export interface RuleCheckResult {
   rule: string; columns: string[];
@@ -63,6 +64,17 @@ export function ruleModel(
   return { model, source: sheet ? 'sheet' : 'account' };
 }
 
+// ruleModel for a call about to ask the model (write_run_condition, write_formula): refused before anything is
+// sent when there is none, or when it is a ":batch" variant, which OpenRouter runs only through its batch API.
+export function writerModel(
+  userId: string, sheetId: string, explicit?: string | null,
+): { ok: NonNullable<ReturnType<typeof ruleModel>> } | { fail: 'no_model' | 'bad_request'; message: string } {
+  const picked = ruleModel(userId, sheetId, explicit);
+  if (!picked) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const batch = batchOnlyRefusal(picked.model);
+  return batch ? { fail: 'bad_request', message: batch } : { ok: picked };
+}
+
 // Columns whose words are fixed, so the model is told all of them, not just
 // the ones in the first rows: an enrichment's "Email status". Only each
 // column's newest run is read (a column can hold thousands of auto-run runs).
@@ -96,8 +108,9 @@ export async function generateRule(
   const asked = words.trim();
   if (!asked) return bad('Say which rows should run, for example: industry is SaaS and more than 50 employees.');
   if (asked.length > RULE_WORDS_MAX_CHARS) return bad(`Keep it under ${RULE_WORDS_MAX_CHARS} characters.`);
-  const picked = ruleModel(userId, sheetId, explicitModel);
-  if (!picked) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const writer = writerModel(userId, sheetId, explicitModel);
+  if ('fail' in writer) return writer;
+  const picked = writer.ok;
   let openai: Awaited<ReturnType<typeof getOpenRouterClient>>;
   try { openai = await getOpenRouterClient(userId); } catch {
     return bad('No OpenRouter API key is saved. Add one in Settings → AI, or write the rule yourself.');

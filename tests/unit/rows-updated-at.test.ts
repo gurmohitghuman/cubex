@@ -161,11 +161,11 @@ await ok('an answer field filled from stored answers', async () => {
   assert.deepEqual(changed(sid, now), [1])
 })
 
-await ok('transform_column', () => {
+await ok('transform_column', async () => {
   const sid = sheet([{ A: 'x' }, { A: 'y' }], ['A'])
   past(sid)
   const now = clock()
-  const out = transformColumn(uid, { sheetId: sid, sourceColumn: 'A', targetColumn: 'B', operation: 'upper' })
+  const out = await transformColumn(uid, { sheetId: sid, sourceColumn: 'A', targetColumn: 'B', operation: 'upper' })
   assert.ok('ok' in out, JSON.stringify(out))
   assert.deepEqual(changed(sid, now), [0, 1])
 })

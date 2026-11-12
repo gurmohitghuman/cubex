@@ -6,7 +6,6 @@
 // the model is told why and tries once more. Nothing is saved: the person (or
 // agent) reads it and saves it as a formula column, which costs nothing per row.
 import { db } from '../lib/db';
-import { NO_MODEL_ERROR } from '../lib/ai-model-resolve';
 import { getSheetColumns, parseRowData, verifySheetOwnership } from '../lib/sql-helpers';
 import { holdsRunMarker } from '../lib/run-markers';
 import { redactSecrets } from '../lib/redact';
@@ -14,7 +13,7 @@ import { FORMULA_SAMPLE_ROWS, FORMULA_WORDS_MAX_CHARS } from '../lib/constants';
 import { FORMULA_SYSTEM_PROMPT, formulaSamples, formulaUserMessage, readFormulaReply } from '../lib/formula-prompt';
 import { getOpenRouterClient } from './openrouter';
 import { askWriterModel, type WriterClient } from './ai-writer-call';
-import { ruleModel } from './run-condition-ai';
+import { writerModel } from './run-condition-ai';
 import { previewFormulaColumn, type FormulaPreview } from './formula-preview';
 import type { RunFail } from './run-shared';
 import { actorSpendRefusal } from './token-spend';
@@ -46,8 +45,9 @@ export async function writeFormula(
   const asked = words.trim();
   if (!asked) return bad('Say what the column should hold, for example: the work email from Response.');
   if (asked.length > FORMULA_WORDS_MAX_CHARS) return bad(`Keep it under ${FORMULA_WORDS_MAX_CHARS} characters.`);
-  const picked = ruleModel(userId, sheetId, explicitModel);
-  if (!picked) return { fail: 'no_model', message: NO_MODEL_ERROR };
+  const writer = writerModel(userId, sheetId, explicitModel);
+  if ('fail' in writer) return writer;
+  const picked = writer.ok;
   let openai: WriterClient;
   try { openai = await getOpenRouterClient(userId); } catch {
     return bad('No OpenRouter API key is saved. Add one in Settings → AI, or write the formula yourself.');

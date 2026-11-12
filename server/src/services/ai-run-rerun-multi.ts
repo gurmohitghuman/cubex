@@ -83,8 +83,8 @@ export async function rerunAiMultiColumn(
 
   const model = latest.model || resolveAiModel(undefined, p.sheetId, userId);
   if (!model) return { fail: 'no_model', message: NO_MODEL_ERROR };
-  const gone = modelGone(models, model);
-  if (gone) return { fail: 'bad_request', message: `${gone} Edit the column to choose another model.` };
+  const gone = modelGone(models, model, 'Edit the column to choose another model.');
+  if (gone) return { fail: 'bad_request', message: gone };
 
   // A column gone from the sheet (a CSV replace drops it, but not the run) is
   // recreated, unless a DIFFERENT column now holds its name (case/token).

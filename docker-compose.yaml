@@ -25,7 +25,6 @@ services:
       - MAX_CSV_UPLOAD_MB=${MAX_CSV_UPLOAD_MB:-500}
       - SIDEQUEST_MAX_CONCURRENT_JOBS=${SIDEQUEST_MAX_CONCURRENT_JOBS:-4}
       - HTTP_MAX_CONCURRENCY=${HTTP_MAX_CONCURRENCY:-20}
-      - MCP_EFFICIENT_ROWS_ENABLED=${MCP_EFFICIENT_ROWS_ENABLED:-0}
     volumes:
       # Everything Cubex keeps: cubex.db, jobs.db and the secrets generated on
       # first boot. Back up this volume as a whole.

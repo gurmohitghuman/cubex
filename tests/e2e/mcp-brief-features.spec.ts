@@ -7,12 +7,6 @@ import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 // subset + created_columns/dest_row_count + create_missing default, truly
 // empty API-created sheets, and header-only CSV creating its columns.
 
-
-test.skip(
-  !['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase()),
-  'requires MCP_EFFICIENT_ROWS_ENABLED=1 in the harness env',
-)
-
 // Delegates to helpers.makeAccessToken, which mints straight into the test DB.
 async function makeToken(api: APIRequestContext): Promise<string> {
   return makeAccessToken(api, ['read', 'write'], 'brief features')

@@ -6,13 +6,15 @@
 // Over 200 lines: one router for every v1 run control; split, its shared refusals would scatter.
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
-import { pauseRun, resumeRun, cancelRun, ControlOutcome, RunKind } from '../services/run-lifecycle';
+import { pauseRun, cancelRun, ControlOutcome, RunKind } from '../services/run-lifecycle';
+import { resumeHttpRun } from '../services/http-run-resume';
 import { rerunAiRunById, rerunHttpRunById, rerunRefusalFirst } from '../services/run-rerun-by-id';
 import { AI_RERUN_MODES, AiRerunMode, isRerunMode, RERUN_MODES, type RerunMode } from '../services/ai-rerun-modes';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { runFailHttpStatus, takeRunStart } from '../services/run-shared';
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
-import { MAX_AI_CONCURRENCY, MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { aiConcurrencyProblem, httpConcurrencyProblem } from '../lib/run-concurrency';
 import { ENRICH_RERUN_MODES, isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agent-control';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import {
@@ -61,7 +63,7 @@ function registerControls(prefix: string, kind: RunKind) {
   });
 
   // An AI, enrichment or waterfall run resumes with an optional new run limit
-  // ({spend_limit_usd}); an enrichment run also with concurrency ({concurrency}).
+  // ({spend_limit_usd}); an HTTP API or enrichment run with concurrency ({concurrency}).
   router.post(`/${prefix}/:id/resume`, requireScope('run'), async (req: TokenAuthRequest, res) => {
     try {
       const body = req.body as { spend_limit_usd?: unknown; concurrency?: unknown } | undefined;
@@ -71,8 +73,11 @@ function registerControls(prefix: string, kind: RunKind) {
       if (limit !== undefined && !enrichment && !waterfall && kind !== 'ai') {
         return res.status(400).json({ error: 'spend_limit_usd applies to AI, enrichment and waterfall runs only.' });
       }
-      if (body?.concurrency !== undefined && !enrichment) {
-        return res.status(400).json({ error: 'concurrency applies to resuming an enrichment run only.' });
+      if (body?.concurrency !== undefined && waterfall) {
+        return res.status(400).json({ error: "concurrency doesn't apply to a waterfall run." });
+      }
+      if (body?.concurrency !== undefined && kind !== 'http') {
+        return res.status(400).json({ error: 'concurrency applies to resuming an HTTP API or enrichment run only.' });
       }
       const secrets = req.tokenScopes?.has('secrets') === true;
       if (limit !== undefined && limit !== null && typeof limit !== 'number') {
@@ -81,7 +86,7 @@ function registerControls(prefix: string, kind: RunKind) {
       const result = kind === 'ai' ? await resumeAiRun(req.params.id, req.userId!, limit, secrets)
         : enrichment ? await resumeEnrichmentRun(req.params.id, req.userId!, limit, body?.concurrency)
         : waterfall ? await resumeWaterfallRun(req.params.id, req.userId!, limit as number | null | undefined, secrets)
-        : await resumeRun(kind, req.params.id, req.userId!, secrets);
+        : await resumeHttpRun(req.params.id, req.userId!, secrets, body?.concurrency);
       if ('fail' in result && result.fail === 'bad_request') return res.status(400).json({ error: result.message });
       if ('fail' in result) return res.status(controlStatus(result)).json({ error: result.message });
       res.json(summary(req.params.id, req.userId!));
@@ -161,9 +166,8 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     }
     // Checked before the run-start window, like mode: a typo spends no slot.
     const c = body.concurrency;
-    if (c !== undefined && (typeof c !== 'number' || !Number.isInteger(c) || c < 1 || c > MAX_AI_CONCURRENCY)) {
-      return res.status(400).json({ error: `concurrency must be a whole number from 1 to ${MAX_AI_CONCURRENCY}.` });
-    }
+    const tooMany = aiConcurrencyProblem(c);
+    if (tooMany) return res.status(400).json({ error: tooMany });
     const limit = usdLimitOf(body.spend_limit_usd, 'spend_limit_usd');
     if ('error' in limit) return res.status(400).json({ error: limit.error });
     if (refuseBadWebhook(req, res, body)) return;
@@ -171,7 +175,7 @@ router.post('/ai-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequ
     if (refuseRunStart(req, res)) return;
     const result = await rerunAiRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: (body.mode ?? (first.firstRows ? 'all' : undefined)) as AiRerunMode | undefined,
-      concurrency: c, firstRows: first.firstRows, spendLimitUsd: limit.value,
+      concurrency: c as number | undefined, firstRows: first.firstRows, spendLimitUsd: limit.value,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
     res.status(202).json({
@@ -244,11 +248,12 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
   });
 }
 
-// POST /v1/http-runs/:id/rerun — body { row_ids?, mode?, first_rows? }. row_ids
+// POST /v1/http-runs/:id/rerun — body { row_ids?, mode?, first_rows?, concurrency? }. row_ids
 // wins; mode is the AI rerun's (services/ai-rerun-modes.ts) over the status
 // cell: 'missing' = empty/failed/processing, 'errored', 'empty', 'out_of_date',
 // 'empty_or_out_of_date', 'all'; default = every row; first_rows: only among
-// the sheet's top rows. No secrets re-check: a rerun reuses the
+// the sheet's top rows; concurrency (1..HTTP_MAX_CONCURRENCY): the new run's
+// requests at once, kept in its config. No secrets re-check: a rerun reuses the
 // stored config unmodified (it cannot repoint a key), and the run-level
 // allow_secrets policy is copied from the run it clones.
 router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRequest, res) => {
@@ -263,17 +268,20 @@ router.post('/http-runs/:id/rerun', requireScope('run'), async (req: TokenAuthRe
     }
     const first = parseFirstRows(b.first_rows, 'first_rows', p.rowIds !== undefined);
     if ('error' in first) return res.status(400).json({ error: first.error });
+    // Checked before the run-start window, like mode: a typo spends no slot.
+    const tooMany = httpConcurrencyProblem(b.concurrency);
+    if (tooMany) return res.status(400).json({ error: tooMany });
     if (refuseBadWebhook(req, res, b)) return;
     // What the rerun refuses first (a column another run holds included) is answered before it takes a slot.
     const refused = rerunRefusalFirst(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
-      hasSecretsScope: req.tokenScopes?.has('secrets') === true,
+      concurrency: b.concurrency as number | undefined, hasSecretsScope: req.tokenScopes?.has('secrets') === true,
     });
     if (refused) return res.status(runFailHttpStatus(refused)).json({ error: refused.message });
     if (refuseRunStart(req, res, false)) return;
     const result = await rerunHttpRunById(req.userId!, req.params.id, {
       rowIds: p.rowIds, mode: b.mode as RerunMode | undefined, firstRows: first.firstRows,
-      hasSecretsScope: req.tokenScopes?.has('secrets') === true,
+      concurrency: b.concurrency as number | undefined, hasSecretsScope: req.tokenScopes?.has('secrets') === true,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
     res.status(202).json({

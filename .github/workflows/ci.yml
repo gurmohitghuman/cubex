@@ -38,10 +38,12 @@ jobs:
             name: Typecheck + Unit tests + Build
             timeout: 10
           # Native Windows (no WSL): npm runs scripts through cmd.exe there, and
-          # installs and test processes start slower.
+          # installs and test processes start slower. Some Windows runners are
+          # about 1.8 times slower than others, which takes main's own 15-minute
+          # run past 25 minutes.
           - os: windows-latest
             name: Typecheck + Unit tests + Build (Windows)
-            timeout: 25
+            timeout: 45
 
     steps:
       - name: Check out code

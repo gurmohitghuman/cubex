@@ -31,6 +31,7 @@ import { autorunRunBlock } from './autorun-block';
 import { renameViewColumnRefs } from './view-columns';
 import { logSheetChange } from '../lib/change-log';
 import { renameSetupVersionRefs } from './setup-version-rename';
+import { renameTransformPasses } from './column-transform-pass-moves';
 
 export type ColumnRenameOutcome =
   | { ok: true; newName: string; noop?: boolean }
@@ -253,6 +254,8 @@ function switchColumnName(sheetId: string, userId: string, columnName: string, t
   renameRunInputKey(sheetId, userId, columnName, trimmedNew);
   // Undo journals of runs that wrote it name it by its slot (lib/run-undo/columns.ts).
   renameUndoColumn(sheetId, userId, columnName, trimmedNew);
+  // An unfinished transform_column pass into it stays its own.
+  renameTransformPasses(sheetId, userId, columnName, trimmedNew);
   // Setup versions naming it, here and in sheets whose lookups look in this one.
   renameSetupVersionRefs(sheetId, userId, columnName, trimmedNew);
   // The change log: its lines about the column follow its name (History by column).

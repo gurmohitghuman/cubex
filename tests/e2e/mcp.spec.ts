@@ -35,10 +35,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Tool discovery: the data-plane + enrichment + structure + model toolset.
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
-  // transfer_rows AND transform_column are flag-gated at process start
-  // (MCP_EFFICIENT_ROWS_ENABLED); mirror the harness env so the suite passes in
-  // both flag states. Keep this list sorted — it's compared with toEqual.
-  const flagged = ['1', 'true'].includes((process.env.MCP_EFFICIENT_ROWS_ENABLED ?? '').toLowerCase())
+  // Keep this list sorted — it's compared with toEqual.
   expect(tools).toEqual([
     'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
     'check_run_condition',
@@ -56,7 +53,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'run_ai_column', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'search_enrichments', 'set_auto_dedupe',
     'set_auto_run',
     'set_column_order', 'set_default_model', 'set_description', 'sort_sheet',
-    ...(flagged ? ['transfer_rows', 'transform_column'] : []),
+    'transfer_rows', 'transform_column',
     'undo_run', 'update_cells', 'waterfall_column', 'write_formula', 'write_run_condition',
   ])
 

@@ -92,9 +92,18 @@ function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef, quiet 
 export function markAutorunInputs(sheetId: string, userId: string, columns: Iterable<string>, rows: RowRef): void {
   const written = new Set(columns);
   if (written.size === 0 || rowCount(rows) === 0) return;
-  for (const w of watchersOf(sheetId, userId)) {
-    if (parseList(w.input_columns).some(c => written.has(c))) queue(w, sheetId, userId, rows);
-  }
+  for (const w of inputReaders(sheetId, userId, written)) queue(w, sheetId, userId, rows);
+}
+
+// The auto-runs reading one of the `written` columns: markAutorunInputs queues a row for each of them.
+const inputReaders = (sheetId: string, userId: string, written: Set<string>): Watcher[] =>
+  watchersOf(sheetId, userId).filter(w => parseList(w.input_columns).some(c => written.has(c)));
+
+// How many columns markAutorunInputs queues a row for when `columns` are written
+// in it: a job doing that for every row it writes sizes its slices by it.
+export function autorunReaderCount(sheetId: string, userId: string, columns: Iterable<string>): number {
+  const written = new Set(columns);
+  return written.size === 0 ? 0 : inputReaders(sheetId, userId, written).length;
 }
 
 // An undo's writes (services/run-undo.ts), and what a column worked out from

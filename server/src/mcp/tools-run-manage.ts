@@ -7,9 +7,13 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
+import {
+  aiConcurrencyProblem, CONTROL_CONCURRENCY_ERROR, CONTROL_CONCURRENCY_MAX, httpConcurrencyProblem,
+} from '../lib/run-concurrency';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
-import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
+import { pauseRun, cancelRun } from '../services/run-lifecycle';
+import { resumeHttpRun } from '../services/http-run-resume';
 import { resumeAiRun } from '../services/ai-run-limit';
 import { rerunAiRunById, rerunHttpRunById, rerunRefusalFirst } from '../services/run-rerun-by-id';
 import { startRefusalMessage, takeRunStart } from '../services/run-shared';
@@ -50,25 +54,26 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet, "out_of_date" only rows '
         + 'whose result was made from input cells that changed since (read_rows include_status shows them as '
         + 'out_of_date), "empty_or_out_of_date" those plus blank rows. HTTP takes the same modes (default all). '
-        + 'Check get_run_status or get_run_results first so you know how many rows you are '
-        + 'about to re-bill. A structured (output_columns) run reruns whole: one call per targeted row refills all its '
-        + 'typed columns (and its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). An AI '
-        + 'rerun takes concurrency to change how many rows run at once (default: the run it repeats); rows that '
-        + 'failed with error_class "concurrency" (OpenRouter\'s in-flight credit budget) need a lower one. Returns '
-        + 'the NEW run_id. first_rows (AI and HTTP) reruns only among the sheet\'s top rows, a test before a big '
-        + 'run: every one of them, or those mode picks. An AI rerun or resume takes spend_limit_usd: the run\'s '
-        + 'hard spend limit (a rerun\'s own; on resume it raises the limit of a run that paused at it, '
-        + 'pause_reason spend_limit; see run_ai_column). '
+        + 'Check get_run_status or get_run_results first so you know how many rows you are about to re-bill. A '
+        + 'structured (output_columns) run reruns whole: one call per targeted row refills all its typed columns (and '
+        + 'its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). An AI rerun takes '
+        + 'concurrency to change how many rows run at once (default: the run it repeats); rows that failed with '
+        + 'error_class "concurrency" (OpenRouter\'s in-flight credit budget) need a lower one. Returns the NEW run_id. '
+        + 'An HTTP API rerun or resume takes concurrency too: requests at once (its batch_size, default: the run\'s '
+        + 'own), and later reruns and the column\'s auto-run batches repeat it. first_rows (AI and HTTP) reruns only '
+        + 'among the sheet\'s top rows, a test before a big run: every one of them, or those mode picks. An AI rerun '
+        + 'or resume takes spend_limit_usd: the run\'s hard spend limit (a rerun\'s own; on resume it raises the limit '
+        + 'of a run that paused at it, pause_reason spend_limit; see run_ai_column). '
         + 'A run you resume becomes this access token\'s, whoever started it: what it spends from then on counts '
         + 'toward this token\'s spend cap, and so do calls already out when a run changes hands (they count for '
         + 'the token that resumed it). '
         + 'ENRICHMENT runs (run_type enrichment): a rerun buys rows from treg again (paid answers it still holds come '
         + 'back cheaper or free), with the column\'s own setup; it needs row_ids or mode: "errored" (❌ rows), '
         + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
-        + '"out_of_date", "empty_or_out_of_date" (as above), '
-        + '"all" (every row again). spend_limit_usd sets the new run\'s limit, or on resume raises a paused run\'s '
-        + 'limit (a run its limit paused). concurrency sets its rows at once on a rerun or a resume, and the '
-        + 'column keeps it for later reruns and auto-run; lower it when a provider answers 429. '
+        + '"out_of_date", "empty_or_out_of_date" (as above), "all" (every row again). spend_limit_usd sets the new '
+        + 'run\'s limit, or on resume raises a paused run\'s limit (a run its limit paused). concurrency sets its rows '
+        + 'at once on a rerun or a resume, and the column keeps it for later reruns and auto-run; lower it when a '
+        + 'provider answers 429. '
         + 'STOP A WHOLE SHEET: action cancel_all with sheet_id (no run_type or run_id) stops every active run on '
         + 'it at once: AI, HTTP and enrichment runs and the setups being used on it (get_sheet lists them in '
         + 'active_runs and active_setup_runs). It returns stopped_runs, stopped_setup_runs and a message. It '
@@ -90,9 +95,10 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
             'rerun only, every run type: errored|empty|missing|all|out_of_date|empty_or_out_of_date (REQUIRED for '
             + 'AI, enrichment and waterfall reruns unless row_ids given; HTTP defaults to all).',
           ),
-        concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
-          .describe(`AI rerun, or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
-            + `enrichment 1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
+        concurrency: z.number(CONTROL_CONCURRENCY_ERROR).int(CONTROL_CONCURRENCY_ERROR)
+          .min(1, CONTROL_CONCURRENCY_ERROR).max(CONTROL_CONCURRENCY_MAX, CONTROL_CONCURRENCY_ERROR).optional()
+          .describe(`AI rerun, or HTTP API or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
+            + `HTTP API and enrichment 1-${HTTP_MAX_CONCURRENCY}). Omit to keep the run's own.`),
         spend_limit_usd: z.number().positive().optional()
           .describe('AI, enrichment and waterfall runs: the run limit for a rerun, or a raised limit on resume.'),
         first_rows: z.number().int().min(1).max(MAX_FIRST_ROWS).optional()
@@ -124,11 +130,14 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       ) {
         return err('spend_limit_usd applies to resuming or rerunning an AI, enrichment or waterfall run only.');
       }
-      if (concurrency !== undefined
-        && !((action === 'rerun' && (run_type === 'ai' || enrichment)) || (action === 'resume' && enrichment))) {
-        return err('concurrency applies only to rerunning an AI or enrichment run, or resuming an enrichment run.');
+      if (concurrency !== undefined && !(action === 'rerun' || (action === 'resume' && run_type === 'http'))) {
+        return err('concurrency applies only to rerunning an AI, HTTP API or enrichment run, or resuming an HTTP API '
+          + 'or enrichment run.');
       }
       if (concurrency !== undefined && waterfall) return err("concurrency doesn't apply to a waterfall run.");
+      // Each kind's own bound (the schema took the larger): checked before a run-start slot is taken.
+      const tooMany = run_type === 'ai' ? aiConcurrencyProblem(concurrency) : httpConcurrencyProblem(concurrency);
+      if (tooMany) return err(tooMany);
       if (first_rows !== undefined && (action !== 'rerun' || enrichment || waterfall)) {
         return err('first_rows applies only to rerunning an AI or HTTP API run.');
       }
@@ -201,7 +210,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         }
         // What an HTTP rerun refuses first (a column another run holds included) is answered before it takes a slot.
         const refusedFirst = run_type === 'http' ? rerunRefusalFirst(ctx.userId, run_id, {
-          rowIds: row_ids, mode, hasSecretsScope: hasSecrets, firstRows: first_rows,
+          rowIds: row_ids, mode, hasSecretsScope: hasSecrets, firstRows: first_rows, concurrency,
         }) : null;
         if (refusedFirst) return err(refusedFirst.message);
         // A plain HTTP rerun costs nothing here: only its run-start slot.
@@ -214,7 +223,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           })
           : await rerunHttpRunById(ctx.userId, run_id, {
             rowIds: row_ids, mode, hasSecretsScope: hasSecrets,
-            firstRows: first_rows,
+            firstRows: first_rows, concurrency,
           });
         if ('fail' in result) return err(result.message);
         return ok({
@@ -225,7 +234,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
 
       const result = action === 'pause' ? pauseRun(run_type, run_id, ctx.userId)
         : action === 'resume' && run_type === 'ai' ? await resumeAiRun(run_id, ctx.userId, spend_limit_usd, hasSecrets)
-        : action === 'resume' ? await resumeRun(run_type, run_id, ctx.userId, hasSecrets)
+        : action === 'resume' ? await resumeHttpRun(run_id, ctx.userId, hasSecrets, concurrency)
         : await cancelRun(run_type, run_id, ctx.userId);
       if ('fail' in result) return err(result.message);
       const summary = run_type === 'ai'

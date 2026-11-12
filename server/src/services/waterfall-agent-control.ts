@@ -8,7 +8,7 @@ import type { EnrichRowsStatus } from '../lib/enrich-run-config';
 import { waterfallConfigOf } from '../lib/waterfall/config';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
 import { resolveRowIdsToIndexes, type RunFail } from './run-shared';
-import { resumeCapRefusal, resumeRun, type ControlOutcome } from './run-lifecycle';
+import { resumeCapRefusal, resumeModelRefusal, resumeRun, type ControlOutcome } from './run-lifecycle';
 import { resumeInputRefusal } from '../lib/run-resume-inputs';
 import { rerunWaterfallColumn } from './waterfall-rerun';
 
@@ -82,6 +82,9 @@ export async function resumeWaterfallRun(
   // A resume refused at a spend cap changes nothing (run-lifecycle.ts).
   const capped = resumeCapRefusal('http', runId, userId);
   if (capped) return { fail: 'spend_cap', message: capped };
+  // Nor one with a ":batch" AI step (frozen at its start, before those were refused).
+  const gone = resumeModelRefusal('http', runId, userId, null);
+  if (gone) return { fail: 'model_gone', message: gone };
   // Nor one reading a column another run holds (lib/run-resume-inputs.ts): checked before its new limit is written.
   const held = resumeInputRefusal('http', runId, userId);
   if (held) return held;

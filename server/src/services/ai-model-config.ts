@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { validateModelParam } from '../lib/ai-model-resolve';
 import { logSheetChange } from '../lib/change-log';
-import { checkModel, modelGoneMessage } from '../lib/ai-model-check';
+import { batchOnlyRefusal, checkModel, modelGoneMessage } from '../lib/ai-model-check';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 
 // checked: false when a model was saved without OpenRouter's list to check it
@@ -19,9 +19,11 @@ export type ModelConfigOutcome =
   | { fail: 'bad_request' | 'not_found'; message: string; gone?: true };
 
 // A model the list doesn't have is refused: a default is sticky, and every
-// later run on it would be refused at its start.
+// later run on it would be refused at its start. So is a ":batch" variant, list or no list.
 async function checkDefault(model: string | null): Promise<{ checked: boolean } | { fail: ModelConfigOutcome }> {
   if (model === null) return { checked: true };
+  const batch = batchOnlyRefusal(model);
+  if (batch) return { fail: { fail: 'bad_request', message: batch } };
   const check = await checkModel(model);
   if (check === 'gone') {
     return { fail: { fail: 'bad_request', message: `${modelGoneMessage(model)} Choose another model.`, gone: true } };

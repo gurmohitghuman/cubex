@@ -134,8 +134,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
   const model = resolveAiModel(input.model, input.sheetId, userId);
-  const gone = model ? await modelProblem(model) : null;
-  if (gone) return { fail: 'bad_request', message: `${gone} Choose another model.` };
+  const gone = model ? await modelProblem(model, 'Choose another model.') : null;
+  if (gone) return { fail: 'bad_request', message: gone };
   // The engine the searches would run on and its price: the plan a run would
   // store. Refused the same way a run would be (a cap that can't hold).
   const webEst = await estimateWebWork(userId, model, web, input.search, input.fetchLimits);

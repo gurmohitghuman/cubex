@@ -17,7 +17,7 @@ import { cellOf } from '../lib/row-cell';
 import { prepareWhere } from './row-filter';
 import { allOffError } from '../lib/row-filter/where';
 import { SEED_ROW_COUNT } from '../lib/seed-sheet';
-import { nextRowIndex } from '../lib/sheet-busy';
+import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
 import { settleRows } from './auto-dedupe-settle';
 import { autoDedupeAnswer } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
@@ -26,12 +26,16 @@ import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
+import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 
 export type { TransferRequest } from './transfer-ledger';
 
 export type TransferOutcome =
   | { ok: TransferResult; replayed?: boolean }
-  | { fail: 'invalid' | 'not_found' | 'conflict' | 'active_run' | 'cap' | 'budget' | 'rate' | 'active'; error: string };
+  | {
+    fail: 'invalid' | 'not_found' | 'conflict' | 'active_run' | 'cap' | 'budget' | 'rate' | 'active' | 'busy';
+    error: string;
+  };
 
 class TransferBudgetError extends Error {}
 
@@ -149,6 +153,8 @@ function executeTransfer(
     'DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?',
   ).run(request.destinationSheetId, userId, SEED_ROW_COUNT);
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
+  // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
+  forgetUnlistedTransformPasses(request.destinationSheetId, userId);
   // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
   const auto = autoDedupeAnswer(userId, settleRows(request.destinationSheetId, userId, rids, 'arrived'), added,
     surface);
@@ -195,6 +201,12 @@ export function transferRows(userId: string, request: TransferRequest, surface: 
   const badMapping = ([source, destination]: [string, unknown]) => !source || typeof destination !== 'string';
   if (Object.entries(request.columnMapping).some(badMapping)) {
     return { fail: 'invalid', error: 'column_mapping must map non-empty source names to destination name strings.' };
+  }
+  // Neither sheet may be in the middle of a sort, an import or a column change (lib/sheet-busy.ts): REST's
+  // route checks only the sheet in its path, MCP both, before here; this holds for every caller.
+  for (const sheet of [request.sourceSheetId, request.destinationSheetId]) {
+    const what = sheetBusyWith(sheet);
+    if (what) return { fail: 'busy', error: busyMessage(what) };
   }
   const slot = acquireTransferSlot(userId);
   if (slot !== 'ok') return {

@@ -12,6 +12,7 @@ import { forgetUnlistedAutoDedupe } from './auto-dedupe/refs';
 import { forgetUnlistedRunInputKeys } from './run-inputs/keys';
 import { forgetUnlistedUndoColumns } from './run-undo/columns';
 import { movingBatch, trashRowRange } from '../services/trash-batch';
+import { forgetUnlistedTransformPasses } from '../services/column-transform-pass-moves';
 import { orderedUuid } from './ordered-id';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
@@ -85,6 +86,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
         `UPDATE sheets SET column_order = ?, empty_filter = NULL, column_filters = NULL, row_filter = NULL,
            row_generation = row_generation + 1, updated_at = datetime('now') WHERE id = ? AND user_id = ?`,
       ).run(replaceColumnOrder(job), job.sheet_id, job.user_id);
+      forgetUnlistedTransformPasses(job.sheet_id, job.user_id);
       if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(job.sheet_id, job.user_id)) {
         db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
           .run(orderedUuid(), job.sheet_id, job.user_id);
