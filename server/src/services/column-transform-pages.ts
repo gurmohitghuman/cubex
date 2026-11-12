@@ -10,8 +10,12 @@
 // its bound the walk waits for the worker before a page, and stops there, as at
 // its time limit, when the call's time runs out first or, past its first page,
 // when a reader holds the frames the worker would copy (lib/wal-checkpointer.ts).
-// A page that wrote nothing doesn't grow the WAL. One page of rows is in memory
-// at a time, whatever the sheet's size. A page first reads its window off the (sheet_id,
+// Each page is written in turn with the worker's write that starts the WAL over
+// (lib/wal-turn.ts): it never waits for that write, nor starts the WAL over
+// itself; one that would asks the worker to and awaits it, within the call's
+// time, past which it stops as after a wait. A page that wrote nothing doesn't
+// grow the WAL. One page of rows is in memory at a time, whatever the sheet's
+// size. A page first reads its window off the (sheet_id,
 // user_id, row_index) index, then only the rows in that window that pass
 // `where`: a where that matches nothing still looks at one window a page, never
 // the rest of the sheet in one statement. The call stops before a page once it
@@ -21,12 +25,13 @@
 // and the walk answers how far they got.
 import { db } from '../lib/db';
 import {
-  TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
+  TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
 } from '../lib/api-v1-constants';
 import { jsonPath, parseRowData } from '../lib/sql-helpers';
 import { autorunReaderCount, markAutorunInputs } from '../lib/autorun-mark';
 import { withoutAutoCheckpoint, yieldToRequests } from '../lib/slices';
 import { walRoom, walSettle } from '../lib/wal-checkpointer';
+import { inWalTurn, walTurnCheck } from '../lib/wal-turn';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 import type { PassTracker } from './column-transform-passes';
 
@@ -36,6 +41,8 @@ export interface TransformWalk {
   value: (data: Record<string, string>) => string;
   // The row_index the walk starts after (the cursor's; -1 from the top).
   after: number;
+  // When the call's time runs out (ms since the epoch).
+  until: number;
   // The pass's record (column-transform-passes.ts): written in each page's
   // transaction once its rows are, told once the page committed.
   track: PassTracker;
@@ -60,7 +67,6 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     AND row_index > ? AND row_index <= ? AND (${w.filter.sql}) ORDER BY rowid`);
   const set = db.prepare("UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE rowid = ?");
   const path = jsonPath(w.targetColumn);
-  const startedAt = Date.now();
   let after = w.after;
   let updated = 0;
   let pages = 0;
@@ -69,6 +75,7 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   let wroteAny = false;
   // What a page did, taken over only once it committed: a page that fails leaves the walk where it was.
   const page = db.transaction((rows: number) => {
+    walTurnCheck();
     const last = windowEnd.get(w.sheetId, w.userId, after, rows - 1) as number | undefined;
     const found = read.all(w.sheetId, w.userId, after, last ?? Number.MAX_SAFE_INTEGER, ...w.filter.params) as
       Array<{ rid: number; data: string }>;
@@ -81,7 +88,7 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   const step = (): boolean => {
     wrote = false;
     const room = TRANSFORM_MAX_ROWS - updated;
-    if (room <= 0 || Date.now() - startedAt >= TRANSFORM_MAX_CALL_MS) return false;
+    if (room <= 0 || Date.now() >= w.until) return false;
     // A page never looks at more rows than the call may still write.
     const p = page.immediate(Math.min(pageRows, room));
     w.track.committed();
@@ -99,10 +106,12 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
       // call's time running out in the wait stops it before any page, its first too; a reader holding the frames
       // stops it only after its first page, so each call goes on.
       if (wrote || first) {
-        const room = await walRoom(startedAt + TRANSFORM_MAX_CALL_MS);
+        const room = await walRoom(w.until);
         if (room === 'late' || (room === 'held' && !first)) break;
       }
-      more = withoutAutoCheckpoint(step);
+      const went = await inWalTurn(() => withoutAutoCheckpoint(step), w.until);
+      if (went === 'late') break;
+      more = went;
       await yieldToRequests();
     }
   } catch (error) {

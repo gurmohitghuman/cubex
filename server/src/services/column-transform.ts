@@ -33,6 +33,7 @@ import { walkTransform, type TransformWalk, type WalkResult } from './column-tra
 import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
 import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
 import { settle, stopAt } from './column-transform-end';
+import { inWalTurn, walTurnCheck } from '../lib/wal-turn';
 import { redactError } from '../lib/redact';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
@@ -73,7 +74,7 @@ export type TransformOutcome =
   | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy'; error: string };
 
 type Fail = Extract<TransformOutcome, { fail: string }>;
-type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track'> & PassStart
+type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track' | 'until'> & PassStart
   & { targetExists: boolean; generation: number };
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
@@ -81,17 +82,25 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     const plan = planTransform(userId, p);
     if ('fail' in plan || 'unfinished' in plan) return plan;
     const track = passTracker({ ...plan, sheetId: p.sheetId, userId });
+    // Its writes, the pages' included, are made in turn with the checkpoint worker's (lib/wal-turn.ts).
+    const until = Date.now() + TRANSFORM_MAX_CALL_MS;
     let added = false;
     let walked: WalkResult | undefined;
     try {
       if (!plan.targetExists) {
-        db.transaction(() => appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn])).immediate();
+        const add = db.transaction(() => {
+          walTurnCheck();
+          appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn]);
+        });
+        await inWalTurn(() => add.immediate(), until, true);
         added = true;
       }
-      walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track });
+      walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track, until });
     } finally {
       // Open grids and readers learn of a column added or pages written, whatever stopped the call.
-      if ((walked !== undefined && !walked.failed) || added || (walked?.pages ?? 0) > 0) settle(p.sheetId, userId);
+      if ((walked !== undefined && !walked.failed) || added || (walked?.pages ?? 0) > 0) {
+        await settle(p.sheetId, userId, until);
+      }
     }
     const rows = plan.base + walked.updated;
     if (walked.failed) {
@@ -108,7 +117,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     if (walked.stoppedAfter === null) return { ok };
     // Stopped with rows left, even before writing a row: the record holds the cursor it answers. Stopped before
     // its first page, only its wait for the WAL took its time.
-    return { ok: { ...ok, next_cursor: stopAt(track, walked.stoppedAfter, walked.updated),
+    return { ok: { ...ok, next_cursor: await stopAt(track, walked.stoppedAfter, walked.updated, until),
       note: walked.pages === 0 ? TRANSFORM_WAITED_NOTE : TRANSFORM_STOPPED_NOTE } };
   });
   if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };

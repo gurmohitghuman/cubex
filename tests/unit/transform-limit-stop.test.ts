@@ -13,11 +13,13 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import constMod from '../../server/src/lib/api-v1-constants'
 import mcpMod from '../../server/src/mcp/build-server'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import { unfinished } from './transform-pass-words'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { TRANSFORM_MAX_CALL_MS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
+const { checkpointInBackground } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -58,6 +60,9 @@ const mcp = buildMcpServer({ userId: uid, tokenId: 't', tokenName: 'n', scopes: 
 const client = new Client({ name: 'unit', version: '1.0.0' })
 type Answer = { isError?: boolean; structuredContent?: Record<string, unknown>; content: { text: string }[] }
 async function transform(args: Record<string, unknown>, stop: 'rows' | 'time' = 'rows') {
+  // The WAL started over on the worker first: a first page that found every frame copied would await that, and the
+  // clock's jump below could land before it.
+  if (stop === 'time') await checkpointInBackground()
   frozen = stop === 'rows' ? realNow() : null
   const out = client.callTool({ name: 'transform_column', arguments: args }) as Promise<Answer>
   // The time limit: the clock jumps past it once the call has begun.

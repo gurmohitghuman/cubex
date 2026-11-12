@@ -1,4 +1,3 @@
-// Over 200 lines: one guard, read top to bottom: its allowlist, the scan for writers and the call follower.
 // Every SQL statement in server/src that writes sheets.column_order reaches forgetUnlistedTransformPasses after it,
 // or is on ALLOWED with why it can't drop a listed name. A column that leaves column_order is gone for good, and
 // so is its unfinished transform_column pass (services/column-transform-pass-moves.ts): a writer that drops a
@@ -13,26 +12,33 @@
 // after the write: as a statement of its own (not in an `if`, `&&` or callback beside it), in a block the write is
 // inside, with no return in between. When that function doesn't, every call of it (in its own file, or in a file
 // importing it from there, through re-exports too) must, up to 4 calls up; a function also used as a value
-// (passed on, imported under another name) or never called fails. An ALLOWED entry fails when it matches no
-// writer, or one whose own function calls it (an allowed writer's callers aren't followed); a writer matched by two
-// entries fails too.
+// (passed on, imported under another name) or never called fails. Files are told apart by one form of their path
+// ('/' between parts), so it reads the same on Windows.
+// Each .sql file in server/src/db/migrations is read too, comments dropped and split at each ';' (a trigger's
+// inner statements are statements of their own): an UPDATE of sheets whose SET names column_order, or an INSERT
+// or REPLACE INTO sheets naming it or with no column list, is a writer. SQL can't call the function, so such a
+// statement passes only on ALLOWED (its fn SQL_FN), with why; none writes it today.
+// An ALLOWED entry fails when it matches no writer, more than one, or one whose own function calls it (an allowed
+// writer's callers aren't followed); a writer matched by two entries fails too.
 // What it can't see: that the two run inside one transaction (true when the function is a transaction's callback
 // or called in one, which it doesn't check), a statement assembled from several variables or read from a file, a
 // file naming neither column_order nor "UPDATE/INTO sheets" in one piece, a method called on an object, a break,
-// continue or caught throw between them, and SQL in the migrations (triggers).
+// continue or caught throw between them; in the migrations, a table rebuilt under another name and renamed to
+// sheets, a table name quoted or with its schema, a ';' inside a quoted string (it splits there), and SQL run from
+// anywhere but server/src. The scan itself: column-order-scan-kit.ts.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
+import {
+  DYN, FILES, FORGET, ROOT, SCANNED, SQL_FILES, bindsFrom, callsOf, forgetsAfter, nearestFunction, parse,
+  parsedCount, reaches, sqlWriters, textOf, tsWriters, type Writer,
+} from './column-order-scan-kit'
 
-const ROOT = path.resolve('server/src')
-const FORGET = 'forgetUnlistedTransformPasses'
-const DYN = '${}'
-const MAX_UP = 4
-
-// Writers that can't drop a listed name. Keyed by file, the named function holding the statement, and a piece of
-// it; each must match exactly one writer that doesn't reach the call.
-const ALLOWED = [
+// Writers that can't drop a listed name. Keyed by file, the named function holding the statement (SQL_FN for a
+// migration's), and a piece of it; each must match exactly one writer that doesn't reach the call.
+interface Allowed { file: string; fn: string; sql: string; why: string }
+const ALLOWED: Allowed[] = [
   { file: 'lib/sheet-columns.ts', fn: 'getSheetColumns', sql: 'SET column_order',
     why: 'seeds a list for a sheet that has none (null or unreadable): no name was listed to drop' },
   { file: 'lib/sheet-columns.ts', fn: 'appendColumnsToOrder', sql: 'SET column_order',
@@ -51,168 +57,121 @@ const ALLOWED = [
     why: 'mergeOrder keeps every name the sheet lists now, around the version\'s (column-order-lists.test.ts)' },
 ]
 
-const tsFiles = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e =>
-  e.isDirectory() ? tsFiles(path.join(dir, e.name)) : e.name.endsWith('.ts') ? [path.join(dir, e.name)] : [])
-const FILES = tsFiles(ROOT)
-const texts = new Map(FILES.map(f => [f, fs.readFileSync(f, 'utf8')]))
-const parsed = new Map<string, ts.SourceFile>()
-const parse = (f: string) => parsed.get(f) ?? parsed.set(f, ts.createSourceFile(f, texts.get(f)!,
-  ts.ScriptTarget.Latest, true)).get(f)!
-const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join('/')
-const where = (n: ts.Node) => { const s = n.getSourceFile(); const at = s.getLineAndCharacterOfPosition(n.getStart())
-  return `${rel(s.fileName)}:${at.line + 1}` }
-
-const isPlus = (n: ts.Node): n is ts.BinaryExpression =>
-  ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken
-// A string expression as one text; `dyn`: its parts that aren't text, searched for statements of their own.
-function fold(n: ts.Node, dyn: ts.Node[]): string {
-  if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text
-  if (ts.isTemplateExpression(n)) return n.head.text + n.templateSpans.map(s => fold(s.expression, dyn)
-    + s.literal.text).join('')
-  if (ts.isParenthesizedExpression(n)) return fold(n.expression, dyn)
-  if (isPlus(n)) return fold(n.left, dyn) + fold(n.right, dyn)
-  if (ts.isConditionalExpression(n)) return `${fold(n.whenTrue, dyn)} ${fold(n.whenFalse, dyn)}`
-  dyn.push(n)
-  return DYN
-}
-const isText = (n: ts.Node) => ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)
-  || ts.isTemplateExpression(n) || isPlus(n)
-function writesOrder(sql: string): boolean {
-  const update = /\bUPDATE\s+(?:OR\s+\w+\s+)?sheets\b\s+SET\b(.*?)(?:\bWHERE\b|$)/is.exec(sql)
-  if (update && (/\bcolumn_order\b/i.test(update[1]) || update[1].includes(DYN))) return true
-  const insert = /\b(?:INSERT|REPLACE)\b(?:\s+OR\s+\w+)?\s+INTO\s+sheets\b(.*)$/is.exec(sql)
-  if (insert && (!/^\s*\(/.test(insert[1]) || /\bcolumn_order\b/i.test(insert[1]) || /^\s*\([^)]*\$\{\}/
-    .test(insert[1]))) return true
-  return /\bcolumn_order\s*=(?!=)/i.test(sql)
-}
-
-interface Writer { file: string; fn: string; sql: string; node: ts.Node }
-const writers: Writer[] = []
-function scan(n: ts.Node): void {
-  if (!isText(n)) { ts.forEachChild(n, scan); return }
-  const dyn: ts.Node[] = []
-  const sql = fold(n, dyn).replace(/\s+/g, ' ')
-  if (writesOrder(sql)) writers.push({ file: rel(n.getSourceFile().fileName), fn: namedFunction(n), sql, node: n })
-  dyn.forEach(scan)
-}
-
-const nearestFunction = (n: ts.Node): ts.SignatureDeclaration | undefined => {
-  for (let p = n.parent; p; p = p.parent) if (ts.isFunctionLike(p)) return p
-}
-// A function's own name: declared, a method, or the variable it is the value of.
-function nameOf(f: ts.SignatureDeclaration): string | undefined {
-  if ((ts.isFunctionDeclaration(f) || ts.isMethodDeclaration(f)) && f.name) return f.name.getText()
-  if (f.parent && ts.isVariableDeclaration(f.parent) && f.parent.initializer === f) return f.parent.name.getText()
-}
-function namedFunction(n: ts.Node): string {
-  for (let f = nearestFunction(n); f; f = nearestFunction(f)) { const name = nameOf(f); if (name) return name }
-  return '(module)'
-}
-
-// In `fn`, a call to FORGET after `at`: a statement of its own whose block holds `at`, no return in between.
-function forgetsAfter(at: ts.Node, fn: ts.SignatureDeclaration): boolean {
-  const calls: ts.CallExpression[] = []
-  const returns: ts.Node[] = []
-  const walk = (n: ts.Node): void => {
-    if (ts.isFunctionLike(n) && n !== fn) return
-    if (ts.isReturnStatement(n)) returns.push(n)
-    if (ts.isCallExpression(n) && n.expression.getText() === FORGET) calls.push(n)
-    ts.forEachChild(n, walk)
-  }
-  walk(fn)
-  return calls.some(c => {
-    if (c.getStart() < at.getEnd() || returns.some(r => r.getStart() > at.getEnd() && r.getStart() < c.getStart())) {
-      return false
+// Each writer against the allowlist: one that reaches FORGET, or is matched by exactly one entry; each entry
+// matching exactly one writer.
+function judge(writers: Writer[], allowed: Allowed[]): { problems: string[]; summary: string[] } {
+  const problems: string[] = []
+  const summary: string[] = []
+  const matched = allowed.map(() => 0)
+  for (const w of writers) {
+    const entries = allowed.flatMap((a, i) => (a.file === w.file && a.fn === w.fn && w.sql.includes(a.sql) ? [i] : []))
+    entries.forEach(i => matched[i]++)
+    const at = `${w.at} (${w.fn}): ${w.sql.slice(0, 70)}`
+    // An allowed writer's callers aren't followed (getSheetColumns has a hundred): only its own function is read.
+    const own = w.node && nearestFunction(w.node)
+    const why = entries.length ? (own && forgetsAfter(w.node!, own) ? null : 'allowed')
+      : w.node ? reaches(w.node) : 'a migration can\'t call it'
+    if (why === null) {
+      summary.push(`calls ${FORGET}  ${at}`)
+      if (entries.length) problems.push(`${at} calls ${FORGET} now: drop its ALLOWED entry`)
+    } else if (entries.length === 1) {
+      summary.push(`allowed         ${at}`)
+    } else {
+      problems.push(entries.length ? `${at} matches ${entries.length} ALLOWED entries: make them narrower`
+        : `${at} writes column_order without reaching ${FORGET} (${why}). Call it after the write, in its `
+          + 'transaction, or add an ALLOWED entry saying why it never drops a listed name.')
     }
-    const statement = ts.isAwaitExpression(c.parent) ? c.parent.parent : c.parent
-    if (!ts.isExpressionStatement(statement)) return false
-    const block = statement.parent
-    for (let p: ts.Node | undefined = at; p; p = p.parent) if (p === block) return true
-    return false
-  })
-}
-
-const resolve = (from: string, spec: string): string | undefined => {
-  const base = path.resolve(path.dirname(from), spec)
-  return spec.startsWith('.') ? [base, `${base}.ts`, path.join(base, 'index.ts')].find(f => texts.has(f)) : undefined
-}
-// Whether the name `name` in `file` is the function declared in `decl`: its own file, or imported from it (also
-// through files that pass it on with export ... from).
-function bindsFrom(file: string, name: string, decl: string, depth = 0): boolean {
-  if (file === decl) return true
-  return depth < MAX_UP && parse(file).statements.some(st => {
-    if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) return false
-    const from = resolve(file, (st.moduleSpecifier as ts.StringLiteral).text)
-    const list = ts.isImportDeclaration(st) ? st.importClause?.namedBindings : st.exportClause
-    const named = list && (ts.isNamedImports(list) || ts.isNamedExports(list))
-      ? list.elements.some(e => (e.propertyName ?? e.name).text === name) : ts.isExportDeclaration(st)
-    return from !== undefined && named && bindsFrom(from, name, decl, depth + 1)
-  })
-}
-
-// Every use of the function `name` declared in `decl`, across server/src: its calls, or why it can't be followed.
-function callsOf(name: string, decl: string): ts.Node[] | string {
-  const calls: ts.Node[] = []
-  let value: string | undefined
-  const files = FILES.filter(f => new RegExp(`\\b${name}\\b`).test(texts.get(f)!) && bindsFrom(f, name, decl))
-  for (const f of files) {
-    const visit = (n: ts.Node): void => {
-      const p = n.parent
-      if (ts.isIdentifier(n) && n.text === name && !(ts.isPropertyAccessExpression(p) && p.name === n)) {
-        const declared = (ts.isFunctionDeclaration(p) || ts.isVariableDeclaration(p)) && p.name === n
-        const named = (ts.isImportSpecifier(p) || ts.isExportSpecifier(p)) && !p.propertyName
-        if (ts.isCallExpression(p) && p.expression === n) calls.push(p)
-        else if (!declared && !named && !ts.isTypeQueryNode(p)) value ??= `used as a value at ${where(n)}`
-      }
-      ts.forEachChild(n, visit)
+  }
+  allowed.forEach((a, i) => {
+    const entry = `ALLOWED entry ${a.file} ${a.fn} "${a.sql}"`
+    if (matched[i] === 0) problems.push(`${entry} matches no writer: drop it`)
+    if (matched[i] > 1) {
+      problems.push(`${entry} matches ${matched[i]} writers: an entry allows one statement, give each its own`)
     }
-    visit(parse(f))
-  }
-  return value ?? (calls.length ? calls : 'never called')
+  })
+  return { problems, summary }
 }
 
-// Null when `at` reaches FORGET after it, else why not.
-function reaches(at: ts.Node, up = 0): string | null {
-  const fn = nearestFunction(at)
-  if (!fn) return 'at module level'
-  if (forgetsAfter(at, fn)) return null
-  const name = nameOf(fn)
-  if (!name) return `in an unnamed function (${where(fn)}) that doesn't call ${FORGET} after it`
-  if (up === MAX_UP) return `more than ${MAX_UP} calls up`
-  const calls = callsOf(name, fn.getSourceFile().fileName)
-  if (typeof calls === 'string') return `${name} is ${calls}`
-  for (const c of calls) { const why = reaches(c, up + 1); if (why) return `${name}, called at ${where(c)}: ${why}` }
-  return null
+let failures = 0
+function check(label: string, fn: () => void) {
+  try { fn(); console.log('ok  ', label) }
+  catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
 }
+const fakeFile = (file: string, text: string) => ts.createSourceFile(`${ROOT}/${file}`, text, ts.ScriptTarget.Latest,
+  true)
 
-const started = performance.now()
-const SCANNED = /\bcolumn_order\b|\b(?:UPDATE|INTO)\s+(?:OR\s+\w+\s+)?sheets\b/i
-for (const f of FILES) if (SCANNED.test(texts.get(f)!)) scan(parse(f))
-const problems: string[] = []
-const used = new Set<number>()
-const summary: string[] = []
-for (const w of writers) {
-  const entries = ALLOWED.flatMap((a, i) => (a.file === w.file && a.fn === w.fn && w.sql.includes(a.sql) ? [i] : []))
-  entries.forEach(i => used.add(i))
-  const at = `${where(w.node)} (${w.fn}): ${w.sql.slice(0, 70)}`
-  // An allowed writer's callers aren't followed (getSheetColumns has a hundred): only its own function is read.
-  const own = nearestFunction(w.node)
-  const why = entries.length ? (own && forgetsAfter(w.node, own) ? null : 'allowed') : reaches(w.node)
-  if (why === null) {
-    summary.push(`calls ${FORGET}  ${at}`)
-    if (entries.length) problems.push(`${at} calls ${FORGET} now: drop its ALLOWED entry`)
-  } else if (entries.length === 1) {
-    summary.push(`allowed         ${at}`)
-  } else {
-    problems.push(entries.length ? `${at} matches ${entries.length} ALLOWED entries: make them narrower`
-      : `${at} writes column_order without reaching ${FORGET} (${why}). Call it after the write, in its `
-        + 'transaction, or add an ALLOWED entry saying why it never drops a listed name.')
-  }
-}
-ALLOWED.forEach((a, i) => {
-  if (!used.has(i)) problems.push(`ALLOWED entry ${a.file} ${a.fn} "${a.sql}" matches no writer: drop it`)
+check('every writer in server/src and its migrations reaches the call or is allowed, each entry used once', () => {
+  const started = performance.now()
+  const writers = FILES.filter(f => SCANNED.test(textOf(f)!)).flatMap(f => tsWriters(parse(f)))
+  const sql = SQL_FILES.flatMap(f => sqlWriters(f, fs.readFileSync(f, 'utf8')))
+  const { problems, summary } = judge([...writers, ...sql], ALLOWED)
+  console.log(summary.join('\n'))
+  console.log(`${writers.length} writers in ${parsedCount()} parsed .ts files, ${sql.length} in ${SQL_FILES.length} `
+    + `migrations, in ${Math.round(performance.now() - started)} ms`)
+  assert.ok(SQL_FILES.length > 50, `${SQL_FILES.length} migrations found`)
+  assert.deepEqual(problems, [])
 })
-console.log(summary.join('\n'))
-console.log(`${writers.length} writers, ${parsed.size} files parsed, in ${Math.round(performance.now() - started)} ms`)
-assert.deepEqual(problems, [])
+
+check('a call is followed across files whatever separators the paths name them with (TypeScript writes "/", '
+  + 'path.join on Windows "\\")', () => {
+  const name = 'applyTransferColumnOrder'
+  const decl = `${ROOT}/services/transfer-columns.ts`
+  const caller = `${ROOT}/services/rows-transfer.ts`
+  const backslashed = path.win32.normalize(decl)
+  const mixed = `${path.win32.join(ROOT, 'services')}/transfer-columns.ts`
+  assert.ok(backslashed.includes('\\') && mixed.includes('\\') && mixed.includes('/'), mixed)
+  const seen = (d: string) => {
+    const calls = callsOf(name, d)
+    return typeof calls === 'string' ? calls : calls.map(c => `${c.getSourceFile().fileName}:${c.getStart()}`)
+  }
+  const found = seen(decl)
+  assert.ok(Array.isArray(found) && found.length > 0 && found.every(c => c.startsWith(caller)), String(found))
+  assert.deepEqual(seen(backslashed), found)
+  assert.deepEqual(seen(mixed), found)
+  assert.equal(bindsFrom(path.win32.normalize(caller), name, decl), true, 'a caller named with "\\"')
+  assert.equal(bindsFrom(caller, name, mixed), true, 'a declaration named with both')
+})
+
+check('an allowed entry matching two writers fails: a second SET column_order in an allowed function', () => {
+  const entry = ALLOWED.filter(a => a.fn === 'appendColumnsToOrder')
+  const one = `export function appendColumnsToOrder(db, id, order) {
+    db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(order, id)\n`
+  const once = tsWriters(fakeFile('lib/sheet-columns.ts', `${one}}`))
+  assert.equal(once.length, 1)
+  assert.deepEqual(judge(once, entry).problems, [])
+  const twice = tsWriters(fakeFile('lib/sheet-columns.ts', `${one}
+    db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(order.slice(1), id)\n}`))
+  assert.equal(twice.length, 2)
+  assert.deepEqual(judge(twice, entry).problems, ['ALLOWED entry lib/sheet-columns.ts appendColumnsToOrder '
+    + '"SET column_order" matches 2 writers: an entry allows one statement, give each its own'])
+})
+
+check('a migration statement writing column_order is a writer, and fails unless allowed', () => {
+  const file = `${ROOT}/db/migrations/999_example.sql`
+  const writes = [
+    'UPDATE sheets SET column_order = \'[]\' WHERE id = \'x\'',
+    'UPDATE OR IGNORE sheets SET name = name, column_order = NULL',
+    'INSERT INTO sheets SELECT * FROM sheets_old',
+    'INSERT OR REPLACE INTO sheets (id, column_order) VALUES (\'x\', \'[]\')',
+    'CREATE TRIGGER t AFTER DELETE ON tables BEGIN UPDATE sheets SET column_order = NULL; END',
+  ]
+  for (const sql of writes) {
+    const found = sqlWriters(file, `-- a note; with a semicolon\n\n${sql};\n`)
+    assert.deepEqual(found.map(w => [w.at, w.fn]), [['db/migrations/999_example.sql:3', '(migration)']], sql)
+    assert.match(judge(found, []).problems[0], /writes column_order without reaching .*a migration can't call it/)
+    const allowed = { file: 'db/migrations/999_example.sql', fn: '(migration)', sql: 'sheets', why: 'example' }
+    assert.deepEqual(judge(found, [allowed]).problems, [])
+  }
+  const others = [
+    'UPDATE sheets SET active_view_id = NULL WHERE column_order = \'[]\'',
+    'INSERT INTO sheets (id, name) VALUES (\'x\', \'y\')',
+    'INSERT INTO sheets_new SELECT * FROM sheets',
+    'CREATE TABLE sheets (id TEXT, column_order TEXT)',
+    '/* UPDATE sheets SET column_order = NULL; */ SELECT 1',
+    '-- UPDATE sheets SET column_order = NULL\nSELECT 1',
+  ]
+  for (const sql of others) assert.deepEqual(sqlWriters(file, `${sql};`), [], sql)
+})
+
+if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
 console.log('All column-order-writers assertions passed.')

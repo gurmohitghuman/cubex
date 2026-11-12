@@ -1,13 +1,9 @@
-// transform_column's per-call limits (services/column-transform.ts): a call
-// stopped by its time budget or its row cap keeps the rows it wrote and answers
-// next_cursor with a note; the same call with that cursor goes on, so a
-// transform that reads its own target still changes each row once. After a
-// sort, the pass's cursor and every other call into its column are refused,
-// naming the rows done; a cursor no call gave is refused; a busy sheet is
-// refused.
-// A finished call answers {updated, created_column} as before. A new target
-// column that got no value is listed: the app, REST and MCP show it, and its
-// cells read as empty, with nothing stored in the rows.
+// transform_column's per-call limits (services/column-transform.ts): a call stopped by its time budget or its row
+// cap keeps the rows it wrote and answers next_cursor with a note; the same call with that cursor goes on, so a
+// transform that reads its own target still changes each row once. After a sort, the pass's cursor and every other
+// call into its column are refused, naming the rows done; a cursor no call gave is refused; a busy sheet is refused.
+// A finished call answers {updated, created_column} as before. A new target column that got no value is listed: the
+// app, REST and MCP show it, and its cells read as empty, with nothing stored in the rows.
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
@@ -20,6 +16,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import sortMod from '../../server/src/services/sheet-sort'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import busyMod from '../../server/src/lib/sheet-busy'
 import authMod from '../../server/src/lib/auth'
 import cookieMod from '../../server/src/lib/cookie'
@@ -33,6 +30,7 @@ const { transformColumn, TRANSFORM_STOPPED_NOTE } =
   transformMod as typeof import('../../server/src/services/column-transform')
 const { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
+const { checkpointInBackground } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
 const { SESSION_COOKIE_NAME } = cookieMod as typeof import('../../server/src/lib/cookie')
@@ -67,8 +65,10 @@ db.transaction(() => {
 })()
 // Appends "x" to N: reading its own target, a row changed twice would end "xx".
 const again = { sheetId: big, operation: 'template' as const, template: '{{N}}x', targetColumn: 'N' }
-// A call whose time budget runs out after its first pages.
+// A call whose time budget runs out after its first pages. The WAL is started over first, on the worker: with every
+// frame copied (the setup's insert ran SQLite's own checkpoint), a first page awaits that, past the clock's shift.
 async function cutShort(cursor?: string) {
+  await checkpointInBackground()
   const call = transformColumn(uid, { ...again, ...(cursor ? { cursor } : {}) })
   setImmediate(() => { shiftMs += TRANSFORM_MAX_CALL_MS })
   return call

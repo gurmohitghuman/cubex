@@ -11,23 +11,30 @@
 // goes on; at WAL_PAUSE_FRAMES in all it waits (awaiting, never blocking) until
 // the worker has copied them, so the WAL starts over and stays bounded
 // (lib/constants-wal.ts), unless its deadline comes first or a reader holds the
-// frames: the writer then stops there. The WAL's size is read on the API
+// frames: the writer then stops there. The worker starts the WAL over itself
+// after a checkpoint that copied every frame, before it answers, so the sync of
+// the WAL's new header is its own, never a page's on this thread: the two take
+// turns (lib/wal-turn.ts). The WAL's size is read on the API
 // connection with SQLite's NOOP checkpoint: it checkpoints nothing, takes no
 // lock and does no I/O, it reads the WAL index in shared memory. If the worker
 // can't start (a file missing from the install), checkpoints run here, as they
 // did before, for as long as the process runs: logged once, never tried again.
+// The next write on this thread then starts the WAL over, and syncs its header
+// here: that much of the wait stays on the event loop while degraded.
 // A worker that had started and stops is started once more. Used by
 // transform_column.
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
 import { WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS } from './constants';
-import type { CheckpointAsk, CheckpointReply } from './wal-checkpoint-worker';
+import { FREE, HELD, TURN, WORKER, walShared } from './wal-shared';
+import type { CheckpointAsk, CheckpointReply, StartOver } from './wal-checkpoint-worker';
 
 // Frames in the WAL, and frames of them already copied into the database file.
 export interface WalState { log: number; checkpointed: number }
-// A checkpoint's: `busy` when another checkpoint held the lock, so it couldn't run.
-export interface Checkpointed extends WalState { busy: boolean }
+// A checkpoint's: `busy` when another checkpoint held the lock, so it couldn't run; `startOver`, the worker's
+// start-over after it (wal-checkpoint-worker.ts), when it left every frame copied.
+export interface Checkpointed extends WalState { busy: boolean; startOver?: StartOver }
 
 // null: not in WAL mode, or the WAL index was being changed just then (SQLite answers -1; rare).
 export function walState(): WalState | null {
@@ -40,9 +47,11 @@ export function walState(): WalState | null {
 let workerFile = (): string => join(__dirname, `wal-checkpoint-worker${extname(__filename)}`);
 function newWorker(): Worker {
   const file = workerFile();
-  if (!file.endsWith('.ts')) return new Worker(file);
+  const workerData = { shared: walShared };
+  if (!file.endsWith('.ts')) return new Worker(file, { workerData });
   const tsx = require.resolve('tsx/cjs/api');
-  return new Worker(`require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`, { eval: true });
+  return new Worker(`require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`,
+    { eval: true, workerData });
 }
 
 let worker: Worker | null = null;
@@ -54,7 +63,7 @@ let delayMs = 0;
 let onMainThread = false;
 let stops = 0;
 const waiting = new Map<number, (r: CheckpointReply) => void>();
-const zero = () => ({ starts: 0, checkpoints: 0, onThisThread: 0, pauses: 0, pausedMs: 0 });
+const zero = () => ({ starts: 0, checkpoints: 0, onThisThread: 0, restarts: 0, pauses: 0, pausedMs: 0 });
 let stats = zero();
 const fallBack = (why: string, err: unknown) => {
   onMainThread = true;
@@ -84,6 +93,9 @@ function start(): Promise<Worker | null> {
     w.on('exit', code => {
       const stopped = worker === w;
       if (stopped) worker = null;
+      // Its turn, if it ended in its start-over write.
+      Atomics.compareExchange(walShared, TURN, WORKER, FREE);
+      Atomics.store(walShared, HELD, 0);
       for (const [id, done] of waiting) done({ id, busy: 1, log: -1, checkpointed: -1, error: 'stopped' });
       waiting.clear();
       if (!ready) fallBack('could not start', failure ?? `it exited with code ${code}`);
@@ -113,7 +125,8 @@ async function runOne(): Promise<Checkpointed | null> {
     w.postMessage({ id, delayMs } as CheckpointAsk);
   }).finally(() => { if (waiting.size === 0) w.unref(); });
   if (r.error && r.error !== 'stopped') console.error('A WAL checkpoint failed:', r.error);
-  return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1 } : null;
+  if (r.startOver === 'done') stats.restarts++;
+  return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1, startOver: r.startOver } : null;
 }
 
 // A checkpoint on the worker; callers while one runs share it (it copies what
@@ -127,7 +140,7 @@ export function checkpointInBackground(): Promise<Checkpointed | null> {
 }
 
 // `p`, or 'late' once `until` (ms since the epoch) comes first.
-function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'> {
+export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'> {
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<'late'>(r => { timer = setTimeout(() => r('late'), Math.max(0, until - Date.now())); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
@@ -198,6 +211,12 @@ export async function closeWalCheckpointer(): Promise<void> {
 
 // The checkpoint running now, if any, once it ends.
 export async function walCheckpointerIdle(): Promise<void> { await running; }
+// Whether a checkpoint asked for has yet to answer (running on the worker, or its answer on its way).
+export const checkpointAsked = (): boolean => running !== null;
+// That checkpoint's answer, if one is awaited.
+export const checkpointAnswer = (): Promise<Checkpointed | null> | null => running;
+// Whether checkpoints go to the worker (one may still have to start), not this thread.
+export const checkpointsOnWorker = (): boolean => !onMainThread;
 
 // Tests only: each checkpoint first waits this long on the worker, as on a slow disk.
 export function setCheckpointDelayForTests(ms: number): void { delayMs = ms; }
@@ -215,8 +234,8 @@ export function setCheckpointWorkerFileForTests(file: string | null): void {
   onMainThread = false;
   stops = 0;
 }
-// Workers started, checkpoints asked for (and of them run on this thread), waits and their time, since the
-// last read.
+// Workers started, checkpoints asked for (and of them run on this thread, and those after which the worker
+// started the WAL over), waits and their time, since the last read.
 export function takeWalCheckpointerStats(): ReturnType<typeof zero> {
   const s = stats;
   stats = zero();
