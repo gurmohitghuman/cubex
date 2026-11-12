@@ -18,9 +18,10 @@ export const unfinished = (column: string, rows: number, cursor: string) =>
 const invalid = (error: string) => ({ fail: 'invalid', error })
 
 // A cursor whose pass is over: nothing written, no cursor named.
-export const notOpen = invalid('This cursor\'s pass is no longer open: it reached the end, was restarted, or its '
-  + 'column or sheet was deleted for good. Nothing was written. A pass that reached the end already gave every '
-  + 'row the operation; a call without cursor applies it to every row again.')
+export const notOpen = invalid('This cursor\'s pass is no longer open: it reached the end, was restarted, was '
+  + 'replaced by a call without cursor before it wrote a row, or its column or sheet was deleted for good. '
+  + 'Nothing was written. A pass that reached the end already gave every row the operation; a call without '
+  + 'cursor applies it to every row again.')
 // Any call into a column whose pass rows moved under: nothing written, no cursor named.
 export function moved(column: string, rows: number) {
   const head = 'Rows of this sheet moved (a sort, a CSV replace, an import undone, duplicates removed, or rows '

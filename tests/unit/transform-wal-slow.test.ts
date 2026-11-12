@@ -43,7 +43,9 @@ async function check(label: string, fn: () => void | Promise<void>) {
   catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
 }
 
-const ROWS = 30_000
+// Enough for the WAL to pass WAL_PAUSE_FRAMES (1,500) in a pass (about 1,520 frames here), so the walk waits for
+// the worker; a slow sync needs no more rows than that.
+const ROWS = 15_000
 const NOTES = 'n'.repeat(200)
 const uid = uuid(), tid = uuid(), sid = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')

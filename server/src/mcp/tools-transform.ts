@@ -25,8 +25,9 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       'true starts the column over from the first row instead. A cursor works only while its pass is open and ' +
       'only as the latest one the pass answered; the pass ends when it reaches the end or restarts, or when its ' +
       'column is deleted for good. If its rows move (a sort, a replace or an import undone, removed duplicates, ' +
-      'rows restored to other places), every call into its column is refused until restart: true. Sent to the ' +
-      'trash with its column or sheet, it comes back with the restore; a copy of the sheet gets a pass of its own.',
+      'rows restored to other places), every call into its column is refused until restart: true, unless it had ' +
+      'done no rows. Sent to the trash with its column or sheet, it comes back with the restore; a copy of the ' +
+      'sheet gets a pass of its own.',
     inputSchema: {
       sheet_id: z.string(),
       target_column: z.string().describe('Column to write into; created if it does not exist'),

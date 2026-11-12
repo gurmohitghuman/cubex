@@ -5,9 +5,10 @@
 // restart: true runs to the end; its column is deleted for good, or goes to the
 // trash (the record with it) and is purged; its sheet or its table goes to the
 // trash (the record stays) and is purged; its sheet is deleted for good
-// (Settings keeps 0 days); a CSV import replaces the rows without its column.
-// Each leaves no record for the sheet. Rows moved under it (sorted, replaced by
-// a CSV import keeping the column, duplicates removed) keep the record, marked
+// (Settings keeps 0 days); a CSV import replaces the rows without its column
+// (at once: transform-pass-unlisted.test.ts). Each leaves no record for the
+// sheet. Rows moved under it (sorted, replaced by a CSV import keeping the
+// column, duplicates removed) keep the record, marked
 // (the record of a column in the trash too): the call is refused, and only
 // restart: true ends it. A record whose cursor is of an older row_generation
 // reads as marked, and is kept.
@@ -188,7 +189,7 @@ async function main() {
     const id = sheet()
     await stopped(id)
     ok(await importCsv(id, uid, await scanCsvText('S\na\n'), true))
-    assert.equal(records(id), 1, 'left until read')
+    assert.equal(records(id), 0, 'gone with its column, in the replace')
     assert.deepEqual(await transformColumn(uid, { sheetId: id, operation: 'upper', sourceColumn: 'S',
       targetColumn: 'T' }), { ok: { updated: 1, created_column: 'T' } })
     assert.equal(records(id), 0)

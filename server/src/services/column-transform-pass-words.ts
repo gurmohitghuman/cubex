@@ -5,9 +5,10 @@
 import { countOf } from '../lib/change-log';
 
 export const MALFORMED = 'cursor must be the next_cursor a transform_column call answered.';
-export const NOT_OPEN = 'This cursor\'s pass is no longer open: it reached the end, was restarted, or its '
-  + 'column or sheet was deleted for good. Nothing was written. A pass that reached the end already gave every '
-  + 'row the operation; a call without cursor applies it to every row again.';
+export const NOT_OPEN = 'This cursor\'s pass is no longer open: it reached the end, was restarted, was replaced '
+  + 'by a call without cursor before it wrote a row, or its column or sheet was deleted for good. Nothing was '
+  + 'written. A pass that reached the end already gave every row the operation; a call without cursor applies it '
+  + 'to every row again.';
 export const OTHER_SHEET = 'This cursor is a transform_column pass on another sheet. Nothing was written. Send it '
   + 'with that sheet, after restoring that sheet from the trash if it is there, or call without cursor to run '
   + 'this column from the first row.';

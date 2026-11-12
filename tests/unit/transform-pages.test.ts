@@ -1,17 +1,15 @@
-// transform_column on 300,000 rows (services/column-transform-pages.ts) walks
-// the sheet a page at a time: while its calls run, the server answers a REST
-// read within 200 ms and the event loop is never held 200 ms, and memory stays
-// that of a page, not of the sheet. A where matching nothing writes nothing (no
-// '' into every row: the new column is only listed); one matching every row
-// writes every row exactly once over calls of at most TRANSFORM_MAX_ROWS rows,
-// each going on from the call before's next_cursor. No checkpoint runs on the
-// API connection (a checkpoint's disk sync held a slow CI disk's server 628 ms):
-// the WAL is copied back on the checkpoint worker's thread
-// (lib/wal-checkpointer.ts), and no page's commit runs SQLite's own checkpoint
-// (it copied 2,000 frames back inside about one page commit in fifty): the WAL
-// never holds the frames that start it. A pass that writes nothing asks for no
-// checkpoint; one row written, for one, at the end of its call. Numbers are
-// printed: the longest page transaction, the worker's checkpoints and waits
+// transform_column on 300,000 rows (services/column-transform-pages.ts) walks the sheet a page at a time:
+// while its calls run, the server answers a REST read within 200 ms and the event loop is never held 200 ms,
+// memory stays that of a page, not of the sheet, and one matching every row writes every row exactly once
+// over calls of at most TRANSFORM_MAX_ROWS rows, each going on from the call before's next_cursor. Those cases
+// are there for size: Linux only (transform-platform.ts; on Windows, the bounds on a slow disk are
+// transform-wal-slow's, every row once at the row cap transform-cursor's). On 1,000 rows, everywhere: a where
+// matching nothing writes nothing (no '' into every row: the new column is only listed) and asks for no
+// checkpoint; one row written asks for one, on the worker, at the end of its call. No checkpoint runs on the
+// API connection (a checkpoint's disk sync held a slow CI disk's server 628 ms): the WAL is copied back on the
+// checkpoint worker's thread (lib/wal-checkpointer.ts), and no page's commit runs SQLite's own checkpoint (it
+// copied 2,000 frames back inside about one page commit in fifty): the WAL never holds the frames that start
+// it. Numbers are printed: the longest page transaction, the worker's checkpoints and waits
 // (sqlite-write-probe.ts).
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
@@ -26,6 +24,7 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import { sqliteWriteProbe } from './sqlite-write-probe'
+import { onWindows, sizeCase } from './transform-platform'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -40,16 +39,21 @@ runMigrations()
 console.warn = () => {}
 
 const ROWS = 300_000
+const FEW = 1_000
+// The big sheet only where its cases run.
+const BIG = onWindows ? 0 : ROWS
 const NOTES = 'n'.repeat(200)
-const uid = uuid(), tid = uuid(), sid = uuid(), small = uuid()
+const uid = uuid(), tid = uuid(), sid = uuid(), small = uuid(), few = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
 const addSheet = db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,?,?)')
 addSheet.run(sid, tid, uid, 'Big', 0, JSON.stringify(['Name', 'Notes']))
 addSheet.run(small, tid, uid, 'Small', 1, JSON.stringify(['Name']))
+addSheet.run(few, tid, uid, 'Few', 2, JSON.stringify(['Name', 'Notes']))
 const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
 db.transaction(() => {
-  for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
+  for (let i = 0; i < BIG; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
+  for (let i = 0; i < FEW; i++) insert.run(uuid(), few, uid, i, JSON.stringify({ Name: `p${i}`, Notes: NOTES }))
   for (let i = 0; i < 5; i++) insert.run(uuid(), small, uid, i, JSON.stringify({ Name: `s${i}` }))
 })()
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
@@ -131,11 +135,27 @@ async function main() {
     console.log('     ', params.targetColumn, JSON.stringify(stats))
     return { calls, stats }
   }
-  const stored = (column: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
-    AND json_extract(data, ?) IS NOT NULL`).pluck().get(sid, `$."${column}"`) as number
+  const stored = (column: string, sheet = sid) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
+    AND json_extract(data, ?) IS NOT NULL`).pluck().get(sheet, `$."${column}"`) as number
 
-  await check(`a where matching none of ${ROWS} rows: nothing written, the server answers, memory stays a page's`,
-    async () => {
+  await check(`on ${FEW} rows, a where matching none: nothing written, no checkpoint; one matching only the first `
+    + 'row: one checkpoint, on the worker, once the call ends', async () => {
+    const none = await measured({ sheetId: few, operation: 'upper', sourceColumn: 'Name', targetColumn: 'Nothing',
+      where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
+    assert.equal(none.calls.reduce((n, c) => n + c.updated, 0), 0)
+    assert.deepEqual(none.calls.map(c => c.created_column), ['Nothing'])
+    assert.equal(stored('Nothing', few), 0, 'no row stores the new column')
+    assert.equal(none.stats.workerCheckpoints + none.stats.mainCheckpoints, 0,
+      `${none.stats.workerCheckpoints + none.stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
+    const first = await measured({ sheetId: few, operation: 'upper', sourceColumn: 'Name', targetColumn: 'First',
+      where: [{ column: 'Name', operator: 'eq', value: 'p0' }] })
+    assert.equal(first.calls.reduce((n, c) => n + c.updated, 0), 1)
+    assert.deepEqual([first.stats.workerCheckpoints, first.stats.onThisThread, first.stats.mainCheckpoints], [1, 0, 0])
+    assert.equal(stored('First', few), 1)
+  })
+
+  const NONE = `a where matching none of ${ROWS} rows: nothing written, the server answers, memory stays a page's`
+  if (sizeCase(`300,000-row volume case, ${NONE}`)) await check(NONE, async () => {
       const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
         targetColumn: 'Nothing', where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
       assert.ok(stats.answered >= 5 && stats.slowestMs < 200 && stats.loopMaxMs < 200, JSON.stringify(stats))
@@ -149,16 +169,8 @@ async function main() {
       assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
 
-  await check('a where matching only the first row: one checkpoint, on the worker, once the call ends', async () => {
-    const { calls, stats } = await measured({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
-      targetColumn: 'First', where: [{ column: 'Name', operator: 'eq', value: 'p0' }] })
-    assert.equal(calls.reduce((n, c) => n + c.updated, 0), 1)
-    assert.deepEqual([stats.workerCheckpoints, stats.onThisThread, stats.mainCheckpoints], [1, 0, 0])
-    assert.equal(stored('First'), 1)
-  })
-
-  await check(`a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`,
-    async () => {
+  const EVERY = `a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`
+  if (sizeCase(`300,000-row volume case, ${EVERY}`)) await check(EVERY, async () => {
       const { calls, stats } = await measured({ sheetId: sid, operation: 'template', template: '{{Name}}!',
         targetColumn: 'Every', where: [{ column: 'Name', operator: 'not_empty' }] })
       assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)

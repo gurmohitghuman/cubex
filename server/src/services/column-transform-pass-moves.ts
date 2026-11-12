@@ -7,6 +7,9 @@
 //   it back under the name the column comes back as (trash-restore-column-finish
 //   .ts); purged with the trash item (the foreign key), or deleted at once when
 //   the column is deleted for good (column-delete.ts);
+// - its column leaving column_order without a delete (a CSV replace or an
+//   import undone lists the file's columns) is gone for good, as one deleted
+//   for good: it goes in that transaction (forgetUnlistedTransformPasses);
 // - its sheet or table sent to the trash keeps it, and deleted for good drops it
 //   (the foreign key);
 // - rows moving under its cursor mark it (moved_at), never drop it, so the rows
@@ -33,6 +36,19 @@ export function renameTransformPasses(sheetId: string, userId: string, from: str
 export function trashTransformPasses(sheetId: string, userId: string, column: string, trashId: number | null): void {
   if (trashId === null) db.prepare(`DELETE FROM transform_passes WHERE ${live}`).run(sheetId, userId, column);
   else db.prepare(`UPDATE transform_passes SET trash_id = ? WHERE ${live}`).run(trashId, sheetId, userId, column);
+}
+
+// In the transaction that wrote the sheet's column_order, after any rename or trash move in it carried its
+// record: the live passes into columns it no longer lists go, as with a column deleted for good (else a column
+// later made under that name, or renamed to it, would take an old pass). One held by a trash item stays.
+export function forgetUnlistedTransformPasses(sheetId: string, userId: string): void {
+  const order = db.prepare('SELECT column_order FROM sheets WHERE id = ? AND user_id = ?')
+    .pluck().get(sheetId, userId) as string | null | undefined;
+  let listed: unknown = [];
+  try { listed = JSON.parse(order ?? '[]'); } catch { /* none listed */ }
+  db.prepare(`DELETE FROM transform_passes WHERE sheet_id = ? AND user_id = ? AND trash_id IS NULL
+    AND target_column NOT IN (SELECT value FROM json_each(?))`)
+    .run(sheetId, userId, JSON.stringify(Array.isArray(listed) ? listed : []));
 }
 
 // In a column restore's last transaction: its pass, under the name it comes back as. A record still

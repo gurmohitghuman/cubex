@@ -81,15 +81,16 @@ interface Scope { sheetId: string; userId: string; targetColumn: string; generat
 const liveWhere = 'WHERE sheet_id = ? AND user_id = ? AND target_column = ? AND trash_id IS NULL';
 
 // The column's unfinished pass, `moved` when rows moved under its cursor since
-// (marked, or its cursor is of an older row_generation). One whose column is
-// gone for good (a replace dropped it) goes.
-function unfinishedPass(s: Scope): PassRecord | undefined {
+// (marked, or its cursor is of an older row_generation). One whose column the
+// sheet doesn't list is gone for good (a replace or an import undone drops it
+// at once: forgetUnlistedTransformPasses), and goes unless `peek`.
+function unfinishedPass(s: Scope, peek: boolean): PassRecord | undefined {
   const at = [s.sheetId, s.userId, s.targetColumn];
   const rec = db.prepare(`SELECT pass_id, cursor, rows_done, started_as, moved_at FROM transform_passes
     ${liveWhere}`).get(...at) as (Omit<PassRecord, 'moved'> & { moved_at: string | null }) | undefined;
   if (!rec) return undefined;
   if (!s.targetExists) {
-    db.prepare(`DELETE FROM transform_passes ${liveWhere}`).run(...at);
+    if (!peek) db.prepare(`DELETE FROM transform_passes ${liveWhere}`).run(...at);
     return undefined;
   }
   const { moved_at: movedAt, ...pass } = rec;
@@ -108,17 +109,21 @@ function noPassWords(s: Scope, cursor: string): string {
   const m = CURSOR.exec(cursor);
   if (!m) return MALFORMED;
   const other = passByHash(s.userId, m[3]);
-  if (!other) return NOT_OPEN;
+  // None, or this column's own, its column gone (left for startPass when peeking).
+  if (!other || (other.sheet_id === s.sheetId && other.trash_id === null && other.target_column === s.targetColumn)) {
+    return NOT_OPEN;
+  }
   if (other.sheet_id !== s.sheetId) return OTHER_SHEET;
   return other.trash_id !== null ? inTrash(other.target_column) : otherColumn(other.target_column, s.targetColumn);
 }
 
 // Where a call starts, or why it can't. From the top (restart, or a call
 // without cursor in place of a pass that wrote no row), the column's unfinished
-// pass is discarded by its first page (passTracker).
-export function startPass(s: Scope, call: TransformCall, opts: { cursor?: string; restart?: boolean }):
+// pass is discarded by its first page (passTracker). `peek`: writes nothing,
+// for a refusal asked before the call's other checks are done.
+export function startPass(s: Scope, call: TransformCall, opts: { cursor?: string; restart?: boolean; peek?: boolean }):
   PassStart | { invalid: string } | { unfinished: Unfinished } {
-  const rec = unfinishedPass(s);
+  const rec = unfinishedPass(s, opts.peek === true);
   const top = (): PassStart => ({ after: -1, base: 0, key: transformCallKey(call, s.targetColumn),
     targetAs: s.targetColumn, passId: newPassId(), held: null });
   if (opts.restart) return top();

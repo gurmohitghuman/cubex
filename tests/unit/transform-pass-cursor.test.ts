@@ -3,7 +3,8 @@
 // older cursor of a finished pass; the cursor of a pass restart: true discarded (naming the open pass's cursor
 // while there is one; nothing skipped), the same call stopped at the same row too (each pass has its own cursor,
 // and once the pass ends both are over, the same call's pass on another sheet notwithstanding); the kept cursor
-// on the old name after a rename (no column made under it; a template naming T there is refused naming T);
+// on the old name after a rename (no column made under it; a template naming T there is answered naming the pass
+// into T2, read before the template, and refused naming T without cursor);
 // the kept cursor after its column was deleted for good and added back; a cursor edited ahead of the pass, or a
 // malformed one, while the pass is open (naming its cursor); the pass's cursor with a source column renamed
 // since (its arguments differ), and the same call naming the old name (the template's column is gone: refused
@@ -148,7 +149,8 @@ async function main() {
       const sid = sheet()
       const cursor = await stopped(call(sid))
       assert.deepEqual(await renameSheetColumn(sid, uid, 'T', 'T2'), { ok: true, newName: 'T2' })
-      await refused({ ...call(sid), cursor }, missing('Template column "T" not found.'))
+      await refused({ ...call(sid), cursor }, otherColumn('T2', 'T'))
+      await refused({ ...call(sid), template: '{{T}}-{{Nope}}' }, missing('Template columns "T", "Nope" not found.'))
       await refused({ sheetId: sid, operation: 'upper', sourceColumn: 'S', targetColumn: 'T', cursor },
         otherColumn('T2', 'T'))
       assert.deepEqual(columns(sid), ['S', 'T2'])

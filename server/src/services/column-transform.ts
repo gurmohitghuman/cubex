@@ -1,3 +1,4 @@
+// Over 200 lines: one call, its checks in the order they answer and its walk, read top to bottom.
 // transform_column: non-AI, zero-credit server-side cell transforms (extract,
 // split, case, trim, to_number, template), so agents stop routing mechanical
 // string ops through a paid model. A call holds the sheet as its one heavy
@@ -39,6 +40,10 @@ const BUSY_WHAT = 'transforming a column';
 export const TRANSFORM_STOPPED_NOTE = `Stopped at this call's limit (${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} `
   + `rows written or about ${TRANSFORM_MAX_CALL_MS / 1000} seconds of work). The rows before next_cursor are done: `
   + 'call transform_column again with the same arguments and cursor set to next_cursor to go on.';
+// A call whose wait for the WAL to be copied back, before its first page, took all its time.
+export const TRANSFORM_WAITED_NOTE = 'Waited for the database file to catch up with earlier writes for all of this '
+  + `call's time (about ${TRANSFORM_MAX_CALL_MS / 1000} seconds), so it wrote no rows. Nothing is lost: next_cursor `
+  + 'goes on from where the pass is. Call transform_column again with the same arguments and cursor set to it.';
 
 const RESTART_WITH_CURSOR = 'restart and cursor don\'t go together: restart: true starts the column over from '
   + 'the first row, cursor goes on from where a call stopped. Send one of them.';
@@ -101,9 +106,10 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     }
     const ok = { updated: walked.updated, created_column: plan.targetExists ? null : plan.targetColumn };
     if (walked.stoppedAfter === null) return { ok };
-    // Stopped with rows left, even before writing a row: the record holds the cursor it answers.
+    // Stopped with rows left, even before writing a row: the record holds the cursor it answers. Stopped before
+    // its first page, only its wait for the WAL took its time.
     return { ok: { ...ok, next_cursor: stopAt(track, walked.stoppedAfter, walked.updated),
-      note: TRANSFORM_STOPPED_NOTE } };
+      note: walked.pages === 0 ? TRANSFORM_WAITED_NOTE : TRANSFORM_STOPPED_NOTE } };
   });
   if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };
   if ('busy' in out) return { fail: 'busy', error: out.busy };
@@ -139,6 +145,9 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
   } else {
     const missing = templateColumns(p.template!).filter(c => !columns.includes(c));
     if (missing.length > 0) {
+      // A cursor's pass answers first, read only: a target renamed since is named as it is now.
+      const pass = p.cursor === undefined || p.restart ? null : peekPass(userId, p, columns);
+      if (pass) return pass;
       const named = missing.map(c => `"${c}"`).join(', ');
       return { fail: 'invalid', error: `Template column${missing.length === 1 ? '' : 's'} ${named} not found.` };
     }
@@ -177,8 +186,7 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
     }
   }
 
-  const generation = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
-    .pluck().get(p.sheetId, userId) as number;
+  const generation = generationOf(p.sheetId, userId);
   const start = startPass({ sheetId: p.sheetId, userId, targetColumn, generation, targetExists },
     { ...p, targetColumn }, { cursor: p.cursor, restart: p.restart });
   if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
@@ -189,4 +197,18 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
     : (data: Record<string, string>) =>
       applyCellOp(op, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
   return { filter, targetColumn, value, ...start, targetExists, generation };
+}
+
+const generationOf = (sheetId: string, userId: string): number =>
+  db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?').pluck().get(sheetId, userId) as number;
+
+// The refusal of the pass a call's cursor names, writing nothing; null when it would go on.
+function peekPass(userId: string, p: TransformParams, columns: string[]): Fail | { unfinished: Unfinished } | null {
+  const name = sanitizeAndValidateColumnName(p.targetColumn);
+  if ('error' in name) return null;
+  const start = startPass({ sheetId: p.sheetId, userId, targetColumn: name.name,
+    generation: generationOf(p.sheetId, userId), targetExists: columns.includes(name.name) },
+  { ...p, targetColumn: name.name }, { cursor: p.cursor, peek: true });
+  if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
+  return 'unfinished' in start ? start : null;
 }

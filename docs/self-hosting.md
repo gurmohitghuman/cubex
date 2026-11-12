@@ -242,6 +242,7 @@ It returns `200` with `"status": "ok"` when the database, the run queue and the 
 | Large CSV imports fail | Something between your browser and Cubex limits upload size: nginx (see below) or Cloudflare's proxy (100 MB on the free plan). Caddy has no limit. |
 | You forgot the password | Run `cubex reset-password` on the server. It signs out every browser. |
 | `cubex logs` says "The WAL checkpoint worker could not start" | The install is missing a file. Cubex keeps working, but big column transforms (`transform_column`) then copy the database's write-ahead log back on the main thread, so the server can answer more slowly while one runs. Run `cubex update` (or install Cubex again) to fix it. |
+| `cubex logs` says "The WAL checkpoint worker stopped again" | The worker that copies the database's write-ahead log back crashed twice, so that copying runs on the main thread until Cubex restarts. Cubex keeps working, but big column transforms (`transform_column`) can make the server answer more slowly while one runs. Run `cubex restart` to start the worker again. If it keeps happening, report it with the log. |
 
 ## Other setups
 
