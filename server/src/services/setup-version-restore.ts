@@ -40,7 +40,7 @@ const FILLING = `SELECT column_name FROM clean_columns WHERE sheet_id = ? AND us
   UNION ALL SELECT column_name FROM formula_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
   UNION ALL SELECT column_name FROM lookup_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
   LIMIT 1`;
-const KEYS = "A request it puts back reads saved API keys: restoring it needs the 'secrets' scope.";
+export const KEYS = "A request it puts back reads saved API keys: restoring it needs the 'secrets' scope.";
 
 // Why the restore can't happen now (the restore refuses; a dry run says so).
 function refusal(

@@ -10,8 +10,9 @@ import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants
 // bulkDeleteRows) shows a persistent "Save failed · Retry" pill (SaveStatus). Without
 // this, a 5xx stacks a redundant second toast on top — and on autosave's backoff it
 // fired once per retry. See client.ts for the flag.
-// Where a delete went: its trash item and how many days it is kept.
-export interface TrashRef { id: number; days: number }
+// Where a delete went: its trash item and how many days it is kept (moving: a column's cells are still
+// going there).
+export interface TrashRef { id: number; days: number; moving?: boolean }
 
 const noServerToast = { skipServerErrorToast: true } as const
 
@@ -111,8 +112,10 @@ export const sheetsAPI = {
     api.post(`/sheets/${sheetId}/rows/bulk-delete`, { rowIndices, rowGeneration, trashId }, noServerToast)
       .then(res => res.data),
 
-  deleteColumn: (sheetId: string, columnName: string): Promise<void> =>
-    api.delete(`/sheets/${sheetId}/columns/${encodeURIComponent(columnName)}`, noServerToast).then(() => {}),
+  // trash: where it went (null: Settings keeps deleted things 0 days).
+  deleteColumn: (sheetId: string, columnName: string): Promise<{ trash: TrashRef | null }> =>
+    api.delete(`/sheets/${sheetId}/columns/${encodeURIComponent(columnName)}`, noServerToast)
+      .then(res => ({ trash: res.data?.trash ?? null })),
 
   renameColumn: (sheetId: string, oldName: string, newName: string): Promise<void> =>
     api.put(`/sheets/${sheetId}/columns/${encodeURIComponent(oldName)}`, { newName }, noServerToast).then(() => {}),

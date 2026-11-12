@@ -1,11 +1,11 @@
 import { api } from './client'
 
 // The trash (server routes/trash.ts, services/trash-*.ts): deleted tables,
-// sheets and batches of rows, kept for the days Settings sets, restored or
-// deleted for good. Field names match /api/v1/trash and MCP list_trash.
-export type TrashKind = 'rows' | 'sheet' | 'table'
+// sheets, columns and batches of rows, kept for the days Settings sets,
+// restored or deleted. Field names match /api/v1/trash and MCP list_trash.
+export type TrashKind = 'rows' | 'sheet' | 'table' | 'column'
 export type TrashHow =
-  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table'
+  | 'grid' | 'api' | 'duplicates' | 'auto_dedupe' | 'import' | 'transfer' | 'rerun' | 'sheet' | 'table' | 'column'
 
 export interface TrashEntry {
   id: number
@@ -25,6 +25,11 @@ export interface TrashEntry {
   bytes: number
   columns: string[]
   restored_so_far?: number
+  // A deleted column: its name, its cells, what it was ("a formula column"), references that went with it.
+  column?: string
+  cells?: number
+  column_kind?: string
+  references_dropped?: number
   blocked?: string
   note?: string
 }
@@ -34,12 +39,19 @@ export interface TrashList { items: TrashEntry[]; kept_days: number; next_before
 export interface TrashRow { seq: number; row_id: string; old_row_index: number; cells: Record<string, string> }
 export interface TrashRowsPage { trash_id: number; columns: string[]; rows: TrashRow[]; next_after: number | null }
 
+// A reference to a restored column that didn't come back: where it was, what it did, how to set it up again.
+export interface TrashDroppedRef { kind: string; where: string; did: string; redo: string }
+
 export interface TrashRestoreResult {
   trash_id: number
   restored?: {
-    kind?: 'sheet' | 'table'; state: 'restored' | 'restoring'; rows?: number; place?: 'old' | 'end'
+    kind?: 'sheet' | 'table' | 'column'; state: 'restored' | 'restoring'; rows?: number; place?: 'old' | 'end'
     name?: string; renamed?: boolean; sheet_id?: string | null; table_id?: string
     columns_added?: string[]; columns_left_out?: string[]
+    // A column:
+    old_name?: string; cells?: number; cells_restored?: number; cells_skipped?: number; cells_kept?: number
+    setup?: { kind: string; restored: boolean; run_id: string | null; note: string }
+    references_dropped?: TrashDroppedRef[]; note?: string
   }
   error?: string
   busy?: boolean

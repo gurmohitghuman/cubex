@@ -1,5 +1,9 @@
 // Column details (get_sheet's column_details) and descriptions. Guards, not quotas.
 
+// The longest column name (sanitizeColumnName cuts there, lib/sql-rows.ts): a restored column's
+// "<name> (restored)" is cut to fit it (lib/trash/column-restore.ts).
+export const MAX_COLUMN_NAME_LENGTH = 200;
+
 // A prompt, formula or request URL in column_details is cut to this many
 // characters, or to the larger size for the columns the call names, while
 // their full texts fit in one shared budget (past it, they are cut too).

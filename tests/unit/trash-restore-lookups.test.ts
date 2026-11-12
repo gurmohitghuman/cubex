@@ -116,7 +116,7 @@ await ok('a lookup whose source column was deleted meanwhile fails with that and
   await lookup(a, other.sid, 'Found', 'exists')
   const item = await failedOnTrash(a, other, false)
   const gone = await deleteSheetColumn(a, uid, 'Email')
-  assert.deepEqual(gone, { ok: true })
+  assert.ok('ok' in gone && typeof gone.trashId === 'number', JSON.stringify(gone))   // to the trash (054)
   await idle(a)
   restore(item)
   assert.equal(statusOf(a, 'Found'), 'filling')
@@ -139,7 +139,7 @@ await ok("a lookup column deleted between two tries of its fill for its busy she
   await free()
   // Before the lookups try again, the person deletes Count (its record goes with it).
   const gone = await deleteSheetColumn(a, uid, 'Count')
-  assert.deepEqual(gone, { ok: true })
+  assert.ok('ok' in gone && typeof gone.trashId === 'number', JSON.stringify(gone))   // to the trash (054)
   await until('Found is done', () => statusOf(a, 'Found') === 'done')
   await new Promise(r => setTimeout(r, 2_500)) // past the next try for the sheet
   await idle(a)

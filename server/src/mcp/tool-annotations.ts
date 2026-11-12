@@ -43,7 +43,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   add_column: write('Add a column', false, false),
   rename_column: write('Rename a column', true, true),
   set_description: write('Describe a sheet or column', true, true),
-  delete_column: write('Delete a column (permanent)', true, true),
+  delete_column: write('Delete a column (to the trash)', true, true),
   // Only the order columns show in; repeating the same order changes nothing more.
   set_column_order: write('Reorder columns', true, true),
   sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
@@ -116,6 +116,6 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   manage_run_webhook: write('Add, change, delete or test a run webhook', true, false, true),
   // A saved view's name, filters and hidden columns; rows and columns never change.
   manage_view: write('Create, change or delete a saved view', true, false),
-  // Puts rows, sheets and tables back; repeating it finds nothing more to restore.
+  // Puts rows, sheets, tables and columns back; repeating it finds nothing more to restore.
   restore_from_trash: write('Restore from the trash', false, true),
 };

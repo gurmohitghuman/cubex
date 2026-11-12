@@ -27,6 +27,7 @@ import heldMod from '../../server/src/lib/run-locked-columns'
 import startRouterMod from '../../server/src/routes/http-run-start'
 import previewRouterMod from '../../server/src/routes/http-preview'
 import controlRouterMod from '../../server/src/routes/http-control'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
 const { seedProcessingPlaceholders, PLACEHOLDER } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { clearRunPlaceholders } = placeholdersMod as typeof import('../../server/src/lib/run-placeholders')
@@ -34,6 +35,7 @@ const { rerunHttpColumn } = rerunMod as typeof import('../../server/src/services
 const { pauseRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { processHTTPRun } = runnerMod as typeof import('../../server/src/services/http-runner')
 const { runHeldColumns } = heldMod as typeof import('../../server/src/lib/run-locked-columns')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 const routers = [startRouterMod, previewRouterMod, controlRouterMod] as unknown as Array<{ default: express.Router }>
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('http-held-inputs')
 console.error = () => {}
@@ -73,6 +75,7 @@ app.use(cookieParser())
 app.use(express.json())
 for (const r of routers) app.use('/api/http', r.default)
 const server = app.listen(0)
+applyServerTimeouts(server)
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
 const post = async (route: string, body: unknown) => {

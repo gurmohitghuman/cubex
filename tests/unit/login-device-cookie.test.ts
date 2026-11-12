@@ -10,6 +10,8 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import type { AddressInfo } from 'node:net'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.LOGIN_RATE_MAX = '3'
@@ -59,6 +61,7 @@ async function main() {
   app.use(cookieParser())
   app.use('/api/auth', authRoutes)
   const server = app.listen(0)
+  applyServerTimeouts(server)
   await new Promise(r => server.once('listening', r))
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 

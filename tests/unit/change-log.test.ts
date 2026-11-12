@@ -11,8 +11,10 @@ import logMod from '../../server/src/lib/change-log'
 import actorMod from '../../server/src/lib/actor'
 import historyMod from '../../server/src/services/sheet-history'
 import { trashKit } from './trash-kit'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { logSheetChange, withoutChangeLog, logRunControl } = logMod as typeof import('../../server/src/lib/change-log')
 const { runAs, actAs, currentActor } = actorMod as typeof import('../../server/src/lib/actor')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 const { readSheetHistory, pruneChangeLog, historyAsk } =
   historyMod as typeof import('../../server/src/services/sheet-history')
 const { db, uid, ok, done, fixture, del } = trashKit('change-log')
@@ -84,6 +86,7 @@ await ok('the actor survives express.json and a route that awaits', async () => 
   app.use(express.json({ limit: '1mb' }))
   app.post('/x', async (_req, res) => { await new Promise(r => setTimeout(r, 1)); res.json(currentActor()) })
   const server = app.listen(0)
+  applyServerTimeouts(server)
   try {
     const port = (server.address() as { port: number }).port
     const r = await fetch(`http://127.0.0.1:${port}/x`, {

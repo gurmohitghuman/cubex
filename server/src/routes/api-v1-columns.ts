@@ -8,6 +8,7 @@ import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth'
 import { addSheetColumn } from '../services/column-add';
 import { renameSheetColumn } from '../services/column-rename';
 import { deleteSheetColumn } from '../services/column-delete';
+import { trashAnswer } from '../services/trash-answer';
 import { reorderSheetColumns } from '../services/column-reorder';
 import { describeColumn, descriptionProblem } from '../services/descriptions';
 
@@ -112,6 +113,7 @@ router.patch('/sheets/:id/columns/:name', requireScope('write'), async (req: Tok
 
 // DELETE /v1/sheets/:id/columns/:name — via the shared cascade service
 // (active-run 409, webhook raw-marker + last-column 400s, full cleanup).
+// `trash` says where it went and how to restore it (services/trash-answer.ts).
 router.delete('/sheets/:id/columns/:name', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     if (!ownsSheet(req.params.id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
@@ -127,7 +129,7 @@ router.delete('/sheets/:id/columns/:name', requireScope('write'), async (req: To
           return res.status(400).json({ error: result.error });
       }
     }
-    res.json({ deleted: true });
+    res.json({ deleted: true, trash: trashAnswer(req.userId!, result.trashId, 'rest', { moving: !!result.moving }) });
   } catch (error) {
     console.error('DELETE /v1/sheets/:id/columns/:name error:', error);
     res.status(500).json({ error: 'Failed to delete column' });

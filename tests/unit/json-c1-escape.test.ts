@@ -7,6 +7,8 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import escapeMod from '../../server/src/lib/json-c1-escape'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 const { escapeC1InJson, escapeC1, escapeC1Bytes } =
   escapeMod as typeof import('../../server/src/lib/json-c1-escape')
 
@@ -50,6 +52,7 @@ app.get('/flat-list', (_req, res) => {
 })
 
 const server = app.listen(0, '127.0.0.1')
+applyServerTimeouts(server)
 await new Promise(r => server.once('listening', r))
 const port = (server.address() as AddressInfo).port
 const get = (path: string, method = 'GET') =>
