@@ -4,7 +4,8 @@
 // "database is locked", long before busy_timeout (5 s, lib/db.ts) would end a wait: what column-trash-refs.test.ts
 // hit now and then, its own deferred transaction meeting another connection's write. Begun with .immediate(),
 // the write lock is the transaction's from BEGIN: the other connection waits for it, or it waits for the other
-// connection to commit, and the journal is written.
+// connection to commit, and the journal is written. A deferred transaction whose first statement is a write
+// waits for the lock the same way: busy_timeout covers that first lock.
 import assert from 'node:assert/strict'
 import journalMod from '../../server/src/lib/run-undo/journal'
 import { attempt, fixture, rivalKit } from './write-lock-kit'
@@ -80,6 +81,22 @@ await ok('immediate: it waits for a lock another connection holds, then keeps th
   const { out, ms } = await timed(() => db.transaction(j.write).immediate())
   await rival.settled()
   console.log(`  immediate, the lock held for ${HOLD_MS} ms: ${JSON.stringify(out)} after ${ms} ms`)
+  assert.deepEqual(out, { value: true })
+  assert.ok(ms >= HOLD_MS / 2 && ms < busyMs, `it waited ${ms} ms for the lock, within busy_timeout`)
+  assert.equal(j.kept(), 1)
+})
+
+await ok('deferred with a write first: it waits for a lock another connection holds, as an immediate one', async () => {
+  const j = journal()
+  const shot = rival.arm({ inTx: false, sql: /^SELECT 1 AS ready$/, hold: HOLD_MS })
+  db.prepare('SELECT 1 AS ready').get()
+  assert.equal(shot.outcome, 'raced', 'the other connection holds the write lock')
+  const { out, ms } = await timed(() => db.transaction(() => {
+    db.prepare("UPDATE sheets SET updated_at = datetime('now') WHERE id = ?").run(S)
+    return j.write()
+  }).deferred())
+  await rival.settled()
+  console.log(`  deferred with a write first, the lock held for ${HOLD_MS} ms: ${JSON.stringify(out)} after ${ms} ms`)
   assert.deepEqual(out, { value: true })
   assert.ok(ms >= HOLD_MS / 2 && ms < busyMs, `it waited ${ms} ms for the lock, within busy_timeout`)
   assert.equal(j.kept(), 1)

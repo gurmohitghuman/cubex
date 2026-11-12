@@ -32,8 +32,8 @@ const READS: Entry[] = [
 // Transactions begun deferred on purpose.
 const DEFERRED: Entry[] = [
   { file: 'server/src/lib/db-transaction.ts', fn: 'readTransaction', why: 'the read helper itself' },
-  { file: 'tests/unit/write-lock-journal.test.ts', fn: '(top level)', count: 2,
-    why: 'proves a deferred transaction that reads first fails at once' },
+  { file: 'tests/unit/write-lock-journal.test.ts', fn: '(top level)', count: 3,
+    why: 'proves a deferred transaction that reads first fails at once, and one that writes first waits' },
   // A reader on a second connection keeping its snapshot across awaits, so the WAL can't start over.
   { file: 'tests/unit/transform-wal-answer.test.ts', fn: 'main', why: 'a reader holding old frames' },
   { file: 'tests/unit/transform-wal-wait.test.ts', fn: 'main', why: 'a reader holding old frames' },
