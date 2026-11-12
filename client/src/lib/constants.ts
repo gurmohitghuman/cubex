@@ -210,3 +210,7 @@ export const FAILED_COUNTS_ARRIVAL_MS = 60_000;
 // A tab opened before an update reloads once when the table page's file is gone
 // (lib/chunk-reload.ts); a second failure inside this window shows the error page.
 export const CHUNK_RELOAD_WINDOW_MS = 10_000;
+
+// The sheet's notice of runs that paused themselves (components/sheet/PausedRunsNotice.tsx) lists this many,
+// then "And N more paused runs."
+export const PAUSED_NOTICE_MAX_LINES = 3;

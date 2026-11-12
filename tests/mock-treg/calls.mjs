@@ -36,6 +36,9 @@ function scenarioAnswer() {
     case 'daily_cap': return refusal(429, { error: 'daily_cap_reached', message: "this team's daily cap is reached" })
     case 'unreachable': return { status: 500, headers: {}, body: { detail: 'upstream connect error' } }
     case 'firewall': return { status: 403, headers: {}, body: 'Forbidden' }
+    // The team's own rules: one provider pinned for the job, and treg's own account for a provider out.
+    case 'pinned': return refusal(403, { error: 'capability_pinned', message: 'pinned', pinned_provider: 'hunter' })
+    case 'capacity': return refusal(503, { error: 'provider_capacity_unavailable', message: 'out', provider: 'apollo' })
     default: return null
   }
 }

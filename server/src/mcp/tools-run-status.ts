@@ -22,7 +22,7 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         + '(rows kept failing on the provider\'s side: resume once it works again), storage (results couldn\'t be '
         + 'saved: free disk space first), stalled (its worker kept stopping) or web_engine (an AI run with web '
         + 'fetch limits reads pages through Exa and the OpenRouter workspace doesn\'t allow it: allow Exa on '
-        + 'OpenRouter\'s Server Tools page and resume, or run without the limits). '
+        + 'OpenRouter\'s Server Tools page and resume, or cancel the paused run, then run without the limits). '
         + '"completed" means every row was processed, not that it worked: check failed_rows, then '
         + 'get_run_results for the reasons. AI runs also report concurrency (rows at once) and cost_usd, what the '
         + 'rows so far cost (OpenRouter\'s own '

@@ -11,6 +11,7 @@ import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityG
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
+import { PausedRunsNotice } from '@/components/sheet/PausedRunsNotice'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
 import { DescriptionDialog } from '@/components/sheet/DescriptionDialog'
@@ -293,6 +294,9 @@ export const SheetPage: React.FC = () => {
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
           onProgress={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} /></>}
       />
+      <PausedRunsNotice aiRuns={runs.aiRuns} httpRuns={runs.httpRuns} onResume={runControls.resumeOne}
+        onOpen={l => (l.kind === 'waterfall' ? modals.openWaterfall({ kind: 'run', runId: l.runId })
+          : modals.openEnrichment({ kind: 'run', runId: l.runId }))} />
       <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
       <SheetSampleGuide sheetData={sheetData} dedupeOpen={modals.showDedupeModal}
         onOpenAI={() => modals.setShowAddColumnModal(true)} onOpenDedupe={() => modals.setShowDedupeModal(true)} />

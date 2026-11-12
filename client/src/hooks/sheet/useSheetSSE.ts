@@ -97,7 +97,9 @@ export const useSheetSSE = ({
     } else if (data.type === 'status' && data.status === 'paused' && currentSheetId) {
       // "Show" opens this sheet's drawer: only for a run of this sheet.
       const here = runSheetId === undefined || runSheetId === currentSheetId
-      notePausedRun(data, runId, () => fetchActiveHTTPRuns(currentSheetId), here ? onEnrichPaused : undefined)
+      // Both lists: the sheet's notice shows why an AI run or an HTTP run paused itself (PausedRunsNotice).
+      const refetch = () => { fetchActiveHTTPRuns(currentSheetId); fetchActiveAIRuns(currentSheetId) }
+      notePausedRun(data, runId, refetch, here ? onEnrichPaused : undefined)
     }
   }, [reloadSheet, fetchActiveHTTPRuns, fetchActiveAIRuns, currentSheetIdRef, onEnrichPaused])
 

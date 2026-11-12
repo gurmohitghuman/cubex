@@ -77,6 +77,8 @@ router.get('/runs/:id/stream', (req, res) => {
   // `id TEXT PRIMARY KEY`, not WITHOUT ROWID), so `rowid > ?` drains every row
   // exactly once regardless of timestamp ties or insert concurrency.
   let lastRowid = 0;
+  // The status and the worker generation a resume moves on: a run that paused itself again right after a
+  // resume, between two looks, still sends a new 'paused' (the sheet's notice reads it again).
   let lastStatus = '';
   let lastProcessed = -1;
 
@@ -84,10 +86,11 @@ router.get('/runs/:id/stream', (req, res) => {
     try {
       const r = db.prepare(`
         SELECT status, processed_rows, total_rows, column_name, use_openrouter_web_search, error_message,
-               output_columns, sheet_id, status_column, data_column
+               output_columns, sheet_id, status_column, data_column, worker_generation
         FROM ai_runs WHERE id = ?
       `).get(id) as StreamRun & {
         status: string; processed_rows: number; total_rows: number; error_message: string | null;
+        worker_generation: number;
       } | undefined;
       if (!r) { clearInterval(timer); try { res.end(); } catch {} return; }
       const structuredColumns = structuredRunColumns(r);
@@ -127,14 +130,15 @@ router.get('/runs/:id/stream', (req, res) => {
       // the pause now, and there's no close to race. This pairs with the close guard
       // below — status + close land on the same drained tick.
       const statusReadyToEmit = !terminal || newResults.length === 0;
-      if (r.status !== lastStatus && statusReadyToEmit) {
+      const statusKey = `${r.status}/${r.worker_generation}`;
+      if (statusKey !== lastStatus && statusReadyToEmit) {
         // Carry the recorded failure reason so the client toast shows it instead
         // of "Unknown error" (L14). Only meaningful for 'failed'; omitted otherwise.
         res.write(`data: ${JSON.stringify({
           type: 'status', status: r.status,
           error: r.status === 'failed' ? (r.error_message || undefined) : undefined,
         })}\n\n`);
-        lastStatus = r.status;
+        lastStatus = statusKey;
       }
 
       if (terminal && newResults.length === 0) {
