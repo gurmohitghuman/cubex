@@ -12,9 +12,9 @@ import { derivedLoopWith } from '../lib/derived-loops';
 import { diffVersion, mergeOrder, autoRunKey } from '../lib/setup-versions/diff';
 import { fillKey, NO_RERUN_FIELDS, type FieldChange, type FieldContext } from '../lib/setup-versions/fields';
 import {
-  columnKinds, fillMakes, mappedColumns, type ColumnKind, type Fill, type HttpFill, type VersionColumn,
-  type VersionSpec,
+  columnKinds, fillMakes, mappedColumns, type ColumnKind, type Fill, type VersionColumn, type VersionSpec,
 } from '../lib/setup-versions/spec';
+import { ownsColumn, withoutFields } from '../lib/setup-versions/own';
 import { snapshotSheet } from './setup-version-snapshot';
 import {
   addBackNote, fillProblem, fillReads, kindNote, listOf, notMineWhy, redoNote,
@@ -45,9 +45,6 @@ const sheetNameOf = (userId: string) => (id: string): string | null =>
 export const fieldContext = (userId: string, reveal: boolean): FieldContext =>
   ({ reveal, sheetName: sheetNameOf(userId) });
 
-const withoutFields = (f: HttpFill, gone: string[]): HttpFill => ({ ...f, config: { ...f.config,
-  responseMapping: (f.config.responseMapping ?? []).filter((m: any) => !gone.includes(m?.columnName)) } });
-
 const derivedInputs = (f: Fill, columns: string[]): string[] | null =>
   (f.kind === 'clean' || f.kind === 'lookup' ? [f.source] : f.kind === 'formula'
     ? (() => { try { return compileFormula(f.formula, columns).inputs; } catch { return []; } })() : null);
@@ -74,8 +71,8 @@ export function planRestore(sheetId: string, userId: string, version: VersionSpe
   const after = [...nowNames, ...writes.addBack];
   // A column a version's setup writes into is that setup's to write: added back
   // now, or the version had it filled by that column and nothing else fills it now.
-  const mine = (owner: string, c: string) => back.has(c) || (nBy.has(c) && vk.get(c)?.kind === 'made'
-    && vk.get(c)?.by === owner && (nk.get(c)!.kind === 'plain' || nk.get(c)!.by === owner));
+  const owners = { back, exists: (c: string) => nBy.has(c), was: vk, now: nk };
+  const mine = (owner: string, c: string) => ownsColumn(owner, c, owners);
   const why = (c: string) => notMineWhy(back.has(c), nBy.has(c), nk.get(c)?.kind, nk.get(c)?.by);
   const unlinked = new Map<string, string>();   // column an AI or HTTP setup won't fill anymore → that column
   const dropped = new Map<string, string[]>();  // HTTP column → the columns its fields put in that aren't its now

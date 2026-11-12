@@ -12,10 +12,10 @@ import { trashAPI, type TrashEntry, type TrashHow, type TrashKind } from '@/util
 
 const KINDS: Array<{ id: TrashKind | ''; label: string }> = [
   { id: '', label: 'All' }, { id: 'table', label: 'Tables' }, { id: 'sheet', label: 'Sheets' },
-  { id: 'rows', label: 'Rows' },
+  { id: 'column', label: 'Columns' }, { id: 'rows', label: 'Rows' },
 ]
 
-// The account's trash: deleted tables, sheets and batches of rows, kept for
+// The account's trash: deleted tables, sheets, columns and batches of rows, kept for
 // the days Settings sets, then deleted for good. Search, restore (one or
 // several), look inside a batch, download it, or delete it for good now.
 export const TrashPage: React.FC = () => {
@@ -80,7 +80,8 @@ export const TrashPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${e.sheet_name ?? 'Sheet'} - deleted rows.csv`
+      const what = e.kind === 'column' ? `deleted column ${e.column}` : 'deleted rows'
+      link.download = `${e.sheet_name ?? 'Sheet'} - ${what}.csv`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -102,9 +103,9 @@ export const TrashPage: React.FC = () => {
           <div>
             <h1 className="text-title text-gray-900">Trash</h1>
             <p className="text-gray-600 text-sm">
-              {t.days === null ? 'Deleted tables, sheets and rows.'
-                : t.days === 0 ? 'Deleted tables, sheets and rows aren\'t kept here.'
-                : `Deleted tables, sheets and rows stay here ${plural(t.days, 'day')}, then are deleted.`}
+              {t.days === null ? 'Deleted tables, sheets, columns and rows.'
+                : t.days === 0 ? 'Deleted tables, sheets, columns and rows aren\'t kept here.'
+                : `Deleted tables, sheets, columns and rows stay here ${plural(t.days, 'day')}, then are deleted.`}
               {' '}<Link to="/settings/account" className="underline">Change it in Settings</Link>.
               {t.totalBytes > 0 && ` Deleted rows use ${sizeText(t.totalBytes)}.`}
             </p>

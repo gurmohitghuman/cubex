@@ -1,3 +1,4 @@
+// Over 200 lines: a batch's restore, its checks, its slices and its boot resume (which starts columns' too).
 // Restoring a batch of deleted rows (lib/trash/restore-rows.ts says where they
 // go and how their cells come back): the app's Trash page and its "Restore" on
 // a delete's toast, POST /api/v1/trash/:id/restore and MCP restore_from_trash.
@@ -25,11 +26,13 @@ import {
 } from '../lib/trash/restore-rows';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { sheetRunBlock, type BlockingRun } from './autorun-block';
+import { resumeColumnRestores } from './trash-restore-column';
 
 const WHAT = 'restoring rows';
 
 export interface RestoreFail {
-  fail: 'not_found' | 'conflict' | 'bad_request'; message: string; busy?: boolean; blockingRun?: BlockingRun;
+  fail: 'not_found' | 'conflict' | 'bad_request' | 'forbidden'; message: string; busy?: boolean;
+  blockingRun?: BlockingRun;
 }
 export interface RowsRestored {
   trash_id: number; sheet_id: string; state: 'restored' | 'restoring'; rows: number;
@@ -40,6 +43,9 @@ export async function restoreRows(
   userId: string, itemId: number, picks: number[] | null = null,
 ): Promise<{ ok: RowsRestored } | RestoreFail> {
   const item = getTrashItem(itemId, userId);
+  if (item?.kind === 'column' && picks) {
+    return { fail: 'bad_request', message: 'A column comes back whole: restore it without seqs.' };
+  }
   if (!item || item.kind !== 'rows') return { fail: 'not_found', message: 'Nothing in the trash with that id.' };
   const stateFail = stateProblem(item);
   if (stateFail) return stateFail;
@@ -182,7 +188,9 @@ function backToTrash(itemId: number, sheetId: string, userId: string): void {
 
 // At boot: a restore a restart cut short goes on; one that had put no row back
 // yet goes back to the trash as it was (the fence follows the rows there).
+// Columns too (trash-restore-column.ts).
 export function resumeTrashRestores(): void {
+  resumeColumnRestores();
   const items = db.prepare(`SELECT * FROM trash_items WHERE state = 'restoring' AND kind = 'rows'`)
     .all() as TrashItem[];
   for (const item of items) {

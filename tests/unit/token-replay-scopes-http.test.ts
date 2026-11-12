@@ -140,7 +140,9 @@ for (const surface of SURFACE_NAMES) {
     `keyless-column-${surface}`, async runId => {
       assert.deepEqual(await cancelRun('http', runId, uid), { ok: true })
       await idle(sid)
-      assert.deepEqual(await deleteSheetColumn(sid, uid, 'Tok'), { ok: true })
+      // The column goes to the trash (migration 054): the answer names its item.
+      const out = await deleteSheetColumn(sid, uid, 'Tok')
+      assert.ok('ok' in out && typeof out.trashId === 'number', JSON.stringify(out))
       await idle(sid)
     }, { fail: 'bad_request', status: 400, message: 'The Authorization header needs a key ({{Tok}}), and no saved '
       + 'key or column has that name. Ask the user to save the key in Cubex (Settings, External service keys) as '

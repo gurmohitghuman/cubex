@@ -88,7 +88,7 @@ async function main() {
   await check('its column is deleted', async () => {
     const id = sheet()
     await stopped(id)
-    assert.deepEqual(await deleteSheetColumn(id, uid, 'T'), { ok: true })
+    assert.ok('ok' in await deleteSheetColumn(id, uid, 'T'))
     assert.equal(records(id), 0)
   })
   await check('its sheet goes to the trash', async () => {

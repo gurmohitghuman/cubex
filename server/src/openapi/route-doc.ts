@@ -21,7 +21,7 @@ export const TAGS = {
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
   versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
-  trash: ['Trash and history', "Deleted rows, sheets and tables, putting them back, and a sheet's history."],
+  trash: ['Trash and history', "Deleted rows, sheets, tables and columns, putting them back, and a sheet's history."],
 } as const;
 export type Tag = keyof typeof TAGS;
 

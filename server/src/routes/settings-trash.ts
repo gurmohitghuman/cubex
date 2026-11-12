@@ -1,4 +1,4 @@
-// Settings → Trash: how many days deleted rows, sheets and tables are kept
+// Settings → Trash: how many days deleted rows, columns, sheets and tables are kept
 // (0 deletes them at once). Cookie session only (mounted under /api/settings).
 // Lowering it empties what is now older at the trash's next sweep, started at once.
 import express from 'express';

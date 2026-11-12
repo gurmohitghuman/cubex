@@ -15,12 +15,14 @@ import tokenStartMod from '../../server/src/services/run-start-token-http'
 import runsMod from '../../server/src/routes/api-v1-runs'
 import keysMod from '../../server/src/routes/settings-api-keys'
 import mcpMod from '../../server/src/mcp/build-server'
+import timeoutsMod from '../../server/src/lib/server-timeouts'
 const { MCP_RUN_STARTS_PER_MIN } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
 const { tokenStartHttpRun } = tokenStartMod as typeof import('../../server/src/services/run-start-token-http')
 const { default: v1Runs } = runsMod as unknown as { default: express.Router }
 const { default: keyRoutes } = keysMod as unknown as { default: express.Router }
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
+const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 export type Answer = { status?: number; ok?: Record<string, unknown>; fail?: string; message?: string }
 export type Args = Record<string, unknown> & { sheet_id: string }
@@ -55,6 +57,7 @@ export async function httpKit(name: string) {
   }
   app.use('/api/settings', keyRoutes)
   const server = app.listen(0)
+  applyServerTimeouts(server)
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
   const clients: Record<string, Client> = {}

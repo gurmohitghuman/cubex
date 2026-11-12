@@ -62,7 +62,8 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'read with read_rows (keyset paging, stable row ids); write with ' +
         'append_rows/update_cells/delete_rows; manage columns with ' +
         'add_column/rename_column/delete_column; sort_sheet permanently reorders rows. ' +
-        'Deleted rows, sheets and tables go to the trash for the days set in Settings: list_trash shows them ' +
+        'Deleted rows, sheets, tables and columns go to the trash for the days set in Settings: list_trash shows ' +
+        'them ' +
         'and restore_from_trash brings them back; get_sheet_history shows what changed on a sheet and who did it. ' +
         'Set up workspaces with manage_table/manage_sheet and bulk-load with ' +
         'import_csv. To move a CSV file in or out, create_upload_link and ' +

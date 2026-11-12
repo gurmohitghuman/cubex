@@ -104,6 +104,18 @@ Deleted rows go to the trash, a slice at a time. Measured with a script on the s
 | Restore those 990,000 rows | 55 s | 0.6 s |
 | Empty a batch of 990,000 rows from the trash | 9 s | 0.5 s |
 
+A deleted column goes to the trash the same way: its cells move into the trash 1,000 rows at a time as they leave the rows, each slice followed by a checkpoint of its own. Measured with a script on a 4-core Linux server (AMD EPYC, 8 GB) while other work ran, two runs each, on a sheet of 100,000 rows and 5 columns, the column's 85,714 cells (3.8 MB in the trash) deleted and restored through a running server, which a read of the sheet's first page every 20 ms kept asking:
+
+| Action | Time | Others waited |
+|---|---|---|
+| Delete a column to the trash (the answer comes once its cells are in, or after 5 s) | 1.6 to 1.9 s | 0.03 s |
+| The same delete with Settings keeping 0 days, as before (100,000 cells) | 0.75 to 0.8 s | 0.07 s |
+| Restore it | answers in 0.01 to 0.03 s (`"state": "restoring"`); the column shows again with every cell 4.4 to 4.7 s later | 0.04 s |
+
+Run in the server's process to time each transaction, on a sheet of 200,000 rows (171,428 cells): a slice of the delete's move held the database at most 12 to 24 ms and a checkpoint 9 to 28 ms, and the whole delete took 2.7 to 3.2 s (1.3 to 1.5 s with nothing kept, in slices of 5,000 rows holding it up to 96 ms). With cells of 2 KB (100,000 rows, 177 MB in the trash) a slice held it at most 68 to 71 ms, against 127 to 140 ms for the delete with nothing kept, and the whole delete took 4.8 to 5.4 s (2.1 to 2.2 s). A restore writes 250 cells a transaction, fewer when clean, formula or lookup columns read the column (each restored cell queues its row for them): its longest transaction took 11 to 16 ms and its longest checkpoint 12 to 29 ms, and the whole restore 5.7 to 6.1 s with no such column, 11 to 17 s with one and 18 to 41 s with three (random row ids the slower end); 6.3 to 6.7 s for the 2 KB cells.
+
+The delete waits for its cells at most 5 seconds, then answers `"state": "moving"` while they keep going to the trash in the background (the app gives up on a request at 30 s, an MCP client by default at 60 s). In the server's process on the same server, a sheet of 1,000,000 rows and a column of 60-character cells, two runs: the delete answered after 5.0 s, and every cell was in the trash 16.3 to 18.7 s after it began; a delete that waited for all of them answered after 16.2 to 16.8 s. The longest the server was held up was 82 to 86 ms (75 to 77 ms for the delete that waited). With Settings keeping 0 days the delete waits for its strip, as it always did: 6.5 to 7.3 s, held up at most 86 to 123 ms.
+
 "Stop that run" was measured again with a script on a 4-core Linux server, once a stopped run's cells got back what they held before it: 1,000,000 rows of 10 columns, both of the run's columns holding an earlier answer in every row, stopped before any row ran. The stop answered in 0.02 to 0.03 s, and every cell had its earlier answer back 13.2 to 13.8 s later. On that server the clear that only emptied those cells took 8.3 s (3.2 s on the laptop above). No other request would have waited longer than 0.09 s (0.1 s when the clear only emptied them).
 
 Rows in the trash keep their space in the database until they leave it. The file doesn't shrink then: SQLite reuses the freed space for new rows.

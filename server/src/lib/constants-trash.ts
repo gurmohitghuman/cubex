@@ -1,7 +1,7 @@
 // The trash (services/trash-*.ts, migration 036) and the sheet change log
 // (services/sheet-history.ts, migration 037). Re-exported from constants.ts.
 
-// How many days deleted rows, sheets and tables are kept (Settings); 0 deletes them at once.
+// How many days deleted rows, columns, sheets and tables are kept (Settings); 0 deletes them at once.
 export const TRASH_DAYS_DEFAULT = 30;
 export const TRASH_DAYS_MAX = 90;
 // How often the trash looks for what has been kept long enough (and prunes the change log).
@@ -17,6 +17,17 @@ export const TRASH_GROUP_MS = 10 * 60 * 1000;
 // of a second or more; 250 rows and a checkpoint each, 2-6 ms and 5-13 ms (p99),
 // as removing duplicates found (lib/constants-dedupe.ts).
 export const TRASH_SLICE_ROWS = 250;
+// A column deleted to the trash (lib/trash/column-move.ts): rows per slice of its strip, each slice copying
+// the cells into the trash and removing them in one transaction, with a PASSIVE checkpoint after it. The
+// strip alone takes 5,000 rows (HEAVY_SLICE_ROWS); copying the cells too writes them twice, so a slice of
+// 5,000 rows holding 2 KB cells held the server 310-350 ms (140-150 ms without the copy). 1,000 rows and a
+// checkpoint each keep a slice near a fifth of that.
+export const COLUMN_TRASH_SLICE_ROWS = 1_000;
+// A column delete to the trash waits this long for its cells to move into the item, then answers that they
+// are still moving ("state": "moving"); the move goes on in the background and boot finishes one a restart
+// cut. The app's requests give up at 30 s and an MCP client's at 60 s by default; at 1,000,000 rows of wide
+// cells the move takes over a minute.
+export const COLUMN_DELETE_WAIT_MS = 5_000;
 // A batch's own rows go for good in their order (no random index): more at a time.
 export const TRASH_PURGE_BATCH_ROWS = 2_000;
 // The app's grid sends a big delete in calls of this many rows (one batch in

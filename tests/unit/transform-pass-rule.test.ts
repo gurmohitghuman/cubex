@@ -111,7 +111,7 @@ async function main() {
       const p = { sheetId: redo, operation: 'upper' as const, sourceColumn: 'S', targetColumn: 'U' }
       await stoppedAt(p)
       assert.equal(records(redo), 1)
-      assert.deepEqual(await deleteSheetColumn(redo, uid, 'U'), { ok: true })
+      assert.ok('ok' in await deleteSheetColumn(redo, uid, 'U'))
       assert.equal(records(redo), 0, 'it went with the column')
       assert.ok('ok' in addSheetColumn(redo, uid, 'U'))
       assert.deepEqual(await transformColumn(uid, p), { ok: { updated: ROWS, created_column: null } })

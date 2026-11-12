@@ -1,7 +1,8 @@
 // Reading the trash: the Trash page, GET /api/v1/trash and MCP list_trash.
 // One list for the whole account (newest first, searchable by name and by
 // who deleted it), and a batch's rows a page at a time, searchable by one
-// column (or any cell) a slice of rows per call.
+// column (or any cell) a slice of rows per call. A deleted column's cells
+// read the same way: each is a row holding only that cell.
 import { db } from '../lib/db';
 import {
   TRASH_LIST_PAGE, TRASH_ROWS_PAGE_DEFAULT, TRASH_ROWS_PAGE_MAX, TRASH_SEARCH_SCAN_ROWS,
@@ -10,6 +11,8 @@ import { jsonPath, parseRowData } from '../lib/sql-helpers';
 import { actorLabel, type Via } from '../lib/actor';
 import { getTrashDays, getTrashItem, trashExpiry, type TrashItem } from '../lib/trash/store';
 import { batchColumns } from '../lib/trash/restore-rows';
+import { columnSetupOf, droppedRefsOf } from '../lib/trash/column-restore';
+import { fillKind, KIND_WORDS } from '../lib/setup-versions/spec';
 
 export interface TrashEntry {
   id: number; kind: TrashItem['kind']; state: TrashItem['state'];
@@ -18,6 +21,9 @@ export interface TrashEntry {
   how: TrashItem['how']; by: string; via: string; token_name: string | null;
   rows: number; bytes: number; columns: string[];
   restored_so_far?: number;
+  // A deleted column: its name, its cells (rows that held a value), what it was, and how many references
+  // other columns, views and settings had to it went with the delete (the restore lists them).
+  column?: string; cells?: number; column_kind?: string; references_dropped?: number;
   // Why it can't be restored right now (its sheet or table is in the trash too).
   blocked?: string;
   // What to know first: rows moved to another sheet are still there.
@@ -32,10 +38,16 @@ function entryOf(item: TrashItem, days: number): TrashEntry {
     expires_at: trashExpiry(item.deleted_at, days),
     table_id: item.table_id, table_name: item.table_name, sheet_id: item.sheet_id, sheet_name: item.sheet_name,
     how: item.how, by: actorLabel(item.via as Via, item.token_name), via: item.via, token_name: item.token_name,
-    rows: item.row_count, bytes: item.bytes, columns: item.kind === 'rows' ? batchColumns(item) : [],
-    ...(item.state === 'restoring' ? { restored_so_far: item.restored } : {}),
+    rows: item.row_count, bytes: item.bytes,
+    columns: item.kind === 'rows' || item.kind === 'column' ? batchColumns(item) : [],
+    ...(item.state === 'restoring' ? { restored_so_far: item.restored + item.restore_skipped + item.restore_kept }
+      : {}),
+    ...(item.kind === 'column' ? columnFacts(item) : {}),
     ...(item.how === 'transfer'
       ? { note: 'These rows were moved to another sheet and are still there: restoring them here keeps both.' } : {}),
+    ...(item.kind === 'column' && item.state === 'kept' && item.restore_name !== null
+      ? { note: `Its other cells went back to "${item.restore_name}". These stayed: their rows were gone, or held a `
+        + 'value there. Restored again, each goes into it once its row is back and empty there.' } : {}),
     ...(item.how === 'rerun'
       ? { note: 'A rerun replaced these rows. Restored, they stay as rows of their own: a later rerun adds new rows '
         + 'beside them.' } : {}),
@@ -43,8 +55,14 @@ function entryOf(item: TrashItem, days: number): TrashEntry {
   };
 }
 
+function columnFacts(item: TrashItem): Partial<TrashEntry> {
+  const fill = columnSetupOf(item).fill;
+  return { column: item.column_name ?? '', cells: item.row_count,
+    column_kind: KIND_WORDS[fill ? fillKind(fill) : 'plain'], references_dropped: droppedRefsOf(item).length };
+}
+
 function blockedBy(item: TrashItem): { blocked?: string } {
-  const holder = item.kind === 'rows'
+  const holder = item.kind === 'rows' || item.kind === 'column'
     ? db.prepare(`SELECT h.kind, h.sheet_name, h.table_name FROM sheets s JOIN trash_items h ON h.id = s.trash_id
         WHERE s.id = ?`).get(item.sheet_id)
     : item.kind === 'sheet'
@@ -60,7 +78,7 @@ function blockedBy(item: TrashItem): { blocked?: string } {
 
 export interface TrashList { items: TrashEntry[]; kept_days: number; next_before: number | null; total_bytes: number }
 
-// q: words in a table or sheet name, or the access token that deleted it.
+// q: words in a table, sheet or column name, or the access token that deleted it.
 export function listTrash(
   userId: string,
   opts: {
@@ -72,10 +90,10 @@ export function listTrash(
   const rows = db.prepare(`SELECT * FROM trash_items WHERE user_id = ? AND id < ?
       AND (? IS NULL OR kind = ?) AND (? IS NULL OR how = ?) AND (? IS NULL OR sheet_id = ?)
       AND (? IS NULL OR table_name LIKE ? ESCAPE '\\' OR sheet_name LIKE ? ESCAPE '\\'
-        OR token_name LIKE ? ESCAPE '\\')
+        OR token_name LIKE ? ESCAPE '\\' OR column_name LIKE ? ESCAPE '\\')
     ORDER BY id DESC LIMIT ?`)
     .all(userId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.kind ?? null, opts.kind ?? null,
-      opts.how ?? null, opts.how ?? null, opts.sheetId ?? null, opts.sheetId ?? null, like, like, like, like,
+      opts.how ?? null, opts.how ?? null, opts.sheetId ?? null, opts.sheetId ?? null, like, like, like, like, like,
       limit + 1) as TrashItem[];
   const more = rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
@@ -109,12 +127,14 @@ export function readTrashRows(
   opts: { after?: number; limit?: number; column?: string; contains?: string } = {},
 ): TrashRowsPage | { fail: 'not_found' | 'bad_request'; message: string } {
   const item = getTrashItem(id, userId);
-  if (!item || item.kind !== 'rows') {
-    return { fail: 'not_found', message: 'No batch of rows in the trash with that id.' };
+  if (!item || (item.kind !== 'rows' && item.kind !== 'column')) {
+    return { fail: 'not_found', message: 'No batch of rows or column in the trash with that id.' };
   }
   const columns = batchColumns(item);
   if (opts.column && !columns.includes(opts.column)) {
-    return { fail: 'bad_request', message: `These rows have no column "${opts.column}".` };
+    return { fail: 'bad_request', message: item.kind === 'column'
+      ? `This is the column "${item.column_name}": search it without column, or with that name.`
+      : `These rows have no column "${opts.column}".` };
   }
   const limit = Math.max(1, Math.min(TRASH_ROWS_PAGE_MAX, opts.limit ?? TRASH_ROWS_PAGE_DEFAULT));
   const after = opts.after ?? 0;

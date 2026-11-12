@@ -136,6 +136,8 @@ export function registerTool(
 const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
   'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields', 'get_usage',
+  // The trash and the change log: a column's cells keep moving into the trash after its delete answered.
+  'list_trash', 'get_sheet_history',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
   // Only cancel_all names a sheet, and stopping its runs is allowed while it is

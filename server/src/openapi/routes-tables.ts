@@ -2,7 +2,7 @@
 // api-v1-tables.ts, api-v1-table-sheets.ts, api-v1-sheets.ts, api-v1-sheet-ops.ts,
 // api-v1-columns.ts).
 import { z } from 'zod';
-import { MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
+import { COLUMN_DELETE_WAIT_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
@@ -112,7 +112,8 @@ export const tableRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/columns', operationId: 'addColumn', tag: 'columns', scope: 'write',
     summary: 'Add an empty column.',
     body: z.object({
-      name: z.string().describe('The column name. Names are unique in a sheet, whatever their case.'),
+      name: z.string().describe('The column name. Names are unique in a sheet, whatever their case; a column '
+        + 'being restored from the trash holds its name until it is back (409).'),
       description: describing(MAX_COLUMN_DESCRIPTION_CHARS).optional(),
     }),
     responses: { 201: 'The new column name, and its description when one was given.' },
@@ -133,6 +134,13 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'delete', path: '/sheets/{id}/columns/{name}', operationId: 'deleteColumn', tag: 'columns',
-    scope: 'write', summary: 'Delete a column and its values for good. Columns never go to the trash.',
+    scope: 'write', summary: 'Put a column in the trash with its cells, place, description and own setup.',
+    description: 'What other columns, views and settings said about it is removed now; the restore lists each one. '
+      + 'The answer\'s trash gives trash_id, kept_days, restorable_until, how_to_restore and state (trash_id null: '
+      + 'Settings keeps deleted things 0 days, so it was deleted at once). The column leaves the sheet at once and '
+      + `its cells then move into the trash. The answer waits for them up to ${COLUMN_DELETE_WAIT_MS / 1000} `
+      + 'seconds: state "kept" when they are all in, else "moving" with a note (they are still going to the trash '
+      + 'in the background; GET /trash/{id} shows "moving" until they are all in, and a restore before then '
+      + 'answers 409).',
   }),
 ];
