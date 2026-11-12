@@ -73,6 +73,7 @@ export function rowCostLabel(e: RunControlEstimate): string {
 
 // A run that paused itself and left its reason in error_message: its provider
 // failing row after row, results that couldn't be saved, a worker that kept
-// stopping (server lib/run-pool.ts, services/stalled-runs.ts).
-const SELF_PAUSES = new Set(['provider_errors', 'storage', 'stalled'])
+// stopping, an AI run's web fetch engine its OpenRouter workspace doesn't
+// allow (server lib/run-pool.ts, services/stalled-runs.ts).
+const SELF_PAUSES = new Set(['provider_errors', 'storage', 'stalled', 'web_engine'])
 export const selfPaused = (reason: string | null | undefined): boolean => !!reason && SELF_PAUSES.has(reason)

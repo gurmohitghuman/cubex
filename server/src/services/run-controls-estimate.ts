@@ -9,6 +9,7 @@ import { existingRowIndexes } from '../lib/run-rows';
 import type { OutputColumnSpec } from '../lib/ai-multi-output';
 import type { SearchOptions, SearchEngine } from '../lib/web-search-options';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
+import { runFetchLimits } from '../lib/web-fetch-options';
 import { estimateAiRun } from './run-estimate';
 import { estimateHttpRun } from './run-estimate-http';
 import { resolveRerunTargets } from './ai-rerun-modes';
@@ -35,13 +36,14 @@ interface AiSettings {
   prompt: string; system_prompt: string | null; model: string | null; use_openrouter_web_search: number;
   use_web_fetch: number; max_chars: number | null; output_columns: string | null; run_if: string | null;
   concurrency: number; web_search_engine: string | null; web_search_mode: string | null;
-  web_search_max_per_row: number | null;
+  web_search_max_per_row: number | null; web_fetch_max_content_tokens: number | null;
+  web_fetch_max_pages: number | null;
 }
 
 // The column's newest run's settings (never target_rows: a rerun's can list a million rows).
 const latestAi = (sheetId: string, userId: string, main: string) => db.prepare(`SELECT prompt, system_prompt, model,
     use_openrouter_web_search, use_web_fetch, max_chars, output_columns, run_if, concurrency, web_search_engine,
-    web_search_mode, web_search_max_per_row
+    web_search_mode, web_search_max_per_row, web_fetch_max_content_tokens, web_fetch_max_pages
   FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`)
   .get(sheetId, userId, main) as AiSettings | undefined;
 
@@ -65,6 +67,8 @@ async function estimateAi(userId: string, sheetId: string, main: string, t: RunT
       engine: (run.web_search_engine ?? 'auto') as SearchEngine, mode: run.web_search_mode,
       maxPerRow: run.web_search_max_per_row,
     } satisfies SearchOptions : null,
+    // The rerun keeps the column's fetch limits, and its own runs' history comes first.
+    fetchLimits: runFetchLimits(run), historyColumn: main,
   });
   if ('fail' in est) return est.fail === 'no_rows' ? NOTHING : { fail: est.fail, message: est.message };
   const cost = est.ok.estimated_cost_usd;
@@ -72,7 +76,8 @@ async function estimateAi(userId: string, sheetId: string, main: string, t: RunT
     ok: {
       kind: 'ai', column: main, rows: est.ok.rows_to_process, lowUsd: cost?.low ?? null, highUsd: cost?.high ?? null,
       basis: 'range', spendLimitUsd: null, reusedRows: 0,
-      note: cost ? null : est.ok.model ? `No price is known for ${est.ok.model}.` : 'No AI model is set for it.',
+      note: [cost ? null : est.ok.model ? `No price is known for ${est.ok.model}.` : 'No AI model is set for it.',
+        est.fetchNote].filter(Boolean).join(' ') || null,
     },
   };
 }

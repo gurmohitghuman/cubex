@@ -79,10 +79,12 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           `Cut each page web_fetch reads to about this many tokens (${WEB_FETCH_MAX_CONTENT_TOKENS_MIN}-`
           + `${WEB_FETCH_MAX_CONTENT_TOKENS_MAX}; needs web_fetch). A page's text goes into the prompt, so this `
           + 'bounds what a row costs. With this or max_pages_per_row the pages are read through Exa ($0.001 a '
-          + 'page), since a model\'s own fetch doesn\'t cut pages. Reruns and saved setups keep it.'),
+          + 'page), since a model\'s own fetch doesn\'t cut pages; an OpenRouter workspace that limits web fetch '
+          + 'engines must allow Exa, or the run pauses (pause_reason web_engine). Reruns and saved setups keep it.'),
         max_pages_per_row: lenientInt(1, WEB_FETCH_MAX_PAGES_PER_ROW, `max_pages_per_row must be ${MAX_PAGES_RANGE}.`)
-          .optional().describe(`Most pages web_fetch may read for one row (1-${WEB_FETCH_MAX_PAGES_PER_ROW}; `
-          + 'needs web_fetch); further fetches are refused and the model answers from what it read.'),
+          .optional().describe(`Most pages web_fetch may read for one row (1-${WEB_FETCH_MAX_PAGES_PER_ROW}, `
+          + 'Cubex\'s own cap: Exa has none; needs web_fetch); further fetches are refused and the model answers '
+          + 'from what it read. Read through Exa, as with max_content_tokens.'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids (from read_rows) to run; omit for all rows'),
         run_if: runIfSchema,
         estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, model, estimated_cost_usd:{low,high}, web_fees_usd, web_search:{engine, runs_on, mode, price_per_search_usd, searches_per_row, switched, ...}, ... } and start nothing. No AI calls, no columns created. In web_search, engine is what the run sends, runs_on is what runs the searches, and mode is the one billed (the engine\'s default when you chose none). in_flight {concurrency, reserve_at_concurrency_usd, account_balance_usd, concurrency_ceiling, note, warning}: OpenRouter holds each running call\'s possible cost and lets the account hold only part of its balance at once, so a high concurrency can be refused (402) before the balance runs out; follow its warning. own_provider_key: true when your latest run on this model ran on your own provider key (BYOK).'

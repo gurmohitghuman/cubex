@@ -17,7 +17,7 @@ export function rowMostUsd(
     maxChars: input.maxChars,
     web: {
       search: !!input.useOpenRouterWebSearch, fetch: !!input.useWebFetch, used: plan?.used ?? null,
-      mode: plan?.mode ?? null, maxPerRow: plan?.maxPerRow ?? null,
+      mode: plan?.mode ?? null, maxPerRow: plan?.maxPerRow ?? null, fetchLimits: input.fetchLimits ?? null,
     },
   });
   const rows = sample.length ? sample : [{}];

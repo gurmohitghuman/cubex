@@ -1,6 +1,7 @@
 // AI / OpenRouter constants, split out of constants.ts (200-line guardrail).
 // Import via './constants' (which re-exports this module) — call sites don't
 // need to know about the physical split.
+export * from './constants-web-fetch';
 
 // OpenRouter integration
 // Overridable only to point a test at a stand-in (as TREG_BASE_URL).
@@ -173,24 +174,9 @@ export const SEARCH_CATALOG_RETRY_MS = 60_000;
 // searches; a model's own search has no such stop. A per-row cap replaces both.
 export const WEB_SEARCHES_PER_ROW = { low: 1, high: 2 };
 export const WEB_SEARCHES_PER_ROW_NATIVE = { low: 1, high: 3 };
-// Fetch is $0.001 a page on Exa/Parallel (free on OpenRouter's own engine;
-// a model's own fetch is billed at its provider's price, which OpenRouter
-// passes through: https://openrouter.ai/docs/guides/features/server-tools/web-fetch).
-export const WEB_FETCH_USD_PER_PAGE = 0.001;
-// The web fetch limits a run can send (max_content_tokens per page, max_uses
-// as pages per row). OpenRouter caps its own and native fetchers at 50
-// fetches a request; its docs give no range for the token limit.
-export const WEB_FETCH_MAX_CONTENT_TOKENS_MIN = 100;
-export const WEB_FETCH_MAX_CONTENT_TOKENS_MAX = 100_000;
-export const WEB_FETCH_MAX_PAGES_PER_ROW = 50;
-// The engine a run with a fetch limit fetches through: a model's own fetch
-// doesn't cut pages to a token limit, Exa does (and takes max_uses).
-export const WEB_FETCH_LIMITED_ENGINE = 'exa';
-export const WEB_FETCH_PAGES_PER_ROW = { low: 1, high: 3 };
-// Input tokens the found or fetched text adds to a row's prompt, when there's
-// no history of runs with the same web tools to go by.
+// Input tokens the found text adds to a row's prompt, when there's no history
+// of runs with the same web tools to go by (fetched pages: constants-web-fetch.ts).
 export const WEB_SEARCH_TOKENS_PER_SEARCH = { low: 750, high: 2_500 };
-export const WEB_FETCH_TOKENS_PER_PAGE = { low: 1_000, high: 6_000 };
 
 // "Only run if" rules (lib/run-condition.ts): the rule box checks a rule on the
 // whole sheet and shows the first rows with their verdict; "Generate" shows the

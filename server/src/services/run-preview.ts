@@ -172,7 +172,8 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   recordCallUsage(userId, input.sheetId, input.columnName ?? null, 'preview', spent);
   // What the rows measured, for later estimates of this prompt (services/ai-preview-history.ts).
   savePreviewTokens(userId, input.sheetId, {
-    model, prompt: input.prompt, webSearch: web.search, webFetch: web.fetch, engineUsed: planned.ok?.used ?? null,
+    model, prompt: input.prompt, systemPrompt: input.systemPrompt, outputs: specs?.length ?? 0,
+    webSearch: web.search, webFetch: web.fetch, engineUsed: planned.ok?.used ?? null, fetchLimits: input.fetchLimits,
   }, results);
 
   const costs = await previewCosts(userId, results, model, count, {

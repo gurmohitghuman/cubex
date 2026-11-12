@@ -44,7 +44,7 @@ export interface AIRun {
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   // 'token_cap': it paused itself, the access token that started it at its spend cap.
   // 'spend_limit': it reached its own spend limit; Resume asks for a higher one (RaiseLimitDialog).
-  // 'provider_errors', 'storage', 'stalled': it paused itself, error_message says why.
+  // 'provider_errors', 'storage', 'stalled', 'web_engine': it paused itself, error_message says why.
   pause_reason?: string | null
   // Its hard spend limit in dollars (null: none).
   spend_limit_usd?: number | null

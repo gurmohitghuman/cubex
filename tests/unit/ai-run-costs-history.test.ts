@@ -55,9 +55,11 @@ const P = 'Sum up /name'
 const elsewhere = sheetOf(1)
 pastRun({ sheet: elsewhere, column: 'X (Output)', prompt: 'Other /name', rows: 6, out: 900 })
 pastRun({ sheet: elsewhere, column: 'Y (Output)', prompt: P, rows: 6, out: 300 })
-pastRun({ sheet: S, column: 'Sum (Output)', prompt: 'Old words /name', rows: 6, out: 40 })
-pastRun({ sheet: S, column: 'Thin (Output)', prompt: 'Thin /name', rows: AI_ESTIMATE_MIN_HISTORY - 1, out: 7 })
-pastRun({ sheet: S, column: 'Moved (Output)', prompt: 'Moved /name', rows: 6, out: 8, model: OTHER_MODEL })
+// Runs from before prompts were hashed: they count for their column whatever the prompt (and not for the prompt step).
+pastRun({ sheet: S, column: 'Sum (Output)', prompt: 'Old words /name', rows: 6, out: 40, hash: false })
+pastRun({ sheet: S, column: 'Thin (Output)', prompt: 'Thin /name', rows: AI_ESTIMATE_MIN_HISTORY - 1, out: 7,
+  hash: false })
+pastRun({ sheet: S, column: 'Moved (Output)', prompt: 'Moved /name', rows: 6, out: 8, model: OTHER_MODEL, hash: false })
 savePreviewTokens(uid, S, { model: PRICED, prompt: 'Previewed /name', webSearch: false, webFetch: false,
   engineUsed: null }, tokens(6, 60))
 
@@ -88,7 +90,7 @@ await ok('estimate_only names the step and its rows, for one column or output co
   assert.deepEqual(Object.keys(a).slice(-2), ['history_rows', 'history_from'])
   assert.match((one.ok as any).note, /from your past runs of this column\./)
   assert.equal((one.ok as any).basis, 'history', 'basis keeps its meaning')
-  pastRun({ sheet: S, column: 'Sum (Status)', prompt: 'Typed /name', rows: 5, out: 12 })
+  pastRun({ sheet: S, column: 'Sum (Status)', prompt: 'Typed /name', rows: 5, out: 12, hash: false })
   const typed = await tokenStartAiRun(caller, { sheet_id: S, column_name: 'Sum', prompt: P, model: PRICED,
     estimate_only: true, output_columns: [{ column_name: 'Total', type: 'number', description: 'A sum' }] })
   assert.ok('ok' in typed)
@@ -113,7 +115,7 @@ await ok('a new preview replaces the last one of that prompt on its sheet; faile
   savePreviewTokens(uid, sid, setup, tokens(6, 10))
   const failed = { error: 'bad', tokens: { input: 1, output: 999, reasoning: null } }
   savePreviewTokens(uid, sid, setup, [...tokens(5, 20), failed])
-  const rows = previewTokenRows(uid, PRICED, 'Replace /name')
+  const rows = previewTokenRows(uid, PRICED, promptHash('Replace /name'))
   assert.equal(rows.length, 5)
   assert.ok(rows.every(r => r.c === 20))
 })
@@ -124,7 +126,10 @@ await ok('each user keeps only the newest preview rows', () => {
   savePreviewTokens(uid, sid, setup, tokens(AI_PREVIEW_HISTORY_MAX_ROWS + 5, 33))
   const kept = db.prepare('SELECT COUNT(*) FROM ai_preview_tokens WHERE user_id = ?').pluck().get(uid) as number
   assert.equal(kept, AI_PREVIEW_HISTORY_MAX_ROWS)
-  assert.equal(previewTokenRows(uid, PRICED, 'Previewed /name').length, 0, 'the oldest went first')
+  assert.equal(previewTokenRows(uid, PRICED, promptHash('Previewed /name')).length, 0, 'the oldest went first')
+  assert.equal(db.prepare(`SELECT COUNT(*) FROM ai_previews v WHERE user_id = ?
+    AND NOT EXISTS (SELECT 1 FROM ai_preview_tokens WHERE preview_id = v.id)`).pluck().get(uid), 0,
+  'a preview left with no rows goes too')
 })
 
 await ok("a column rename keeps a run's prompt hash with its rewritten prompt", () => {
@@ -162,7 +167,7 @@ await ok('every step reads through its own index, with no sort over all runs', (
   const plans: string[] = []
   const prepare = db.prepare.bind(db)
   ;(db as any).prepare = (sql: string) => {
-    if (/FROM ai_runs|FROM ai_preview_tokens/.test(sql) && !sql.startsWith('EXPLAIN')) {
+    if (/FROM ai_runs|FROM ai_previews/.test(sql) && !sql.startsWith('EXPLAIN')) {
       const params = (sql.match(/\?/g) ?? []).length
       plans.push((prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...Array(params).fill(null)) as Array<{ detail: string }>)
         .map(p => p.detail).join(' | '))
@@ -170,17 +175,18 @@ await ok('every step reads through its own index, with no sort over all runs', (
     return prepare(sql)
   }
   try {
-    columnRuns(uid, S, 'Sum (Output)', PRICED)
-    promptRuns(uid, PRICED, P)
+    columnRuns(uid, S, 'Sum (Output)', PRICED, promptHash(P))
+    promptRuns(uid, PRICED, promptHash(P))
     modelRuns(uid, PRICED)
-    previewTokenRows(uid, PRICED, P)
+    previewTokenRows(uid, PRICED, promptHash(P))
   } finally { (db as any).prepare = prepare }
   assert.equal(plans.length, 4)
   assert.match(plans[0], /SEARCH ai_runs USING INDEX idx_ai_runs_column_history/)
   assert.match(plans[1], /SEARCH ai_runs USING INDEX idx_ai_runs_prompt_history/)
   assert.match(plans[2], /SEARCH ai_runs USING INDEX idx_ai_runs_model_history/)
-  assert.match(plans[3], /SEARCH ai_preview_tokens USING INDEX idx_ai_preview_tokens_prompt/)
-  for (const p of plans) assert.doesNotMatch(p, /SCAN ai_runs|SCAN ai_preview_tokens/, p)
+  assert.match(plans[3], /SEARCH v USING (COVERING )?INDEX idx_ai_previews_prompt/)
+  assert.match(plans[3], /SEARCH t USING INDEX idx_ai_preview_tokens_preview/)
+  for (const p of plans) assert.doesNotMatch(p, /SCAN (ai_runs|ai_previews|ai_preview_tokens|v|t)\b/, p)
   // The inner newest-first read needs no sort; only the outer one sorts its few kept runs.
   assert.doesNotMatch(plans[2], /TEMP B-TREE/, plans[2])
   console.log(plans.join('\n'))

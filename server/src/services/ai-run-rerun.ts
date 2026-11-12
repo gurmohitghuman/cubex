@@ -200,7 +200,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         // A rerun is done for whoever asks for it (lib/actor.ts), not the run it repeats.
         actorTokenId(), p.spendLimitUsd ?? null,
         // The same web fetch limits as the run it repeats.
-        ...runInsertExtras(latestRun.prompt, !!latestRun.use_web_fetch, runFetchLimits(latestRun)),
+        ...runInsertExtras({ prompt: latestRun.prompt, systemPrompt: latestRun.system_prompt, outputs: 0 },
+          !!latestRun.use_web_fetch, runFetchLimits(latestRun)),
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 

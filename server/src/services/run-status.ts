@@ -109,10 +109,10 @@ function capPausePart(r: CapPaused) {
 }
 
 // An AI or HTTP API run that paused itself for a reason it stored the words
-// of (lib/run-pool.ts, services/stalled-runs.ts): an AI run's own spend
-// limit, its provider failing row after row, a database that couldn't be
-// written, a worker that kept stopping.
-const SELF_PAUSES = new Set(['spend_limit', 'provider_errors', 'storage', 'stalled']);
+// of (lib/run-pool.ts, services/stalled-runs.ts): an AI run's own spend limit,
+// its provider failing row after row, a database that couldn't be written, a
+// worker that kept stopping, an AI run's web fetch engine refused by OpenRouter.
+const SELF_PAUSES = new Set(['spend_limit', 'provider_errors', 'storage', 'stalled', 'web_engine']);
 function selfPausePart(r: { status: string; pause_reason?: string | null; error_message?: string | null }) {
   if (r.status !== 'paused' || !r.pause_reason || !SELF_PAUSES.has(r.pause_reason)) return {};
   return { pause_reason: r.pause_reason, pause_message: r.error_message ?? null };

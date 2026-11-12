@@ -53,10 +53,13 @@ export const runFetchLimits = (run: {
   maxContentTokens: run.web_fetch_max_content_tokens ?? null, maxPagesPerRow: run.web_fetch_max_pages ?? null,
 });
 
-// The last three ai_runs values every start and rerun inserts (migration 055): the prompt's hash, then the fetch
-// limits (none without web fetch).
-export const runInsertExtras = (prompt: string, webFetch: boolean, limits?: FetchLimits | null) => [
-  promptHash(prompt),
+// The last three ai_runs values every start and rerun inserts (migration 055): the prompt's hash (its system
+// prompt and output column count in it: lib/ai-prompt-hash.ts), then the fetch limits (none without web fetch).
+export const runInsertExtras = (
+  key: { prompt: string; systemPrompt: string | null | undefined; outputs: number }, webFetch: boolean,
+  limits?: FetchLimits | null,
+) => [
+  promptHash(key.prompt, key.systemPrompt, key.outputs),
   webFetch ? limits?.maxContentTokens ?? null : null,
   webFetch ? limits?.maxPagesPerRow ?? null : null,
 ] as const;

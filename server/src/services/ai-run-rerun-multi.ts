@@ -131,7 +131,8 @@ export async function rerunAiMultiColumn(
         latest.web_search_engine ?? null, latest.web_search_engine_used ?? null,
         latest.web_search_mode ?? null, latest.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
         actorTokenId(), p.spendLimitUsd ?? null,
-        ...runInsertExtras(latest.prompt, !!latest.use_web_fetch, runFetchLimits(latest)),
+        ...runInsertExtras({ prompt: latest.prompt, systemPrompt: latest.system_prompt, outputs: specs.length },
+          !!latest.use_web_fetch, runFetchLimits(latest)),
       );
     }).immediate();
     if (capExceeded) return {

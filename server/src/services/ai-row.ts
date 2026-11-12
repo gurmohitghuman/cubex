@@ -18,7 +18,7 @@ import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
-  throwIfStorage, timedTries,
+  throwIfStorage, timedTries, webEngineRow,
 } from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
@@ -145,6 +145,9 @@ export async function processRow(
       recordDroppedCall(ctx, billedUsage(call, error));
       return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
+    // The workspace refused the run's web fetch engine: the row waits for a resume, the run pauses.
+    const refused = webEngineRow(run, error);
+    if (refused) return refused;
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a
     // user-reported cell tells us WHICH transport failure it was — the SDK's

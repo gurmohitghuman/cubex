@@ -23,7 +23,8 @@ export interface StandIn {
   modelsHits: number
   calls: number
   // Per call (1-based): 'ok', 'cut' (a 200 whose body breaks off: the call may be billed), 'reset' (the
-  // connection is reset, no answer), or wait for a promise (then answer as it says, 'ok' by default).
+  // connection is reset, no answer), an error status with OpenRouter's error body ({ error: { code, message,
+  // metadata } }), or wait for a promise (then answer as it says, 'ok' by default).
   answer: (n: number) => Answer | Promise<Answer | void>
   // Per call (1-based): fields merged into its usage block (is_byok, cost_details, completion_tokens_details...).
   usage: (n: number) => Record<string, unknown>
@@ -32,7 +33,7 @@ export interface StandIn {
   // GETs answered with this JSON, by the end of their path (e.g. '/tools/openrouter:web_fetch').
   gets: Record<string, unknown>
 }
-type Answer = 'ok' | 'cut' | 'reset'
+type Answer = 'ok' | 'cut' | 'reset' | { status: number; message: string; metadata?: Record<string, unknown> }
 
 export async function startStandIn(): Promise<StandIn & { close: () => void }> {
   const s: StandIn = {
@@ -70,6 +71,11 @@ export async function startStandIn(): Promise<StandIn & { close: () => void }> {
       const how = (await s.answer(n)) ?? 'ok'
       await new Promise(r => setTimeout(r, s.delayMs))
       if (how === 'reset') { req.socket.resetAndDestroy(); return }
+      if (typeof how === 'object') {
+        res.writeHead(how.status, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: { code: how.status, message: how.message, metadata: how.metadata } }))
+        return
+      }
       res.writeHead(200, { 'content-type': 'application/json' })
       if (how === 'cut') { res.end('{"id":"gen-cut","choices":['); return }
       res.end(JSON.stringify({

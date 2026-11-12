@@ -3,8 +3,8 @@
 // as text too) and refused out of range or without web_fetch; a run stores them, its rows send them as the web
 // fetch tool's max_content_tokens and max_uses through Exa (a model's own fetch doesn't cut pages), and its
 // tool-call budget makes room for exactly that many pages; a rerun and a saved setup keep them; the app's draft
-// hashes them only when set; the estimate sizes pages and tokens by them, and leaves out the fetch fee when the
-// model's provider fetches on its own (its price is the provider's), pricing Exa's $0.001 a page otherwise.
+// hashes them only when set; the estimate sizes pages and tokens by them, and counts the fetch fee from $0 to $0.001
+// a page when the model's provider fetches on its own (its price is the provider's), Exa's $0.001 a page otherwise.
 import assert from 'node:assert/strict'
 import { endsWithin, PRICED, startStandIn, world } from './ai-spend-kit'
 
@@ -59,12 +59,13 @@ await ok('the web fetch tool gets the limits through Exa; without them it is sen
   assert.equal(toolCallBudget(search, true, { maxContentTokens: null, maxPagesPerRow: 7 }), 11)
 })
 
-await ok("the estimate's fetch work: pages and tokens capped, the price unknown on a model's own fetch", () => {
+await ok("the estimate's fetch work: pages and tokens capped, $0 to $0.001 a page on a model's own fetch", () => {
   assert.deepEqual(fetchWork({ maxContentTokens: 1500, maxPagesPerRow: 2 }, true), {
-    fetchPages: { low: 1, high: 2 }, fetchTokensPerPage: { low: 1000, high: 1500 }, fetchPricePerPage: 0.001,
+    fetchPages: { low: 1, high: 2 }, fetchTokensPerPage: { low: 1000, high: 1500 },
+    fetchPricePerPage: { low: 0.001, high: 0.001 },
   })
-  assert.equal(fetchWork(null, true).fetchPricePerPage, null)
-  assert.equal(fetchWork(null, false).fetchPricePerPage, 0.001)
+  assert.deepEqual(fetchWork(null, true).fetchPricePerPage, { low: 0, high: 0.001 })
+  assert.deepEqual(fetchWork(null, false).fetchPricePerPage, { low: 0.001, high: 0.001 })
   assert.deepEqual([...parseFetchCatalog({ data: { native_support: { models: [{ slug: 'Test/Priced' }] } } })!],
     ['test/priced'])
   assert.equal(parseFetchCatalog({ data: { native_support: { models: [] } } }), null, 'none listed: unknown')
@@ -110,14 +111,14 @@ await ok("the app's draft hashes the limits only when set", () => {
   assert.notEqual(computeConfigHash({ ...config, maxPagesPerRow: 2 }), computeConfigHash(config))
 })
 
-await ok("the estimate leaves out the fetch fee on a model's own fetch, and prices Exa with a limit", async () => {
+await ok("the estimate counts $0 to $0.001 a page on a model's own fetch, and prices Exa with a limit", async () => {
   stand.gets['/tools/openrouter:web_fetch'] = { data: { native_support: { models: [{ slug: PRICED }] } } }
   const base = { sheet_id: sid, column_name: 'Est', prompt: 'Read about /name', model: PRICED, web_fetch: true,
     estimate_only: true }
   const own = await tokenStartAiRun(caller, base)
   assert.ok('ok' in own)
   const e = own.ok as { web_fees_usd: { low: number; high: number }; note: string }
-  assert.deepEqual(e.web_fees_usd, { low: 0, high: 0 })
+  assert.deepEqual(e.web_fees_usd, { low: 0, high: 0.006 }, 'up to 3 pages at up to $0.001 on each of 2 rows')
   assert.match(e.note, /provider reads pages itself, at a price it sets and OpenRouter passes on/)
   const capped = await tokenStartAiRun(caller, { ...base, max_pages_per_row: 1, max_content_tokens: 500 })
   assert.ok('ok' in capped)

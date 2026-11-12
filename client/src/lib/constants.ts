@@ -54,7 +54,7 @@ export const HTTP_STATUS_PATH = '@status';
 // Highest per-row web search limit (mirrors server MAX_SEARCHES_PER_ROW).
 export const MAX_SEARCHES_PER_ROW = 10;
 // Web fetch limits a run can send (mirror server WEB_FETCH_MAX_CONTENT_TOKENS_MIN/MAX and
-// WEB_FETCH_MAX_PAGES_PER_ROW, lib/constants-ai.ts).
+// WEB_FETCH_MAX_PAGES_PER_ROW, lib/constants-web-fetch.ts).
 export const WEB_FETCH_MAX_CONTENT_TOKENS_MIN = 100;
 export const WEB_FETCH_MAX_CONTENT_TOKENS_MAX = 100_000;
 export const WEB_FETCH_MAX_PAGES_PER_ROW = 50;

@@ -155,7 +155,8 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
         targets ? JSON.stringify(targets) : null,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
         rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
-        ...runInsertExtras(p.prompt, !!p.useWebFetch, p.fetchLimits),
+        ...runInsertExtras({ prompt: p.prompt, systemPrompt: p.systemPrompt, outputs: 0 }, !!p.useWebFetch,
+          p.fetchLimits),
       );
       // Credit reuse: promote still-valid persisted preview results into this
       // run's cells + ai_results, BEFORE placeholder seeding, so the worker's

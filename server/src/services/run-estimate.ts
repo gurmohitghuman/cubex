@@ -20,7 +20,7 @@ import type { SearchOptions } from '../lib/web-search-options';
 import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
 import { checkRunRule } from './run-rule';
 import { ranOnOwnKey, tokenHistory, type HistoryFrom } from './ai-token-history';
-import { estimateWebWork, webNote, webSearchEstimate } from './run-estimate-web';
+import { estimateWebWork, fetchPriceNote, webNote, webSearchEstimate } from './run-estimate-web';
 import { inFlightFor } from './ai-in-flight';
 import type { InFlight } from '../lib/ai-in-flight';
 import type { FetchLimits } from '../lib/web-fetch-options';
@@ -41,6 +41,9 @@ export interface AiEstimateInput {
   // The column the run fills as its runs name it ("<name> (Output)", or "(Status)" with output columns): its own
   // runs' token history comes first (ai-token-history.ts).
   historyColumn?: string | null;
+  // The prompt its runs and previews are found by, as a start stores it, when `prompt` was rewritten for pricing
+  // (a setup's step reading a column an earlier step writes); else `prompt`.
+  historyPrompt?: string;
   fetchLimits?: FetchLimits;      // web fetch limits (lib/web-fetch-options.ts)
 }
 
@@ -94,9 +97,11 @@ const HISTORY_WORDS: Record<HistoryFrom, string> = {
   preview: 'your previews of this prompt on this model', model: 'your past runs on this model',
 };
 
+// fetchNote: for the column menu's and a setup's estimates, which show no note of their own when a cost is known:
+// the web fetch fee is a guess (run-estimate-web.ts fetchPriceNote); null when it isn't.
 export type AiEstimateOutcome =
   | { fail: 'not_found' | 'bad_request' | 'no_rows'; message: string }
-  | { ok: AiEstimate };
+  | { ok: AiEstimate; fetchNote: string | null };
 
 export async function estimateAiRun(userId: string, input: AiEstimateInput): Promise<AiEstimateOutcome> {
   const owns = verifySheetOwnership(input.sheetId, userId);
@@ -136,8 +141,10 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const webEst = await estimateWebWork(userId, model, web, input.search, input.fetchLimits);
   if ('error' in webEst) return { fail: 'bad_request', message: webEst.error };
   const w = webEst.ok;
-  const history = model ? tokenHistory(userId, model, web, w.plan?.used ?? null,
-    { sheetId: input.sheetId, column: input.historyColumn ?? null, prompt: input.prompt }) : null;
+  const history = model ? tokenHistory(userId, model, web, w.plan?.used ?? null, {
+    sheetId: input.sheetId, column: input.historyColumn ?? null, prompt: input.historyPrompt ?? input.prompt,
+    systemPrompt: input.systemPrompt, outputs: input.outputColumns?.length ?? 0,
+  }, input.fetchLimits ?? null) : null;
   const out = history?.output ?? {
     range: { low: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, high: AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH }, historyRows: 0,
     basis: 'heuristic-no-history' as const, from: null,
@@ -230,5 +237,6 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       },
       note: notes.join(' '),
     },
+    fetchNote: web.fetch ? fetchPriceNote(w) : null,
   };
 }

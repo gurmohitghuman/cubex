@@ -8,6 +8,8 @@ import { percentile, average } from '../lib/ai-cost';
 import type { Range, WebTools } from '../lib/ai-web-cost';
 import { columnRuns, modelRuns, promptRuns, type WebMatch } from './ai-token-history-steps';
 import { previewTokenRows } from './ai-preview-history';
+import { promptHash } from '../lib/ai-prompt-hash';
+import type { FetchLimits } from '../lib/web-fetch-options';
 
 // avg as the low end, p75 as the high end.
 const spread = (values: number[]): Range => {
@@ -35,18 +37,24 @@ function finishedRows(runIds: string[]): Row[] {
 export type HistoryFrom = 'column' | 'prompt' | 'preview' | 'model';
 // What is being estimated, so its own history is found first. column: the
 // run's anchor column ("<name> (Output)", or "(Status)" with output columns).
-export interface HistoryScope { sheetId: string; column: string | null; prompt: string }
+// prompt, systemPrompt and outputs (output columns, 0 for one plain column):
+// what its runs and previews are found by (lib/ai-prompt-hash.ts), the prompt
+// as a start stores it.
+export interface HistoryScope {
+  sheetId: string; column: string | null; prompt: string; systemPrompt?: string | null; outputs?: number;
+}
 
 // Each step's rows, in the order they are preferred; read only until one has enough.
 function steps(userId: string, model: string, scope: HistoryScope | null, web?: WebMatch) {
   const list: Array<[HistoryFrom, () => Row[]]> = [];
+  const hash = scope ? promptHash(scope.prompt, scope.systemPrompt, scope.outputs ?? 0) : '';
   if (scope?.column) {
     const column = scope.column;
-    list.push(['column', () => finishedRows(columnRuns(userId, scope.sheetId, column, model, web))]);
+    list.push(['column', () => finishedRows(columnRuns(userId, scope.sheetId, column, model, hash, web))]);
   }
   if (scope) {
-    list.push(['prompt', () => finishedRows(promptRuns(userId, model, scope.prompt, web))]);
-    list.push(['preview', () => previewTokenRows(userId, model, scope.prompt, web)]);
+    list.push(['prompt', () => finishedRows(promptRuns(userId, model, hash, web))]);
+    list.push(['preview', () => previewTokenRows(userId, model, hash, web)]);
   }
   list.push(['model', () => finishedRows(modelRuns(userId, model, web))]);
   return list;
@@ -63,15 +71,17 @@ function firstEnough(list: Array<[HistoryFrom, () => Row[]]>, pick: (r: Row) => 
 }
 
 // Recent token history, read in bounded slices: never a sort over every result.
-// Output: rows of this column's runs, else of runs of the same prompt, else of
-// previews of it, else of the latest runs on the model; each step needs
-// MIN_HISTORY rows. Input of a web run: the same steps, keeping runs with the
-// same web tools, since what the tools read dominates the prompt, and engines
-// return very different amounts of it (engine: the one the searches run on;
-// null matches any). Thin history falls back to defaults (output) or the
+// Output: rows of this column's runs of the prompt, else of runs of the same
+// prompt, else of previews of it, else of the latest runs on the model; each
+// step needs MIN_HISTORY rows. Input of a web run: the same steps, keeping runs
+// with the same web tools and web fetch limits, since what the tools read
+// dominates the prompt, and engines and limits return very different amounts of
+// it (engine: the one the searches run on; null matches any; no limit matches
+// only runs without one). Thin history falls back to defaults (output) or the
 // heuristic (web input).
 export function tokenHistory(
   userId: string, model: string, web: WebTools, engine: string | null = null, scope: HistoryScope | null = null,
+  fetchLimits: FetchLimits | null = null,
 ) {
   const out = firstEnough(steps(userId, model, scope), r => r.c);
   const output = out.from
@@ -82,7 +92,11 @@ export function tokenHistory(
     };
   let webInput: Range | null = null;
   if (web.search || web.fetch) {
-    const match = { search: web.search, fetch: web.fetch, engine: web.search ? engine : null };
+    const limits = web.fetch ? fetchLimits : null;
+    const match: WebMatch = {
+      search: web.search, fetch: web.fetch, engine: web.search ? engine : null,
+      maxContentTokens: limits?.maxContentTokens ?? null, maxPages: limits?.maxPagesPerRow ?? null,
+    };
     const inputs = firstEnough(steps(userId, model, scope, match), r => r.p);
     if (inputs.from) webInput = spread(inputs.values);
   }
@@ -90,21 +104,26 @@ export function tokenHistory(
 }
 
 // The run settings a search history must match: the engine that ran the
-// searches, the mode sent, the per-row cap, and the fetch switch.
-export interface SearchSetup { used: string; mode: string | null; maxPerRow: number | null; fetch: boolean }
+// searches, the mode sent, the per-row cap, the fetch switch and its limits.
+export interface SearchSetup {
+  used: string; mode: string | null; maxPerRow: number | null; fetch: boolean; fetchLimits?: FetchLimits | null;
+}
 
 // Searches per row and measured cost per row (OpenRouter's usage.cost, plus
 // what the provider charged a row on the user's own key), from
 // finished rows of the latest runs on this model with the same search setup.
 // Each null when there's too little of it. Bounded like tokenHistory.
 export function searchHistory(userId: string, model: string, s: SearchSetup): { searches: Range | null; costPerRow: Range | null } {
+  const limits = s.fetch ? s.fetchLimits : null;
   const runs = (db.prepare(`
     SELECT id FROM ai_runs
     WHERE user_id = ? AND model = ? AND use_openrouter_web_search = 1 AND use_web_fetch = ?
       AND web_search_engine_used = ? AND web_search_mode IS ? AND web_search_max_per_row IS ?
+      AND web_fetch_max_content_tokens IS ? AND web_fetch_max_pages IS ?
       AND EXISTS (SELECT 1 FROM ai_results WHERE run_id = ai_runs.id AND status = 'completed')
     ORDER BY created_at DESC LIMIT ?
-  `).all(userId, model, s.fetch ? 1 : 0, s.used, s.mode, s.maxPerRow, AI_ESTIMATE_HISTORY_RUNS) as Array<{ id: string }>);
+  `).all(userId, model, s.fetch ? 1 : 0, s.used, s.mode, s.maxPerRow, limits?.maxContentTokens ?? null,
+    limits?.maxPagesPerRow ?? null, AI_ESTIMATE_HISTORY_RUNS) as Array<{ id: string }>);
   // By run id: the runs above are the user's, and this stays a covering-index read.
   const stmt = db.prepare(`
     SELECT web_searches AS n, cost_usd + IFNULL(provider_cost_usd, 0) AS c FROM ai_results

@@ -19,7 +19,7 @@ import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
-  throwIfStorage, timedTries,
+  throwIfStorage, timedTries, webEngineRow,
 } from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
@@ -125,6 +125,9 @@ export async function processMultiRow(
       recordDroppedCall(ctx, billedUsage(call, error));
       return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
+    // The workspace refused the run's web fetch engine: the row waits for a resume, the run pauses.
+    const refused = webEngineRow(run, error);
+    if (refused) return refused;
     const causeCode = errorCauseCode(error);
     const rawMsg = deadline.timedOut() ? AI_TIMEOUT_MESSAGE
       : (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');

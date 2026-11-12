@@ -20,6 +20,8 @@ export interface WebEstimate {
   measuredCostPerRow: Range | null;
   // With web fetch and a page or token limit: the pages go through Exa (lib/ai-web-tools.ts).
   fetchLimited?: boolean;
+  // With web fetch and no limit, on a model whose provider reads pages itself: its price is the provider's.
+  fetchNative?: boolean;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -35,16 +37,24 @@ export async function estimateWebWork(
   userId: string, model: string | null, web: WebTools, search: SearchOptions | null | undefined,
   fetchLimits?: FetchLimits | null,
 ): Promise<{ ok: WebEstimate } | { error: string }> {
-  const out = await searchWork(userId, model, web, search);
+  const out = await searchWork(userId, model, web, search, fetchLimits);
   if ('error' in out || !web.fetch) return out;
   const native = !!model && !hasFetchLimits(fetchLimits) && await fetchesNatively(userId, model);
   return { ok: {
     ...out.ok, work: { ...out.ok.work, ...fetchWork(fetchLimits, native) }, fetchLimited: hasFetchLimits(fetchLimits),
+    fetchNative: native,
   } };
 }
 
+// What the column menu's and a setup's estimates add when the fetch fee is a guess: the model's provider reads
+// pages itself, at its own price (null: the fee is known).
+export const fetchPriceNote = (w: { fetchNative?: boolean }): string | null => (w.fetchNative
+  ? "Its model's provider reads web pages itself, at a price it sets: counted here at $0 to $0.001 a page."
+  : null);
+
 async function searchWork(
   userId: string, model: string | null, web: WebTools, search: SearchOptions | null | undefined,
+  fetchLimits?: FetchLimits | null,
 ): Promise<{ ok: WebEstimate } | { error: string }> {
   const none = { plan: null, searchesFromHistory: false, measuredCostPerRow: null };
   if (!web.search) return { ok: { ...none, work: { searches: null, pricePerSearch: null, fetch: web.fetch } } };
@@ -55,7 +65,9 @@ async function searchWork(
   const planned = await planIfSearching(userId, model, true, search);
   if ('error' in planned) return planned;
   const plan = planned.ok!;
-  const history = searchHistory(userId, model, { used: plan.used, mode: plan.mode, maxPerRow: plan.maxPerRow, fetch: web.fetch });
+  const history = searchHistory(userId, model, {
+    used: plan.used, mode: plan.mode, maxPerRow: plan.maxPerRow, fetch: web.fetch, fetchLimits,
+  });
   const cap = plan.maxPerRow;
   const searches = history.searches
     ? { low: history.searches.low, high: cap !== null ? Math.min(cap, history.searches.high) : history.searches.high }
@@ -103,9 +115,9 @@ export function webNote(w: WebEstimate, fees: Range, inputFromHistory: boolean):
     parts.push(`Your past runs with these settings cost ${usdText(w.measuredCostPerRow)} a row.`);
   }
   if (w.work.fetch) {
-    parts.push(w.work.fetchPricePerPage === null
+    parts.push(w.fetchNative
       ? "This model's provider reads pages itself, at a price it sets and OpenRouter passes on, so web fetch fees "
-        + 'are left out: run preview_rows to measure them.'
+        + 'are counted from $0 to $0.001 a page: run preview_rows to measure them.'
       : w.fetchLimited ? 'With a page or token limit the pages are read through Exa, at $0.001 a page.'
         : 'Web fetch fees are about $0.001 a page read.');
   }

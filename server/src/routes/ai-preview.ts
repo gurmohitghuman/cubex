@@ -175,8 +175,9 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // What the rows cost goes in the usage history as a preview (services/usage-calls.ts).
     recordCallUsage(req.userId!, sheetId, parsed.cleanColumnName, 'preview', spent);
     // What the rows measured, for later estimates of this prompt (services/ai-preview-history.ts).
-    savePreviewTokens(req.userId!, sheetId, { model, prompt, webSearch: useOpenRouterWebSearch,
-      webFetch: useWebFetch, engineUsed: planned.ok?.used ?? null }, answers);
+    savePreviewTokens(req.userId!, sheetId, { model, prompt, systemPrompt, outputs: parsed.outputColumns?.length ?? 0,
+      webSearch: useOpenRouterWebSearch, webFetch: useWebFetch, engineUsed: planned.ok?.used ?? null,
+      fetchLimits: parsed.fetchLimits }, answers);
 
     // All-or-nothing: only a preview where EVERY row SUCCEEDED is hydrated/
     // reused. "Present" (filter(Boolean)) isn't enough — an errored row is a

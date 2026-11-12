@@ -34,7 +34,9 @@ export function writeAiSetup(sheetId: string, userId: string, column: string, f:
     .run(id, sheetId, userId, column, f.prompt, f.systemPrompt, f.model, f.temperature, f.webSearch ? 1 : 0,
       f.webFetch ? 1 : 0, f.maxChars, f.concurrency, structured ? JSON.stringify(f.outputColumns) : null,
       structured ? column : null, f.dataColumn, f.searchEngine, f.searchMode, f.maxSearchesPerRow,
-      f.searchEngineUsed ?? null, f.runIf, ...runInsertExtras(f.prompt, f.webFetch, f.fetchLimits));
+      f.searchEngineUsed ?? null, f.runIf,
+      ...runInsertExtras({ prompt: f.prompt, systemPrompt: f.systemPrompt, outputs: f.outputColumns?.length ?? 0 },
+        f.webFetch, f.fetchLimits));
   forgetUsage(id);
   return id;
 }

@@ -4,7 +4,7 @@
 // search's price comes from the run's plan, lib/web-search-plan.ts).
 import {
   WEB_FETCH_USD_PER_PAGE, WEB_FETCH_PAGES_PER_ROW, WEB_SEARCH_TOKENS_PER_SEARCH, WEB_FETCH_TOKENS_PER_PAGE,
-  WEB_SEARCHES_PER_ROW, WEB_SEARCHES_PER_ROW_NATIVE,
+  WEB_SEARCHES_PER_ROW, WEB_SEARCHES_PER_ROW_NATIVE, WEB_FETCH_NATIVE_USD_PER_PAGE,
 } from './constants-ai';
 import { hasFetchLimits, type FetchLimits } from './web-fetch-options';
 
@@ -14,25 +14,28 @@ export interface WebTools { search: boolean; fetch: boolean }
 // A row's web work: how many searches it runs (null without search) at what
 // price each (null when the provider's price is unknown), and whether it
 // fetches; with fetch, the pages it reads, the tokens each adds and the price
-// of a page (null: unknown), when they differ from the defaults (fetchWork).
+// of a page, when they differ from the defaults (fetchWork).
 export interface RowWebWork {
   searches: Range | null; pricePerSearch: number | null; fetch: boolean;
-  fetchPages?: Range; fetchTokensPerPage?: Range; fetchPricePerPage?: number | null;
+  fetchPages?: Range; fetchTokensPerPage?: Range; fetchPricePerPage?: Range;
 }
 
 const capped = (r: Range, cap: number | null): Range =>
   (cap === null ? r : { low: Math.min(r.low, cap), high: Math.min(r.high, cap) });
 
+const EXA_PAGE: Range = { low: WEB_FETCH_USD_PER_PAGE, high: WEB_FETCH_USD_PER_PAGE };
+
 // What a run's fetch limits change: no more pages than the page limit, no more
 // tokens a page than the token limit. With a limit the pages are read through
 // Exa (lib/ai-web-tools.ts), at its price; without one, a model whose provider
 // fetches on its own does (OpenRouter's auto), at a price that provider sets
-// and OpenRouter passes on, which Cubex doesn't know (null).
+// and OpenRouter passes on, which Cubex doesn't know: counted from $0 to Exa's
+// price, so the high end (what max_cost_usd checks) never leaves it out.
 export function fetchWork(limits: FetchLimits | null | undefined, nativeFetch: boolean) {
   return {
     fetchPages: capped(WEB_FETCH_PAGES_PER_ROW, limits?.maxPagesPerRow ?? null),
     fetchTokensPerPage: capped(WEB_FETCH_TOKENS_PER_PAGE, limits?.maxContentTokens ?? null),
-    fetchPricePerPage: hasFetchLimits(limits) || !nativeFetch ? WEB_FETCH_USD_PER_PAGE : null,
+    fetchPricePerPage: !hasFetchLimits(limits) && nativeFetch ? WEB_FETCH_NATIVE_USD_PER_PAGE : EXA_PAGE,
   };
 }
 
@@ -49,13 +52,12 @@ export function defaultSearchesPerRow(cap: number | null, native: boolean): Rang
   return native ? WEB_SEARCHES_PER_ROW_NATIVE : WEB_SEARCHES_PER_ROW;
 }
 
-// Fees per row. The search or fetch part is left out when its price is unknown
-// (the caller says so in the estimate's note).
+// Fees per row. The search part is left out when its price is unknown (the
+// caller says so in the estimate's note).
 export function webFeesPerRow(w: RowWebWork): Range {
   let fees = { low: 0, high: 0 };
   if (w.searches && w.pricePerSearch !== null) fees = add(fees, times(w.searches, w.pricePerSearch));
-  const pagePrice = w.fetchPricePerPage === undefined ? WEB_FETCH_USD_PER_PAGE : w.fetchPricePerPage;
-  if (w.fetch && pagePrice !== null) fees = add(fees, times(w.fetchPages ?? WEB_FETCH_PAGES_PER_ROW, pagePrice));
+  if (w.fetch) fees = add(fees, times(w.fetchPages ?? WEB_FETCH_PAGES_PER_ROW, w.fetchPricePerPage ?? EXA_PAGE));
   return fees;
 }
 

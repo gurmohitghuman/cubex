@@ -28,7 +28,8 @@ export function aiRunLimitsOf(a: { max_cost_usd?: unknown; allow_unpriced?: unkn
   };
 }
 
-// What the ceiling reads from an AI estimate: its high end, what has no price
+// What the ceiling reads from an AI estimate: its high end (a model's own web
+// fetch in it at up to $0.001 a page: lib/ai-web-cost.ts), what has no price
 // (the model, or web search fees Cubex can't price and hasn't measured), and
 // one row's most, which the run's spend limit keeps room for (the ceiling is
 // that limit).

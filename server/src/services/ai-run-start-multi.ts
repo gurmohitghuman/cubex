@@ -151,7 +151,8 @@ export async function startAiMultiRun(
         JSON.stringify(specs), statusColumn, dataColumn,
         plan?.engine ?? null, plan?.used ?? null, plan?.mode ?? null, plan?.maxPerRow ?? null,
         rule.ok?.rule ?? null, actorTokenId(), p.spendLimitUsd ?? null,
-        ...runInsertExtras(p.prompt, !!p.useWebFetch, p.fetchLimits),
+        ...runInsertExtras({ prompt: p.prompt, systemPrompt: p.systemPrompt, outputs: specs.length }, !!p.useWebFetch,
+          p.fetchLimits),
       );
       appendColumnsToOrder(p.sheetId, userId, allColumns);
     }).immediate();
