@@ -60,6 +60,13 @@ function cleanOptions(v: unknown): Record<string, unknown> {
   return Object.fromEntries(entries);
 }
 
+// The values are checked again by the start's own parser (lib/web-fetch-options.ts).
+function fetchLimitsOf(v: unknown) {
+  const o = obj(v, 'fetchLimits');
+  return { maxContentTokens: int(o.maxContentTokens, 'fetchLimits.maxContentTokens'),
+    maxPagesPerRow: int(o.maxPagesPerRow, 'fetchLimits.maxPagesPerRow') };
+}
+
 function build(s: Obj): SetupStep {
   const base = { name: name(s.name, 'name') };
   switch (s.kind) {
@@ -82,6 +89,7 @@ function build(s: Obj): SetupStep {
               description: str(x.description, 'description') };
           }),
         runIf: strOrNull(s.runIf, 'runIf'),
+        ...(s.fetchLimits === null || s.fetchLimits === undefined ? {} : { fetchLimits: fetchLimitsOf(s.fetchLimits) }),
       };
     }
     case 'http': {

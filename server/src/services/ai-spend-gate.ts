@@ -29,6 +29,7 @@ import {
 } from '../lib/ai-spend-limit';
 import { redactError } from '../lib/redact';
 import { micro } from '../lib/cost-ceiling';
+import { runFetchLimits } from '../lib/web-fetch-options';
 import type { AIRunRow, SheetRow } from './ai-runner-status';
 import type { RowOutcome } from '../lib/run-breaker';
 
@@ -101,6 +102,7 @@ export function rowFixedOf(run: AIRunRow): RowFixed {
     web: {
       search: !!run.use_openrouter_web_search, fetch: !!run.use_web_fetch, used: run.web_search_engine_used ?? null,
       mode: run.web_search_mode ?? null, maxPerRow: run.web_search_max_per_row ?? null,
+      fetchLimits: runFetchLimits(run),
     },
   });
 }

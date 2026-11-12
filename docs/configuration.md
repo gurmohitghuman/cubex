@@ -48,7 +48,7 @@ Back up the whole directory together. **If `.encryption-key` is lost, saved keys
 
 Your data stays in one SQLite file on your machine. The server only calls out to:
 
-- **OpenRouter**, for AI columns, including its price list for web search engines, and to read what your key can still spend (Settings, `get_balances`, and an AI run's estimate and preview).
+- **OpenRouter**, for AI columns, including its price list for web search engines and which models fetch web pages on their own (for an AI run's estimate), and to read what your key can still spend (Settings, `get_balances`, and an AI run's estimate and preview). An AI run with web fetch limits (tokens per page, pages per row) reads pages through Exa, by way of OpenRouter: if an admin of your OpenRouter workspace limited the web fetch engines on its Server Tools page, allow Exa there, or such a run pauses (`pause_reason: "web_engine"`).
 - **The APIs you put in HTTP columns.**
 - **Your run webhook URLs**, when a run finishes (Settings, Run webhooks): the run's id, kind, sheet, status and time, nothing from your rows.
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.

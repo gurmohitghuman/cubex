@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { aiAPI, webSearchBody, type RunSpend, type WebSearchSettings } from '@/utils/api'
+import {
+  aiAPI, webSearchBody, fetchLimitsBody, type FetchLimitSettings, type RunSpend, type WebSearchSettings,
+} from '@/utils/api'
 import { AIResult, AIRun, Step } from './types'
 import { usePreviewHandlers } from './usePreviewHandlers'
 import { asksForHigherLimit } from './raise-limit-ask'
@@ -26,6 +28,7 @@ interface Args {
   useOpenRouterWebSearch: boolean
   webSearch: WebSearchSettings
   useWebFetch: boolean
+  fetchLimits: FetchLimitSettings
   concurrency: number
   // "Only run if" rule ('' = every row).
   runIf: string
@@ -94,6 +97,7 @@ export const useAIRunHandlers = (a: Args) => {
     temperature: a.temperature,
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
+    ...fetchLimitsBody(a.useWebFetch, a.fetchLimits),
     maxChars: a.maxChars, concurrency: a.concurrency,
     ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
     ...(a.outputColumns.length ? { outputColumns: outputColumnsBody(a.outputColumns) } : {}),

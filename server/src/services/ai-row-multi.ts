@@ -8,6 +8,7 @@ import {
   buildMultiOutputInstruction, parseMultiOutput, sourcesFromOutput, type OutputColumnSpec,
 } from '../lib/ai-multi-output';
 import { buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
+import { runFetchLimits } from '../lib/web-fetch-options';
 import { citationsFromCompletion, withSourceUrls } from '../lib/ai-citations';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
@@ -18,7 +19,7 @@ import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
-  throwIfStorage, timedTries,
+  throwIfStorage, timedTries, webEngineRow,
 } from './ai-row-outcome';
 
 // Process one row of a STRUCTURED (multi-column) run: build the prompt + JSON
@@ -67,10 +68,12 @@ export async function processMultiRow(
 
     const model = run.model;
     if (!model) throw new Error('No AI model selected for this run. Start a new run from the AI column dialog.');
-    const tools = buildWebTools(run.prompt, row.data, { search, fetch: web.fetch });
+    const fetchLimits = runFetchLimits(run);
+    const tools = buildWebTools(run.prompt, row.data, { search, fetch: web.fetch, fetchLimits });
     const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
-      tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, web.fetch),
+      tools, searchReplay: search ? searchReplayFor(search) : null,
+      maxToolCalls: toolCallBudget(search, web.fetch, fetchLimits),
     }, deadline.signal), hasSpendLimit(run));
     lateReset = tries.lateReset;
     sent = true;
@@ -122,6 +125,9 @@ export async function processMultiRow(
       recordDroppedCall(ctx, billedUsage(call, error));
       return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
+    // The workspace refused the run's web fetch engine: the row waits for a resume, the run pauses.
+    const refused = webEngineRow(run, error);
+    if (refused) return refused;
     const causeCode = errorCauseCode(error);
     const rawMsg = deadline.timedOut() ? AI_TIMEOUT_MESSAGE
       : (error instanceof Error ? error.message : 'Unknown error') + (causeCode ? ` (${causeCode})` : '');

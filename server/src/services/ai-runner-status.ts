@@ -31,6 +31,11 @@ export interface AIRunRow {
   web_search_engine_used?: string | null;
   web_search_mode?: string | null;
   web_search_max_per_row?: number | null;
+  // Web fetch limits (migration 055, lib/web-fetch-options.ts): tokens per page and pages per row; NULL: none.
+  web_fetch_max_content_tokens?: number | null;
+  web_fetch_max_pages?: number | null;
+  // sha256 of the prompt (migration 055, lib/ai-prompt-hash.ts), for estimates; NULL on older runs.
+  prompt_hash?: string | null;
   // "Only run if" rule (migration 019, lib/run-condition.ts); NULL = every row.
   run_if?: string | null;
   condition_skipped_rows?: number | null;

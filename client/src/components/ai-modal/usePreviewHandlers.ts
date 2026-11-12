@@ -1,7 +1,10 @@
 // Over 200 lines: preview generation and its commit, one flow over the same preview state.
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { aiAPI, sheetsAPI, webSearchBody, type AIDraft, type SearchPlanSummary, type WebSearchSettings } from '@/utils/api'
+import {
+  aiAPI, sheetsAPI, webSearchBody, fetchLimitsBody, type FetchLimitSettings, type AIDraft, type SearchPlanSummary,
+  type WebSearchSettings,
+} from '@/utils/api'
 import { AIPreview, Step } from './types'
 import { outputColumnsBody, type OutputColumnDraft } from '@/lib/output-columns'
 
@@ -21,6 +24,7 @@ interface PreviewArgs {
   useOpenRouterWebSearch: boolean
   webSearch: WebSearchSettings
   useWebFetch: boolean
+  fetchLimits: FetchLimitSettings
   // Rides the preview request only so the server-side draft can restore the
   // user's slider on reopen — the preview itself doesn't use it.
   concurrency: number
@@ -70,6 +74,7 @@ export const usePreviewHandlers = (a: PreviewArgs) => {
     temperature: a.temperature,
     useOpenRouterWebSearch: a.useOpenRouterWebSearch, useWebFetch: a.useWebFetch,
     ...webSearchBody(a.useOpenRouterWebSearch, a.webSearch),
+    ...fetchLimitsBody(a.useWebFetch, a.fetchLimits),
     maxChars: a.maxChars, previewSize: a.previewSize, concurrency: a.concurrency,
     ...(a.runIf.trim() ? { runIf: a.runIf } : {}),
     ...(a.outputColumns.length ? { outputColumns: outputColumnsBody(a.outputColumns) } : {}),

@@ -10,6 +10,8 @@ import { aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 import { FailedCallError, type ModelCall } from './ai-model-call';
 import { connectionCauseCode, markLateReset } from './openrouter-retry';
+import { webEngineRefusal } from '../lib/web-engine-refusal';
+import type { AIRunRow } from './ai-runner-status';
 
 // The row's call ends when the run stops or the deadline passes.
 export const aiCallDeadline = (signal: AbortSignal | undefined): CallDeadline =>
@@ -44,6 +46,14 @@ export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
 // its answer broke off) may be billed all the same (callMayBeBilled).
 export const droppedRow = (maybeBilled: boolean): RowOutcome =>
   (maybeBilled ? { kind: 'dropped', maybeBilled } : DROPPED);
+
+// A row whose call OpenRouter refused because the workspace doesn't allow the run's web fetch engine
+// (lib/web-engine-refusal.ts): nothing is written and it stays waiting; the runner pauses the run once
+// (ai-runner-lifecycle.ts). A refused call is not billed. null: the error is something else.
+export function webEngineRow(run: AIRunRow, error: unknown): RowOutcome | null {
+  const words = webEngineRefusal(run, error);
+  return words === null ? null : { kind: 'dropped', webEngine: words };
+}
 
 // Transport failures that come before anything reaches the provider: no
 // address, no connection. A connection reset is the stale keep-alive socket

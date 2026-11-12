@@ -160,6 +160,9 @@ export interface AIDraft {
     searchMode?: string | null
     maxSearchesPerRow?: number | null
     runIf?: string | null
+    // Web fetch limits; absent: none.
+    maxContentTokens?: number | null
+    maxPagesPerRow?: number | null
   }
   previewResults: Array<{
     rowIndex: number

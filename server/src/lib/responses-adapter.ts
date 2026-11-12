@@ -13,9 +13,13 @@ export interface ChatLikeCompletion {
     message: { role: 'assistant'; content: string; refusal: string | null; annotations: unknown[] };
     finish_reason: string;
   }>;
-  usage?: {
-    prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; is_byok?: unknown; cost_details?: unknown;
-  };
+  usage?: ChatLikeUsage;
+}
+
+// The usage fields Cubex reads, as Chat Completions names them.
+export interface ChatLikeUsage {
+  prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; is_byok?: unknown; cost_details?: unknown;
+  completion_tokens_details?: unknown;
 }
 
 // The search calls of one row, in order. ran: false for a call OpenRouter
@@ -79,6 +83,7 @@ export function completionFromResponse(resp: unknown): ChatLikeCompletion {
     usage: {
       prompt_tokens: r?.usage?.input_tokens, completion_tokens: r?.usage?.output_tokens, cost: r?.usage?.cost,
       is_byok: r?.usage?.is_byok, cost_details: r?.usage?.cost_details,
+      completion_tokens_details: r?.usage?.output_tokens_details,
     },
   };
 }
@@ -112,25 +117,59 @@ const count = (v: unknown): number | null =>
 
 const usd = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
 
+export type PaidWith = 'own_key' | 'credits';
+
 export interface CallUsage {
   promptTokens: number | null; completionTokens: number | null;
+  // Of the output tokens, those the model spent reasoning (null: not reported).
+  reasoningTokens: number | null;
   costUsd: number | null;
   // On the user's own provider key (usage.is_byok): what that provider charged
   // (cost_details.upstream_inference_cost). null on every other call.
   providerCostUsd: number | null;
+  // Who paid, as OpenRouter says (usage.is_byok): the user's own provider key,
+  // or OpenRouter's credits (a call whose own key failed and fell back to
+  // shared capacity among them). null when the answer doesn't say.
+  paidWith: PaidWith | null;
+}
+
+// What the provider charged an own-key call. OpenRouter's schema makes the
+// total nullable but always sends its two parts (input and output, named per
+// API), so a call whose total is null is priced from them.
+function upstreamCost(details: unknown): number | null {
+  const d = details as Record<string, unknown> | null | undefined;
+  const total = usd(d?.upstream_inference_cost);
+  if (total !== null) return total;
+  for (const [a, b] of [
+    ['upstream_inference_prompt_cost', 'upstream_inference_completions_cost'],
+    ['upstream_inference_input_cost', 'upstream_inference_output_cost'],
+  ]) {
+    const [x, y] = [usd(d?.[a]), usd(d?.[b])];
+    // Rounded past float noise (0.0001 + 0.0002), far below a micro-dollar.
+    if (x !== null && y !== null) return Math.round((x + y) * 1e12) / 1e12;
+  }
+  return null;
 }
 
 // Tokens and what OpenRouter charged (usage.cost: tokens plus web fees) from
 // either API's answer. Anything missing or malformed is null, never a failure.
-export function usageOf(completion: { usage?: {
-  prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; is_byok?: unknown; cost_details?: unknown;
-} }): CallUsage {
+export function usageOf(completion: { usage?: ChatLikeUsage }): CallUsage {
   const u = completion?.usage;
-  const details = u?.cost_details as { upstream_inference_cost?: unknown } | null | undefined;
+  const details = u?.completion_tokens_details as { reasoning_tokens?: unknown } | null | undefined;
   return {
     promptTokens: count(u?.prompt_tokens),
     completionTokens: count(u?.completion_tokens),
+    reasoningTokens: count(details?.reasoning_tokens),
     costUsd: usd(u?.cost),
-    providerCostUsd: u?.is_byok === true ? usd(details?.upstream_inference_cost) : null,
+    providerCostUsd: u?.is_byok === true ? upstreamCost(u?.cost_details) : null,
+    paidWith: u?.is_byok === true ? 'own_key' : u?.is_byok === false ? 'credits' : null,
   };
 }
+
+// A row's tokens as the answers show them (preview_rows, get_run_results): null where not reported.
+export interface RowTokens { input: number | null; output: number | null; reasoning: number | null }
+export const tokensOf = (u: {
+  promptTokens?: number | null; completionTokens?: number | null; reasoningTokens?: number | null;
+}): RowTokens => ({
+  input: u.promptTokens ?? null, output: u.completionTokens ?? null, reasoning: u.reasoningTokens ?? null,
+});

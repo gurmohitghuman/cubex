@@ -28,6 +28,9 @@ type AIRunParams = {
   searchEngine?: string
   searchMode?: string
   maxSearchesPerRow?: number
+  // Web fetch limits; sent only with web fetch on.
+  maxContentTokens?: number
+  maxPagesPerRow?: number
   // "Only run if" rule (empty/absent: every row).
   runIf?: string
   // Several typed columns from one answer per row (absent: one column).

@@ -8,6 +8,7 @@ import { aiDataCellSummary } from '../lib/ai-data-cell';
 import {
   buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget, WEB_SYSTEM_MESSAGE,
 } from '../lib/ai-web-tools';
+import { runFetchLimits } from '../lib/web-fetch-options';
 import { citationsFromCompletion } from '../lib/ai-citations';
 import { aiRunDataColumn } from '../lib/ai-data-column';
 import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
@@ -17,7 +18,7 @@ import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model
 import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
-  throwIfStorage, timedTries,
+  throwIfStorage, timedTries, webEngineRow,
 } from './ai-row-outcome';
 
 // Process a single sheet row: build messages, call OpenRouter, then hand the
@@ -77,7 +78,8 @@ export async function processRow(
     messages.push({ role: 'user', content: processedPrompt });
 
     // Web search (+ datetime) and per-row domain-limited web fetch: lib/ai-web-tools.ts.
-    const tools = buildWebTools(run.prompt, row.data, { search, fetch: !!run.use_web_fetch });
+    const fetchLimits = runFetchLimits(run);
+    const tools = buildWebTools(run.prompt, row.data, { search, fetch: !!run.use_web_fetch, fetchLimits });
 
     // Every start/rerun path resolves and stores a user-chosen model, so a NULL
     // here means a legacy pre-default-era run resurrected by the queue. Fail the
@@ -93,7 +95,8 @@ export async function processRow(
     // cap made them return null content → silent blank cells); max_chars raises it.
     const tries = timedTries(() => sendModelCall(openai, {
       model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
-      tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, !!run.use_web_fetch),
+      tools, searchReplay: search ? searchReplayFor(search) : null,
+      maxToolCalls: toolCallBudget(search, !!run.use_web_fetch, fetchLimits),
     }, deadline.signal), hasSpendLimit(run));
     lateReset = tries.lateReset;
     sent = true;
@@ -142,6 +145,9 @@ export async function processRow(
       recordDroppedCall(ctx, billedUsage(call, error));
       return droppedRow(callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
     }
+    // The workspace refused the run's web fetch engine: the row waits for a resume, the run pauses.
+    const refused = webEngineRow(run, error);
+    if (refused) return refused;
 
     // Append the transport cause code ("Connection error. (ECONNRESET)") so a
     // user-reported cell tells us WHICH transport failure it was — the SDK's

@@ -7,7 +7,7 @@ import { ConfigureTab } from './ConfigureTab'
 import { ModelsHandle } from './useModels'
 import { PromptSuggestionsHandle } from './usePromptSuggestions'
 import { plural } from '@/lib/utils'
-import type { WebSearchSettings } from '@/utils/api'
+import type { WebSearchSettings, FetchLimitSettings } from '@/utils/api'
 import { RunIfField } from '../run-if/RunIfField'
 import { PromptStarters } from './PromptStarters'
 import { OutputColumnsField } from './OutputColumnsField'
@@ -22,6 +22,7 @@ interface Props {
   useOpenRouterWebSearch: boolean; setUseOpenRouterWebSearch: (b: boolean) => void
   webSearch: WebSearchSettings; setWebSearch: (v: WebSearchSettings) => void
   useWebFetch: boolean; setUseWebFetch: (b: boolean) => void
+  fetchLimits: FetchLimitSettings; setFetchLimits: (v: FetchLimitSettings) => void
   columnSuggestions: Array<{ name: string; reference: string }>
   sugg: PromptSuggestionsHandle
   // "Only run if" section ('' = every row); active: the drawer is open.
@@ -92,6 +93,7 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         useOpenRouterWebSearch={p.useOpenRouterWebSearch} setUseOpenRouterWebSearch={p.setUseOpenRouterWebSearch}
         model={p.model} webSearch={p.webSearch} setWebSearch={p.setWebSearch} onSearchBlocked={setSearchBlocked}
         useWebFetch={p.useWebFetch} setUseWebFetch={p.setUseWebFetch}
+        fetchLimits={p.fetchLimits} setFetchLimits={p.setFetchLimits}
         columnSuggestions={p.columnSuggestions}
         showSuggestions={p.sugg.show} setShowSuggestions={p.sugg.setShow}
         suggestFilter={p.sugg.filter} setSuggestFilter={p.sugg.setFilter}

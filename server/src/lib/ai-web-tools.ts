@@ -5,7 +5,9 @@
 import { extractAllowedDomainsFromRow } from './prompt';
 import {
   WEB_SEARCH_MAX_RESULTS, WEB_SEARCH_MAX_TOTAL_RESULTS, SEARCH_TOOL_CALL_SLACK, FETCH_TOOL_CALLS_PER_ROW,
+  WEB_FETCH_LIMITED_ENGINE,
 } from './constants-ai';
+import { hasFetchLimits, type FetchLimits } from './web-fetch-options';
 import type { SearchEngine, SearchEngineUsed } from './web-search-options';
 import type { SearchReplay } from './responses-adapter';
 
@@ -49,16 +51,31 @@ export function searchReplayFor(s: SearchToolConfig): SearchReplay {
 }
 
 // The request's max_tool_calls for a capped row (constants-ai.ts says why);
-// null without a cap, leaving OpenRouter's default.
-export function toolCallBudget(search: SearchToolConfig | null, fetch: boolean): number | null {
+// null without a cap, leaving OpenRouter's default. Room for page fetches: the
+// run's page limit when it has one.
+export function toolCallBudget(
+  search: SearchToolConfig | null, fetch: boolean, limits?: FetchLimits | null,
+): number | null {
   if (search?.maxPerRow == null) return null;
-  return search.maxPerRow + SEARCH_TOOL_CALL_SLACK + (fetch ? FETCH_TOOL_CALLS_PER_ROW : 0);
+  return search.maxPerRow + SEARCH_TOOL_CALL_SLACK + (fetch ? (limits?.maxPagesPerRow ?? FETCH_TOOL_CALLS_PER_ROW) : 0);
+}
+
+// The web fetch tool's parameters. With a limit the pages are read through
+// WEB_FETCH_LIMITED_ENGINE: a model's own fetch doesn't cut a page to a token
+// limit (OpenRouter's web fetch docs), so 'auto' could ignore it.
+function fetchParameters(domains: string[], limits?: FetchLimits | null): Record<string, unknown> {
+  if (!limits || !hasFetchLimits(limits)) return { allowed_domains: domains };
+  return {
+    allowed_domains: domains, engine: WEB_FETCH_LIMITED_ENGINE,
+    ...(limits.maxContentTokens !== null ? { max_content_tokens: limits.maxContentTokens } : {}),
+    ...(limits.maxPagesPerRow !== null ? { max_uses: limits.maxPagesPerRow } : {}),
+  };
 }
 
 export function buildWebTools(
   prompt: string,
   rowData: Record<string, string>,
-  opts: { search: SearchToolConfig | null; fetch: boolean },
+  opts: { search: SearchToolConfig | null; fetch: boolean; fetchLimits?: FetchLimits | null },
 ): object[] {
   const tools: object[] = [];
   if (opts.search) {
@@ -73,7 +90,7 @@ export function buildWebTools(
     // leaves it to OpenRouter's undocumented default, historically "any URL".
     tools.push({
       type: 'openrouter:web_fetch',
-      parameters: { allowed_domains: extractAllowedDomainsFromRow(prompt, rowData) },
+      parameters: fetchParameters(extractAllowedDomainsFromRow(prompt, rowData), opts.fetchLimits),
     });
   }
   return tools;

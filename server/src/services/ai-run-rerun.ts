@@ -31,6 +31,7 @@ import { structuredRunOwning } from '../lib/structured-run-owner';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 import { dataColumnName } from './ai-row-writers';
+import { runFetchLimits, runInsertExtras } from '../lib/web-fetch-options';
 
 export type { AiRerunMode } from './ai-rerun-modes';
 
@@ -185,8 +186,8 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
           use_openrouter_web_search, use_web_fetch, max_chars, concurrency,
           status, total_rows, processed_rows, target_rows, placeholder_work,
           web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row, run_if, access_token_id,
-          spend_limit_usd
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?)
+          spend_limit_usd, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, 'seeding', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         newRunId, p.sheetId, userId, outputCol, latestRun.prompt, latestRun.system_prompt,
         model, latestRun.temperature,
@@ -198,6 +199,9 @@ export async function rerunAiColumn(userId: string, p: AiRerunParams): Promise<R
         latestRun.web_search_mode ?? null, latestRun.web_search_max_per_row ?? null, rule.ok?.rule ?? null,
         // A rerun is done for whoever asks for it (lib/actor.ts), not the run it repeats.
         actorTokenId(), p.spendLimitUsd ?? null,
+        // The same web fetch limits as the run it repeats.
+        ...runInsertExtras({ prompt: latestRun.prompt, systemPrompt: latestRun.system_prompt, outputs: 0 },
+          !!latestRun.use_web_fetch, runFetchLimits(latestRun)),
       );
     }).immediate(); // read-then-write (cap count) + writer lock: avoids TOCTOU + BUSY_SNAPSHOT
 

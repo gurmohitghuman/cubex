@@ -3,7 +3,8 @@ import { Globe } from 'lucide-react'
 import { OpenRouterCreditNotice } from '../OpenRouterCreditNotice'
 import { PromptReferenceChips } from './PromptReferenceChips'
 import { WebSearchOptions } from './WebSearchOptions'
-import type { WebSearchSettings } from '@/utils/api'
+import { WebFetchLimits } from './WebFetchLimits'
+import type { FetchLimitSettings, WebSearchSettings } from '@/utils/api'
 
 // True while the text before the caret still ends with the /token the
 // suggestion list is filtered by.
@@ -28,6 +29,8 @@ interface Props {
   onSearchBlocked: (reason: string | null) => void
   useWebFetch: boolean
   setUseWebFetch: (v: boolean) => void
+  fetchLimits: FetchLimitSettings
+  setFetchLimits: (v: FetchLimitSettings) => void
   columnSuggestions: Array<{ name: string; reference: string }>
   showSuggestions: boolean
   suggestFilter: string
@@ -47,7 +50,7 @@ export const GenerateTab: React.FC<Props> = ({
   columnName, setColumnName, nameError, prompt, setPrompt,
   useOpenRouterWebSearch, setUseOpenRouterWebSearch,
   model, webSearch, setWebSearch, onSearchBlocked,
-  useWebFetch, setUseWebFetch,
+  useWebFetch, setUseWebFetch, fetchLimits, setFetchLimits,
   columnSuggestions, showSuggestions, suggestFilter, activeSuggestIndex,
   setSuggestFilter, setShowSuggestions, setActiveSuggestIndex,
   insertColumnReference, starters, outputs, structured,
@@ -99,6 +102,7 @@ export const GenerateTab: React.FC<Props> = ({
           those cells, so the model can&apos;t fetch arbitrary URLs. Estimated cost: about $0.001
           per page fetched.
         </p>
+        {useWebFetch && <WebFetchLimits value={fetchLimits} onChange={setFetchLimits} />}
       </div>
     </div>
 

@@ -1,7 +1,8 @@
 // The in-flight check for an AI run's estimate and preview: the model's prices
 // and the account balance OpenRouter reports, put through
 // lib/ai-in-flight.ts. null when the model or its prices are unknown, or the
-// model is free (nothing is held).
+// model is free (nothing is held). ownKey: the rows run on the user's own
+// provider key, which the note then speaks to.
 import { aiMaxTokens } from '../lib/constants';
 import { fetchModels } from '../lib/openrouter';
 import { parseTokenPrice } from '../lib/ai-cost';
@@ -11,6 +12,7 @@ import { readOpenRouterBalance } from './openrouter-balance';
 
 export async function inFlightFor(
   userId: string, model: string | null, inputTokens: number, maxChars: number | null, concurrency: number,
+  ownKey = false,
 ): Promise<InFlight | null> {
   if (!model) return null;
   const result = await fetchModels(Date.now());
@@ -20,6 +22,6 @@ export async function inFlightFor(
   return inFlightCheck({
     concurrency, inputTokens, maxTokens: aiMaxTokens(maxChars),
     promptPrice: parseTokenPrice(m.pricing.prompt), completionPrice: parseTokenPrice(m.pricing.completion),
-    balanceUsd: 'ok' in balance ? balance.ok.balance_usd : null,
+    balanceUsd: 'ok' in balance ? balance.ok.balance_usd : null, ownKey,
   });
 }

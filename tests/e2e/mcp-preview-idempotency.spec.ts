@@ -78,6 +78,12 @@ test('preview_rows: sample outputs + measured cost, nothing persisted', async ()
   expect(prev.rows_in_full_run).toBe(3)
   expect(prev.preview.length).toBe(2)
   expect(prev.preview[0].output.length).toBeGreaterThan(0)
+  // Who paid and the tokens of each row (migration 055): a payer OpenRouter names, and real token counts.
+  for (const row of prev.preview) {
+    expect([null, 'own_key', 'credits']).toContain(row.paid_with)
+    expect(row.tokens.input).toBeGreaterThan(0)
+    expect(row.tokens.output).toBeGreaterThan(0)
+  }
   if (prev.measured_cost_usd !== null) expect(prev.projected_full_run_usd).toBeGreaterThanOrEqual(prev.measured_cost_usd)
 
   // Nothing persisted: no "Pitch (Output)" column created.

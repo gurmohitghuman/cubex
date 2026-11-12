@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
+import Database from 'better-sqlite3'
+import crypto from 'node:crypto'
+import { authedApi, seedSheet, BASE, makeAccessToken, assertTestDb } from './helpers'
 
 // Slice A: estimate_only dry-run for run_ai_column / run_http_enrichment.
 // Asserts the priced range shape, the EXACT row count, that a bad /ref is
@@ -80,5 +82,78 @@ test('estimate_only: priced range, exact row count, and zero side effects', asyn
   const final = parseResult(await client.callTool({ name: 'get_sheet', arguments: { sheet_id: sheetId } }))
   expect(final.columns.length).toBe(colsBefore)
 
+  await client.close()
+})
+
+// A finished run of this column in the throwaway DB, as a start stores it: 6 rows of 42 output tokens, paid
+// with the user's own provider key (migration 055).
+function seedColumnRun(sheetId: string, column: string, model: string) {
+  const db = new Database(assertTestDb(process.env.DB_PATH))
+  try {
+    db.pragma('busy_timeout = 5000')
+    const user = db.prepare('SELECT id FROM users LIMIT 1').pluck().get() as string
+    const runId = crypto.randomUUID()
+    db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status, created_at)
+      VALUES (?, ?, ?, ?, 'Earlier words /val', ?, 'completed', datetime('now', '+1 minute'))`)
+      .run(runId, sheetId, user, column, model)
+    for (let i = 0; i < 6; i++) {
+      db.prepare(`INSERT INTO ai_results (id, run_id, user_id, row_index, output_value, status, prompt_tokens,
+        completion_tokens, cost_usd, paid_with) VALUES (?, ?, ?, ?, 'x', 'completed', 20, 42, 0, 'own_key')`)
+        .run(crypto.randomUUID(), runId, user, i)
+    }
+  } finally { db.close() }
+}
+
+test('estimate_only: history from this column, in_flight on the own key, fetch limits refused alike', async () => {
+  test.setTimeout(60_000)
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 5)
+  const token = await makeAccessToken(api, ['read', 'write', 'run'], 'e2e estimate history')
+  const client = await mcpClient(token)
+  const model = 'openai/gpt-4o-mini'
+  seedColumnRun(sheetId, 'Summary (Output)', model)
+  const args = { sheet_id: sheetId, column_name: 'Summary', prompt: 'Summarize /val', model, estimate_only: true,
+    concurrency: 7 }
+
+  const est = parseResult(await client.callTool({ name: 'run_ai_column', arguments: args }))
+  expect(est.assumptions.history_from).toBe('column')
+  expect(est.assumptions.history_rows).toBe(6)
+  expect(est.assumptions.output_tokens).toEqual({ low: 42, high: 42 })
+  expect(est.basis).toBe('history')
+  expect(est.own_provider_key).toBe(true)
+  // Only when OpenRouter's public catalog priced the model: the own key no longer hides in_flight.
+  if (est.pricing_available) {
+    expect(est.in_flight.concurrency).toBe(7)
+    expect(est.in_flight.note).toContain('OpenRouter can hold in-flight budget on an own-key run too')
+  }
+  // Another column: no history of its own, so the model's runs (this one among them) answer.
+  const other = parseResult(await client.callTool({ name: 'run_ai_column', arguments: { ...args,
+    column_name: 'Elsewhere' } }))
+  expect(other.assumptions.history_from).toBe('model')
+
+  // The same answer over REST, and the fetch limits refused with the same words on both surfaces.
+  const rest = (body: Record<string, unknown>) => api.post(`${BASE}/api/v1/sheets/${sheetId}/ai-runs`,
+    { headers: { Authorization: `Bearer ${token}` }, data: body })
+  const viaRest = await rest({ ...args, sheet_id: undefined })
+  expect(viaRest.status()).toBe(200)
+  expect((await viaRest.json()).assumptions.history_from).toBe('column')
+  const range = 'max_pages_per_row must be a whole number from 1 to 50.'
+  const mcpRange = await client.callTool({ name: 'run_ai_column', arguments: { ...args, web_fetch: true,
+    max_pages_per_row: 51 } }) as { isError?: boolean; content: Array<{ text: string }> }
+  expect(mcpRange.isError).toBe(true)
+  expect(mcpRange.content[0].text)
+    .toBe(`Input validation error: Invalid arguments for tool run_ai_column: max_pages_per_row: ${range}`)
+  const restRange = await rest({ ...args, web_fetch: true, max_pages_per_row: 51 })
+  expect(restRange.status()).toBe(400)
+  expect((await restRange.json()).error).toBe(range)
+  const needs = 'max_content_tokens and max_pages_per_row need web_fetch turned on.'
+  const mcpNeeds = await client.callTool({ name: 'run_ai_column', arguments: { ...args, max_content_tokens: 500 } })
+  expect(mcpNeeds.isError).toBe(true)
+  expect(parseResult(mcpNeeds as any).error).toBe(needs)
+  expect((await (await rest({ ...args, max_content_tokens: 500 })).json()).error).toBe(needs)
+  // Digits sent as text are taken by both.
+  const digits = { ...args, web_fetch: true, max_content_tokens: '800', max_pages_per_row: '2' }
+  expect(parseResult(await client.callTool({ name: 'run_ai_column', arguments: digits })).rows_to_process).toBe(5)
+  expect((await rest(digits)).status()).toBe(200)
   await client.close()
 })

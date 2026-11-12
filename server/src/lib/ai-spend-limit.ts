@@ -15,8 +15,9 @@
 // the model's per-request fee. Text only, that is a true ceiling. With web
 // search or fetch it also counts the search and fetch fees and the text they
 // bring in, which Cubex can only estimate (the most searches a row may run:
-// its max_searches_per_row, else the usual count), so there a row can cost
-// more than its most. A model with no listed price (none, or a negative one)
+// its max_searches_per_row, else the usual count; the pages a row may read:
+// 3 of 6,000 tokens, or its fetch limits where they allow more), so there a
+// row can cost more than its most. A model with no listed price (none, or a negative one)
 // has no most: such a run stops once what was billed reaches the limit.
 import {
   AI_HOLD_MESSAGE_TOKENS, AI_HOLD_WEB_TOOLS_TOKENS, AI_RESET_MAYBE_BILLED_MS, WEB_FETCH_PAGES_PER_ROW,
@@ -28,6 +29,7 @@ import { enginePrice, nativeSearchProvider, type BilledEngine } from './web-sear
 import { buildMultiOutputInstruction, type OutputColumnSpec } from './ai-multi-output';
 import { WEB_SYSTEM_MESSAGE } from './ai-web-tools';
 import { money } from './cost-ceiling';
+import type { FetchLimits } from './web-fetch-options';
 
 // A model's listed prices in USD: per prompt token, per output token (the
 // dearer of output and reasoning) and per request.
@@ -72,6 +74,19 @@ export interface RowFixed {
 
 export interface WebSettings {
   model: string; search: boolean; fetch: boolean; used: string | null; mode: string | null; maxPerRow: number | null;
+  fetchLimits?: FetchLimits | null;   // the run's web fetch limits (lib/web-fetch-options.ts)
+}
+
+// Web fetch for one row at the high end: 3 pages of 6,000 tokens, or the run's
+// limits (pages times tokens a page) where they allow more; each page at
+// Exa's price (a model's own fetch is counted at it too, as estimates' high end is).
+function fetchPart(limits: FetchLimits | null | undefined): { tokens: number; feesUsd: number } {
+  const pages = WEB_FETCH_PAGES_PER_ROW.high, perPage = WEB_FETCH_TOKENS_PER_PAGE.high;
+  const limited = (limits?.maxPagesPerRow ?? pages) * (limits?.maxContentTokens ?? perPage);
+  return {
+    tokens: Math.max(pages * perPage, limited),
+    feesUsd: Math.max(pages, limits?.maxPagesPerRow ?? 0) * WEB_FETCH_USD_PER_PAGE,
+  };
 }
 
 // Web search and fetch for one row: tokens they add and fees, at the high end.
@@ -86,8 +101,9 @@ export function webPart(w: WebSettings): { tokens: number; feesUsd: number } {
     fees += searches * (each ?? 0);
   }
   if (w.fetch) {
-    tokens += WEB_FETCH_PAGES_PER_ROW.high * WEB_FETCH_TOKENS_PER_PAGE.high;
-    fees += WEB_FETCH_PAGES_PER_ROW.high * WEB_FETCH_USD_PER_PAGE;
+    const f = fetchPart(w.fetchLimits);
+    tokens += f.tokens;
+    fees += f.feesUsd;
   }
   if (w.search || w.fetch) tokens += AI_HOLD_WEB_TOOLS_TOKENS;
   return { tokens, feesUsd: fees };

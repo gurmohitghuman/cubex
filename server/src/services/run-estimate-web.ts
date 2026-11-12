@@ -3,7 +3,9 @@
 // (lib/web-search-plan.ts); how many searches a row runs comes from your runs
 // with the same setup, else from the cap or the engine's usual stop.
 import { roundUsd } from '../lib/ai-cost';
-import { defaultSearchesPerRow, type Range, type RowWebWork, type WebTools } from '../lib/ai-web-cost';
+import { defaultSearchesPerRow, fetchWork, type Range, type RowWebWork, type WebTools } from '../lib/ai-web-cost';
+import { hasFetchLimits, type FetchLimits } from '../lib/web-fetch-options';
+import { fetchesNatively } from './web-fetch-catalog';
 import { webSearchSummary, type SearchPlan } from '../lib/web-search-plan';
 import type { SearchOptions } from '../lib/web-search-options';
 import { formatSearchUsd } from '../lib/web-search-pricing';
@@ -16,6 +18,10 @@ export interface WebEstimate {
   searchesFromHistory: boolean;
   // What rows of your runs with the same setup cost, all in (null: too few).
   measuredCostPerRow: Range | null;
+  // With web fetch and a page or token limit: the pages go through Exa (lib/ai-web-tools.ts).
+  fetchLimited?: boolean;
+  // With web fetch and no limit, on a model whose provider reads pages itself: its price is the provider's.
+  fetchNative?: boolean;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -26,8 +32,29 @@ const usdText = (r: Range): string => {
   return low === high ? low : `${low}-${high}`;
 };
 
+// With web fetch: its pages, the tokens they add and their price (lib/ai-web-cost.ts fetchWork).
 export async function estimateWebWork(
   userId: string, model: string | null, web: WebTools, search: SearchOptions | null | undefined,
+  fetchLimits?: FetchLimits | null,
+): Promise<{ ok: WebEstimate } | { error: string }> {
+  const out = await searchWork(userId, model, web, search, fetchLimits);
+  if ('error' in out || !web.fetch) return out;
+  const native = !!model && !hasFetchLimits(fetchLimits) && await fetchesNatively(userId, model);
+  return { ok: {
+    ...out.ok, work: { ...out.ok.work, ...fetchWork(fetchLimits, native) }, fetchLimited: hasFetchLimits(fetchLimits),
+    fetchNative: native,
+  } };
+}
+
+// What the column menu's and a setup's estimates add when the fetch fee is a guess: the model's provider reads
+// pages itself, at its own price (null: the fee is known).
+export const fetchPriceNote = (w: { fetchNative?: boolean }): string | null => (w.fetchNative
+  ? "Its model's provider reads web pages itself, at a price it sets: counted here at $0 to $0.001 a page."
+  : null);
+
+async function searchWork(
+  userId: string, model: string | null, web: WebTools, search: SearchOptions | null | undefined,
+  fetchLimits?: FetchLimits | null,
 ): Promise<{ ok: WebEstimate } | { error: string }> {
   const none = { plan: null, searchesFromHistory: false, measuredCostPerRow: null };
   if (!web.search) return { ok: { ...none, work: { searches: null, pricePerSearch: null, fetch: web.fetch } } };
@@ -38,7 +65,9 @@ export async function estimateWebWork(
   const planned = await planIfSearching(userId, model, true, search);
   if ('error' in planned) return planned;
   const plan = planned.ok!;
-  const history = searchHistory(userId, model, { used: plan.used, mode: plan.mode, maxPerRow: plan.maxPerRow, fetch: web.fetch });
+  const history = searchHistory(userId, model, {
+    used: plan.used, mode: plan.mode, maxPerRow: plan.maxPerRow, fetch: web.fetch, fetchLimits,
+  });
   const cap = plan.maxPerRow;
   const searches = history.searches
     ? { low: history.searches.low, high: cap !== null ? Math.min(cap, history.searches.high) : history.searches.high }
@@ -85,7 +114,13 @@ export function webNote(w: WebEstimate, fees: Range, inputFromHistory: boolean):
   if (w.measuredCostPerRow && w.plan?.pricePerSearch !== null) {
     parts.push(`Your past runs with these settings cost ${usdText(w.measuredCostPerRow)} a row.`);
   }
-  if (w.work.fetch) parts.push('Web fetch fees are about $0.001 a page read.');
+  if (w.work.fetch) {
+    parts.push(w.fetchNative
+      ? "This model's provider reads pages itself, at a price it sets and OpenRouter passes on, so web fetch fees "
+        + 'are counted from $0 to $0.001 a page: run preview_rows to measure them.'
+      : w.fetchLimited ? 'With a page or token limit the pages are read through Exa, at $0.001 a page.'
+        : 'Web fetch fees are about $0.001 a page read.');
+  }
   parts.push(`Web fees come to about ${usdText(fees)} a row, plus `
     + (inputFromHistory ? 'the pages read, sized from your past runs with the same web tools.'
       : 'a rough allowance for the text the pages add to each prompt.'));

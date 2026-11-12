@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { authedApi, seedSheet, makeAccessToken } from './helpers'
+import Database from 'better-sqlite3'
+import crypto from 'node:crypto'
+import { authedApi, seedSheet, makeAccessToken, assertTestDb, BASE } from './helpers'
 import { BAD_URL, GOOD_URL, mcpClient, parseResult, pollTerminal } from './helpers-run-results'
 
 // get_run_results — per-row run diagnosis.
@@ -137,5 +139,55 @@ test('get_run_results pages, and only returns matching rows on a mixed run', asy
   expect(page2.results).toHaveLength(1)
   expect(page2.results[0].row_index).toBeGreaterThan(page1.results[0].row_index)
 
+  await client.close()
+})
+
+// Who paid and the tokens of each AI row (migration 055), as get_run_results, get_run_status and their REST twins
+// answer them. The rows are written to the throwaway DB as a run's writers store them: a row on the user's own
+// key with its provider's charge, one OpenRouter's credits paid for (a fall back), an own-key row OpenRouter
+// didn't price, and a row from before the payer was kept.
+test('AI rows say who paid and their tokens; the run counts rows per payer', async () => {
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 4)
+  const token = await makeAccessToken(api, ['read'], 'run-results-payer')
+  const client = await mcpClient(token)
+  const runId = crypto.randomUUID()
+  const db = new Database(assertTestDb(process.env.DB_PATH))
+  try {
+    db.pragma('busy_timeout = 5000')
+    const user = db.prepare('SELECT id FROM users LIMIT 1').pluck().get() as string
+    db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status, total_rows,
+      processed_rows) VALUES (?, ?, ?, 'Paid (Output)', 'Say /val', 'openai/gpt-4o-mini', 'completed', 4, 4)`)
+      .run(runId, sheetId, user)
+    const row = db.prepare(`INSERT INTO ai_results (id, run_id, user_id, row_index, output_value, status,
+      prompt_tokens, completion_tokens, reasoning_tokens, cost_usd, provider_cost_usd, paid_with)
+      VALUES (?, ?, ?, ?, 'ok', 'completed', ?, ?, ?, ?, ?, ?)`)
+    row.run(crypto.randomUUID(), runId, user, 0, 30, 4, 2, 0.0000087, 0.000174, 'own_key')
+    row.run(crypto.randomUUID(), runId, user, 1, 30, 4, null, 0.0001849, null, 'credits')
+    row.run(crypto.randomUUID(), runId, user, 2, 31, 5, null, 0.00001, null, 'own_key')
+    row.run(crypto.randomUUID(), runId, user, 3, 29, 3, null, 0.0002, null, null)
+  } finally { db.close() }
+
+  const expected = [
+    { paid_with: 'own_key', provider_cost_usd: 0.000174, tokens: { input: 30, output: 4, reasoning: 2 } },
+    { paid_with: 'credits', tokens: { input: 30, output: 4, reasoning: null } },
+    { paid_with: 'own_key', provider_cost_usd: null, tokens: { input: 31, output: 5, reasoning: null } },
+    { paid_with: null, tokens: { input: 29, output: 3, reasoning: null } },
+  ]
+  const pick = (r: any) => ({ paid_with: r.paid_with, tokens: r.tokens,
+    ...('provider_cost_usd' in r ? { provider_cost_usd: r.provider_cost_usd } : {}) })
+  const viaMcp = parseResult(await client.callTool({ name: 'get_run_results',
+    arguments: { run_type: 'ai', run_id: runId, status_filter: 'all' } }))
+  expect(viaMcp.results.map(pick)).toEqual(expected)
+  const auth = { headers: { Authorization: `Bearer ${token}` } }
+  const viaRest = await (await api.get(`${BASE}/api/v1/ai-runs/${runId}/results?status=all`, auth)).json()
+  expect(viaRest.results.map(pick)).toEqual(expected)
+
+  const status = parseResult(await client.callTool({ name: 'get_run_status', arguments: { run_type: 'ai',
+    run_id: runId } }))
+  expect(status.rows_paid_with).toEqual({ own_key: 2, credits: 1 })
+  expect(status.provider_cost_usd).toBe(0.000174)
+  const restStatus = await (await api.get(`${BASE}/api/v1/ai-runs/${runId}`, auth)).json()
+  expect(restStatus.rows_paid_with).toEqual({ own_key: 2, credits: 1 })
   await client.close()
 })

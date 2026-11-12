@@ -4,6 +4,7 @@ import { validateModelParam } from '../lib/ai-model-resolve';
 import { OutputColumnSpec, OutputColumnType, SOURCES_KEY } from '../lib/ai-multi-output';
 import { parseBooleanOption, parseSearchOptions, type SearchOptions } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
+import { parseFetchLimits, type FetchLimits } from '../lib/web-fetch-options';
 
 const OUTPUT_COLUMN_TYPES: OutputColumnType[] = ['string', 'number', 'boolean'];
 
@@ -79,15 +80,18 @@ export interface RunParams {
   outputColumns?: OutputColumnSpec[];
   // Web search engine, mode and per-row cap; null without web search.
   search: SearchOptions | null;
+  // Web fetch limits (lib/web-fetch-options.ts); both null without them.
+  fetchLimits: FetchLimits;
   // "Only run if" rule text, checked against the sheet by the start service.
   runIf: string | null;
 }
 
-// The two web-tool switches and the search options, shared with the preview
-// parser. A switch takes true/false or the text "true"/"false"; anything else is
-// refused, since `!!"false"` would quietly turn a paid tool on.
-export function parseWebOptions(body: any):
-  { ok: { useOpenRouterWebSearch: boolean; useWebFetch: boolean; search: SearchOptions | null } } | { error: string } {
+// The two web-tool switches, the search options and the fetch limits, shared
+// with the preview parser. A switch takes true/false or the text "true"/"false";
+// anything else is refused, since `!!"false"` would quietly turn a paid tool on.
+export function parseWebOptions(body: any): { ok: {
+  useOpenRouterWebSearch: boolean; useWebFetch: boolean; search: SearchOptions | null; fetchLimits: FetchLimits;
+} } | { error: string } {
   const webSearch = parseBooleanOption(body?.useOpenRouterWebSearch);
   const webFetch = parseBooleanOption(body?.useWebFetch);
   if (webSearch === 'invalid') return { error: 'web_search must be true or false.' };
@@ -96,7 +100,15 @@ export function parseWebOptions(body: any):
     { engine: body?.searchEngine, mode: body?.searchMode, maxPerRow: body?.maxSearchesPerRow }, !!webSearch,
   );
   if ('error' in search) return search;
-  return { ok: { useOpenRouterWebSearch: !!webSearch, useWebFetch: !!webFetch, search: search.ok } };
+  const fetchLimits = parseFetchLimits(
+    { maxContentTokens: body?.maxContentTokens, maxPagesPerRow: body?.maxPagesPerRow }, !!webFetch,
+  );
+  if ('error' in fetchLimits) return fetchLimits;
+  return {
+    ok: {
+      useOpenRouterWebSearch: !!webSearch, useWebFetch: !!webFetch, search: search.ok, fetchLimits: fetchLimits.ok,
+    },
+  };
 }
 
 export function parseRunRequest(body: any): RunParams | RunParseError {

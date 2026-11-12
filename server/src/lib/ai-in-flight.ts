@@ -6,8 +6,11 @@
 // at once; a call past it is refused with 402 until running calls settle
 // (https://openrouter.ai/docs/api_reference/limits). OpenRouter doesn't publish
 // the fraction, so the balance gives only a ceiling, never a safe number. Free
-// models and calls served entirely on your own provider key (BYOK, no paid
-// plugins) aren't held.
+// models aren't held. Calls served entirely on your own provider key (BYOK, no
+// paid plugins) aren't either, but a call the key can't serve falls back to
+// OpenRouter's credits (the BYOK page's "shared capacity fallback") and is
+// held, and own-key rows have been refused with this 402: so own-key runs get
+// the check too, with a note saying so.
 
 export interface InFlight {
   concurrency: number;
@@ -23,12 +26,15 @@ export interface InFlight {
 }
 
 const usd = (n: number) => Math.round(n * 1e6) / 1e6;
+const OWN_KEY_NOTE = ' Your rows run on your own provider key, but OpenRouter can hold in-flight budget on an '
+  + 'own-key run too: a row your key can\'t serve falls back to OpenRouter credits, and web search and fetch are '
+  + 'paid plugins, so these rows can still be refused with 402.';
 // Below a cent, two significant figures ($0.00042), never a rounded-away $0.00.
 const money = (n: number) => `$${n >= 0.01 || n === 0 ? n.toFixed(2) : String(Number(n.toPrecision(2)))}`;
 
 export function inFlightCheck(a: {
   concurrency: number; inputTokens: number; maxTokens: number;
-  promptPrice: number; completionPrice: number; balanceUsd: number | null;
+  promptPrice: number; completionPrice: number; balanceUsd: number | null; ownKey?: boolean;
 }): InFlight | null {
   const perCall = a.inputTokens * a.promptPrice + a.maxTokens * a.completionPrice;
   if (!(perCall > 0)) return null;
@@ -42,7 +48,8 @@ export function inFlightCheck(a: {
       + 'how much). A call past that is refused with 402; Cubex waits and retries it a few times. '
       + (a.balanceUsd === null
         ? 'OpenRouter shares the balance only with a management key, so Cubex can\'t compare.'
-        : 'If rows fail with error_class "concurrency", rerun them with a lower concurrency.'),
+        : 'If rows fail with error_class "concurrency", rerun them with a lower concurrency.')
+      + (a.ownKey ? OWN_KEY_NOTE : ''),
   };
   if (a.balanceUsd !== null && ceiling !== null && atConcurrency > a.balanceUsd) {
     const held = `At concurrency ${a.concurrency} this run can hold about ${money(atConcurrency)} at once, more than `

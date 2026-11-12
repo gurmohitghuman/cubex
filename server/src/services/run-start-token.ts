@@ -129,6 +129,7 @@ export interface TokenAiRunArgs {
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
   search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown; run_if?: unknown;
   webhook_id?: unknown; max_cost_usd?: unknown; allow_unpriced?: unknown; spend_limit_usd?: unknown;
+  max_content_tokens?: unknown; max_pages_per_row?: unknown;
 }
 
 // What the arguments say, read as the start reads them (no state): output_columns' shape, then the request.
@@ -146,7 +147,7 @@ function aiArgsOf(sheetId: string, a: TokenAiRunArgs): RunParams | { ok: false; 
     model: a.model, temperature: a.temperature, concurrency: a.concurrency, maxChars: a.max_chars,
     useOpenRouterWebSearch: a.web_search, useWebFetch: a.web_fetch, outputColumns,
     searchEngine: a.search_engine, searchMode: a.search_mode, maxSearchesPerRow: a.max_searches_per_row,
-    runIf: a.run_if,
+    runIf: a.run_if, maxContentTokens: a.max_content_tokens, maxPagesPerRow: a.max_pages_per_row,
   });
   return parsed.ok ? parsed : { ok: false, error: parsed.error.replace(/^runIf/, 'run_if') };
 }
@@ -194,7 +195,8 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       outputColumns: parsed.outputColumns, maxChars: parsed.safeMaxChars,
       targetRowIndexes: pre.targetRowIndexes, search: parsed.search, runIf: parsed.runIf,
-      concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
+      concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId), fetchLimits: parsed.fetchLimits,
+      historyColumn: `${parsed.cleanColumnName} ${parsed.outputColumns ? '(Status)' : '(Output)'}`,
     });
     if ('fail' in est) {
       return { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message } as Fail;
@@ -214,7 +216,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
       useOpenRouterWebSearch: parsed.useOpenRouterWebSearch, useWebFetch: parsed.useWebFetch,
       previewRows: a.preview_rows as number, targetRowIndexes: pre.targetRowIndexes, search: parsed.search,
       runIf: parsed.runIf, concurrency: resolveAiConcurrency(parsed.safeConcurrency, sheetId, c.userId),
-      columnName: parsed.cleanColumnName,
+      columnName: parsed.cleanColumnName, fetchLimits: parsed.fetchLimits,
     }, `token:${c.tokenId}`);
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
@@ -236,7 +238,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     safeTemperature: parsed.safeTemperature, safeConcurrency: parsed.safeConcurrency,
     safeMaxChars: parsed.safeMaxChars, targetRowIndexes: pre.targetRowIndexes,
     outputColumns: parsed.outputColumns, search: parsed.search, runIf: parsed.runIf,
-    spendLimitUsd: limits.spendLimitUsd,
+    spendLimitUsd: limits.spendLimitUsd, fetchLimits: parsed.fetchLimits,
   });
   if ('fail' in result) return result;
   const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;

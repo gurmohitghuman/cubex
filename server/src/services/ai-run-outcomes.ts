@@ -1,7 +1,8 @@
 // What an AI run's rows came to so far, for its summary (run-status.ts): the
 // failed/succeeded counts, what they cost (OpenRouter's charge, and on the
 // user's own provider key what that provider charged) and how many searches
-// ran, in one index-only scan of idx_ai_results_run_spend (migration 022).
+// ran, and how many rows each payer paid for, in one index-only scan of
+// idx_ai_results_run_payer (migration 055).
 // Plus the run's search settings as stored.
 import { DEFAULT_SEARCH_MODE, hasModes } from '../lib/web-search-options';
 import { db } from '../lib/db';
@@ -25,11 +26,12 @@ const droppedOf = (runId: string, userId: string): Dropped => db.prepare(`
 export function aiRowOutcomes(runId: string, userId: string) {
   const groups = db.prepare(`
     SELECT status, COUNT(*) AS n, SUM(cost_usd) AS cost, COUNT(cost_usd) AS priced, SUM(web_searches) AS searches,
-      SUM(provider_cost_usd) AS provider, COUNT(provider_cost_usd) AS byok
+      SUM(provider_cost_usd) AS provider, COUNT(provider_cost_usd) AS byok,
+      SUM(paid_with = 'own_key') AS own_key, SUM(paid_with = 'credits') AS credits
     FROM ai_results WHERE run_id = ? GROUP BY status
   `).all(runId) as Array<{
     status: string; n: number; cost: number | null; priced: number; searches: number | null;
-    provider: number | null; byok: number;
+    provider: number | null; byok: number; own_key: number | null; credits: number | null;
   }>;
   const n = (s: string) => groups.find(g => g.status === s)?.n ?? 0;
   const dropped = droppedOf(runId, userId);
@@ -37,6 +39,8 @@ export function aiRowOutcomes(runId: string, userId: string) {
   const searched = groups.filter(g => g.searches !== null);
   const byok = groups.reduce((sum, g) => sum + g.byok, dropped.byok);
   const round = (v: number) => Math.round(v * 1e6) / 1e6;
+  const own = groups.reduce((sum, g) => sum + (g.own_key ?? 0), 0);
+  const credits = groups.reduce((sum, g) => sum + (g.credits ?? 0), 0);
   return {
     failed_rows: n('failed'), succeeded_rows: n('completed') + n('accepted'),
     // Rounded past float noise; a run's cost is fractions of a cent per row.
@@ -45,6 +49,8 @@ export function aiRowOutcomes(runId: string, userId: string) {
     ...(byok > 0
       ? { provider_cost_usd: round(groups.reduce((sum, g) => sum + (g.provider ?? 0), dropped.provider ?? 0)) } : {}),
     searches: searched.length > 0 ? searched.reduce((sum, g) => sum + (g.searches ?? 0), 0) : null,
+    // Rows per payer, so a fall back from the own key to credits shows. Only when a row said.
+    ...(own + credits > 0 ? { rows_paid_with: { own_key: own, credits } } : {}),
   };
 }
 

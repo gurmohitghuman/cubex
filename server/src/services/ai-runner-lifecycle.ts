@@ -17,6 +17,7 @@ import { RUN_BREAKER_FAILURES } from '../lib/constants';
 import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
 import { isBusyLock, isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
+import { webEngineMessage } from '../lib/web-engine-refusal';
 import { openSpendGate, type GateAnswer } from './ai-spend-gate';
 
 // Lifecycle + dispatch helpers shared by processAIRun / processAIRerun
@@ -135,6 +136,10 @@ export const dispatchRows = async (
           breaker.record(outcome);
           const tripped = breaker.tripped;
           if (tripped && !end) end = { reason: 'provider_errors', message: brakeMessage(tripped, false) };
+          // The workspace refused the web fetch engine: once, for every row (this one stays waiting).
+          if (outcome.kind === 'dropped' && outcome.webEngine !== undefined && !end) {
+            end = { reason: 'web_engine', message: webEngineMessage(outcome.webEngine) };
+          }
           // Progress counts rows PROCESSED, not rows that succeeded. A row that
           // errored (API 401, etc.) writes a ❌ cell and resolves normally through
           // here — so it IS counted. This matches the HTTP runner, which also
@@ -166,9 +171,10 @@ export const dispatchRows = async (
 };
 
 // The run paused itself (the token's spend cap, its own spend limit, its
-// provider failing, a database that can't be written: lib/run-pool.ts). A
-// resume of a token_cap pause is refused until the cap is raised
-// (run-lifecycle.ts); a spend_limit one goes on with a higher limit.
+// provider failing, a database that can't be written, its web fetch engine
+// refused: lib/run-pool.ts). A resume of a token_cap pause is refused until the
+// cap is raised (run-lifecycle.ts); a spend_limit one goes on with a higher
+// limit; the others go on as they are.
 export const pauseAt = (runId: string, myGeneration: number, end: LoopEnd): void =>
   pauseItself('ai_runs', runId, myGeneration, end);
 

@@ -41,7 +41,7 @@ function settingsOf(s: SetupStep): Record<string, unknown> {
   switch (s.kind) {
     case 'ai': return {
       prompt: [s.prompt.trim(), (s.systemPrompt ?? '').trim()], 'output columns': s.outputColumns ?? [],
-      'web tools': [s.webSearch, s.webFetch],
+      'web tools': [s.webSearch, s.webFetch, ...(s.fetchLimits ? [s.fetchLimits] : [])],
     };
     case 'http': return {
       request: [s.request.method, s.request.url.trim(), s.request.headers, (s.request.body ?? '').trim(),

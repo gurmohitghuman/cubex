@@ -15,6 +15,7 @@ import { mappedColumns, type AiFill, type CleanFill, type FormulaFill, type Http
   from '../lib/setup-versions/spec';
 import { setDerivedAutorun } from './derived-autorun';
 import { ensureLookupSource, releaseLookupSource } from './lookup-source';
+import { runInsertExtras } from '../lib/web-fetch-options';
 
 // Nothing fills it now: an auto-run already on keeps its fence (rows that came
 // meanwhile are still worked out); one turned on starts above the rows there.
@@ -28,12 +29,14 @@ export function writeAiSetup(sheetId: string, userId: string, column: string, f:
   db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows, processed_rows,
       output_columns, status_column, data_column, web_search_engine, web_search_mode, web_search_max_per_row,
-      web_search_engine_used, run_if, setup_only)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 5), 'completed', 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1)`)
+      web_search_engine_used, run_if, setup_only, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 5), 'completed', 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
     .run(id, sheetId, userId, column, f.prompt, f.systemPrompt, f.model, f.temperature, f.webSearch ? 1 : 0,
       f.webFetch ? 1 : 0, f.maxChars, f.concurrency, structured ? JSON.stringify(f.outputColumns) : null,
       structured ? column : null, f.dataColumn, f.searchEngine, f.searchMode, f.maxSearchesPerRow,
-      f.searchEngineUsed ?? null, f.runIf);
+      f.searchEngineUsed ?? null, f.runIf,
+      ...runInsertExtras({ prompt: f.prompt, systemPrompt: f.systemPrompt, outputs: f.outputColumns?.length ?? 0 },
+        f.webFetch, f.fetchLimits));
   forgetUsage(id);
   return id;
 }

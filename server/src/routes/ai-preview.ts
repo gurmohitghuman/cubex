@@ -16,7 +16,8 @@ import {
 import { webSearchSummary } from '../lib/web-search-plan';
 import { getOpenRouterClient } from '../services/openrouter';
 import { planIfSearching } from '../services/web-search-catalog';
-import { previewDraftRow, processOneRow, structuredPreview } from './ai-preview-runner';
+import { previewDraftRow, processOneRow, structuredPreview, type PreviewRowResult } from './ai-preview-runner';
+import { savePreviewTokens } from '../services/ai-preview-history';
 import {
   acquirePreviewSlot, releasePreviewSlot, MAX_ACTIVE_PREVIEWS_PER_USER,
 } from '../lib/ai-preview-concurrency';
@@ -90,7 +91,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
     const columns = getSheetColumns(sheetId, req.userId!, false);
     const args = {
       prompt, columns, systemPrompt, model, safeTemperature, maxChars: safeMaxChars ?? undefined,
-      search: planned.ok, useWebFetch, ...structured?.args,
+      search: planned.ok, useWebFetch, fetchLimits: parsed.fetchLimits, ...structured?.args,
     };
 
     // Persist the draft CONFIG before streaming (survives close/reopen even if
@@ -151,6 +152,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
     // and `args` the model's prompt was filled from, so credit reuse can later refuse a
     // row whose referenced cells changed.
     const collected: DraftPreviewRow[] = [];
+    const answers: PreviewRowResult[] = [];
     const spent = noSpend();
     for (let i = 0; i < rows.length; i += AI_PREVIEW_CONCURRENCY) {
       const chunk = rows.slice(i, i + AI_PREVIEW_CONCURRENCY);
@@ -161,6 +163,7 @@ router.post('/preview', async (req: AuthRequest, res) => {
         processOneRow(row, openai!, args).then(answer => {
           addCall(spent, answer, true);
           const result = structured ? structured.shape(answer) : answer;
+          answers.push(result);
           collected[i + j] = previewDraftRow(row, result, args);
           // Carry the server's INTENDED order (position in `rows`) so the client
           // renders in that order: rows stream out of order as they resolve.
@@ -171,6 +174,10 @@ router.post('/preview', async (req: AuthRequest, res) => {
 
     // What the rows cost goes in the usage history as a preview (services/usage-calls.ts).
     recordCallUsage(req.userId!, sheetId, parsed.cleanColumnName, 'preview', spent);
+    // What the rows measured, for later estimates of this prompt (services/ai-preview-history.ts).
+    savePreviewTokens(req.userId!, sheetId, { model, prompt, systemPrompt, outputs: parsed.outputColumns?.length ?? 0,
+      webSearch: useOpenRouterWebSearch, webFetch: useWebFetch, engineUsed: planned.ok?.used ?? null,
+      fetchLimits: parsed.fetchLimits }, answers);
 
     // All-or-nothing: only a preview where EVERY row SUCCEEDED is hydrated/
     // reused. "Present" (filter(Boolean)) isn't enough — an errored row is a
