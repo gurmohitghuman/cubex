@@ -144,7 +144,8 @@ test('MCP origin guard: a foreign browser Origin is rejected pre-auth', async ()
   // A JSON-RPC error with no id, as the transport allows; the spec names no code
   // for it, so Cubex's own, from outside the JSON-RPC reserved range.
   expect([res.status(), await res.json()])
-    .toEqual([403, { jsonrpc: '2.0', error: { code: -31403, message: 'Forbidden origin' } }])
+    .toEqual([403, { jsonrpc: '2.0', error: { code: -31403, message: 'Forbidden origin: a web page may call /mcp '
+      + 'only from this Cubex\'s own address. MCP clients outside a browser send no Origin header.' } }])
 })
 
 // Clients on 2025-11-25, like this v1 client, open with initialize: Cubex
@@ -183,12 +184,11 @@ test('MCP 2025-11-25: the initialize handshake, and plain JSON answers with no s
 
   // tools/list hands out no cursor, so a cursor is refused with -32602 here too.
   const cursor = await post({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: { cursor: 'abc' } })
-  expect(await cursor.json()).toEqual({ jsonrpc: '2.0', id: 3,
-    error: { code: -32602, message: 'Invalid cursor: tools/list answers every tool at once and gives no cursor.' } })
-  // A batch (which 2025-03-26 clients may send) gets one JSON array, an answer for each request in order.
+  expect(await cursor.json()).toEqual({ jsonrpc: '2.0', id: 3, error: { code: -32602, message: 'Invalid cursor: '
+    + 'tools/list answers every tool at once and gives no cursor. Send tools/list without one.' } })
+  // A batch (which 2025-03-26 allowed) is refused whole: one request per POST (mcp-refusals.spec.ts).
   const batch = await post([{ jsonrpc: '2.0', id: 4, method: 'tools/list' },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'nope', arguments: {} } }])
-  const [listed, unknown] = await batch.json()
-  expect([batch.status, listed.id, Object.keys(listed.result), unknown]).toEqual([200, 4, ['tools'],
-    { jsonrpc: '2.0', id: 5, error: { code: -32602, message: 'Tool nope not found' } }])
+  expect([batch.status, await batch.json()]).toEqual([400, { jsonrpc: '2.0', error: { code: -32600,
+    message: 'Invalid Request: JSON-RPC batches are not supported. Send one request per POST.' } }])
 })

@@ -12,8 +12,10 @@ import { v4 as uuid } from 'uuid'
 import { mcpHttpKit, MODERN, SERVER, META } from './mcp-http-kit'
 import buildMod from '../../server/src/mcp/build-server'
 import spendMod from '../../server/src/lib/token-spend'
+import answersMod from '../../server/src/mcp/http-answers'
 const { registerAllTools } = buildMod as typeof import('../../server/src/mcp/build-server')
 const { capToolNote } = spendMod as typeof import('../../server/src/lib/token-spend')
+const { INTERNAL_ERROR } = answersMod as typeof import('../../server/src/mcp/http-answers')
 
 const { ctx, spend, check, done, crash, post, modern, legacy } = mcpHttpKit('mcp-http-entry')
 
@@ -99,9 +101,10 @@ async function main() {
     try {
       const res = await post({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: META } },
         { 'mcp-protocol-version': MODERN, 'mcp-method': 'tools/list' }, false)
-      assert.deepEqual([res.status, JSON.parse(res.text).error.code], [500, -32603])
-      await assert.rejects(post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, {}, false),
-        { message: 'MCP request without a signed-in token' })
+      assert.deepEqual([res.status, JSON.parse(res.text)],
+        [500, { jsonrpc: '2.0', id: 1, error: { code: -32603, message: INTERNAL_ERROR } }])
+      const old = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, {}, false)
+      assert.deepEqual([old.status, JSON.parse(old.text).id, JSON.parse(old.text).error.code], [500, 2, -32603])
     } finally { console.error = quiet }
   })
 

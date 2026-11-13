@@ -77,9 +77,13 @@ Every request needs the token, `server/discover` and `initialize` too. Cubex kee
 
 On every version:
 
-- `tools/list` gives every tool at once and hands out no cursor, so a request with a `cursor` gets error `-32602`.
+- One JSON-RPC request per POST. A batch (a JSON array of requests) gets HTTP 400 with `-32600`, and nothing in it runs. Clients on 2025-03-26 could send one before.
+- `tools/list` gives every tool at once and hands out no cursor, so a request with a `cursor` of any value, `null` too, gets error `-32602`.
 - An unknown tool name gets a JSON-RPC error `-32602` (`Tool nope not found`). Clients on 2025-11-25 and earlier used to get it as a tool result with `isError: true`.
-- A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600`. Neither answer has an `id`.
+- A body that isn't valid JSON gets HTTP 400 with `-32700`, a body over 2 MB gets 413 with `-32700`, and a POST whose `Content-Type` isn't `application/json` gets 415 with `-32600`.
+- A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600` and `Allow: POST`.
+- A failure inside Cubex gets HTTP 500 with `-32603`. The server log has the cause, with secrets redacted.
+- An error answer carries the request's `id` when Cubex read one, and no `id` otherwise, never `id: null`. No error uses a code from `-32000` to `-32019`, which the spec keeps for older servers. Each message says what was wrong and what to send instead.
 
 On 2026-07-28:
 

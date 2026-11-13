@@ -1,10 +1,11 @@
 // /mcp's refusals through the era router (server/src/mcp/http-entry.ts), in
 // process. A version Cubex doesn't speak gets -32022 naming every version it
 // does, newest first, and the v2 client still lands on 2026-07-28 from it. A
-// tools/list cursor is refused with -32602 in both eras (Cubex hands none out);
-// so is an unknown tool. The 2026 header without _meta is a 400 with -32602. A
-// 2025-era batch gets one JSON array of answers. reportMcpError stays quiet for
-// the codes a client causes and logs the rest (an internal -32603 included).
+// tools/list cursor of any value, null too, is refused with -32602 in both eras
+// (Cubex hands none out); so is an unknown tool. The 2026 header without _meta
+// is a 400 with -32602. reportMcpError stays quiet for the codes a client
+// causes and logs the rest (an internal -32603 included). Batches and the other
+// refusals: mcp-http-refusals.test.ts.
 import assert from 'node:assert/strict'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { ProtocolError } from '@modelcontextprotocol/server'
@@ -47,8 +48,8 @@ async function main() {
     await client.close()
   })
 
-  await check('a tools/list cursor is refused with -32602 in both eras, an empty one too', async () => {
-    for (const cursor of ['abc', '']) {
+  await check('a tools/list cursor of any value is refused with -32602 in both eras, null and empty too', async () => {
+    for (const cursor of [null, 'abc', '', 0, {}, []]) {
       for (const res of [await modern('tools/list', { cursor }), await legacy('tools/list', { cursor })]) {
         assert.deepEqual([res.status, JSON.parse(res.text)], [200, refusal(res.id, -32602, INVALID_CURSOR)])
       }
@@ -68,16 +69,6 @@ async function main() {
       message: 'Invalid params: the MCP-Protocol-Version header names protocol revision 2026-07-28, but the '
         + 'request is missing the required per-request envelope key(s): _meta',
       data: { envelope: { missing: ['_meta'] } } }, id: 52 }])
-  })
-
-  await check('a 2025-era batch gets one JSON array with an answer for each request, in order', async () => {
-    const res = await post([{ jsonrpc: '2.0', id: 53, method: 'tools/list' },
-      { jsonrpc: '2.0', id: 54, method: 'tools/call', params: { name: 'nope', arguments: {} } }])
-    assert.deepEqual([res.status, res.type], [200, 'application/json'])
-    const [listed, unknown] = JSON.parse(res.text)
-    assert.deepEqual([listed.id, Object.keys(listed.result), listed.result.tools[0].name],
-      [53, ['tools'], 'list_tables'])
-    assert.deepEqual(unknown, refusal(54, -32602, 'Tool nope not found'))
   })
 
   await check('reportMcpError: quiet for the codes a client causes, logs the rest', () => {

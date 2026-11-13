@@ -12,16 +12,20 @@
 // (applyServerMiddleware) → Origin guard (spec-mandated DNS-rebinding defense,
 // pre-body) → Bearer auth → per-token limiter → tight JSON parser → transport.
 import express from 'express';
-import { ProtocolErrorCode } from '@modelcontextprotocol/server';
+import { isJsonContentType, ProtocolErrorCode } from '@modelcontextprotocol/server';
 import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
 import { authInfoFor, serveMcp } from '../mcp/http-entry';
+import {
+  errorBody, FORBIDDEN_ORIGIN, INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_JSON, PARSE_ERROR, requestIdOf, TOO_LARGE,
+} from '../mcp/http-answers';
 import type { McpAuthCtx } from '../mcp/tool-helpers';
 import { linkBase } from '../lib/file-links';
 import { runAs } from '../lib/actor';
 import { readTokenSpend } from '../services/token-spend';
+import { redactError } from '../lib/redact';
 
 const router = express.Router();
 
@@ -42,7 +46,7 @@ router.use((req, res, next) => {
   // A JSON-RPC error with no id, as the transport page allows for this 403. The
   // spec names no code for it: MCP_FORBIDDEN_ORIGIN_CODE (api-v1-constants.ts).
   return res.status(403).json({
-    jsonrpc: '2.0', error: { code: MCP_FORBIDDEN_ORIGIN_CODE, message: 'Forbidden origin' },
+    jsonrpc: '2.0', error: { code: MCP_FORBIDDEN_ORIGIN_CODE, message: FORBIDDEN_ORIGIN },
   });
 });
 
@@ -50,18 +54,21 @@ router.use(authenticateAccessToken);
 router.use(apiV1Limiter); // per-token, keyed AFTER validation; before body parse
 router.use(express.json({ limit: API_V1_MAX_JSON_BYTES }));
 // express.json failures (malformed JSON, oversized body) must answer in
-// JSON-RPC shape, not bubble to the global 500 handler.
+// JSON-RPC shape, not bubble to the global 500 handler. No id: the body was
+// never read, so there is no request to name (the schema allows none, never null).
 router.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!err) return next();
   const status = err.type === 'entity.too.large' ? 413 : 400;
-  return res.status(status).json({
-    jsonrpc: '2.0',
-    error: { code: -32700, message: status === 413 ? 'Request body too large' : 'Parse error' },
-    id: null,
-  });
+  return res.status(status).json(errorBody(ProtocolErrorCode.ParseError, status === 413 ? TOO_LARGE : PARSE_ERROR));
 });
 
+// A POST that isn't JSON: express.json left it unread, so it is refused here
+// rather than read raw further on. 415, as the transport answers it, with the
+// spec's code for a message that isn't a valid request (-32600).
 router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
+  if (!isJsonContentType(req.headers['content-type'])) {
+    return res.status(415).json(errorBody(ProtocolErrorCode.InvalidRequest, NOT_JSON));
+  }
   const abortController = new AbortController();
   res.on('close', () => abortController.abort());
   try {
@@ -79,9 +86,10 @@ router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
     await runAs({ via: 'mcp', tokenName: req.accessTokenName ?? null, tokenId: req.accessTokenId ?? null },
       () => serveMcp(req, res, req.body));
   } catch (error) {
-    console.error('MCP request error:', error);
+    // Redacted like every other MCP log line: an error here can quote the request.
+    console.error('MCP request error:', redactError(error));
     if (!res.headersSent) {
-      res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+      res.status(500).json(errorBody(ProtocolErrorCode.InternalError, INTERNAL_ERROR, requestIdOf(req.body)));
     }
   }
 });
@@ -89,10 +97,9 @@ router.post('/', async (req: TokenAuthRequest & { auth?: AuthInfo }, res) => {
 // No server-push stream to GET (2026-07-28 has none either) and no session to DELETE.
 // A GET or DELETE carries no JSON-RPC request object at all: Invalid Request
 // (-32600), the spec's code for that. No id, since there is no request to name.
+// A 405 names the methods the resource takes (RFC 9110, Allow): POST only.
 const methodNotAllowed = (_req: express.Request, res: express.Response) =>
-  res.status(405).json({
-    jsonrpc: '2.0', error: { code: ProtocolErrorCode.InvalidRequest, message: 'Method not allowed' },
-  });
+  res.status(405).set('Allow', 'POST').json(errorBody(ProtocolErrorCode.InvalidRequest, METHOD_NOT_ALLOWED));
 router.get('/', methodNotAllowed);
 router.delete('/', methodNotAllowed);
 

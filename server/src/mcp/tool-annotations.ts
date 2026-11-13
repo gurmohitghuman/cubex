@@ -36,7 +36,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_usage: read('Read usage and costs'),
   list_trash: read('List the trash'),
   get_sheet_history: read("Read a sheet's change log"),
-  append_rows: write('Append rows', false, false),
+  // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
+  append_rows: write('Append rows', true, false),
   update_cells: write('Update cells', true, true),
   // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back.
   delete_rows: write('Delete rows (to the trash)', true, true),
@@ -93,7 +94,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // again or new brands rewrite the answer and formula cells.
   ai_visibility: write('AI visibility table (ask and check_again are paid)', true, false, true),
   add_enrichment_field: write('Add a column from stored answers', false, false),
-  add_list_rows: write('Add list results as rows', false, false),
+  // Lands rows like append_rows: auto-dedupe keeping the newest can replace a row already there.
+  add_list_rows: write('Add list results as rows', true, false),
   // Turning it on makes later rows spend (or send requests) on their own.
   set_auto_run: write('Turn auto-run on, off or pause it', true, true, true),
   list_setups: read('List setups'),
