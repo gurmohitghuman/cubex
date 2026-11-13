@@ -79,13 +79,18 @@ router.get('/jobs/:id/stream', (req, res) => {
   // after that second was already partially cursored. rowid is monotonic insert
   // order (http_results is a rowid table), draining every row exactly once.
   let lastRowid = 0;
+  // The status and the worker generation a resume moves on: a run that paused itself again right after a
+  // resume, between two looks, still sends a new 'paused' (the sheet's notice reads it again).
   let lastStatus = '';
   let lastProcessed = -1;
 
   const tick = () => {
     try {
-      const r = db.prepare('SELECT status, processed_rows, total_rows, error_message FROM http_runs WHERE id = ?')
-        .get(id) as { status: string; processed_rows: number; total_rows: number; error_message: string | null } | undefined;
+      const r = db.prepare(`SELECT status, processed_rows, total_rows, error_message, worker_generation
+        FROM http_runs WHERE id = ?`).get(id) as {
+        status: string; processed_rows: number; total_rows: number; error_message: string | null;
+        worker_generation: number;
+      } | undefined;
       if (!r) { clearInterval(timer); try { res.end(); } catch {} return; }
 
       const newResults = db.prepare(`
@@ -126,7 +131,8 @@ router.get('/jobs/:id/stream', (req, res) => {
       // The client closes its EventSource on 'completed'/'failed'/'cancelled', so
       // emitting it with rows still queued abandons their live 'result' events.
       const statusReadyToEmit = !terminal || newResults.length === 0;
-      if (r.status !== lastStatus && statusReadyToEmit) {
+      const statusKey = `${r.status}/${r.worker_generation}`;
+      if (statusKey !== lastStatus && statusReadyToEmit) {
         // Carry the recorded failure reason so the client toast shows it instead
         // of "Unknown error" (L14). Only meaningful for 'failed'; omitted otherwise.
         res.write(`data: ${JSON.stringify({
@@ -135,7 +141,7 @@ router.get('/jobs/:id/stream', (req, res) => {
           error: r.status === 'failed' || r.status === 'paused' ? (r.error_message || undefined) : undefined,
           ...(enrichment ? { enrichment: true } : {}),
         })}\n\n`);
-        lastStatus = r.status;
+        lastStatus = statusKey;
       }
 
       if (terminal && newResults.length === 0) { clearInterval(timer); try { res.end(); } catch {} }

@@ -5,18 +5,17 @@
 // and the catalog (a tool that exists, a model, inputs it maps) is checked
 // when it's built (services/waterfall-build.ts).
 import {
-  HTTP_RETRY_MAX, TREG_TOOL_ID_PATTERN, ENRICH_ESTIMATE_MAX_LIST, ENRICH_MAX_ROW_CAP_USD,
+  HTTP_RETRY_MAX, TREG_TOOL_ID_PATTERN, ENRICH_MAX_ROW_CAP_USD,
   WATERFALL_HTTP_BODY_MAX_CHARS, WATERFALL_HTTP_HEADERS_MAX, WATERFALL_HTTP_URL_MAX_CHARS, WATERFALL_LABEL_MAX_CHARS,
   WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_INPUTS, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS,
 } from '../constants';
 import { strayKey } from '../enrich-agent-args';
 import { STEP_ID_PATTERN, type CheckChoices, type StepChoices } from './config';
-import { formulaText, parseCheck } from './input-check';
+import { formulaText, parseCheck, PROVIDER_RE, providerList } from './input-check';
 import { INPUT_KEY_PATTERN } from './inputs';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
-const PROVIDER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
 
@@ -31,13 +30,6 @@ export interface StepInput {
 
 export type Parsed<T> = { ok: T } | { error: string };
 const bad = (error: string): { error: string } => ({ error });
-
-function keys(v: unknown, name: string): Parsed<string[]> {
-  if (v === undefined || v === null) return { ok: [] };
-  if (!Array.isArray(v) || v.length > ENRICH_ESTIMATE_MAX_LIST
-    || !v.every(s => typeof s === 'string' && PROVIDER_RE.test(s))) return bad(`${name} must be a list of names.`);
-  return { ok: v as string[] };
-}
 
 export function parseRequires(v: unknown, where: string): Parsed<string[][] | null> {
   if (v === undefined || v === null) return { ok: null };
@@ -71,9 +63,9 @@ function enrichment(c: Json, where: string): Parsed<StepChoices> {
       } else return bad(`${where}: the tool input ${name} needs an input key or {"value": "..."}.`);
     }
   }
-  const order = keys(c.providerOrder, `${where}: providerOrder`);
+  const order = providerList(c.providerOrder, `${where}: providerOrder`);
   if ('error' in order) return order;
-  const skip = keys(c.skipProviders, `${where}: skipProviders`);
+  const skip = providerList(c.skipProviders, `${where}: skipProviders`);
   if ('error' in skip) return skip;
   const cap = c.maxCostUsd;
   if (cap !== undefined && cap !== null

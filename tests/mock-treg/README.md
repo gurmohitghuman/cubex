@@ -43,6 +43,8 @@ refused (401).
 - `POST /__mock/reset`: back to the defaults ($1.00, no own keys) with an empty request log.
 - `GET /__mock/requests`: what Cubex called. Header names and values are kept, except the key,
   which is only marked as sent.
+- `GET /__mock/providers`: each provider a routed call asked, as `{toolId, provider}`. A provider
+  the call excluded, or one past its max cost, was never asked, so it isn't listed.
 
 ## Fixtures
 

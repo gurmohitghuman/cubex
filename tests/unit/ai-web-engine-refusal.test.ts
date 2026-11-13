@@ -78,7 +78,8 @@ await ok('a run with limits pauses once on the refusal, fails no row and leaves 
   assert.equal(r.status, 'paused')
   assert.equal(r.pause_reason, 'web_engine')
   assert.match(r.error_message!, /^OpenRouter refused the web fetch engine Exa \(403\)/)
-  assert.match(r.error_message!, /Allow Exa there, then resume this run, or run the column again without the two/)
+  assert.match(r.error_message!,
+    /Allow Exa there, then resume this run\. Or cancel this run first, then run the column again without the two/)
   assert.match(r.error_message!, /OpenRouter said: Web fetch engine "exa" is not allowed/)
   assert.ok(stand.calls <= 2, `only the rows out at the time were sent (${stand.calls})`)
   assert.equal(results(paused.runId, 'failed'), 0)

@@ -48,5 +48,5 @@ export function webEngineRefusal(run: FetchRun, error: unknown): string | null {
 // Why the run paused (never starting with "Paused": the grid's toast adds that).
 export const webEngineMessage = (words: string): string => ('OpenRouter refused the web fetch engine Exa (403): '
   + 'your workspace limits web fetch engines on its Server Tools page and Exa isn\'t allowed. Runs with a tokens '
-  + 'per page or pages per row limit read pages through Exa. Allow Exa there, then resume this run, or run the '
-  + `column again without the two limits. OpenRouter said: ${words}`).slice(0, 500);
+  + 'per page or pages per row limit read pages through Exa. Allow Exa there, then resume this run. Or cancel '
+  + `this run first, then run the column again without the two limits. OpenRouter said: ${words}`).slice(0, 500);

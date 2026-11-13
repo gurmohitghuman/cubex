@@ -27,7 +27,11 @@ const common = {
   requires: z.array(z.array(z.string()).min(1)).max(WATERFALL_MAX_ALTERNATIVES).optional()
     .describe('Alternatives of input keys, e.g. [["full_name","domain"],["linkedin_url"]]; a row with none skips it'),
   check: z.union([
-    z.object({ kind: z.literal('verify'), accept: z.enum(['safest', 'balanced', 'wide']).optional() }).strict(),
+    z.object({
+      kind: z.literal('verify'), accept: z.enum(['safest', 'balanced', 'wide']).optional(),
+      provider_order: z.array(z.string()).max(100).optional().describe('Verify providers asked first, in this order'),
+      skip_providers: z.array(z.string()).max(100).optional().describe('Verify providers never asked'),
+    }).strict(),
     z.object({ kind: z.literal('formula'), formula: z.string().max(FORMULA_MAX_CHARS) }).strict(),
   ]).optional().describe('Checks a value the step finds; a value that fails is rejected and the next step runs'),
 };
@@ -76,7 +80,9 @@ export const WATERFALL_DESCRIPTION =
   + 'first row, top first, whose match_column equals or contains the input; put it first to skip paid steps for '
   + 'rows you already have; a rename there follows, a deleted sheet or column pauses the run). '
   + 'A step\'s check tests the value it finds before it counts: '
-  + '{"kind":"verify","accept":"safest"|"balanced"|"wide"} (treg\'s email verify, paid, email only) or '
+  + '{"kind":"verify","accept":"safest"|"balanced"|"wide"} (treg\'s email verify, paid, email only; its own '
+  + 'provider_order and skip_providers, as an enrichment step\'s, pick which verify providers it asks: '
+  + 'get_enrichment treg.people.email.verify lists them) or '
   + '{"kind":"formula","formula":"..."} over {{value}} and the inputs (truthy passes); a value that fails is '
   + 'rejected and the next step runs. '
   + 'inputs maps each input key ONCE to a column ({"full_name": "Name", "domain": "Website"}) or {"value": fixed}; '

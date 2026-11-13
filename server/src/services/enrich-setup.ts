@@ -9,7 +9,7 @@ import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { savedFilterSql, type SavedFilters } from './row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
 import {
-  defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun,
+  defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun, verifyPick,
   type Estimate, type ProviderPick,
 } from '../lib/enrich-estimate';
 import { readTregBalance } from '../lib/treg';
@@ -90,7 +90,7 @@ export async function estimateEnrichment(
     listLow = prices.lowUsd;
   } else if (input.preset === 'verified_email') {
     const verify = await getTool(ENRICH_VERIFY_TOOL_ID);
-    if ('ok' in verify) cap = defaultEmailLoopCap(cap, defaultMaxCostPerRow(verify.ok, { given: ['email'] }));
+    if ('ok' in verify) cap = defaultEmailLoopCap(cap, defaultMaxCostPerRow(verify.ok, verifyPick(input.skip)));
   }
   const providersOn = tool.kind === 'waterfall' ? enabledProviders(tool, pick).map(p => p.provider) : null;
   const estimate = estimateRun(tool, input.rows, input.maxCostPerRowUsd ?? cap, pick);

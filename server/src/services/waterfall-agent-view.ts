@@ -5,10 +5,17 @@
 // 'secrets' scope an HTTP step's keys, header values and body read "…"
 // (lib/waterfall/agent-mask.ts), which the same step sent back keeps.
 import { maskHttpStep } from '../lib/waterfall/agent-mask';
+import type { CheckChoices } from '../lib/waterfall/config';
 import type { WaterfallSetup } from './waterfall-column';
 
 const MASK_NOTE = 'HTTP steps show keys in URLs, header values and bodies as "…" (they need the secrets scope). '
   + 'Send such a step back with its id and URL unchanged to keep them.';
+
+// A check as waterfall_column takes it: a verify's provider lists only when it has them.
+const agentCheck = (c: CheckChoices): Record<string, unknown> => (c.kind === 'formula' ? { ...c } : {
+  kind: c.kind, accept: c.accept, ...(c.providerOrder ? { provider_order: c.providerOrder } : {}),
+  ...(c.skipProviders ? { skip_providers: c.skipProviders } : {}),
+});
 
 export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<string, unknown> {
   const i = s.input;
@@ -19,7 +26,8 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
     steps: i.steps.map(st => {
       const c = st.choices;
       const base = {
-        id: st.id, label: st.label, on: st.on, requires: st.requires, ...(st.check ? { check: st.check } : {}),
+        id: st.id, label: st.label, on: st.on, requires: st.requires,
+        ...(st.check ? { check: agentCheck(st.check) } : {}),
       };
       if (c.kind === 'enrichment') {
         return {

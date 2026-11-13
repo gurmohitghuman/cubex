@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { aiAPI, httpAPI, runsStopAPI, AIRun, HTTPRun } from '@/utils/api'
 import { setupRunsChanged } from '@/lib/setup-runs-signal'
 import { asksForHigherLimit } from '@/components/ai-modal/raise-limit-ask'
+import type { PausedLine } from '@/lib/paused-runs'
 
 interface UseRunControlsArgs {
   sheetId: string | null
@@ -67,6 +68,26 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
     await refetch()
   }
 
+  // One run that paused itself, from the sheet's notice (PausedRunsNotice): as Resume all does for it, so
+  // an AI run at its spend limit asks for a higher one first. The server's refusal shows as it says it.
+  const resumeOne = async (line: PausedLine) => {
+    try {
+      if (line.kind === 'ai') {
+        const run = aiRuns.find(r => r.id === line.runId)
+        if (run && await asksForHigherLimit(run)) {
+          setRaiseQueue(q => (q.includes(run.id) ? q : [...q, run.id]))
+          return
+        }
+        await aiAPI.resumeRun(line.runId)
+      } else {
+        await httpAPI.controlRun(line.runId, 'resume')
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || "Couldn't resume the run")
+    }
+    await refetch()
+  }
+
   // One request stops every run and setup on the sheet, the ones this tab
   // doesn't know about yet included (services/sheet-runs-stop.ts). The toast
   // is the server's own words: what stopped, and where auto-run goes on.
@@ -93,7 +114,7 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
     close: () => setRaiseQueue(q => q.slice(1)), resumed: () => { void refetch() },
   }
   return useMemo(
-    () => ({ anyActiveRuns, anyRunning, canStopAll, stoppingAll, pauseAll, resumeAll, stopAll, raiseLimit }),
+    () => ({ anyActiveRuns, anyRunning, canStopAll, stoppingAll, pauseAll, resumeAll, resumeOne, stopAll, raiseLimit }),
     [anyActiveRuns, anyRunning, canStopAll, stoppingAll, aiRuns, httpRuns, sheetId, raiseQueue],
   )
 }

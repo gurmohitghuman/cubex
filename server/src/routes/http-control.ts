@@ -4,6 +4,7 @@ import { HTTP_RUNS_LIST_MAX } from '../lib/constants';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { type HTTPRunRow } from '../services/http-runner';
+import { withPauseWords } from '../services/run-pause-words';
 
 // HTTP run control + run reads — split out of http-jobs.ts (200-line rule;
 // that file keeps the SSE stream). Control is a thin wrapper over
@@ -63,8 +64,9 @@ router.get('/runs', authenticateToken, (req: AuthRequest, res) => {
         AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL
           OR rowid IN (SELECT MAX(rowid) FROM http_runs WHERE sheet_id = ? AND user_id = ? GROUP BY master_column_name))
       ORDER BY created_at DESC, rowid DESC LIMIT ?
-    `).all(sheetId, req.userId!, sheetId, req.userId!, HTTP_RUNS_LIST_MAX);
-    res.json(runs);
+    `).all(sheetId, req.userId!, sheetId, req.userId!, HTTP_RUNS_LIST_MAX) as Array<{ status: string }>;
+    // A run that paused itself carries pause_message: the sheet shows it beside Resume.
+    res.json(withPauseWords(runs));
   } catch (error: any) {
     console.error('Get HTTP runs error:', error);
     res.status(500).json({ error: 'Failed to get HTTP runs' });

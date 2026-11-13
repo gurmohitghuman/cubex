@@ -1,3 +1,4 @@
+// Over 200 lines: every waterfall_column argument mapped to the start request in one place.
 // waterfall_column's arguments (MCP, and the body of POST /api/v1/sheets/:id/
 // waterfall-columns) as the app's start request (lib/waterfall/input.ts),
 // pure. A name Cubex doesn't know is refused at every level, never dropped (a
@@ -78,8 +79,22 @@ function stepOf(v: unknown, i: number): { ok: Json } | { error: string } {
         retries: v.retries,
       };
   for (const [k, val] of Object.entries(choices)) if (val === undefined) delete choices[k];
-  const check = v.check ? { check: v.check } : {};
-  return { ok: { id: v.id, label: v.label, on: v.on, requires: v.requires, choices, ...check } };
+  const check = v.check ? checkOf(v.check, where) : { ok: null };
+  if ('error' in check) return check;
+  const keep = check.ok ? { check: check.ok } : {};
+  return { ok: { id: v.id, label: v.label, on: v.on, requires: v.requires, choices, ...keep } };
+}
+
+// A verify check's provider_order and skip_providers in the start request's names; any other check goes as given.
+function checkOf(v: unknown, where: string): { ok: unknown } | { error: string } {
+  if (!isObj(v) || v.kind !== 'verify') return { ok: v };
+  const stray = strayKey(v, ['kind', 'accept', 'provider_order', 'skip_providers'], `${where}: check`);
+  if (stray) return { error: stray };
+  const out: Json = {
+    kind: v.kind, accept: v.accept, providerOrder: v.provider_order, skipProviders: v.skip_providers,
+  };
+  for (const [k, val] of Object.entries(out)) if (val === undefined) delete out[k];
+  return { ok: out };
 }
 
 // dry_run: true runs a few rows for real and writes nothing; test_step (a

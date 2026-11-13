@@ -11,7 +11,7 @@ import { parseSearchQueries } from '../lib/ai-data-cell';
 import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-outcomes';
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
-import { spendCapRefusal } from './token-spend';
+import { tokenCapWords } from './run-pause-words';
 import { resumeLeastPart } from './ai-run-floor';
 import { tokensOf, type PaidWith, type RowTokens } from '../lib/responses-adapter';
 
@@ -103,8 +103,7 @@ function capPausePart(r: CapPaused) {
   if (r.status !== 'paused' || r.pause_reason !== 'token_cap' || !r.user_id) return {};
   return {
     pause_reason: 'token_cap',
-    pause_message: spendCapRefusal(r.user_id, r.access_token_id)
-      ?? "Its access token's spend cap was raised: resume the run to go on.",
+    pause_message: tokenCapWords(r.user_id, r.access_token_id),
   };
 }
 
