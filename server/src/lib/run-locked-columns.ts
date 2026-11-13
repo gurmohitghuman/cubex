@@ -35,35 +35,53 @@ type RunHoldOpts = { paused?: boolean; autorun?: boolean; clearing?: boolean };
 // its ⏳ cells after it stopped or failed (when no run going holds it too).
 export type RunHold = 'going' | 'clearing';
 
-// The same columns, each with how it is held, from the same two queries.
-export function runHeldColumns(sheetId: string, userId: string, opts: RunHoldOpts = {}): Map<string, RunHold> {
-  const held = new Map<string, RunHold>();
-  const add = (going: number, write: (cols: Set<string>) => void) => {
-    const cols = new Set<string>();
-    write(cols);
-    for (const c of cols) if (going || !held.has(c)) held.set(c, going ? 'going' : 'clearing');
-  };
+// A run that holds columns: which run, its status, how it holds them (going or clearing), and the columns.
+export interface HeldBy { type: 'ai' | 'http'; id: string; status: string; hold: RunHold; columns: Set<string> }
+
+function heldRuns(sheetId: string, userId: string, opts: RunHoldOpts): HeldBy[] {
   // The literal lists keep the partial active-run index (migration 014) usable.
   const paused = opts.paused === false ? 0 : 1;
   const active = opts.clearing
     ? "(status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)"
     : "status IN ('pending','running','paused')";
   const going = "status IN ('pending','running','paused') AS going";
+  type Base = { id: string; status: string; going: number };
+  const runs: HeldBy[] = [];
+  const add = (type: HeldBy['type'], r: Base, write: (cols: Set<string>) => void) => {
+    const columns = new Set<string>();
+    write(columns);
+    runs.push({ type, id: r.id, status: r.status, hold: r.going ? 'going' : 'clearing', columns });
+  };
 
   const aiRuns = db.prepare(`
-    SELECT column_name, output_columns, data_column, ${going} FROM ai_runs
+    SELECT id, status, column_name, output_columns, data_column, ${going} FROM ai_runs
     WHERE sheet_id = ? AND user_id = ? AND ${active} AND (? = 1 OR status <> 'paused')
-  `).all(sheetId, userId, paused) as Array<AiRunWrites & { going: number }>;
-  for (const r of aiRuns) add(r.going, cols => addAiRunColumns(r, cols));
+  `).all(sheetId, userId, paused) as Array<AiRunWrites & Base>;
+  for (const r of aiRuns) add('ai', r, cols => addAiRunColumns(r, cols));
 
   const httpRuns = db.prepare(`
-    SELECT config, master_column_name, ${going} FROM http_runs
+    SELECT id, status, config, master_column_name, ${going} FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND ${active} AND (? = 1 OR status <> 'paused')
       AND (? = 1 OR autorun_id IS NULL)
-  `).all(sheetId, userId, paused, opts.autorun === false ? 0 : 1) as Array<HttpRunWrites & { going: number }>;
-  for (const r of httpRuns) add(r.going, cols => addHttpRunColumns(r, cols));
+  `).all(sheetId, userId, paused, opts.autorun === false ? 0 : 1) as Array<HttpRunWrites & Base>;
+  for (const r of httpRuns) add('http', r, cols => addHttpRunColumns(r, cols));
+  return runs;
+}
 
+// The same columns, each with how it is held, from the same two queries.
+export function runHeldColumns(sheetId: string, userId: string, opts: RunHoldOpts = {}): Map<string, RunHold> {
+  const held = new Map<string, RunHold>();
+  for (const r of heldRuns(sheetId, userId, opts)) {
+    for (const c of r.columns) if (r.hold === 'going' || !held.has(c)) held.set(c, r.hold);
+  }
   return held;
+}
+
+// The run that holds one column (lib/run-waiting.ts names it): one going before one that is clearing.
+export function columnHolder(sheetId: string, userId: string, column: string, opts: RunHoldOpts = {})
+  : HeldBy | null {
+  const runs = heldRuns(sheetId, userId, opts).filter(r => r.columns.has(column));
+  return runs.find(r => r.hold === 'going') ?? runs[0] ?? null;
 }
 
 export type AiRunWrites = { column_name: string; output_columns: string | null; data_column: string | null };

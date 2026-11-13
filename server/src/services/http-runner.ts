@@ -7,7 +7,7 @@ import { redactError } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { getRunStatusAndGen, shouldNotStartRun, type HTTPRunRow } from './http-runner-status';
 import { processHTTPRow } from './http-row';
-import { requestInputGate } from './run-input-gate';
+import { parkedAgain, requestInputGate } from './run-input-gate';
 import { GatedRows } from './run-gated-rows';
 import { parkRun, type RunParked } from '../lib/run-park';
 import { finalizeHTTPRun, failHTTPRun } from './http-runner-finalize';
@@ -60,6 +60,9 @@ export async function processHTTPRun(
     if (typeof expectedGeneration === 'number' && expectedGeneration !== run.worker_generation) return;
 
     myGeneration = run.worker_generation;
+    // A parked run whose rows still wait for a run that can't go on parks again, unclaimed.
+    const again = parkedAgain('http', run);
+    if (again !== null) return { parkMs: again };
 
     // Compare-and-set claim — see ai-runner. Claim ONLY from 'pending' (the sole
     // legitimate pre-claim state): a bare UPDATE would overwrite a cancel/pause

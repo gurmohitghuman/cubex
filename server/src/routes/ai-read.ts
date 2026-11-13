@@ -8,6 +8,7 @@ import { type AIRunRow } from '../services/ai-runner';
 import { runSpentUsd } from '../services/ai-spend-gate';
 import { aiLimitView } from '../services/ai-run-limit';
 import { withPauseWords } from '../services/run-pause-words';
+import { withWaiting } from '../services/run-waiting-status';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -52,10 +53,11 @@ router.get('/runs', (req: AuthRequest, res) => {
     const { sheetId } = req.query as { sheetId?: string };
     if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
     // A run that paused itself carries pause_message: the sheet shows it beside Resume.
-    res.json(withPauseWords(db.prepare(`
+    // A run whose rows wait for another run's column carries waiting (services/run-waiting-status.ts).
+    res.json(withWaiting(withPauseWords(db.prepare(`
       SELECT * FROM ai_runs WHERE sheet_id = ? AND user_id = ?
       ORDER BY created_at DESC, rowid DESC
-    `).all(sheetId, req.userId!) as Array<{ status: string }>));
+    `).all(sheetId, req.userId!) as Array<{ status: string; user_id: string }>)));
   } catch (error) {
     console.error('Get AI runs error:', error);
     res.status(500).json({ error: 'Failed to get AI runs' });

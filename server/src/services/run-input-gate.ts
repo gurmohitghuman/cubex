@@ -23,7 +23,8 @@ import { parseRowData } from '../lib/sql-rows';
 import { cellOf } from '../lib/row-cell';
 import { RUNNING_MARK, trimBlank } from '../lib/run-markers';
 import { waitUnlessStopped } from '../lib/http-retry';
-import { addAiRunColumns, addHttpRunColumns, runHeldColumns } from '../lib/run-locked-columns';
+import { addAiRunColumns, addHttpRunColumns, columnHolder, runHeldColumns } from '../lib/run-locked-columns';
+import { RunWaiting, parseWaitingOn } from '../lib/run-waiting';
 import { aiRunInputColumns, requestRunInputColumns } from '../lib/run-inputs/columns';
 import { aiRunStamper, requestRunStamper } from '../lib/run-inputs/stampers';
 import { runKey, waitPlan, type RunKind } from '../lib/run-wait-ring';
@@ -44,11 +45,17 @@ export interface InputGate {
   ready<R extends GateRow>(row: R, opts?: { signal?: AbortSignal; tick?: () => void }): Promise<GateReady<R>>;
   // Set once a row was told to park: the run starts no more rows, and parks once the ones out have settled.
   readonly parked: number | null;
+  // A fresh look before the job claims a parked run: the delay to park again for, or null to start it.
+  parkedAgain(): number | null;
+  // What the run's rows wait for, as its waiting_on says it (lib/run-waiting.ts): the gate's wait, and a
+  // waterfall's lookup steps add theirs.
+  readonly waiting: RunWaiting;
 }
 
 interface GateOpts {
   kind: RunKind; runId: string; sheetId: string; userId: string;
   reads: Array<string | null>; holds: Set<string>; stamper: RunInputStamper | null; stopped: () => boolean;
+  waiting: RunWaiting;
 }
 type Look = { ring: string } | { park: number } | { wait: true };
 
@@ -66,10 +73,16 @@ export function inputGate(o: GateOpts): InputGate {
     if (held && Date.now() - held.at < RUN_INPUT_WAIT_POLL_MS) return held.look;
     held = null;
     const now = runHeldColumns(o.sheetId, o.userId, { clearing: true });
-    if (!reads.some(c => now.has(c))) return null;
+    const column = reads.find(c => now.has(c));
+    if (column === undefined) { o.waiting.gateWait(null); return null; }
     met = true;
     const plan = waitPlan(o.sheetId, o.userId, key);
     const l: Look = plan === null ? { wait: true } : 'ring' in plan ? plan : { park: parkDelay(plan.park) };
+    // What it waits for, saved when that changes: the run holding the first column it reads that is held.
+    const holder = 'ring' in l ? null : columnHolder(o.sheetId, o.userId, column, { clearing: true });
+    o.waiting.gateWait(holder && {
+      column, holder: { type: holder.type, id: holder.id }, hold: holder.hold, ...('park' in l ? { parked: true } : {}),
+    });
     if ('park' in l) parked ??= l.park;
     if ('ring' in l && !ringLogged) {
       ringLogged = true;
@@ -114,6 +127,13 @@ export function inputGate(o: GateOpts): InputGate {
       }
     },
     get parked() { return parked; },
+    parkedAgain() {
+      if (reads.length === 0) return null;
+      held = null;
+      const l = look();
+      return l && 'park' in l ? l.park : null;
+    },
+    waiting: o.waiting,
   };
 }
 
@@ -127,6 +147,7 @@ export function requestInputGate(run: HTTPRunRow, config: HTTPAPIConfig, stopped
     kind: 'http', runId: run.id, sheetId: run.sheet_id, userId: run.user_id, holds, stopped,
     reads: requestRunInputColumns(config, run.master_column_name ?? '', columns),
     stamper: requestRunStamper(run, config),
+    waiting: new RunWaiting('http', run.id, run.worker_generation, run.waiting_on),
   });
 }
 
@@ -138,5 +159,20 @@ export function aiInputGate(run: AIRunRow, stopped: () => boolean): InputGate {
   return inputGate({
     kind: 'ai', runId: run.id, sheetId: run.sheet_id, userId: run.user_id, holds, stopped,
     reads: aiRunInputColumns(run, columns), stamper: aiRunStamper(run),
+    waiting: new RunWaiting('ai', run.id, run.worker_generation, run.waiting_on),
   });
+}
+
+// A parked run's job, woken before it claims the run: while what its rows wait for still can't go on in a job
+// slot, the delay to park again for (its job is snoozed again and the run stays pending as it is, with no row
+// paging, spend sizing or tool read on every wake), else null and the job starts it as usual.
+export function parkedAgain(kind: RunKind, run: AIRunRow | HTTPRunRow): number | null {
+  if (run.status !== 'pending' || !parseWaitingOn(run.waiting_on)?.parked) return null;
+  try {
+    const gate = kind === 'ai' ? aiInputGate(run as AIRunRow, () => false)
+      : requestInputGate(run as HTTPRunRow, JSON.parse((run as HTTPRunRow).config) as HTTPAPIConfig, () => false);
+    return gate.parkedAgain();
+  } catch {
+    return null; // a config that doesn't read: the claim goes on, and the run fails there as before
+  }
 }

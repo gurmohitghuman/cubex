@@ -37,6 +37,8 @@ import {
 import { drainWithin, forgetBuildRows, maintainLookupSheet } from './lookup-maintain';
 import { matchContains, matchEquals, type LookupMatches } from './lookup-probe';
 import { cellStillFilling, otherSheetMoving } from './waterfall-lookup-wait';
+import { columnHolder } from '../lib/run-locked-columns';
+import type { RunWaiting } from '../lib/run-waiting';
 import { lookedInSheet } from './waterfall-build-lookup';
 import { noInputs, STOP, type StepResult, type StepRun } from './waterfall-step-types';
 
@@ -70,8 +72,20 @@ export class RunLookups {
   private driving = new Map<string, Promise<unknown>>();
   private cache = new Map<string, { token: string; matches: Map<string, LookupMatches> }>();
 
+  // waiting: the run's waiting_on keeper (lib/run-waiting.ts), where a row waiting for a cell still filling counts.
   constructor(private readonly runId: string, private readonly userId: string,
-    private readonly stopped: () => boolean, private readonly autorun: boolean) {}
+    private readonly stopped: () => boolean, private readonly autorun: boolean,
+    private readonly waiting: () => RunWaiting | null = () => null) {}
+
+  // The row waits for the run filling that cell there: counted in the run's waiting_on until it leaves.
+  private waitFor(c: LookupChoices): () => void {
+    const holder = columnHolder(c.sheetId, this.userId, c.returnColumn, { paused: false, clearing: true });
+    const waiting = this.waiting();
+    if (!holder || !waiting) return () => {};
+    return waiting.stepWait({
+      column: c.returnColumn, sheet_id: c.sheetId, holder: { type: holder.type, id: holder.id }, hold: holder.hold,
+    });
+  }
 
   // The step's names as the run's stored config holds them now (a rename in that sheet rewrites them).
   private choicesOf(step: WaterfallStep, given: LookupChoices, fresh: boolean): LookupChoices {
@@ -182,6 +196,25 @@ export class RunLookups {
     if (c === STOP) return STOP;
     const value = lookupValue(a.inputs[c.inputKey] ?? '');
     if (!value) return noInputs(`Needs ${c.inputKey}.`);
+    // The cell it waits for, counted once however many looks it takes (again if a rename moves it).
+    let waitingFor = '';
+    let leave = (): void => {};
+    try {
+      return await this.answer(a, c, value, at => {
+        const key = `${at.sheetId}\n${at.returnColumn}`;
+        if (key === waitingFor) return;
+        leave();
+        waitingFor = key;
+        leave = this.waitFor(at);
+      });
+    } finally {
+      leave();
+    }
+  }
+
+  private async answer(a: Ask, first: LookupChoices, value: string, waitFor: (c: LookupChoices) => void)
+    : Promise<StepResult> {
+    let c = first;
     for (;;) {
       if (this.stopped()) return STOP;
       if (otherSheetMoving(c.sheetId, this.userId)) { await pause(LOOKUP_WAIT_POLL_MS); continue; }
@@ -200,6 +233,7 @@ export class RunLookups {
       if (found.m.rids.length > 0 && cellText(found.raw) === '') {
         // Its value there may still be coming, or the cell was read under a name that just moved.
         if (cellStillFilling(found.raw, c.sheetId, this.userId, c.returnColumn)) {
+          waitFor(c);
           await pause(LOOKUP_WAIT_POLL_MS);
           continue;
         }

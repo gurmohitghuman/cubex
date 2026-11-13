@@ -12,6 +12,7 @@ import { aiRowOutcomes, searchSettings, type RunSearchSettings } from './ai-run-
 import { enrichConfigOf, enrichResultExtras, enrichSummaryPart } from './run-status-enrich';
 import { waterfallResultExtras, waterfallSummaryPart } from './waterfall-run-status';
 import { tokenCapWords } from './run-pause-words';
+import { waitingPart, type RunWaitingView } from './run-waiting-status';
 import { resumeLeastPart } from './ai-run-floor';
 import { tokensOf, type PaidWith, type RowTokens } from '../lib/responses-adapter';
 
@@ -66,6 +67,7 @@ export interface RunSummary {
   // provider_errors, storage, stalled; an enrichment's own reasons are under enrichment).
   pause_reason?: string;
   pause_message?: string | null;
+  waiting?: RunWaitingView;   // running or pending, its rows waiting for another run (services/run-waiting-status.ts)
   created_at: string;
   updated_at: string;
 }
@@ -134,7 +136,7 @@ export function aiRunSummaryFromRow(r: any): RunSummary {
     status: r.status, processed_rows: r.processed_rows,
     total_rows: r.total_rows, target_row_count: parseTargetRows(r.target_rows)?.length ?? null,
     error_message: r.error_message, ...capPausePart(r), ...selfPausePart(r), ...aiRowOutcomes(r.id, r.user_id),
-    ...rulePart(r.run_if, r.condition_skipped_rows),
+    ...rulePart(r.run_if, r.condition_skipped_rows), ...waitingPart(r),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -145,7 +147,7 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
            target_rows, created_at, updated_at, output_columns, data_column, use_openrouter_web_search,
            web_search_engine, web_search_engine_used, web_search_mode, web_search_max_per_row,
            run_if, condition_skipped_rows, pause_reason, access_token_id, user_id, spend_limit_usd,
-           spend_cut_off_micro, spend_next_row_micro
+           spend_cut_off_micro, spend_next_row_micro, waiting_on
     FROM ai_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
   // One run's summary only (not list_runs): its least resume limit reads its usage record.
@@ -157,7 +159,7 @@ export function getHttpRunSummary(runId: string, userId: string): RunSummary | n
     SELECT id, sheet_id, master_column_name, status, processed_rows, total_rows,
            error_message, target_rows, created_at, updated_at,
            config, spent_micro, pause_reason, skipped_rows, dest_sheet_id, list_rows_added, condition_skipped_rows,
-           ai_cost_usd, placeholder_work, autorun_id
+           ai_cost_usd, placeholder_work, autorun_id, waiting_on
     FROM http_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
   return r ? httpRunSummaryFromRow(r, userId, true) : null;
@@ -173,7 +175,7 @@ export function httpRunSummaryFromRow(r: any, userId: string, full: boolean): Ru
     error_message: r.error_message, ...rowOutcomes('http_results', r.id),
     ...enrichSummaryPart(r, userId, full), ...waterfallSummaryPart(r, userId),
     ...rulePart(runIfOf(r.config), r.condition_skipped_rows), ...selfPausePart(r),
-    created_at: r.created_at, updated_at: r.updated_at,
+    ...waitingPart({ ...r, user_id: userId }), created_at: r.created_at, updated_at: r.updated_at,
   };
 }
 

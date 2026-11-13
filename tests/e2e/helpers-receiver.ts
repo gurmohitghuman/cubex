@@ -9,7 +9,9 @@ import { expect, type APIRequestContext } from '@playwright/test'
 // `url`, the request target as it came (percent-encoding and all), and `raw`,
 // the body's bytes. hold() keeps every answer back (or only those on the paths
 // it's given) until its release is called, so a spec can keep an HTTP API
-// run's requests in flight for as long as it needs; settled() waits until each
+// run's requests in flight for as long as it needs; holdPath() does the same
+// for one path beside it, released alone (two runs, one let go while the
+// other stays held); settled() waits until each
 // request so far was answered or dropped by Cubex. Every spec's receiver takes
 // the same port, so a spec counts requests on its own paths (hitsOn), never
 // all of them.
@@ -25,6 +27,7 @@ export class Receiver {
   private replies = new Map<string, Reply[]>()
   private server: http.Server | null = null
   private gate: { held: Promise<void>; paths: Set<string> | null; release: () => void } | null = null
+  private pathGates = new Map<string, { held: Promise<void>; release: () => void }>()
   private open = 0
 
   // The URL Cubex uses; `name` is any label (all go to this receiver).
@@ -43,6 +46,18 @@ export class Receiver {
       release: () => { if (this.gate === gate) this.gate = null; resolve() },
     }
     this.gate = gate
+    return gate.release
+  }
+
+  // Keeps the answers on one path back until its release is called, whatever hold() does meanwhile.
+  holdPath(path: string): () => void {
+    this.pathGates.get(path)?.release()
+    let resolve!: () => void
+    const held = new Promise<void>(r => { resolve = r })
+    const gate = {
+      held, release: () => { if (this.pathGates.get(path) === gate) this.pathGates.delete(path); resolve() },
+    }
+    this.pathGates.set(path, gate)
     return gate.release
   }
 
@@ -81,7 +96,7 @@ export class Receiver {
         this.open++
         res.once('close', () => { this.open-- })
         const gate = this.gate && (!this.gate.paths || this.gate.paths.has(u.pathname)) ? this.gate : null
-        void (gate?.held ?? Promise.resolve()).then(() => {
+        void Promise.all([gate?.held, this.pathGates.get(u.pathname)?.held]).then(() => {
           if (res.destroyed) return
           res.writeHead(reply.status, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) })
           res.end(reply.body ?? '{}')
@@ -97,6 +112,7 @@ export class Receiver {
   // close() waits for every connection to end, so a kept-alive one could hold it: they are all closed too.
   stop(): Promise<void> {
     this.gate?.release()
+    for (const g of [...this.pathGates.values()]) g.release()
     const server = this.server
     if (!server) return Promise.resolve()
     return new Promise(resolve => {

@@ -214,3 +214,9 @@ export const CHUNK_RELOAD_WINDOW_MS = 10_000;
 // The sheet's notice of runs that paused themselves (components/sheet/PausedRunsNotice.tsx) lists this many,
 // then "And N more paused runs."
 export const PAUSED_NOTICE_MAX_LINES = 3;
+// The sheet's notice of runs whose rows wait for another run's column (components/sheet/WaitingRunsNotice.tsx)
+// lists this many, then "And N more waiting runs."
+export const WAITING_NOTICE_MAX_LINES = 3;
+// While a run is pending or waits, the sheet reads its run lists again this often (hooks/sheet/useWaitingRefresh.ts),
+// the same pace as its throttled reads on progress.
+export const WAITING_REFRESH_MS = 5_000;

@@ -35,6 +35,9 @@ export const RUN_INPUT_WAIT_POLL_MS = envInt('RUN_INPUT_WAIT_POLL_MS', 1_000);
 // paused, which waits for a person. Never under three of the queue's polls.
 export const RUN_PARK_MS = envInt('RUN_PARK_MS', 5_000);
 export const RUN_PARK_PAUSED_MS = envInt('RUN_PARK_PAUSED_MS', 30_000);
+// Rows waiting inside a waterfall's lookup step change their count often: the run's waiting_on takes a new
+// count at most this often (a new column or holder is written at once; lib/run-waiting.ts).
+export const RUN_WAITING_ROWS_WRITE_MS = envInt('RUN_WAITING_ROWS_WRITE_MS', 5_000);
 // A running run beats updated_at this often while it waits on its rows.
 export const RUN_HEARTBEAT_MS = 30_000;
 // A running run whose beat is older than this has lost its worker: it is

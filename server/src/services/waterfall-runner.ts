@@ -169,7 +169,8 @@ export async function processWaterfallRun(
   const formulas = new RunFormulas(message => {
     if (own.halt === null) { own.halt = { reason: 'too_slow', message }; wake.abort(); }
   });
-  const lookups = new RunLookups(run.id, run.user_id, stopped, !!run.autorun_id);
+  // A row whose lookup step waits for a cell another run there still fills counts in the gate's waiting_on.
+  const lookups = new RunLookups(run.id, run.user_id, stopped, !!run.autorun_id, () => gate.waiting);
   const ctx: WaterfallRowCtx = {
     run, config, generation, enrich, ai, signal: wake.signal, stopped,
     halt: (message, reason = 'ai_key') => { if (own.halt === null) { own.halt = { reason, message }; wake.abort(); } },
@@ -245,6 +246,7 @@ export async function processWaterfallRun(
     clearInterval(poll);
     formulas.dispose();
     lookups.dispose();
+    gate.waiting.close();
     if (paid) dropHold(run.id, generation);
     try { pruneKeptAnswers(run.user_id); } catch (error) {
       console.error('Pruning waterfall answers failed:', redactError(error));
