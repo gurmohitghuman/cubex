@@ -89,3 +89,45 @@ test('transform_column: extract, template, where, collision, ReDoS', async () =>
 
   await client.close()
 })
+
+// What transform_column writes follows the cell policy of every other write: a template's BIDI override isn't
+// stored, and a template repeating a long cell stores at most 200,000 characters. A pattern that backtracks on a
+// long cell runs on its own worker: the call is refused at its time cap, and the server answers meanwhile.
+test('transform_column: the cell policy, and a slow pattern stopped in time', async () => {
+  test.setTimeout(60_000)
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 2)
+  for (const columnName of ['Name', 'Note']) await api.post(`/api/sheets/${sheetId}/columns`, { data: { columnName } })
+  await api.put(`/api/sheets/${sheetId}/data`, { data: { updates: [
+    { rowIndex: 0, columnName: 'Note', value: 'n'.repeat(8000) },
+    { rowIndex: 1, columnName: 'Note', value: 'a'.repeat(8000) },
+  ] } })
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e transform policy'))
+  const call = (args: Record<string, unknown>) =>
+    client.callTool({ name: 'transform_column', arguments: { sheet_id: sheetId, ...args } })
+  const rows = async () =>
+    parseResult(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sheetId } })).rows
+
+  const file = parseResult(await call({ target_column: 'File', operation: 'template', template: 'invoice‮fdp.exe' }))
+  expect(file.updated).toBe(2)
+  const big = parseResult(await call({ target_column: 'Big', operation: 'template', template: '{{Note}}'.repeat(125) }))
+  expect(big.updated).toBe(2)
+  const [first] = await rows()
+  expect(first.data.File).toBe('invoicefdp.exe')
+  expect(first.data.Big.length).toBeLessThanOrEqual(200_000)
+  expect(first.data.Big.endsWith('[truncated]')).toBe(true)
+
+  const started = Date.now()
+  const slow = call({ target_column: 'Slow', operation: 'regex_extract', source_column: 'Note',
+    pattern: `${'a*'.repeat(12)}b` })
+  await new Promise(resolve => setTimeout(resolve, 200))
+  const asked = Date.now()
+  expect((await api.get('/api/tables')).ok()).toBe(true)
+  expect(Date.now() - asked).toBeLessThan(1000)
+  const refused: any = await slow
+  expect(Date.now() - started).toBeLessThan(10_000)
+  expect(refused.isError).toBeTruthy()
+  expect(refused.content[0].text).toContain('regex_extract stopped: the pattern took more than 1 second')
+  expect((await rows())[1].data).not.toHaveProperty('Slow')
+  await client.close()
+})

@@ -22,7 +22,11 @@
 // has written TRANSFORM_MAX_ROWS rows or worked TRANSFORM_MAX_CALL_MS (waits
 // for the worker included); every page before that is written and stays
 // written. A page that fails ends the walk: the pages before it stay written,
-// and the walk answers how far they got.
+// and the walk answers how far they got. A walk with `prepare` (regex_extract)
+// reads each page once before its transaction too, and has the values worked out
+// off this thread from those rows (lib/transform-regex-host.ts): the transaction
+// then only looks them up. A row changed in between has none, so the page writes
+// nothing and is read again, at most PREPARE_TRIES times in a row.
 import { db } from '../lib/db';
 import {
   TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
@@ -37,8 +41,11 @@ import type { PassTracker } from './column-transform-passes';
 
 export interface TransformWalk {
   sheetId: string; userId: string; filter: CompiledFilter; targetColumn: string;
-  // The target's new value for a row, from its cells.
-  value: (data: Record<string, string>) => string;
+  // The target's new value for a row, from its cells; undefined when `prepare`
+  // didn't work it out (the row changed since it read the page).
+  value: (data: Record<string, string>) => string | undefined;
+  // Works out a page's values before the page's transaction, from its rows' cells.
+  prepare?: (rows: Array<Record<string, string>>) => Promise<void>;
   // The row_index the walk starts after (the cursor's; -1 from the top).
   after: number;
   // When the call's time runs out (ms since the epoch).
@@ -54,6 +61,8 @@ export interface TransformWalk {
 export type WalkResult =
   | { updated: number; pages: number; stoppedAfter: number | null; failed?: undefined }
   | { updated: number; pages: number; stoppedAfter: number; failed: { error: unknown } };
+
+const PREPARE_TRIES = 3;
 
 export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   // With columns following the target, a page queues each row it writes for each
@@ -73,13 +82,21 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   let done = false;
   let wrote = false;
   let wroteAny = false;
-  // What a page did, taken over only once it committed: a page that fails leaves the walk where it was.
-  const page = db.transaction((rows: number) => {
-    walTurnCheck();
+  let unprepared = 0;
+  // The page of at most `rows` rows after `after`, and the last row_index in its window.
+  const window = (rows: number) => {
     const last = windowEnd.get(w.sheetId, w.userId, after, rows - 1) as number | undefined;
     const found = read.all(w.sheetId, w.userId, after, last ?? Number.MAX_SAFE_INTEGER, ...w.filter.params) as
       Array<{ rid: number; data: string }>;
-    for (const r of found) set.run(path, w.value(parseRowData(r.data)), r.rid);
+    return { last, found };
+  };
+  // What a page did, taken over only once it committed: a page that fails leaves the walk where it was.
+  const page = db.transaction((rows: number) => {
+    walTurnCheck();
+    const { last, found } = window(rows);
+    const values = found.map(r => w.value(parseRowData(r.data)));
+    if (values.includes(undefined)) return { again: true as const };
+    found.forEach((r, i) => set.run(path, values[i], r.rid));
     // A column another column's auto-run reads queues these rows for it.
     markAutorunInputs(w.sheetId, w.userId, [w.targetColumn], { rowids: found.map(r => r.rid) });
     const tracked = w.track.page(last ?? null, updated + found.length, found.length);
@@ -91,6 +108,13 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     if (room <= 0 || Date.now() >= w.until) return false;
     // A page never looks at more rows than the call may still write.
     const p = page.immediate(Math.min(pageRows, room));
+    if ('again' in p) {
+      if (++unprepared >= PREPARE_TRIES) {
+        throw new Error(`A page's rows changed ${PREPARE_TRIES} times between working out and writing their values.`);
+      }
+      return true;
+    }
+    unprepared = 0;
     w.track.committed();
     updated += p.found;
     pages++;
@@ -108,6 +132,11 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
       if (wrote || first) {
         const room = await walRoom(w.until);
         if (room === 'late' || (room === 'held' && !first)) break;
+      }
+      if (w.prepare) {
+        const room = TRANSFORM_MAX_ROWS - updated;
+        if (room <= 0 || Date.now() >= w.until) break;
+        await w.prepare(window(Math.min(pageRows, room)).found.map(r => parseRowData(r.data)));
       }
       const went = await inWalTurn(() => withoutAutoCheckpoint(step), w.until);
       if (went === 'late') break;

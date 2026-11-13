@@ -14,9 +14,9 @@
 // Bumps data_version, never row_generation (what a row_index means is
 // unchanged; bumping it would 409 in-flight autosaves).
 import { db } from '../lib/db';
-import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
+import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS, TRANSFORM_REGEX_INPUT_CAP } from '../lib/api-v1-constants';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
-import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
+import { CELL_MAX_BASIC, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import {
   sanitizeAndValidateColumnName, findColumnNameCollision, columnCollisionMessage,
 } from '../lib/column-names';
@@ -27,8 +27,10 @@ import { sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
 import { prepareWhere } from './row-filter';
 import { allOffError, type WhereItem } from '../lib/row-filter/where';
 import {
-  applyCellOp, applyTemplate, templateColumns, templateRenamed, validateRegexPattern, type TransformOp,
+  applyCellOp, applyTemplate, templateColumns, templateRenamed, transformedCell, validateRegexPattern,
+  type TransformOp,
 } from '../lib/transform-ops';
+import { regexPages, SlowPattern, SLOW_PATTERN_FIX, type RegexPages } from '../lib/transform-regex-host';
 import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
 import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
 import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
@@ -48,6 +50,7 @@ export const TRANSFORM_WAITED_NOTE = 'Waited for the database file to catch up w
 
 const RESTART_WITH_CURSOR = 'restart and cursor don\'t go together: restart: true starts the column over from '
   + 'the first row, cursor goes on from where a call stopped. Send one of them.';
+const TEMPLATE_TOO_LONG = `template too long (max ${CELL_MAX_BASIC.toLocaleString('en-US')} characters).`;
 
 export interface TransformParams {
   sheetId: string;
@@ -75,7 +78,7 @@ export type TransformOutcome =
 
 type Fail = Extract<TransformOutcome, { fail: string }>;
 type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track' | 'until'> & PassStart
-  & { targetExists: boolean; generation: number };
+  & { targetExists: boolean; generation: number; regex?: RegexPages };
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
   const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
@@ -97,6 +100,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
       }
       walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track, until });
     } finally {
+      plan.regex?.close();
       // Open grids and readers learn of a column added or pages written, whatever stopped the call.
       if ((walked !== undefined && !walked.failed) || added || (walked?.pages ?? 0) > 0) {
         await settle(p.sheetId, userId, until);
@@ -104,11 +108,19 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     }
     const rows = plan.base + walked.updated;
     if (walked.failed) {
-      // A first page that failed, or a pass with no row written yet: the call fails as any other.
+      // A first page that failed, or a pass with no row written yet: the call fails as any other, or, its
+      // pattern too slow, is refused saying so.
       const next = track.held();
-      if (walked.pages === 0 || rows === 0 || next === null) throw walked.failed.error;
-      console.error(`transform_column on sheet ${p.sheetId} stopped on an error after ${rows} rows:`,
-        redactError(walked.failed.error));
+      const slow = walked.failed.error instanceof SlowPattern;
+      if (walked.pages === 0 || rows === 0 || next === null) {
+        if (!slow) throw walked.failed.error;
+        return { fail: 'invalid', error: `${(walked.failed.error as SlowPattern).message} No cell was written. `
+          + SLOW_PATTERN_FIX };
+      }
+      if (!slow) {
+        console.error(`transform_column on sheet ${p.sheetId} stopped on an error after ${rows} rows:`,
+          redactError(walked.failed.error));
+      }
       // The cursor its record holds: after the last page that wrote (the pages after it wrote nothing).
       return { stopped: { error: stoppedOnErrorWords(rows, next, walked.failed.error), next_cursor: next,
         rows_done: rows } };
@@ -140,6 +152,7 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
     }
   } else if (p.operation === 'template') {
     if (!p.template) return { fail: 'invalid', error: 'template requires a template string.' };
+    if (p.template.length > CELL_MAX_BASIC) return { fail: 'invalid', error: TEMPLATE_TOO_LONG };
   }
 
   const columns = getSheetColumns(p.sheetId, userId, false);
@@ -201,11 +214,27 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
   if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
   if ('unfinished' in start) return start;
   const op = p.operation;
-  const value = op === 'template'
+  const plan = { filter, targetColumn, ...start, targetExists, generation };
+  if (op === 'regex_extract') return { ...plan, ...extractOffThread(p.pattern!, p.sourceColumn!) };
+  const work = op === 'template'
     ? (data: Record<string, string>) => applyTemplate(p.template!, data)
     : (data: Record<string, string>) =>
       applyCellOp(op, cellOf(data, p.sourceColumn!), { pattern: p.pattern, index: p.index });
-  return { filter, targetColumn, value, ...start, targetExists, generation };
+  return { ...plan, value: data => transformedCell(work(data)) };
+}
+
+// regex_extract's values, worked out a page at a time on the call's worker (lib/transform-regex-host.ts) before
+// the page's transaction, each distinct cell once (only its first TRANSFORM_REGEX_INPUT_CAP characters count).
+function extractOffThread(pattern: string, sourceColumn: string): Pick<Plan, 'value' | 'prepare' | 'regex'> {
+  const regex = regexPages(pattern);
+  const source = (data: Record<string, string>) => cellOf(data, sourceColumn).slice(0, TRANSFORM_REGEX_INPUT_CAP);
+  let page = new Map<string, string>();
+  const prepare = async (rows: Array<Record<string, string>>): Promise<void> => {
+    const cells = [...new Set(rows.map(source))];
+    const results = cells.length > 0 ? await regex.extract(cells) : [];
+    page = new Map(cells.map((cell, i) => [cell, transformedCell(results[i])]));
+  };
+  return { value: data => page.get(source(data)), prepare, regex };
 }
 
 const generationOf = (sheetId: string, userId: string): number =>
