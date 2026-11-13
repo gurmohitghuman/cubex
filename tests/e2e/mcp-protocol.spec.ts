@@ -138,9 +138,13 @@ test('MCP 2026-07-28 on the wire: resultType, serverInfo, cache fields, headers 
   const bare = await raw(token, 'tools/list', {}, undefined, { 'io.modelcontextprotocol/protocolVersion': MODERN })
   const none = await raw(token, 'tools/list', {}, undefined, null)
   expect([bare.status, bare.body.error.code, none.status, none.body.error.code]).toEqual([400, -32602, 400, -32602])
-  // tools/list hands out no cursor, so any cursor is invalid: -32602.
-  expect((await raw(token, 'tools/list', { cursor: 'abc' })).body).toEqual({ jsonrpc: '2.0', id: 41,
-    error: { code: -32602, message: 'Invalid cursor: tools/list answers every tool at once and gives no cursor.' } })
+  // tools/list hands out no cursor, so any cursor is invalid, null too: -32602.
+  const invalidCursor = 'Invalid cursor: tools/list answers every tool at once and gives no cursor. '
+    + 'Send tools/list without one.'
+  for (const cursor of ['abc', null]) {
+    expect((await raw(token, 'tools/list', { cursor })).body)
+      .toEqual({ jsonrpc: '2.0', id: 41, error: { code: -32602, message: invalidCursor } })
+  }
 
   // Methods Cubex doesn't offer (no resources, and ping is gone in 2026-07-28): 404 with -32601.
   for (const method of ['resources/list', 'prompts/list', 'ping']) {
@@ -159,11 +163,12 @@ test('MCP 2026-07-28 on the wire: resultType, serverInfo, cache fields, headers 
       result: { resultType: 'complete', _meta: { 'io.modelcontextprotocol/subscriptionId': 41, ...STAMP } } },
   ])
 
-  // No stream to GET and no session to DELETE: Invalid Request (-32600), with no id.
+  // No stream to GET and no session to DELETE: Invalid Request (-32600), with no id, and Allow names POST.
   for (const method of ['GET', 'DELETE']) {
     const res = await fetch(`${BASE}/mcp`, { method, headers: { Authorization: `Bearer ${token}` } })
-    expect([method, res.status, await res.json()])
-      .toEqual([method, 405, { jsonrpc: '2.0', error: { code: -32600, message: 'Method not allowed' } }])
+    expect([method, res.status, res.headers.get('allow'), await res.json()]).toEqual([method, 405, 'POST',
+      { jsonrpc: '2.0', error: { code: -32600,
+        message: 'Method not allowed: /mcp takes POST only, one JSON-RPC request per POST.' } }])
   }
 })
 

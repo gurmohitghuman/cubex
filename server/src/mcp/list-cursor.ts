@@ -1,26 +1,30 @@
 // tools/list answers every tool at once and hands out no cursor, so a cursor
 // sent to it is one Cubex never gave: refused with -32602, as the spec asks for
-// an invalid cursor (server/utilities/pagination). McpServer installs its own
-// tools/list handler when the first tool registers and has no hook in front of
-// it, so this wraps the server's public setRequestHandler before any tool
-// registers. The check then runs in front of the SDK's handler, after the SDK's
-// request checks, for both protocol eras (one server serves both).
+// an invalid cursor (server/utilities/pagination). Any value counts, null too.
+// The check has to run before the SDK's own check of the request, which turns
+// a cursor that isn't a string into -32603 with its raw validation text. So it
+// goes in through the Server's _wrapHandler hook, which wraps each handler as
+// it registers (after the SDK's checks are bundled into it, so in front of
+// them), and the Server's own wrapping (the tools/list cache hint) still runs
+// around it. Installed before any tool registers; one server serves both eras.
 import { ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 
-export const INVALID_CURSOR = 'Invalid cursor: tools/list answers every tool at once and gives no cursor.';
+export const INVALID_CURSOR = 'Invalid cursor: tools/list answers every tool at once and gives no cursor. '
+  + 'Send tools/list without one.';
 
-type ListRequest = { params?: { cursor?: unknown } };
+type Handler = (request: { params?: unknown }, ctx: unknown) => unknown;
+type WithHook = { _wrapHandler: (method: string, handler: Handler) => Handler };
 
 export function refuseToolListCursor(server: McpServer): void {
-  const inner = server.server;
-  const set = inner.setRequestHandler.bind(inner) as (method: string, ...rest: unknown[]) => void;
-  inner.setRequestHandler = ((method: string, ...rest: unknown[]) => {
-    const handler = rest[0];
-    if (method !== 'tools/list' || rest.length !== 1 || typeof handler !== 'function') return set(method, ...rest);
-    return set(method, (request: ListRequest, ctx: unknown) => {
-      if (request.params?.cursor === undefined) return handler(request, ctx);
+  const inner = server.server as unknown as WithHook;
+  if (typeof inner._wrapHandler !== 'function') throw new Error('The MCP SDK no longer has _wrapHandler');
+  const wrap = inner._wrapHandler.bind(inner);
+  inner._wrapHandler = (method, handler) => wrap(method, method !== 'tools/list' ? handler : (request, ctx) => {
+    const params = request.params;
+    if (params && typeof params === 'object' && 'cursor' in params) {
       throw new ProtocolError(ProtocolErrorCode.InvalidParams, INVALID_CURSOR);
-    });
-  }) as typeof inner.setRequestHandler;
+    }
+    return handler(request, ctx);
+  });
 }
