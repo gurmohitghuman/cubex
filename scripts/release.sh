@@ -126,8 +126,14 @@ cmd_notes() {
   echo "Fill in every TODO, then: scripts/release.sh cut $next $file"
 }
 
+# The newest release the changes for agents list at commit $1 (server/src/mcp/agent-changes.ts), or nothing.
+agent_changes_release() {
+  git show "$1:server/src/mcp/agent-changes.ts" 2>/dev/null \
+    | sed -n "s/^ *version: '\(v[0-9]*\.[0-9]*\.[0-9]*\)',.*/\1/p" | head -n 1
+}
+
 cmd_cut() {
-  local tag="${1:-}" notes="${2:-}" prev target drafts
+  local tag="${1:-}" notes="${2:-}" prev target drafts listed
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "give the version as vX.Y.Z, not '$tag'"
   [ -f "$notes" ] || die "notes file not found: '$notes' (make one with: scripts/release.sh notes)"
   ! grep -q '<!-- TODO' "$notes" || die "$notes still has TODOs"
@@ -135,6 +141,12 @@ cmd_cut() {
   fetch_public
   prev="$(latest_tag)" target="$(git rev-parse "$REMOTE/main")"
   if [ -n "$prev" ]; then newer "${tag#v}" "${prev#v}" || die "$tag isn't newer than $prev"; fi
+  # Lines for agents added since $prev must name this release (docs/releasing.md, Changes for agents).
+  listed="$(agent_changes_release "$target")"
+  if [ -n "$listed" ] && [ "$listed" != "$tag" ] && { [ -z "$prev" ] || newer "${listed#v}" "${prev#v}"; }; then
+    die "server/src/mcp/agent-changes.ts lists this release's changes for agents under $listed:" \
+      "rename it to $tag on main first"
+  fi
   drafts="$(gh release list --repo "$CUBEX_REPO" --json tagName,isDraft \
     --jq '.[] | select(.isDraft) | .tagName')"
   [ -z "$drafts" ] || die "draft $drafts is still open: let its run finish, or: scripts/release.sh abandon $drafts"

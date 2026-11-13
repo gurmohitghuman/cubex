@@ -7,3 +7,7 @@
 # Keep the README screenshots and demo GIFs out of GitHub's source tarballs,
 # which is what install.sh and `cubex update` download.
 docs/media export-ignore
+
+# The MCP tool list recorded for the last release, written by tests/unit/mcp-tool-list.test.ts: folded
+# in GitHub's diffs, like other generated files.
+tests/unit/mcp-tool-list.json linguist-generated=true
