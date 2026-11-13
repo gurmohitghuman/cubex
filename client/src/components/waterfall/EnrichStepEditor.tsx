@@ -89,12 +89,17 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
     else next[name] = v === 'fixed' ? { value: fixed } : v.slice(2)
     onChange({ ...choices, inputs: next })
   }
+  // Another tool starts over, as in the Enrichment drawer: no inputs, answer field or providers of the old one's.
+  // The step's cost cap stays.
+  const changeTool = () => onChange({
+    ...choices, toolId: '', inputs: {}, valuePath: null, providerOrder: [], skipProviders: [], stopAtFirst: false,
+  })
   return (
     <div className="space-y-3" data-testid="waterfall-tool">
       <p className="text-sm text-gray-900 flex items-center justify-between gap-2">
         <span>{toolName ?? tool?.name ?? choices.toolId}</span>
         <button type="button" className="text-xs text-gray-600 underline hover:no-underline"
-          onClick={() => onChange({ ...choices, toolId: '', inputs: {}, valuePath: null })}>Change tool</button>
+          onClick={changeTool}>Change tool</button>
       </p>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {!tool ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : (
