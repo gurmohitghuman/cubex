@@ -117,6 +117,8 @@ export interface AIRun {
   status: 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
   // Why it paused itself ('spend_limit': at its own spend limit, which Resume raises), and that limit.
   pause_reason?: string | null
+  // A run that paused itself: why, and what to change before resuming (server services/run-pause-words.ts).
+  pause_message?: string
   spend_limit_usd?: number | null
   total_rows: number
   processed_rows: number
@@ -203,9 +205,11 @@ export interface HTTPRun {
   total_rows: number
   processed_rows: number
   master_column_name?: string
-  // A run that paused itself (lib/run-pool.ts on the server): why, in error_message.
+  // A run that paused itself (lib/run-pool.ts on the server): why, in error_message, and as pause_message
+  // the words the sheet shows beside Resume (services/run-pause-words.ts).
   pause_reason?: string | null
   error_message?: string | null
+  pause_message?: string
   created_at: string
   updated_at: string
 }

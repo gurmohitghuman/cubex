@@ -7,6 +7,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { type AIRunRow } from '../services/ai-runner';
 import { runSpentUsd } from '../services/ai-spend-gate';
 import { aiLimitView } from '../services/ai-run-limit';
+import { withPauseWords } from '../services/run-pause-words';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -50,10 +51,11 @@ router.get('/runs', (req: AuthRequest, res) => {
   try {
     const { sheetId } = req.query as { sheetId?: string };
     if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
-    res.json(db.prepare(`
+    // A run that paused itself carries pause_message: the sheet shows it beside Resume.
+    res.json(withPauseWords(db.prepare(`
       SELECT * FROM ai_runs WHERE sheet_id = ? AND user_id = ?
       ORDER BY created_at DESC, rowid DESC
-    `).all(sheetId, req.userId!));
+    `).all(sheetId, req.userId!) as Array<{ status: string }>));
   } catch (error) {
     console.error('Get AI runs error:', error);
     res.status(500).json({ error: 'Failed to get AI runs' });
