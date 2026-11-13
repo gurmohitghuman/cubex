@@ -4,6 +4,8 @@
 import {
   TRANSFORM_MAX_REGEX_LEN, TRANSFORM_REGEX_INPUT_CAP,
 } from './api-v1-constants';
+import { CELL_MAX_ENRICHMENT } from './constants';
+import { clampCellChars, stripControlChars } from './csv-safety';
 import { cellOf } from './row-cell';
 
 export type TransformOp =
@@ -98,6 +100,15 @@ function regexExtract(value: string, pattern: string): string {
   const m = re.exec(value.slice(0, TRANSFORM_REGEX_INPUT_CAP));
   if (!m) return '';
   return (m[1] ?? m[0]) ?? '';
+}
+
+// What a transform writes into a cell, under the policy every cell write follows (formula/cells.ts does the
+// same): C0 and BIDI controls dropped, at most CELL_MAX_ENRICHMENT characters (a template can join long cells),
+// and no lone surrogate half. A regex without the u flag, or a split, can cut a pair in two: SQLite would store
+// U+FFFD for the half anyway, so the value says so before it is written.
+export function transformedCell(value: string): string {
+  const whole = (value as string & { toWellFormed(): string }).toWellFormed();
+  return clampCellChars(stripControlChars(whole), CELL_MAX_ENRICHMENT);
 }
 
 // Apply a single-cell op (everything except template, which needs the whole row).

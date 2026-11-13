@@ -89,3 +89,29 @@ test('transform_column: extract, template, where, collision, ReDoS', async () =>
 
   await client.close()
 })
+
+// What transform_column writes follows the cell policy of every other write: a template's BIDI override isn't
+// stored, and a template repeating a long cell stores at most 200,000 characters.
+test('transform_column: the cell policy', async () => {
+  test.setTimeout(60_000)
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 2)
+  for (const columnName of ['Name', 'Note']) await api.post(`/api/sheets/${sheetId}/columns`, { data: { columnName } })
+  await api.put(`/api/sheets/${sheetId}/data`, { data: { updates: [
+    { rowIndex: 0, columnName: 'Note', value: 'n'.repeat(8000) },
+    { rowIndex: 1, columnName: 'Note', value: 'a'.repeat(8000) },
+  ] } })
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e transform policy'))
+  const call = (args: Record<string, unknown>) =>
+    client.callTool({ name: 'transform_column', arguments: { sheet_id: sheetId, ...args } })
+  const template = 'invoice\u202Efdp.exe'
+  const file = parseResult(await call({ target_column: 'File', operation: 'template', template }))
+  expect(file.updated).toBe(2)
+  const big = parseResult(await call({ target_column: 'Big', operation: 'template', template: '{{Note}}'.repeat(125) }))
+  expect(big.updated).toBe(2)
+  const [first] = parseResult(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sheetId } })).rows
+  expect(first.data.File).toBe('invoicefdp.exe')
+  expect(first.data.Big.length).toBeLessThanOrEqual(200_000)
+  expect(first.data.Big.endsWith('[truncated]')).toBe(true)
+  await client.close()
+})
