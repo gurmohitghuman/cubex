@@ -77,6 +77,10 @@ export function defaultMaxCostPerRow(tool: EnrichTool, opts: ProviderPick = {}):
   return round6(singleCallCost(tool, opts.limit ?? null));
 }
 
+// The verified work email loop's checks: an email to check, none of the run's
+// skipped providers (the run's provider order is for its finds).
+export const verifyPick = (skip: string[] = []): ProviderPick => ({ given: ['email'], skip });
+
 // Verified work email: up to a few finds plus checks per row.
 export function defaultEmailLoopCap(findCap: number, verifyCap: number): number {
   return round6(Math.min(2 * findCap + 3 * verifyCap, ENRICH_MAX_DEFAULT_ROW_CAP_USD));

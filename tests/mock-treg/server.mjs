@@ -5,7 +5,8 @@
 // run through calls.mjs (waterfalls simulated in waterfall.mjs).
 //
 //   node tests/mock-treg/server.mjs [port]      (default 3098, or MOCK_TREG_PORT)
-//   GET/POST /__mock/state, POST /__mock/reset, GET /__mock/requests, GET /__mock/billing
+//   GET/POST /__mock/state, POST /__mock/reset, GET /__mock/requests, GET /__mock/billing,
+//   GET /__mock/providers (each provider a routed call asked)
 import http from 'node:http'
 import { accountRoute } from './account.mjs'
 import { catalogRoute } from './catalog.mjs'

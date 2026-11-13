@@ -5,6 +5,7 @@ import { enrichAPI, type EnrichToolCard, type EnrichToolDetail } from '@/utils/a
 import type { EnrichmentChoices, ResultType } from '@/utils/api/waterfall'
 import type { DraftInput } from './draft'
 import { asStepTool, defaultPath, toolLine } from './step-copy'
+import { StepProviders } from './StepProviders'
 
 interface Props {
   choices: EnrichmentChoices
@@ -17,8 +18,9 @@ interface Props {
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
 
 // An enrichment step: a treg tool (searched like the Enrichment drawer's
-// Find), its inputs read from the waterfall's (same names by default), and the
-// answer field that holds the value (by default the one the result type names).
+// Find), its inputs read from the waterfall's (same names by default), the
+// answer field that holds the value (by default the one the result type names),
+// and, for a tool that asks providers in turn, which it asks and in what order.
 export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, resultType, onChange }) => {
   const [query, setQuery] = useState('')
   const [cards, setCards] = useState<EnrichToolCard[] | null>(null)
@@ -129,6 +131,9 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
                 ...tool.outputs.map(o => ({ value: o.path, label: o.field })),
               ]} />
           </label>
+          <StepProviders toolId={choices.toolId} tool={tool} order={choices.providerOrder} skip={choices.skipProviders}
+            stopAtFirst={choices.stopAtFirst} sent={new Set(tool.inputs.map(i => i.name).filter(n => mapped(n)))}
+            onChange={patch => onChange({ ...choices, ...patch })} />
           <label className="block space-y-1">
             <span className="meta-label">Most a row may cost here (optional)</span>
             <input className="input w-32" type="number" min={0} step="0.001" value={choices.maxCostUsd ?? ''}

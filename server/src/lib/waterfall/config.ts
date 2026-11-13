@@ -74,14 +74,20 @@ export interface BuiltLookup { kind: 'lookup' }
 export type BuiltStep = BuiltEnrichment | BuiltAi | BuiltHttp | BuiltFormula | BuiltLookup;
 
 // A check after a step that found a value: treg's email verify (accepted by
-// strategy, lib/enrich-email-status.ts) or a formula over {{value}} and the
+// strategy, lib/enrich-email-status.ts; its providers asked in providerOrder,
+// none of skipProviders, as a find step's) or a formula over {{value}} and the
 // inputs (a truthy result passes). A value that fails is rejected and the
-// waterfall goes on.
-export type CheckChoices = { kind: 'verify'; accept: EmailStrategy } | { kind: 'formula'; formula: string };
+// waterfall goes on. A check saved before it could pick providers has neither
+// list: every provider, in treg's order.
+export interface VerifyCheckChoices {
+  kind: 'verify'; accept: EmailStrategy; providerOrder?: string[]; skipProviders?: string[];
+}
+export type CheckChoices = VerifyCheckChoices | { kind: 'formula'; formula: string };
 export interface BuiltVerifyCheck {
   kind: 'verify';
   tool: RequestTool;
   toolKind: 'waterfall' | 'single';
+  prefer?: string[];               // providerOrder of the providers on (none frozen by an earlier start)
   exclude: string[];
   providerNames: Record<string, string>;
   capUsd: number | null;           // one check's ceiling; null: unpriced

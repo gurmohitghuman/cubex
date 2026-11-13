@@ -3,7 +3,7 @@
 // X-Treg-Route-Waterfall: 0 and the cumulative X-Treg-Route-Max-Cost. Who hits
 // and what they answer comes from answers.mjs. Prices are the catalog's, and a
 // miss is free (every provider here charges per success), as on live treg.
-import { fixture, hasFixture, state } from './state.mjs'
+import { fixture, hasFixture, providerCalls, state } from './state.mjs'
 import { providerAnswer } from './answers.mjs'
 
 const micro = (usd) => Math.round((usd ?? 0) * 1e6)
@@ -65,6 +65,8 @@ export function runWaterfall(toolId, body, headers) {
     // treg would start an async job and answer 202 later; a sheet run can't
     // wait for that, so Cubex must exclude these providers. Specs check this flag.
     if (p.async) state.asyncCalled = true
+    providerCalls.push({ toolId, provider: p.provider })
+    if (providerCalls.length > 2000) providerCalls.shift()
     const answer = providerAnswer(toolId, p, n, body)
     if (answer.error) {
       tried.push({ endpoint_id: p.endpoint_id, provider: p.provider, outcome: 'error', status: answer.error, charged_micro: 0 })
