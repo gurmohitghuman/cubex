@@ -89,6 +89,21 @@ export interface SheetData {
   }
 }
 
+// What a run's rows wait for (GET /ai/runs and /http/runs, server services/run-waiting-status.ts): the column,
+// on another sheet when sheet_id is there (a waterfall's lookup step), the run that holds it, how many rows wait.
+export interface RunWaiting {
+  column: string
+  sheet_id?: string
+  sheet_name?: string
+  table_id?: string
+  held_by: { run_type: 'ai' | 'http' | 'enrichment' | 'waterfall'; run_id: string; column_name: string | null;
+    status: string }
+  rows_waiting: number
+  parked: boolean
+  since: string
+  message: string
+}
+
 export interface AIRun {
   id: string
   sheet_id: string
@@ -119,6 +134,8 @@ export interface AIRun {
   pause_reason?: string | null
   // A run that paused itself: why, and what to change before resuming (server services/run-pause-words.ts).
   pause_message?: string
+  // A running or pending run whose rows wait for a column another run holds (services/run-waiting-status.ts).
+  waiting?: RunWaiting
   spend_limit_usd?: number | null
   total_rows: number
   processed_rows: number
@@ -210,6 +227,8 @@ export interface HTTPRun {
   pause_reason?: string | null
   error_message?: string | null
   pause_message?: string
+  // A running or pending run whose rows wait for a column another run holds (services/run-waiting-status.ts).
+  waiting?: RunWaiting
   created_at: string
   updated_at: string
 }

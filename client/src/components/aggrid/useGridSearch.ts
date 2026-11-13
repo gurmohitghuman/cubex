@@ -71,9 +71,15 @@ export function useGridSearch(args: {
         if (!cell || !field || field.startsWith('__') || typeof node?.data?.__rowIndex !== 'number') return null
         return { rowIndex: node.data.__rowIndex, column: field, position: context.windowStart + cell.rowIndex }
       },
+      column: name => {
+        const api = liveApi()
+        if (!api || !api.getColumn(colIdFor(name))) return false
+        api.ensureColumnVisible(colIdFor(name), 'start')
+        return true
+      },
     })
     return () => registerSearch(null)
-  }, [registerSearch, context, reveal]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [registerSearch, context, reveal, colIdFor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Asked when scrolling stops at the window's top. Not while a cell search
   // jumped to is about to be shown (its row is among the rows held now, so

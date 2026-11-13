@@ -143,6 +143,8 @@ export interface GridSearchApi {
   show: (target: GridSearchTarget | null) => boolean
   // The focused cell, with its row's place in the view.
   focused: () => (GridSearchTarget & { position: number }) | null
+  // Scroll a column (by name) into view; false when the grid doesn't have it (yet).
+  column: (name: string) => boolean
 }
 
 // A grid click: the row number the grid shows, and the click count (2 on a double click).

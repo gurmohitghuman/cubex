@@ -12,6 +12,7 @@ import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
 import { PausedRunsNotice } from '@/components/sheet/PausedRunsNotice'
+import { WaitingRunsNotice } from '@/components/sheet/WaitingRunsNotice'
 import { SheetTabsBar } from '@/components/sheet/SheetTabsBar'
 import { DeleteSheetConfirm } from '@/components/sheet/DeleteSheetConfirm'
 import { DescriptionDialog } from '@/components/sheet/DescriptionDialog'
@@ -35,6 +36,8 @@ import { RaiseLimitDialog } from '@/components/ai-modal/RaiseLimitDialog'
 import { useSheetLoad } from '@/hooks/sheet/useSheetLoad'
 import { planWindowReload } from '@/hooks/sheet/reloadWindow'
 import { useGridHandles } from '@/hooks/sheet/useGridHandles'
+import { useGoToRun } from '@/hooks/sheet/useGoToRun'
+import { useWaitingRefresh } from '@/hooks/sheet/useWaitingRefresh'
 import { useSheetModals } from '@/hooks/sheet/useSheetModals'
 import { useSheetSSE } from '@/hooks/sheet/useSheetSSE'
 import { useEnrichPauseToast } from '@/hooks/sheet/useEnrichPauseToast'
@@ -232,6 +235,13 @@ export const SheetPage: React.FC = () => {
 
   const exporter = useExport(activeSheet, cellOps.waitForSaves)
 
+  // The waiting notice's link: to the run that holds the column (its column, drawer, or sheet).
+  const goToRun = useGoToRun({
+    sheetId: activeSheet?.id ?? null, search: grid.search, navigate,
+    openEnrichment: runId => modals.openEnrichment({ kind: 'run', runId }),
+    openWaterfall: runId => modals.openWaterfall({ kind: 'run', runId }),
+  })
+  useWaitingRefresh(activeSheet?.id ?? null, runs.aiRuns, runs.httpRuns, runs.refetch)
   // A setup being used on the sheet (its chip shows): Stop all shows for it too.
   const [setupLive, setSetupLive] = useState(false)
   const runControls = useRunControls({
@@ -297,6 +307,7 @@ export const SheetPage: React.FC = () => {
       <PausedRunsNotice aiRuns={runs.aiRuns} httpRuns={runs.httpRuns} onResume={runControls.resumeOne}
         onOpen={l => (l.kind === 'waterfall' ? modals.openWaterfall({ kind: 'run', runId: l.runId })
           : modals.openEnrichment({ kind: 'run', runId: l.runId }))} />
+      <WaitingRunsNotice aiRuns={runs.aiRuns} httpRuns={runs.httpRuns} onGo={goToRun} />
       <SheetViewBar views={views} sheetData={sheetData} columns={columnOps.columnHeaders} search={search} />
       <SheetSampleGuide sheetData={sheetData} dedupeOpen={modals.showDedupeModal}
         onOpenAI={() => modals.setShowAddColumnModal(true)} onOpenDedupe={() => modals.setShowDedupeModal(true)} />

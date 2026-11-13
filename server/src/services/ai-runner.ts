@@ -6,6 +6,7 @@ import { dispatchRows, finalizeStatus, markFailed, pauseAt } from './ai-runner-l
 import { fetchModels } from '../lib/openrouter';
 import { aiRunStamper } from '../lib/run-inputs/stampers';
 import { parkRun, type RunParked } from '../lib/run-park';
+import { parkedAgain } from './run-input-gate';
 
 // Re-exports for backwards compatibility with existing callers (routes/ai.ts).
 export type { AIRunRow } from './ai-runner-status';
@@ -45,6 +46,9 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
     if (typeof expectedGeneration === 'number' && expectedGeneration !== run.worker_generation) return;
 
     myGeneration = run.worker_generation;
+    // A parked run whose rows still wait for a run that can't go on parks again, unclaimed.
+    const again = parkedAgain('ai', run);
+    if (again !== null) return { parkMs: again };
     // Compare-and-set claim. Between the SELECT above and this write, the user
     // can cancel/pause (or a resume can bump the generation). A bare UPDATE would
     // blindly overwrite that back to 'running' and resurrect a stopped run — a
@@ -119,6 +123,9 @@ export async function processAIRerun(
     if (typeof expectedGeneration === 'number' && expectedGeneration !== run.worker_generation) return;
 
     myGeneration = run.worker_generation;
+    // A parked run whose rows still wait for a run that can't go on parks again, unclaimed.
+    const again = parkedAgain('ai', run);
+    if (again !== null) return { parkMs: again };
     // Compare-and-set claim. Between the SELECT above and this write, the user
     // can cancel/pause (or a resume can bump the generation). A bare UPDATE would
     // blindly overwrite that back to 'running' and resurrect a stopped run — a

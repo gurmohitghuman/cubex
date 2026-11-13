@@ -84,7 +84,8 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         + "get_run_status, get_run_results, or control_run. filter 'active' shows only runs still "
         + "pending/running/paused; 'terminal' shows finished ones. Omit sheet_id for the whole workspace. "
         + 'Enrichment runs are listed as type http with an enrichment block (the tool) and cost_usd; use run_type '
-        + "'enrichment' (or 'http') for them.",
+        + "'enrichment' (or 'http') for them. A running or pending run whose rows wait for a column another run "
+        + 'holds carries waiting, as get_run_status describes.',
       inputSchema: {
         sheet_id: z.string().optional().describe('Limit to one sheet; omit for every sheet'),
         filter: z.enum(['active', 'terminal', 'all']).optional().describe("Default 'all'"),

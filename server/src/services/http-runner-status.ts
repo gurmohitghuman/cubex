@@ -13,6 +13,7 @@ export interface HTTPRunRow {
   processed_rows: number;
   master_column_name: string | null;
   worker_generation: number;
+  waiting_on?: string | null;        // what its rows wait for (migration 057, lib/run-waiting.ts)
   error_message: string | null;      // run-level failure reason (migration 022); NULL unless failed
   target_rows: string | null;        // JSON row-index array for reruns (migration 024); NULL for full runs
   allow_secrets: number;             // run-level saved-key policy (migration 034); 0 = fallback disabled

@@ -44,6 +44,7 @@ export interface AIRunRow {
   pause_reason?: string | null;      // 'token_cap' when it paused itself at that cap; null for a person's pause
   // The run's hard spend limit in USD (migration 051, services/ai-spend-gate.ts); null: none.
   spend_limit_usd?: number | null;
+  waiting_on?: string | null;        // what its rows wait for (migration 057, lib/run-waiting.ts)
   // Kept for that limit past a worker (migration 052): cut-off calls' most, the next row's most at its pause.
   spend_cut_off_micro?: number;
   spend_next_row_micro?: number | null;
