@@ -31,7 +31,8 @@ From a checkout with a remote pointing at `github.com/gurmohitghuman/cubex` and 
 4. **Watch it.** The workflow runs CI (typecheck, unit tests, build) and installs Cubex with the
    one-line installer on that exact commit. When both pass it publishes the draft, which
    creates the tag and marks it the latest release. `cubex update` picks it up at once.
-5. **Record the tool list**, when the release has [changes for agents](#changes-for-agents).
+5. **Record the tool list** in a small pull request, when the release has
+   [changes for agents](#changes-for-agents).
 
 If the workflow fails, nothing was tagged. Fix `main`, then `scripts/release.sh abandon vX.Y.Z`
 and cut the same version again. Only one draft can be open at a time.
@@ -64,14 +65,21 @@ call to a removed or renamed tool is told what replaced it ([MCP](mcp.md#after-a
 - **A change to a tool** adds its line under the next release: the one already listed after the
   newest tag, or else the next patch after that tag. The unit test
   `tests/unit/mcp-tool-list.test.ts` compares every tool's name and input schema with the list
-  recorded for the last release (`tests/unit/mcp-tool-list.json`), and fails on a change with no
-  line.
+  recorded for the last release with lines (`tests/unit/mcp-tool-list.json`), and fails on a
+  change with no line. Where the checkout has the release tags, it names the release to use.
+- **A release's lines stay as it shipped them.** A change made after a release goes under the
+  next one, even when it fixes something that release added. `scripts/release.sh cut` refuses
+  when what the last tag shipped of the file was changed, and so does the unit test where the
+  checkout has the tags.
 - **Cutting a release** whose lines sit under another number (a minor release, say): rename them
   to the release on `main` first. `scripts/release.sh cut` refuses until they match.
-- **After the release**, record its tool list on `main`, and merge it as its own pull request:
-  `MCP_TOOL_LIST_RECORD=vX.Y.Z npm run test:unit -- mcp-tool-list`. It writes the file only when
-  every change has its line and the tag exists. Until then, the unit test refuses lines for the
-  next release, so the recorded list is always the last release's.
+- **After a release with lines**, record its tool list in a small pull request:
+  `MCP_TOOL_LIST_RECORD=vX.Y.Z npm run test:unit -- mcp-tool-list`. It reads the tools from the
+  release's own code (a temporary checkout of the tag), so it can be done at any time after the
+  tag, whatever has merged since. It writes the file only when the release's lines match its
+  tools and the file still has them as the tag shipped them. Until it is recorded, the unit test
+  refuses lines for the next release, and where the checkout has the tags it asks for the
+  recording at once.
 
 ## How it works
 

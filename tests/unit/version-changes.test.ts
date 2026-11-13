@@ -51,6 +51,7 @@ async function main() {
     assert.match(refused('y'.repeat(100)), new RegExp(`not "${'y'.repeat(40)}"\\.`))
     assert.match(refused(['v0.8.12', 'v0.8.13']), /not a list\./)
     assert.match(refused(12), /not a number\./)
+    assert.match(refused({ a: '1' }), /not an object\./)
   })
 
   await check('the instructions: the running release and what changed in it, in a few lines', () => {
@@ -109,7 +110,10 @@ async function main() {
         ? await modern('tools/call', { name: 'get_version', arguments: { since } }, 'get_version')
         : await legacy('tools/call', { name: 'get_version', arguments: { since } })).text).result
       const answer = JSON.parse((await ask('v0.8.12')).content[0].text)
-      assert.deepEqual(answer.changes_since.releases.map((r: Release) => r.version), ['v0.8.13', 'v99.0.0'])
+      // Every release in the file (all after v0.8.12), the added v99.0.0 last: oldest first.
+      assert.deepEqual(answer.changes_since.releases.map((r: Release) => r.version),
+        AGENT_CHANGES.map(r => r.version).reverse())
+      assert.equal(answer.changes_since.releases.at(-1).version, 'v99.0.0')
       assert.equal(answer.changes_since.since, 'v0.8.12')
       const bad = await ask('soon')
       assert.equal(bad.isError, true)

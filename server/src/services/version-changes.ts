@@ -25,8 +25,10 @@ export function changesSince(since: unknown, list: ReleaseChanges[] = AGENT_CHAN
   { ok: ChangesSince } | { error: string } {
   const tag = typeof since === 'string' && since.length <= SINCE_SHOWN ? parseTag(since) : null;
   if (!tag) {
-    const got = typeof since === 'string' ? `"${since.slice(0, SINCE_SHOWN)}"` : `a ${Array.isArray(since)
-      ? 'list' : typeof since}`;
+    // Not a string: a list or an object from a REST query (?since=a&since=b, ?since[a]=1), or JSON's own types.
+    const kind = Array.isArray(since) ? 'list' : typeof since;
+    const got = typeof since === 'string' ? `"${since.slice(0, SINCE_SHOWN)}"` : `${/^[aeiou]/.test(kind)
+      ? 'an' : 'a'} ${kind}`;
     return { error: `since must be a Cubex release like "v0.8.12", not ${got}. A build that is not a release `
       + 'has no place in the list: pass the last release you used.' };
   }

@@ -105,30 +105,34 @@ Not offered:
 
 A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it is updated, so an agent can work from a tool list older than the server for a while. An agent that used Cubex before also remembers tools by name. It finds out what changed four ways:
 
-- **The instructions** (in the answer to `initialize` or `server/discover`) start with the version that runs and what changed for agents in it: `This server runs Cubex v0.8.13. New for agents in it: New tool get_version: ...`. A build that isn't a release says so instead.
-- **`serverInfo.version`** is the running version (`v0.8.13`), the same as `get_version`'s `version`.
+- **The instructions** (in the answer to `initialize` or `server/discover`) start with the version that runs and what changed for agents in it: `This server runs Cubex v0.8.14. New for agents in it: get_version takes since, ...`. A build that isn't a release says so instead.
+- **`serverInfo.version`** is the running version (`v0.8.14`), the same as `get_version`'s `version`.
 - **`get_version` with `since`**, set to the version the agent last used, adds `changes_since`: every release after it, oldest first, with what changed for agents in each. `GET /api/v1/version?since=v0.8.12` answers the same.
 - **A call to a removed or renamed tool** comes back as a tool result with `isError: true` that names what replaced it and asks the agent to list the tools again: `<old> was renamed to <new> in Cubex vX.Y.Z: call <new> instead.` Any other unknown name still gets error `-32602`.
 
-`changes_since` for `since: "v0.8.12"`:
+`changes_since` for `since: "v0.8.13"`:
 
 ```json
 {
-  "since": "v0.8.12",
+  "since": "v0.8.13",
   "releases": [
     {
-      "version": "v0.8.13",
+      "version": "v0.8.14",
       "changes": [
         {
-          "change": "added",
+          "change": "changed",
           "tools": ["get_version"],
-          "summary": "New tool get_version: the running Cubex version, whether a newer release is out, and with since, what changed for agents after a version.",
-          "details": "Call it when you start on a server you have used before, or when a tool you expect is missing: pass the version you last saw as since to get every change after it."
+          "summary": "get_version takes since, a release like \"v0.8.13\", and then adds changes_since: what changed for agents in every release after it, oldest first.",
+          "details": "Call it with the version you last used when you start on a server you have used before, or when a tool you expect is missing."
         },
         {
           "change": "server",
-          "summary": "serverInfo.version is the running Cubex version (like \"v0.8.13\"), not \"1.0.0\".",
-          "details": "A build that is not a release reports its build line, and one that does not record its version reports \"unknown\"."
+          "summary": "The server instructions start with the running Cubex version and what changed for agents in it."
+        },
+        {
+          "change": "server",
+          "summary": "A call to a tool a release removed or renamed gets a tool error naming what replaced it, instead of \"Tool not found\".",
+          "details": "Call the tool it names, and list the tools again: your list is older than the server."
         }
       ]
     }
