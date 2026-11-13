@@ -19,7 +19,8 @@ import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
 import { authInfoFor, serveMcp } from '../mcp/http-entry';
 import {
-  errorBody, FORBIDDEN_ORIGIN, INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_JSON, PARSE_ERROR, requestIdOf, TOO_LARGE,
+  errorBody, FORBIDDEN_ORIGIN, INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_JSON, NOT_UTF8_JSON, PARSE_ERROR, requestIdOf,
+  TOO_LARGE,
 } from '../mcp/http-answers';
 import type { McpAuthCtx } from '../mcp/tool-helpers';
 import { linkBase } from '../lib/file-links';
@@ -56,8 +57,16 @@ router.use(express.json({ limit: API_V1_MAX_JSON_BYTES }));
 // express.json failures (malformed JSON, oversized body) must answer in
 // JSON-RPC shape, not bubble to the global 500 handler. No id: the body was
 // never read, so there is no request to name (the schema allows none, never null).
+// A charset that isn't a UTF one, or a Content-Encoding the parser can't undo, is a
+// media type it won't read (its own 415), not bad JSON: the JSON may be valid.
+const UNREADABLE_BODY = new Set(['charset.unsupported', 'encoding.unsupported']);
 router.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!err) return next();
+  if (UNREADABLE_BODY.has(err.type)) {
+    // RFC 9110 15.5.16: a 415 over the content coding names the codings accepted.
+    if (err.type === 'encoding.unsupported') res.set('Accept-Encoding', 'gzip, deflate');
+    return res.status(415).json(errorBody(ProtocolErrorCode.InvalidRequest, NOT_UTF8_JSON));
+  }
   const status = err.type === 'entity.too.large' ? 413 : 400;
   return res.status(status).json(errorBody(ProtocolErrorCode.ParseError, status === 413 ? TOO_LARGE : PARSE_ERROR));
 });

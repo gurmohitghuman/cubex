@@ -80,10 +80,10 @@ On every version:
 - One JSON-RPC request per POST. A batch (a JSON array of requests) gets HTTP 400 with `-32600`, and nothing in it runs. Clients on 2025-03-26 could send one before.
 - `tools/list` gives every tool at once and hands out no cursor, so a request with a `cursor` of any value, `null` too, gets error `-32602`.
 - An unknown tool name gets a JSON-RPC error `-32602` (`Tool nope not found`). Clients on 2025-11-25 and earlier used to get it as a tool result with `isError: true`.
-- A body that isn't valid JSON gets HTTP 400 with `-32700`, a body over 2 MB gets 413 with `-32700`, and a POST whose `Content-Type` isn't `application/json` gets 415 with `-32600`.
+- A body that isn't valid JSON gets HTTP 400 with `-32700`, a body over 2 MB gets 413 with `-32700`, and a POST whose `Content-Type` isn't `application/json` gets 415 with `-32600`. So does JSON whose `charset` isn't a UTF one, such as `latin1`, or with a `Content-Encoding` other than `gzip` or `deflate` (that 415 sends `Accept-Encoding: gzip, deflate`).
 - A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600` and `Allow: POST`.
 - A failure inside Cubex gets HTTP 500 with `-32603`. The server log has the cause, with secrets redacted.
-- An error answer carries the request's `id` when Cubex read one, and no `id` otherwise, never `id: null`. No error uses a code from `-32000` to `-32019`, which the spec keeps for older servers. Each message says what was wrong and what to send instead.
+- An error answer carries the request's `id` when Cubex read one, and no `id` otherwise, never `id: null`. No error uses a code from `-32000` to `-32019`, which the spec keeps for older servers. Cubex's own refusals above (the batch, the cursor, bad JSON, the size, the media type, the `Origin`, the 405 and the 500) say what was wrong and what to send instead. Other errors keep the MCP library's standard words, such as `Tool nope not found`, `Method not found`, or the list of what a tool's input schema rejected.
 
 On 2026-07-28:
 

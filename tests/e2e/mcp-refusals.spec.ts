@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib'
 import { test, expect } from '@playwright/test'
 import { authedApi, BASE, makeAccessToken, seedSheet } from './helpers'
 
@@ -18,9 +19,11 @@ const CURSOR = 'Invalid cursor: tools/list answers every tool at once and gives 
 test('MCP refusals: a batch, a body that is not JSON, the media type and a null cursor', async () => {
   const api = await authedApi()
   const token = await makeAccessToken(api, ['read', 'write'], 'e2e mcp refusals')
-  const post = async (body: string, headers: Record<string, string> = {}) => {
-    const res = await fetch(`${BASE}/mcp`, { method: 'POST', body, headers: { Authorization: `Bearer ${token}`,
+  const send = (body: string | Uint8Array, headers: Record<string, string> = {}) =>
+    fetch(`${BASE}/mcp`, { method: 'POST', body, headers: { Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers } })
+  const post = async (body: string | Uint8Array, headers: Record<string, string> = {}) => {
+    const res = await send(body, headers)
     return { status: res.status, body: await res.json() }
   }
 
@@ -48,6 +51,21 @@ test('MCP refusals: a batch, a body that is not JSON, the media type and a null 
   expect(await post(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), { 'Content-Type': 'text/plain' }))
     .toEqual({ status: 415, body: refused(-32600,
       'Unsupported Media Type: send the request as JSON, with Content-Type: application/json.') })
+
+  // Valid JSON the parser won't read (a charset that isn't a UTF one, an encoding other than gzip or deflate): 415
+  // with -32600, not a Parse error; an encoding refused names the ones read. A gzip body is read.
+  const list = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+  const unread = [[{ 'Content-Type': 'application/json; charset=latin1' }, null],
+    [{ 'Content-Encoding': 'br' }, 'gzip, deflate']] as const
+  for (const [headers, acceptEncoding] of unread) {
+    const res = await send(list, headers)
+    expect({ status: res.status, acceptEncoding: res.headers.get('accept-encoding'), body: await res.json() })
+      .toEqual({ status: 415, acceptEncoding, body: refused(-32600,
+        'Unsupported Media Type: send the body as UTF-8 JSON, with no Content-Encoding or with gzip or deflate.') })
+  }
+  const zipped = await post(gzipSync(list), { 'Content-Encoding': 'gzip' })
+  expect(zipped.status).toBe(200)
+  expect(zipped.body.result.tools.length).toBeGreaterThan(0)
 
   // "cursor": null is a cursor Cubex never gave: -32602 with the request's id, in both eras.
   const nullCursor = [

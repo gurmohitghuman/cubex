@@ -16,6 +16,10 @@ export const PARSE_ERROR = 'Parse error: the body is not valid JSON. Send one JS
 export const TOO_LARGE =
   `Request body too large: send at most ${API_V1_MAX_JSON_BYTES / (1024 * 1024)} MB per request.`;
 export const NOT_JSON = 'Unsupported Media Type: send the request as JSON, with Content-Type: application/json.';
+// A JSON body Cubex can't read: a charset that isn't a UTF one (latin1, say), or a
+// Content-Encoding other than gzip or deflate. UTF-8 is the one to ask for.
+export const NOT_UTF8_JSON =
+  'Unsupported Media Type: send the body as UTF-8 JSON, with no Content-Encoding or with gzip or deflate.';
 export const METHOD_NOT_ALLOWED = 'Method not allowed: /mcp takes POST only, one JSON-RPC request per POST.';
 export const BATCH_REFUSED = 'Invalid Request: JSON-RPC batches are not supported. Send one request per POST.';
 export const INTERNAL_ERROR = 'Internal error: Cubex could not answer this request. Send it again; '
