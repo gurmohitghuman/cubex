@@ -162,21 +162,25 @@ async function main() {
   }
   // The server's bound, on the walk: a pass over it is measured again on a new column, up to PASSES in all, and
   // the case fails only when every pass goes over. On CI, one pass held the loop 315 ms in one page while its 1,231
-  // others took under 31 ms, another 207 ms outside any page; the next pass didn't.
+  // others took under 31 ms, another 207 ms outside any page; the next pass didn't. Only the bound is measured
+  // again: the case's other checks run on every pass, over the bound or not, so a fault that comes with a stall
+  // (a checkpoint on this thread, the WAL started over here) still fails the case.
+  type Pass = Awaited<ReturnType<typeof measured>> & { target: string }
   const BOUND_MS = 200, PASSES = 3
-  async function withinBound(target: string, params: (targetColumn: string) => Params) {
+  async function withinBound(target: string, params: (targetColumn: string) => Params, checks: (pass: Pass) => void) {
     const over: object[] = []
     for (let n = 1; n <= PASSES; n++) {
       const name = n === 1 ? target : `${target} ${n}`
-      const run = await measured(params(name))
-      if (run.stats.slowestMs < BOUND_MS && run.stats.loopMaxMs < BOUND_MS) return { ...run, target: name }
-      over.push(run.stats)
+      const pass = { ...await measured(params(name)), target: name }
+      checks(pass)
+      if (pass.stats.slowestMs < BOUND_MS && pass.stats.loopMaxMs < BOUND_MS) return
+      over.push(pass.stats)
       // One plain line a pass over the bound, so CI logs show how often it happens.
       const again = n < PASSES ? '; measured again' : ''
-      console.log(`      OVER ${target}, pass ${n} of ${PASSES}: loopMaxMs ${run.stats.loopMaxMs}, slowestMs `
-        + `${run.stats.slowestMs}, the longest stretch in ${run.stats.longestIn}${again}`)
+      console.log(`      OVER ${target}, pass ${n} of ${PASSES}: loopMaxMs ${pass.stats.loopMaxMs}, slowestMs `
+        + `${pass.stats.slowestMs}, the longest stretch in ${pass.stats.longestIn}${again}`)
     }
-    return assert.fail(`every pass held the server ${BOUND_MS} ms or more: ${JSON.stringify(over)}`)
+    assert.fail(`every pass held the server ${BOUND_MS} ms or more: ${JSON.stringify(over)}`)
   }
   const stored = (column: string, sheet = sid) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
     AND json_extract(data, ?) IS NOT NULL`).pluck().get(sheet, `$."${column}"`) as number
@@ -199,38 +203,39 @@ async function main() {
 
   const NONE = `a where matching none of ${ROWS} rows: nothing written, the server answers, memory stays a page's`
   await check(NONE, async () => {
-    const { calls, stats, target } = await withinBound('Nothing', targetColumn => ({ sheetId: sid,
-      operation: 'upper', sourceColumn: 'Name', targetColumn,
-      where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] }))
-    assert.ok(stats.answered >= 5, JSON.stringify(stats))
-    assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
-      + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
-    assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
-    assert.equal(stats.workerCheckpoints + stats.mainCheckpoints, 0,
-      `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
-    assert.deepEqual(calls[0].created_column, target)
-    assert.equal(stored(target), 0, 'no row stores the new column')
-    assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+    await withinBound('Nothing', targetColumn => ({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
+      targetColumn, where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] }), ({ calls, stats, target }) => {
+      assert.ok(stats.answered >= 5, JSON.stringify(stats))
+      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
+      assert.equal(calls.reduce((n, c) => n + c.updated, 0), 0)
+      assert.equal(stats.workerCheckpoints + stats.mainCheckpoints, 0,
+        `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
+      assert.deepEqual(calls[0].created_column, target)
+      assert.equal(stored(target), 0, 'no row stores the new column')
+      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+    })
   })
 
   const EVERY = `a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`
   await check(EVERY, async () => {
-    const { calls, stats, startedOver, target } = await withinBound('Every', targetColumn => ({ sheetId: sid,
-      operation: 'template', template: '{{Name}}!', targetColumn, where: [{ column: 'Name', operator: 'not_empty' }] }))
-    assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)
-    assert.ok(calls.every(c => c.updated <= TRANSFORM_MAX_ROWS), JSON.stringify(calls.map(c => c.updated)))
-    assert.deepEqual(calls.map(c => c.created_column), [target, ...calls.slice(1).map(() => null)])
-    const right = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
-      AND json_extract(data, ?) = json_extract(data, '$.Name') || '!'`).pluck().get(sid, `$."${target}"`)
-    assert.equal(right, ROWS)
-    assert.ok(stats.answered >= 5, JSON.stringify(stats))
-    assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
-      + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
-    assert.equal(stats.mainCheckpoints, 0, 'no checkpoint on the API connection')
-    assert.deepEqual(startedOver.map(transactionLine), [], 'transactions that started the WAL over on this thread')
-    assert.ok(stats.waits > 0 && stats.workerRestarts > 0, JSON.stringify(stats))
-    assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
-    assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+    await withinBound('Every', targetColumn => ({ sheetId: sid, operation: 'template', template: '{{Name}}!',
+      targetColumn, where: [{ column: 'Name', operator: 'not_empty' }] }), ({ calls, stats, startedOver, target }) => {
+      assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)
+      assert.ok(calls.every(c => c.updated <= TRANSFORM_MAX_ROWS), JSON.stringify(calls.map(c => c.updated)))
+      assert.deepEqual(calls.map(c => c.created_column), [target, ...calls.slice(1).map(() => null)])
+      const right = db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
+        AND json_extract(data, ?) = json_extract(data, '$.Name') || '!'`).pluck().get(sid, `$."${target}"`)
+      assert.equal(right, ROWS)
+      assert.ok(stats.answered >= 5, JSON.stringify(stats))
+      assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
+        + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
+      assert.equal(stats.mainCheckpoints, 0, 'no checkpoint on the API connection')
+      assert.deepEqual(startedOver.map(transactionLine), [], 'transactions that started the WAL over on this thread')
+      assert.ok(stats.waits > 0 && stats.workerRestarts > 0, JSON.stringify(stats))
+      assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
+      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
+    })
   })
 
   server.close()
