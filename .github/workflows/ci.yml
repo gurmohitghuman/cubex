@@ -34,9 +34,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Passing runs take 460 to 600 seconds, and a slower runner takes
+          # longer; 10 minutes once stopped a run in its build step after
+          # every test had passed.
           - os: ubuntu-latest
             name: Typecheck + Unit tests + Build
-            timeout: 10
+            timeout: 20
           # Native Windows (no WSL): npm runs scripts through cmd.exe there, and
           # installs and test processes start slower. Some Windows runners are
           # about 1.8 times slower than others, which takes main's own 15-minute
