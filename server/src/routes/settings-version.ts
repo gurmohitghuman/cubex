@@ -27,14 +27,15 @@ router.put('/version', (req: AuthRequest, res) => {
   }
 });
 
-// "Check now": asks GitHub at once. reached false: no answer (offline, rate limited); what was kept stays.
+// "Check now": asks GitHub at once, or answers from the last check when it went out under a minute ago
+// (asked false). reached false: no answer (offline, rate limited); what was kept stays.
 router.post('/version/check', async (req: AuthRequest, res) => {
   try {
     if (!readReleaseState(req.userId!).updateCheck) {
       return res.status(409).json({ error: 'The release check is turned off.' });
     }
-    const reached = await checkReleaseNow(req.userId!);
-    res.json({ reached, ...versionInfo(req.userId!) });
+    const { reached, asked } = await checkReleaseNow(req.userId!);
+    res.json({ reached, asked, ...versionInfo(req.userId!) });
   } catch (error) {
     console.error('Release check error:', error);
     res.status(500).json({ error: 'Failed to check for a new release' });

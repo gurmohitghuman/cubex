@@ -53,6 +53,6 @@ Your data stays in one SQLite file on your machine. The server only calls out to
 - **The APIs you put in HTTP columns.**
 - **Your run webhook URLs**, when a run finishes (Settings, Run webhooks): the run's id, kind, sheet, status and time, nothing from your rows.
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.
-- **GitHub**, once a day, for the latest Cubex release, so **Settings → Account → Version** can say when a new one is out: one request to GitHub's releases API that sends nothing about you or your data. It is on by default; turn it off there with **Check for new releases**. Turned off, Cubex never asks, and the section shows only the version you run.
+- **GitHub**, once a day, for the latest Cubex release, so **Settings → Account → Version** can say when a new one is out: one request to GitHub's releases API that sends nothing about you or your data. It is on by default; turn it off there with **Check for new releases**. **Check now** there asks at once, but at most once a minute: sooner, it shows what the last check found. Turned off, Cubex never asks, and the section shows only the version you run.
 
 The web page also loads its fonts from Google Fonts.

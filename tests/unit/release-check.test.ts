@@ -1,8 +1,11 @@
+// Over 200 lines: one stand-in GitHub and one database serve every case in order; split, each file would
+// repeat that setup. The version files themselves are in cubex-version.test.ts.
 // The release check (services/release-check.ts) against a stand-in GitHub on 127.0.0.1, never the real
 // one: a newer, the same and an older release; offline, rate limited and answers that aren't a release
 // (each keeps the last good answer); the check turned off (the answer deleted, nothing asked, a late
-// answer not kept); at most one automatic check a day; and the running version read from the
-// installer's file (a release, a branch, a local source, none).
+// answer not kept); at most one automatic check a day; and what the answer says for a release, a
+// branch, a local source, no version file and a pinned install (the files themselves:
+// cubex-version.test.ts).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -29,15 +32,13 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-home-'))
 fs.mkdirSync(path.join(home, 'app'))
 const versionFile = path.join(home, 'app', '.cubex-version')
 const installEnv = path.join(home, 'install.env')
-const marker = path.join(home, '.cubex-home')
+fs.writeFileSync(path.join(home, '.cubex-home'), 'This folder is a Cubex install.\n')
 // Read when the modules load: the stand-in's address and the install folder.
 process.env.RELEASE_CHECK_URL = `http://127.0.0.1:${port}/repos/gurmohitghuman/cubex/releases/latest`
 process.env.CUBEX_TEST_HOME = home
 
 const { db } = await import('../../server/src/lib/db')
 const { runMigrations } = await import('../../server/src/db/migrate')
-const { compareVersions, parseTag, pinnedFrom, runningFrom, runningVersion } =
-  await import('../../server/src/lib/cubex-version')
 const store = await import('../../server/src/lib/release-store')
 const check = await import('../../server/src/services/release-check')
 const { versionInfo } = await import('../../server/src/services/version-info')
@@ -52,58 +53,21 @@ const running = (line: string | null) => {
   else fs.writeFileSync(versionFile, line)
 }
 
+// "Check now" with no check in the last minute, so it asks (the cooldown has its own test below).
+const askNow = async (): Promise<boolean> => {
+  db.prepare('UPDATE settings SET release_tried_at = NULL WHERE user_id = ?').run(USER)
+  return (await check.checkReleaseNow(USER)).reached
+}
+
 async function test(name: string, fn: () => Promise<void> | void): Promise<void> {
   await fn()
   console.log(`  ok - ${name}`)
 }
 
-await test('versions compare as numbers, part by part', () => {
-  const v = (s: string) => parseTag(s)!
-  assert.ok(compareVersions(v('v0.8.10'), v('v0.8.9')) > 0)
-  assert.ok(compareVersions(v('v1.0.0'), v('v0.99.99')) > 0)
-  assert.equal(compareVersions(v('0.8.9'), v('v0.8.9')), 0)
-  for (const bad of ['main', 'v0.8', 'v0.8.9-rc.1', 'v0.8.9.1', '', 'vx.y.z']) assert.equal(parseTag(bad), null, bad)
-})
-
-await test("the running version is the installer file's first word, when it is a release", () => {
-  assert.deepEqual(runningFrom('v0.8.12 6071123\n'), { build: 'v0.8.12 6071123', version: 'v0.8.12' })
-  assert.deepEqual(runningFrom('v0.8.12 6071123\r\n'), { build: 'v0.8.12 6071123', version: 'v0.8.12' })
-  assert.deepEqual(runningFrom('v0.8.12 \n'), { build: 'v0.8.12', version: 'v0.8.12' })
-  assert.deepEqual(runningFrom('main 6071123'), { build: 'main 6071123', version: null })
-  const local = 'local 6071123 2026-11-13 10:00'
-  assert.deepEqual(runningFrom(local), { build: local, version: null })
-  assert.deepEqual(runningFrom(null), { build: null, version: null })
-  assert.deepEqual(runningFrom('  \n'), { build: null, version: null })
-  assert.equal(runningFrom(`v1.2.3 ${'a'.repeat(500)}\u0007`).build!.length, 120)
-})
-
-await test("a pin is install.env's CUBEX_REF unless it follows releases, as either installer writes it", () => {
-  const unix = 'CUBEX_FORMAT=2\nCUBEX_REPO=gurmohitghuman/cubex\nCUBEX_REF=v0.8.2\nCUBEX_SOURCE=\n'
-  assert.equal(pinnedFrom(unix), 'v0.8.2')
-  assert.equal(pinnedFrom('CUBEX_FORMAT=2\r\nCUBEX_REF=v0.8.2\r\nCUBEX_SOURCE=\r\n'), 'v0.8.2')
-  assert.equal(pinnedFrom("CUBEX_REF='my branch'\n"), 'my branch')
-  assert.equal(pinnedFrom('CUBEX_REF=my\\ branch\n'), 'my branch')
-  assert.equal(pinnedFrom('CUBEX_REF=main\n'), 'main')
-  for (const text of ['CUBEX_REF=stable\n', 'CUBEX_REF=\n', "CUBEX_REF=''\n", 'CUBEX_REPO=x\n', '', null]) {
-    assert.equal(pinnedFrom(text), null, String(text))
-  }
-})
-
-await test('install.env is read only in a marked install folder with a .cubex-version', () => {
-  fs.writeFileSync(installEnv, 'CUBEX_FORMAT=2\nCUBEX_REF=v0.8.2\n')
-  running('v0.8.2 abc1234')
-  assert.equal(runningVersion().pinned, null, 'no .cubex-home marker')
-  fs.writeFileSync(marker, 'This folder is a Cubex install.\n')
-  assert.equal(runningVersion().pinned, 'v0.8.2')
-  running(null)
-  assert.deepEqual(runningVersion(), { build: null, version: null, pinned: null })
-  fs.rmSync(installEnv)
-})
-
 await test('a newer release: kept, update_available; one GET with a fixed User-Agent, nothing else', async () => {
   running('v0.8.9 abc1234\n')
   reply = release('v0.8.10')
-  assert.equal(await check.checkReleaseNow(USER), true)
+  assert.equal(await askNow(), true)
   const info = versionInfo(USER)
   assert.equal(info.version, 'v0.8.9')
   assert.equal(info.update_available, true)
@@ -128,10 +92,10 @@ await test('an install pinned to its tag: update_available, with pinned_ref sayi
 
 await test('the same release, or an older one: no update', async () => {
   reply = release('v0.8.9')
-  assert.equal(await check.checkReleaseNow(USER), true)
+  assert.equal(await askNow(), true)
   assert.equal(versionInfo(USER).update_available, false)
   reply = release('0.8.8')
-  assert.equal(await check.checkReleaseNow(USER), true)
+  assert.equal(await askNow(), true)
   assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.8')
   assert.equal(versionInfo(USER).update_available, false)
 })
@@ -157,14 +121,14 @@ await test('rate limited, or an answer that is not a release: false, and the las
   ]
   for (const r of bad) {
     reply = r
-    assert.equal(await check.checkReleaseNow(USER), false, `${r.status} ${r.body.slice(0, 40)}`)
+    assert.equal(await askNow(), false, `${r.status} ${r.body.slice(0, 40)}`)
     assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.8')
   }
 })
 
 await test('a bad date is dropped, the release kept', async () => {
   reply = release('v0.8.11', { published_at: 'soon' })
-  assert.equal(await check.checkReleaseNow(USER), true)
+  assert.equal(await askNow(), true)
   assert.equal(versionInfo(USER).latest_release!.published_at, null)
   assert.equal(versionInfo(USER).update_available, true)
 })
@@ -172,8 +136,44 @@ await test('a bad date is dropped, the release kept', async () => {
 await test('two checks at once send one request', async () => {
   const before = seen.length
   reply = release('v0.8.11')
-  assert.deepEqual(await Promise.all([check.checkReleaseNow(USER), check.checkReleaseNow(USER)]), [true, true])
+  assert.deepEqual(await Promise.all([askNow(), askNow()]), [true, true])
   assert.equal(seen.length, before + 1)
+})
+
+await test('Check now within a minute of the last check answers from what it kept, without asking', async () => {
+  reply = release('v0.8.10')
+  assert.equal(await askNow(), true)
+  // A good answer carries the time its check went out, so a later failed check is never taken for it.
+  const kept = store.readReleaseState(USER)
+  assert.equal(kept.latest!.checked_at, kept.triedAt)
+  const before = seen.length
+  reply = release('v0.8.11')
+  assert.deepEqual(await check.checkReleaseNow(USER), { reached: true, asked: false })
+  assert.equal(seen.length, before)
+  assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.10')
+  // A minute later it asks again.
+  assert.deepEqual(await check.checkReleaseNow(USER, Date.now() + 61_000), { reached: true, asked: true })
+  assert.equal(seen.length, before + 1)
+  assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.11')
+  // The automatic check counts too, and a last check that failed says so again without asking.
+  reply = { status: 403, body: '{}', headers: { 'x-ratelimit-remaining': '0' } }
+  db.prepare('UPDATE settings SET release_tried_at = NULL WHERE user_id = ?').run(USER)
+  await check.checkDueReleases()
+  assert.equal(seen.length, before + 2)
+  assert.deepEqual(await check.checkReleaseNow(USER), { reached: false, asked: false })
+  assert.equal(seen.length, before + 2)
+  assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.11', 'the last good answer stays')
+  // A last check stamped in the future (the clock went back) doesn't hold Check now off.
+  db.prepare('UPDATE settings SET release_tried_at = ? WHERE user_id = ?')
+    .run(new Date(Date.now() + 3600_000).toISOString(), USER)
+  reply = release('v0.8.11')
+  assert.deepEqual(await check.checkReleaseNow(USER), { reached: true, asked: true })
+  assert.equal(seen.length, before + 3)
+  // Turned off and on again right after a check: nothing is kept, so Check now asks.
+  store.setUpdateCheck(USER, false)
+  store.setUpdateCheck(USER, true)
+  assert.deepEqual(await check.checkReleaseNow(USER), { reached: true, asked: true })
+  assert.equal(seen.length, before + 4)
 })
 
 await test('turned off: the answer deleted, the automatic check asks nothing, a late answer not kept', async () => {
@@ -190,7 +190,7 @@ await test('turned off: the answer deleted, the automatic check asks nothing, a 
   store.setUpdateCheck(USER, true)
   let release_!: () => void
   hold = new Promise(r => { release_ = r })
-  const pending = check.checkReleaseNow(USER)
+  const pending = askNow()
   while (seen.length === before) await new Promise(r => setTimeout(r, 10))
   store.setUpdateCheck(USER, false)
   release_()
@@ -198,8 +198,10 @@ await test('turned off: the answer deleted, the automatic check asks nothing, a 
   assert.equal(await pending, true)
   info = versionInfo(USER)
   assert.equal(info.latest_release, null)
-  assert.equal(store.readReleaseState(USER).latest, null)
+  assert.deepEqual(store.readReleaseState(USER), { updateCheck: false, latest: null, triedAt: null })
+  // On again: Check now asks at once rather than answering from the check that was dropped.
   store.setUpdateCheck(USER, true)
+  assert.deepEqual(await check.checkReleaseNow(USER), { reached: true, asked: true })
 })
 
 await test('the automatic check: at most once a day, for every account due, with one request', async () => {
@@ -222,7 +224,7 @@ await test('offline: false, nothing shows when nothing was kept, and the next st
   store.setUpdateCheck(USER, false)
   store.setUpdateCheck(USER, true)
   await new Promise<void>(r => { github.close(() => r()); github.closeAllConnections() })
-  assert.equal(await check.checkReleaseNow(USER), false)
+  assert.equal(await askNow(), false)
   const info = versionInfo(USER)
   assert.equal(info.version, 'v0.8.9')
   assert.equal(info.latest_release, null)

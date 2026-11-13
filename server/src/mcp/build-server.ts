@@ -42,13 +42,13 @@ import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
 import { refuseToolListCursor } from './list-cursor';
-import { runningVersion } from '../lib/cubex-version';
+import { runningBuild } from '../lib/cubex-version';
 
 // The name and version every answer carries (serverInfo): the running release ("v0.8.12"), or the build
 // as the installer recorded it when it isn't a release, as get_version says (lib/cubex-version.ts);
 // "unknown" for a build that doesn't record it (Docker, Coolify).
 function serverInfo() {
-  const running = runningVersion();
+  const running = runningBuild();
   return { name: 'cubex', version: running.version ?? running.build ?? 'unknown' };
 }
 // 2026-07-28 caching hints. The instructions and tool descriptions name this
