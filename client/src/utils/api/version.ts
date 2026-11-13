@@ -5,6 +5,7 @@ import { api } from './client'
 export interface VersionInfo {
   version: string | null       // the running release ("v0.8.12"); null: a branch, a local source, not recorded
   build: string | null         // the build as the installer recorded it; null: not recorded (Docker)
+  pinned_ref: string | null    // an install made with --ref stays on it (cubex update reinstalls it)
   update_check: boolean
   latest_release: { version: string; published_at: string | null; notes_url: string; checked_at: string } | null
   update_available: boolean | null

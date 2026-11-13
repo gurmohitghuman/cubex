@@ -62,7 +62,7 @@ Import a CSV, then add columns that fill themselves row by row. Do it by clickin
 - **A real spreadsheet underneath.** Several sheets per table, CSV import and export, sort, filters (by text, numbers, dates or a run's state, like the rows that failed, in and/or groups you can switch on and off), saved views (filters and hidden columns, exported on their own), search across every row, up to a million rows per sheet.
 - **A trash and a history.** Deleted rows, sheets and tables wait 30 days in the trash, ready to restore. Each sheet's History shows what changed and who changed it: you in the app, or which agent.
 
-**Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, and treg.to ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
+**Your data stays on your machine,** in one SQLite file. Cubex only calls OpenRouter, the APIs you set up, treg.to, and GitHub once a day for the latest release ([what it sends, and when](docs/configuration.md#what-cubex-connects-to)).
 
 ## Install
 

@@ -24,14 +24,20 @@ const github = http.createServer((req, res) => {
 })
 await new Promise<void>(r => github.listen(0, '127.0.0.1', () => r()))
 const port = (github.address() as { port: number }).port
-const versionFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-version-')), 'cubex-version')
-// Read when the modules load: the stand-in's address and the version file.
+// A folder laid out like an install: app/.cubex-version, install.env and the installer's marker.
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-home-'))
+fs.mkdirSync(path.join(home, 'app'))
+const versionFile = path.join(home, 'app', '.cubex-version')
+const installEnv = path.join(home, 'install.env')
+const marker = path.join(home, '.cubex-home')
+// Read when the modules load: the stand-in's address and the install folder.
 process.env.RELEASE_CHECK_URL = `http://127.0.0.1:${port}/repos/gurmohitghuman/cubex/releases/latest`
-process.env.CUBEX_TEST_VERSION_FILE = versionFile
+process.env.CUBEX_TEST_HOME = home
 
 const { db } = await import('../../server/src/lib/db')
 const { runMigrations } = await import('../../server/src/db/migrate')
-const { compareVersions, parseTag, runningFrom } = await import('../../server/src/lib/cubex-version')
+const { compareVersions, parseTag, pinnedFrom, runningFrom, runningVersion } =
+  await import('../../server/src/lib/cubex-version')
 const store = await import('../../server/src/lib/release-store')
 const check = await import('../../server/src/services/release-check')
 const { versionInfo } = await import('../../server/src/services/version-info')
@@ -71,6 +77,29 @@ await test("the running version is the installer file's first word, when it is a
   assert.equal(runningFrom(`v1.2.3 ${'a'.repeat(500)}\u0007`).build!.length, 120)
 })
 
+await test("a pin is install.env's CUBEX_REF unless it follows releases, as either installer writes it", () => {
+  const unix = 'CUBEX_FORMAT=2\nCUBEX_REPO=gurmohitghuman/cubex\nCUBEX_REF=v0.8.2\nCUBEX_SOURCE=\n'
+  assert.equal(pinnedFrom(unix), 'v0.8.2')
+  assert.equal(pinnedFrom('CUBEX_FORMAT=2\r\nCUBEX_REF=v0.8.2\r\nCUBEX_SOURCE=\r\n'), 'v0.8.2')
+  assert.equal(pinnedFrom("CUBEX_REF='my branch'\n"), 'my branch')
+  assert.equal(pinnedFrom('CUBEX_REF=my\\ branch\n'), 'my branch')
+  assert.equal(pinnedFrom('CUBEX_REF=main\n'), 'main')
+  for (const text of ['CUBEX_REF=stable\n', 'CUBEX_REF=\n', "CUBEX_REF=''\n", 'CUBEX_REPO=x\n', '', null]) {
+    assert.equal(pinnedFrom(text), null, String(text))
+  }
+})
+
+await test('install.env is read only in a marked install folder with a .cubex-version', () => {
+  fs.writeFileSync(installEnv, 'CUBEX_FORMAT=2\nCUBEX_REF=v0.8.2\n')
+  running('v0.8.2 abc1234')
+  assert.equal(runningVersion().pinned, null, 'no .cubex-home marker')
+  fs.writeFileSync(marker, 'This folder is a Cubex install.\n')
+  assert.equal(runningVersion().pinned, 'v0.8.2')
+  running(null)
+  assert.deepEqual(runningVersion(), { build: null, version: null, pinned: null })
+  fs.rmSync(installEnv)
+})
+
 await test('a newer release: kept, update_available; one GET with a fixed User-Agent, nothing else', async () => {
   running('v0.8.9 abc1234\n')
   reply = release('v0.8.10')
@@ -87,6 +116,14 @@ await test('a newer release: kept, update_available; one GET with a fixed User-A
   assert.equal(req.headers['user-agent'], 'Cubex')
   assert.equal(req.headers.cookie, undefined)
   assert.equal(req.headers.authorization, undefined)
+})
+
+await test('an install pinned to its tag: update_available, with pinned_ref saying why cubex update stays', () => {
+  fs.writeFileSync(installEnv, 'CUBEX_FORMAT=2\nCUBEX_REF=v0.8.9\n')
+  assert.equal(versionInfo(USER).pinned_ref, 'v0.8.9')
+  assert.equal(versionInfo(USER).update_available, true)
+  fs.writeFileSync(installEnv, 'CUBEX_FORMAT=2\nCUBEX_REF=stable\n')
+  assert.equal(versionInfo(USER).pinned_ref, null)
 })
 
 await test('the same release, or an older one: no update', async () => {
@@ -194,5 +231,5 @@ await test('offline: false, nothing shows when nothing was kept, and the next st
   assert.deepEqual(store.dueForReleaseCheck(new Date(Date.now() - 24 * 3600_000).toISOString()), [])
 })
 
-fs.rmSync(path.dirname(versionFile), { recursive: true, force: true })
+fs.rmSync(home, { recursive: true, force: true })
 console.log('release check: all passed')

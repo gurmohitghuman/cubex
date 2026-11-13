@@ -60,10 +60,17 @@ export const VersionCard: React.FC = () => {
         {latest && info.update_available === true && (
           <p className="flex items-center gap-2 text-sm text-gray-900 font-medium" data-testid="version-update">
             <span className="h-2 w-2 rounded-full bg-cube-black shrink-0" aria-hidden="true" />
-            <span>
-              {latest.version} is out (you have {info.version}). Run{' '}
-              <code className="font-mono whitespace-nowrap">cubex update</code> to get it.
-            </span>
+            {info.pinned_ref ? (
+              <span>
+                {latest.version} is out (you have {info.version}). This install is pinned to {info.pinned_ref}. To get
+                updates again, run the install command without <code className="font-mono">--ref</code>.
+              </span>
+            ) : (
+              <span>
+                {latest.version} is out (you have {info.version}). Run{' '}
+                <code className="font-mono whitespace-nowrap">cubex update</code> to get it.
+              </span>
+            )}
           </p>
         )}
         {latest && info.update_available === false && (

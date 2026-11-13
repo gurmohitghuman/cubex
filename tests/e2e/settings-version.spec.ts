@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { test, expect, APIRequestContext, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { bearer, makeToken } from './api-v1-run-helpers'
@@ -6,15 +7,18 @@ import { call, mcpClient } from './helpers-mcp'
 import { Receiver } from './helpers-receiver'
 
 // Settings → Account → Version. The harness points the release check at this spec's receiver, never
-// GitHub (scripts/e2e-env.mjs RELEASE_CHECK_URL), and reads the running version from a file the spec
-// writes (CUBEX_TEST_VERSION_FILE). A newer release: the card's line, a dot on the dashboard's Settings
-// button and on the Account tab, and GET /api/v1/version and get_version say the same. The same release:
+// GitHub (scripts/e2e-env.mjs RELEASE_CHECK_URL), and reads the running version from a folder laid out
+// like an install that the spec fills (CUBEX_TEST_HOME). A newer release: the card's line, a dot on the
+// dashboard's Settings button and on the Account tab, and GET /api/v1/version and get_version say the
+// same; an install pinned with --ref is told how to get updates again instead of cubex update. The same release:
 // no dot. Turned off: only the running version, nothing asked. Offline: only the running version, no
 // error on the card; "Check now" says it couldn't reach GitHub. Not recorded (Docker): no dot. MCP's
 // serverInfo carries the running version.
 
 const PATH = '/repos/gurmohitghuman/cubex/releases/latest'
-const VERSION_FILE = process.env.CUBEX_TEST_VERSION_FILE || ''
+const HOME = process.env.CUBEX_TEST_HOME || ''
+const VERSION_FILE = path.join(HOME, 'app', '.cubex-version')
+const INSTALL_ENV = path.join(HOME, 'install.env')
 const rx = new Receiver()
 let api: APIRequestContext
 let v1: APIRequestContext
@@ -37,7 +41,9 @@ async function openAccount(page: Page): Promise<void> {
 
 test.describe.configure({ mode: 'serial' })
 test.beforeAll(async () => {
-  if (!VERSION_FILE) throw new Error('CUBEX_TEST_VERSION_FILE not set: run via npm run e2e')
+  if (!HOME) throw new Error('CUBEX_TEST_HOME not set: run via npm run e2e')
+  fs.mkdirSync(path.dirname(VERSION_FILE), { recursive: true })
+  fs.writeFileSync(path.join(HOME, '.cubex-home'), 'This folder is a Cubex install.\n')
   fs.writeFileSync(VERSION_FILE, 'v0.8.9 e2e0001\n')
   await rx.start()
   api = await authedApi()
@@ -47,7 +53,7 @@ test.beforeAll(async () => {
 })
 test.afterAll(async () => {
   await clearAnswer()
-  fs.rmSync(VERSION_FILE, { force: true })
+  fs.rmSync(HOME, { recursive: true, force: true })
   await rx.stop()
   await v1?.dispose()
 })
@@ -77,7 +83,7 @@ test('a newer release: the line, the dots, and REST and MCP agree; the same rele
 
   const rest = await (await v1.get('/api/v1/version')).json()
   expect(rest).toMatchObject({
-    version: 'v0.8.9', build: 'v0.8.9 e2e0001', update_check: true, update_available: true,
+    version: 'v0.8.9', build: 'v0.8.9 e2e0001', pinned_ref: null, update_check: true, update_available: true,
     latest_release: { version: 'v0.8.10', published_at: '2026-11-12T15:04:05.000Z',
       notes_url: 'https://github.com/gurmohitghuman/cubex/releases/tag/v0.8.10' },
   })
@@ -86,6 +92,14 @@ test('a newer release: the line, the dots, and REST and MCP agree; the same rele
     expect(await call(client, 'get_version', {})).toEqual(rest)
     expect(client.getServerVersion()).toEqual({ name: 'cubex', version: 'v0.8.9' })
   } finally { await client.close() }
+
+  // Installed with --ref v0.8.9: cubex update would reinstall it, so the card says how to get updates again.
+  fs.writeFileSync(INSTALL_ENV, 'CUBEX_FORMAT=2\nCUBEX_REPO=gurmohitghuman/cubex\nCUBEX_REF=v0.8.9\n')
+  await page.reload()
+  await expect(page.getByTestId('version-update')).toHaveText('v0.8.10 is out (you have v0.8.9). This install is '
+    + 'pinned to v0.8.9. To get updates again, run the install command without --ref.', { timeout: 15_000 })
+  expect((await (await v1.get('/api/v1/version')).json()).pinned_ref).toBe('v0.8.9')
+  fs.rmSync(INSTALL_ENV)
 
   // Not recorded (a Docker build): the latest release shows, with how to update, and no dot.
   fs.rmSync(VERSION_FILE)

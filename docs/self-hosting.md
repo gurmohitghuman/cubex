@@ -96,7 +96,7 @@ sudo ufw enable
 
 If your provider has its own firewall in its dashboard (Hetzner Cloud Firewall, AWS security groups, Oracle Cloud security lists and similar), allow ports 22, 80 and 443 there too. Cubex's own port, 3002, stays closed: Cubex only answers on the server itself, and Caddy (step 4) is the way in.
 
-Cubex also needs to reach out. `ufw` lets outgoing connections through by default, but if your provider's firewall limits them, allow outgoing HTTPS (port 443) to `openrouter.ai` for AI columns, `treg.to` for [enrichments](enrichments.md), and the APIs your HTTP columns call. Cubex can't use an HTTP proxy for these calls.
+Cubex also needs to reach out. `ufw` lets outgoing connections through by default, but if your provider's firewall limits them, allow outgoing HTTPS (port 443) to `openrouter.ai` for AI columns, `treg.to` for [enrichments](enrichments.md), and the APIs your HTTP columns call. `api.github.com` is optional: Cubex asks it once a day for the latest release (see [Keep it up to date](#7-keep-it-up-to-date)), and without it Settings just shows the version you run. Cubex can't use an HTTP proxy for these calls.
 
 **Only if the server has less than 2 GB of memory**, add 2 GB of swap so the install doesn't run out of memory:
 
