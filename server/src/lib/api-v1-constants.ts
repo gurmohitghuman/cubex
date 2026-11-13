@@ -43,8 +43,9 @@ export const TRANSFORM_MAX_REGEX_LEN = 200;
 export const TRANSFORM_REGEX_INPUT_CAP = 10000;
 // regex_extract runs on a worker thread, a page's cells at a time, before the
 // page's transaction (lib/transform-regex-host.ts). A page it hasn't worked out
-// in this long stops the call, and the worker with it: a pattern that can match
-// the same text more than one way takes seconds to hours on long cells.
+// in this long ends after the cells it did, the worker stopped, and the next page
+// starts another; a cell that alone takes this long stops the call. A pattern can
+// take seconds to hours on a long cell.
 export const TRANSFORM_REGEX_PAGE_MS = 1000;
 export const TRANSFORM_REGEX_WORKER_HEAP_MB = 64;
 // A call walks the sheet TRANSFORM_PAGE_ROWS rows at a time, each page read, worked

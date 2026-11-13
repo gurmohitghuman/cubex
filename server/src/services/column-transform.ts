@@ -31,7 +31,7 @@ import {
   type TransformOp,
 } from '../lib/transform-ops';
 import { regexPages, SlowPattern, SLOW_PATTERN_FIX, type RegexPages } from '../lib/transform-regex-host';
-import { walkTransform, type TransformWalk, type WalkResult } from './column-transform-pages';
+import { walkTransform, type PageRow, type TransformWalk, type WalkResult } from './column-transform-pages';
 import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
 import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
 import { settle, stopAt } from './column-transform-end';
@@ -109,10 +109,11 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     const rows = plan.base + walked.updated;
     if (walked.failed) {
       // A first page that failed, or a pass with no row written yet: the call fails as any other, or, its
-      // pattern too slow, is refused saying so.
+      // pattern too slow, is refused saying so. Too slow, a pass with rows answers how far it got, though this
+      // call wrote none of them.
       const next = track.held();
       const slow = walked.failed.error instanceof SlowPattern;
-      if (walked.pages === 0 || rows === 0 || next === null) {
+      if ((walked.pages === 0 && !slow) || rows === 0 || next === null) {
         if (!slow) throw walked.failed.error;
         return { fail: 'invalid', error: `${(walked.failed.error as SlowPattern).message} No cell was written. `
           + SLOW_PATTERN_FIX };
@@ -224,15 +225,20 @@ function planTransform(userId: string, p: TransformParams): Plan | Fail | { unfi
 }
 
 // regex_extract's values, worked out a page at a time on the call's worker (lib/transform-regex-host.ts) before
-// the page's transaction, each distinct cell once (only its first TRANSFORM_REGEX_INPUT_CAP characters count).
+// the page's transaction, each distinct cell once (only its first TRANSFORM_REGEX_INPUT_CAP characters count). The
+// page ends before the first row whose cell the worker didn't get to in its time; when that is the page's first
+// row, its cell alone took the pattern that long, and the call stops on it.
 function extractOffThread(pattern: string, sourceColumn: string): Pick<Plan, 'value' | 'prepare' | 'regex'> {
   const regex = regexPages(pattern);
   const source = (data: Record<string, string>) => cellOf(data, sourceColumn).slice(0, TRANSFORM_REGEX_INPUT_CAP);
   let page = new Map<string, string>();
-  const prepare = async (rows: Array<Record<string, string>>): Promise<void> => {
-    const cells = [...new Set(rows.map(source))];
-    const results = cells.length > 0 ? await regex.extract(cells) : [];
-    page = new Map(cells.map((cell, i) => [cell, transformedCell(results[i])]));
+  const prepare = async (rows: PageRow[]): Promise<number> => {
+    const cells = [...new Set(rows.map(r => source(r.data)))];
+    const results = await regex.extract(cells);
+    page = new Map(results.map((result, i) => [cells[i], transformedCell(result)]));
+    const worked = rows.findIndex(r => !page.has(source(r.data)));
+    if (worked === 0) throw new SlowPattern(rows[0].id);
+    return worked === -1 ? rows.length : worked;
   };
   return { value: data => page.get(source(data)), prepare, regex };
 }

@@ -3,7 +3,7 @@
 // the answer of a call that stopped on an error after writing rows. A refusal wrote nothing; one naming no cursor
 // has none to give.
 import { countOf } from '../lib/change-log';
-import { SlowPattern, SLOW_PATTERN_FIX, SLOW_PATTERN_WHY } from '../lib/transform-regex-host';
+import { SlowPattern, SLOW_PATTERN_FIX } from '../lib/transform-regex-host';
 
 export const MALFORMED = 'cursor must be the next_cursor a transform_column call answered.';
 export const NOT_OPEN = 'This cursor\'s pass is no longer open: it reached the end, was restarted, was replaced '
@@ -61,10 +61,10 @@ export function unfinishedWords(column: string, rows: number, cursor: string): s
 
 // The answer of a call that stopped on an error after writing pages: the error itself is logged, never shown.
 export function stoppedOnErrorWords(rows: number, cursor: string, error: unknown): string {
-  // The same pattern would stop on the same page: regex_extract reads only source_column, so starting over with
+  // The same pattern would stop on the same row: regex_extract reads only source_column, so starting over with
   // a simpler one gives the rows written its result too.
   if (error instanceof SlowPattern) {
-    return `Stopped after ${countOf(rows, 'row')}: ${SLOW_PATTERN_WHY}. Those rows are written. `
+    return `Stopped after ${countOf(rows, 'row')}: ${error.why}. Those rows are written. `
       + `${SLOW_PATTERN_FIX} Then call transform_column with restart: true, which works every row out again.`;
   }
   const busy = String((error as { code?: unknown } | null)?.code ?? '').startsWith('SQLITE_BUSY');

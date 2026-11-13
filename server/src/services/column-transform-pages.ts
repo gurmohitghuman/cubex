@@ -23,10 +23,14 @@
 // for the worker included); every page before that is written and stays
 // written. A page that fails ends the walk: the pages before it stay written,
 // and the walk answers how far they got. A walk with `prepare` (regex_extract)
-// reads each page once before its transaction too, and has the values worked out
-// off this thread from those rows (lib/transform-regex-host.ts): the transaction
-// then only looks them up. A row changed in between has none, so the page writes
-// nothing and is read again, at most PREPARE_TRIES times in a row.
+// reads each page once before its transaction too, in row order, and has the
+// values worked out off this thread from those rows (lib/transform-regex-host.ts):
+// the transaction then only looks them up. When the time a page has for that runs
+// out, the page ends after the rows worked out, and the next starts at the row
+// that was running; the transaction writes them though the call's time ran out
+// meanwhile (it was checked before the page). A row changed in between has no
+// value, so the page writes nothing and is read again, at most PREPARE_TRIES times
+// in a row.
 import { db } from '../lib/db';
 import {
   TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS, TRANSFORM_QUEUED_ROWS,
@@ -44,8 +48,9 @@ export interface TransformWalk {
   // The target's new value for a row, from its cells; undefined when `prepare`
   // didn't work it out (the row changed since it read the page).
   value: (data: Record<string, string>) => string | undefined;
-  // Works out a page's values before the page's transaction, from its rows' cells.
-  prepare?: (rows: Array<Record<string, string>>) => Promise<void>;
+  // Works out the values of a page's rows (in row order) before the page's transaction; answers how many, from
+  // the first, it worked out, at least one. Fewer: the page ends after those.
+  prepare?: (rows: PageRow[]) => Promise<number>;
   // The row_index the walk starts after (the cursor's; -1 from the top).
   after: number;
   // When the call's time runs out (ms since the epoch).
@@ -54,6 +59,8 @@ export interface TransformWalk {
   // transaction once its rows are, told once the page committed.
   track: PassTracker;
 }
+
+export interface PageRow { id: string; data: Record<string, string> }
 
 // Rows written and pages committed, and the last row_index looked at when the
 // call stopped with rows left (null: it got to the end of the sheet). `failed`:
@@ -74,6 +81,8 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     ORDER BY row_index LIMIT 1 OFFSET ?`).pluck();
   const read = db.prepare(`SELECT rowid AS rid, data FROM rows WHERE sheet_id = ? AND user_id = ?
     AND row_index > ? AND row_index <= ? AND (${w.filter.sql}) ORDER BY rowid`);
+  const readInOrder = db.prepare(`SELECT id, row_index AS ri, data FROM rows WHERE sheet_id = ? AND user_id = ?
+    AND row_index > ? AND row_index <= ? AND (${w.filter.sql}) ORDER BY row_index`);
   const set = db.prepare("UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE rowid = ?");
   const path = jsonPath(w.targetColumn);
   let after = w.after;
@@ -83,17 +92,15 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
   let wrote = false;
   let wroteAny = false;
   let unprepared = 0;
-  // The page of at most `rows` rows after `after`, and the last row_index in its window.
-  const window = (rows: number) => {
-    const last = windowEnd.get(w.sheetId, w.userId, after, rows - 1) as number | undefined;
-    const found = read.all(w.sheetId, w.userId, after, last ?? Number.MAX_SAFE_INTEGER, ...w.filter.params) as
-      Array<{ rid: number; data: string }>;
-    return { last, found };
-  };
+  // The last row_index in the window of at most `rows` rows after `after` (undefined: the sheet ends in it).
+  const windowLast = (rows: number) => windowEnd.get(w.sheetId, w.userId, after, rows - 1) as number | undefined;
+  // The page's rows up to `last`, the window's or the one its prepare got to.
+  const window = (last: number | undefined) => ({ last, found: read.all(w.sheetId, w.userId, after,
+    last ?? Number.MAX_SAFE_INTEGER, ...w.filter.params) as Array<{ rid: number; data: string }> });
   // What a page did, taken over only once it committed: a page that fails leaves the walk where it was.
-  const page = db.transaction((rows: number) => {
+  const page = db.transaction((rows: number, end: number | undefined) => {
     walTurnCheck();
-    const { last, found } = window(rows);
+    const { last, found } = window(end ?? windowLast(rows));
     const values = found.map(r => w.value(parseRowData(r.data)));
     if (values.includes(undefined)) return { again: true as const };
     found.forEach((r, i) => set.run(path, values[i], r.rid));
@@ -102,12 +109,13 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
     const tracked = w.track.page(last ?? null, updated + found.length, found.length);
     return { found: found.length, last, wrote: found.length > 0 || tracked };
   });
-  const step = (): boolean => {
+  // `prepared`: the page's values were worked out, ending after row_index `end` when not every row got one.
+  const step = (prepared: false | { end?: number }): boolean => {
     wrote = false;
     const room = TRANSFORM_MAX_ROWS - updated;
-    if (room <= 0 || Date.now() >= w.until) return false;
+    if (room <= 0 || (!prepared && Date.now() >= w.until)) return false;
     // A page never looks at more rows than the call may still write.
-    const p = page.immediate(Math.min(pageRows, room));
+    const p = page.immediate(Math.min(pageRows, room), prepared ? prepared.end : undefined);
     if ('again' in p) {
       if (++unprepared >= PREPARE_TRIES) {
         throw new Error(`A page's rows changed ${PREPARE_TRIES} times between working out and writing their values.`);
@@ -133,12 +141,17 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
         const room = await walRoom(w.until);
         if (room === 'late' || (room === 'held' && !first)) break;
       }
+      let prepared: false | { end?: number } = false;
       if (w.prepare) {
         const room = TRANSFORM_MAX_ROWS - updated;
         if (room <= 0 || Date.now() >= w.until) break;
-        await w.prepare(window(Math.min(pageRows, room)).found.map(r => parseRowData(r.data)));
+        const last = windowLast(Math.min(pageRows, room));
+        const rows = readInOrder.all(w.sheetId, w.userId, after, last ?? Number.MAX_SAFE_INTEGER,
+          ...w.filter.params) as Array<{ id: string; ri: number; data: string }>;
+        const worked = await w.prepare(rows.map(r => ({ id: r.id, data: parseRowData(r.data) })));
+        prepared = { end: worked < rows.length ? rows[worked - 1].ri : undefined };
       }
-      const went = await inWalTurn(() => withoutAutoCheckpoint(step), w.until);
+      const went = await inWalTurn(() => withoutAutoCheckpoint(() => step(prepared)), w.until, prepared !== false);
       if (went === 'late') break;
       more = went;
       await yieldToRequests();

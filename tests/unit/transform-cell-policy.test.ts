@@ -38,7 +38,7 @@ async function check(label: string, fn: () => void | Promise<void>) {
 }
 
 const EMOJI = '\u{1F600}'
-const RLO = '‮'
+const RLO = '\u202E'
 const LONE_HALF = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
 const wellFormed = (s: unknown) => typeof s === 'string' && !LONE_HALF.test(s)
 const uid = uuid(), tid = uuid()
