@@ -18,6 +18,7 @@ export const versionAPI = {
   get: (): Promise<VersionInfo> => api.get('/settings/version', quiet).then(res => res.data),
   setCheck: (on: boolean): Promise<VersionInfo> =>
     api.put('/settings/version', { update_check: on }, quiet).then(res => res.data),
-  checkNow: (): Promise<VersionInfo & { reached: boolean }> =>
+  // asked false: a check went out under a minute ago, and this is what it found.
+  checkNow: (): Promise<VersionInfo & { reached: boolean; asked: boolean }> =>
     api.post('/settings/version/check', {}, quiet).then(res => res.data),
 }

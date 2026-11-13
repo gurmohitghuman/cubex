@@ -6,7 +6,7 @@ import { db } from './db';
 export interface LatestRelease {
   version: string;              // "v0.8.13"
   published_at: string | null;  // ISO time, as GitHub gave it
-  checked_at: string;           // ISO time this answer came
+  checked_at: string;           // ISO time the check that found it went out (its release_tried_at)
 }
 export interface ReleaseState { updateCheck: boolean; latest: LatestRelease | null; triedAt: string | null }
 
@@ -33,12 +33,14 @@ export function readReleaseState(userId: string): ReleaseState {
 const ensureRow = (userId: string) =>
   db.prepare('INSERT INTO settings (id, user_id) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING').run(uuidv4(), userId);
 
-// Turning the check off deletes the kept answer, so only the running version shows.
+// Turning the check off deletes the kept answer, so only the running version shows, and forgets when the
+// last check went out: turned on again, "Check now" asks at once instead of answering from nothing.
 export function setUpdateCheck(userId: string, on: boolean): void {
   db.transaction(() => {
     ensureRow(userId);
     db.prepare(`UPDATE settings SET update_check = ?, latest_release = CASE WHEN ? = 1 THEN latest_release END,
-      updated_at = datetime('now') WHERE user_id = ?`).run(on ? 1 : 0, on ? 1 : 0, userId);
+      release_tried_at = CASE WHEN ? = 1 THEN release_tried_at END, updated_at = datetime('now')
+      WHERE user_id = ?`).run(on ? 1 : 0, on ? 1 : 0, on ? 1 : 0, userId);
   }).immediate();
 }
 
@@ -49,12 +51,12 @@ export function dueForReleaseCheck(since: string): string[] {
     .all(since) as Array<{ id: string }>).map(r => r.id);
 }
 
-// A check was sent at `triedAt`. A good answer replaces the kept one, unless the check was turned off
-// meanwhile; a failed one (null) leaves it as it was.
+// A check was sent at `triedAt`. A good answer replaces the kept one; a failed one (null) leaves it as it
+// was. Neither is recorded when the check was turned off meanwhile.
 export function keepReleaseAnswer(userId: string, latest: LatestRelease | null, triedAt: string): void {
   db.transaction(() => {
     ensureRow(userId);
-    db.prepare('UPDATE settings SET release_tried_at = ? WHERE user_id = ?').run(triedAt, userId);
+    db.prepare('UPDATE settings SET release_tried_at = ? WHERE user_id = ? AND update_check = 1').run(triedAt, userId);
     if (latest) {
       db.prepare('UPDATE settings SET latest_release = ? WHERE user_id = ? AND update_check = 1')
         .run(JSON.stringify(latest), userId);

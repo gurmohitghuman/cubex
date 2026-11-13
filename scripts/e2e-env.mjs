@@ -40,6 +40,8 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     // receiver, never GitHub (services/release-check.ts). Both always.
     CUBEX_TEST_HOME: path.join(testDir, 'install'),
     RELEASE_CHECK_URL: `http://127.0.0.1:${receiverPort}/repos/gurmohitghuman/cubex/releases/latest`,
+    // "Check now" asks again at once here (after a minute in production), so a spec can ask several times.
+    RELEASE_CHECK_NOW_MIN_MS: env.RELEASE_CHECK_NOW_MIN_MS || '1',
     // HTTP column retries and run webhook notices wait less here (1 s and 10 s first waits in
     // production), and run webhooks are sent on a faster beat.
     HTTP_RETRY_BASE_MS: env.HTTP_RETRY_BASE_MS || '100',

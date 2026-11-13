@@ -1,6 +1,8 @@
 // The running version and the release check (lib/cubex-version.ts, services/release-check.ts, migration 058).
 // Re-exported from constants.ts.
 
+import { envInt } from './env-int';
+
 // Cubex's own repository: where releases are published and their notes live.
 export const CUBEX_RELEASES_PAGE = 'https://github.com/gurmohitghuman/cubex/releases';
 // Where the release check asks for the latest release: GitHub's releases API. An operator setting
@@ -13,6 +15,10 @@ export const RELEASE_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 // whether a day has passed.
 export const RELEASE_CHECK_FIRST_MS = 60 * 1000;
 export const RELEASE_CHECK_SWEEP_MS = 60 * 60 * 1000;
+// "Check now" asks GitHub again only after this long since the last check went out; sooner, it answers with what
+// that check kept. GitHub allows 60 unsigned calls an hour per address, and the daily check needs one of them.
+// The e2e harness shortens it so specs can ask several times in a row.
+export const RELEASE_CHECK_NOW_MIN_MS = envInt('RELEASE_CHECK_NOW_MIN_MS', 60 * 1000);
 // One check gives up after this long, and reads at most this much of the answer.
 export const RELEASE_CHECK_TIMEOUT_MS = 10_000;
 export const RELEASE_CHECK_MAX_BYTES = 512 * 1024;

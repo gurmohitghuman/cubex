@@ -4,9 +4,11 @@
 // "local 6071123 2026-11-13 10:00" for a local source. A Docker or Coolify build has none: its
 // version isn't recorded. The installer also writes <install folder>/install.env beside the app; its
 // CUBEX_REF is what `cubex update` installs, so an install made with --ref <tag> stays on that tag.
-// Both are read once, at first use: an update swaps the app folder only while Cubex is stopped.
-// CUBEX_TEST_HOME (set only by scripts/e2e-harness.mjs and unit tests, never in production) names a
-// folder laid out like an install (app/.cubex-version, install.env), read at every use.
+// .cubex-version is read once, at first use: an update swaps the app folder only while Cubex is
+// stopped. install.env is read at every use: the install command run again with --ref on an install
+// already on that version rewrites it without a restart. CUBEX_TEST_HOME (set only by
+// scripts/e2e-harness.mjs and unit tests, never in production) names a folder laid out like an install
+// (app/.cubex-version, install.env), whose .cubex-version is read at every use too.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -63,14 +65,23 @@ export function pinnedFrom(text: string | null): string | null {
 }
 
 const read = (file: string) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
-let cached: Running | null = null;
+let cached: { build: Omit<Running, 'pinned'>; installed: boolean } | null = null;
+
+// The running build, without the pin (MCP's serverInfo, on every request).
+export function runningBuild(): Omit<Running, 'pinned'> {
+  return builtApp().build;
+}
 
 // install.env is read only from a folder the installer marked as an install (.cubex-home) and only
 // when the app has a .cubex-version, so a source checkout never reads a file beside it.
 export function runningVersion(): Running {
+  const app = builtApp();
+  return { ...app.build, pinned: app.installed ? pinnedFrom(read(path.join(HOME, 'install.env'))) : null };
+}
+
+function builtApp(): { build: Omit<Running, 'pinned'>; installed: boolean } {
   if (cached && !TEST_HOME) return cached;
   const text = read(path.join(APP, '.cubex-version'));
-  const installed = text !== null && fs.existsSync(path.join(HOME, '.cubex-home'));
-  cached = { ...runningFrom(text), pinned: installed ? pinnedFrom(read(path.join(HOME, 'install.env'))) : null };
+  cached = { build: runningFrom(text), installed: text !== null && fs.existsSync(path.join(HOME, '.cubex-home')) };
   return cached;
 }

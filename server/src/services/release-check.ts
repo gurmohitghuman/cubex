@@ -4,14 +4,15 @@
 // nothing about this install. The first automatic look comes a minute after the server starts, and a
 // timer looks again every hour whether a day has passed, so neither a start nor a page waits on it.
 // A check that fails (offline, rate limited, an answer that isn't a release) keeps the last good
-// answer and shows no error. Settings → Account → Version turns it off ("Check now" asks at once).
+// answer and shows no error. Settings → Account → Version turns it off ("Check now" asks at once,
+// unless a check went out in the last minute).
 import {
-  RELEASE_CHECK_EVERY_MS, RELEASE_CHECK_FIRST_MS, RELEASE_CHECK_MAX_BYTES, RELEASE_CHECK_SWEEP_MS,
-  RELEASE_CHECK_TIMEOUT_MS, RELEASE_CHECK_URL,
+  RELEASE_CHECK_EVERY_MS, RELEASE_CHECK_FIRST_MS, RELEASE_CHECK_MAX_BYTES, RELEASE_CHECK_NOW_MIN_MS,
+  RELEASE_CHECK_SWEEP_MS, RELEASE_CHECK_TIMEOUT_MS, RELEASE_CHECK_URL,
 } from '../lib/constants';
 import { parseTag, tagOf } from '../lib/cubex-version';
 import { readBoundedBody } from '../lib/http-body-read';
-import { dueForReleaseCheck, keepReleaseAnswer, type LatestRelease } from '../lib/release-store';
+import { dueForReleaseCheck, keepReleaseAnswer, readReleaseState, type LatestRelease } from '../lib/release-store';
 
 export type Found = Omit<LatestRelease, 'checked_at'>;
 
@@ -53,14 +54,22 @@ function askOnce(): Promise<Found | null> {
 async function checkFor(userIds: string[]): Promise<Found | null> {
   const triedAt = new Date().toISOString();
   const found = await askOnce();
-  const latest = found ? { ...found, checked_at: new Date().toISOString() } : null;
+  // Stamped with the time this check went out, so a later check that fails is never mistaken for it.
+  const latest = found ? { ...found, checked_at: triedAt } : null;
   for (const userId of userIds) keepReleaseAnswer(userId, latest, triedAt);
   return found;
 }
 
-// "Check now" in Settings: asks at once, whenever the last check was. True when GitHub answered.
-export async function checkReleaseNow(userId: string): Promise<boolean> {
-  return (await checkFor([userId])) !== null;
+// "Check now" in Settings: asks at once, unless a check (this or the automatic one) went out less than
+// RELEASE_CHECK_NOW_MIN_MS ago: then it answers from what that check kept, without asking (asked false).
+// reached: GitHub answered this check, or the last one when it didn't ask (the kept answer is that check's).
+export async function checkReleaseNow(userId: string, now = Date.now()): Promise<{ reached: boolean; asked: boolean }> {
+  const { triedAt, latest } = readReleaseState(userId);
+  const since = triedAt ? now - Date.parse(triedAt) : NaN;
+  if (since >= 0 && since < RELEASE_CHECK_NOW_MIN_MS) {
+    return { reached: latest?.checked_at === triedAt, asked: false };
+  }
+  return { reached: (await checkFor([userId])) !== null, asked: true };
 }
 
 // The automatic check, for every account due one (Cubex has one): a single request serves them all.
