@@ -12,7 +12,8 @@ const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { mcpEntry, authInfoFor } = entryMod as typeof import('../../server/src/mcp/http-entry')
 
 export const MODERN = '2026-07-28'
-export const SERVER = { 'io.modelcontextprotocol/serverInfo': { name: 'cubex', version: '1.0.0' } }
+// No .cubex-version in a checkout, so the running version isn't recorded (lib/cubex-version.ts).
+export const SERVER = { 'io.modelcontextprotocol/serverInfo': { name: 'cubex', version: 'unknown' } }
 export const META = { 'io.modelcontextprotocol/protocolVersion': MODERN,
   'io.modelcontextprotocol/clientInfo': { name: 'unit', version: '1' },
   'io.modelcontextprotocol/clientCapabilities': {} }

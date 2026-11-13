@@ -87,7 +87,7 @@ On every version:
 
 On 2026-07-28:
 
-- Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`).
+- Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`). The version is the one `get_version` reports: the release that runs (`v0.8.12`), the build when it isn't a release, or `unknown` for a build that doesn't record it (Docker, Coolify).
 - `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when they change: the tools change with a new version of Cubex, and descriptions change with the token's spend cap and what it has spent. A client sees each change within 5 minutes.
 - `tools/list` gives every tool at once, in the same order every time. Every token sees every tool: one its scopes don't allow refuses with a message that names the scope.
 - Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true`, such as `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
@@ -147,6 +147,7 @@ Not offered:
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. `:batch` models aren't listed: they run only through OpenRouter's batch API, so a run on one (its start, estimate, preview, resume or rerun), a waterfall step, a waterfall's resume, `write_formula`, `write_run_condition` and a default on one are refused with the model to use instead. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit), and this token's spend cap with what is left (`access_token`). `openrouter.checked_at` is when Cubex read OpenRouter's numbers (a read is reused for 30 seconds). They can lag behind runs that just finished, while `access_token.spent_usd` is live. Costs nothing. |
 | `get_usage` | What AI, HTTP API and enrichment runs ran and cost, by column (deleted ones too), day or run, for one sheet or the whole account, over this week, this month, last week, last month or two days you pick. Each row has runs, cells run, cells reused from earlier answers, the cost (OpenRouter, your own AI provider key, treg) and the cost per cell. Costs nothing. |
+| `get_version` | Which Cubex version runs (`version`, and `build` as the installer recorded it), the latest release the daily release check found (`latest_release`, with `published_at` and `notes_url`) and `update_available`. It reads what the check kept and never asks GitHub itself. `update_available` is `null` when it can't be told: a build from a branch or a local source, one that doesn't record its version (Docker, Coolify), or no answer yet. The check is on by default; **Settings → Account → Version** turns it off. Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase, spaces and garbled characters. No AI and no credits. See [Clean data](#clean-data). |
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
@@ -952,6 +953,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Agents use `list_run_
 | Endpoint | Body or query |
 |---|---|
 | `GET /balances` | Same as `get_balances`. |
+| `GET /version` | Same as `get_version`. `read` scope. |
 | `GET /usage` | Same as `get_usage`: `?sheet_id=` (leave out for the whole account), `group_by` (`column`, `day` or `run`), `range` (`this_week`, `this_month`, `last_week`, `last_month`) or `from` and `to` (`2026-10-01`), `limit` (up to 1,000; totals always cover the whole range). `format=csv` downloads every row. Days are UTC, and a run counts on the day it started. `read` scope. |
 | `GET /enrichments` | `?q=work email`. Without `q`, the popular jobs. |
 | `GET /enrichments/:toolId` | A tool's inputs, outputs, price and providers. |

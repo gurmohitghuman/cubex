@@ -26,6 +26,7 @@ import { registerWaterfallTools } from './tools-waterfall';
 import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
 import { registerUsageTools } from './tools-usage';
+import { registerVersionTool } from './tools-version';
 import { registerTrashTools } from './tools-trash';
 import { registerRunConditionTools } from './tools-run-conditions';
 import { registerCleanTool } from './tools-clean';
@@ -41,9 +42,15 @@ import { registerViewTools } from './tools-views';
 import { capToolNote } from '../lib/token-spend';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
 import { refuseToolListCursor } from './list-cursor';
+import { runningVersion } from '../lib/cubex-version';
 
-// The name and version every answer carries (serverInfo).
-const MCP_SERVER_INFO = { name: 'cubex', version: '1.0.0' };
+// The name and version every answer carries (serverInfo): the running release ("v0.8.12"), or the build
+// as the installer recorded it when it isn't a release, as get_version says (lib/cubex-version.ts);
+// "unknown" for a build that doesn't record it (Docker, Coolify).
+function serverInfo() {
+  const running = runningVersion();
+  return { name: 'cubex', version: running.version ?? running.build ?? 'unknown' };
+}
 // 2026-07-28 caching hints. The instructions and tool descriptions name this
 // token's spend cap (and some descriptions its scopes), so neither answer may be
 // shared with another token.
@@ -51,7 +58,7 @@ const CACHE_HINT = { ttlMs: MCP_LIST_CACHE_TTL_MS, cacheScope: 'private' } as co
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   const server = new McpServer(
-    MCP_SERVER_INFO,
+    serverInfo(),
     {
       cacheHints: { 'server/discover': CACHE_HINT, 'tools/list': CACHE_HINT },
       instructions:
@@ -140,6 +147,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerAiVisibilityTool(server, ctx);
   registerBalanceTools(server, ctx);
   registerUsageTools(server, ctx);
+  registerVersionTool(server, ctx);
   registerTrashTools(server, ctx);
   registerCleanTool(server, ctx);
   registerFormulaTool(server, ctx);

@@ -18,6 +18,12 @@ export const tableRoutes = (): RouteDoc[] => [
     summary: "Check a token: its name, scopes, and spend cap with what's left.",
   }),
   op({
+    method: 'get', path: '/version', operationId: 'getVersion', tag: 'account', scope: 'read',
+    summary: 'The running Cubex version, the latest release and whether a newer one is out.',
+    description: 'Reads what the daily release check kept (Settings, Account, Version); it never asks GitHub '
+      + 'itself. update_available is null when the running build is not a release or no answer is kept.',
+  }),
+  op({
     method: 'get', path: '/openapi.json', operationId: 'getOpenApiDocument', tag: 'account', scope: 'read',
     summary: 'This document: the OpenAPI description of /api/v1.',
     description: 'Any valid token can read it. Postman, Insomnia or Swagger UI can import it.',

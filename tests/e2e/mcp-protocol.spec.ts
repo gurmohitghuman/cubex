@@ -9,7 +9,8 @@ import { modernMcpClient as modernClient } from './helpers-mcp'
 // (initialize first) are mcp.spec.ts, on the v1 client.
 
 const MODERN = '2026-07-28'
-const SERVER_INFO = { name: 'cubex', version: '1.0.0' }
+// The harness writes no version file, so the running version isn't recorded (settings-version.spec.ts sets one).
+const SERVER_INFO = { name: 'cubex', version: 'unknown' }
 const STAMP = { 'io.modelcontextprotocol/serverInfo': SERVER_INFO }
 const META = { 'io.modelcontextprotocol/protocolVersion': MODERN,
   'io.modelcontextprotocol/clientInfo': { name: 'e2e-raw', version: '1' },

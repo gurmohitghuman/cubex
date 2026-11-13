@@ -20,6 +20,7 @@ Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LO
 | `ENRICH_STORED_RAW_MAX_BYTES` | `16384` | How much of each provider's raw answer is kept, in bytes, for the answer panel and **Add as column**. |
 | `TREG_BASE_URL` | `https://treg.to` | Where enrichment calls go. Only for testing or a self-hosted treg. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | Where AI calls go. Only for testing. |
+| `RELEASE_CHECK_URL` | GitHub's releases API for Cubex | Where the daily release check asks for the latest release. Only for testing. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes from browsers that have never signed in, together, and for each browser that has, on its own. |
 | `RUN_BREAKER_FAILURES` | `5` | AI and HTTP API rows failing in a row on the provider's side (no answer, a server error, a rejected key, no credits) before the run pauses itself. |
 | `AI_CALL_DEADLINE_MS` | `600000` | Longest one AI call may take, answer included, before its row fails as timed out. |
@@ -52,5 +53,6 @@ Your data stays in one SQLite file on your machine. The server only calls out to
 - **The APIs you put in HTTP columns.**
 - **Your run webhook URLs**, when a run finishes (Settings, Run webhooks): the run's id, kind, sheet, status and time, nothing from your rows.
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.
+- **GitHub**, once a day, for the latest Cubex release, so **Settings → Account → Version** can say when a new one is out: one request to GitHub's releases API that sends nothing about you or your data. It is on by default; turn it off there with **Check for new releases**. Turned off, Cubex never asks, and the section shows only the version you run.
 
 The web page also loads its fonts from Google Fonts.

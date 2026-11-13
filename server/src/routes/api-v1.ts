@@ -13,6 +13,7 @@ import {
 } from '../middleware/access-token-auth';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
 import { apiV1Limiter } from '../lib/limits';
+import { versionInfo } from '../services/version-info';
 import tablesV1 from './api-v1-tables';
 import tableSheetsV1 from './api-v1-table-sheets';
 import sheetsV1 from './api-v1-sheets';
@@ -121,6 +122,18 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
   } catch (error) {
     console.error('GET /v1/me error:', error);
     res.status(500).json({ error: 'Failed to fetch account info' });
+  }
+});
+
+// GET /api/v1/version: the running version, the latest release the daily check found and whether it
+// is newer (services/version-info.ts; get_version and Settings read the same). Reads only what is kept:
+// it never asks GitHub.
+router.get('/version', requireScope('read'), (req: TokenAuthRequest, res) => {
+  try {
+    res.json(versionInfo(req.userId!));
+  } catch (error) {
+    console.error('GET /v1/version error:', error);
+    res.status(500).json({ error: 'Failed to read the version' });
   }
 });
 
