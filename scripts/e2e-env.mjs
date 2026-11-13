@@ -35,6 +35,11 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     // need rows still waiting when they act on a run of a few rows.
     ENRICH_DEFAULT_CONCURRENCY: env.ENRICH_DEFAULT_CONCURRENCY || '5',
     CUBEX_TEST_CLOCK_FILE: path.join(testDir, 'test-clock'),
+    // The running version comes from a folder laid out like an install (lib/cubex-version.ts: app/
+    // .cubex-version, install.env), empty until a spec writes them, and the release check asks the specs'
+    // receiver, never GitHub (services/release-check.ts). Both always.
+    CUBEX_TEST_HOME: path.join(testDir, 'install'),
+    RELEASE_CHECK_URL: `http://127.0.0.1:${receiverPort}/repos/gurmohitghuman/cubex/releases/latest`,
     // HTTP column retries and run webhook notices wait less here (1 s and 10 s first waits in
     // production), and run webhooks are sent on a faster beat.
     HTTP_RETRY_BASE_MS: env.HTTP_RETRY_BASE_MS || '100',

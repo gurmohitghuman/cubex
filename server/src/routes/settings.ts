@@ -8,6 +8,7 @@ import { authenticateToken } from '../middleware/auth';
 import { runWebhookRoutes } from './run-webhooks-routes';
 import reuseRoutes from './settings-reuse';
 import trashRoutes from './settings-trash';
+import versionRoutes from './settings-version';
 
 const router = express.Router();
 router.use(openrouterRoutes);
@@ -20,5 +21,6 @@ router.use('/run-webhooks', authenticateToken);
 router.use(runWebhookRoutes('/run-webhooks', () => (_req, _res, next) => next()));
 router.use(reuseRoutes);
 router.use(trashRoutes);
+router.use(versionRoutes);
 
 export default router;

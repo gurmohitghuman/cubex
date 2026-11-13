@@ -7,6 +7,7 @@ import { SettingsAgentsTab } from '@/components/settings/SettingsAgentsTab'
 import { SettingsAccountTab } from '@/components/settings/SettingsAccountTab'
 import { SettingsSetupsTab } from '@/components/settings/SettingsSetupsTab'
 import { SettingsRunWebhooksTab } from '@/components/settings/SettingsRunWebhooksTab'
+import { useVersionInfo } from '@/hooks/useVersionInfo'
 
 // Settings shell: route-backed tabs (/settings/:tab — refresh, back button,
 // and deep links like /settings/ai all work), one mental model per tab. Each
@@ -25,6 +26,8 @@ const TABS = [
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate()
   const { tab } = useParams<{ tab: string }>()
+  // A newer release is out: a dot on the Account tab, where the Version card says so.
+  const newRelease = useVersionInfo()?.update_available === true
 
   const active = TABS.find(t => t.slug === tab)
   // /settings and any unknown slug land on the first-run critical path.
@@ -65,6 +68,11 @@ export const SettingsPage: React.FC = () => {
               >
                 <Icon className="h-4 w-4" />
                 {label}
+                {slug === 'account' && newRelease && (
+                  <span className="h-2 w-2 rounded-full bg-cube-black" data-testid="account-update-dot">
+                    <span className="sr-only">(a new release is out)</span>
+                  </span>
+                )}
               </Link>
             )
           })}

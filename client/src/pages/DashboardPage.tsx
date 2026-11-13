@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Table, tablesAPI, settingsAPI } from '@/utils/api'
 import toast from 'react-hot-toast'
-import { LogOut, Plus, Settings, Trash2 } from 'lucide-react'
+import { LogOut, Plus, Trash2 } from 'lucide-react'
 import { toastDeleted } from '@/components/trash/trashToast'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FullPageLoader } from '@/components/LoadingSpinner'
@@ -15,6 +15,7 @@ import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
 import { plural } from '@/lib/utils'
+import { SettingsButton } from '@/components/dashboard/SettingsButton'
 
 export const DashboardPage: React.FC = () => {
   const { logout } = useAuth()
@@ -100,9 +101,7 @@ export const DashboardPage: React.FC = () => {
                 className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors block">
                 <Trash2 className="h-4 w-4" />
               </Link>
-              <Link to="/settings" className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors block" title="Settings">
-                <Settings className="h-4 w-4" />
-              </Link>
+              <SettingsButton />
               <button onClick={logout}
                 className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                 title="Sign out">

@@ -2,6 +2,8 @@
 
 The [one-line installer](../README.md#install) is the easiest way. Everything in the README also applies to these, apart from where settings and data live and how you reset the password.
 
+These builds don't record their version, so **Settings → Account → Version** shows the latest release and its notes but can't tell whether yours is older, and puts no dot on Settings.
+
 ## Coolify
 
 If you run [Coolify](https://coolify.io), it can host Cubex with nothing installed on the server by hand:

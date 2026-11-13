@@ -65,7 +65,7 @@ async function main() {
     // These answer from Cubex's own data, so their call must succeed too.
     const answers = ['list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_runs', 'get_run_status',
       'get_run_results', 'get_usage', 'list_trash', 'get_sheet_history', 'list_setups', 'list_setup_versions',
-      'list_run_webhooks', 'list_saved_keys', 'check_run_condition']
+      'list_run_webhooks', 'list_saved_keys', 'check_run_condition', 'get_version']
     const readOnly = [...tools.keys()].filter(name => hints[name].readOnlyHint)
     assert.ok(readOnly.length >= 20, `${readOnly.length} read-only tools`)
     for (const name of readOnly) {

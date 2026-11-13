@@ -5,8 +5,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { authAPI } from '@/utils/api'
 import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from '@/lib/constants'
 import { TrashCard } from './TrashCard'
+import { VersionCard } from './VersionCard'
 
-// Cubex has a single account and no email, so this tab is just the password and
+// Cubex has a single account and no email, so this tab is the version, the trash, the password and
 // signing out. A forgotten password is reset from the server shell.
 export const SettingsAccountTab: React.FC = () => {
   const navigate = useNavigate()
@@ -47,6 +48,7 @@ export const SettingsAccountTab: React.FC = () => {
 
   return (
     <>
+      <VersionCard />
       <TrashCard />
       <div className="card mb-6">
         <div className="p-6">

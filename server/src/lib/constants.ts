@@ -30,6 +30,8 @@ export * from './constants-spend';
 export * from './constants-server';
 // The WAL checkpoint worker's marks, same split.
 export * from './constants-wal';
+// The running version and the release check, same split.
+export * from './constants-version';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes
