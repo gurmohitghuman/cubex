@@ -137,3 +137,41 @@ test('a treg step\'s providers in the drawer: kept when untouched, one switched 
   expect((await stepOf()).choices).toMatchObject({ skipProviders: ['oldfinder', 'hunter'] })
   await api.dispose()
 })
+
+test('"Change tool" starts the new tool with its own providers, none of the old tool\'s switches', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  const api = await authedApi()
+  await freshTreg(api)
+  const old = { ...FIND, providerOrder: ['prospeo', 'hunter'], skipProviders: ['datagma'], stopAtFirst: true }
+  const { sheetId, stepOf } = await seed(page, api, { choices: old })
+
+  // The old tool's list: Datagma off, stop after the first provider on.
+  const datagma = await openProviders(page, /^Providers/, 'Datagma')
+  await expect(datagma).toHaveAttribute('aria-checked', 'false')
+  await expect(drawer(page).getByLabel(/Stop after the first provider/)).toBeChecked()
+
+  // Another tool that Datagma also serves from a name and a domain: Datagma on, and no stop after the first.
+  await drawer(page).getByRole('button', { name: 'Change tool' }).click()
+  await drawer(page).getByLabel('Search tools').fill('person profile')
+  await drawer(page).getByTestId('waterfall-tool-search')
+    .getByRole('button', { name: /^Person from LinkedIn or email/ }).click()
+  await drawer(page).getByRole('button', { name: /^Providers/ }).click()
+  const list = drawer(page).getByTestId('waterfall-providers')
+  await expect(list.getByRole('switch', { name: 'Use Datagma' })).toHaveAttribute('aria-checked', 'true')
+  await expect(drawer(page).getByLabel(/Stop after the first provider/)).not.toBeChecked()
+  await list.getByRole('switch', { name: 'Use Datagma' }).scrollIntoViewIfNeeded()
+  await shot(page, 'waterfall-change-tool-providers')
+
+  // It answers no email, so it gets an answer field; the run sends, and the step stores, no provider list.
+  const { tool } = await (await api.get('/api/enrich/tools/treg.people.enrich')).json()
+  await choose(drawer(page).getByLabel('Answer field'), tool.outputs[0].path)
+  const sent = await runAll(page, sheetId)
+  expect(sent.choices).toMatchObject({
+    toolId: 'treg.people.enrich', providerOrder: [], skipProviders: [], stopAtFirst: false,
+  })
+  const stored = (await stepOf()).choices
+  expect(stored.toolId).toBe('treg.people.enrich')
+  expect([stored.providerOrder ?? [], stored.skipProviders ?? [], stored.stopAtFirst ?? false]).toEqual([[], [], false])
+  await api.dispose()
+})
