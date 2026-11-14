@@ -52,10 +52,12 @@ import { useTableRouting } from '@/hooks/sheet/useTableRouting'
 import { useFollowRuns } from '@/hooks/sheet/useFollowRuns'
 import { AutorunChip } from '@/components/autorun/AutorunChip'
 import { AutorunDialogHost } from '@/components/autorun/AutorunDialogHost'
+import { useToastsBelowTopBar } from '@/hooks/useToastsBelowTopBar'
 
 export const SheetPage: React.FC = () => {
   const { tableId, sheetId: urlSheetId } = useParams<{ tableId: string; sheetId?: string }>()
   const navigate = useNavigate()
+  useToastsBelowTopBar()
   const [confirmDeleteSheet, setConfirmDeleteSheet] = useState<Sheet | null>(null)
 
   // Root sheet state — owned here because nearly every hook below mutates it.
