@@ -46,7 +46,8 @@ const source = () => db.prepare('SELECT * FROM webhook_sources WHERE id = ?').ge
 const mappings = () => db.prepare('SELECT json_path, column_name, value_mode FROM webhook_mappings WHERE source_id = ?')
   .all(src) as Parameters<typeof appendWebhookDelivery>[1]
 const send = (body: Record<string, unknown>, key?: string) =>
-  appendWebhookDelivery(source(), mappings(), body, JSON.stringify(body), { idempotencyKey: key ?? null })
+  appendWebhookDelivery(source(), mappings(), body, JSON.stringify(body), { idempotencyKey: key ?? null,
+    tokenHash: 'hash-1' })
 const rows = () => db.prepare('SELECT count(*) FROM rows WHERE sheet_id = ?').pluck().get(sid) as number
 const deliveries = () => db.prepare('SELECT count(*) FROM webhook_deliveries WHERE source_id = ?')
   .pluck().get(src) as number

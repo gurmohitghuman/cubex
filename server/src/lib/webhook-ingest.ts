@@ -44,8 +44,13 @@ export interface IngestOptions {
   // The sender's Idempotency-Key (lib/webhook-idempotency.ts).
   idempotencyKey?: string | null;
   // A delivery from the log added again (services/webhook-replay.ts): no new
-  // arrival, so the webhook's counters stay as they are.
+  // arrival, so the webhook's counters stay as they are, and it works while the
+  // webhook is off.
   replayOf?: string;
+  // The token hash the route checked (an arrival): the append lands only while
+  // the webhook still has it. An arrival without it is refused, so no caller
+  // can skip the check.
+  tokenHash?: string;
 }
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
@@ -156,6 +161,12 @@ export function appendWebhookDelivery(
       result = { ok: false, code: 404, reason: 'Not found' };
       return;
     }
+    // An arrival lands only while its URL still works: a request can still be
+    // sending its body when the owner rotates, turns off or deletes the webhook.
+    if (!opts.replayOf && !urlStillWorks(source.id, opts.tokenHash)) {
+      result = { ok: false, code: 404, reason: 'Not found' };
+      return;
+    }
     const key = opts.idempotencyKey ?? null;
     if (key && isRepeat(source.id, source.user_id, key, payloadSha)) {
       result = { ok: true, rowIndex: -1, status: 'repeat', replaced: 0 };
@@ -235,6 +246,14 @@ export function appendWebhookDelivery(
   }).immediate();
 
   return result;
+}
+
+// The webhook is still there and on, and still has the token the route checked.
+function urlStillWorks(sourceId: string, tokenHash: string | undefined): boolean {
+  if (!tokenHash) return false;
+  const now = db.prepare('SELECT enabled, token_hash FROM webhook_sources WHERE id = ?').get(sourceId) as
+    { enabled: number; token_hash: string } | undefined;
+  return !!now && now.enabled === 1 && now.token_hash === tokenHash;
 }
 
 function countRows(sheetId: string, userId: string): { rows: number } {

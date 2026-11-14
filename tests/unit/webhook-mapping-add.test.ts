@@ -109,7 +109,8 @@ const source = (sid: string) => db.prepare('SELECT * FROM webhook_sources WHERE 
 const mappings = (sid: string) => db.prepare(`SELECT json_path, column_name, value_mode FROM webhook_mappings
   WHERE source_id = ?`).all(source(sid).id) as Parameters<typeof appendWebhookDelivery>[1]
 const deliver = (sid: string, body: Record<string, unknown>) =>
-  appendWebhookDelivery(source(sid), mappings(sid), body, JSON.stringify(body))
+  appendWebhookDelivery(source(sid), mappings(sid), body, JSON.stringify(body),
+    { tokenHash: (source(sid) as unknown as { token_hash: string }).token_hash })
 const firstEvent = deliver(empty, { a: 'first' })
 check('... and its first event is row 0', firstEvent.ok && firstEvent.rowIndex === 0, firstEvent)
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../lib/db';
-import { WEBHOOK_MAX_BODY_BYTES, WEBHOOK_TOKEN_PATTERN } from '../lib/constants';
+import { WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_TOKEN_PATTERN } from '../lib/constants';
 import { sha256Hex } from '../lib/webhook-token';
 import { takeWebhookToken } from '../lib/webhook-bucket';
 import { checkPayloadShape } from '../lib/json-guard';
@@ -25,6 +25,8 @@ const router = express.Router();
 // re-query. Typed locally; not exported.
 interface WebhookReq extends express.Request {
   webhookSource?: WebhookSourceRow;
+  // The hash checked: the append lands only while the webhook still has it.
+  webhookTokenHash?: string;
   idempotencyKey?: string | null;
 }
 
@@ -75,7 +77,22 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
   }
 
   req.webhookSource = source;
+  req.webhookTokenHash = tokenHash;
   req.idempotencyKey = idem.key;
+  next();
+}
+
+// From the token check on, the body has WEBHOOK_BODY_TIMEOUT_MS to arrive, as a
+// deadline (bytes trickling in don't extend it): then 408, and the connection is
+// closed. The server's requestTimeout is 0 (for the run progress streams), so
+// without it a URL holder could keep requests open at will. A body that comes
+// in after the 408 adds nothing (the handler checks).
+function bodyDeadline(req: WebhookReq, res: express.Response, next: express.NextFunction) {
+  const timer = setTimeout(() => {
+    if (res.headersSent) return;
+    res.status(408).set('Connection', 'close').json({ error: 'The request body took too long to arrive.' });
+  }, WEBHOOK_BODY_TIMEOUT_MS);
+  res.once('close', () => clearTimeout(timer));
   next();
 }
 
@@ -86,6 +103,7 @@ const parseJson = express.json({ limit: WEBHOOK_MAX_BODY_BYTES, type: 'applicati
 // JSON) instead of a bubbled 500.
 function parseBody(req: express.Request, res: express.Response, next: express.NextFunction) {
   parseJson(req, res, (err: any) => {
+    if (res.headersSent) return; // the deadline answered first
     if (!err) return next();
     if (err.type === 'entity.too.large' || err.status === 413) {
       return res.status(413).json({ error: 'Payload too large.' });
@@ -94,9 +112,10 @@ function parseBody(req: express.Request, res: express.Response, next: express.Ne
   });
 }
 
-// Order: validateSource (regex/ct/lookup/bucket, no body) -> parseBody (512KB)
-// -> handler (shape guard + append txn).
-router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
+// Order: validateSource (regex/ct/lookup/bucket, no body) -> bodyDeadline ->
+// parseBody (512KB) -> handler (shape guard + append txn).
+router.post('/:token', validateSource, bodyDeadline, parseBody, (req: WebhookReq, res) => {
+  if (res.headersSent) return; // the deadline answered first
   const source = req.webhookSource!;
 
   // Step 6: structural depth/node guard on the already-parsed body.
@@ -119,9 +138,10 @@ router.post('/:token', validateSource, parseBody, (req: WebhookReq, res) => {
   // Step 7: the append transaction (row cap, insert, delivery, prune, data_version).
   try {
     const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText,
-      { idempotencyKey: req.idempotencyKey });
+      { idempotencyKey: req.idempotencyKey, tokenHash: req.webhookTokenHash });
     if (!result.ok) {
-      // Its sheet went to the trash meanwhile: the generic 404.
+      // Its sheet went to the trash, or the URL was rotated, turned off or
+      // deleted, meanwhile: the generic 404.
       if (result.code === 404) return res.status(404).json({ error: 'Not found' });
       // Row cap reached -> 409 ("webhook full").
       recordSourceError(source.id, result.reason);
