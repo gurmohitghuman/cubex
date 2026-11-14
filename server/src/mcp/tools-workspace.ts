@@ -119,7 +119,8 @@ function overviewNote(o: Overview): string {
       ? [`${n(shown)} of ${n(o.sheet_count)} sheets shown, in ${n(o.tables.length)} of ${n(o.table_count)} `
         + 'tables: list_tables lists them all.'] : []),
     ...(o.active_run_count > runs
-      ? [`${n(runs)} of ${n(o.active_run_count)} runs going now shown: list_runs with filter "active" lists them.`]
+      ? [`${n(runs)} of ${n(o.active_run_count)} runs going now shown: list_runs with filter "active" lists the `
+        + `newest, up to ${RUN_LIST_MAX} with limit, or one sheet's with sheet_id.`]
       : []),
     ...(o.active_setup_run_count > setupRuns
       ? [`${n(setupRuns)} of ${n(o.active_setup_run_count)} setup runs going now shown: get_sheet lists a sheet's.`]

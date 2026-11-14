@@ -268,7 +268,7 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 
 - The answer stays small however big the account is. It lists the 20 tables changed most recently and, among them, the 50 sheets changed most recently, shown in each table's own order. `table_count`, `sheet_count` and each table's `sheet_count` count them all, and `note` says what was left out and which tool lists it.
 - A sheet's rows are counted up to 10,000. `row_count_at_least: true` means it has more: `get_sheet` counts them all. `columns` is how many columns the sheet has, or `null` for an older sheet whose list of columns `get_sheet` works out the first time.
-- It lists the runs going now (pending, running or paused) and the setup runs going now, the oldest first, 20 of each, with the counts. `list_runs` with `filter: "active"` lists every run, and `get_sheet` a sheet's setup runs.
+- It lists the runs going now (pending, running or paused) and the setup runs going now, the oldest first, 20 of each, with the counts. `list_runs` with `filter: "active"` lists the newest of them, up to 50 with `limit`, or one sheet's with `sheet_id`; `get_sheet` lists a sheet's setup runs.
 - `access_token`'s spend cap, spent and left are the same as in `get_balances`. The live treg and OpenRouter balances come only from `get_balances`, since reading them asks those services.
 - It needs the `read` scope.
 

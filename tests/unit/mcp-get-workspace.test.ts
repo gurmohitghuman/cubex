@@ -39,6 +39,9 @@ for (let t = 0; t < 25; t++) {
   }
 }
 db.prepare('UPDATE sheets SET trash_id = 9 WHERE id = ?').run('t0s0')
+// A trashed sheet of a shown table, changed after every live sheet: never shown, never counted, never moves it up.
+into('sheets',
+  { id: 't24-gone', table_id: 't24', user_id: u, name: 'Gone', position: 3, updated_at: at(45), trash_id: 7 })
 into('tables', { id: 'gone', user_id: u, name: 'Gone', trash_id: 8 })
 into('sheets', { id: 'gone-s', table_id: 'gone', user_id: u, name: 'G', updated_at: at(59) })
 into('users', { id: 'other', password_hash: 'x' })
@@ -143,9 +146,9 @@ async function main() {
       { setup_run_id: 'sr1', setup: 'Setup 1', sheet_id: 't24s1', status: 'paused' })
     assert.equal(a.active_setup_runs.length, 20)
     assert.equal(a.note, '50 of 75 sheets shown, in 20 of 26 tables: list_tables lists them all. 20 of 22 runs going '
-      + 'now shown: list_runs with filter "active" lists them. 20 of 21 setup runs going now shown: get_sheet lists a '
-      + 'sheet\'s. get_sheet gives a sheet\'s columns and what fills them; get_balances reads the live treg and '
-      + 'OpenRouter balances.')
+      + 'now shown: list_runs with filter "active" lists the newest, up to 50 with limit, or one sheet\'s with '
+      + 'sheet_id. 20 of 21 setup runs going now shown: get_sheet lists a sheet\'s. get_sheet gives a sheet\'s columns '
+      + 'and what fills them; get_balances reads the live treg and OpenRouter balances.')
   })
 
   await check('an account with nothing yet answers zeros and empty lists', () => {
