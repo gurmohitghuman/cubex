@@ -10,7 +10,12 @@ import { RunSummary, aiRunSummaryFromRow, httpRunSummaryFromRow } from './run-st
 
 export type RunListFilter = 'active' | 'terminal' | 'all';
 
-const ACTIVE_STATUSES = ['pending', 'running', 'paused'] as const;
+// A run going now: every status an AI or HTTP run takes before it ends (the CHECK in 001_schema.sql allows only
+// these and completed, failed, cancelled; a run waiting on another's column stays in one of them).
+export const ACTIVE_STATUSES = ['pending', 'running', 'paused'] as const;
+// The same, as the SQL the partial indexes on active runs repeat (migrations 014 and 059): a query uses one only
+// when its WHERE holds this text, not bound values.
+export const ACTIVE_STATUS_SQL = `status IN (${ACTIVE_STATUSES.map(s => `'${s}'`).join(', ')})`;
 
 // Bounded so a long-lived account can't return thousands of rows into an
 // agent's context. Callers wanting more should filter by sheet.

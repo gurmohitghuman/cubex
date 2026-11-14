@@ -180,7 +180,8 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 
 | Tool | What it does |
 |---|---|
-| `list_tables` | Tables and their sheets. Start here to turn names into ids. |
+| `get_workspace` | Where you are, in one call: start here. This token's name, scopes and spend cap, the enrichment daily limit, the tables and sheets changed most recently with their row counts, and the runs going now. See [Where you are](#where-you-are). |
+| `list_tables` | Every table and its sheets, with their row counts. Turns a name into an id when `get_workspace` left it out. |
 | `get_sheet` | A sheet's columns, row count, description, and how many rows and columns are left. `column_details` says what each column is and what fills it, and `include_counts` adds how many rows are filled, empty or errors. Also lists its clean, formula and lookup columns, and its saved views with their filters and hidden columns. See [Column details](#column-details). |
 | `read_rows` | Rows, paged, with column selection and filters: text, numbers, lists, OR groups, and run states such as failed or not run yet. `include_status` returns run columns as `{status, value, error}`. `group_by` and `aggregates` count, sum and average per value instead of reading rows, and `columns` can take one value out of a JSON cell. See [Finding rows](#finding-rows). `row_ids` reads up to 1,000 rows by id, in the order given, and lists the ids that are no longer rows in `missing` ([Rows by id](#rows-by-id)). `updated_since` reads the rows whose cells changed since a time ([Keeping a copy up to date](#keeping-a-copy-up-to-date)). `max_chars_per_cell` cuts each cell to its first N characters and lists the cells cut in `cut_cells` ([Long cells](#long-cells)). |
 | `export_csv` | A sheet (or a filtered part of it, or a saved view) as CSV, up to 40,000 characters. Past that it says how many rows matched; the rest comes from `read_rows`, or save the whole sheet with `create_download_link`. |
@@ -233,6 +234,43 @@ Every tool also declares an `outputSchema` in `tools/list`: the fields its answe
 When auto-run is on in a sheet, `append_rows`, `import_csv` and `transfer_rows` (and the REST appends and imports) answer with `auto_run`: the columns that will fill the new rows on their own, each with its estimated cost (`estimated_usd`) or, for an HTTP API column, `sends_requests: true`.
 
 Starting a run on a very large sheet answers at once: the run shows as pending while Cubex marks its rows, then starts. Cancelling also answers at once; its leftover ⏳ cells clear in the background. Rows the run already answered keep their new answers, and every row it hadn't reached gets back what its cells held before the run (an earlier answer comes back as it was; a cell that was empty stays empty). A run that fails or can't start does the same. Clean, formula and lookup columns that read one of those cells then work it out again. That's free: nothing that costs or sends requests runs.
+
+## Where you are
+
+`get_workspace` takes nothing and answers where the agent is, so one call can replace several. The server instructions tell an agent to call it first:
+
+```json
+{
+  "cubex_version": "v0.8.16",
+  "access_token": { "name": "Research agent", "scopes": ["read", "run", "write"], "spend_cap_usd": 20, "spent_usd": 4.1, "left_usd": 15.9 },
+  "enrichment_daily_limit": { "limit_usd": 10, "used_today_usd": 2.5, "remaining_usd": 7.5 },
+  "default_ai_model": "openai/gpt-4o-mini",
+  "table_count": 3,
+  "sheet_count": 5,
+  "tables": [
+    {
+      "id": "...", "name": "CRM", "sheet_count": 2,
+      "sheets": [
+        { "id": "...", "name": "Leads", "columns": 12, "row_count": 10000, "row_count_at_least": true, "data_version": 418, "updated_at": "2026-11-14 09:12:03" },
+        { "id": "...", "name": "Companies", "columns": 6, "row_count": 830, "data_version": 37, "updated_at": "2026-11-13 16:40:55" }
+      ]
+    }
+  ],
+  "active_run_count": 1,
+  "active_runs": [
+    { "run_type": "enrichment", "run_id": "...", "sheet_id": "...", "column": "Work email", "status": "running", "processed_rows": 1200, "total_rows": 5000, "auto_run": false }
+  ],
+  "active_setup_run_count": 0,
+  "active_setup_runs": [],
+  "note": "get_sheet gives a sheet's columns and what fills them; get_balances reads the live treg and OpenRouter balances."
+}
+```
+
+- The answer stays small however big the account is. It lists the 20 tables changed most recently and, among them, the 50 sheets changed most recently, shown in each table's own order. `table_count`, `sheet_count` and each table's `sheet_count` count them all, and `note` says what was left out and which tool lists it.
+- A sheet's rows are counted up to 10,000. `row_count_at_least: true` means it has more: `get_sheet` counts them all. `columns` is how many columns the sheet has, or `null` for an older sheet whose list of columns `get_sheet` works out the first time.
+- It lists the runs going now (pending, running or paused) and the setup runs going now, the oldest first, 20 of each, with the counts. `list_runs` with `filter: "active"` lists every run, and `get_sheet` a sheet's setup runs.
+- `access_token`'s spend cap, spent and left are the same as in `get_balances`. The live treg and OpenRouter balances come only from `get_balances`, since reading them asks those services.
+- It needs the `read` scope.
 
 ## Retrying row writes
 

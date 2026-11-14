@@ -13,7 +13,7 @@ import * as setups from './outputs/setups';
 import * as account from './outputs/account';
 
 export const TOOL_OUTPUTS = {
-  list_tables: read.listTables, get_sheet: read.getSheet, read_rows: read.readRows,
+  get_workspace: read.getWorkspace, list_tables: read.listTables, get_sheet: read.getSheet, read_rows: read.readRows,
   export_csv: read.exportCsv, list_runs: read.listRuns, import_csv: read.importCsv,
   create_upload_link: read.createUploadLink, create_download_link: read.createDownloadLink,
   append_rows: rows.appendRows, update_cells: rows.updateCells, delete_rows: rows.deleteRows,
