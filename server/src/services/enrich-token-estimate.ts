@@ -13,11 +13,9 @@ import type { RunFail } from './run-shared';
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-export async function agentEnrichEstimate(
-  userId: string, sheetId: string, input: EnrichRunInput,
-): Promise<{ ok: Record<string, unknown> } | RunFail> {
+export async function agentEnrichEstimate(userId: string, sheetId: string, input: EnrichRunInput) {
   const prepared = await prepareEnrichmentStart(userId, sheetId, input);
-  if ('fail' in prepared) return prepared;
+  if ('fail' in prepared) return prepared as RunFail;
   const { config, upperBound, statusColumn, outputNames, listPlan } = prepared.ok;
   const e = config.enrichment;
   const list = input.list;
@@ -31,7 +29,7 @@ export async function agentEnrichEstimate(
   });
   if (!('ok' in est)) {
     const upstream = est.fail === 'unreachable' || est.fail === 'upstream';
-    return { fail: upstream ? 'upstream' : 'bad_request', message: est.message };
+    return { fail: upstream ? 'upstream' : 'bad_request', message: est.message } as RunFail;
   }
   const { estimate, priceKnown, providersOn } = est.ok;
   const daily = dailyLimitOf(userId);

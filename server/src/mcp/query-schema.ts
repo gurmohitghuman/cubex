@@ -1,6 +1,7 @@
 // read_rows' columns (with nested paths), group_by, aggregates and
 // max_chars_per_cell, described once (lib/row-select/paths.ts,
 // lib/row-aggregate/spec.ts and services/row-query-input.ts check them).
+import type { RowsAnswer } from '../services/row-query-result';
 import { z } from 'zod';
 import {
   AGGREGATE_MAX_GROUPS, AGGREGATE_TOP_GROUPS, CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS, MAX_AGGREGATES,
@@ -11,10 +12,10 @@ import { CELL_CUT_REFUSAL } from '../services/row-query-input';
 import { lenientInt } from './tool-helpers';
 
 const pick = z.object({
-  column: z.string(),
+  column: z.string().describe('The column holding JSON'),
   path: z.array(z.union([z.string().min(1).max(MAX_PATH_KEY_CHARS), z.number().int().min(0)]))
-    .min(1).max(MAX_PATH_DEPTH).optional(),
-  as: z.string().min(1).max(MAX_PATH_KEY_CHARS).optional(),
+    .min(1).max(MAX_PATH_DEPTH).optional().describe('Keys and list positions (from 0) into its JSON'),
+  as: z.string().min(1).max(MAX_PATH_KEY_CHARS).optional().describe('The name the value comes back under'),
 }).strict();
 
 export const columnsSchema = z.array(z.union([z.string(), pick])).min(1).describe(
@@ -36,8 +37,8 @@ export const groupBySchema = z.array(z.string()).min(1).max(MAX_GROUP_BY_COLUMNS
 );
 
 export const aggregatesSchema = z.array(z.object({
-  op: z.enum(AGGREGATE_OPS),
-  column: z.string().optional(),
+  op: z.enum(AGGREGATE_OPS).describe('What to work out'),
+  column: z.string().optional().describe('The column; count without one counts rows'),
 }).strict()).min(1).max(MAX_AGGREGATES).describe(
   'Per group (or over all rows without group_by): count (rows; with a column, its non-empty cells), sum, avg, '
   + 'min, max of a column. Numbers are read like gt/lt ("1,000" counts; text that isn\'t a number is skipped; '
@@ -60,8 +61,8 @@ export const maxCharsPerCellSchema = lenientInt(CELL_CUT_MIN_CHARS, CELL_CUT_MAX
 
 // An MCP answer's groups, cut to about MCP_MAX_GROUP_CHARS (an agent's context):
 // truncated then says more exist.
-export function fitGroups(answer: Record<string, unknown>): Record<string, unknown> {
-  const groups = answer.groups as unknown[];
+export function fitGroups(answer: RowsAnswer): RowsAnswer {
+  const groups = answer.groups ?? [];
   let size = 0, keep = 0;
   for (; keep < groups.length; keep++) {
     size += JSON.stringify(groups[keep]).length + 1;

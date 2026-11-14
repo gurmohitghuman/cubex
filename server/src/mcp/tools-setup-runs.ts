@@ -6,7 +6,7 @@ import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun } from '../services/setup-run-control';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
 
 const names = z.record(z.string(), z.string());
@@ -16,37 +16,34 @@ const names = z.record(z.string(), z.string());
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
     description:
-      'Build a saved setup\'s columns on a sheet and fill them: its steps run in order, each once the columns it '
-      + 'reads are filled (AI steps call your AI model per row and enrichments spend your treg balance; HTTP API '
-      + 'steps send a request per row; clean and formula steps are free). ESTIMATE_ONLY DEFAULTS TO TRUE: the '
-      + 'first call returns what each step would cost on the sheet\'s rows (at most, for steps reading earlier '
-      + 'steps) and starts nothing; tell the user, then call again with estimate_only: false to start. inputs '
-      + 'maps each of the setup\'s inputs (list_setups) to a column of this sheet; an input left out uses the '
-      + 'column of the same name. A step whose columns the sheet has already, made the same way (by this setup '
-      + 'before), CARRIES THEM ON: it fills only the rows it hasn\'t done, with the column\'s own settings (AI: '
-      + 'empty rows; HTTP API: missing; enrichment: not enriched yet; clean and formula follow their columns). '
-      + 'That is how to fill new rows, or finish a setup that failed or was stopped: call it again with the same '
-      + 'inputs and names (get_setup_run shows the choices a run used); carries_on lists those steps. names gives '
-      + 'a step\'s main column another name (an AI step by its base name), needed when the sheet has a column of '
-      + 'that name the step can\'t carry on. models picks the model of a new AI step. '
-      + `first_rows tests it on the top rows (1 to ${MAX_SETUP_TEST_ROWS}); auto-run is turned on only after a `
-      + 'run on every row. Returns a setup_run with each step\'s run_id (get_run_status works on those); follow '
-      + 'the whole chain with get_setup_run. A setup whose requests read saved keys needs the "secrets" scope. '
-      + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end, plus '
-      + "one row's most for each AI step (row_most_usd: the most of its sampled rows, the room its spend limit "
-      + 'keeps for the next row), is '
-      + 'above it, or when a step has no known price unless allow_unpriced is true; with estimate_only the '
-      + 'estimate says over_ceiling and ceiling_problem instead. Once started, each AI step gets a hard spend '
-      + 'limit and each enrichment step a run limit no higher than what is left of the ceiling (less what the '
-      + 'steps not started yet need), so they pause there; a step with no known price runs without one.'
+      'Build a saved setup\'s columns (save_setup, list_setups) on a sheet and fill them: its steps run in order, '
+      + 'each once the columns it reads are filled. Use it to repeat a whole chain of columns on another sheet; '
+      + 'for one column use its own tool. COSTS MONEY: AI steps call your model per row, enrichments spend your '
+      + 'treg balance, HTTP API steps send a request per row; clean and formula steps are free. ESTIMATE_ONLY '
+      + 'DEFAULTS TO TRUE: the first call returns what each step would cost (at most, for steps reading earlier '
+      + 'steps) and starts nothing; tell the user, then call again with estimate_only:false. A step whose columns '
+      + 'the sheet already has, made by this setup before, CARRIES THEM ON: it fills only the rows it hasn\'t done '
+      + '(AI: empty rows; HTTP API: missing; enrichment: not enriched yet; clean and formula follow their columns; '
+      + 'carries_on lists them). That is how to fill new rows, or finish a setup that failed or was stopped: call '
+      + 'again with the same inputs and names (get_setup_run shows the choices a run used). Auto-run is turned on '
+      + 'only after a run on every row. A setup whose requests read saved keys needs the "secrets" scope. '
+      + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end, plus one '
+      + 'row\'s most for each AI step, is above it, or when a step has no known price unless allow_unpriced is '
+      + 'true; the estimate says over_ceiling and ceiling_problem. Once started, each AI and enrichment step gets '
+      + 'a spend limit no higher than what is left of the ceiling, so it pauses there; a step with no known price '
+      + 'runs without one. Returns a setup_run with '
+      + 'each step\'s run_id (get_run_status works on those). Next: get_setup_run to follow the chain.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
-      sheet_id: z.string(),
-      setup_id: z.string(),
-      inputs: names.optional().describe('{ "<setup input>": "<column of this sheet>" }'),
-      names: names.optional().describe('{ "<step main column>": "<new name>" }'),
+      sheet_id: z.string().describe(SHEET_ID),
+      setup_id: z.string().describe('The setup (list_setups)'),
+      inputs: names.optional()
+        .describe('{ "<setup input>": "<column of this sheet>" }; an input left out reads the column of its name'),
+      names: names.optional().describe('{ "<step main column>": "<new name>" } (an AI step by its base name), '
+        + 'needed when the sheet has a column of that name the step can\'t carry on'),
       models: names.optional().describe('{ "<AI step main column>": "<OpenRouter model id>" }'),
-      first_rows: z.number().int().min(1).max(MAX_SETUP_TEST_ROWS).optional(),
+      first_rows: z.number().int().min(1).max(MAX_SETUP_TEST_ROWS).optional()
+        .describe(`Test it on the top rows only (1-${MAX_SETUP_TEST_ROWS})`),
       estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
       webhook_id: z.string().optional().describe(
         'A run webhook (list_run_webhooks) to notify when the setup finishes, signed; poll get_setup_run anyway'),
@@ -75,9 +72,12 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       'Where a setup being used on a sheet is: running, paused, done, failed or cancelled, the layer it\'s on, '
       + 'and each step\'s state, run_id and note (why it failed, or that its auto-run wasn\'t turned on), and the '
       + 'choices it was used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with setup_id, '
-      + 'that setup\'s).',
-    inputSchema: z.object({ setup_run_id: z.string().optional(), sheet_id: z.string().optional(),
-      setup_id: z.string().optional() }).strict(),
+      + 'that setup\'s). Read-only. Next: control_setup_run, or apply_setup again to carry it on.',
+    inputSchema: z.object({
+      setup_run_id: z.string().optional().describe('One setup run (apply_setup returned it)'),
+      sheet_id: z.string().optional().describe('Or the sheet: its 5 latest setup runs'),
+      setup_id: z.string().optional().describe('With sheet_id: only this setup\'s runs'),
+    }).strict(),
   }, async ({ setup_run_id, sheet_id, setup_id }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
@@ -95,7 +95,10 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'further step starts. Cancelling keeps the columns and values made so far. Resume is refused while a '
       + "step's AI run is paused at its spend limit (pause_reason spend_limit), which a setup can't raise: cancel "
       + 'it and call apply_setup again with a higher max_cost_usd, which carries on where it stopped.',
-    inputSchema: z.object({ setup_run_id: z.string(), action: z.enum(['pause', 'resume', 'cancel']) }).strict(),
+    inputSchema: z.object({
+      setup_run_id: z.string().describe('The setup run (get_setup_run)'),
+      action: z.enum(['pause', 'resume', 'cancel']).describe('What to do with it'),
+    }).strict(),
   }, async ({ setup_run_id, action }) => {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;

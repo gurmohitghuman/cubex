@@ -10,7 +10,8 @@ import { POSTS, sheetWith, waitSetup, column } from './helpers-setups'
 // turned on. Used again where its columns are, its steps carry them on (only
 // the rows not done yet); other names already in the sheet are refused until
 // renamed; a test on the first rows fills only those, and using it again on
-// every row then fills the rest; a setup reading a saved key needs 'secrets'.
+// every row then fills the rest; a setup reading a saved key needs 'secrets';
+// a deleted setup's runs are still read.
 
 test('a setup used on another sheet: priced, matched, run in order, auto-run on', async () => {
   test.setTimeout(180_000)
@@ -124,4 +125,9 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   const ok = await call(secretClient, 'apply_setup', { sheet_id: c.sheetId, setup_id: keyedSetup.id })
   expect(ok.estimate.rows).toBe(3)
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
+  // Its runs outlive a deleted setup: still read, with setup_id null.
+  expect(await call(client, 'get_setup_run', { setup_run_id: restRun.setup_run.id }))
+    .toMatchObject({ id: restRun.setup_run.id, setup_id: null, status: 'done' })
+  const listed = (await call(client, 'get_setup_run', { sheet_id: c.sheetId })).setup_runs
+  expect(listed.find((r: any) => r.id === restRun.setup_run.id)).toMatchObject({ setup_id: null })
 })

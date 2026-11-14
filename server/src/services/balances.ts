@@ -18,7 +18,7 @@ const OPENROUTER_NOTE = 'OpenRouter shares the account balance only with a manag
   + "OpenRouter's key usage and credits can lag behind runs that just finished; access_token.spent_usd is live: "
   + 'Cubex adds what each call cost as soon as its row or preview is done.';
 
-export async function readBalances(userId: string, tokenId: string): Promise<Record<string, unknown>> {
+export async function readBalances(userId: string, tokenId: string) {
   const [treg, { read: openrouter, at }] = await Promise.all([
     readEnrichBalance(userId), readOpenRouterBalanceAt(userId),
   ]);

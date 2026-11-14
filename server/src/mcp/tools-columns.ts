@@ -12,7 +12,7 @@ import { describeColumn, describeSheet, descriptionProblem } from '../services/d
 import { reorderSheetColumns } from '../services/column-reorder';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -22,11 +22,12 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'add_column',
     {
       description:
-        'Add a column (empty on every existing row). ' +
-        'Names are Google-Sheets-permissive; case/token variants of existing names are rejected. ' +
-        'description (optional) says what the column holds, as set_description does.',
+        'Add an empty column at the end, to write into with append_rows or update_cells. To fill a column from '
+        + 'each row instead, use formula_column, clean_column, lookup_column (free) or run_ai_column, '
+        + 'run_enrichment, waterfall_column (paid): each makes its own column. A name that differs from an '
+        + 'existing one only in case or spacing is refused. Returns the name.',
       inputSchema: {
-        sheet_id: z.string(), name: z.string(),
+        sheet_id: z.string().describe(SHEET_ID), name: z.string().describe('The new column\'s name'),
         description: z.string().optional().describe('What the column holds, for people and agents'),
       },
     },
@@ -55,7 +56,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         + `${MAX_SHEET_DESCRIPTION_CHARS.toLocaleString('en-US')} for a sheet. Renaming a column keeps its `
         + 'description; deleting it deletes the description too.',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         column: z.string().optional().describe('The column to describe; leave out to describe the sheet'),
         description: z.string().describe('The words; "" clears it'),
       },
@@ -75,11 +76,13 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'rename_column',
     {
       description:
-        'Rename a column. Cascades everywhere (cell data, ordering, filters, webhook mappings, and the ' +
-        '/references in saved AI prompts and HTTP request templates). Fails while an active run either ' +
-        'WRITES this column or READS it (an AI prompt or an HTTP request): the remaining rows would lose ' +
-        'its values. Stop the run first.',
-      inputSchema: { sheet_id: z.string(), column: z.string(), new_name: z.string() },
+        'Rename a column. Everything that names it follows: cells, order, filters, views, webhook mappings and '
+        + 'the /references in saved AI prompts and HTTP requests. Refused while a run writes or reads the column '
+        + '(stop it with control_run first). Returns the new name.',
+      inputSchema: {
+        sheet_id: z.string().describe(SHEET_ID), column: z.string().describe('Its name now'),
+        new_name: z.string().describe('Its new name'),
+      },
     },
     async ({ sheet_id, column, new_name }) => {
       const denied = missingScope(ctx, 'write');
@@ -107,7 +110,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         + 'cells take a while: past a few seconds the answer\'s trash says state "moving" (they go on in the '
         + 'background, and a restore waits until they are all in). Refused for '
         + 'run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column.',
-      inputSchema: { sheet_id: z.string(), column: z.string() },
+      inputSchema: { sheet_id: z.string().describe(SHEET_ID), column: z.string().describe('The column\'s name') },
     },
     async ({ sheet_id, column }) => {
       const denied = missingScope(ctx, 'write');
@@ -125,9 +128,13 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     'sort_sheet',
     {
       description:
-        'ONE-TIME physical sort (Google Sheets semantics): rows are permanently reordered by the column; ' +
-        'there is no live sort view. Row ids stay stable; row indexes change. Fails while any run is active.',
-      inputSchema: { sheet_id: z.string(), column: z.string(), direction: z.enum(['asc', 'desc']) },
+        'Reorder a sheet\'s rows by one column, permanently (as a spreadsheet sorts): there is no live sort. '
+        + 'To read rows in another order or a subset, use read_rows with where or a saved view instead. Row ids '
+        + 'stay; indexes change. Refused while a run works on the sheet. Returns rows_reordered.',
+      inputSchema: {
+        sheet_id: z.string().describe(SHEET_ID), column: z.string().describe('The column to sort by'),
+        direction: z.enum(['asc', 'desc']).describe('asc: A to Z, smallest first; desc: the other way'),
+      },
     },
     async ({ sheet_id, column, direction }) => {
       const denied = missingScope(ctx, 'write');
@@ -149,7 +156,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       + 'order now). Only the order the app and reads show changes: no row, cell, run or saved view changes, and a '
       + 'hidden column stays hidden. A column left out, named twice or unknown is refused and nothing changes.',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       order: z.array(z.string()).min(1).max(MAX_COLUMNS_PER_SHEET).describe('Every column name, in the new order'),
     }).strict(),
   }, async ({ sheet_id, order }) => {

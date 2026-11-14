@@ -41,7 +41,7 @@ export function sheetFormulaView(
 }
 
 // For agents (snake_case, as every MCP and /api/v1 answer).
-export function formulaColumnJson(v: FormulaColumnView): Record<string, unknown> {
+export function formulaColumnJson(v: FormulaColumnView) {
   return {
     column: v.column, formula: v.formula, reads: v.inputs,
     ...(v.description ? { description: v.description } : {}),

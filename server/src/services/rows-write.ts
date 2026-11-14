@@ -11,7 +11,7 @@ import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
 import { settleEdits, settleRows, type AutoDedupeOutcome } from './auto-dedupe-settle';
-import { autoDedupeAnswer } from './auto-dedupe-answer';
+import { autoDedupeAnswer, type AutoDedupeAnswer } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
 import { orderedUuid } from '../lib/ordered-id';
 
@@ -26,7 +26,10 @@ export type AppendOutcome = { ok: Appended } | TxnFail;
 // What REST and MCP answer for an append: its rows in the order given (one
 // auto-dedupe didn't keep says kept: false, so rows[i] is still the i-th
 // row sent), and what auto-dedupe did.
-export function appendAnswer(userId: string, a: Appended, surface: Surface): Record<string, unknown> {
+export interface AppendAnswer {
+  rows: Array<{ id: string; index: number; kept?: boolean }>; auto_dedupe?: AutoDedupeAnswer;
+}
+export function appendAnswer(userId: string, a: Appended, surface: Surface): AppendAnswer {
   const auto = autoDedupeAnswer(userId, a.deduped, new Set(a.rows.map(r => r.id)), surface);
   const rows = a.rows.map(r => (a.notKept.has(r.id) ? { ...r, kept: false } : r));
   return { rows, ...(auto ? { auto_dedupe: auto } : {}) };
@@ -117,11 +120,16 @@ export function patchRowById(
   return { ok: { id: done.id, index: done.index, data: parseRowData(done.data), deduped: done.deduped } };
 }
 
-// What REST and MCP answer for a one-row update.
+// What REST and MCP answer for a one-row update. A replay of a big row leaves its cells out
+// (rows-write-keyed.ts keptPatch).
+export interface PatchAnswer {
+  id: string; index: number; data?: Record<string, string>; auto_dedupe?: AutoDedupeAnswer;
+  data_left_out?: true; note?: string;
+}
 export function patchAnswer(
   userId: string, p: { id: string; index: number; data: Record<string, string>; deduped: AutoDedupeOutcome | null },
   surface: Surface,
-): Record<string, unknown> {
+): PatchAnswer {
   const auto = autoDedupeAnswer(userId, p.deduped, new Set([p.id]), surface);
   return { id: p.id, index: p.index, data: p.data, ...(auto ? { auto_dedupe: auto } : {}) };
 }

@@ -14,32 +14,26 @@ const ENGINE_IDS = ENGINES.map(e => e.id) as [string, ...string[]];
 export function registerAiVisibilityTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'ai_visibility', {
     description:
-      'Check whether AI engines recommend a brand. action "create" makes a new table "AI visibility for <brand>": '
-      + 'a Questions sheet (your questions; per engine a column asking it, its answer, and "You in <engine>": '
-      + '"1st of 4" = your place among the brands its answer names, or "Not named"; "Named by": how many engines '
-      + 'that answered name you; "Named first": the brand most engines name first) and a Cited sites sheet (every '
-      + 'source an answer cites, with its question, engine, domain and "Your site"). Brands are found as whole '
-      + 'words, ignoring case and accents, among `brand` and `other_brands` only. create asks nothing and costs '
-      + 'nothing. action "ask" (needs the run scope) asks every engine the questions not asked yet (again:true: '
-      + 'every question, fresh answers, for a later check). It is PAID treg calls: estimate_only defaults to TRUE '
-      + 'and returns the cost; call again with estimate_only:false to start one enrichment run per engine '
-      + '(follow them with get_run_status, run type enrichment). The formula columns fill as answers arrive. '
-      + 'action "check_again" (run scope, weeks later) keeps the answers there now: it copies Questions and Cited '
-      + 'sites, values only, into sheets named with the day they were asked ("Questions 2026-10-01"), adds to '
-      + 'Questions "Named by on <date>" (that day\'s Named by) and "Change since <date>" ("Up 2", "Down 1", "Same", '
-      + 'or "New" for a question with no answers then; blank while a different number of engines answered), then '
-      + 'asks every engine every question again with fresh answers. A check that stopped (a restart, the daily '
-      + 'limit) is picked up by the next: its copies stay and only the engines it didn\'t start are asked '
-      + '(fresh: true starts a new check instead). '
-      + 'Also PAID: estimate_only defaults to TRUE and returns the cost, the names it would use and a note when the '
-      + 'answers are under three weeks old (then a change is mostly the usual variation between asks). '
-      + 'action "set_brands" changes the brands looked for and works every row out again from the answers there '
-      + '(free). ask, check_again and set_brands take the id create returned, or the table\'s Questions sheet id. '
-      + 'The engine columns are ordinary enrichment columns and the table an ordinary table: read it '
-      + 'with read_rows (group_by Named first, or Domain on Cited sites, for counts); deleting it puts it in the '
-      + 'trash. Answers vary between asks: compare totals, not one question.',
+      'Check whether AI engines recommend a brand, and track it over time. action "create" (free, asks nothing) '
+      + 'makes a table "AI visibility for <brand>": a Questions sheet (per engine a column asking it, its answer, '
+      + 'and "You in <engine>": "1st of 4" = your place among the brands named, or "Not named"; "Named by": how '
+      + 'many engines name you; "Named first": the brand most engines name first) and a Cited sites sheet (every '
+      + 'source an answer cites, with "Your site"). Brands are matched as whole words, ignoring case and accents, '
+      + 'among brand and other_brands only. '
+      + 'action "ask" (run scope) asks every engine the questions not asked yet: PAID treg calls, one enrichment '
+      + 'run per engine (follow them with get_run_status, run type enrichment); the formula columns fill as '
+      + 'answers come. action "check_again" (weeks later) copies Questions and Cited sites, values only, into '
+      + 'sheets named with '
+      + 'the day they were asked, adds "Named by on <date>" and "Change since <date>" ("Up 2", "Down 1", "Same", '
+      + '"New"), then asks every question again: also PAID, and it notes answers under three weeks old (a change '
+      + 'then is mostly the usual variation). A stopped check is picked up by the next one. ask and check_again: '
+      + 'estimate_only DEFAULTS TO TRUE and returns the cost; call again with estimate_only:false to start. '
+      + 'action "set_brands" changes the brands and works every row out again (free). '
+      + 'Read the table with read_rows (group_by Named first, or Domain on Cited sites, for counts). Answers vary '
+      + 'between asks: compare totals, not one question.',
     inputSchema: z.object({
-      action: z.enum(['create', 'ask', 'check_again', 'set_brands']),
+      action: z.enum(['create', 'ask', 'check_again', 'set_brands'])
+        .describe('create the table (free), ask the engines, check_again later, or set_brands (free)'),
       id: z.string().optional()
         .describe('ask, check_again, set_brands: the id create returned, or the table\'s Questions sheet id '
           + '(list_tables)'),

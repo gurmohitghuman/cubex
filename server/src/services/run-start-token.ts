@@ -23,6 +23,7 @@ import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, type RunLedgerResult } from '../lib/run-idempotency';
+import type { ToolAnswer } from '../mcp/tool-outputs';
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { parseRunRequest, type RunParams } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
@@ -42,8 +43,10 @@ export interface TokenCaller { userId: string; tokenId: string; scopes: Set<stri
 // preview or a replay of an earlier start.
 // rate: set on 'rate_limited', so REST can send Retry-After and the window's headers.
 // estimate: set on 'over_ceiling', the estimate the ceiling refused.
-export type TokenRunResult =
-  | { ok: object; started: boolean }
+// T: the answer's type, the tool's ToolAnswer for MCP (mcp/tool-outputs.ts), so it is checked against the
+// tool's outputSchema at compile time.
+export type TokenRunResult<T extends object = object> =
+  | { ok: T; started: boolean }
   | { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision; estimate?: object };
 
 export type Fail = { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision };
@@ -86,13 +89,20 @@ const isIdempotencyKey = (key: unknown): key is string => typeof key === 'string
 
 // Replay or refuse a repeated idempotency key; null when the start should go ahead.
 // hash: the start's hashes (lib/run-idempotency.ts); either one matching replays.
-export function ledgerReplay(c: TokenCaller, key: unknown, hash: string | readonly string[]): TokenRunResult | null {
+// A replay is the first start's answer as stored: a start of the same kind (the hash names it) wrote it, so it
+// is read back as that start's answer type.
+export const replayOf = <T extends object>(stored: RunLedgerResult): T =>
+  ({ ...stored, replayed: true }) as unknown as T;
+
+export function ledgerReplay<T extends object = object>(
+  c: TokenCaller, key: unknown, hash: string | readonly string[],
+): TokenRunResult<T> | null {
   if (typeof key !== 'string') return null;
   const prior = readRunLedger(c.userId, key, hash);
   if (!prior) return null;
   return 'conflict' in prior
     ? { fail: 'conflict', message: IDEMPOTENCY_CONFLICT_MESSAGE }
-    : { ok: { ...prior.replay, replayed: true }, started: false };
+    : { ok: replayOf<T>(prior.replay), started: false };
 }
 
 // A start sent again with its key: the first start's answer, before any check that reads state (the sheet and
@@ -111,9 +121,11 @@ export function firstStart(c: TokenCaller, key: unknown, hash: () => string | nu
   const prior = sent ? readRunLedger(c.userId, key, sent) : null;
   return prior && 'replay' in prior ? prior.replay : null;
 }
-export function replayFirst(c: TokenCaller, key: unknown, hash: () => string | null): TokenRunResult | null {
+export function replayFirst<T extends object = object>(
+  c: TokenCaller, key: unknown, hash: () => string | null,
+): TokenRunResult<T> | null {
   const prior = firstStart(c, key, hash);
-  return prior ? { ok: { ...prior, replayed: true }, started: false } : null;
+  return prior ? { ok: replayOf<T>(prior), started: false } : null;
 }
 
 // true for a start: estimate_only false or left out (a value preamble refuses isn't one).
@@ -161,8 +173,10 @@ function aiSentHash(a: TokenAiRunArgs): string | null {
   return parsed.ok && !('error' in limits) ? aiRunRequestHash(a.sheet_id, a, parsed, limits) : null;
 }
 
-export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult> {
-  const first = replayFirst(c, a.idempotency_key, () => aiSentHash(a));
+type AiRunAnswer = ToolAnswer<'run_ai_column'>;
+
+export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult<AiRunAnswer>> {
+  const first = replayFirst<AiRunAnswer>(c, a.idempotency_key, () => aiSentHash(a));
   if (first) return first;
   const pre = preamble(c, a);
   if ('fail' in pre) return pre;
@@ -221,7 +235,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
   const hash = aiRunRequestHash(sheetId, a, parsed, limits);
-  const replay = ledgerReplay(c, a.idempotency_key, hash);
+  const replay = ledgerReplay<AiRunAnswer>(c, a.idempotency_key, hash);
   if (replay) return replay;
   // Over the ceiling: refused with the estimate; nothing is created and no run-start slot is taken.
   if (limits.ceiling.maxCostUsd !== null) {

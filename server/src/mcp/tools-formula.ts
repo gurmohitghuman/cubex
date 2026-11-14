@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { FORMULA_MAX_CHARS, FORMULA_WORDS_MAX_CHARS } from '../lib/constants';
 import { writeFormula } from '../services/formula-ai';
 import { agentFormulaColumn } from '../services/formula-agent';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
 
 // formula_column: a column worked out for free from each row by a JavaScript
@@ -25,20 +25,20 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'as text (objects and lists as JSON; null, undefined and NaN as an empty cell). A row the formula '
       + 'cannot work out shows "❌ <the error>" and counts in error_rows (first_error names the first). '
       + 'Writes into column, always a new column: naming a formula column already there replaces its formula and '
-      + 'works every row out again, hand edits included; any other existing column is refused. auto_run (default '
-      + 'true for a new column) keeps it following its inputs: new rows, and rows where a column it reads '
-      + 'changes, are worked out again on their own. preview:true shows the first rows with their inputs and '
-      + 'results and writes nothing; use it to check a formula first. Waits for the fill up to 10 seconds and '
-      + 'returns filled_rows and error_rows; a bigger sheet returns status "filling".',
+      + 'works every row out again, hand edits included; any other existing column is refused. Check a formula '
+      + 'with preview:true first. write_formula writes one from plain words. Waits for the fill up to 10 '
+      + 'seconds and returns filled_rows and error_rows; a bigger sheet returns status "filling".',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       column: z.string().optional().describe('The formula column to write; created if it does not exist. '
         + 'Required unless preview is true'),
       formula: z.string().max(FORMULA_MAX_CHARS).describe('One JavaScript expression reading cells as {{Column}}'),
       description: z.string().max(FORMULA_WORDS_MAX_CHARS).optional()
         .describe('What the formula does, in plain words, kept with the column'),
-      auto_run: lenientBoolean().optional(),
-      preview: lenientBoolean().optional(),
+      auto_run: lenientBoolean().optional()
+        .describe('Default true for a new column: new rows, and rows where a column it reads changes, are worked '
+          + 'out again on their own'),
+      preview: lenientBoolean().optional().describe('true: show the first rows with inputs and results; write nothing'),
     }).strict(),
   }, async ({ sheet_id, ...a }) => {
     const denied = missingScope(ctx, 'write');
@@ -57,7 +57,7 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'can also write the formula yourself. A request that needs judgment or outside data is refused: use '
       + 'run_ai_column or an enrichment for that.' + capToolNote(ctx.spend ?? null, false),
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       words: z.string().max(FORMULA_WORDS_MAX_CHARS).describe('What the column should hold, in plain words'),
       model: z.string().optional().describe('OpenRouter model id; default: the sheet\'s, then the account\'s'),
     }).strict(),

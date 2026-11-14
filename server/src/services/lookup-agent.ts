@@ -25,11 +25,12 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const FILLING_NOTE = 'Still filling: its cells read "⏳ Processing..." until done. '
   + 'get_sheet lists it in filling_columns. Contains on very large sheets can take minutes.';
 
-export type AgentLookupOutcome = { ok: Record<string, unknown>; created: boolean } | RunFail;
+// What the call answers, as the function builds it (MCP checks it against the tool's outputSchema).
+export type AgentLookupOutcome = Awaited<ReturnType<typeof agentLookupColumn>>;
 
 export async function agentLookupColumn(
   userId: string, sheetId: string, a: AgentLookupArgs,
-): Promise<AgentLookupOutcome> {
+) {
   const stray = strayKey(a as Record<string, unknown>, KNOWN, '');
   if (stray) return bad(`${stray} Nothing was changed.`);
   const preview = flagOf(a.preview), autoRun = flagOf(a.auto_run);
@@ -62,7 +63,7 @@ export async function agentLookupColumn(
   const started = await startLookupColumn(userId, sheetId, input);
   if ('fail' in started) return started;
   const rec = await waitForDerivedFill(lookupKind, started.ok.id, LOOKUP_WAIT_MS);
-  if (!rec) return { fail: 'conflict', message: 'The lookup column was removed while it filled.' };
+  if (!rec) return { fail: 'conflict' as const, message: 'The lookup column was removed while it filled.' };
   return {
     created: started.ok.created,
     ok: {

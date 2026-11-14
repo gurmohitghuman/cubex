@@ -13,7 +13,7 @@ import { db } from '../lib/db';
 import { validateSheetName } from '../lib/sheet-validation';
 import { normalizeNameSpacing } from '../lib/name-safety';
 import { appendColumnsToOrder, getSheetColumns } from '../lib/sql-helpers';
-import { createSheetTxn, listSheets, sheetNameTaken } from '../lib/sheet-crud-helpers';
+import { createSheetTxn, listSheets, sheetNameTaken, type SheetListRow } from '../lib/sheet-crud-helpers';
 import { withSheetBusy, withSheetRead } from '../lib/sheet-busy';
 import { columnsToCopy, defaultCopyName } from '../lib/sheet-copy';
 import { countOf, logSheetChange } from '../lib/change-log';
@@ -26,7 +26,7 @@ import { copyTransformPasses } from './column-transform-pass-moves';
 export const sheetCopyWindow = makeRateWindow(SHEET_COPIES_PER_MIN);
 
 export interface SheetCopied {
-  sheet: { id: string; name: string; position: number }; sheets: unknown[];
+  sheet: { id: string; name: string; position: number }; sheets: SheetListRow[];
   rowsCopied: number; columns: string[];
 }
 export type SheetCopyOutcome =

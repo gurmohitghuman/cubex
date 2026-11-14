@@ -91,9 +91,14 @@ export async function agentSetAutorun(
 // What `rows` new rows in the sheet set off through auto-run, for an append's
 // answer (nothing when no auto-run is on there). afterWriting: what a run
 // writing these columns on `rows` rows sets off instead (a run start's answer).
+export interface AutorunNotice {
+  column: string; kind: string; rows: number; sends_requests: boolean;
+  estimated_usd: { low: number; high: number } | null; daily_cap_usd: number | null; daily_row_cap: number | null;
+  paused: string | null; note?: string;
+}
 export async function appendAutorunNotice(
   userId: string, sheetId: string, rows: number, afterWriting?: string[],
-): Promise<{ auto_run?: unknown[] }> {
+): Promise<{ auto_run?: AutorunNotice[] }> {
   if (rows < 1) return {};
   const runs = await estimateAutorunRows(userId, sheetId, rows,
     { priceWithinMs: AUTORUN_NOTICE_PRICE_MS, ...(afterWriting ? { afterWriting } : {}) });

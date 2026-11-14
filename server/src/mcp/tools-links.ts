@@ -13,8 +13,8 @@ import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { GARBLED_HELP, importWindow } from './tools-import';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { VIEW_HELP, whereLike } from './where-schema';
 import { applyView } from '../services/view-read';
 import type { WhereItem } from '../lib/row-filter/where';
 
@@ -45,7 +45,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + 'scope.'
         + (canWrite ? '' : ` ${NO_WRITE_NOTE}`),
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         mode: z.enum(['append', 'replace']).optional().describe('Default append'),
       },
     },
@@ -84,11 +84,10 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
         + 'download the data, so give it only to the user. Values are escaped against spreadsheet formula injection.',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column.'),
-        where: whereSchema.optional()
-          .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
+        where: whereLike('Only the rows it passes.').optional(),
         view: z.string().min(1).optional().describe(VIEW_HELP),
       },
     },

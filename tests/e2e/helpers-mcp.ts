@@ -8,11 +8,15 @@ import { BASE } from './helpers'
 // success, `callError` expects the tool's error and returns its message.
 // mcpClient connects with initialize (2025-11-25); modernMcpClient is the v2
 // client pinned to 2026-07-28 (server/discover, _meta on every request).
+// Both list the tools first, so the SDK checks every result's structuredContent
+// against the tool's published outputSchema (the server checks it too, strictly,
+// under CUBEX_TEST_STRICT_OUTPUT: scripts/e2e-env.mjs).
 export async function mcpClient(token: string, name = 'e2e'): Promise<Client> {
   const client = new Client({ name, version: '1.0.0' })
   await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   }))
+  await client.listTools()
   return client
 }
 
@@ -21,6 +25,7 @@ export async function modernMcpClient(token: string, name = 'e2e-modern'): Promi
   await client.connect(new ModernTransport(new URL(`${BASE}/mcp`), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   }))
+  await client.listTools()
   return client
 }
 

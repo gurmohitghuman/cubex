@@ -35,13 +35,15 @@ function reportJson(r: DedupeReport) {
   };
 }
 
+const refused = (message: string): DedupeFail => ({ fail: 'bad_request', message });
+
 export async function agentRemoveDuplicates(
   userId: string, sheetId: string, a: AgentDedupeArgs, surface: Surface,
-): Promise<{ ok: Record<string, unknown> } | DedupeFail> {
+) {
   const stray = strayKey(a as Record<string, unknown>, KNOWN, '');
-  if (stray) return { fail: 'bad_request', message: `${stray} Nothing was changed.` };
+  if (stray) return refused(`${stray} Nothing was changed.`);
   const dry = dedupeDryRun(a.dry_run);
-  if (dry === 'invalid') return { fail: 'bad_request', message: 'dry_run must be true or false.' };
+  if (dry === 'invalid') return refused('dry_run must be true or false.');
   if (dry) {
     const out = await checkDuplicates(userId, sheetId, a);
     if ('fail' in out) return out;

@@ -4,7 +4,7 @@ import { DEDUPE_KEEPS, DEDUPE_MATCHES } from '../lib/dedupe/key';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { AUTO_DEDUPE_KEEPS } from '../lib/auto-dedupe/key';
 import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
 // remove_duplicates: find duplicate rows, and remove them on an explicit
 // dry_run: false (services/dedupe-agent.ts). set_auto_dedupe: keep one row per
@@ -30,11 +30,11 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'Their AI and HTTP results go. Refused while a run is active on the sheet. Prefer it over read_rows plus '
       + 'delete_rows.',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       columns: z.array(z.union([
         z.string(),
         z.object({
-          column: z.string(),
+          column: z.string().describe('A column name'),
           match: z.enum(DEDUPE_MATCHES).optional().describe('How the column matches; default text'),
           phone_country: z.string().length(2).optional().describe('match phone only: how bare digits are read'),
         }).strict(),
@@ -71,7 +71,7 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'moment to build (state building); rows arriving meanwhile are checked once they are. Call again to change '
       + 'it (fields left out stay), or off: true to turn it off. Refused while a run is active on the sheet.',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       column: z.string().optional().describe('The key column (required to turn it on)'),
       match: z.enum(DEDUPE_MATCHES).optional().describe('How the key matches; default text'),
       phone_country: z.string().length(2).optional().describe('match phone only: how bare digits are read'),

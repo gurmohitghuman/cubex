@@ -23,11 +23,12 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const FILLING_NOTE = 'Still filling: its cells read "⏳ Processing..." until done. '
   + 'get_sheet lists it in filling_columns.';
 
-export type AgentFormulaOutcome = { ok: Record<string, unknown>; created: boolean } | RunFail;
+// What the call answers, as the function builds it (MCP checks it against the tool's outputSchema).
+export type AgentFormulaOutcome = Awaited<ReturnType<typeof agentFormulaColumn>>;
 
 export async function agentFormulaColumn(
   userId: string, sheetId: string, a: AgentFormulaArgs,
-): Promise<AgentFormulaOutcome> {
+) {
   const stray = strayKey(a as Record<string, unknown>, KNOWN, '');
   if (stray) return bad(`${stray} Nothing was changed.`);
   const preview = flagOf(a.preview), autoRun = flagOf(a.auto_run);
@@ -52,7 +53,7 @@ export async function agentFormulaColumn(
   const started = await startFormulaColumn(userId, sheetId, input);
   if ('fail' in started) return started;
   const rec = await waitForDerivedFill(formulaKind, started.ok.id, FORMULA_WAIT_MS);
-  if (!rec) return { fail: 'conflict', message: 'The formula column was removed while it filled.' };
+  if (!rec) return { fail: 'conflict' as const, message: 'The formula column was removed while it filled.' };
   return {
     created: started.ok.created,
     ok: {

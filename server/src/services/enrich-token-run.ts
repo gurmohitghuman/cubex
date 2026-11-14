@@ -19,13 +19,14 @@ import { agentEnrichEstimate } from './enrich-token-estimate';
 import { saveAutorunSettings } from './autorun-settings';
 import { sheetAutorunView } from './autorun-view';
 import { dailyLimitOf } from './enrich-agent-shared';
-import { appendAutorunNotice, autorunColumnJson } from './enrich-agent-autorun';
+import { appendAutorunNotice, autorunColumnJson, type AutorunNotice } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
 import {
   bad, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
+import type { ToolAnswer } from '../mcp/tool-outputs';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
@@ -50,14 +51,18 @@ const generationOf = (sheetId: string, userId: string): number | null => (db.pre
   'SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?',
 ).pluck().get(sheetId, userId) as number | undefined) ?? null;
 
-export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs): Promise<TokenRunResult> {
+type EnrichRunAnswer = ToolAnswer<'run_enrichment'>;
+
+export async function tokenStartEnrichmentRun(
+  c: TokenCaller, a: TokenEnrichArgs,
+): Promise<TokenRunResult<EnrichRunAnswer>> {
   const unknown = unknownArgument(a as unknown as Record<string, unknown>);
   if (unknown) return bad(unknown);
   if (Array.isArray(a.target_row_ids) && a.target_row_ids.length > MAX_SELECTED_ROWS) {
     return bad(`target_row_ids takes at most ${MAX_SELECTED_ROWS.toLocaleString('en-US')} rows a run.`);
   }
   const sent = () => (startsRun(a.estimate_only) ? sentArgsHash('enrichment_run', a) : null);
-  const first = replayFirst(c, a.idempotency_key, sent);
+  const first = replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
   if (first) return first;
   // Read before the row ids resolve: a sort in between moves the generation,
   // and the start then refuses instead of running other rows.
@@ -95,7 +100,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun,
     ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   })].filter((h): h is string => !!h);
-  const replay = ledgerReplay(c, a.idempotency_key, hash);
+  const replay = ledgerReplay<EnrichRunAnswer>(c, a.idempotency_key, hash);
   if (replay) return replay;
   const limited = startWindow(c);
   if (limited) return limited;
@@ -110,7 +115,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   };
   const e = stored.enrichment;
 
-  let autoRunPart: Record<string, unknown> = {};
+  let autoRunPart: { auto_run_error?: string; auto_run?: ReturnType<typeof autorunColumnJson> | null } = {};
   if (autoRun) {
     const saved = await saveAutorunSettings(c.userId, sheetId, {
       column: out.ok.statusColumn, enabled: autoRun.enabled, where: null,
@@ -129,7 +134,7 @@ export async function tokenStartEnrichmentRun(c: TokenCaller, a: TokenEnrichArgs
   const [destNotice, chain] = await Promise.all([
     out.ok.destSheetId && list
       ? appendAutorunNotice(c.userId, out.ok.destSheetId, out.ok.rowsInScope * list.maxItems)
-      : Promise.resolve<{ auto_run?: unknown[] }>({}),
+      : Promise.resolve<{ auto_run?: AutorunNotice[] }>({}),
     appendAutorunNotice(c.userId, sheetId, runRows, [out.ok.statusColumn, ...out.ok.outputColumns]),
   ]);
   const payload = {

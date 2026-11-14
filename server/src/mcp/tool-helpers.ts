@@ -9,6 +9,8 @@ import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
+import { TOOL_OUTPUTS, type ToolAnswer, type ToolName } from './tool-outputs';
+import { checkErrorOutput, toolOutput } from './output-schema';
 import type { SpendView } from '../lib/token-spend';
 import { digitsAsNumber } from '../lib/digits-text';
 
@@ -21,6 +23,9 @@ export const lenientBoolean = () =>
   z.preprocess(v => (v === 'true' ? true : v === 'false' ? false : v), z.boolean());
 export const lenientInt = (min: number, max: number, message?: string) =>
   z.preprocess(v => digitsAsNumber(v), z.number(message).int(message).min(min, message).max(max, message));
+
+// The sheet_id every sheet tool takes.
+export const SHEET_ID = 'The sheet\'s id (list_tables lists them)';
 
 export interface McpAuthCtx {
   userId: string;
@@ -41,28 +46,38 @@ export interface ToolResult {
   isError?: boolean;
   [key: string]: unknown; // SDK result type allows extra fields
 }
+// A result that is not an error, carrying the type of its answer for the compiler only (answer is never
+// set): registerTool checks it against the tool's outputSchema (tool-outputs.ts ToolAnswer).
+export interface OkResult<T> extends ToolResult { isError?: undefined; answer?: T }
+export interface ErrResult extends ToolResult { isError: true }
 
-export const ok = (data: unknown): ToolResult => ({
+// An answer must be typed field by field, so the compiler can check it against the tool's outputSchema: any,
+// unknown, object and an object of any keys (Record<string, unknown>) are refused at compile time.
+type Typed<T> = T extends unknown
+  ? 0 extends 1 & T ? never : string extends keyof T ? never : [keyof T] extends [never] ? never : T
+  : never;
+
+export const ok = <T extends object>(data: T & Typed<T>): OkResult<T> => ({
   content: [{ type: 'text', text: JSON.stringify(data) }],
   // An object only: 2025-era clients take nothing else (2026-07-28 allows any JSON value).
   ...(data !== null && typeof data === 'object' && !Array.isArray(data) ? { structuredContent: data } : {}),
 });
 
-export const err = (message: string): ToolResult => ({
+export const err = (message: string): ErrResult => ({
   content: [{ type: 'text', text: JSON.stringify({ error: message }) }],
   isError: true,
 });
 
 // An error that also carries what the caller needs to go on (a cursor, a
 // count), as structuredContent mirrored as text.
-export const errWith = (message: string, extra: Record<string, unknown>): ToolResult => {
+export const errWith = (message: string, extra: Record<string, unknown>): ErrResult => {
   const data = { error: message, ...extra };
   return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: true };
 };
 
 // Scope gate: null when allowed, an isError result naming the missing scope
 // otherwise (so the agent can tell the user which token setting to change).
-export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ToolResult | null {
+export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ErrResult | null {
   if (ctx.scopes.has(scope)) return null;
   return err(`This action requires the '${scope}' scope on your Cubex access token.`);
 }
@@ -73,6 +88,9 @@ export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ToolResu
 // context is the SDK's own type, so a change in its shape fails the typecheck.
 // registerTool requires an inputSchema: the SDK passes a tool without one only the context.
 type ToolHandler = (args: any, mcp: ServerContext) => Promise<ToolResult>;
+// A tool's own handler: its answers must fit the tool's outputSchema, or be errors.
+export type ToolHandlerFor<N extends ToolName> =
+  (args: any, mcp: ServerContext) => Promise<OkResult<ToolAnswer<N>> | ErrResult>;
 
 // Wrap a tool handler so an UNEXPECTED throw becomes a generic client error
 // with the detail redacted-and-logged server-side — NOT leaked verbatim. The
@@ -106,11 +124,11 @@ export function withToolErrors(nameOrHandler: string | ToolHandler, maybeHandler
 // SDK's registerTool is heavily overloaded, so we don't try to reproduce its
 // exact param type; it validates the config + inputSchema at registration, so
 // a bad shape still fails loudly).
-export function registerTool(
+export function registerTool<N extends ToolName>(
   server: McpServer,
-  name: string,
+  name: N,
   config: { description: string; inputSchema: Record<string, unknown> | z.ZodTypeAny; [k: string]: unknown },
-  handler: ToolHandler,
+  handler: ToolHandlerFor<N>,
 ): void {
   // Title and behaviour hints come from one table (tool-annotations.ts); a tool
   // missing from it fails here, on the first request, instead of shipping
@@ -118,14 +136,18 @@ export function registerTool(
   const hints = TOOL_ANNOTATIONS[name];
   if (!hints) throw new Error(`MCP tool ${name} has no entry in tool-annotations.ts`);
   const { title, ...annotations } = hints;
+  // So does one missing from tool-outputs.ts: every tool says what its structuredContent holds.
+  const output = TOOL_OUTPUTS[name];
+  if (!output) throw new Error(`MCP tool ${name} has no entry in tool-outputs.ts`);
   // A field list becomes an object schema here, with Cubex's own zod: the SDK
   // only takes a bare field list through an overload it has deprecated.
   const { inputSchema, ...rest } = config;
   const schema = inputSchema === undefined || inputSchema instanceof z.ZodType
     ? inputSchema : z.object(inputSchema as z.ZodRawShape);
+  const outputSchema = toolOutput(name, output);
   server.registerTool(
-    name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}) } as never,
-    withToolErrors(name, refuseWhileSheetBusy(name, handler)) as never,
+    name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}), outputSchema } as never,
+    checkErrorOutput(name, output, withToolErrors(name, refuseWhileSheetBusy(name, handler))) as never,
   );
 }
 

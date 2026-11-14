@@ -9,15 +9,16 @@ import { validateSheetName } from '../lib/sheet-validation';
 import type { ResultsNotAdded } from './enrich-list-guard';
 import { trashSheet } from './trash-sheets';
 import {
-  verifyTableOwnership, verifySheetInTable, listSheets, sheetNameTaken, createSheetTxn,
+  verifyTableOwnership, verifySheetInTable, listSheets, sheetNameTaken, createSheetTxn, type SheetListRow,
 } from '../lib/sheet-crud-helpers';
 import { TableCrudFail } from './table-crud';
 import { normalizeNameSpacing } from '../lib/name-safety';
 import { logSheetChange } from '../lib/change-log';
 
 type Fail = TableCrudFail;
+type SheetRef = { id: string; name: string; position?: number };
 export type SheetCrudOutcome =
-  | { ok: { sheet?: unknown; sheets: unknown[]; notAdded?: ResultsNotAdded; trashId?: number | null } }
+  | { ok: { sheet?: SheetRef; sheets: SheetListRow[]; notAdded?: ResultsNotAdded; trashId?: number | null } }
   | Fail;
 
 export function createSheet(
@@ -37,7 +38,7 @@ export function createSheet(
   if (!result.ok) {
     return { fail: 'conflict', message: `A sheet named "${trimmedName}" already exists in this table` };
   }
-  const sheet = db.prepare('SELECT id, name, position FROM sheets WHERE id = ?').get(result.sheetId);
+  const sheet = db.prepare('SELECT id, name, position FROM sheets WHERE id = ?').get(result.sheetId) as SheetRef;
   return { ok: { sheet, sheets: listSheets(tableId, userId) } };
 }
 

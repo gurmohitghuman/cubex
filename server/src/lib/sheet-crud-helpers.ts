@@ -85,11 +85,13 @@ const SHEET_CLIENT_COLUMNS =
    ${ADDING_ROWS_SQL} AS adding_rows`;
 const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at`;
 
-export function listSheets(tableId: string, userId: string): unknown[] {
+// A table's sheets as the app and the API list them (SHEET_CLIENT_COLUMNS).
+export type SheetListRow = { id: string; table_id: string; name: string; position: number; [k: string]: unknown };
+export function listSheets(tableId: string, userId: string): SheetListRow[] {
   return db.prepare(
     `SELECT ${SHEET_CLIENT_COLUMNS} FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
      ORDER BY position ASC`,
-  ).all(tableId, userId);
+  ).all(tableId, userId) as SheetListRow[];
 }
 
 // One sheet in the client-facing shape, for create/rename responses that echo the

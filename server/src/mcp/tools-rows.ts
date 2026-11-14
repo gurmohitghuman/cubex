@@ -19,7 +19,7 @@ import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { appendRowsKeyed, batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
 
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const idempotencyKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS).optional().describe(
@@ -33,17 +33,18 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'append_rows',
     {
       description:
-        'Append rows to the end of a sheet. Each row is a {columnName: value} object; every column must already exist '
-        + `(use add_column first). Values: string/number/boolean; null clears. Max ${API_V1_MAX_APPEND_ROWS} rows per `
-        + 'call. Returns the created stable row ids, in the order given; with auto-dedupe on in the sheet '
-        + '(set_auto_dedupe), a row whose key the sheet already had says kept: false (it went to the trash) and '
-        + 'auto_dedupe says what was not kept or replaced. When auto-run is on in the sheet, '
-        + 'auto_run lists the columns that will fill the new rows on their own: an enrichment spends treg credit '
-        + '(estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the user. '
-        + `${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
+        `Add up to ${API_V1_MAX_APPEND_ROWS} rows at the end of a sheet, each as {column: value}. For a file, use `
+        + 'create_upload_link instead (the file never passes through your context); to copy rows from another '
+        + 'sheet, transfer_rows. The columns must exist (add_column first). Returns the new rows\' ids and '
+        + 'indexes, in the order given. With auto-dedupe on (set_auto_dedupe), a row whose key the sheet already '
+        + 'had says kept: false (it went to the trash) and auto_dedupe says what was not kept or replaced. When '
+        + 'auto-run is on, auto_run lists the columns that will fill the new rows on their own: an enrichment '
+        + 'spends treg credit (estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the '
+        + `user. ${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
       inputSchema: {
-        sheet_id: z.string(),
-        rows: z.array(z.record(z.string(), cellValue)).min(1).max(API_V1_MAX_APPEND_ROWS),
+        sheet_id: z.string().describe(SHEET_ID),
+        rows: z.array(z.record(z.string(), cellValue)).min(1).max(API_V1_MAX_APPEND_ROWS)
+          .describe('Rows as {column: value}: text, a number or true/false; null leaves the cell empty'),
         idempotency_key: idempotencyKey,
       },
     },
@@ -80,20 +81,23 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'update_cells',
     {
       description:
-        'Set cells on rows addressed by stable row id, in one of two forms. '
+        'Set cells on rows by their stable ids (read_rows gives them), in one of two forms. '
         + 'ONE ROW: {"row_id": "…", "data": {"Status": "Done"}} (sheet_id optional; when given, the row must be in '
         + 'it); returns the full row. '
         + 'MANY ROWS, all or nothing: {"sheet_id": "…", "updates": [{"row_id": "…", "data": {"Status": "Done"}}]} '
         + `(up to ${API_V1_MAX_BATCH_UPDATES}); returns {updated}. `
         + 'Columns must already exist (add_column first). Values: string/number/boolean; null clears a cell. '
-        + `Columns a run is still filling are refused. ${RETRY_WORDS}`,
+        + 'Columns a run is still filling are refused. To fill a column from each row, use formula_column or '
+        + `transform_column (free) rather than writing every cell. ${RETRY_WORDS}`,
       inputSchema: {
         row_id: z.string().optional().describe('One-row form: the row to update'),
         data: z.record(z.string(), cellValue).optional().describe('One-row form: {column: value}'),
         sheet_id: z.string().optional().describe('Required with updates; optional with row_id'),
         updates: z.array(z.object({
-          row_id: z.string(), data: z.record(z.string(), cellValue),
-        })).min(1).max(API_V1_MAX_BATCH_UPDATES).optional().describe('Many-rows form: [{row_id, data}]'),
+          row_id: z.string().describe('The row\'s id'),
+          data: z.record(z.string(), cellValue).describe('{column: value}; null clears the cell'),
+        })).min(1).max(API_V1_MAX_BATCH_UPDATES).optional()
+          .describe(`Many-rows form: [{row_id, data}], up to ${API_V1_MAX_BATCH_UPDATES}`),
         idempotency_key: idempotencyKey,
       },
     },
@@ -123,7 +127,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
             ? 'One or more rows were not found in the supplied sheet.'
             : txnFailMessage(result, MAX_ROWS_PER_SHEET));
         }
-        return ok('replayed' in result ? { ...result.ok, replayed: result.replayed } : result.ok);
+        return ok({ ...result.ok, ...('replayed' in result ? { replayed: result.replayed === true } : {}) });
       }
       if (!row_id || data === undefined) return err('The one-row form needs both row_id and data.');
       if (idempotency_key) {
@@ -154,12 +158,13 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     'delete_rows',
     {
       description:
-        `Delete rows by their stable row ids. They go to the trash as one batch, kept for the days set in Settings `
-        + `(30 by default; 0 deletes at once): the answer gives its trash_id, and restore_from_trash puts them back. `
-        + `Fails while any AI/HTTP run is active on the sheet. Max ${API_V1_MAX_DELETE_ROWS} ids per call.`,
+        `Delete up to ${API_V1_MAX_DELETE_ROWS} rows by their stable ids (read_rows with where and return_mode ids `
+        + 'finds them; remove_duplicates removes duplicates). They go to the trash as one batch, kept for the days '
+        + 'set in Settings (30 by default; 0 deletes at once): the answer gives its trash_id, and '
+        + 'restore_from_trash puts them back. Refused while an AI or HTTP run is working on the sheet.',
       inputSchema: {
-        sheet_id: z.string(),
-        row_ids: z.array(z.string()).min(1).max(API_V1_MAX_DELETE_ROWS),
+        sheet_id: z.string().describe(SHEET_ID),
+        row_ids: z.array(z.string()).min(1).max(API_V1_MAX_DELETE_ROWS).describe('The rows\' ids'),
       },
     },
     async ({ sheet_id, row_ids }) => {

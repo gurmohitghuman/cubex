@@ -8,7 +8,8 @@ import { freshTreg, mockBilling, rowsOf, startRun, verifiedEmailRun, waitRun } f
 
 // Undo a run: the cells it wrote go back to what they held before it, a cell
 // changed since stays, nothing is called or billed again. An HTTP API column
-// over REST (a newer run first, then the one before it over MCP), an AI
+// over REST (a newer run first, then the one before it over MCP), one whose
+// main column was deleted since, over MCP, an AI
 // column from the column menu (failing fast for free on a fake OpenRouter
 // key), a waterfall over MCP and an enrichment on the mock treg over REST.
 // Screenshots land in test-results/shots/.
@@ -89,6 +90,26 @@ test('an HTTP API column: REST undoes the newest run, skipping an edited cell; M
     'Undid the run of "Call": 5 cells back; 1 cell changed since stayed as they were',
     'Undid the run of "Call": 5 cells back; 1 cell changed since stayed as they were',
   ])
+})
+
+test('an HTTP API run whose main column was deleted: undo_run reads column null, undoes the rest', async () => {
+  const { sheetId } = await sheetWith('Name\nAda\nBo\n')
+  rx.on('/gone', { status: 200, body: '{"ok":"yes"}' })
+  const start = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, { data: {
+    url: rx.url('/gone?n={{Name}}'), method: 'POST', master_column_name: 'Main',
+    response_mapping: [{ json_path: '$.ok', column_name: 'Answer' }],
+  } })
+  expect(start.status(), await start.text()).toBe(202)
+  const runId = (await start.json()).run_id as string
+  await waitForTerminal(v1, `/api/v1/http-runs/${runId}`)
+  const client = await mcpClient(token)
+  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Main' })
+  const dry = await call(client, 'undo_run', { run_type: 'http', run_id: runId, dry_run: true })
+  expect(dry).toMatchObject({ run_id: runId, column: null, can_undo: true })
+  const out = await call(client, 'undo_run', { run_type: 'http', run_id: runId })
+  expect(out).toMatchObject({ run_id: runId, column: null, state: 'undone', restored: 2, gone: 2 })
+  expect(await column(sheetId, 'Answer')).toEqual(['', ''])
+  await client.close()
 })
 
 test('an AI column: "Undo last run" in its menu asks first, then empties what the run filled', async ({

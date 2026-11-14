@@ -1,6 +1,7 @@
 // The `where` every row-selecting tool takes (read_rows, export_csv,
-// create_download_link, transfer_rows, transform_column) and read_rows'
-// include_status, described once so the tools teach the same language
+// create_download_link, transfer_rows, transform_column, manage_view) and read_rows'
+// include_status. The language is described once, on read_rows' where; the other
+// tools take the same schema and point there, so tools/list carries it once
 // (lib/row-filter/where.ts; services/row-filter.ts checks it against the sheet).
 import { z } from 'zod';
 import { FILTER_OPS } from '../lib/row-filter/ops';
@@ -32,7 +33,7 @@ export const WHERE_LANGUAGE = 'Rows must pass every item. An item is a condition
 const condition = z.object({
   column: z.string().optional()
     .describe('Column name, exactly as in the sheet. Optional for run-state operators (any run column).'),
-  operator: z.enum(FILTER_OPS),
+  operator: z.enum(FILTER_OPS).describe('What the condition checks'),
   value: z.string().optional().describe('Text, numbers and dates included ("1000"). Not for any_of / not_any_of.'),
   values: z.array(z.string()).min(1).max(MAX_FILTER_LIST_VALUES).optional()
     .describe('any_of / not_any_of only: the values.'),
@@ -48,8 +49,13 @@ const items = z.array(z.record(z.string(), z.unknown())).min(1).max(MAX_WHERE_CO
 // Strict: a group with another key ({"or":[...],"and":[...]}) is refused, never cut down to one of them.
 const orGroup = z.object({ or: items }).strict();
 const andGroup = z.object({ and: items }).strict();
-export const whereSchema = z.array(z.union([condition, orGroup, andGroup])).min(1).max(MAX_WHERE_CONDITIONS)
-  .describe(WHERE_LANGUAGE);
+const where = z.array(z.union([condition, orGroup, andGroup])).min(1).max(MAX_WHERE_CONDITIONS);
+export const whereSchema = where.describe(WHERE_LANGUAGE);
+// The same where for another tool: what it selects there, then a pointer to read_rows' description.
+export const whereLike = (lead: string) => where.describe(`${lead} ${WHERE_POINTER}`);
+// manage_view's: null clears the view's filters (the description sits on the nullable, where clients read it).
+export const nullableWhereLike = (lead: string) => where.nullable().optional().describe(`${lead} ${WHERE_POINTER}`);
+export const WHERE_POINTER = 'The where language of read_rows (its where says every operator and group).';
 
 export const INCLUDE_STATUS_HELP = 'true: each AI, HTTP API and enrichment column\'s cell comes back as '
   + '{status, value, error} instead of its text. status is done (value holds the result), no_result (the run '
