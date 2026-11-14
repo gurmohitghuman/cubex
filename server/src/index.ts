@@ -36,6 +36,7 @@ import { serveClientInProduction } from './lib/serve-client';
 import { BUILD_HEADER, currentBuildId } from './lib/build-id';
 import { startBackground, installShutdownHandlers } from './lib/server-lifecycle';
 import { applyServerTimeouts } from './lib/server-timeouts';
+import { receiveBackstopMs, requestDeadline } from './lib/request-deadline';
 import { resetOrphanedRuns } from './lib/orphan-runs';
 import { redactSecrets } from './lib/http-request';
 import { createAccountFromEnv } from './services/account';
@@ -115,6 +116,8 @@ if (!HOST && !isProduction) {
 // First, so every answer goes through it: JSON and event streams carry
 // U+0080-U+009F as escapes (lib/json-c1-escape.ts).
 app.use(escapeC1InJson);
+// Before anything reads a body: the deadline on receiving each request (lib/request-deadline.ts).
+app.use(requestDeadline);
 applyServerMiddleware(app, { isProduction });
 
 // Cache-Control: private, no-store on every API response.
@@ -186,6 +189,9 @@ if (isProduction) serveClientInProduction(app);
 app.use(['/api', '/mcp'], (_req, res) => { res.status(404).json({ error: 'Not found' }); });
 
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // A body cut off (the client went away, or its deadline passed: lib/request-deadline.ts): no one to answer,
+  // and nothing worth a stack in the log.
+  if (err?.type === 'request.aborted') return;
   // Redact tokens/keys before logging — a bubbled error.message could
   // include the upstream request's Bearer header or sk-... key verbatim
   // (especially from the AI/HTTP runners' fetch failures).
@@ -203,7 +209,7 @@ function startServer(): void {
     startBackground(recoveredRuns);
   };
   const server = HOST ? app.listen(PORT, HOST, onListening) : app.listen(PORT, onListening);
-  applyServerTimeouts(server);
+  applyServerTimeouts(server, receiveBackstopMs());
 
   installShutdownHandlers(server);
 }

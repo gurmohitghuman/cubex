@@ -14,6 +14,8 @@ Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LO
 | `MAX_ROWS_PER_SHEET` | `1000000` | Rows per sheet. |
 | `MAX_COLUMNS_PER_SHEET` | `200` | Columns per sheet. |
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |
+| `REQUEST_BODY_TIMEOUT_MS` | `120000` | How long any request has to send its body once its headers are in. Past that it gets `408` and the connection closes. A CSV upload gets longer (next row). |
+| `UPLOAD_MIN_KB_PER_SECOND` | `128` | The slowest a CSV upload may arrive (in the app, through the API or an upload link): it gets `REQUEST_BODY_TIMEOUT_MS` plus one second per this many KB of its size. At `128`, a 500 MB file has about 70 minutes. |
 | `WEBHOOK_BODY_TIMEOUT_MS` | `30000` | How long an incoming webhook event has to send its body once its headers are in. Past that it gets `408` and adds nothing. |
 | `HTTP_MAX_CONCURRENCY` | `100` | Most concurrent requests one HTTP run makes. |
 | `SIDEQUEST_MAX_CONCURRENT_JOBS` | `4` | AI and HTTP runs that execute at once; more wait in line. |
