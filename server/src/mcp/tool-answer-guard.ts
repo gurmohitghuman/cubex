@@ -13,6 +13,9 @@ type Takes<T extends object> = Parameters<typeof ok<T>>[0];
 type Answer<T> = Promise<OkResult<T>>;
 type Handler = ReturnType<ToolHandlerFor<'get_version'>>;
 type Version = ToolAnswer<'get_version'>;
+// get_sheet's answer with auto_dedupe (an info field, or null) holding V.
+type SheetWith<V> = Answer<Omit<ToolAnswer<'get_sheet'>, 'auto_dedupe'> & { auto_dedupe: V }>;
+type SheetHandler = ReturnType<ToolHandlerFor<'get_sheet'>>;
 
 export type AnswerGuards = [
   Expect<Fits<Answer<Version>, Handler>>,
@@ -24,4 +27,10 @@ export type AnswerGuards = [
   Expect<IsNever<Takes<any>>>,
   Expect<IsNever<Takes<object>>>,
   Expect<IsNever<Takes<Record<string, unknown>>>>,
+  // A list, text or a number where the schema wants an object (an info, keyed or open field), which zod refuses
+  // when the call runs; an object of any keys still fits there.
+  Expect<Refused<SheetWith<string[]>, SheetHandler>>,
+  Expect<Refused<SheetWith<string>, SheetHandler>>,
+  Expect<Refused<SheetWith<number>, SheetHandler>>,
+  Expect<Fits<SheetWith<{ removed: number }>, SheetHandler>>,
 ];
