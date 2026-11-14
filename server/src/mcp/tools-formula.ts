@@ -13,9 +13,11 @@ import { capToolNote } from '../lib/token-spend';
 export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'formula_column', {
     description:
-      'Fill a column for FREE with a formula worked out from each row: no AI, no credits, no requests. Prefer it '
-      + 'over run_ai_column whenever the value can be computed from the row: picking a field out of an API '
-      + 'response, choosing an item of a list by a condition, joining or splitting text, math. The formula is ONE '
+      'To clean names, companies, emails or phones, or to take the domain out of an email or a URL, use '
+      + 'clean_column instead. Fill a column for FREE with a formula worked out from each row: no AI, no credits, '
+      + 'no requests. '
+      + 'Prefer it over run_ai_column whenever the value can be computed from the row: picking a field out of an '
+      + 'API response, choosing an item of a list by a condition, joining or splitting text, math. The formula is ONE '
       + 'JavaScript expression reading cells as {{Column name}}, e.g. '
       + '{{Response}}?.emails?.find(e => e.type == "work")?.value or `${{{First}}} ${{{Last}}}` or '
       + 'Number({{Price}}) * 1.2. Cells are text: use Number() for math. A cell holding JSON (text starting '

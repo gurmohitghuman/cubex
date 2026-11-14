@@ -77,13 +77,12 @@ export async function answerDryRun(
 ): Promise<TokenRunResult<WaterfallAnswer>> {
   const deadline = Date.now() + WATERFALL_DRY_WAIT_SECONDS * 1000;
   for (;;) {
-    const asked = Date.now();
-    const left = Math.ceil((deadline - asked) / 1000);
+    const left = Math.ceil((deadline - Date.now()) / 1000);
     if (left <= 0) break;
-    const s = await waitForRunChange('http', runId, c.userId, left);
+    const { run: s, noSlot } = await waitForRunChange('http', runId, c.userId, left);
     if (!s || ENDED.has(s.status)) break;
-    // Another wait of this account's holds it: check again in a moment instead.
-    if (Date.now() - asked < 500) await new Promise(resolve => setTimeout(resolve, 1000));
+    // Every run-status wait slot of this account is taken: check again in a moment instead.
+    if (noSlot) await new Promise(resolve => setTimeout(resolve, 1000));
   }
   const view = readDryRun(c.userId, runId);
   if (!view) return { fail: 'not_found', message: 'The dry run went missing.' };

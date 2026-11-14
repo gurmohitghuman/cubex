@@ -10,8 +10,9 @@ export function registerCleanTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'clean_column', {
     description:
       'Clean a column into a new column for FREE: no AI, no credits, no requests, nothing leaves Cubex. Prefer it '
-      + 'over run_ai_column for any cleanup it covers, and over transform_column for names, companies, emails, '
-      + 'domains and phones. The name and company cleaners drop emoji, read full-width characters as plain ones, '
+      + 'over run_ai_column for any cleanup it covers, and over transform_column and formula_column for names, '
+      + 'companies, emails, phones and domains (the domain cleaner takes the root domain out of an email or a '
+      + 'URL). The name and company cleaners drop emoji, read full-width characters as plain ones, '
       + 'and leave a placeholder cell (n/a, none, null, unknown, test, -) blank. Writes into column (default '
       + '"<source_column> (clean)", or "(first name)", "(last name)", "(domain)"), always a new column: naming a '
       + 'clean column already there replaces its setup and cleans every row again; any other existing column is '

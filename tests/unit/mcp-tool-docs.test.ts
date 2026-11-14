@@ -96,6 +96,17 @@ async function main() {
     assert.equal(text.includes('\u2014'), false, 'an em dash in a description or title')
   })
 
+  // Pointers a walk-through on 10 tasks showed an agent needs: it took formula_column for an email's domain
+  // in every run (so formula_column now opens with the pointer), and followed a 35-second run with 16
+  // get_run_status calls.
+  await check('descriptions point to the tool that does the job', () => {
+    const say = (name: string) => modernList.tools.find(t => t.name === name)?.description ?? ''
+    assert.match(say('formula_column'),
+      /^To clean names, companies, emails or phones, or to take the domain out of an email or a URL, use clean_column/)
+    assert.match(say('clean_column'), /root domain out of an email or a URL/)
+    assert.match(say('get_run_status'), /answers when the status changes/)
+  })
+
   done()
 }
 
