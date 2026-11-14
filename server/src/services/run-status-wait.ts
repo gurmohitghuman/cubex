@@ -1,3 +1,7 @@
+// Waits up to `seconds` for a run to change, holding one of the account's long-poll slots. By default any
+// progress ends the wait (the waterfall dry run's loop, waterfall-token-dry.ts). statusOnly (MCP get_run_status)
+// ends it only when the status changes (the run starts, ends, pauses or fails) or the time is up, so an agent
+// following a steady run asks once per wait instead of once per batch of rows.
 import { acquireLongPollHold, releaseLongPollHold } from '../lib/long-poll-holds';
 import { getAiRunSummary, getHttpRunSummary, RunSummary } from './run-status';
 
@@ -14,6 +18,7 @@ export async function waitForRunChange(
   userId: string,
   seconds: number,
   signal?: AbortSignal,
+  opts: { statusOnly?: boolean } = {},
 ): Promise<RunSummary | null> {
   const initial = read(type, runId, userId);
   if (!initial || seconds <= 0 || TERMINAL.has(initial.status)) return initial;
@@ -34,7 +39,8 @@ export async function waitForRunChange(
     const timer = setInterval(() => {
       const current = read(type, runId, userId);
       if (!current) return finish(null);
-      if (current.status !== initial.status || current.processed_rows !== initial.processed_rows
+      const progressed = !opts.statusOnly && current.processed_rows !== initial.processed_rows;
+      if (current.status !== initial.status || progressed
           || TERMINAL.has(current.status) || Date.now() >= deadline) finish(current);
     }, CHECK_INTERVAL_MS);
     signal?.addEventListener('abort', aborted, { once: true });

@@ -1,6 +1,7 @@
 // get_run_status: the same summary as GET /v1/{ai,http}-runs/:id, needs only
-// 'read'. Optionally waits a few seconds for the run to change, so an agent
-// polls less often. control_run is in tools-run-manage.ts.
+// 'read'. Optionally waits up to 25 seconds for the status to change (progress
+// alone doesn't end the wait), so an agent polls less often. control_run is in
+// tools-run-manage.ts.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
@@ -16,9 +17,10 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
       description:
         'One run\'s state: status (pending, running, paused, completed, failed, cancelled), processed_rows of '
         + 'total_rows, failed_rows, succeeded_rows, error_message and cost_usd so far. Poll it after a run starts '
-        + '(wait_seconds waits for a change, so you poll less), then read the cells with read_rows or the reasons '
-        + 'with get_run_results. "completed" means every row was processed, not that it worked: check '
-        + 'failed_rows. list_runs finds a run_id you no longer have. '
+        + 'with wait_seconds: it answers when the status changes (the run ends, pauses or fails) or the time is '
+        + 'up, so you poll less; for progress on the way, pass a short wait_seconds. Then read the cells with '
+        + 'read_rows or the reasons with get_run_results. "completed" means every row was processed, not that it '
+        + 'worked: check failed_rows. list_runs finds a run_id you no longer have. '
         + 'A run that paused itself says pause_reason and pause_message: token_cap, spend_limit (resume with a '
         + 'higher spend_limit_usd), provider_errors (resume once the provider works), storage (free disk space '
         + 'first), stalled, or web_engine (allow Exa on OpenRouter\'s Server Tools page and resume, or run '
@@ -45,7 +47,8 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
           .describe('The kind of run: what started it says (http also finds enrichment and waterfall runs)'),
         run_id: z.string().describe('The run_id a run start answered (list_runs lists them)'),
         wait_seconds: z.number().int().min(0).max(25).optional()
-          .describe('Wait up to this many seconds (0-25, default 0) for the run to change before answering'),
+          .describe('Wait up to this many seconds (0-25, default 0) for the status to change before answering; '
+            + 'progress alone does not end the wait'),
       },
     },
     async ({ run_type, run_id, wait_seconds }) => {
@@ -54,7 +57,7 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
       const kind = kindOf(run_type, run_id, ctx.userId);
       if (!kind) return err('Enrichment run not found');
       const run = (wait_seconds ?? 0) > 0
-        ? await waitForRunChange(kind, run_id, ctx.userId, wait_seconds, ctx.abortSignal)
+        ? await waitForRunChange(kind, run_id, ctx.userId, wait_seconds, ctx.abortSignal, { statusOnly: true })
         : kind === 'ai' ? getAiRunSummary(run_id, ctx.userId) : getHttpRunSummary(run_id, ctx.userId);
       if (!run) return err('Run not found');
       return ok(run);

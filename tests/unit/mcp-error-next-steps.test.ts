@@ -4,8 +4,8 @@
 // with it; the other not-found errors name the tool that lists. The tool's own words stay first. Then, on
 // withNextStep and answered alone: a value that exists, or an error already suggesting, is left as it was;
 // errWith's structuredContent says the same; and every read a next step makes goes through an index, never
-// the rows. (A table and a sheet both in the trash, apply_setup's names and the bound on the work:
-// mcp-error-next-steps-edges.test.ts.)
+// the rows. A transfer into a column the destination lacks gets its close ones and the ways on. (A table and
+// a sheet both in the trash, apply_setup's names and the bound on the work: mcp-error-next-steps-edges.test.ts.)
 import assert from 'node:assert/strict'
 import dbMod from '../../server/src/lib/db'
 import stepsMod from '../../server/src/mcp/next-steps'
@@ -139,7 +139,8 @@ async function main() {
       for (const [args, message] of [[{ sheet_id: 'x' }, 'Sheet not found'], [{ table_id: 'x' }, 'Table not found'],
         [{ setup_id: 'x' }, 'Setup not found'], [{ run_id: 'x' }, 'Run not found'],
         [{ setup_id: 'st-1' }, 'This setup makes no column named "x".'],
-        [{ sheet_id: 's-leads' }, 'Unknown column(s): x']] as const) withNextStep(u, args, message)
+        [{ sheet_id: 's-leads' }, 'Unknown column(s): x'],
+        [{ destination_sheet_id: 's-leads' }, 'Unknown destination column: x']] as const) withNextStep(u, args, message)
     } finally { db.prepare = prepare }
     assert.ok(seen.length >= 8, `${seen.length} reads`)
     for (const sql of seen) {
@@ -148,6 +149,21 @@ async function main() {
       assert.ok(plan.every(d => !/^SCAN /.test(d)), `${sql}\n${plan.join('\n')}`)
       assert.ok(!/\brows\b/.test(sql), sql)
     }
+  })
+
+  // Its own source sheet: Leads has a run that hasn't ended, and a transfer waits for that first.
+  await check('a transfer into a column the destination lacks: its close ones, and the three ways on', async () => {
+    const sheet = (id: string, name: string, columns: string[]) => insert('INSERT INTO sheets '
+      + '(id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)', id, 't-crm', u, name, JSON.stringify(columns))
+    sheet('s-in', 'March', ['Name', 'Email'])
+    sheet('s-out', 'Outreach', ['Name', 'E-mail'])
+    insert('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)', 'r-1', 's-in', u, 0,
+      JSON.stringify({ Name: 'Ada', Email: 'ada@acme.com' }))
+    await says('transfer_rows', { source_sheet_id: 's-in', destination_sheet_id: 's-out', operation: 'copy',
+      selection: { all: true }, columns: ['Name', 'Email'], column_mode: 'require_existing', idempotency_key: 'k2' },
+    'Unknown destination column: Email. Close matches in the destination: "E-mail". To copy only the columns it '
+      + 'has, list them in columns (or send this one to another with column_mapping); column_mode "create_missing" '
+      + 'adds it.')
   })
   done()
 }

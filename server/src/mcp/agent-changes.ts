@@ -37,6 +37,25 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.17',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['get_run_status'],
+        summary: 'get_run_status with wait_seconds answers when the run\'s status changes (it ends, pauses or fails) '
+          + 'or the time is up, no longer at each batch of rows.',
+        details: 'Following a run takes one call per wait instead of one every second or two. For progress on the '
+          + 'way, pass a short wait_seconds: every answer has processed_rows.',
+      },
+      {
+        change: 'changed',
+        tools: ['transfer_rows'],
+        summary: 'transfer_rows refusing a column the destination lacks (column_mode require_existing) names the '
+          + 'destination\'s close columns, and the ways on: columns, column_mapping or column_mode create_missing.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.16',
     changes: [
       {

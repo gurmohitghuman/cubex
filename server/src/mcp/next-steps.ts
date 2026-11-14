@@ -76,6 +76,17 @@ function column(userId: string, args: Args, message: string): string | null {
   return close.length || sentence ? `${close.length ? ` Close matches: ${list(close)}.` : ''}${sentence}` : null;
 }
 
+// transfer_rows with column_mode require_existing, sending a column the destination doesn't have: the close
+// ones it has, and the three ways on (only its columns, a mapping, or making the column).
+function destinationColumn(userId: string, args: Args, message: string): string | null {
+  const named = /^Unknown destination column: (.+)$/.exec(message.trim())?.[1];
+  if (named === undefined || typeof args.destination_sheet_id !== 'string') return null;
+  const close = closeMatches(named, storedColumns(userId, args.destination_sheet_id) ?? [], c => [c]);
+  return (close.length ? ` Close matches in the destination: ${list(close.map(shown))}.` : '')
+    + ' To copy only the columns it has, list them in columns (or send this one to another with column_mapping);'
+    + ' column_mode "create_missing" adds it.';
+}
+
 const RUN_WORDS: Record<RunKind, string> = {
   ai: 'an AI run', http: 'an HTTP API run', enrichment: 'an enrichment run', waterfall: 'a waterfall run',
 };
@@ -141,6 +152,7 @@ const CASES: Array<[RegExp, (userId: string, args: Args, message: string) => str
   [/^(AI |HTTP |Enrichment |Waterfall )?[Rr]un not found/, run],
   // The setup's columns, never the sheet's: the column case below leaves this message out.
   [/^This setup makes no column named/, setupColumn],
+  [/^Unknown destination column: /, destinationColumn],
   [/^(?!This setup makes)(?=.*column)(?=.*(not found|isn't a column|no column named|unknown column))/is, column],
   [/^Setup run not found/, (_u, _a, m) => listedBy(m, 'get_setup_run with sheet_id lists the setup runs on a sheet.')],
   [/^Run webhook not found/, (_u, _a, m) => listedBy(m, 'list_run_webhooks lists the webhooks with their ids.')],
