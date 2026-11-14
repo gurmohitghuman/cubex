@@ -29,13 +29,16 @@ export const receiveBackstopMs = (): number =>
   HTTP_HEADERS_TIMEOUT_MS + uploadDeadlineMs(MAX_CSV_UPLOAD_BYTES) + 60_000;
 
 const TIMED_OUT = 'HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n';
+// The time left until a deadline, at most setTimeout's longest wait (about 24.8 days; longer would fire at once).
+export const waitMs = (started: number, ms: number): number =>
+  Math.min(2_147_483_647, Math.max(0, started + ms - Date.now()));
 type Deadline = { started: number; res: express.Response; timer: NodeJS.Timeout };
 const deadlines = new WeakMap<IncomingMessage, Deadline>();
 
 function arm(req: express.Request, res: express.Response, started: number, ms: number): void {
   const old = deadlines.get(req);
   if (old) clearTimeout(old.timer);
-  const timer = setTimeout(() => cutOff(req, res), Math.max(0, started + ms - Date.now()));
+  const timer = setTimeout(() => cutOff(req, res), waitMs(started, ms));
   deadlines.set(req, { started, res, timer });
 }
 
@@ -49,7 +52,9 @@ function cutOff(req: express.Request, res: express.Response): void {
   deadlines.delete(req);
   const socket = req.socket;
   if (req.complete || socket.destroyed) return;
-  if (!res.headersSent && socket.writable) socket.write(TIMED_OUT);
+  // Only while this request's answer owns the socket: a request pipelined behind another one's answer has none
+  // yet, and the 408 would land inside that answer.
+  if (!res.headersSent && res.socket === socket && socket.writable) socket.write(TIMED_OUT);
   socket.destroy();
 }
 
