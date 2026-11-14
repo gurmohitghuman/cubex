@@ -10,7 +10,6 @@ import {
   McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean,
 } from './tool-helpers';
 import { whereLike } from './where-schema';
-import { changedOf } from './changed';
 
 export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'transfer_rows', {
@@ -67,11 +66,6 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       : await appendAutorunNotice(ctx.userId, input.destination_sheet_id,
         result.ok.copied + result.ok.moved - (result.ok.auto_dedupe?.not_kept_count ?? 0));
     const trash = result.ok.moved ? { trash: trashAnswer(ctx.userId, result.ok.trash_id ?? null, 'mcp') } : {};
-    const { matched, moved } = result.ok;
-    const changed = result.replayed || !matched ? [] : changedOf(ctx.userId, [
-      { sheetId: input.destination_sheet_id, columns: result.columns, rows: matched, moreComing: !!notice.auto_run },
-      moved > 0 && { sheetId: input.source_sheet_id, rows: moved },
-    ]);
-    return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash, changed });
+    return ok({ ...result.ok, replayed: result.replayed ?? false, ...notice, ...trash, changed: result.changed });
   });
 }

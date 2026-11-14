@@ -24,6 +24,7 @@ import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, type RunLedgerResult } from '../lib/run-idempotency';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
+import { runChanged, storedChanged, type Changed } from '../mcp/changed';
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { parseRunRequest, type RunParams } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
@@ -40,13 +41,14 @@ import { aiCeilingCheck, aiRunLimitsOf, aiRunRequestHash } from './run-start-cei
 
 export interface TokenCaller { userId: string; tokenId: string; scopes: Set<string> }
 // started: a run was created (REST answers 202); false for an estimate, a
-// preview or a replay of an earlier start.
+// preview or a replay of an earlier start. changed: what a start changed, for
+// MCP (mcp/changed.ts), kept with its key so a replay answers it too.
 // rate: set on 'rate_limited', so REST can send Retry-After and the window's headers.
 // estimate: set on 'over_ceiling', the estimate the ceiling refused.
 // T: the answer's type, the tool's ToolAnswer for MCP (mcp/tool-outputs.ts), so it is checked against the
 // tool's outputSchema at compile time.
 export type TokenRunResult<T extends object = object> =
-  | { ok: T; started: boolean }
+  | { ok: T; started: boolean; changed?: Changed[] }
   | { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision; estimate?: object };
 
 export type Fail = { fail: RunFailKind | 'rate_limited'; message: string; rate?: RateDecision };
@@ -90,9 +92,11 @@ const isIdempotencyKey = (key: unknown): key is string => typeof key === 'string
 // Replay or refuse a repeated idempotency key; null when the start should go ahead.
 // hash: the start's hashes (lib/run-idempotency.ts); either one matching replays.
 // A replay is the first start's answer as stored: a start of the same kind (the hash names it) wrote it, so it
-// is read back as that start's answer type.
-export const replayOf = <T extends object>(stored: RunLedgerResult): T =>
-  ({ ...stored, replayed: true }) as unknown as T;
+// is read back as that start's answer type. Its changed is kept beside the answer.
+export function replayOf<T extends object>(stored: RunLedgerResult): { ok: T; started: false; changed: Changed[] } {
+  const { changed, ...first } = stored;
+  return { ok: { ...first, replayed: true } as unknown as T, started: false, changed: storedChanged(changed) };
+}
 
 export function ledgerReplay<T extends object = object>(
   c: TokenCaller, key: unknown, hash: string | readonly string[],
@@ -102,7 +106,7 @@ export function ledgerReplay<T extends object = object>(
   if (!prior) return null;
   return 'conflict' in prior
     ? { fail: 'conflict', message: IDEMPOTENCY_CONFLICT_MESSAGE }
-    : { ok: replayOf<T>(prior.replay), started: false };
+    : replayOf<T>(prior.replay);
 }
 
 // A start sent again with its key: the first start's answer, before any check that reads state (the sheet and
@@ -125,7 +129,7 @@ export function replayFirst<T extends object = object>(
   c: TokenCaller, key: unknown, hash: () => string | null,
 ): TokenRunResult<T> | null {
   const prior = firstStart(c, key, hash);
-  return prior ? { ok: replayOf<T>(prior), started: false } : null;
+  return prior ? replayOf<T>(prior) : null;
 }
 
 // true for a start: estimate_only false or left out (a value preamble refuses isn't one).
@@ -274,6 +278,10 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     data_column: result.ok.dataColumn, reused_rows: result.ok.reusedRows, target_rows: result.ok.targetCount,
     ...webSearch,
   };
-  if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'ai_run', payload);
-  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
+  const changed = runChanged(c.userId, sheetId, [result.ok.outputColumn, result.ok.statusColumn,
+    ...(result.ok.outputColumns ?? []), result.ok.dataColumn], result.ok.targetCount);
+  if (typeof a.idempotency_key === 'string') {
+    writeRunLedger(c.userId, a.idempotency_key, hash, 'ai_run', { ...payload, changed });
+  }
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true, changed };
 }

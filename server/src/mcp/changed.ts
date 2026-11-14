@@ -2,11 +2,14 @@
 // answers `changed` (outputs/shared.ts), one item per sheet it touched: the sheet, the columns and rows it
 // touched, and the sheet's data_version and row_generation read right after the write. A run writing the same
 // sheet at that moment can have raised them. [] when the call changed nothing: a preview, a dry run, an
-// estimate, a replay of an idempotency key, or a change to a sheet's or table's place, name or trash state,
-// which the tool's other fields name. tests/unit/mcp-changed-tools.test.ts holds every writing tool to either
-// answering it or a place in WITHOUT_CHANGED.
+// estimate, or a change to a sheet's or table's place, name or trash state, which the tool's other fields name.
+// A keyed write stores its changed with the key, in its transaction, and a replay answers it as it was.
+// tests/unit/mcp-changed-tools.test.ts holds every writing tool to either answering it or a place in
+// WITHOUT_CHANGED.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
+import { sheetEntries } from '../services/autorun-entry';
+import type { AutoDedupeOutcome } from '../services/auto-dedupe-settle';
 import { CHANGED_ROW_IDS } from './outputs/shared';
 
 // The tools that write without answering `changed`, and why.
@@ -86,12 +89,49 @@ export function madeSheet(userId: string, sheetId: string | null | undefined, mo
   return { sheetId, columns: getSheetColumns(sheetId, userId, false), rows, moreComing };
 }
 
-// A run start: the columns the run fills and the rows it targets, more_coming. [] for an estimate, a preview,
-// a dry run or a replay (started is false for those).
+// A run start: the columns the run fills and the rows it targets, more_coming (and, for a list job, the sheet
+// its rows go to). The start service stores it with the key (services/run-start-token.ts).
 export function runChanged(
-  userId: string, sheetId: string, started: boolean, columns: readonly unknown[], rows = 0,
+  userId: string, sheetId: string, columns: readonly unknown[], rows = 0, also?: string | null,
 ): Changed[] {
-  if (!started) return [];
   const named = [...new Set(columns.filter((c): c is string => typeof c === 'string' && !!c))];
-  return changedOf(userId, [{ sheetId, columns: named, rows, moreComing: true }]);
+  return changedOf(userId, [{ sheetId, columns: named, rows, moreComing: true },
+    !!also && { sheetId: also, moreComing: true }]);
+}
+
+// changed as a keyed call stored it with its key; [] from an entry stored before keys kept it.
+export const storedChanged = (v: unknown): Changed[] => (Array.isArray(v) ? v as Changed[] : []);
+
+// The columns a write sets, in the order first named.
+export const columnsOf = (cells: ReadonlyArray<Record<string, unknown>>): string[] =>
+  [...new Set(cells.flatMap(c => Object.keys(c)))];
+
+// Rows arriving set off the sheet's auto-runs: one on, or paused by the person (resumed, it runs them too).
+export const autorunOn = (userId: string, sheetId: string): boolean =>
+  sheetEntries(sheetId, userId).some(e => !!e.enabled);
+
+// Rows a write added (append_rows, transfer_rows), as the sheet now holds them: the new rows auto-dedupe kept
+// (one it didn't keep went straight to the trash) and the older rows they replaced, which left it. more_coming:
+// an auto-run fills the new rows, or auto-dedupe checks some of them later.
+export function arrivedTouch(
+  userId: string, sheetId: string, columns: readonly string[], made: readonly string[], d: AutoDedupeOutcome | null,
+): Touch {
+  const gone = new Set((d?.removed ?? []).map(r => r.id));
+  const kept = made.filter(id => !gone.has(id));
+  const own = new Set(made);
+  const rowIds = [...kept, ...[...gone].filter(id => !own.has(id))];
+  const moreComing = !!d?.waiting || (kept.length > 0 && autorunOn(userId, sheetId));
+  return { sheetId, columns, rows: rowIds.length, rowIds, moreComing };
+}
+
+// Rows a write edited (update_cells): each of them, one auto-dedupe then took out too, and the older rows it
+// replaced with them, which left the sheet. replaced: its answer's list (the first AUTO_DEDUPE_LIST_IDS, 100).
+export function editedTouch(
+  sheetId: string, columns: readonly string[], edited: readonly string[],
+  d?: { replaced: readonly string[]; replaced_count: number },
+): Touch {
+  return {
+    sheetId, columns, rows: edited.length + (d?.replaced_count ?? 0),
+    rowIds: [...edited, ...(d?.replaced ?? [])],
+  };
 }

@@ -35,9 +35,8 @@ async function replays(surface: Surface, args: Args, key: string,
   const now = await refusedNow(args)
   assert.ok(!now.ok, `${surface}: without its key the same start is refused now: ${JSON.stringify(now)}`)
   const runs = runsOn(args.sheet_id), keys = keyNames()
-  // An MCP replay answers changed: [] (it wrote nothing); the rest is the first answer.
-  const want = { ...first.ok, replayed: true, ...('changed' in first.ok ? { changed: [] } : {}),
-    ...(first.status ? { status: 200 } : {}) }
+  // The first answer, MCP's changed too (kept with the key: the versions the first start left).
+  const want = { ...first.ok, replayed: true, ...(first.status ? { status: 200 } : {}) }
   for (let i = 0; i < TRIES; i++) {
     const again = await start(surface, { ...args, idempotency_key: key })
     assert.deepEqual({ ...again.ok, ...(again.status ? { status: again.status } : {}) }, want,

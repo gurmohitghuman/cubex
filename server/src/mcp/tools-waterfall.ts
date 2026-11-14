@@ -16,7 +16,6 @@ import { tokenWaterfall } from '../services/waterfall-token-run';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
-import { runChanged } from './changed';
 import { capToolNote } from '../lib/token-spend';
 
 const money = () => z.number().positive();
@@ -176,9 +175,7 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       { userId: ctx.userId, tokenId: ctx.tokenId, scopes: ctx.scopes }, args, { estimateDefault: true },
     );
     if ('fail' in r) return err(r.message);
-    // A dry run writes nothing into the sheet.
-    const o = r.ok;
-    return ok({ ...o, changed: runChanged(ctx.userId, args.sheet_id as string, r.started && o.dry_run !== true,
-      [o.result_column, ...(o.output_columns ?? [])], o.rows_in_scope) });
+    // Only a start has changed (a dry run writes nothing into the sheet).
+    return ok({ ...r.ok, changed: r.changed ?? [] });
   });
 }

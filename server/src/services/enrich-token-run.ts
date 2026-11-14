@@ -27,6 +27,7 @@ import {
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
+import { runChanged } from '../mcp/changed';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
@@ -147,8 +148,11 @@ export async function tokenStartEnrichmentRun(
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}),
     ...(hook ? { webhook_id: hook } : {}),
   };
+  // A list job adds its results as rows of another sheet.
+  const changed = runChanged(c.userId, sheetId, [out.ok.statusColumn, ...out.ok.outputColumns], out.ok.rowsInScope,
+    out.ok.destSheetId);
   if (typeof a.idempotency_key === 'string') {
-    writeRunLedger(c.userId, a.idempotency_key, hash, 'enrichment_run', payload);
+    writeRunLedger(c.userId, a.idempotency_key, hash, 'enrichment_run', { ...payload, changed });
   }
-  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true, changed };
 }

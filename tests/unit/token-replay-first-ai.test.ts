@@ -38,7 +38,7 @@ await ok(`an AI start retried with its key after its model left the list answers
     assert.equal(runsOn(sid), 1)
     for (let i = 0; i < TRIES; i++) {
       assert.deepEqual(await tokenStartAiRun(c, { ...args, idempotency_key: 'ai-gone' }),
-        { ok: { ...first.ok, replayed: true }, started: false }, `try ${i}`)
+        { ok: { ...first.ok, replayed: true }, started: false, changed: first.changed }, `try ${i}`)
     }
     assert.equal(runsOn(sid), 1, 'no second run')
     const other = { ...args, column_name: 'Other', model: PRICED, idempotency_key: 'ai-gone' }

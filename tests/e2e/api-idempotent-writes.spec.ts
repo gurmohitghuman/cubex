@@ -48,8 +48,9 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   const viaMcp = await call(mcp, 'append_rows', {
     sheet_id: sheetId, rows: [{ val: 'a' }, { val: 'b' }], idempotency_key: 'e2e-ap-1',
   })
-  // An MCP replay wrote nothing: its changed is [].
-  expect(viaMcp).toEqual({ rows: firstBody.rows, replayed: true, changed: [] })
+  // Its changed is the REST call's, kept with the key: the rows it added.
+  expect(viaMcp).toEqual({ rows: firstBody.rows, replayed: true, changed: [expect.objectContaining({
+    sheet_id: sheetId, columns: ['val'], rows: 2, row_ids: firstBody.rows.map((r: { id: string }) => r.id) })] })
   expect(await count()).toBe(4)
 
   // One row: MCP first (no sheet_id), MCP again with the row's sheet_id, then REST PATCH: one write.
@@ -62,7 +63,7 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   const upAgain = await call(mcp, 'update_cells', {
     row_id: rowId, sheet_id: sheetId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1',
   })
-  expect(upAgain).toEqual({ ...up, replayed: true, changed: [] })
+  expect(upAgain).toEqual({ ...up, replayed: true })
   const patch = await v1.patch(`/api/v1/rows/${rowId}`, { data: { data: { val: 'A1' }, idempotency_key: 'e2e-up-1' } })
   expect(patch.status()).toBe(200)
   expect((await patch.json()).replayed).toBe(true)
@@ -83,7 +84,8 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   })
   expect(await batchAgain.json()).toEqual({ updated: 2, replayed: true })
   expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-bt-1' }))
-    .toEqual({ updated: 2, replayed: true, changed: [] })
+    .toEqual({ updated: 2, replayed: true, changed: [expect.objectContaining({
+      sheet_id: sheetId, columns: ['val'], rows: 2, row_ids: updates.map((u: { row_id: string }) => u.row_id) })] })
 
   // No key: each call writes, and the answer is as before (no replayed field). A bad key is a 400.
   const plain1 = await (await append({ rows: [{ data: { val: 'p' } }] })).json()

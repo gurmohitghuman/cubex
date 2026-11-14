@@ -83,9 +83,9 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         change: 'server',
         summary: 'Every tool that writes answers changed: for each sheet it wrote, the columns and rows it touched, '
           + 'row_ids (the first 100) and the sheet\'s data_version and row_generation after it.',
-        details: '[] for a preview, dry run, estimate, replay, or a sheet or table renamed, moved or deleted. '
-          + 'more_coming: true means a run or fill goes on, so read again later. Tools that write no sheet data '
-          + 'leave it out.',
+        details: '[] for a preview, dry run, estimate, or a sheet or table renamed, moved or deleted; a replay '
+          + 'answers the first call\'s. more_coming: true means a run or fill goes on, so read again later. Tools '
+          + 'that write no sheet data leave it out.',
       },
     ],
   },

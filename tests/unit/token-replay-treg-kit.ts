@@ -63,7 +63,9 @@ export async function tregKit(name: string) {
     await o.change()
     assert.deepEqual(await start(args), o.now, 'no key: refused now')
     const runs = runsOn(sid)
-    const want = o.want ?? (f => ({ ok: { ...f, replayed: true }, started: false }))
+    // A start's changed (for MCP) is kept with its key: the replay answers it too.
+    const changed = 'ok' in first ? first.changed : undefined
+    const want = o.want ?? (f => ({ ok: { ...f, replayed: true }, started: false, changed }))
     for (let i = 0; i < TRIES; i++) {
       assert.deepEqual(await start({ ...args, idempotency_key: key }), want(first.ok), `try ${i}`)
     }

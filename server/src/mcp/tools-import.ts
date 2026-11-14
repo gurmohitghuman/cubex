@@ -12,7 +12,7 @@ import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
-import { changedOf } from './changed';
+import { autorunOn, changedOf } from './changed';
 
 // What import_csv and an upload link answer about cells that look garbled.
 export const GARBLED_HELP = 'When cells look like text read with the wrong character set (they hold U+0080-U+009F, '
@@ -78,15 +78,16 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         }
         return err(result.error);
       }
-      const { columns, rowsImported, rowsReplaced, autoDedupe } = result.ok;
-      const notice = await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsKept);
-      // Rows it added or replaced, and rows auto-dedupe took out of the ones already there.
-      const rows = rowsImported + rowsReplaced + Math.max(0, (autoDedupe?.removed ?? 0) - (autoDedupe?.notKept ?? 0));
+      const { columns, rowsKept, rowsReplaced, autoDedupe } = result.ok;
+      const notice = await appendAutorunNotice(ctx.userId, sheet_id, rowsKept);
+      // As the sheet now holds them (append_rows' rule, mcp/changed.ts arrivedTouch): the rows it added and
+      // auto-dedupe kept, the rows a replace took out, and the older rows auto-dedupe replaced.
+      const rows = rowsKept + rowsReplaced + Math.max(0, (autoDedupe?.removed ?? 0) - (autoDedupe?.notKept ?? 0));
       return ok({
         ...importSummary(result.ok, replace, ctx.userId), ...notice,
         changed: changedOf(ctx.userId, [{
           sheetId: sheet_id, columns: [...new Set([...before, ...columns])], rows,
-          moreComing: !!autoDedupe?.left || !!notice.auto_run,
+          moreComing: !!autoDedupe?.left || (rowsKept > 0 && autorunOn(ctx.userId, sheet_id)),
         }]),
       });
     },

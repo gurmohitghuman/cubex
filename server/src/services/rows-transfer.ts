@@ -27,12 +27,13 @@ import { deleteRowsToTrash } from './trash-rows';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
 import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
+import { arrivedTouch, changedOf, type Changed } from '../mcp/changed';
 
 export type { TransferRequest } from './transfer-ledger';
 
 export type TransferOutcome =
-  // columns: the destination columns the rows were written to (not kept for a replay).
-  | { ok: TransferResult; replayed?: boolean; columns?: string[] }
+  // changed: what it changed, for MCP (mcp/changed.ts), kept with the key for a replay.
+  | { ok: TransferResult; replayed?: boolean; changed: Changed[] }
   | {
     fail: 'invalid' | 'not_found' | 'conflict' | 'active_run' | 'cap' | 'budget' | 'rate' | 'active' | 'busy';
     error: string;
@@ -47,7 +48,7 @@ function executeTransfer(
   const replay = readTransferLedger(userId, request.idempotencyKey, hashes);
   if (replay) return 'conflict' in replay
     ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
-    : { ok: replay.replay, replayed: true };
+    : { ok: replay.replay, replayed: true, changed: replay.changed };
   const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL');
   if (!owns.get(request.sourceSheetId, userId) || !owns.get(request.destinationSheetId, userId)) {
     return { fail: 'not_found', error: 'Source or destination sheet not found.' };
@@ -94,8 +95,8 @@ function executeTransfer(
   };
   if (preflight.matched === 0) {
     result.dest_row_count = countRows(request.destinationSheetId, userId);
-    writeTransferLedger(userId, request.idempotencyKey, hash, result);
-    return { ok: result };
+    writeTransferLedger(userId, request.idempotencyKey, hash, result, []);
+    return { ok: result, changed: [] };
   }
   const pristine = isPristineSeedSheet(request.destinationSheetId, userId);
   const destinationCount = countRows(request.destinationSheetId, userId) - (pristine ? SEED_ROW_COUNT : 0);
@@ -157,8 +158,8 @@ function executeTransfer(
   // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
   forgetUnlistedTransformPasses(request.destinationSheetId, userId);
   // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
-  const auto = autoDedupeAnswer(userId, settleRows(request.destinationSheetId, userId, rids, 'arrived'), added,
-    surface);
+  const settled = settleRows(request.destinationSheetId, userId, rids, 'arrived');
+  const auto = autoDedupeAnswer(userId, settled, added, surface);
   if (auto) result.auto_dedupe = auto;
   // Moved rows leave the source: auto-run's fence there follows. The copies are
   // new rows in the destination, which auto-run fills when it is on there.
@@ -172,8 +173,14 @@ function executeTransfer(
   if (request.operation === 'move') bumpDataVersion(request.sourceSheetId, userId);
   result.dest_row_count = countRows(request.destinationSheetId, userId);
   checkTime();
-  writeTransferLedger(userId, request.idempotencyKey, hash, result);
-  return { ok: result, columns: [...new Set(plan.sourceToDestination.values())] };
+  // The destination's rows as it now holds them, and for a move the rows that left the source.
+  const changed = changedOf(userId, [
+    arrivedTouch(userId, request.destinationSheetId, [...new Set(plan.sourceToDestination.values())], [...added],
+      settled),
+    request.operation === 'move' && { sheetId: request.sourceSheetId, rows: preflight.matched },
+  ]);
+  writeTransferLedger(userId, request.idempotencyKey, hash, result, changed);
+  return { ok: result, changed };
 }
 
 // The change logs: the destination's, and for a move the source's too (it
@@ -223,7 +230,7 @@ export function transferRows(userId: string, request: TransferRequest, surface: 
     const winner = readTransferLedger(userId, request.idempotencyKey, hashes);
     if (winner) return 'conflict' in winner
       ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
-      : { ok: winner.replay, replayed: true };
+      : { ok: winner.replay, replayed: true, changed: winner.changed };
     throw error;
   } finally {
     releaseTransferSlot(userId);

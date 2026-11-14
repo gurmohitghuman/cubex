@@ -19,6 +19,7 @@ import {
   bad, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
+import { runChanged } from '../mcp/changed';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
@@ -183,6 +184,10 @@ export async function tokenStartHttpRun(
     ...(curl ? { saved_keys: saved.ok, notes: curl.plan.notes } : {}),
     ...(typeof a.webhook_id === 'string' ? { webhook_id: a.webhook_id } : {}),
   };
-  if (typeof a.idempotency_key === 'string') writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', payload);
-  return { ok: payload, started: true };
+  const changed = runChanged(c.userId, sheetId, [result.ok.masterColumn, ...(result.ok.mappedColumns ?? []),
+    sent.status_code_column], result.ok.targetCount);
+  if (typeof a.idempotency_key === 'string') {
+    writeRunLedger(c.userId, a.idempotency_key, hash, 'http_run', { ...payload, changed });
+  }
+  return { ok: payload, started: true, changed };
 }

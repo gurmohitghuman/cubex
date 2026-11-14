@@ -30,6 +30,7 @@ import {
 import { agentSetup } from './waterfall-agent-view';
 import { answerDryRun, tokenDryRun, type WaterfallAnswer } from './waterfall-token-dry';
 import { spendPart } from './token-spend';
+import { runChanged } from '../mcp/changed';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -86,7 +87,7 @@ export async function tokenWaterfall(
   const known = firstStart(c, a.idempotency_key, sent);
   // A token without 'secrets' replaying a run whose steps read a saved key: the start's own checks answer.
   if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
-    return dry ? answerDryRun(c, known.run_id, true) : { ok: replayOf<WaterfallAnswer>(known), started: false };
+    return dry ? answerDryRun(c, known.run_id, true) : replayOf<WaterfallAnswer>(known);
   }
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
   const pre = preamble(c, a as Parameters<typeof preamble>[1]);
@@ -158,8 +159,9 @@ export async function tokenWaterfall(
     ...(stored.runIf ? runIfReply(stored.runIf) : {}), ...autoRunPart,
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}), ...(hook ? { webhook_id: hook } : {}),
   };
+  const changed = runChanged(c.userId, sheetId, [out.ok.resultColumn, ...out.ok.outputColumns], out.ok.rowsInScope);
   if (typeof a.idempotency_key === 'string') {
-    writeRunLedger(c.userId, a.idempotency_key, hash, 'waterfall_run', payload);
+    writeRunLedger(c.userId, a.idempotency_key, hash, 'waterfall_run', { ...payload, changed });
   }
-  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true };
+  return { ok: { ...payload, ...spendPart(c.userId, c.tokenId) }, started: true, changed };
 }

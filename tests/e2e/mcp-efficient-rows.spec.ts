@@ -92,7 +92,7 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
   // Into a sheet as the app made it: its mapped column and the 4 rows.
   expect(copied.changed).toEqual([expect.objectContaining({ sheet_id: destinationId, columns: ['Value'], rows: 4 })])
   const replay = parsed(await client.callTool({ name: 'transfer_rows', arguments: copyArgs }))
-  expect(replay).toMatchObject({ matched: 4, copied: 4, replayed: true, changed: [] })
+  expect(replay).toMatchObject({ matched: 4, copied: 4, replayed: true, changed: copied.changed })
   const keyConflict = await client.callTool({
     name: 'transfer_rows', arguments: { ...copyArgs, operation: 'move' },
   })

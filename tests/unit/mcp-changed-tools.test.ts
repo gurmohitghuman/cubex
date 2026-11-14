@@ -2,10 +2,10 @@
 // schema, required and the one shared shape, or is in WITHOUT_CHANGED with its reason, never both and never
 // neither; a read-only tool has neither. changedOf merges a sheet's touches, keeps the first 100 row ids and
 // reads the sheet's versions after the write, leaving out a sheet that isn't the caller's. Then write tools
-// through /mcp under the strict output check: what each names, and [] for a dry run, a preview, a replay and a
-// rename. Last, the fields three answers had that their schemas didn't name, which the strict check refused:
-// formula_column's description, auto_run_paused, error and stopped, create_sample's problems and a started
-// run_ai_column's token_spend.
+// through /mcp under the strict output check: what each names, [] for a dry run, a preview and a rename, and a
+// replay answering the first call's. Last, the fields three answers had that their schemas didn't name, which
+// the strict check refused: formula_column's description, auto_run_paused, error and stopped, create_sample's
+// problems and a started run_ai_column's token_spend.
 // Over 200 lines: one account's writes, each building on the last; split, each part would redo them.
 import './strict-output'
 import assert from 'node:assert/strict'
@@ -108,7 +108,7 @@ async function main() {
   })
 
   let rowIds: string[] = []
-  await check('append_rows names its columns and rows; a replay of its key answers []', async () => {
+  await check('append_rows names its columns and rows; a replay of its key answers the same', async () => {
     const before = versions(sheet).data_version
     const rows = [{ Email: 'a@x.com', Name: 'Ann' }, { Email: 'b@x.com' }, { Email: 'a@x.com', Name: 'Ann' }]
     const a = await call('append_rows', { sheet_id: sheet, rows, idempotency_key: 'k1' })
@@ -117,7 +117,7 @@ async function main() {
     assert.ok(a.changed[0].data_version > before, 'data_version went up')
     const again = await call('append_rows', { sheet_id: sheet, rows, idempotency_key: 'k1' })
     assert.equal(again.replayed, true)
-    assert.deepEqual(again.changed, [])
+    assert.deepEqual(again.changed, a.changed)
   })
 
   await check('update_cells names the columns and rows it wrote, in both forms', async () => {
@@ -174,7 +174,7 @@ async function main() {
       [[dest, ['Email', 'Name'], 1], [sheet, [], 1]])
     const again = await call('transfer_rows', { source_sheet_id: sheet, destination_sheet_id: dest, operation: 'move',
       selection: { row_ids: [rowIds[1]] }, columns: ['Email', 'Name'], idempotency_key: 't1' })
-    assert.deepEqual(again.changed, [], 'a replay')
+    assert.deepEqual(again.changed, a.changed, 'a replay: the first call\'s')
   })
 
   await check('delete_rows names its rows; restore_from_trash brings them back with changed', async () => {

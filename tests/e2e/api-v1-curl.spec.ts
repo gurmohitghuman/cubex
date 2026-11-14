@@ -206,8 +206,8 @@ test('a curl start whose key save_keys named, retried with its idempotency key, 
       .toContain(taken('MCP'))
     expect(viaMcp.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['MCP', 'MCP title'],
       more_coming: true })])
-    // The replay started nothing: its changed is [].
-    expect(await call(client, 'run_http_enrichment', mcpArgs)).toEqual({ ...viaMcp, replayed: true, changed: [] })
+    // The replay answers the first start, its changed too (kept with the key).
+    expect(await call(client, 'run_http_enrichment', mcpArgs)).toEqual({ ...viaMcp, replayed: true })
 
     expect(runCount(sheetId)).toBe(2)
     expect((await keyNames(api)).filter(n => n.startsWith('e2e_replay')).sort()).toEqual(['e2e_replay_mcp',

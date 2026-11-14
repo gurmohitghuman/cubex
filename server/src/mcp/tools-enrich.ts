@@ -14,7 +14,6 @@ import { tokenStartEnrichmentRun, type TokenEnrichArgs } from '../services/enric
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { McpAuthCtx, SHEET_ID, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { changedOf, runChanged } from './changed';
 import { capToolNote } from '../lib/token-spend';
 
 const input = z.union([
@@ -177,13 +176,6 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
     if (denied) return denied;
     const r = await tokenStartEnrichmentRun(ctx, args);
     if ('fail' in r) return err(r.message);
-    const o = r.ok;
-    const rows = o.rows_to_process ?? o.rows_in_scope;
-    const here = runChanged(ctx.userId, args.sheet_id as string, r.started,
-      [o.status_column, ...o.output_columns], rows);
-    // A list job adds its results as rows of another sheet.
-    const dest = r.started && o.destination_sheet_id
-      ? changedOf(ctx.userId, [{ sheetId: o.destination_sheet_id, moreComing: true }]) : [];
-    return ok({ ...o, changed: [...here, ...dest] });
+    return ok({ ...r.ok, changed: r.changed ?? [] });
   });
 }

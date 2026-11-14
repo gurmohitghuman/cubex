@@ -165,10 +165,13 @@ ok('one-row update: cells over the stored limit are left out of the replay, whic
 ok('many rows: the updates in another order are the same call; other values are refused', () => {
   const rows = okOf(appendRows(A, uid, [{ Name: 'p' }, { Name: 'q' }])).rows
   const ups = rows.map(r => ({ rowId: r.id, cells: { Email: `${r.id}@x.io` } }))
-  const first = done(batchUpdateKeyed(A, uid, ups, 'bt-1', 'mcp'))
+  const { changed, ...first } = done(batchUpdateKeyed(A, uid, ups, 'bt-1', 'mcp'))
   assert.deepEqual(first, { ok: { updated: 2 }, replayed: false })
+  assert.deepEqual(changed.map(i => [i.sheet_id, i.columns, i.rows, i.row_ids]),
+    [[A, ['Email'], 2, ups.map(u => u.rowId)]])
+  // Kept with the key: the replay answers the same changed, asked over REST and in another order.
   const again = done(batchUpdateKeyed(A, uid, [...ups].reverse(), 'bt-1', 'rest'))
-  assert.deepEqual(again, { ok: { updated: 2 }, replayed: true })
+  assert.deepEqual(again, { ok: { updated: 2 }, replayed: true, changed })
   assert.deepEqual(batchUpdateKeyed(A, uid, [{ ...ups[0], cells: { Email: 'z' } }, ups[1]], 'bt-1', 'mcp'),
     { fail: 'idempotency_conflict' })
   assert.deepEqual(batchUpdateKeyed(A, uid, [ups[0], ups[0]], 'bt-2', 'mcp'), { fail: 'duplicate_rows' })

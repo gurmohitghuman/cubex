@@ -4,6 +4,7 @@ import { db } from '../lib/db';
 import { forgetExpiredWriteKey, WRITE_KINDS_SQL } from '../lib/write-idempotency';
 import type { TransferSelection } from './transfer-selection';
 import type { AutoDedupeAnswer } from './auto-dedupe-answer';
+import { storedChanged, type Changed } from '../mcp/changed';
 
 export interface TransferRequest {
   sourceSheetId: string;
@@ -85,27 +86,29 @@ export function transferRequestHash(request: Record<string, unknown>): string {
 // accepted legacy encodings of the SAME wire request — an entry stored under
 // an older canonical form must replay, not conflict. A row write's key over a
 // day old is free again: deleted first, so the transfer records the key
-// (lib/write-idempotency.ts).
+// (lib/write-idempotency.ts). changed: what the first call changed, for MCP
+// (mcp/changed.ts), kept beside its result.
 export function readTransferLedger(
   userId: string, key: string, hashes: string[],
-): { replay: TransferResult } | { conflict: true } | null {
+): { replay: TransferResult; changed: Changed[] } | { conflict: true } | null {
   forgetExpiredWriteKey(userId, key);
   const row = db.prepare(
     'SELECT request_hash, result_json FROM data_operation_ledger WHERE user_id = ? AND idempotency_key = ?',
   ).get(userId, key) as { request_hash: string; result_json: string } | undefined;
   if (!row) return null;
   if (!hashes.includes(row.request_hash)) return { conflict: true };
-  return { replay: JSON.parse(row.result_json) as TransferResult };
+  const { changed, ...replay } = JSON.parse(row.result_json) as TransferResult & { changed?: unknown };
+  return { replay, changed: storedChanged(changed) };
 }
 
 export function writeTransferLedger(
-  userId: string, key: string, hash: string, result: TransferResult,
+  userId: string, key: string, hash: string, result: TransferResult, changed: Changed[],
 ): void {
   db.prepare(`
     INSERT INTO data_operation_ledger
       (id, user_id, idempotency_key, operation_kind, request_hash, result_json)
     VALUES (?, ?, ?, 'rows_transfer', ?, ?)
-  `).run(uuidv4(), userId, key, hash, JSON.stringify(result));
+  `).run(uuidv4(), userId, key, hash, JSON.stringify({ ...result, changed }));
   db.prepare(`
     DELETE FROM data_operation_ledger WHERE id IN (
       SELECT id FROM data_operation_ledger WHERE user_id = ? AND operation_kind NOT IN (${WRITE_KINDS_SQL})
