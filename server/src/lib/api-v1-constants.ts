@@ -105,7 +105,8 @@ export const IDEMPOTENT_WRITE_KEY_MAX_CHARS = 200;
 // keys, whose append slices are smaller (an append's stored answer is up to
 // ~45 KB, and secure_delete zeroes every page it frees): ~1 MB a slice. A
 // many-rows update keeps up to ~5 KB: its changed, without the column names
-// (rows-write-keyed.ts), names up to 100 rows.
+// (rows-write-keyed.ts), names up to 100 rows. With auto-dedupe on, its lists
+// (auto-dedupe-answer.ts, up to 100 ids each) take it to ~9 KB.
 export const IDEMPOTENT_WRITE_PRUNE_ROWS = 250;
 export const IDEMPOTENT_WRITE_PRUNE_APPENDS = 25;
 
