@@ -41,19 +41,35 @@ export function releaseTags(): string[] {
   return out.split('\n').map(t => t.trim()).filter(exact).sort((a, b) => compareVersions(parseTag(b)!, parseTag(a)!))
 }
 
-// What a tag shipped of the changes file, from its newest release down, and the same part of text. Later
-// commits add releases above it and keep this part as it is (scripts/release.sh cut checks the same).
-// Null when the tag had no changes file.
-export function shippedPart(tag: string, text: string): { shipped: string; now: string | null; first: string } | null {
-  let then: string
-  try { then = git(['show', `refs/tags/${tag}:${CHANGES}`]) } catch { return null }
-  const first = /^ *version: '(v\d+\.\d+\.\d+)',/m.exec(then)?.[1]
-  if (!first) return null
+// The changes file as the tag shipped it, or null when the tag had none.
+export function changesAt(tag: string): string | null {
+  try { return git(['show', `refs/tags/${tag}:${CHANGES}`]) } catch { return null }
+}
+
+// The releases a changes file lists, newest first.
+export const versionsIn = (text: string) => [...text.matchAll(/\bversion: '(v\d+\.\d+\.\d+)'/g)].map(m => m[1])
+
+// Null when text keeps what the tag shipped of the changes file, else what is wrong. What it shipped is the
+// file from its newest release down: later commits add releases above it and keep this part as it is. A
+// release text lists that is not newer than the tag, and that the tag didn't ship, is an edit too (a release
+// out with no lines gets none afterwards). scripts/release.sh cut checks the same. A tag from before the
+// file shipped nothing to keep.
+export function shippedEdit(tag: string, text: string): string | null {
+  const then = changesAt(tag)
+  if (then === null) return null
+  const first = versionsIn(then)[0]
+  const kept = versionsIn(text).find(v => !newer(v, tag))
+  const after = `A change made after ${tag} goes under a later release.`
+  if (kept && (!first || newer(kept, first))) {
+    const shipped = first ? `${first} as its newest lines` : 'no lines'
+    return `${CHANGES} lists ${kept}, but ${tag} shipped ${shipped}. ${after}`
+  }
   const from = (s: string) => {
-    const at = s.search(new RegExp(`^ *version: '${first.replace(/\./g, '\\.')}',`, 'm'))
+    const at = first ? s.search(new RegExp(`^.*\\bversion: '${first.replace(/\./g, '\\.')}'`, 'm')) : -1
     return at < 0 ? null : s.slice(at)
   }
-  return { shipped: from(then)!, now: from(text), first }
+  return kept === first && from(then) === from(text) ? null
+    : `${CHANGES} changes what ${tag} shipped (${first} and older). ${after}`
 }
 
 const DUMP = `// Written by mcp-tool-list-kit.ts into a temporary checkout of a release, and deleted with it.

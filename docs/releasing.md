@@ -68,9 +68,9 @@ call to a removed or renamed tool is told what replaced it ([MCP](mcp.md#after-a
   recorded for the last release with lines (`tests/unit/mcp-tool-list.json`), and fails on a
   change with no line. Where the checkout has the release tags, it names the release to use.
 - **A release's lines stay as it shipped them.** A change made after a release goes under the
-  next one, even when it fixes something that release added. `scripts/release.sh cut` refuses
-  when what the last tag shipped of the file was changed, and so does the unit test where the
-  checkout has the tags.
+  next one, even when it fixes something that release added, and a release that shipped no lines
+  gets none afterwards. `scripts/release.sh cut` refuses when what the last tag shipped of the
+  file was changed, and so do the unit test (where the checkout has the tags) and the recording.
 - **Cutting a release** whose lines sit under another number (a minor release, say): rename them
   to the release on `main` first. `scripts/release.sh cut` refuses until they match.
 - **After a release with lines**, record its tool list in a small pull request:

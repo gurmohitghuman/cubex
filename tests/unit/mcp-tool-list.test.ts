@@ -14,8 +14,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { mcpHttpKit } from './mcp-http-kit'
-import { CHANGES, Recorded, Schemas, byName, exact, newer, nextPatch, releaseTags, shippedPart, toolsAt }
-  from './mcp-tool-list-kit'
+import { CHANGES, Recorded, Schemas, byName, changesAt, exact, newer, nextPatch, releaseTags, shippedEdit, toolsAt,
+  versionsIn } from './mcp-tool-list-kit'
 import changesMod from '../../server/src/mcp/agent-changes'
 import readMod from '../../server/src/services/version-changes'
 const { AGENT_CHANGES, CHANGES_RECORDED_AFTER } = changesMod as typeof import('../../server/src/mcp/agent-changes')
@@ -48,7 +48,8 @@ function missing(base: Recorded, tools: Schemas, lines: AgentChange[], next: str
       out.push(`${name} is gone: add a "removed" or "renamed" line naming what replaces it`)
     }
   }
-  return out.map(m => `${m}, under ${next} in ${CHANGES}`)
+  const hint = releaseTags().length ? '' : ` (no release tags here: if ${next} is already out, use the next number)`
+  return out.map(m => `${m}, under ${next} in ${CHANGES}${hint}`)
 }
 
 // Lines the tools contradict: what each says against base's tools and these.
@@ -66,13 +67,6 @@ function wrong(base: Recorded, tools: Schemas, lines: AgentChange[]): string[] {
     if (c.replaced_by && !(c.replaced_by in tools)) out.push(`${c.replaced_by} (replaced_by) is not a tool`)
   }
   return out
-}
-
-// What the tag shipped of the changes file, if text changed it.
-function shippedEdit(tag: string, text: string): string | null {
-  const part = shippedPart(tag, text)
-  return !part || part.shipped === part.now ? null : `${CHANGES} changes what ${tag} shipped (${part.first} and `
-    + `older). A change after ${tag} goes under a later release.`
 }
 
 async function main() {
@@ -103,6 +97,8 @@ async function main() {
   await check('the changes file is well formed', () => {
     const versions = AGENT_CHANGES.map(r => r.version)
     assert.ok(versions.every(exact), `versions are vX.Y.Z: ${versions.join(', ')}`)
+    // The release checks here and in scripts/release.sh read the file's text: each release as version: 'vX.Y.Z'.
+    assert.deepEqual(versionsIn(text), versions, `each release is written as version: 'vX.Y.Z'`)
     versions.forEach((v, i) => assert.ok(i === 0 || newer(versions[i - 1], v), `newest first, once each: ${v}`))
     assert.ok(versions.every(v => newer(v, CHANGES_RECORDED_AFTER)), `all after ${CHANGES_RECORDED_AFTER}`)
     for (const r of AGENT_CHANGES) for (const c of r.changes) {
@@ -119,7 +115,8 @@ async function main() {
   })
 
   await check(`a release out with changes for agents has its list recorded (${tags.length} tags here)`, () => {
-    const unrecorded = tags.filter(t => newer(t, recorded.release) && AGENT_CHANGES.some(r => r.version === t))
+    // Out with lines: its tag shipped lines for it. Lines added after the tag never count (shippedEdit).
+    const unrecorded = tags.filter(t => newer(t, recorded.release) && versionsIn(changesAt(t) ?? '').includes(t))
     if (unrecorded.length) {
       assert.fail(`${unrecorded[0]} is out with changes for agents, and the list recorded is ${recorded.release}'s. `
         + `Record ${unrecorded[0]}'s (top of this file).`)
