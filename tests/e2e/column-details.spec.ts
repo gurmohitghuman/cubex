@@ -5,7 +5,7 @@ import { seedCsv } from './helpers-enrich'
 
 // get_sheet's column details and descriptions, over MCP, REST and in the app:
 // each column's kind, what fills it and what it reads, counts on request; a
-// column's and a sheet's description set, carried by a rename, read back; a
+// column's and a sheet's description set, carried by a rename, read back, cleared; a
 // description set over REST reaching an open grid; the column menu's and the
 // tab menu's Edit description. SHOTS=<dir> saves screenshots.
 const SHOTS = process.env.SHOTS
@@ -43,6 +43,11 @@ test('MCP: column_details, counts and descriptions', async () => {
   await call(client, 'rename_column', { sheet_id: sheetId, column: 'val', new_name: 'Value' })
   const renamed = await call(client, 'get_sheet', { sheet_id: sheetId, columns: ['Value'] })
   expect(renamed.column_details.find((d: any) => d.name === 'Value').description).toBe('The value')
+  // An empty description clears it: null in the answer, none in get_sheet.
+  expect(await call(client, 'set_description', { sheet_id: sheetId, column: 'Value', description: '' }))
+    .toEqual({ column: 'Value', description: null })
+  const cleared = await call(client, 'get_sheet', { sheet_id: sheetId, columns: ['Value'] })
+  expect(cleared.column_details[0].description ?? null).toBeNull()
   expect(await callError(client, 'get_sheet', { sheet_id: sheetId, columns: ['Nope'] })).toContain('"Nope"')
   expect(await callError(client, 'set_description', { sheet_id: sheetId, column: 'Nope', description: 'x' }))
     .toContain('not found')

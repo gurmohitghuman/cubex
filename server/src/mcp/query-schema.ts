@@ -1,6 +1,7 @@
 // read_rows' columns (with nested paths), group_by, aggregates and
 // max_chars_per_cell, described once (lib/row-select/paths.ts,
 // lib/row-aggregate/spec.ts and services/row-query-input.ts check them).
+import type { RowsAnswer } from '../services/row-query-result';
 import { z } from 'zod';
 import {
   AGGREGATE_MAX_GROUPS, AGGREGATE_TOP_GROUPS, CELL_CUT_MAX_CHARS, CELL_CUT_MIN_CHARS, MAX_AGGREGATES,
@@ -60,8 +61,8 @@ export const maxCharsPerCellSchema = lenientInt(CELL_CUT_MIN_CHARS, CELL_CUT_MAX
 
 // An MCP answer's groups, cut to about MCP_MAX_GROUP_CHARS (an agent's context):
 // truncated then says more exist.
-export function fitGroups(answer: Record<string, unknown>): Record<string, unknown> {
-  const groups = answer.groups as unknown[];
+export function fitGroups(answer: RowsAnswer): RowsAnswer {
+  const groups = answer.groups ?? [];
   let size = 0, keep = 0;
   for (; keep < groups.length; keep++) {
     size += JSON.stringify(groups[keep]).length + 1;

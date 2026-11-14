@@ -127,7 +127,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
             ? 'One or more rows were not found in the supplied sheet.'
             : txnFailMessage(result, MAX_ROWS_PER_SHEET));
         }
-        return ok('replayed' in result ? { ...result.ok, replayed: result.replayed } : result.ok);
+        return ok({ ...result.ok, ...('replayed' in result ? { replayed: result.replayed === true } : {}) });
       }
       if (!row_id || data === undefined) return err('The one-row form needs both row_id and data.');
       if (idempotency_key) {

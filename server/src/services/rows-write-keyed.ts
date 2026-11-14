@@ -13,7 +13,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_ROW_BYTES } from '../lib/api-v1-constants';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { readWriteLedger, writeRequestHash, writeWriteLedger } from '../lib/write-idempotency';
-import { appendAnswer, appendRows, patchAnswer, patchRowById } from './rows-write';
+import { appendAnswer, appendRows, patchAnswer, patchRowById, type AppendAnswer, type PatchAnswer } from './rows-write';
 import { batchUpdateRows, type BatchUpdate } from './rows-batch-update';
 import type { TxnFail } from './data-plane-shared';
 import {
@@ -47,20 +47,20 @@ const worded = <T extends { auto_dedupe?: unknown }>(a: T, surface: Surface): T 
 // About 40 bytes a row: 1,000 rows stay well under 64 KB.
 interface StoredAppend { ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe }
 
-const appendReplay = (s: StoredAppend, surface: Surface): Record<string, unknown> => {
+const appendReplay = (s: StoredAppend, surface: Surface): AppendAnswer => {
   const out = new Set(s.not_kept);
-  return worded({
+  return {
     rows: s.ids.map((id, i) => (out.has(i) ? { id, index: s.first + i, kept: false } : { id, index: s.first + i })),
-    ...(s.auto_dedupe ? { auto_dedupe: s.auto_dedupe } : {}),
-  }, surface);
+    ...(s.auto_dedupe ? { auto_dedupe: withRestoreWords(s.auto_dedupe, surface) } : {}),
+  };
 };
 
 // kept: how many of the rows stayed (for the auto-run notice of a first call).
 export function appendRowsKeyed(
   sheetId: string, userId: string, parsedRows: Array<Record<string, string>>, key: string, surface: Surface,
-): KeyedOnSheet<{ answer: Record<string, unknown>; kept: number }> {
+): KeyedOnSheet<{ answer: AppendAnswer; kept: number }> {
   const hash = writeRequestHash('rows_append', { sheet_id: sheetId, rows: parsedRows });
-  return db.transaction((): KeyedOnSheet<{ answer: Record<string, unknown>; kept: number }> => {
+  return db.transaction((): KeyedOnSheet<{ answer: AppendAnswer; kept: number }> => {
     const prior = readWriteLedger<StoredAppend>(userId, key, hash);
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
@@ -83,9 +83,9 @@ export function appendRowsKeyed(
 // A one-row update's answer, and the row's sheet: the row id names it, so a
 // call with or without sheet_id is the same call, and one naming another
 // sheet is a different one. Cells over IDEMPOTENT_WRITE_ROW_BYTES aren't kept.
-interface StoredPatch { sheet_id: string; answer: Record<string, unknown> }
+interface StoredPatch { sheet_id: string; answer: PatchAnswer }
 
-function keptPatch(answer: Record<string, unknown>): Record<string, unknown> {
+function keptPatch(answer: PatchAnswer): PatchAnswer {
   if (Buffer.byteLength(JSON.stringify(answer.data ?? null), 'utf8') <= IDEMPOTENT_WRITE_ROW_BYTES) return answer;
   const { data: _data, ...rest } = answer;
   return {
@@ -100,9 +100,9 @@ function keptPatch(answer: Record<string, unknown>): Record<string, unknown> {
 export function patchRowKeyed(
   rowId: string, userId: string, cells: Record<string, string>, sheetId: string | undefined, key: string,
   surface: Surface,
-): Keyed<Record<string, unknown>> | { fail: 'not_in_sheet' } {
+): Keyed<PatchAnswer> | { fail: 'not_in_sheet' } {
   const hash = writeRequestHash('cells_update', { row_id: rowId, cells });
-  return db.transaction((): Keyed<Record<string, unknown>> | { fail: 'not_in_sheet' } => {
+  return db.transaction((): Keyed<PatchAnswer> | { fail: 'not_in_sheet' } => {
     const prior = readWriteLedger<StoredPatch>(userId, key, hash, s => sheetId === undefined || s.sheet_id === sheetId);
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }

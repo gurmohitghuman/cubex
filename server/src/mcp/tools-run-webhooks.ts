@@ -11,8 +11,7 @@ import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from 
 // adds, changes, deletes, makes a new secret or sends a test, which needs the
 // 'run' scope as over REST, since it decides where Cubex sends requests. A run
 // started with a webhook's id (webhook_id) tells it when it ends.
-const answer = <T>(out: { ok: T } | HookFail, as: (v: T) => object) =>
-  ('fail' in out ? err(out.message) : ok(as(out.ok)));
+const failed = (out: object): out is HookFail => 'fail' in out;
 
 export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'list_run_webhooks', {
@@ -57,7 +56,8 @@ export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): voi
     if (denied) return denied;
     if (action === 'create') {
       if (webhook_id !== undefined) return err('create adds a new webhook: leave webhook_id out.');
-      return answer(await createRunWebhook(ctx.userId, { url, every_run }), v => v);
+      const made = await createRunWebhook(ctx.userId, { url, every_run });
+      return failed(made) ? err(made.message) : ok(made.ok);
     }
     if (!webhook_id) return err(`${action} needs webhook_id (list_run_webhooks lists them).`);
     if (action !== 'change' && (url !== undefined || every_run !== undefined)) {
@@ -65,12 +65,17 @@ export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): voi
     }
     if (action === 'change') {
       if (url === undefined && every_run === undefined) return err('change needs url or every_run.');
-      return answer(await updateRunWebhook(ctx.userId, webhook_id, { url, every_run }), webhook => ({ webhook }));
+      const changed = await updateRunWebhook(ctx.userId, webhook_id, { url, every_run });
+      return failed(changed) ? err(changed.message) : ok({ webhook: changed.ok });
     }
     if (action === 'delete') {
       return deleteRunWebhook(ctx.userId, webhook_id) ? ok({ deleted: true }) : err('Run webhook not found');
     }
-    if (action === 'new_secret') return answer(newRunWebhookSecret(ctx.userId, webhook_id), v => v);
-    return answer(await testRunWebhook(ctx.userId, webhook_id), delivery => ({ delivery }));
+    if (action === 'new_secret') {
+      const secret = newRunWebhookSecret(ctx.userId, webhook_id);
+      return failed(secret) ? err(secret.message) : ok(secret.ok);
+    }
+    const tested = await testRunWebhook(ctx.userId, webhook_id);
+    return failed(tested) ? err(tested.message) : ok({ delivery: tested.ok });
   });
 }

@@ -13,11 +13,13 @@ import { waitForRunChange } from './run-status-wait';
 import { startWaterfallDryRun } from './waterfall-dry-run';
 import { replayKeysRefusal } from './waterfall-run-start';
 import { readDryRun, type DryRunView } from './waterfall-dry-read';
+import type { ToolAnswer } from '../mcp/tool-outputs';
 
 type Json = Record<string, unknown>;
+export type WaterfallAnswer = ToolAnswer<'waterfall_column'>;
 const ENDED = new Set(['completed', 'failed', 'cancelled', 'paused']);
 
-export function dryRunJson(v: DryRunView): Json {
+export function dryRunJson(v: DryRunView) {
   const ended = ENDED.has(v.run.status) && !v.run.starting;
   return {
     dry_run: true, run_id: v.run.id, status: v.run.status, ...(v.run.message ? { message: v.run.message } : {}),
@@ -41,7 +43,7 @@ export function dryRunJson(v: DryRunView): Json {
 
 // sentHash: the arguments as sent (lib/run-idempotency.ts sentArgsHash), null for a call refused here.
 export async function tokenDryRun(c: TokenCaller, sheetId: string, input: WaterfallRunInput, a: Json,
-  sentHash: string | null): Promise<TokenRunResult> {
+  sentHash: string | null): Promise<TokenRunResult<WaterfallAnswer>> {
   if (a.estimate_only !== undefined && parseBooleanOption(a.estimate_only) === true) {
     return bad('dry_run runs a few rows for real (at their cost) and writes nothing: leave out estimate_only.');
   }
@@ -70,7 +72,9 @@ export async function tokenDryRun(c: TokenCaller, sheetId: string, input: Waterf
 }
 
 // The dry run's traces once it ends, waiting up to WATERFALL_DRY_WAIT_SECONDS; replayed: a retry's.
-export async function answerDryRun(c: TokenCaller, runId: string, replayed: boolean): Promise<TokenRunResult> {
+export async function answerDryRun(
+  c: TokenCaller, runId: string, replayed: boolean,
+): Promise<TokenRunResult<WaterfallAnswer>> {
   const deadline = Date.now() + WATERFALL_DRY_WAIT_SECONDS * 1000;
   for (;;) {
     const asked = Date.now();

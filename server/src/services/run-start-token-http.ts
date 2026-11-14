@@ -18,6 +18,7 @@ import { estimateHttpRun } from './run-estimate-http';
 import {
   bad, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
+import type { ToolAnswer } from '../mcp/tool-outputs';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
@@ -53,8 +54,14 @@ function startNeedsSecrets(c: TokenCaller, a: TokenHttpRunArgs): boolean {
   return savedKeyRefsInConfig(c.userId, request).length > 0;
 }
 
-export async function tokenStartHttpRun(c: TokenCaller, sent: TokenHttpRunArgs): Promise<TokenRunResult> {
-  const first = replayFirst(c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)));
+type HttpRunAnswer = ToolAnswer<'run_http_enrichment'>;
+
+export async function tokenStartHttpRun(
+  c: TokenCaller, sent: TokenHttpRunArgs,
+): Promise<TokenRunResult<HttpRunAnswer>> {
+  const first = replayFirst<HttpRunAnswer>(
+    c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)),
+  );
   if (first) return first;
   let a = sent;
   const pre = preamble(c, a);
@@ -149,7 +156,7 @@ export async function tokenStartHttpRun(c: TokenCaller, sent: TokenHttpRunArgs):
   }
   // Known by the arguments as sent and by the request they became: one hash unless a cURL command was sent.
   const hash = [httpRunHash(sheetId, sent, runIf.ok, extras), httpRunHash(sheetId, a, runIf.ok, extras)];
-  const replay = ledgerReplay(c, a.idempotency_key, hash);
+  const replay = ledgerReplay<HttpRunAnswer>(c, a.idempotency_key, hash);
   if (replay) return replay;
   const refused = held();
   if (refused) return refused;

@@ -72,13 +72,13 @@ export function sheetLookupView(sheetId: string, userId: string, columns: string
 }
 
 // For agents (snake_case, as every MCP and /api/v1 answer).
-export function lookupColumnJson(v: LookupColumnView): Record<string, unknown> {
+export function lookupColumnJson(v: LookupColumnView) {
   return {
     column: v.column, source_column: v.sourceColumn, other_sheet_id: v.otherSheetId,
     other_sheet: v.otherSheet, ...(v.otherTable ? { other_table: v.otherTable } : {}),
     match_column: v.matchColumn, match: v.match, returns: v.returns,
     ...(v.returns === 'value' ? { return_column: v.returnColumns?.[0] ?? null } : {}),
-    ...(v.returns === 'list' ? { return_columns: v.returnColumns ?? 'all', limit: v.limit } : {}),
+    ...(v.returns === 'list' ? { return_columns: v.returnColumns ?? ('all' as const), limit: v.limit } : {}),
     auto_run: v.autoRun, ...(v.autoRunNote ? { auto_run_paused: v.autoRunNote } : {}),
     status: v.status, ...(v.waiting ? { waiting: v.waiting } : {}),
     ...(v.pausedRun ? { paused_run: v.pausedRun } : {}), ...(v.keptChanging ? { kept_changing: v.keptChanging } : {}),

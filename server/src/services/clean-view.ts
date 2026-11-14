@@ -49,7 +49,7 @@ export function apiCleanOptions(o: Record<string, unknown>): Record<string, unkn
 }
 
 // For agents (snake_case, as every MCP and /api/v1 answer).
-export function cleanColumnJson(v: CleanColumnView): Record<string, unknown> {
+export function cleanColumnJson(v: CleanColumnView) {
   return {
     column: v.column, source_column: v.source, cleaner: v.cleaner, ...apiCleanOptions(v.options),
     auto_run: v.autoRun, status: v.status, cleaned_rows: v.cleanedRows, blank_rows: v.blankRows,

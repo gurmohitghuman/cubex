@@ -35,7 +35,8 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + `${DAILY_LIMIT_NOTE} `
   + 'Speed: concurrency is the lever (a waterfall row can take seconds). A row whose providers all answered 429 '
   + 'waits and asks again for free, up to 5 times over a few minutes, then fails; lower concurrency for a '
-  + 'provider that keeps answering 429. Each running row holds max_cost_per_row_usd against the daily and run '
+  + 'provider that keeps answering 429 (ContactOut\'s free email check on treg\'s own key takes about 20 calls '
+  + 'a minute for all of treg). Each running row holds max_cost_per_row_usd against the daily and run '
   + 'limits, so those also cap how many run at once. '
   + 'Waterfall tools ask providers in turn until one finds it. preset verified_email (the email finder only) '
   + 'checks each address and finds again with other providers until one passes email.accept. '

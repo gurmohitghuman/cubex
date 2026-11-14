@@ -10,7 +10,7 @@ import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_
 import {
   aiConcurrencyProblem, CONTROL_CONCURRENCY_ERROR, CONTROL_CONCURRENCY_MAX, httpConcurrencyProblem,
 } from '../lib/run-concurrency';
-import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
+import { getAiRunSummary, getHttpRunSummary, type RunSummary } from '../services/run-status';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { pauseRun, cancelRun } from '../services/run-lifecycle';
 import { resumeHttpRun } from '../services/http-run-resume';
@@ -42,6 +42,9 @@ async function cancelAll(ctx: McpAuthCtx, sheetId: string | undefined, otherArgs
   return 'fail' in out ? err(out.message) : ok(out.ok);
 }
 
+// A run's summary after an action; a run gone meanwhile (its sheet deleted) is answered as not found.
+const summaryOf = (summary: RunSummary | null) => (summary ? ok(summary) : err('Run not found'));
+
 export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
     'control_run',
@@ -53,7 +56,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row) and '
         + 'returns its run_id: poll it with get_run_status. AI, enrichment and waterfall reruns need row_ids or '
         + 'mode: "errored" (❌ rows, the usual retry), "empty" (blank rows, e.g. the rest after a test), '
-        + '"missing" (no result: empty, ⏭️ or ❌), "out_of_date" (results made from input cells that changed '
+        + '"missing" (no result: empty, ⏭️ or ❌; an AI rerun takes ⏳ rows too), "out_of_date" (results made from '
+        + 'input cells that changed '
         + 'since), "empty_or_out_of_date", or "all" (every row). HTTP takes the same modes, default all. A '
         + 'structured (output_columns) AI run reruns whole, its modes reading the "(Status)" column. first_rows '
         + '(AI and HTTP) reruns only among the sheet\'s top rows, a test before a big run. An enrichment rerun '
@@ -61,10 +65,12 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'concurrency changes rows at once on a rerun (and an HTTP or enrichment resume; the column keeps it): '
         + 'lower it after rows failed with error_class "concurrency" or a provider\'s 429. spend_limit_usd sets a '
         + 'rerun\'s hard limit, or raises the limit of a run that paused at it on resume. A run you resume becomes '
-        + 'this token\'s: what it spends from then on counts toward this token\'s spend cap. '
+        + 'this token\'s: what it spends from then on counts toward this token\'s spend cap, and so do calls '
+        + 'already out when it changes hands. '
         + 'CANCEL_ALL with sheet_id stops every active run on the sheet (AI, HTTP, enrichment and setups being '
         + 'used: get_sheet\'s active_runs and active_setup_runs) and returns stopped_runs, stopped_setup_runs and '
-        + 'a message. It turns no auto-run off: a column whose auto-run batch it stopped pauses (auto_run_paused), '
+        + 'a message. It turns no auto-run off: a column whose auto-run batch it stopped pauses, as cancelling that '
+        + 'one run does (auto_run_paused; resume it to go on), '
         + 'and auto_run_on lists columns where new rows still start runs (set_auto_run paused true with no column '
         + 'pauses them all). Calls already sent finish and are billed; free fills finish too (still_filling).'
         + capToolNote(ctx.spend ?? null, true),
@@ -168,12 +174,12 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       if (waterfall && action === 'resume') {
         const resumed = await resumeWaterfallRun(run_id, ctx.userId, spend_limit_usd, ctx.scopes.has('secrets'));
         if ('fail' in resumed) return err(resumed.message);
-        return ok(getHttpRunSummary(run_id, ctx.userId));
+        return summaryOf(getHttpRunSummary(run_id, ctx.userId));
       }
       if (enrichment && action === 'resume') {
         const resumed = await resumeEnrichmentRun(run_id, ctx.userId, spend_limit_usd, concurrency);
         if ('fail' in resumed) return err(resumed.message);
-        return ok(getHttpRunSummary(run_id, ctx.userId));
+        return summaryOf(getHttpRunSummary(run_id, ctx.userId));
       }
 
       // Whether THIS token may resolve saved api_keys — gates resuming/rerunning
@@ -227,7 +233,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       const summary = run_type === 'ai'
         ? getAiRunSummary(run_id, ctx.userId)
         : getHttpRunSummary(run_id, ctx.userId);
-      return ok(summary);
+      return summaryOf(summary);
     },
   );
 }

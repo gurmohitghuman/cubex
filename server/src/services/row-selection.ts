@@ -102,7 +102,7 @@ async function runQuery(sheetId: string, userId: string, q: RowQuery): Promise<R
     if (fenced || attempt === 1) return { fail: 'version_conflict', error: 'Sheet row order changed; restart paging.' };
   }
 
-  if (q.returnMode === 'count') return { ok: { count, ...versions } };
+  if (q.returnMode === 'count') return { ok: { count: count ?? 0, ...versions } };
   const hasMore = page.length > limit;
   if (hasMore) page = page.slice(0, limit);
   const next_cursor = hasMore ? page[page.length - 1].row_index : null;

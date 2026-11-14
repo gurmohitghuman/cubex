@@ -16,7 +16,7 @@ function answer(v: UndoView, dryRun: boolean) {
   const cells = (n: number) => `${n.toLocaleString('en-US')} cell${n === 1 ? '' : 's'}`;
   const message = dryRun ? (v.can_undo
     ? `It can be undone: the cells it wrote in ${v.rows.toLocaleString('en-US')} rows go back to what they held.`
-    : v.reason)
+    : v.reason ?? 'It can\'t be undone.')
     : v.state === 'undoing' ? 'Undoing in the background: call undo_run with dry_run true to see how far it got.'
     : `Undone: ${cells(v.restored)} back as they were before the run`
       + `${v.skipped ? `; ${cells(v.skipped)} changed since stayed as they are` : ''}`

@@ -25,10 +25,10 @@ import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { runIfReply } from './run-rule';
 import {
-  bad, firstStart, ledgerReplay, preamble, startsRun, startWindow, type TokenCaller, type TokenRunResult,
+  bad, firstStart, ledgerReplay, preamble, replayOf, startsRun, startWindow, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
-import { answerDryRun, tokenDryRun } from './waterfall-token-dry';
+import { answerDryRun, tokenDryRun, type WaterfallAnswer } from './waterfall-token-dry';
 import { spendPart } from './token-spend';
 
 type Json = Record<string, unknown>;
@@ -62,7 +62,7 @@ const generationOf = (sheetId: string, userId: string): number | null => (db.pre
 // estimateDefault: what an absent estimate_only means (MCP true: a waterfall is paid and has many steps).
 export async function tokenWaterfall(
   c: TokenCaller, a: Json, opts: { estimateDefault: boolean },
-): Promise<TokenRunResult> {
+): Promise<TokenRunResult<WaterfallAnswer>> {
   if (a.action !== undefined && a.action !== 'run' && a.action !== 'describe') {
     return bad("action is 'run' or 'describe'.");
   }
@@ -86,7 +86,7 @@ export async function tokenWaterfall(
   const known = firstStart(c, a.idempotency_key, sent);
   // A token without 'secrets' replaying a run whose steps read a saved key: the start's own checks answer.
   if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
-    return dry ? answerDryRun(c, known.run_id, true) : { ok: { ...known, replayed: true }, started: false };
+    return dry ? answerDryRun(c, known.run_id, true) : { ok: replayOf<WaterfallAnswer>(known), started: false };
   }
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
   const pre = preamble(c, a as Parameters<typeof preamble>[1]);
@@ -119,7 +119,7 @@ export async function tokenWaterfall(
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },
     target_row_ids: a.target_row_ids ?? null, auto_run: autoRun, ...(a.webhook_id ? { webhook_id: a.webhook_id } : {}),
   })].filter((h): h is string => !!h);
-  const replay = ledgerReplay(c, a.idempotency_key, hash);
+  const replay = ledgerReplay<WaterfallAnswer>(c, a.idempotency_key, hash);
   // A token without 'secrets' replaying a run whose steps read a saved key gets the start's 403 here: before the
   // start's own refusals that come later on a call without the key (the run-start window's 429, the start's
   // checks), on purpose, so the refused retry takes no run-start slot.
@@ -136,7 +136,7 @@ export async function tokenWaterfall(
   const stored = JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
     .get(out.ok.runId, c.userId) as string) as { runIf?: string; waterfall: { maxCostPerRowUsd: number;
     spendLimitUsd: number | null; steps: Array<{ id: string; label: string; on: boolean }> } };
-  let autoRunPart: Json = {};
+  let autoRunPart: { auto_run_error?: string; auto_run?: ReturnType<typeof autorunColumnJson> | null } = {};
   if (autoRun) {
     const saved = await saveAutorunSettings(c.userId, sheetId, {
       column: out.ok.resultColumn, enabled: autoRun.enabled, where: null,

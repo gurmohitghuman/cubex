@@ -23,8 +23,9 @@ export function registerLookupTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'sheets can take minutes). Refused while a run fills match_column or a column it returns. While a run or '
       + 'fill writes a column it reads, or that sheet is sorted, replaced or deduplicated, the fill waits '
       + '("waiting") and then looks every row up again, at most 3 times (then kept_changing names what kept '
-      + 'changing). Lookups that would wait for each other in a loop fail, naming each column. Returns '
-      + 'filled_rows and error_rows. Next: read_rows to check it.',
+      + 'changing: rows looked up before may hold older values; call again to redo them). Lookups that would wait '
+      + 'for each other in a loop fail, naming each column. Returns filled_rows and error_rows. Next: read_rows to '
+      + 'check it.',
     inputSchema: z.object({
       sheet_id: z.string().describe('The sheet that gets the lookup column'),
       column: z.string().optional().describe('The lookup column to write; required unless preview is true'),

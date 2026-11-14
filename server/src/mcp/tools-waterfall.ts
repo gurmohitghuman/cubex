@@ -88,7 +88,8 @@ export const WATERFALL_DESCRIPTION =
   + 'and stopping at the first answer. For one source only, run_enrichment or run_ai_column is simpler. Steps: '
   + 'enrichment (a treg.to tool from search_enrichments), ai (a prompt), http (your JSON API), formula (free '
   + 'JavaScript over {{input_key}}, sandboxed) or lookup (free: return_column of the first row of another sheet '
-  + 'whose match_column equals or contains the input; put it first to skip paid steps for rows you already have). '
+  + 'whose match_column equals or contains the input; put it first to skip paid steps for rows you already have; '
+  + 'a rename there follows, a deleted sheet or column pauses the run). '
   + 'inputs maps each input key ONCE to a column ({"full_name": "Name", "domain": "Website"}) or {"value": fixed}; '
   + 'steps read keys, never columns (treg tools take them by name: first_name, last_name, full_name, domain, '
   + 'company, linkedin_url, email). result_type decides what counts as an answer: a value it can\'t read (not an '
@@ -105,7 +106,8 @@ export const WATERFALL_DESCRIPTION =
   + 'false. A treg answer found in the days set in Settings is reused at $0 (fresh true calls again). '
   + `spend_limit_usd caps the run. ${DAILY_LIMIT_NOTE} `
   + 'TEMPLATES: "work_email" (treg\'s finder, then a first.last@domain guess that counts only when verify says '
-  + 'valid) or "mobile_phone" give result_type and steps; you still map inputs. '
+  + 'valid) or "mobile_phone" give result_type and steps; you still map inputs, and steps you pass replace its '
+  + 'own. '
   + 'ROWS: all by default; add_to_column runs an existing waterfall column again (its own setup unless you pass '
   + 'new parts) on rows not_enriched (default), no_result, failed, out_of_date, empty_or_out_of_date or any; '
   + `test true: the first ${ENRICH_TEST_ROWS}; also use_sheet_filter, target_row_ids, run_if. `

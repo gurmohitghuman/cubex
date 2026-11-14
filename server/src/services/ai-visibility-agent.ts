@@ -31,7 +31,7 @@ const viewJson = (v: AiVisibilityView) => ({
   answers_at: v.answersAt, checks: v.checks.map(checkJson),
 });
 
-export async function agentCreateAiVisibility(userId: string, body: unknown): Promise<{ ok: Json } | RunFail> {
+export async function agentCreateAiVisibility(userId: string, body: unknown) {
   const b = isObj(body) ? body : {};
   const input = parseAiVisibilityInput({ ...b, competitors: b.other_brands ?? b.competitors });
   if (typeof input === 'string') return bad(input);
@@ -51,7 +51,7 @@ export async function agentCreateAiVisibility(userId: string, body: unknown): Pr
 // id: the table's ai_visibility id, or its Questions sheet's id.
 export async function agentAskAiVisibility(
   userId: string, tokenId: string, id: unknown, opts: { again?: boolean; estimateOnly: boolean },
-): Promise<{ ok: Json } | RunFail> {
+) {
   const rec = aiVisibilityFor(userId, id);
   if (!rec) return notFound;
   const again = opts.again === true;
@@ -82,7 +82,7 @@ export async function agentAskAiVisibility(
 // names is the asker's (UTC without it).
 export async function agentCheckAiVisibility(
   userId: string, tokenId: string, id: unknown, opts: { estimateOnly: boolean; timeZone?: unknown; fresh?: boolean },
-): Promise<{ ok: Json } | RunFail> {
+) {
   const rec = aiVisibilityFor(userId, id);
   if (!rec) return notFound;
   const timeZone = timeZoneOf(opts.timeZone);
@@ -110,7 +110,7 @@ export async function agentCheckAiVisibility(
     };
   }
   const capped = spendCapRefusal(userId, tokenId, null);
-  if (capped) return { fail: 'forbidden', message: capped };
+  if (capped) return { fail: 'forbidden' as const, message: capped };
   const refuse = () => { const r = takeRunStart(userId, tokenId); return r ? startRefusalMessage(r) : null; };
   const out = await startCheck(userId, rec, { ...checkOpts, refuse });
   if ('fail' in out) return out;
@@ -126,7 +126,7 @@ export async function agentCheckAiVisibility(
 // What's left out stays as it is: the brand, or the other brands (a list given replaces them).
 export async function agentSetAiVisibilityBrands(
   userId: string, id: unknown, body: unknown,
-): Promise<{ ok: Json } | RunFail> {
+) {
   const rec = aiVisibilityFor(userId, id);
   if (!rec) return notFound;
   const b = isObj(body) ? body : {};

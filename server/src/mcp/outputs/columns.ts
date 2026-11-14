@@ -1,10 +1,12 @@
 // What the column, table, sheet and view tools answer (tools-columns.ts, tools-structure.ts, tools-views.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, num, opt, str, strs, trash } from './shared';
+import { bool, info, nul, num, opt, str, strs, trash } from './shared';
 
 export const addColumn = obj({ name: str, description: opt(str) });
-export const setDescription = obj({ column: opt(str).describe('Left out for the sheet\'s own'), description: str });
+export const setDescription = obj({
+  column: opt(str).describe('Left out for the sheet\'s own'), description: nul(str).describe('null: cleared'),
+});
 export const renameColumn = obj({ name: str });
 export const deleteColumn = obj({ deleted: bool, trash });
 export const sortSheet = obj({ rows_reordered: num });
@@ -16,7 +18,7 @@ export const manageTable = obj({
   id: opt(str), name: opt(str), sheets: opt(z.array(sheetRef)), deleted: opt(bool), trash: opt(trash),
   table: opt(obj({ id: str, name: str })), sheet: opt(sheetRef),
   fictional: opt(str), filled_free: opt(strs),
-  duplicates: opt(info('What remove_duplicates would find')),
+  duplicates: opt(nul(info('What remove_duplicates would find'))),
   ai_column: opt(info('The AI column made, and how to run it')),
 });
 

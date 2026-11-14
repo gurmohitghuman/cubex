@@ -23,10 +23,10 @@ function listedJson(t: ListedTool) {
   };
 }
 
-export async function agentSearchTools(query: string): Promise<{ ok: object } | CatalogFailure> {
+export async function agentSearchTools(query: string) {
   const q = query.trim();
   const found = q ? await searchTools(q) : await featuredTools();
-  if (!('ok' in found)) return found;
+  if (!('ok' in found)) return found as CatalogFailure;
   return { ok: { popular: !q, tools: found.ok.map(listedJson) } };
 }
 
@@ -109,9 +109,9 @@ function toolJson(t: EnrichTool, listsRows: boolean, access: ToolAccess | null, 
   };
 }
 
-export async function agentGetTool(userId: string, toolId: string): Promise<{ ok: object } | CatalogFailure> {
+export async function agentGetTool(userId: string, toolId: string) {
   const found = await getTool(toolId);
-  if (!('ok' in found)) return found;
+  if (!('ok' in found)) return found as CatalogFailure;
   const hasKey = !!getTregToken(userId);
   const access = hasKey ? await toolAccess(userId, toolId) : null;
   return {

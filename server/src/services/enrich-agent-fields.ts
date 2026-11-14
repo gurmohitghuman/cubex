@@ -21,7 +21,7 @@ const notFound: RunFail = { fail: 'not_found', message: 'Sheet not found' };
 export async function agentAddField(
   userId: string, sheetId: string,
   a: { column?: unknown; json_path?: unknown; column_name?: unknown; row_id?: unknown },
-): Promise<{ ok: Json } | RunFail> {
+) {
   if (!verifySheetOwnership(sheetId, userId)) return notFound;
   const stray = strayKey(a as Json, ['column', 'json_path', 'column_name', 'row_id'], '');
   if (stray) return bad(`${stray} Nothing was changed.`);
@@ -45,7 +45,7 @@ export async function agentAddField(
   };
 }
 
-export function agentListFields(userId: string, sheetId: string, column: unknown): { ok: Json } | RunFail {
+export function agentListFields(userId: string, sheetId: string, column: unknown) {
   if (!verifySheetOwnership(sheetId, userId)) return notFound;
   const name = text(column, 200);
   if (!name) return bad('Name the column that adds rows.');
@@ -65,7 +65,7 @@ export function agentListFields(userId: string, sheetId: string, column: unknown
 
 export async function agentAddListRows(
   userId: string, sheetId: string, a: { column?: unknown; fields?: unknown; dedupe_path?: unknown },
-): Promise<{ ok: Json } | RunFail> {
+) {
   if (!verifySheetOwnership(sheetId, userId)) return notFound;
   const items = Array.isArray(a.fields) ? a.fields.filter(isObj) : [];
   const stray = strayKey(a as Json, ['column', 'fields', 'dedupe_path'], '')

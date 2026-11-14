@@ -25,9 +25,10 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const FILLING_NOTE = 'Still filling: its cells read "⏳ Processing..." until done. '
   + 'get_sheet lists it in filling_columns.';
 
-export type AgentCleanOutcome = { ok: Record<string, unknown>; created: boolean } | RunFail;
+// What the call answers, as the function builds it (MCP checks it against the tool's outputSchema).
+export type AgentCleanOutcome = Awaited<ReturnType<typeof agentCleanColumn>>;
 
-export async function agentCleanColumn(userId: string, sheetId: string, a: AgentCleanArgs): Promise<AgentCleanOutcome> {
+export async function agentCleanColumn(userId: string, sheetId: string, a: AgentCleanArgs) {
   const stray = strayKey(a as Record<string, unknown>, KNOWN, '');
   if (stray) return bad(`${stray} Nothing was changed.`);
   const preview = flagOf(a.preview), autoRun = flagOf(a.auto_run);
@@ -55,7 +56,7 @@ export async function agentCleanColumn(userId: string, sheetId: string, a: Agent
   const started = await startCleanColumn(userId, sheetId, input);
   if ('fail' in started) return started;
   const rec = await waitForCleanFill(started.ok.id, CLEAN_WAIT_MS);
-  if (!rec) return { fail: 'conflict', message: 'The clean column was removed while it filled.' };
+  if (!rec) return { fail: 'conflict' as const, message: 'The clean column was removed while it filled.' };
   const view = cleanColumnJson(cleanColumnView(rec));
   return {
     created: started.ok.created,

@@ -41,7 +41,8 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + '"response_format" (not JSON), "unknown". error_summary counts each class on the page, with a hint. '
         + 'Then retry only the transient ones with control_run rerun (mode errored for AI, missing for HTTP). '
         + 'AI rows add cost_usd (web fees included; on your own provider key only OpenRouter\'s fee, and '
-        + 'provider_cost_usd what the provider billed), paid_with, tokens and, with web search, searches and '
+        + 'provider_cost_usd what the provider billed), paid_with ("own_key", or "credits" when OpenRouter fell '
+        + 'back to its credits; null when it didn\'t say), tokens and, with web search, searches and '
         + 'search_queries (ran false: the per-row limit stopped it; a model\'s own search shows them only when the '
         + 'provider reports them). Enrichment rows add cost_usd, found_by (the provider) and extracted_fields (the '
         + `status cell and outputs). include_answers adds each row's stored answer (up to ${ANSWERS_PAGE_MAX} rows a `

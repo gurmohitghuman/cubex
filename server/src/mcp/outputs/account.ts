@@ -19,7 +19,7 @@ const change = obj({
 });
 export const getVersion = obj({
   version: nul(str), build: nul(str), pinned_ref: nul(str), update_check: bool,
-  latest_release: nul(obj({ version: str, published_at: str, checked_at: str, notes_url: str })),
+  latest_release: nul(obj({ version: str, published_at: nul(str), checked_at: str, notes_url: str })),
   update_available: nul(bool),
   changes_since: opt(obj({
     since: str, releases: z.array(obj({ version: str, changes: z.array(change) })), note: opt(str),
@@ -58,7 +58,7 @@ export const getSheetHistory = obj({
 export const listSavedKeys = obj({
   keys: z.array(obj({
     name: str, created_at: str, updated_at: str, used_in: z.array(info('A column that uses the key')),
-    used_in_count: num, setups: strs, setups_count: num,
+    used_in_count: num, setups: z.array(obj({ setup_id: str, name: str })), setups_count: num,
   })),
   keys_count: num, next_after: opt(str),
 });

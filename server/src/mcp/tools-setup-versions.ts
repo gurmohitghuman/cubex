@@ -63,10 +63,12 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       return 'ok' in out ? ok({ version: out.ok }) : err(out.message);
     }
     if (!version_id) return err(`${action} needs version_id (list_setup_versions lists them).`);
-    const out = action === 'rename'
-      ? updateSetupVersion(sheet_id, ctx.userId, version_id, { name, description })
-      : deleteSetupVersion(sheet_id, ctx.userId, version_id);
-    return 'ok' in out ? ok(action === 'rename' ? { version: out.ok } : { ok: true }) : err(out.message);
+    if (action === 'rename') {
+      const out = updateSetupVersion(sheet_id, ctx.userId, version_id, { name, description });
+      return 'ok' in out ? ok({ version: out.ok }) : err(out.message);
+    }
+    const out = deleteSetupVersion(sheet_id, ctx.userId, version_id);
+    return 'ok' in out ? ok({ ok: true }) : err(out.message);
   });
 
   registerTool(server, 'restore_setup_version', {

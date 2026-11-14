@@ -2,7 +2,7 @@
 // tools-lookup.ts, tools-enrich-manage.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, nul, num, opt, str, strs } from './shared';
+import { autoRunNotice, bool, info, nul, num, opt, str, strs } from './shared';
 
 const preview = {
   preview: opt(bool).describe('true: nothing was written; samples shows what it would write'),
@@ -23,14 +23,16 @@ export const formulaColumn = obj({
 });
 
 export const writeFormula = obj({
-  model: str, model_source: str, cost_usd: num, formula: str,
+  model: str, model_source: str, cost_usd: nul(num).describe('null when the provider did not say'), formula: str,
   preview: info('formula_column\'s preview of the formula written'),
 });
 
 // The lookup column's setup, or a preview.
 export const lookupColumn = open({
-  column: nul(str), source_column: opt(str), other_sheet: str, other_sheet_id: opt(str), other_table: opt(str),
-  match_column: opt(str), match: opt(str), returns: opt(str), return_column: opt(str), return_columns: opt(strs),
+  column: nul(str), source_column: opt(str), other_sheet: nul(str).describe('null when that sheet was deleted'),
+  other_sheet_id: opt(str), other_table: opt(str),
+  match_column: opt(str), match: opt(str), returns: opt(str), return_column: opt(nul(str)),
+  return_columns: opt(z.union([strs, z.literal('all')])).describe('"all": every column'),
   limit: opt(num), ...filling, first_error: opt(str), broken: opt(str), changes_existing_column: opt(bool),
   other_rows: opt(num), checked_rows: opt(num), checked_note: opt(str), ...preview,
 });
@@ -39,11 +41,12 @@ export const addEnrichmentField = obj({ column: str, filling: bool, note: str })
 
 export const getListFields = obj({
   fields: z.array(obj({ path: str, label: str, filled: num, sample: str })), results_read: num,
-  waiting_for_fields: nul(obj({ rows: num, results: num })), kept: nul(info('The fields kept as columns')),
-  dedupe_path: nul(str), destination_sheet_id: str,
+  waiting_for_fields: nul(obj({ rows: num, results: num })),
+  kept: nul(z.array(obj({ path: str, column_name: str }))).describe('The fields kept as columns; null: none yet'),
+  dedupe_path: nul(str), destination_sheet_id: nul(str),
 });
 
-export const addListRows = obj({ source_rows_released: num, note: str });
+export const addListRows = obj({ source_rows_released: num, auto_run: opt(autoRunNotice), note: str });
 
 const autoRunColumn = obj({
   column: str, kind: str, enabled: bool, sends_requests: bool, paused_reason: nul(str), paused_message: nul(str),

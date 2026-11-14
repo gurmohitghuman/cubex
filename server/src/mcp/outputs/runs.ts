@@ -39,7 +39,7 @@ export const checkRunCondition = obj({
   sample: z.array(info('A row checked: its id, the cells read and whether it passes')),
 });
 export const writeRunCondition = obj({
-  model: str, model_source: str, cost_usd: num,
+  model: str, model_source: str, cost_usd: nul(num).describe('null when the provider did not say'),
   check: info('check_run_condition\'s answer for the rule written, with the rule'),
 });
 
@@ -56,7 +56,8 @@ export const controlRun = open({
 });
 
 export const undoRun = obj({
-  run_id: str, run_type: str, sheet_id: str, column: str, state: str, rows: num, restored: num, skipped: num,
+  run_id: str, run_type: str, sheet_id: str, column: nul(str).describe('null when its column was deleted'),
+  state: str, rows: num, restored: num, skipped: num,
   gone: num, started_at: str, undone_at: nul(str), kept_until: nul(str), can_undo: bool, reason: nul(str),
   message: str,
 });

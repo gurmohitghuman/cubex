@@ -1,6 +1,8 @@
 // Every MCP tool's outputSchema, by name, in one table as its title and hints are (tool-annotations.ts).
-// registerTool (tool-helpers.ts) refuses a tool missing from it; output-schema.ts says how one is written.
+// registerTool (tool-helpers.ts) refuses a tool missing from it, and its handler's answers must have the type
+// ToolAnswer gives, so an answer that doesn't fit fails the typecheck. output-schema.ts says how one is written.
 import type { z } from 'zod';
+import type { Fits } from './output-schema';
 import * as read from './outputs/read';
 import * as rows from './outputs/rows';
 import * as columns from './outputs/columns';
@@ -10,7 +12,7 @@ import * as enrich from './outputs/enrich';
 import * as setups from './outputs/setups';
 import * as account from './outputs/account';
 
-export const TOOL_OUTPUTS: Record<string, z.ZodObject<any, any>> = {
+export const TOOL_OUTPUTS = {
   list_tables: read.listTables, get_sheet: read.getSheet, read_rows: read.readRows,
   export_csv: read.exportCsv, list_runs: read.listRuns, import_csv: read.importCsv,
   create_upload_link: read.createUploadLink, create_download_link: read.createDownloadLink,
@@ -38,4 +40,8 @@ export const TOOL_OUTPUTS: Record<string, z.ZodObject<any, any>> = {
   list_models: account.listModels, set_default_model: account.setDefaultModel, get_version: account.getVersion,
   list_trash: account.listTrash, restore_from_trash: account.restoreFromTrash,
   get_sheet_history: account.getSheetHistory, list_saved_keys: account.listSavedKeys,
-};
+} satisfies Record<string, z.ZodObject<any, any>>;
+
+export type ToolName = keyof typeof TOOL_OUTPUTS;
+// The type a tool's answer (its structuredContent) must have.
+export type ToolAnswer<N extends ToolName> = Fits<z.input<(typeof TOOL_OUTPUTS)[N]>>;

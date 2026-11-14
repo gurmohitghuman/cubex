@@ -112,11 +112,14 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           + 'columns): rows_to_process, model, estimated_cost_usd and per_row_usd {low, high}, web_fees_usd, '
           + 'web_search (engine: what the run sends; runs_on: what runs the searches; mode: the one billed), '
           + 'in_flight (OpenRouter holds each running call\'s possible cost, so a high concurrency can be refused '
-          + 'with 402 before the balance runs out: follow its warning), own_provider_key (your latest run on this '
-          + 'model used your own key) and assumptions (history_from: where the output size came from). Default false'),
+          + 'with 402 before the balance runs out: follow its warning; on your own provider key too, since a row '
+          + 'your key can\'t serve falls back to OpenRouter credits and is held), own_provider_key (your latest run '
+          + 'on this model used your own key) and assumptions (history_from: where the output size came from). '
+          + 'Default false'),
         preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt for real on the first N `
           + `rows (up to ${PREVIEW_MAX_ROWS}) with the same web tools: each output with its sources, searches, cost, `
-          + 'paid_with and tokens, the measured cost and a full-run projection. Nothing is created or saved. On '
+          + 'paid_with ("own_key", or "credits" when OpenRouter fell back to its credits) and tokens, the measured '
+          + 'cost and a full-run projection. Nothing is created or saved. On '
           + 'your own provider key cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add '
           + 'what the provider bills. Later estimates of this prompt use what it measured.'),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run (safe retries after a timeout/limit).'),

@@ -42,9 +42,11 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + '(fill: its newest run or its setup; filled_by names the column whose run fills it), the columns it '
         + 'reads, auto_run, run_if (the "Only run if" rule) and description. Prompts, formulas and URLs are cut '
         + 'short unless the column is named in columns; credentials in a URL read "…". include_counts adds filled, '
-        + `errors and empty per column, reading every row (up to ${COLUMN_COUNTS_MAX_COLUMNS} columns: those in `
+        + `errors (a failed run or ❌) and empty (the rest: not run, skipped, running) per column, reading every `
+        + `row (up to ${COLUMN_COUNTS_MAX_COLUMNS} columns: those in `
         + 'columns, else the first). Also: filling_columns (their cells read "⏳ Processing..." until done), the '
-        + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped), active_runs and '
+        + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped, and kept_changing '
+        + 'why rows it looked up may hold older values), active_runs and '
         + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
         + 'export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
       inputSchema: {

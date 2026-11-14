@@ -20,6 +20,12 @@ export const open = <T extends z.ZodRawShape>(shape: T) => z.looseObject(shape);
 // An object keyed by names people choose (columns, groups): any key, values of one shape.
 export const keyed = <T extends z.ZodType>(value: T) => z.record(z.string(), value);
 
+// What a handler's answer must be to fit a schema (registerTool checks it at compile time): zod's input
+// type with the "any other key" of open, keyed and info objects left out, since an interface has no index
+// signature. Every named field is checked, null and absent included; an info or keyed value is any object.
+export type Fits<T> = T extends readonly (infer E)[] ? Fits<E>[]
+  : T extends object ? { [K in keyof T as string extends K ? never : K]: Fits<T[K]> } : T;
+
 type Json = Record<string, unknown>;
 const isEmpty = (v: unknown) => !!v && typeof v === 'object' && Object.keys(v).length === 0;
 const isEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -52,13 +58,17 @@ interface JsonSchemaOptions { target: string }
 type Converter = (o: JsonSchemaOptions) => Json;
 
 // The schema as the SDK takes it: a Standard Schema that validates with zod and converts to JSON Schema
-// through published() above. One per schema, its JSON made once: a server is built for every request.
-const made = new WeakMap<z.ZodObject, object>();
-export function toolOutput(schema: z.ZodObject): object {
-  const known = made.get(schema);
+// through published() above. One per tool, its JSON made once: a server is built for every request.
+// Outside e2e an answer that doesn't fit is logged and passes: the call has already done its work, so it
+// must never come back as a failure (the SDK would turn it into one). In e2e it fails the call.
+const made = new Map<string, object>();
+const logged = new Set<string>();
+export function toolOutput(name: string, schema: z.ZodObject<any, any>): object {
+  const known = made.get(name);
   if (known) return known;
   const std = schema['~standard'] as unknown as {
-    validate: (v: unknown) => unknown; jsonSchema: { input: Converter; output: Converter };
+    validate: (v: unknown) => { issues?: ReadonlyArray<{ message: string; path?: ReadonlyArray<unknown> }> };
+    jsonSchema: { input: Converter; output: Converter };
   };
   const json = new Map<string, Json>();
   const convert = (io: 'input' | 'output', o: JsonSchemaOptions): Json => {
@@ -66,15 +76,28 @@ export function toolOutput(schema: z.ZodObject): object {
     if (!json.has(key)) json.set(key, published(std.jsonSchema[io](o)) as Json);
     return structuredClone(json.get(key)!);
   };
+  const validate = (value: unknown) => {
+    const result = std.validate(value);
+    if (STRICT_OUTPUT || !result.issues) return result;
+    // Array positions read as [] so each misfit logs once per process, at most 500 kinds of them.
+    const at = (path: ReadonlyArray<unknown> = []) =>
+      path.map(p => (typeof p === 'number' ? '[]' : String(p))).join('.');
+    const why = result.issues.map(i => `${at(i.path)}: ${i.message}`).join('; ');
+    if (!logged.has(`${name} ${why}`) && logged.size < 500) {
+      logged.add(`${name} ${why}`);
+      console.warn(`MCP tool ${name}: its answer does not fit its outputSchema (answered anyway): ${why}`);
+    }
+    return { value };
+  };
   const wrapped = {
     '~standard': {
-      version: 1, vendor: 'cubex', validate: std.validate,
+      version: 1, vendor: 'cubex', validate,
       jsonSchema: {
         input: (o: JsonSchemaOptions) => convert('input', o), output: (o: JsonSchemaOptions) => convert('output', o),
       },
     },
   };
-  made.set(schema, wrapped);
+  made.set(name, wrapped);
   return wrapped;
 }
 
@@ -82,7 +105,7 @@ export function toolOutput(schema: z.ZodObject): object {
 // structuredContent against the schema (transform_column's stopped pass carries one). In e2e such an error
 // that doesn't fit fails the call, as a result that doesn't fit does.
 export function checkErrorOutput(
-  name: string, schema: z.ZodObject, handler: (args: any, mcp: any) => Promise<ToolResult>,
+  name: string, schema: z.ZodObject<any, any>, handler: (args: any, mcp: any) => Promise<ToolResult>,
 ) {
   if (!STRICT_OUTPUT) return handler;
   return async (args: any, mcp: any): Promise<ToolResult> => {

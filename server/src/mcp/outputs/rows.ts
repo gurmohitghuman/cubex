@@ -14,12 +14,13 @@ export const appendRows = obj({
 export const updateCells = obj({
   id: opt(str), index: opt(num), data: opt(cells).describe('One-row form: the whole row'),
   updated: opt(num).describe('Many-rows form: rows updated'), auto_dedupe: opt(autoDedupe), replayed,
+  data_left_out: opt(bool).describe('A replay of a big row: data is left out, read the row'), note: opt(str),
 });
 
 export const deleteRows = obj({ deleted: num, trash: nul(trash) });
 
 export const transferRows = obj({
-  matched: num, copied: num, moved: num, created_columns: strs, dest_row_count: num, replayed: bool,
+  matched: num, copied: num, moved: num, created_columns: opt(strs), dest_row_count: opt(num), replayed: bool,
   trash_id: opt(nul(num)), trash: opt(trash), auto_dedupe: opt(autoDedupe), auto_run: opt(autoRunNotice),
 });
 

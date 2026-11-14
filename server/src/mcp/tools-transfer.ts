@@ -14,10 +14,10 @@ import { whereLike } from './where-schema';
 export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'transfer_rows', {
     description:
-      'Copy or move rows from one sheet to another, all on the server: no cell data comes back to you, so use it '
-      + 'rather than read_rows then append_rows. Pick the rows with selection (all, row_ids or a where). A move '
-      + 'takes the source rows to the trash as one batch (trash says how to get them back). Missing destination '
-      + 'columns are made by default (column_mode create_missing) and listed in created_columns. '
+      'Copy or move rows from one sheet to another, all or nothing, on the server: no cell data comes back to '
+      + 'you, so use it rather than read_rows then append_rows. Pick the rows with selection (all, row_ids or a '
+      + 'where). A move takes the source rows to the trash as one batch (trash says how to get them back). '
+      + 'Missing destination columns are made by default (column_mode create_missing) and listed in created_columns. '
       + `At most ${TRANSFER_MAX_ROWS.toLocaleString('en-US')} rows a call. When auto-run is on in the destination, `
       + 'auto_run lists the columns that will fill the new rows (an enrichment spends treg credit, an HTTP API '
       + 'column sends real requests). Returns copied, moved and the columns made. Next: read_rows on the '

@@ -23,13 +23,15 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'DEFAULTS TO TRUE: the first call returns what each step would cost (at most, for steps reading earlier '
       + 'steps) and starts nothing; tell the user, then call again with estimate_only:false. A step whose columns '
       + 'the sheet already has, made by this setup before, CARRIES THEM ON: it fills only the rows it hasn\'t done '
-      + '(carries_on lists them). That is how to fill new rows, or finish a setup that failed or was stopped: call '
+      + '(AI: empty rows; HTTP API: missing; enrichment: not enriched yet; clean and formula follow their columns; '
+      + 'carries_on lists them). That is how to fill new rows, or finish a setup that failed or was stopped: call '
       + 'again with the same inputs and names (get_setup_run shows the choices a run used). Auto-run is turned on '
       + 'only after a run on every row. A setup whose requests read saved keys needs the "secrets" scope. '
       + 'COST CEILING: max_cost_usd refuses to start (nothing is created) when the estimate\'s high end, plus one '
       + 'row\'s most for each AI step, is above it, or when a step has no known price unless allow_unpriced is '
       + 'true; the estimate says over_ceiling and ceiling_problem. Once started, each AI and enrichment step gets '
-      + 'a spend limit no higher than what is left of the ceiling, so it pauses there. Returns a setup_run with '
+      + 'a spend limit no higher than what is left of the ceiling, so it pauses there; a step with no known price '
+      + 'runs without one. Returns a setup_run with '
       + 'each step\'s run_id (get_run_status works on those). Next: get_setup_run to follow the chain.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({

@@ -49,7 +49,7 @@ export const garbledAnswer = (ok: ImportOk): Record<string, unknown> => (ok.garb
 // What an import reports, the same through import_csv and an upload link. The
 // extras appear only when they happened, so a normal import isn't noisier: a
 // replace that moved rows to the trash says how to get them back.
-export function importSummary(ok: ImportOk, replace: boolean, userId: string): Record<string, unknown> {
+export function importSummary(ok: ImportOk, replace: boolean, userId: string) {
   const note = importNote(ok, MCP_WORDS);
   return {
     ...(replace && ok.trashId !== null ? { trash: trashAnswer(userId, ok.trashId, 'mcp') } : {}),

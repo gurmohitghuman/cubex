@@ -20,9 +20,10 @@ export const saveSetup = obj({
 export const deleteSetup = obj({ deleted: str });
 
 const setupRun = obj({
-  id: str, setup_id: str, setup_name: str, sheet_id: str, status: str, layer: num, layers: num,
+  id: str, setup_id: nul(str).describe('null when the setup was deleted'), setup_name: str, sheet_id: str,
+  status: str, layer: num, layers: num,
   test_rows: nul(num), error_message: nul(str), created_at: str, updated_at: str,
-  choices: info('What the call chose: rows, test, spend limits'), webhook_id: nul(str),
+  choices: nul(info('What the call chose: rows, test, spend limits')), webhook_id: nul(str),
   steps: z.array(obj({
     column: str, kind: str, layer: num, mode: str, state: str, run_id: nul(str), note: nul(str),
   })),

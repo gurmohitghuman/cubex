@@ -17,6 +17,8 @@ import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
 
 const router = express.Router();
+// A refusal because the sheet is busy says so, so a client can wait and try again.
+const busyPart = (out: object) => ('busy' in out && out.busy ? { busy: true } : {});
 
 function ownsSheet(sheetId: string, userId: string): boolean {
   return !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -92,7 +94,7 @@ router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthR
     }
     const out = await agentRemoveDuplicates(req.userId!, req.params.id, body, 'rest');
     if ('fail' in out) {
-      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...busyPart(out) });
     }
     res.json(out.ok);
   } catch (error) {
@@ -112,7 +114,7 @@ router.put('/sheets/:id/auto-dedupe', requireScope('write'), (req: TokenAuthRequ
     if (stray) return res.status(400).json({ error: `Unknown field "${stray.slice(0, 60)}". Nothing was changed.` });
     const out = setAutoDedupe(req.userId!, req.params.id, b);
     if ('fail' in out) {
-      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...busyPart(out) });
     }
     res.json({ auto_dedupe: out.ok });
   } catch (error) {
@@ -125,7 +127,7 @@ router.delete('/sheets/:id/auto-dedupe', requireScope('write'), (req: TokenAuthR
   try {
     const out = turnOffAutoDedupe(req.userId!, req.params.id);
     if ('fail' in out) {
-      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...(out.busy ? { busy: true } : {}) });
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...busyPart(out) });
     }
     res.json({ auto_dedupe: null });
   } catch (error) {

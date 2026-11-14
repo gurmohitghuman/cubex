@@ -13,11 +13,13 @@ export const searchEnrichments = obj({ popular: bool, tools: z.array(toolEntry) 
 
 // The tool's inputs, outputs and providers (by kind of tool).
 export const getEnrichment = open({
-  tool_id: str, name: str, summary: str, kind: str, capability: str, provider: nul(str), price,
+  tool_id: str, name: str, summary: str, kind: str, capability: nul(str), provider: nul(str), price,
   needs_own_key: bool, inputs: z.array(info('An input: its key, label and whether it is required')),
-  identity_sets: z.array(strs), outputs: z.array(info('An output and the column it becomes')),
+  identity_sets: nul(z.array(strs)), outputs: z.array(info('An output and the column it becomes')),
   output_fields: strs, adds_rows: bool, results_at: opt(str),
-  providers: z.array(info('A provider: its name, price and whether it is on')), has_treg_key: bool,
+  providers: nul(z.array(info('A provider: its name, price and whether it is on')))
+    .describe('null: a tool with one provider'),
+  has_treg_key: bool,
   presets: opt(z.array(info('A ready-made setting of the tool'))),
 });
 
@@ -26,9 +28,12 @@ const range = obj({ low: num, high: num });
 export const runEnrichment = open({
   run_id: opt(str), run_type: opt(str), status_column: str, output_columns: strs,
   destination_sheet_id: opt(nul(str)), rows_in_scope: opt(num), rows_to_process: opt(num), test_rows: nul(num),
-  max_cost_per_row_usd: num, spend_limit_usd: num, daily_limit: info('The account\'s daily enrichment limit'),
-  estimate_only: opt(bool), estimated_cost_usd: opt(range), per_row_usd: opt(range), price_known: opt(bool),
-  reuse: opt(info('Rows answered at $0 from earlier lookups')), providers_on: opt(strs),
+  max_cost_per_row_usd: nul(num).describe('null: the tool has no listed price, so no cap is sent'),
+  spend_limit_usd: nul(num).describe('null: no listed price, so no run limit'),
+  daily_limit: info('The account\'s daily enrichment limit'),
+  estimate_only: opt(bool), estimated_cost_usd: opt(nul(range)), per_row_usd: opt(nul(range)),
+  price_known: opt(bool), reuse: opt(info('Rows answered at $0 from earlier lookups')),
+  providers_on: opt(nul(strs).describe('null: a tool with one provider')),
   may_pass_daily_limit: opt(bool), treg_balance_usd: opt(num), treg_on_hold_usd: opt(num),
   may_pass_balance: opt(bool), notes: opt(strs), replayed: opt(bool), run_if: opt(str), run_if_note: opt(str),
 });
@@ -49,7 +54,7 @@ export const waterfallColumn = open({
 // estimate_only (its default): what it would make and cost. Otherwise the check and its runs.
 export const aiVisibility = open({
   estimate_only: opt(bool), problems: strs, id: opt(str), stage: opt(str), table_id: opt(str),
-  questions_sheet_id: opt(str), sites_sheet_id: opt(str), low_usd: opt(num), high_usd: opt(num),
+  questions_sheet_id: opt(str), sites_sheet_id: opt(nul(str)), low_usd: opt(num), high_usd: opt(num),
   runs: opt(z.array(info('A run the check started'))), next: opt(str), note: opt(str),
 });
 
@@ -57,7 +62,7 @@ export const getBalances = obj({
   treg: info('The treg.to balance in dollars, or why it is unknown'),
   enrichment_daily_limit: info('The daily enrichment limit, used today and left'),
   openrouter: info('The OpenRouter credit left, or why it is unknown'),
-  access_token: info('This token\'s spend cap, spent and left'),
+  access_token: nul(info('This token\'s spend cap, spent and left; null when it has none')),
 });
 
 export const getUsage = obj({
