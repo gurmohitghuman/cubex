@@ -43,8 +43,9 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         change: 'server',
         summary: 'A tool error for an unknown sheet, table, column, run or setup adds the close matches among yours '
           + '(names and ids), or says it is in the trash, and names the tool that lists them.',
-        details: 'Call again with an id it names. The tool\'s own words still come first, so a check on them still '
-          + 'works.',
+        details: 'Call again with an id it names. An error listing many unknown columns gets close matches for the '
+          + 'first 5. apply_setup\'s names get the setup\'s own columns. The tool\'s own words still come first, so a '
+          + 'check on them still works.',
       },
       {
         change: 'server',

@@ -4,7 +4,8 @@
 // with it; the other not-found errors name the tool that lists. The tool's own words stay first. Then, on
 // withNextStep and answered alone: a value that exists, or an error already suggesting, is left as it was;
 // errWith's structuredContent says the same; and every read a next step makes goes through an index, never
-// the rows.
+// the rows. (A table and a sheet both in the trash, apply_setup's names and the bound on the work:
+// mcp-error-next-steps-edges.test.ts.)
 import assert from 'node:assert/strict'
 import dbMod from '../../server/src/lib/db'
 import stepsMod from '../../server/src/mcp/next-steps'
@@ -137,6 +138,7 @@ async function main() {
     try {
       for (const [args, message] of [[{ sheet_id: 'x' }, 'Sheet not found'], [{ table_id: 'x' }, 'Table not found'],
         [{ setup_id: 'x' }, 'Setup not found'], [{ run_id: 'x' }, 'Run not found'],
+        [{ setup_id: 'st-1' }, 'This setup makes no column named "x".'],
         [{ sheet_id: 's-leads' }, 'Unknown column(s): x']] as const) withNextStep(u, args, message)
     } finally { db.prepare = prepare }
     assert.ok(seen.length >= 8, `${seen.length} reads`)

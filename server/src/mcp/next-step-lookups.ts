@@ -6,13 +6,16 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { verifyTableOwnership } from '../lib/sheet-crud-helpers';
 import { enrichConfigOf } from '../services/run-status-enrich';
 import { waterfallConfigOf } from '../lib/waterfall/config';
+import { stepColumns } from '../lib/setups/spec';
+import { getSetup } from '../services/setup-library';
 
 // How many of a kind a close match is looked for among, newest first.
 export const LOOK_AT = 500;
 
 export interface Named { id: string; name: string }
 export interface SheetNamed extends Named { table: string }
-export interface InTrash { name: string; table?: string; trash_id: number }
+// trash_ids in the order restore_from_trash takes them: a table before a sheet of it.
+export interface InTrash { name: string; table?: string; trash_ids: number[] }
 
 export const liveSheets = (userId: string): SheetNamed[] => db.prepare(`
   SELECT s.id, s.name, t.name AS "table" FROM sheets s JOIN tables t ON t.id = s.table_id
@@ -33,19 +36,28 @@ export const hasTable = (userId: string, id: string) => verifyTableOwnership(id,
 export const hasSetup = (userId: string, id: string) =>
   !!db.prepare('SELECT 1 FROM setups WHERE id = ? AND user_id = ?').get(id, userId);
 
-// The caller's sheet with this id when it, or its table, is in the trash.
+// The caller's sheet with this id when it, or its table, is in the trash. A sheet put there before its
+// table needs both back, the table first (a sheet's restore is refused while its table is in the trash).
 export function sheetInTrash(userId: string, id: string): InTrash | null {
   const row = db.prepare(`
-    SELECT s.name, t.name AS "table", COALESCE(s.trash_id, t.trash_id) AS trash_id
+    SELECT s.name, t.name AS "table", t.trash_id AS of_table, s.trash_id AS of_sheet
     FROM sheets s JOIN tables t ON t.id = s.table_id WHERE s.id = ? AND s.user_id = ?
-  `).get(id, userId) as InTrash | undefined;
-  return row?.trash_id != null ? row : null;
+  `).get(id, userId) as { name: string; table: string; of_table: number | null; of_sheet: number | null } | undefined;
+  const ids = [...new Set([row?.of_table, row?.of_sheet].filter((n): n is number => n != null))];
+  return row && ids.length ? { name: row.name, table: row.table, trash_ids: ids } : null;
 }
 
 export function tableInTrash(userId: string, id: string): InTrash | null {
   const row = db.prepare('SELECT name, trash_id FROM tables WHERE id = ? AND user_id = ?').get(id, userId) as
-    InTrash | undefined;
-  return row?.trash_id != null ? row : null;
+    { name: string; trash_id: number | null } | undefined;
+  return row?.trash_id != null ? { name: row.name, trash_ids: [row.trash_id] } : null;
+}
+
+// The columns the caller's saved setup makes and the ones it reads (its inputs); null when there is no
+// such setup. One setup, by its key.
+export function setupColumns(userId: string, id: string): { makes: string[]; reads: string[] } | null {
+  const setup = getSetup(userId, id);
+  return setup ? { makes: setup.spec.steps.flatMap(stepColumns), reads: setup.spec.inputs } : null;
 }
 
 // A live sheet's columns as stored (sheets.column_order); null for a sheet that has no stored list yet,

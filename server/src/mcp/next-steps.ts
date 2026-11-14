@@ -6,8 +6,8 @@
 import { closeMatches } from '../lib/close-matches';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 import {
-  hasSetup, hasSheet, hasTable, liveSheets, liveTables, recentRunIds, runOf, savedSetups, sheetInTrash,
-  storedColumns, tableInTrash, type InTrash, type RunKind,
+  hasSetup, hasSheet, hasTable, liveSheets, liveTables, recentRunIds, runOf, savedSetups, setupColumns,
+  sheetInTrash, storedColumns, tableInTrash, type InTrash, type RunKind,
 } from './next-step-lookups';
 
 type Args = Record<string, unknown>;
@@ -19,9 +19,13 @@ const namesATool = new RegExp(`\\b(${Object.keys(TOOL_ANNOTATIONS).join('|')})\\
 // The tool sentence, unless the message already names a tool.
 const listedBy = (message: string, sentence: string) => (namesATool.test(message) ? '' : ` ${sentence}`);
 
+// How many unknown names of one error get close matches: the work stays small whatever the call sent.
+export const SUGGESTED_NAMES = 5;
+
 const inTrash = (what: string, t: InTrash) => ` It is ${what} ${shown(t.name)}`
-  + `${t.table !== undefined ? ` (table ${shown(t.table)})` : ''}, which is in the trash: restore_from_trash with `
-  + `trash_ids [${t.trash_id}] brings it back.`;
+  + `${t.table !== undefined ? ` (table ${shown(t.table)})` : ''}, which is in the trash`
+  + `${t.trash_ids.length > 1 ? ', and so is its table' : ''}: restore_from_trash with trash_ids `
+  + `[${t.trash_ids.join(', ')}] brings ${t.trash_ids.length > 1 ? 'them' : 'it'} back.`;
 
 function sheet(userId: string, args: Args, message: string): string | null {
   const key = ['sheet_id', 'source_sheet_id', 'destination_sheet_id']
@@ -62,7 +66,8 @@ function column(userId: string, args: Args, message: string): string | null {
   if (/Did you mean|column of "/.test(message) || typeof args.sheet_id !== 'string') return null;
   const columns = storedColumns(userId, args.sheet_id);
   if (!columns) return listedBy(message, 'get_sheet lists the sheet\'s columns.') || null;
-  const missing = columnsNamed(message).filter(n => !columns.includes(n));
+  const have = new Set(columns);
+  const missing = columnsNamed(message).filter(n => !have.has(n)).slice(0, SUGGESTED_NAMES);
   const close = missing.flatMap(n => {
     const near = closeMatches(n, columns, c => [c]);
     return near.length ? [`${list(near.map(shown))} for ${shown(n)}`] : [];
@@ -92,6 +97,22 @@ function run(userId: string, args: Args, message: string): string | null {
     + listedBy(message, 'list_runs lists a sheet\'s runs, newest first.');
 }
 
+// apply_setup's names key a column the setup doesn't make: the close ones it makes, or that it is one the
+// setup reads (an input, which inputs picks the column for).
+function setupColumn(userId: string, args: Args, message: string): string | null {
+  const named = /^This setup makes no column named "([^"]*)"/.exec(message)?.[1];
+  const columns = typeof args.setup_id === 'string' ? setupColumns(userId, args.setup_id) : null;
+  if (named === undefined || !columns) return null;
+  let why = '';
+  if (columns.reads.includes(named)) {
+    why = ` ${shown(named)} is a column it reads (inputs picks which column of the sheet), not one it makes.`;
+  } else {
+    const close = closeMatches(named, columns.makes, c => [c]);
+    if (close.length) why = ` Close matches: ${list(close.map(shown))}.`;
+  }
+  return `${why}${listedBy(message, 'list_setups with setup_id lists the columns each step makes.')}`;
+}
+
 function setup(userId: string, args: Args, message: string): string | null {
   const given = args.setup_id;
   if (typeof given !== 'string' || hasSetup(userId, given)) return null;
@@ -118,7 +139,9 @@ const CASES: Array<[RegExp, (userId: string, args: Args, message: string) => str
   [/^Table not found/, table],
   [/^Setup not found/, setup],
   [/^(AI |HTTP |Enrichment |Waterfall )?[Rr]un not found/, run],
-  [/^(?=.*column)(?=.*(not found|isn't a column|no column named|unknown column))/is, column],
+  // The setup's columns, never the sheet's: the column case below leaves this message out.
+  [/^This setup makes no column named/, setupColumn],
+  [/^(?!This setup makes)(?=.*column)(?=.*(not found|isn't a column|no column named|unknown column))/is, column],
   [/^Setup run not found/, (_u, _a, m) => listedBy(m, 'get_setup_run with sheet_id lists the setup runs on a sheet.')],
   [/^Run webhook not found/, (_u, _a, m) => listedBy(m, 'list_run_webhooks lists the webhooks with their ids.')],
   [/^Setup version not found/, (_u, _a, m) => listedBy(m, 'list_setup_versions lists a sheet\'s versions.')],
@@ -133,7 +156,9 @@ export function withNextStep(userId: string, args: unknown, message: string): st
   for (const [test, add] of CASES) {
     if (!test.test(message)) continue;
     const more = add(userId, input, message);
-    if (more) return `${message.replace(/\.?\s*$/, '.')}${more}`;
+    if (!more) continue;
+    const said = message.trimEnd();
+    return `${said.endsWith('.') ? said : `${said}.`}${more}`;
   }
   return message;
 }

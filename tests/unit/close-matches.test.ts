@@ -1,6 +1,7 @@
 // The close matches an MCP error suggests (lib/close-matches.ts): an item matches by any of its keys (its
 // name, its id), case, spaces and punctuation aside; the same key first, then one inside the other, then a
 // few typos (a swap of two letters is one), never a far one; at most three. suggestColumn shares the edits.
+// With a most, the edits answer the same up to it and one more past it, working only near the diagonal.
 import assert from 'node:assert/strict'
 import mod from '../../server/src/lib/close-matches'
 import refMod from '../../server/src/lib/column-ref-resolve'
@@ -24,6 +25,43 @@ const named = (given: string) => closeMatches(given, sheets, s => [s.name, s.id]
 check('edits: added, dropped, changed, and a swap of two letters next to each other counts once', () => {
   assert.deepEqual([editDistance('email', 'emails'), editDistance('email', 'emal'), editDistance('email', 'emoil'),
     editDistance('emial', 'email'), editDistance('', 'abc'), editDistance('abc', 'abc')], [1, 1, 1, 1, 3, 0])
+})
+
+// The edits worked out in full, every cell: what the banded one must agree with.
+function fullEdits(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => i + j))
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      const swapped = i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]
+      if (swapped) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+    }
+  }
+  return d[a.length][b.length]
+}
+let seed = 11
+const pick = (n: number) => { seed = (seed * 48271) % 2147483647; return seed % n }
+const word = (n: number, from = 'abc') => Array.from({ length: n }, () => from[pick(from.length)]).join('')
+
+check('with a most: the same edits up to it, one more past it, on 3,000 random pairs', () => {
+  for (let k = 0; k < 3000; k++) {
+    const a = word(pick(13)), b = pick(2) ? word(pick(13)) : a.slice(0, pick(a.length + 1)) + word(pick(3))
+    const full = fullEdits(a, b)
+    assert.equal(editDistance(a, b), full, `${a} ${b}`)
+    for (const most of [0, 1, 2, 3, 5]) {
+      assert.equal(editDistance(a, b, most), Math.min(full, most + 1), `${a} ${b} ${most}`)
+    }
+  }
+})
+
+check('with a most, the work is the length times the band, not the length squared', () => {
+  const a = word(4000, 'abcdefghijklmnopqrstuvwxyz')
+  const b = `${a.slice(0, 1000)}#${a.slice(1001, 3000)}${a[3001]}${a[3000]}${a.slice(3002)}`
+  const time = (f: () => void) => { const t = performance.now(); f(); return performance.now() - t }
+  assert.equal(editDistance(a, b, 3), 2)
+  const banded = Math.min(...[1, 2, 3, 4, 5].map(() => time(() => editDistance(a, b, 3))))
+  const whole = time(() => editDistance(a, b))
+  assert.ok(banded * 20 < whole, `${banded.toFixed(2)} ms with a most of 3, ${whole.toFixed(2)} ms in full`)
 })
 
 check('a name sent as an id finds that name alone; part of a name finds the names holding it', () => {

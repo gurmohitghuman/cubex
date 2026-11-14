@@ -17,9 +17,10 @@ export function resolveColumnRef(ref: string, columns: string[]): string | null 
 // contained in it), else the nearest by a few typos. '' when none is close.
 export function suggestColumn(ref: string, columns: string[]): string {
   const n = normalizeColumnName(ref);
+  const most = Math.max(2, Math.floor(n.length / 4));
   const scored = columns.map(c => {
     const cn = normalizeColumnName(c);
-    return { c, d: cn.includes(n) || n.includes(cn) ? 0 : editDistance(n, cn) };
-  }).filter(x => x.d <= Math.max(2, Math.floor(n.length / 4))).sort((a, b) => a.d - b.d);
+    return { c, d: cn.includes(n) || n.includes(cn) ? 0 : editDistance(n, cn, most) };
+  }).filter(x => x.d <= most).sort((a, b) => a.d - b.d);
   return scored.length ? ` Did you mean "${scored[0].c}"?` : '';
 }
