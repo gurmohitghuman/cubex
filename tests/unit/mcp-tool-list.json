@@ -1,5 +1,5 @@
 {
-  "release": "v0.8.14",
+  "release": "v0.8.16",
   "tools": {
     "add_column": {
       "properties": {
@@ -992,6 +992,10 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "get_workspace": {
+      "properties": {},
       "type": "object"
     },
     "import_csv": {
