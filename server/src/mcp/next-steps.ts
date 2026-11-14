@@ -4,6 +4,7 @@
 // The message the tool gave stays as it was, at the start. An error that matches no case, or whose value
 // turns out to exist (the error came from something else), is left as it was.
 import { closeMatches } from '../lib/close-matches';
+import { isPristineSeedSheet } from '../services/transfer-seed';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 import {
   hasSetup, hasSheet, hasTable, liveSheets, liveTables, recentRunIds, runOf, savedSetups, setupColumns,
@@ -77,10 +78,14 @@ function column(userId: string, args: Args, message: string): string | null {
 }
 
 // transfer_rows with column_mode require_existing, sending a column the destination doesn't have: the close
-// ones it has, and the three ways on (only its columns, a mapping, or making the column).
+// ones it has, and the three ways on (only its columns, a mapping, or making the column). A brand-new sheet
+// (only the starter column and its blank rows) takes none of its columns as they are: only making them works.
 function destinationColumn(userId: string, args: Args, message: string): string | null {
   const named = /^Unknown destination column: (.+)$/.exec(message.trim())?.[1];
   if (named === undefined || typeof args.destination_sheet_id !== 'string') return null;
+  if (isPristineSeedSheet(args.destination_sheet_id, userId)) {
+    return ' The destination is a new, empty sheet: column_mode "create_missing" adds the columns.';
+  }
   const close = closeMatches(named, storedColumns(userId, args.destination_sheet_id) ?? [], c => [c]);
   return (close.length ? ` Close matches in the destination: ${list(close.map(shown))}.` : '')
     + ' To copy only the columns it has, list them in columns (or send this one to another with column_mapping);'

@@ -44,14 +44,16 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         tools: ['get_run_status'],
         summary: 'get_run_status with wait_seconds answers when the run\'s status changes (it ends, pauses or fails) '
           + 'or the time is up, no longer at each batch of rows.',
-        details: 'Following a run takes one call per wait instead of one every second or two. For progress on the '
-          + 'way, pass a short wait_seconds: every answer has processed_rows.',
+        details: 'For progress on the way, pass a short wait_seconds: every answer has processed_rows. With 10 waits '
+          + 'of your account already open, it answers at once with waited: false and retry_after_seconds.',
       },
       {
         change: 'changed',
         tools: ['transfer_rows'],
         summary: 'transfer_rows refusing a column the destination lacks (column_mode require_existing) names the '
           + 'destination\'s close columns, and the ways on: columns, column_mapping or column_mode create_missing.',
+        details: 'Into a brand-new sheet (only its starter column and blank rows), it names only column_mode '
+          + 'create_missing: the other ways are refused there the same way.',
       },
     ],
   },

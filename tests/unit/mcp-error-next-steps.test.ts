@@ -4,7 +4,8 @@
 // with it; the other not-found errors name the tool that lists. The tool's own words stay first. Then, on
 // withNextStep and answered alone: a value that exists, or an error already suggesting, is left as it was;
 // errWith's structuredContent says the same; and every read a next step makes goes through an index, never
-// the rows. A transfer into a column the destination lacks gets its close ones and the ways on. (A table and
+// the rows (but the 4 that tell a brand-new sheet). A transfer into a column the destination lacks gets its
+// close ones and the ways on; into a brand-new sheet, only column_mode create_missing. (A table and
 // a sheet both in the trash, apply_setup's names and the bound on the work: mcp-error-next-steps-edges.test.ts.)
 import assert from 'node:assert/strict'
 import dbMod from '../../server/src/lib/db'
@@ -25,6 +26,13 @@ insert('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?
   JSON.stringify(['Name', 'Email', 'Company Name']))
 insert('INSERT INTO sheets (id,table_id,user_id,name,trash_id) VALUES (?,?,?,?,?)', 's-old', 't-crm', u, 'Old leads', 7)
 insert('INSERT INTO sheets (id,table_id,user_id,name) VALUES (?,?,?,?)', 's-raw', 't-crm', u, 'Raw')
+// A brand-new sheet: only the starter column, and its 3 blank rows.
+insert('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)', 's-new', 't-crm', u, 'New',
+  JSON.stringify(['Column 1']))
+for (let i = 0; i < 3; i++) {
+  insert('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)', `r-new-${i}`, 's-new', u, i,
+    JSON.stringify({ 'Column 1': '' }))
+}
 insert('INSERT INTO ai_runs (id,sheet_id,user_id,column_name,prompt) VALUES (?,?,?,?,?)', RUN, 's-leads', u,
   'Summary', 'p')
 insert('INSERT INTO setups (id,user_id,name,spec) VALUES (?,?,?,?)', 'st-1', u, 'Lead enrichment', '{}')
@@ -132,6 +140,7 @@ async function main() {
   })
 
   await check('every read a next step makes goes through an index or a key, and none reads the rows', () => {
+    // But one: telling a brand-new destination sheet reads its first 4 rows (services/transfer-seed.ts), by index.
     const seen: string[] = []
     const prepare = db.prepare.bind(db)
     db.prepare = ((sql: string) => { seen.push(sql); return prepare(sql) }) as typeof db.prepare
@@ -140,14 +149,15 @@ async function main() {
         [{ setup_id: 'x' }, 'Setup not found'], [{ run_id: 'x' }, 'Run not found'],
         [{ setup_id: 'st-1' }, 'This setup makes no column named "x".'],
         [{ sheet_id: 's-leads' }, 'Unknown column(s): x'],
-        [{ destination_sheet_id: 's-leads' }, 'Unknown destination column: x']] as const) withNextStep(u, args, message)
+        [{ destination_sheet_id: 's-leads' }, 'Unknown destination column: x'],
+        [{ destination_sheet_id: 's-new' }, 'Unknown destination column: x']] as const) withNextStep(u, args, message)
     } finally { db.prepare = prepare }
     assert.ok(seen.length >= 8, `${seen.length} reads`)
     for (const sql of seen) {
       const plan = (prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...sql.split('?').slice(1).map(() => 'x')) as
         Array<{ detail: string }>).map(p => p.detail)
       assert.ok(plan.every(d => !/^SCAN /.test(d)), `${sql}\n${plan.join('\n')}`)
-      assert.ok(!/\brows\b/.test(sql), sql)
+      assert.ok(!/\brows\b/.test(sql) || /\bLIMIT \?$/.test(sql.trim()), sql)
     }
   })
 
@@ -164,6 +174,13 @@ async function main() {
     'Unknown destination column: Email. Close matches in the destination: "E-mail". To copy only the columns it '
       + 'has, list them in columns (or send this one to another with column_mapping); column_mode "create_missing" '
       + 'adds it.')
+  })
+
+  await check('a transfer into a brand-new sheet gives only column_mode create_missing', async () => {
+    await says('transfer_rows', { source_sheet_id: 's-in', destination_sheet_id: 's-new', operation: 'copy',
+      selection: { all: true }, columns: ['Name'], column_mode: 'require_existing', idempotency_key: 'k3' },
+    'Unknown destination column: Name. The destination is a new, empty sheet: column_mode "create_missing" adds '
+      + 'the columns.')
   })
   done()
 }

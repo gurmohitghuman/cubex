@@ -1,11 +1,13 @@
 // get_run_status: the same summary as GET /v1/{ai,http}-runs/:id, needs only
 // 'read'. Optionally waits up to 25 seconds for the status to change (progress
-// alone doesn't end the wait), so an agent polls less often. control_run is in
-// tools-run-manage.ts.
+// alone doesn't end the wait), so an agent polls less often; with the account's
+// wait slots all taken it answers at once, with waited: false and
+// retry_after_seconds. control_run is in tools-run-manage.ts.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { waitForRunChange } from '../services/run-status-wait';
+import { MAX_RUN_WAITS_PER_USER } from '../lib/long-poll-holds';
 import { STATUS_WORDS } from '../services/enrich-agent-shared';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { kindOf } from './tools-run-manage';
@@ -18,7 +20,9 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         'One run\'s state: status (pending, running, paused, completed, failed, cancelled), processed_rows of '
         + 'total_rows, failed_rows, succeeded_rows, error_message and cost_usd so far. Poll it after a run starts '
         + 'with wait_seconds: it answers when the status changes (the run ends, pauses or fails) or the time is '
-        + 'up, so you poll less; for progress on the way, pass a short wait_seconds. Then read the cells with '
+        + 'up, so you poll less; for progress on the way, pass a short wait_seconds. With '
+        + `${MAX_RUN_WAITS_PER_USER} waits of your account already open it answers at once with waited: false and `
+        + 'retry_after_seconds. Then read the cells with '
         + 'read_rows or the reasons with get_run_results. "completed" means every row was processed, not that it '
         + 'worked: check failed_rows. list_runs finds a run_id you no longer have. '
         + 'A run that paused itself says pause_reason and pause_message: token_cap, spend_limit (resume with a '
@@ -56,11 +60,11 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
       if (denied) return denied;
       const kind = kindOf(run_type, run_id, ctx.userId);
       if (!kind) return err('Enrichment run not found');
-      const run = (wait_seconds ?? 0) > 0
+      const { run, noSlot } = (wait_seconds ?? 0) > 0
         ? await waitForRunChange(kind, run_id, ctx.userId, wait_seconds, ctx.abortSignal, { statusOnly: true })
-        : kind === 'ai' ? getAiRunSummary(run_id, ctx.userId) : getHttpRunSummary(run_id, ctx.userId);
+        : { run: kind === 'ai' ? getAiRunSummary(run_id, ctx.userId) : getHttpRunSummary(run_id, ctx.userId) };
       if (!run) return err('Run not found');
-      return ok(run);
+      return ok(noSlot ? { ...run, waited: false, retry_after_seconds: noSlot.retryAfterSec } : run);
     },
   );
 }

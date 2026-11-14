@@ -101,7 +101,8 @@ async function main() {
   // get_run_status calls.
   await check('descriptions point to the tool that does the job', () => {
     const say = (name: string) => modernList.tools.find(t => t.name === name)?.description ?? ''
-    assert.match(say('formula_column'), /^For names, [^.]*domain, use clean_column instead\./)
+    assert.match(say('formula_column'),
+      /^To clean names, companies, emails or phones, or to take the domain out of an email or a URL, use clean_column/)
     assert.match(say('clean_column'), /root domain out of an email or a URL/)
     assert.match(say('get_run_status'), /answers when the status changes/)
   })

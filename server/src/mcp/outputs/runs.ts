@@ -44,8 +44,13 @@ export const writeRunCondition = obj({
   check: info('check_run_condition\'s answer for the rule written, with the rule'),
 });
 
-// The run (list_runs' fields), with what its type adds: enrichment, waterfall, providers, waiting.
-export const getRunStatus = runSummary;
+// The run (list_runs' fields), with what its type adds: enrichment, waterfall, providers, waiting. waited and
+// retry_after_seconds only when a wait was asked for and every wait slot of the account was taken.
+export const getRunStatus = open({
+  ...runSummary.shape,
+  waited: opt(bool).describe('false: every wait slot of your account was taken, so it answered at once'),
+  retry_after_seconds: opt(num).describe('With waited false: call again after about this many seconds'),
+});
 
 // pause, resume or cancel: the run. rerun: run_id and the rows. cancel_all: what stopped.
 export const controlRun = open({
