@@ -90,7 +90,8 @@ await ok('a token start retried with its key while a column it reads is held: th
   await idle(sid)
   const h = await hold(sid)
   assert.equal(runsOn(sid), 2)
-  assert.deepEqual(await tokenStartHttpRun(c, args('', 'K')), { ok: { ...first.ok, replayed: true }, started: false })
+  assert.deepEqual(await tokenStartHttpRun(c, args('', 'K')),
+    { ok: { ...first.ok, replayed: true }, started: false, changed: first.changed })
   const refused = [GOING, BACK].map(message => ({ fail: 'conflict', message }))
   for (const want of refused) {
     if (want === refused[1]) h.stop()

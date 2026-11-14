@@ -60,7 +60,7 @@ await ok('a key from before the sent arguments were kept (the parsed hash alone)
     preUpgradeRow('enrich-legacy-new', 'enrich-legacy-old', sentArgsHash('enrichment_run', args), 'enrichment_run')
     const runs = runsOn(sid)
     assert.deepEqual(await start({ ...args, idempotency_key: 'enrich-legacy-old' }),
-      { ok: { ...first.ok, replayed: true }, started: false })
+      { ok: { ...first.ok, replayed: true }, started: false, changed: first.changed })
     assert.equal(runsOn(sid), runs, 'no second run')
   })
 

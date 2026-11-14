@@ -174,6 +174,8 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
     const r = await tokenWaterfall(
       { userId: ctx.userId, tokenId: ctx.tokenId, scopes: ctx.scopes }, args, { estimateDefault: true },
     );
-    return 'fail' in r ? err(r.message) : ok(r.ok);
+    if ('fail' in r) return err(r.message);
+    // Only a start has changed (a dry run writes nothing into the sheet).
+    return ok({ ...r.ok, changed: r.changed ?? [] });
   });
 }

@@ -139,7 +139,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const r = await tokenStartAiRun(ctx, args);
-      if (!('fail' in r)) return ok(r.ok);
+      if (!('fail' in r)) return ok({ ...r.ok, changed: r.changed ?? [] });
       return err(r.fail === 'over_ceiling' ? `${r.message} Estimate: ${JSON.stringify(r.estimate)}` : r.message);
     },
   );
@@ -209,7 +209,8 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const r = await tokenStartHttpRun(ctx, args);
-      return 'fail' in r ? err(r.message) : ok(r.ok);
+      if ('fail' in r) return err(r.message);
+      return ok({ ...r.ok, changed: r.changed ?? [] });
     },
   );
 }

@@ -2,7 +2,7 @@
 // tools-run-manage.ts, tools-run-undo.ts, tools-run-results.ts, tools-run-webhooks.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, nul, num, opt, str, strs } from './shared';
+import { bool, changed, info, nul, num, opt, str, strs } from './shared';
 import { runSummary } from './read';
 
 const range = obj({ low: num, high: num });
@@ -26,12 +26,13 @@ export const runAiColumn = obj({
   assumptions: opt(info('The tokens the estimate assumes per row')), own_provider_key: opt(bool),
   max_cost_usd: opt(num), over_ceiling: opt(bool), ceiling_problem: opt(nul(str)), spend_limit_usd: opt(num),
   ...runIf, webhook_id: opt(str), note: opt(str), replayed,
+  token_spend: opt(info('A started run: this token\'s spend cap, spent and left, when it has one')), changed,
 });
 
 export const runHttpEnrichment = obj({
   run_id: opt(str), master_column: opt(str), mapped_columns: opt(strs), target_rows: opt(num),
   rows_to_process: opt(num), saved_keys: opt(strs), notes: opt(strs), ai_cost_usd: opt(z.null()),
-  ...runIf, webhook_id: opt(str), note: opt(str), replayed,
+  ...runIf, webhook_id: opt(str), note: opt(str), replayed, changed,
 });
 
 export const checkRunCondition = obj({
@@ -52,14 +53,14 @@ export const controlRun = open({
   destination_auto_run: opt(info('Auto-run on the sheet a list enrichment adds rows to')),
   stopped_runs: opt(z.array(info('A run stopped'))), stopped_setup_runs: opt(z.array(info('A setup run stopped'))),
   auto_run_paused: opt(strs), auto_run_on: opt(strs), still_filling: opt(strs), message: opt(str),
-  id: opt(str), status: opt(str),
+  id: opt(str), status: opt(str), changed,
 });
 
 export const undoRun = obj({
   run_id: str, run_type: str, sheet_id: str, column: nul(str).describe('null when its column was deleted'),
   state: str, rows: num, restored: num, skipped: num,
   gone: num, started_at: str, undone_at: nul(str), kept_until: nul(str), can_undo: bool, reason: nul(str),
-  message: str,
+  message: str, changed,
 });
 
 export const getRunResults = obj({

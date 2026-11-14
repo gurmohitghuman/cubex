@@ -11,6 +11,7 @@ import { RULE_POINTER } from './run-if-schema';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
+import { changedOf } from './changed';
 
 const condition = z.object({
   column: z.string().describe('The column it reads'),
@@ -40,7 +41,9 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentAddField(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    return ok({ ...out.ok, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [out.ok.column],
+      moreComing: true }]) });
   });
 
   registerTool(server, 'get_list_fields', {
@@ -79,7 +82,13 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentAddListRows(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // The rows are added in the background; each source row's status cell says when its are in.
+    return ok({ ...out.ok, changed: changedOf(ctx.userId, [
+      out.ok.source_rows_released > 0 && { sheetId: sheet_id, columns: [a.column], moreComing: true },
+      !!out.destSheetId && { sheetId: out.destSheetId, moreComing: true,
+        columns: a.fields.map((f: { column_name: string }) => f.column_name) },
+    ]) });
   });
 
   registerTool(server, 'set_auto_run', {
@@ -118,6 +127,9 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
     const out = await agentSetAutorun(ctx.userId, sheet_id, a, ctx.scopes.has('secrets'));
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // Turned on or resumed, it fills rows on its own from now on.
+    return ok({ ...out.ok, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: a.column ? [a.column] : [],
+      moreComing: a.enabled === true || a.paused === false }]) });
   });
 }

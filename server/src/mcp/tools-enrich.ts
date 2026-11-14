@@ -175,6 +175,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
     const r = await tokenStartEnrichmentRun(ctx, args);
-    return 'fail' in r ? err(r.message) : ok(r.ok);
+    if ('fail' in r) return err(r.message);
+    return ok({ ...r.ok, changed: r.changed ?? [] });
   });
 }

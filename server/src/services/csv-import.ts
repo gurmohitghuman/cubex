@@ -55,6 +55,8 @@ export type CsvImportOutcome =
       // and how many of them stayed.
       autoDedupe: ImportDedupe | null;
       rowsKept: number;
+      // The file's columns, and how many rows a replace took to the trash.
+      columns: string[]; rowsReplaced: number;
     } }
   | { fail: 'validation' | 'busy'; error: string }
   // The sheet went to the trash while the file uploaded or was scanned: nothing was imported.
@@ -228,6 +230,7 @@ export async function importCsv(
           newColumns: replace ? [] : newColumns, truncatedCells, droppedSeedRows, autoDedupe,
           garbledCells: garbled.cells, garbledSamples: garbled.samples,
           rowsKept: next - startingRow - (autoDedupe?.notKept ?? 0),
+          columns: csvColumns, rowsReplaced: replaced?.moved ?? 0,
         },
       };
     } catch (error) {

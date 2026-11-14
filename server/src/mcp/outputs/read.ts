@@ -2,7 +2,9 @@
 // tools-import.ts).
 import { z } from 'zod';
 import { keyed, obj, open } from '../output-schema';
-import { autoDedupe, autoRunNotice, bool, cells, info, nul, num, opt, str, strs, trash, versions } from './shared';
+import {
+  autoDedupe, autoRunNotice, bool, cells, changed, info, nul, num, opt, str, strs, trash, versions,
+} from './shared';
 
 const sheetEntry = obj({ id: str, name: str, position: num, row_count: num });
 export const listTables = obj({
@@ -102,5 +104,5 @@ export const importCsv = obj({
   rows_imported: num, starting_row: num, new_columns: strs, replaced: bool, trash: opt(trash),
   dropped_blank_starter_rows: opt(bool), auto_dedupe: opt(autoDedupe), truncated_cells: opt(num),
   garbled_cells: opt(num), garbled_samples: opt(info('Garbled text found, by column')), note: opt(str),
-  auto_run: opt(autoRunNotice),
+  auto_run: opt(autoRunNotice), changed,
 });

@@ -4,6 +4,7 @@ import { FORMULA_MAX_CHARS, FORMULA_WORDS_MAX_CHARS } from '../lib/constants';
 import { writeFormula } from '../services/formula-ai';
 import { agentFormulaColumn } from '../services/formula-agent';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { fillChanged } from './changed';
 import { capToolNote } from '../lib/token-spend';
 
 // formula_column: a column worked out for free from each row by a JavaScript
@@ -44,7 +45,7 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentFormulaColumn(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    return 'ok' in out ? ok({ ...out.ok, changed: fillChanged(ctx.userId, sheet_id, out.ok) }) : err(out.message);
   });
 
   registerTool(server, 'write_formula', {

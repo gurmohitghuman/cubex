@@ -7,12 +7,13 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { UNDO_KEEP_DAYS } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { undoRun } from '../services/run-undo';
-import { lastUndoable, undoViewOf, type UndoView } from '../services/run-undo-view';
+import { journalColumns, journalOf, lastUndoable, undoViewOf, type UndoView } from '../services/run-undo-view';
 import { kindOf, type RunTypeArg } from './tools-run-manage';
 import { McpAuthCtx, err, missingScope, ok, registerTool } from './tool-helpers';
+import { changedOf, type Changed } from './changed';
 
 // The answer, with a message an agent can pass on as it is.
-function answer(v: UndoView, dryRun: boolean) {
+function answer(v: UndoView, dryRun: boolean, changed: Changed[] = []) {
   const cells = (n: number) => `${n.toLocaleString('en-US')} cell${n === 1 ? '' : 's'}`;
   const message = dryRun ? (v.can_undo
     ? `It can be undone: the cells it wrote in ${v.rows.toLocaleString('en-US')} rows go back to what they held.`
@@ -21,7 +22,7 @@ function answer(v: UndoView, dryRun: boolean) {
     : `Undone: ${cells(v.restored)} back as they were before the run`
       + `${v.skipped ? `; ${cells(v.skipped)} changed since stayed as they are` : ''}`
       + `${v.gone ? `; ${cells(v.gone)} were in rows or columns deleted since` : ''}.`;
-  return ok({ ...v, message });
+  return ok({ ...v, message, changed });
 }
 
 export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
@@ -70,6 +71,11 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
     }
     if (dry_run) return answer(view, true);
     const out = await undoRun(ctx.userId, view.run_type, view.run_id);
-    return 'fail' in out ? err(out.message) : answer(out.ok, false);
+    if ('fail' in out) return err(out.message);
+    // Every column the run wrote goes back, its outputs too (a deleted one isn't named).
+    const j = journalOf(out.ok.run_type, out.ok.run_id, ctx.userId);
+    const columns = (j ? journalColumns(j) : [out.ok.column]).filter((c): c is string => c !== null);
+    return answer(out.ok, false, changedOf(ctx.userId, [{ sheetId: out.ok.sheet_id, columns, rows: out.ok.rows,
+      moreComing: out.ok.state === 'undoing' }]));
   });
 }

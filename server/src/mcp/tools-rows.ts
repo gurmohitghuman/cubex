@@ -18,8 +18,9 @@ import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } 
 import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
-import { appendRowsKeyed, batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
+import { appendChanged, appendRowsKeyed, batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
+import { changedOf, columnsOf, editedTouch } from './changed';
 
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const idempotencyKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS).optional().describe(
@@ -63,15 +64,17 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         if ('fail' in keyed) {
           return err(keyed.fail === 'sheet_not_found' ? 'Sheet not found' : txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
         }
-        if (keyed.replayed) return ok({ ...keyed.ok.answer, replayed: true });
+        if (keyed.replayed) return ok({ ...keyed.ok.answer, replayed: true, changed: keyed.changed });
         return ok({
-          ...keyed.ok.answer, replayed: false, ...await appendAutorunNotice(ctx.userId, sheet_id, keyed.ok.kept),
+          ...keyed.ok.answer, replayed: false, changed: keyed.changed,
+          ...await appendAutorunNotice(ctx.userId, sheet_id, keyed.ok.kept),
         });
       }
       const result = appendRows(sheet_id, ctx.userId, parsedRows);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
+      const changed = appendChanged(ctx.userId, sheet_id, parsedRows, result.ok);
       return ok({
-        ...appendAnswer(ctx.userId, result.ok, 'mcp'),
+        ...appendAnswer(ctx.userId, result.ok, 'mcp'), changed,
         ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.kept),
       });
     },
@@ -118,8 +121,8 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
           if ('error' in p) return err(p.error);
           parsed.push({ rowId: update.row_id, cells: p.cells });
         }
-        const result = idempotency_key ? batchUpdateKeyed(sheet_id, ctx.userId, parsed, idempotency_key, 'mcp')
-          : batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
+        const keyed = idempotency_key ? batchUpdateKeyed(sheet_id, ctx.userId, parsed, idempotency_key, 'mcp') : null;
+        const result = keyed ?? batchUpdateRows(sheet_id, ctx.userId, parsed, 'mcp');
         if ('fail' in result) {
           if (result.fail === 'duplicate_rows') return err('updates must not contain duplicate row ids');
           if (result.fail === 'sheet_not_found') return err('Sheet not found');
@@ -127,7 +130,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
             ? 'One or more rows were not found in the supplied sheet.'
             : txnFailMessage(result, MAX_ROWS_PER_SHEET));
         }
-        return ok({ ...result.ok, ...('replayed' in result ? { replayed: result.replayed === true } : {}) });
+        // A keyed call's changed comes with it (stored with the key, for a replay).
+        if (keyed && !('fail' in keyed)) return ok({ ...keyed.ok, replayed: keyed.replayed, changed: keyed.changed });
+        return ok({ ...result.ok, changed: changedOf(ctx.userId, [editedTouch(sheet_id,
+          columnsOf(parsed.map(u => u.cells)), parsed.map(u => u.rowId), result.ok.auto_dedupe)]) });
       }
       if (!row_id || data === undefined) return err('The one-row form needs both row_id and data.');
       if (idempotency_key) {
@@ -135,7 +141,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         const p = parseCellMap(data, API_V1_MAX_PATCH_CELLS);
         if ('error' in p) return err(p.error);
         const keyed = patchRowKeyed(row_id, ctx.userId, p.cells, sheet_id, idempotency_key, 'mcp');
-        if (!('fail' in keyed)) return ok({ ...keyed.ok, replayed: keyed.replayed });
+        if (!('fail' in keyed)) return ok({ ...keyed.ok, replayed: keyed.replayed, changed: keyed.changed });
         return err(keyed.fail === 'not_in_sheet' ? 'Row not found in that sheet'
           : keyed.fail === 'not_found' ? 'Row not found' : txnFailMessage(keyed, MAX_ROWS_PER_SHEET));
       }
@@ -146,11 +152,16 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       }
       const p = parseCellMap(data, API_V1_MAX_PATCH_CELLS);
       if ('error' in p) return err(p.error);
+      // The row's sheet, for changed: read first, as auto-dedupe may send the row to the trash.
+      const rowSheet = sheet_id ?? db.prepare('SELECT sheet_id FROM rows WHERE id = ? AND user_id = ?')
+        .pluck().get(row_id, ctx.userId) as string | undefined;
       const result = patchRowById(row_id, ctx.userId, p.cells);
       if ('fail' in result) {
         return err(result.fail === 'not_found' ? 'Row not found' : txnFailMessage(result, MAX_ROWS_PER_SHEET));
       }
-      return ok(patchAnswer(ctx.userId, result.ok, 'mcp'));
+      const answer = patchAnswer(ctx.userId, result.ok, 'mcp');
+      return ok({ ...answer, changed: changedOf(ctx.userId,
+        [rowSheet && editedTouch(rowSheet, Object.keys(p.cells), [row_id], answer.auto_dedupe)]) });
     },
   );
 
@@ -173,9 +184,12 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
       const result = deleteRowsByIds(sheet_id, ctx.userId, row_ids);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
+      const { deleted } = result.ok;
       return ok({
-        deleted: result.ok.deleted,
-        trash: result.ok.deleted ? trashAnswer(ctx.userId, result.ok.trashId, 'mcp') : null,
+        deleted, trash: deleted ? trashAnswer(ctx.userId, result.ok.trashId, 'mcp') : null,
+        // Every id named was deleted when the counts agree: then they are the rows.
+        changed: deleted ? changedOf(ctx.userId, [{ sheetId: sheet_id, rows: deleted,
+          ...(deleted === new Set(row_ids).size ? { rowIds: [...new Set<string>(row_ids)] } : {}) }]) : [],
       });
     },
   );

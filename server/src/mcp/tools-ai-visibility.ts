@@ -6,6 +6,7 @@ import {
   agentAskAiVisibility, agentCheckAiVisibility, agentCreateAiVisibility, agentSetAiVisibilityBrands,
 } from '../services/ai-visibility-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { changedOf, madeSheet } from './changed';
 
 const ENGINE_IDS = ENGINES.map(e => e.id) as [string, ...string[]];
 
@@ -59,25 +60,43 @@ export function registerAiVisibilityTool(server: McpServer, ctx: McpAuthCtx): vo
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       const out = await agentCreateAiVisibility(ctx.userId, a);
-      return 'ok' in out ? ok(out.ok) : err(out.message);
+      if (!('ok' in out)) return err(out.message);
+      const { questions_sheet_id: questions, sites_sheet_id: sites } = out.ok;
+      return ok({ ...out.ok, changed: changedOf(ctx.userId, [madeSheet(ctx.userId, questions),
+        madeSheet(ctx.userId, sites)]) });
     }
     if (a.action === 'ask') {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const out = await agentAskAiVisibility(ctx.userId, ctx.tokenId, a.id,
         { again: a.again === true, estimateOnly: a.estimate_only !== false });
-      return 'ok' in out ? ok(out.ok) : err(out.message);
+      if (!('ok' in out)) return err(out.message);
+      // An estimate starts nothing.
+      const runs = 'runs' in out.ok ? out.ok.runs : undefined;
+      const sheetId = 'sheetId' in out ? out.sheetId : undefined;
+      if (!runs?.length || !sheetId) return ok({ ...out.ok, changed: [] });
+      return ok({ ...out.ok, changed: changedOf(ctx.userId, [{ sheetId, columns: runs.map(r => r.column),
+        rows: Math.max(...runs.map(r => r.rows)), moreComing: true }]) });
     }
     if (a.action === 'check_again') {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const out = await agentCheckAiVisibility(ctx.userId, ctx.tokenId, a.id,
         { estimateOnly: a.estimate_only !== false, timeZone: a.time_zone, fresh: a.fresh === true });
-      return 'ok' in out ? ok(out.ok) : err(out.message);
+      if (!('ok' in out)) return err(out.message);
+      if (!('runs' in out.ok)) return ok({ ...out.ok, changed: [] });
+      // The check copies the two sheets, and its runs fill the copy of the questions.
+      const { questions_copy_sheet_id: questions, sites_copy_sheet_id: sites, runs } = out.ok;
+      return ok({ ...out.ok, changed: changedOf(ctx.userId, [madeSheet(ctx.userId, questions, runs.length > 0),
+        madeSheet(ctx.userId, sites)]) });
     }
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentSetAiVisibilityBrands(ctx.userId, a.id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // The formula columns that look for the brands are worked out again.
+    const columns = out.ok.formulas_rewritten;
+    return ok({ ...out.ok, changed: columns.length ? changedOf(ctx.userId, [{ sheetId: out.ok.questions_sheet_id,
+      columns, moreComing: true }]) : [] });
   });
 }

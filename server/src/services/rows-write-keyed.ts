@@ -8,6 +8,8 @@
 // happened since: the sheet went to the trash or is busy, the rows were
 // deleted or sorted. It returns the first answer as it was. A call that
 // would write checks those after the ledger (sheet_not_found, busy).
+// Beside each answer: what the call changed, for MCP (mcp/changed.ts), read
+// in the write's transaction and kept with the key, so a replay answers it too.
 import { db } from '../lib/db';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_ROW_BYTES } from '../lib/api-v1-constants';
@@ -16,12 +18,16 @@ import { readWriteLedger, writeRequestHash, writeWriteLedger } from '../lib/writ
 import { appendAnswer, appendRows, patchAnswer, patchRowById, type AppendAnswer, type PatchAnswer } from './rows-write';
 import { batchUpdateRows, type BatchUpdate } from './rows-batch-update';
 import type { TxnFail } from './data-plane-shared';
+import type { AutoDedupeOutcome } from './auto-dedupe-settle';
 import {
   withoutRestoreWords, withRestoreWords, type AutoDedupeAnswer, type StoredAutoDedupe,
 } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
+import {
+  arrivedTouch, changedOf, columnsOf, editedTouch, storedChanged, type Changed,
+} from '../mcp/changed';
 
-export type Keyed<T> = { ok: T; replayed: boolean } | TxnFail;
+export type Keyed<T> = { ok: T; replayed: boolean; changed: Changed[] } | TxnFail;
 // sheet_not_found: the sheet doesn't exist or is in the trash (a replay still answers).
 export type KeyedOnSheet<T> = Keyed<T> | { fail: 'sheet_not_found' };
 
@@ -45,7 +51,9 @@ const worded = <T extends { auto_dedupe?: unknown }>(a: T, surface: Surface): T 
 // (they're consecutive), the positions auto-dedupe didn't keep, and its
 // auto_dedupe part (bounded: at most AUTO_DEDUPE_LIST_IDS of each list).
 // About 40 bytes a row: 1,000 rows stay well under 64 KB.
-interface StoredAppend { ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe }
+interface StoredAppend {
+  ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe; changed?: Changed[];
+}
 
 const appendReplay = (s: StoredAppend, surface: Surface): AppendAnswer => {
   const out = new Set(s.not_kept);
@@ -63,27 +71,30 @@ export function appendRowsKeyed(
   return db.transaction((): KeyedOnSheet<{ answer: AppendAnswer; kept: number }> => {
     const prior = readWriteLedger<StoredAppend>(userId, key, hash);
     if (prior) {
-      return 'conflict' in prior ? { fail: 'idempotency_conflict' }
-        : { ok: { answer: appendReplay(prior.replay, surface), kept: 0 }, replayed: true };
+      return 'conflict' in prior ? { fail: 'idempotency_conflict' } : {
+        ok: { answer: appendReplay(prior.replay, surface), kept: 0 }, replayed: true,
+        changed: storedChanged(prior.replay.changed),
+      };
     }
     if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
     const done = appendRows(sheetId, userId, parsedRows);
     if ('fail' in done) return done;
     const answer = appendAnswer(userId, done.ok, surface);
     const rows = done.ok.rows;
+    const changed = appendChanged(userId, sheetId, parsedRows, done.ok);
     writeWriteLedger(userId, key, 'rows_append', hash, neutral({
       ids: rows.map(r => r.id), first: rows[0]?.index ?? 0,
       not_kept: rows.flatMap((r, i) => (done.ok.notKept.has(r.id) ? [i] : [])),
-      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as StoredAutoDedupe } : {}),
+      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as StoredAutoDedupe } : {}), changed,
     } satisfies StoredAppend));
-    return { ok: { answer, kept: done.ok.kept }, replayed: false };
+    return { ok: { answer, kept: done.ok.kept }, replayed: false, changed };
   }).immediate();
 }
 
 // A one-row update's answer, and the row's sheet: the row id names it, so a
 // call with or without sheet_id is the same call, and one naming another
 // sheet is a different one. Cells over IDEMPOTENT_WRITE_ROW_BYTES aren't kept.
-interface StoredPatch { sheet_id: string; answer: PatchAnswer }
+interface StoredPatch { sheet_id: string; answer: PatchAnswer; changed?: Changed[] }
 
 function keptPatch(answer: PatchAnswer): PatchAnswer {
   if (Buffer.byteLength(JSON.stringify(answer.data ?? null), 'utf8') <= IDEMPOTENT_WRITE_ROW_BYTES) return answer;
@@ -106,7 +117,7 @@ export function patchRowKeyed(
     const prior = readWriteLedger<StoredPatch>(userId, key, hash, s => sheetId === undefined || s.sheet_id === sheetId);
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
-        : { ok: worded(prior.replay.answer, surface), replayed: true };
+        : { ok: worded(prior.replay.answer, surface), replayed: true, changed: storedChanged(prior.replay.changed) };
     }
     const home = db.prepare('SELECT sheet_id FROM rows WHERE id = ? AND user_id = ?').pluck()
       .get(rowId, userId) as string | undefined;
@@ -115,12 +126,16 @@ export function patchRowKeyed(
     const done = patchRowById(rowId, userId, cells);
     if ('fail' in done) return done;
     const answer = patchAnswer(userId, done.ok, surface);
-    writeWriteLedger(userId, key, 'cells_update', hash, { sheet_id: home, answer: neutral(keptPatch(answer)) });
-    return { ok: answer, replayed: false };
+    const changed = changedOf(userId, [editedTouch(home, Object.keys(cells), [rowId], answer.auto_dedupe)]);
+    writeWriteLedger(userId, key, 'cells_update', hash,
+      { sheet_id: home, answer: neutral(keptPatch(answer)), changed } satisfies StoredPatch);
+    return { ok: answer, replayed: false, changed };
   }).immediate();
 }
 
 type BatchAnswer = { updated: number; auto_dedupe?: AutoDedupeAnswer };
+// Kept for a replay: the answer, and beside it what the call changed.
+type StoredBatch = BatchAnswer & { changed?: Changed[] };
 
 // The updates' order changes nothing they write, so it doesn't change the call
 // either. A replay answers while the sheet is busy (the /api/v1 and MCP busy
@@ -135,17 +150,28 @@ export function batchUpdateKeyed(
     sheet_id: sheetId, updates: sorted.map(u => ({ row_id: u.rowId, cells: u.cells })),
   });
   return db.transaction((): KeyedOnSheet<BatchAnswer> | { fail: 'duplicate_rows' } => {
-    const prior = readWriteLedger<BatchAnswer>(userId, key, hash);
+    const prior = readWriteLedger<StoredBatch>(userId, key, hash);
     if (prior) {
-      return 'conflict' in prior ? { fail: 'idempotency_conflict' }
-        : { ok: worded(prior.replay, surface), replayed: true };
+      if ('conflict' in prior) return { fail: 'idempotency_conflict' };
+      const { changed, ...first } = prior.replay;
+      return { ok: worded(first, surface), replayed: true, changed: storedChanged(changed) };
     }
     if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
     const busy = sheetBusyWith(sheetId);
     if (busy) return { fail: 'busy', message: busyMessage(busy) };
     const done = batchUpdateRows(sheetId, userId, updates, surface);
     if ('fail' in done) return done;
-    writeWriteLedger(userId, key, 'cells_update_batch', hash, neutral(done.ok));
-    return { ok: done.ok, replayed: false };
+    const changed = changedOf(userId, [editedTouch(sheetId, columnsOf(updates.map(u => u.cells)),
+      updates.map(u => u.rowId), done.ok.auto_dedupe)]);
+    writeWriteLedger(userId, key, 'cells_update_batch', hash, { ...neutral(done.ok), changed } satisfies StoredBatch);
+    return { ok: done.ok, replayed: false, changed };
   }).immediate();
+}
+
+// append_rows' changed: the rows as the sheet now holds them (mcp/changed.ts arrivedTouch).
+export function appendChanged(
+  userId: string, sheetId: string, cells: ReadonlyArray<Record<string, string>>,
+  done: { rows: ReadonlyArray<{ id: string }>; deduped: AutoDedupeOutcome | null },
+): Changed[] {
+  return changedOf(userId, [arrivedTouch(userId, sheetId, columnsOf(cells), done.rows.map(r => r.id), done.deduped)]);
 }

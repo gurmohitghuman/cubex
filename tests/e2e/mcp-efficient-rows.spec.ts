@@ -74,7 +74,9 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
       updates: ids.rows.slice(0, 2).map((row: any, i: number) => ({ row_id: row.id, data: { val: `edited${i}` } })),
     },
   }))
-  expect(batch).toEqual({ updated: 2 })
+  expect(batch).toMatchObject({ updated: 2 })
+  expect(batch.changed).toEqual([expect.objectContaining({ sheet_id: sourceId, columns: ['val'], rows: 2,
+    row_ids: ids.rows.slice(0, 2).map((row: any) => row.id) })])
 
   const copyArgs = {
     source_sheet_id: sourceId,
@@ -87,8 +89,10 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
   }
   const copied = parsed(await client.callTool({ name: 'transfer_rows', arguments: copyArgs }))
   expect(copied).toMatchObject({ matched: 4, copied: 4, moved: 0, replayed: false })
+  // Into a sheet as the app made it: its mapped column and the 4 rows.
+  expect(copied.changed).toEqual([expect.objectContaining({ sheet_id: destinationId, columns: ['Value'], rows: 4 })])
   const replay = parsed(await client.callTool({ name: 'transfer_rows', arguments: copyArgs }))
-  expect(replay).toMatchObject({ matched: 4, copied: 4, replayed: true })
+  expect(replay).toMatchObject({ matched: 4, copied: 4, replayed: true, changed: copied.changed })
   const keyConflict = await client.callTool({
     name: 'transfer_rows', arguments: { ...copyArgs, operation: 'move' },
   })
@@ -124,6 +128,8 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
     },
   }))
   expect(moved).toMatchObject({ matched: 1, copied: 0, moved: 1 })
+  // A move names both sheets: the row the destination got and the row the source lost.
+  expect(moved.changed.map((i: any) => [i.sheet_id, i.rows])).toEqual([[moveDestinationId, 1], [sourceId, 1]])
   expect((await (await v1.get(`/api/v1/sheets/${sourceId}`)).json()).row_count).toBe(3)
   expect((await (await v1.get(`/api/v1/sheets/${moveDestinationId}`)).json()).row_count).toBe(1)
 

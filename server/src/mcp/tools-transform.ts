@@ -5,6 +5,7 @@ import { TransformOp } from '../lib/transform-ops';
 import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constants';
 import { SHEET_ID, McpAuthCtx, ok, err, errWith, missingScope, registerTool } from './tool-helpers';
 import { whereLike } from './where-schema';
+import { changedOf } from './changed';
 
 export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'transform_column', {
@@ -57,10 +58,20 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       restart: input.restart,
     };
     const result = await transformColumn(ctx.userId, params);
-    if ('stopped' in result || 'unfinished' in result) {
-      const { error, ...more } = 'stopped' in result ? result.stopped : result.unfinished;
-      return errWith(error, more);
+    const changed = (column: string, rows: number) => changedOf(ctx.userId, [{ sheetId: input.sheet_id,
+      columns: [column], rows }]);
+    if ('stopped' in result) {
+      // Rows it wrote before the error stay written.
+      const { error, wrote, ...more } = result.stopped;
+      return errWith(error, { ...more, changed: changed(input.target_column, wrote) });
     }
-    return 'fail' in result ? err(result.error) : ok(result.ok);
+    if ('unfinished' in result) {
+      const { error, ...more } = result.unfinished;
+      return errWith(error, { ...more, changed: [] });
+    }
+    if ('fail' in result) return err(result.error);
+    const { updated, created_column } = result.ok;
+    return ok({ ...result.ok, changed: updated || created_column
+      ? changed(created_column ?? input.target_column, updated) : [] });
   });
 }

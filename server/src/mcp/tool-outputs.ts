@@ -45,3 +45,7 @@ export const TOOL_OUTPUTS = {
 export type ToolName = keyof typeof TOOL_OUTPUTS;
 // The type a tool's answer (its structuredContent) must have.
 export type ToolAnswer<N extends ToolName> = Fits<z.input<(typeof TOOL_OUTPUTS)[N]>>;
+// A tool's answer as a service shared with REST builds it: the MCP handler adds changed (mcp/changed.ts).
+// (Without, not Omit: an open answer's index signature would take its named fields with it.)
+type Without<T, K extends string> = { [P in keyof T as P extends K ? never : P]: T[P] };
+export type ServiceAnswer<N extends ToolName> = Fits<Without<z.input<(typeof TOOL_OUTPUTS)[N]>, 'changed'>>;

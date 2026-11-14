@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { CLEANERS, NAME_INPUTS, PHONE_FORMATS, THE_COMPANY } from '../lib/clean/cleaners';
 import { agentCleanColumn } from '../services/clean-agent';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { fillChanged } from './changed';
 
 // clean_column: free data cleaning into a new column (services/clean-agent.ts).
 export function registerCleanTool(server: McpServer, ctx: McpAuthCtx): void {
@@ -47,6 +48,6 @@ export function registerCleanTool(server: McpServer, ctx: McpAuthCtx): void {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentCleanColumn(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    return 'ok' in out ? ok({ ...out.ok, changed: fillChanged(ctx.userId, sheet_id, out.ok) }) : err(out.message);
   });
 }

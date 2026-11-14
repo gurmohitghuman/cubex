@@ -268,15 +268,39 @@ Starting a run on a very large sheet answers at once: the run shows as pending w
 
 - The answer stays small however big the account is. It lists the 20 tables changed most recently and, among them, the 50 sheets changed most recently, shown in each table's own order. `table_count`, `sheet_count` and each table's `sheet_count` count them all, and `note` says what was left out and which tool lists it.
 - A sheet's rows are counted up to 10,000. `row_count_at_least: true` means it has more: `get_sheet` counts them all. `columns` is how many columns the sheet has, or `null` for an older sheet whose list of columns `get_sheet` works out the first time.
-- It lists the runs going now (pending, running or paused) and the setup runs going now, the oldest first, 20 of each, with the counts. `list_runs` with `filter: "active"` lists every run, and `get_sheet` a sheet's setup runs.
+- It lists the runs going now (pending, running or paused) and the setup runs going now, the oldest first, 20 of each, with the counts. `list_runs` with `filter: "active"` lists the newest of them, up to 50 with `limit`, or one sheet's with `sheet_id`; `get_sheet` lists a sheet's setup runs.
 - `access_token`'s spend cap, spent and left are the same as in `get_balances`. The live treg and OpenRouter balances come only from `get_balances`, since reading them asks those services.
 - It needs the `read` scope.
+
+## What a write changed
+
+Every tool that writes a sheet's rows, cells or columns, or starts work that will, answers `changed`: one item for each sheet it wrote, so you know what to read again without reading the whole sheet.
+
+```json
+{
+  "changed": [
+    {
+      "sheet_id": "...", "sheet": "Leads", "columns": ["Email", "Name"], "rows": 2,
+      "row_ids": ["...", "..."], "data_version": 419, "row_generation": 3
+    }
+  ]
+}
+```
+
+- `columns` names the columns whose cells or setup the call changed, by their names after it. A deleted column is named by the name it had. `rows` counts the rows it added, changed, removed or moved, and `row_ids` lists the first 100 of them when the call names them.
+- With auto-dedupe on (`set_auto_dedupe`), `rows` and `row_ids` follow what the sheet now holds. A new row it didn't keep went straight to the trash, so it is left out. An older row it replaced left the sheet, so it is counted and named, after the call's own rows.
+- `data_version` and `row_generation` are the sheet's right after the write. A run writing the same sheet at that moment can have raised them too.
+- `more_coming: true` means work goes on in the background: a run started, a column filling, a cancelled run clearing its cells, an auto-run filling the rows that arrived. Read the sheet again once it is done (`get_run_status` for a run, `get_sheet` for a filling column).
+- `transfer_rows` with a move names both sheets. `import_csv` with `mode: "replace"` names the columns it dropped as well as the file's.
+- It is `[]` when the call wrote nothing: a preview, a dry run, an estimate, or a sheet or table renamed, moved, deleted or restored from the trash (the tool's other fields say what happened).
+- A replay of an `idempotency_key` answers the first call's `changed`, with the versions it had then. Compare them with the ones you hold to know whether to read again. A key first used before v0.8.16 answers `[]`.
+- A few tools write no sheet data and leave it out: `set_default_model`, `manage_view`, `manage_run_webhook`, `save_setup`, `delete_setup`, `manage_setup_version`, `create_upload_link`, `create_download_link`, `write_formula` and `write_run_condition`.
 
 ## Retrying row writes
 
 `append_rows` and `update_cells`, and their REST routes, take an optional `idempotency_key` (1 to 200 characters), so a call that timed out can be sent again without adding the rows twice:
 
-- The same key with the same arguments within 24 hours answers as the first call did, with `replayed: true`, and writes nothing. The first call answers `replayed: false`. A replay leaves out `auto_run`, since the first call already set those runs off.
+- The same key with the same arguments within 24 hours answers as the first call did, with `replayed: true`, and writes nothing. The first call answers `replayed: false`. A replay leaves out `auto_run`, since the first call already set those runs off. Its `changed` is the first call's.
 - The same key with other arguments is refused with `Idempotency key was already used with different arguments.` (a `409` over REST), and nothing is written.
 - The same arguments means the same sheet and the same values as Cubex reads them: `1` and `"1"` are the same, so are `null` and `""`, and the order of a row's columns doesn't matter. Appended rows must come in the same order. For `update_cells`, the many-rows form's updates can come in any order, and the one-row form is the same call with or without its row's `sheet_id`.
 - Two calls with one key at the same moment write once: the other answers as a replay.
