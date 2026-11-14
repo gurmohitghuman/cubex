@@ -9,6 +9,8 @@ import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
+import { TOOL_OUTPUTS } from './tool-outputs';
+import { checkErrorOutput, toolOutput } from './output-schema';
 import type { SpendView } from '../lib/token-spend';
 import { digitsAsNumber } from '../lib/digits-text';
 
@@ -118,14 +120,18 @@ export function registerTool(
   const hints = TOOL_ANNOTATIONS[name];
   if (!hints) throw new Error(`MCP tool ${name} has no entry in tool-annotations.ts`);
   const { title, ...annotations } = hints;
+  // So does one missing from tool-outputs.ts: every tool says what its structuredContent holds.
+  const output = TOOL_OUTPUTS[name];
+  if (!output) throw new Error(`MCP tool ${name} has no entry in tool-outputs.ts`);
   // A field list becomes an object schema here, with Cubex's own zod: the SDK
   // only takes a bare field list through an overload it has deprecated.
   const { inputSchema, ...rest } = config;
   const schema = inputSchema === undefined || inputSchema instanceof z.ZodType
     ? inputSchema : z.object(inputSchema as z.ZodRawShape);
+  const outputSchema = toolOutput(output);
   server.registerTool(
-    name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}) } as never,
-    withToolErrors(name, refuseWhileSheetBusy(name, handler)) as never,
+    name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}), outputSchema } as never,
+    checkErrorOutput(name, output, withToolErrors(name, refuseWhileSheetBusy(name, handler))) as never,
   );
 }
 

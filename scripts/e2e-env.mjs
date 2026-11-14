@@ -35,6 +35,9 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     // need rows still waiting when they act on a run of a few rows.
     ENRICH_DEFAULT_CONCURRENCY: env.ENRICH_DEFAULT_CONCURRENCY || '5',
     CUBEX_TEST_CLOCK_FILE: path.join(testDir, 'test-clock'),
+    // Every MCP tool result must fit its outputSchema exactly: a key the schema doesn't name fails the call
+    // (server/src/mcp/output-schema.ts). Always.
+    CUBEX_TEST_STRICT_OUTPUT: '1',
     // The running version comes from a folder laid out like an install (lib/cubex-version.ts: app/
     // .cubex-version, install.env), empty until a spec writes them, and the release check asks the specs'
     // receiver, never GitHub (services/release-check.ts). Both always.
