@@ -192,6 +192,37 @@ ok('an append of 1,000 rows is stored compactly (ids, first index, positions not
   assert.deepEqual(again.ok.answer, first.ok.answer)
 })
 
+ok('200 columns of 200 letters: a key keeps changed without the names, and its replay names them again', () => {
+  const W = uuid()
+  const names = Array.from({ length: 200 }, (_, i) => String(i).padStart(3, '0') + 'x'.repeat(197))
+  db.prepare('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)')
+    .run(W, tid, uid, 'Wide', JSON.stringify(names))
+  // 1,000 rows, each naming one column: the call names all 200.
+  const rows = Array.from({ length: 1000 }, (_, i) => ({ [names[i % 200]]: `v${i}` }))
+  const ap = done(appendRowsKeyed(W, uid, rows, 'wide-ap', 'mcp'))
+  assert.deepEqual(ap.changed[0].columns, names)
+  const ids = ap.ok.answer.rows.map(r => r.id)
+  const ups = ids.map((rowId, i) => ({ rowId, cells: { [names[(i + 1) % 200]]: `u${i}` } }))
+  const bt = done(batchUpdateKeyed(W, uid, ups, 'wide-bt', 'mcp'))
+  const up = done(patchRowKeyed(ids[0], uid, { [names[7]]: 'p' }, W, 'wide-up', 'mcp'))
+  const sizes = Object.fromEntries(['wide-ap', 'wide-bt', 'wide-up'].map(k => [k, entry(k)!.result_json]))
+  // The one-row answer keeps the row's cells (up to ROW_BYTES); changed keeps no columns anywhere.
+  for (const [k, json] of Object.entries(sizes)) {
+    const kept = (JSON.parse(json) as { changed: object[] }).changed
+    assert.ok(kept.length === 1 && kept.every(i => !('columns' in i)), `${k}: ${JSON.stringify(kept)}`)
+  }
+  for (const k of ['wide-ap', 'wide-bt']) assert.ok(!sizes[k].includes(names[0]), `${k} keeps no column name`)
+  const bytes = (k: string) => Buffer.byteLength(sizes[k])
+  assert.ok(bytes('wide-ap') < 45_000, `the append stored ${bytes('wide-ap')} bytes`)
+  assert.ok(bytes('wide-bt') < 5_000, `the many-rows update stored ${bytes('wide-bt')} bytes`)
+  console.log(`  stored: append ${bytes('wide-ap')}, many rows ${bytes('wide-bt')}, one row ${bytes('wide-up')} bytes`)
+  // Each replay (over either surface) answers the first call's changed, its columns from its own cells.
+  assert.deepEqual(done(appendRowsKeyed(W, uid, rows, 'wide-ap', 'rest')).changed, ap.changed)
+  assert.deepEqual(done(batchUpdateKeyed(W, uid, ups, 'wide-bt', 'rest')).changed, bt.changed)
+  assert.deepEqual(done(patchRowKeyed(ids[0], uid, { [names[7]]: 'p' }, W, 'wide-up', 'rest')).changed, up.changed)
+  assert.deepEqual([bt.changed[0].columns.length, up.changed[0].columns], [200, [names[7]]])
+})
+
 const age = (key: string, hours: number) => db.prepare(`UPDATE data_operation_ledger
   SET created_at = datetime('now', ?) WHERE idempotency_key = ?`).run(`-${hours} hours`, key)
 

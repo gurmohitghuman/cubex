@@ -103,7 +103,9 @@ export const IDEMPOTENT_WRITE_ROW_BYTES = 16 * 1024;
 export const IDEMPOTENT_WRITE_KEY_MAX_CHARS = 200;
 // Deleted a slice at a time: a write past KEYS_MAX, and the sweep of expired
 // keys, whose append slices are smaller (an append's stored answer is up to
-// ~45 KB, and secure_delete zeroes every page it frees): ~1 MB a slice.
+// ~45 KB, and secure_delete zeroes every page it frees): ~1 MB a slice. A
+// many-rows update keeps up to ~5 KB: its changed, without the column names
+// (rows-write-keyed.ts), names up to 100 rows.
 export const IDEMPOTENT_WRITE_PRUNE_ROWS = 250;
 export const IDEMPOTENT_WRITE_PRUNE_APPENDS = 25;
 

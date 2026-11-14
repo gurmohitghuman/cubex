@@ -10,6 +10,8 @@
 // would write checks those after the ledger (sheet_not_found, busy).
 // Beside each answer: what the call changed, for MCP (mcp/changed.ts), read
 // in the write's transaction and kept with the key, so a replay answers it too.
+// It is kept without its columns: they are the call's own (its cells' column
+// names), which the key's hash holds equal, so a replay works them out again.
 import { db } from '../lib/db';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { IDEMPOTENT_WRITE_KEY_MAX_CHARS, IDEMPOTENT_WRITE_ROW_BYTES } from '../lib/api-v1-constants';
@@ -23,11 +25,18 @@ import {
   withoutRestoreWords, withRestoreWords, type AutoDedupeAnswer, type StoredAutoDedupe,
 } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
-import {
-  arrivedTouch, changedOf, columnsOf, editedTouch, storedChanged, type Changed,
-} from '../mcp/changed';
+import { arrivedTouch, changedOf, columnsOf, editedTouch, type Changed } from '../mcp/changed';
 
 export type Keyed<T> = { ok: T; replayed: boolean; changed: Changed[] } | TxnFail;
+
+// changed as a key keeps it: without the columns (a big sheet's names would
+// make each entry tens of KB). A replay puts back its own cells' column names,
+// in the order it names them: one item, for the sheet it wrote.
+type KeptChanged = Array<Omit<Changed, 'columns'>>;
+const withoutColumns = (changed: Changed[]): KeptChanged => changed.map(({ columns: _columns, ...item }) => item);
+const replayedChanged = (stored: KeptChanged | undefined, columns: string[]): Changed[] =>
+  (stored ?? []).map(({ sheet_id, sheet, ...item }) => ({ sheet_id, sheet, columns, ...item }));
+
 // sheet_not_found: the sheet doesn't exist or is in the trash (a replay still answers).
 export type KeyedOnSheet<T> = Keyed<T> | { fail: 'sheet_not_found' };
 
@@ -52,7 +61,7 @@ const worded = <T extends { auto_dedupe?: unknown }>(a: T, surface: Surface): T 
 // auto_dedupe part (bounded: at most AUTO_DEDUPE_LIST_IDS of each list).
 // About 40 bytes a row: 1,000 rows stay well under 64 KB.
 interface StoredAppend {
-  ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe; changed?: Changed[];
+  ids: string[]; first: number; not_kept: number[]; auto_dedupe?: StoredAutoDedupe; changed?: KeptChanged;
 }
 
 const appendReplay = (s: StoredAppend, surface: Surface): AppendAnswer => {
@@ -73,7 +82,7 @@ export function appendRowsKeyed(
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' } : {
         ok: { answer: appendReplay(prior.replay, surface), kept: 0 }, replayed: true,
-        changed: storedChanged(prior.replay.changed),
+        changed: replayedChanged(prior.replay.changed, columnsOf(parsedRows)),
       };
     }
     if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
@@ -85,7 +94,8 @@ export function appendRowsKeyed(
     writeWriteLedger(userId, key, 'rows_append', hash, neutral({
       ids: rows.map(r => r.id), first: rows[0]?.index ?? 0,
       not_kept: rows.flatMap((r, i) => (done.ok.notKept.has(r.id) ? [i] : [])),
-      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as StoredAutoDedupe } : {}), changed,
+      ...(answer.auto_dedupe ? { auto_dedupe: answer.auto_dedupe as StoredAutoDedupe } : {}),
+      changed: withoutColumns(changed),
     } satisfies StoredAppend));
     return { ok: { answer, kept: done.ok.kept }, replayed: false, changed };
   }).immediate();
@@ -94,7 +104,7 @@ export function appendRowsKeyed(
 // A one-row update's answer, and the row's sheet: the row id names it, so a
 // call with or without sheet_id is the same call, and one naming another
 // sheet is a different one. Cells over IDEMPOTENT_WRITE_ROW_BYTES aren't kept.
-interface StoredPatch { sheet_id: string; answer: PatchAnswer; changed?: Changed[] }
+interface StoredPatch { sheet_id: string; answer: PatchAnswer; changed?: KeptChanged }
 
 function keptPatch(answer: PatchAnswer): PatchAnswer {
   if (Buffer.byteLength(JSON.stringify(answer.data ?? null), 'utf8') <= IDEMPOTENT_WRITE_ROW_BYTES) return answer;
@@ -117,7 +127,10 @@ export function patchRowKeyed(
     const prior = readWriteLedger<StoredPatch>(userId, key, hash, s => sheetId === undefined || s.sheet_id === sheetId);
     if (prior) {
       return 'conflict' in prior ? { fail: 'idempotency_conflict' }
-        : { ok: worded(prior.replay.answer, surface), replayed: true, changed: storedChanged(prior.replay.changed) };
+        : {
+          ok: worded(prior.replay.answer, surface), replayed: true,
+          changed: replayedChanged(prior.replay.changed, Object.keys(cells)),
+        };
     }
     const home = db.prepare('SELECT sheet_id FROM rows WHERE id = ? AND user_id = ?').pluck()
       .get(rowId, userId) as string | undefined;
@@ -128,14 +141,14 @@ export function patchRowKeyed(
     const answer = patchAnswer(userId, done.ok, surface);
     const changed = changedOf(userId, [editedTouch(home, Object.keys(cells), [rowId], answer.auto_dedupe)]);
     writeWriteLedger(userId, key, 'cells_update', hash,
-      { sheet_id: home, answer: neutral(keptPatch(answer)), changed } satisfies StoredPatch);
+      { sheet_id: home, answer: neutral(keptPatch(answer)), changed: withoutColumns(changed) } satisfies StoredPatch);
     return { ok: answer, replayed: false, changed };
   }).immediate();
 }
 
 type BatchAnswer = { updated: number; auto_dedupe?: AutoDedupeAnswer };
 // Kept for a replay: the answer, and beside it what the call changed.
-type StoredBatch = BatchAnswer & { changed?: Changed[] };
+type StoredBatch = BatchAnswer & { changed?: KeptChanged };
 
 // The updates' order changes nothing they write, so it doesn't change the call
 // either. A replay answers while the sheet is busy (the /api/v1 and MCP busy
@@ -154,7 +167,8 @@ export function batchUpdateKeyed(
     if (prior) {
       if ('conflict' in prior) return { fail: 'idempotency_conflict' };
       const { changed, ...first } = prior.replay;
-      return { ok: worded(first, surface), replayed: true, changed: storedChanged(changed) };
+      const columns = columnsOf(updates.map(u => u.cells));
+      return { ok: worded(first, surface), replayed: true, changed: replayedChanged(changed, columns) };
     }
     if (!verifySheetOwnership(sheetId, userId)) return { fail: 'sheet_not_found' };
     const busy = sheetBusyWith(sheetId);
@@ -163,7 +177,8 @@ export function batchUpdateKeyed(
     if ('fail' in done) return done;
     const changed = changedOf(userId, [editedTouch(sheetId, columnsOf(updates.map(u => u.cells)),
       updates.map(u => u.rowId), done.ok.auto_dedupe)]);
-    writeWriteLedger(userId, key, 'cells_update_batch', hash, { ...neutral(done.ok), changed } satisfies StoredBatch);
+    writeWriteLedger(userId, key, 'cells_update_batch', hash,
+      { ...neutral(done.ok), changed: withoutColumns(changed) } satisfies StoredBatch);
     return { ok: done.ok, replayed: false, changed };
   }).immediate();
 }
