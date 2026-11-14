@@ -14,7 +14,8 @@ Semantic versions, `vMAJOR.MINOR.PATCH`, starting at `v0.1.0`:
 - **major**: reserved for after `v1.0.0`; until then, breaking changes go in a minor release and
   say so at the top of the notes.
 
-The tag is the version. Nothing on `main` holds a version number, so there is nothing to bump.
+The tag is the version. Nothing on `main` holds the version Cubex runs, so there is nothing to bump.
+The one file that names releases is the list of [changes for agents](#changes-for-agents).
 
 ## Cut a release
 
@@ -30,6 +31,8 @@ From a checkout with a remote pointing at `github.com/gurmohitghuman/cubex` and 
 4. **Watch it.** The workflow runs CI (typecheck, unit tests, build) and installs Cubex with the
    one-line installer on that exact commit. When both pass it publishes the draft, which
    creates the tag and marks it the latest release. `cubex update` picks it up at once.
+5. **Record the tool list** in a small pull request, when the release has
+   [changes for agents](#changes-for-agents).
 
 If the workflow fails, nothing was tagged. Fix `main`, then `scripts/release.sh abandon vX.Y.Z`
 and cut the same version again. Only one draft can be open at a time.
@@ -51,6 +54,32 @@ The notes are for people running Cubex, not for us. Start from what changed for 
 
 Plain words, short sentences, no em dashes. Leave the stats line, "Updating", the commit list
 and the changelog link as the script wrote them.
+
+## Changes for agents
+
+`server/src/mcp/agent-changes.ts` lists, release by release, what changed for AI agents that use
+Cubex over MCP: tools added, changed, removed or renamed, and changes to the server's answers. The
+MCP instructions show the running release's lines, `get_version` with `since` lists them, and a
+call to a removed or renamed tool is told what replaced it ([MCP](mcp.md#after-an-update)).
+
+- **A change to a tool** adds its line under the next release: the one already listed after the
+  newest tag, or else the next patch after that tag. The unit test
+  `tests/unit/mcp-tool-list.test.ts` compares every tool's name and input schema with the list
+  recorded for the last release with lines (`tests/unit/mcp-tool-list.json`), and fails on a
+  change with no line. Where the checkout has the release tags, it names the release to use.
+- **A release's lines stay as it shipped them.** A change made after a release goes under the
+  next one, even when it fixes something that release added, and a release that shipped no lines
+  gets none afterwards. `scripts/release.sh cut` refuses when what the last tag shipped of the
+  file was changed, and so do the unit test (where the checkout has the tags) and the recording.
+- **Cutting a release** whose lines sit under another number (a minor release, say): rename them
+  to the release on `main` first. `scripts/release.sh cut` refuses until they match.
+- **After a release with lines**, record its tool list in a small pull request:
+  `MCP_TOOL_LIST_RECORD=vX.Y.Z npm run test:unit -- mcp-tool-list`. It reads the tools from the
+  release's own code (a temporary checkout of the tag), so it can be done at any time after the
+  tag, whatever has merged since. It writes the file only when the release's lines match its
+  tools and the file still has them as the tag shipped them. Until it is recorded, the unit test
+  refuses lines for the next release, and where the checkout has the tags it asks for the
+  recording at once.
 
 ## How it works
 

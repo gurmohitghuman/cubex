@@ -43,12 +43,13 @@ import { capToolNote } from '../lib/token-spend';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
 import { refuseToolListCursor } from './list-cursor';
 import { runningBuild } from '../lib/cubex-version';
+import { versionNote } from '../services/version-changes';
+import { answerReplacedTools } from './replaced-tools';
 
 // The name and version every answer carries (serverInfo): the running release ("v0.8.12"), or the build
 // as the installer recorded it when it isn't a release, as get_version says (lib/cubex-version.ts);
 // "unknown" for a build that doesn't record it (Docker, Coolify).
-function serverInfo() {
-  const running = runningBuild();
+function serverInfo(running: ReturnType<typeof runningBuild>) {
   return { name: 'cubex', version: running.version ?? running.build ?? 'unknown' };
 }
 // 2026-07-28 caching hints. The instructions and tool descriptions name this
@@ -57,12 +58,14 @@ function serverInfo() {
 const CACHE_HINT = { ttlMs: MCP_LIST_CACHE_TTL_MS, cacheScope: 'private' } as const;
 
 export function buildMcpServer(ctx: McpAuthCtx): McpServer {
+  const running = runningBuild();
   const server = new McpServer(
-    serverInfo(),
+    serverInfo(running),
     {
       cacheHints: { 'server/discover': CACHE_HINT, 'tools/list': CACHE_HINT },
       instructions:
-        'Cubex is a spreadsheet workspace. Resolve names with list_tables first; ' +
+        // The running release and what changed for agents in it (services/version-changes.ts).
+        'Cubex is a spreadsheet workspace. ' + versionNote(running) + 'Resolve names with list_tables first; ' +
         'get_sheet\'s column_details says what fills each column (its kind, run, auto-run, rule and ' +
         'description; include_counts adds filled, empty and error counts), and set_description describes a ' +
         'sheet or a column for whoever reads it next; ' +
@@ -112,12 +115,14 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
         'inside them.' + capToolNote(ctx.spend ?? null, true),
     },
   );
-  // Cubex sends no list-changed notices. The list changes with a new version,
-  // and descriptions with the token's cap and spend. A subscriptions/listen is acknowledged empty and closed.
+  // Cubex sends no list-changed notices. The list changes with a new version (the instructions name it,
+  // and a call to a tool it removed or renamed says what replaced it), and descriptions with the token's
+  // cap and spend. A subscriptions/listen is acknowledged empty and closed.
   // Declared here, not in the options above: there McpServer installs tools/list
-  // at once, and the cursor check must wrap it before the first tool installs it.
+  // at once, and the cursor and replaced-tool checks must wrap it before the first tool installs it.
   server.server.registerCapabilities({ tools: { listChanged: false } });
   refuseToolListCursor(server);
+  answerReplacedTools(server);
   registerAllTools(server, ctx);
   return server;
 }

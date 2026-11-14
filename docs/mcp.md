@@ -79,7 +79,7 @@ On every version:
 
 - One JSON-RPC request per POST. A batch (a JSON array of requests) gets HTTP 400 with `-32600`, and nothing in it runs. Clients on 2025-03-26 could send one before.
 - `tools/list` gives every tool at once and hands out no cursor, so a request with a `cursor` of any value, `null` too, gets error `-32602`.
-- An unknown tool name gets a JSON-RPC error `-32602` (`Tool nope not found`). Clients on 2025-11-25 and earlier used to get it as a tool result with `isError: true`.
+- An unknown tool name gets a JSON-RPC error `-32602` (`Tool nope not found`). Clients on 2025-11-25 and earlier used to get it as a tool result with `isError: true`. A tool a release removed or renamed is the exception: its call gets a tool result with `isError: true` naming what replaced it ([After an update](#after-an-update)).
 - A body that isn't valid JSON gets HTTP 400 with `-32700`, a body over 2 MB gets 413 with `-32700`, and a POST whose `Content-Type` isn't `application/json` gets 415 with `-32600`. So does JSON whose `charset` isn't a UTF one, such as `latin1`, or with a `Content-Encoding` other than `gzip` or `deflate` (that 415 sends `Accept-Encoding: gzip, deflate`).
 - A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600` and `Allow: POST`.
 - A failure inside Cubex gets HTTP 500 with `-32603`. The server log has the cause, with secrets redacted.
@@ -88,7 +88,7 @@ On every version:
 On 2026-07-28:
 
 - Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`). The version is the one `get_version` reports: the release that runs (`v0.8.12`), the build when it isn't a release, or `unknown` for a build that doesn't record it (Docker, Coolify).
-- `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when they change: the tools change with a new version of Cubex, and descriptions change with the token's spend cap and what it has spent. A client sees each change within 5 minutes.
+- `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when they change: the tools change with a new version of Cubex, and descriptions change with the token's spend cap and what it has spent. A client sees each change within 5 minutes. [After an update](#after-an-update) says how an agent finds out what changed.
 - `tools/list` gives every tool at once, in the same order every time. Every token sees every tool: one its scopes don't allow refuses with a message that names the scope.
 - Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true`, such as `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
 - Errors: a version Cubex doesn't speak gets HTTP 400 with code `-32022` and, in `data.supported`, every version it speaks, newest first: `2026-07-28`, then the five a client reaches with `initialize`. Headers that are missing or disagree with the body get 400 with `-32020` (an `Mcp-Name` sent as `=?base64?...?=` is decoded first). A `_meta` without `clientCapabilities`, or a request with the `MCP-Protocol-Version: 2026-07-28` header and no `_meta`, gets 400 with `-32602`. A method Cubex doesn't offer gets 404 with `-32601`.
@@ -100,6 +100,49 @@ Not offered:
 - Progress and log messages, sessions (an `Mcp-Session-Id` header is ignored) and streams to resume. `GET` and `DELETE` on `/mcp` answer 405.
 - Anything on the spec's [deprecated list](https://modelcontextprotocol.io/specification/2026-07-28/deprecated): roots, sampling, logging, dynamic client registration and the old HTTP+SSE transport.
 - OAuth sign-in: Cubex uses its own access tokens.
+
+## After an update
+
+A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it is updated, so an agent can work from a tool list older than the server for a while. An agent that used Cubex before also remembers tools by name. It finds out what changed four ways:
+
+- **The instructions** (in the answer to `initialize` or `server/discover`) start with the version that runs and what changed for agents in it: `This server runs Cubex v0.8.14. New for agents in it: get_version takes since, ...`. A build that isn't a release says so instead.
+- **`serverInfo.version`** is the running version (`v0.8.14`), the same as `get_version`'s `version`.
+- **`get_version` with `since`**, set to the version the agent last used, adds `changes_since`: every release after it, oldest first, with what changed for agents in each. `GET /api/v1/version?since=v0.8.12` answers the same.
+- **A call to a removed or renamed tool** comes back as a tool result with `isError: true` that names what replaced it and asks the agent to list the tools again: `<old> was renamed to <new> in Cubex vX.Y.Z: call <new> instead.` Any other unknown name still gets error `-32602`.
+
+`changes_since` for `since: "v0.8.13"`:
+
+```json
+{
+  "since": "v0.8.13",
+  "releases": [
+    {
+      "version": "v0.8.14",
+      "changes": [
+        {
+          "change": "changed",
+          "tools": ["get_version"],
+          "summary": "get_version takes since, a release like \"v0.8.13\", and then adds changes_since: what changed for agents in every release after it, oldest first.",
+          "details": "Call it with the version you last used when you start on a server you have used before, or when a tool you expect is missing."
+        },
+        {
+          "change": "server",
+          "summary": "The server instructions start with the running Cubex version and what changed for agents in it."
+        },
+        {
+          "change": "server",
+          "summary": "A call to a tool a release removed or renamed gets a tool error naming what replaced it, instead of \"Tool not found\".",
+          "details": "Call the tool it names, and list the tools again: your list is older than the server."
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `change` is `added`, `changed` (what a call sends, or what it answers, is different), `removed`, `renamed` or `server` (the server's own answers, not a tool). `tools` names the tools it is about, and `replaced_by` the tool to call instead of a removed or renamed one. `summary` is one line; `details`, when there is one, says what to do differently.
+- Changes are listed for the releases after v0.8.12. For an older `since`, `note` points to the release notes for the rest. A `since` after the running version gets an empty list.
+- `since` must be a release, like `v0.8.12` or `0.8.12`. Anything else, such as a build line (`main 6071123`), is refused: a tool result with `isError: true`, or HTTP 400 on REST, both saying `since must be a Cubex release like "v0.8.12", not "main 6071123". ...`
 
 ## Things to ask for
 
@@ -147,7 +190,7 @@ Not offered:
 | `list_models`, `set_default_model` | Find OpenRouter models and set the default. `:batch` models aren't listed: they run only through OpenRouter's batch API, so a run on one (its start, estimate, preview, resume or rerun), a waterfall step, a waterfall's resume, `write_formula`, `write_run_condition` and a default on one are refused with the model to use instead. |
 | `get_balances` | What the account can spend: the treg balance, the enrichment daily limit, what OpenRouter reports for the saved key (its account balance only reaches a management key, so often just the key's own limit), and this token's spend cap with what is left (`access_token`). `openrouter.checked_at` is when Cubex read OpenRouter's numbers (a read is reused for 30 seconds). They can lag behind runs that just finished, while `access_token.spent_usd` is live. Costs nothing. |
 | `get_usage` | What AI, HTTP API and enrichment runs ran and cost, by column (deleted ones too), day or run, for one sheet or the whole account, over this week, this month, last week, last month or two days you pick. Each row has runs, cells run, cells reused from earlier answers, the cost (OpenRouter, your own AI provider key, treg) and the cost per cell. Costs nothing. |
-| `get_version` | Which Cubex version runs (`version`, and `build` as the installer recorded it; `pinned_ref` when it was installed with `--ref`, which `cubex update` keeps reinstalling until the install command runs again without it), the latest release the daily release check found (`latest_release`, with `published_at` and `notes_url`) and `update_available`. It reads what the check kept and never asks GitHub itself. `update_available` is `null` when it can't be told: a build from a branch or a local source, one that doesn't record its version (Docker, Coolify), or no answer yet. The check is on by default; **Settings → Account → Version** turns it off. Costs nothing. |
+| `get_version` | Which Cubex version runs (`version`, and `build` as the installer recorded it; `pinned_ref` when it was installed with `--ref`, which `cubex update` keeps reinstalling until the install command runs again without it), the latest release the daily release check found (`latest_release`, with `published_at` and `notes_url`) and `update_available`. It reads what the check kept and never asks GitHub itself. `update_available` is `null` when it can't be told: a build from a branch or a local source, one that doesn't record its version (Docker, Coolify), or no answer yet. The check is on by default; **Settings → Account → Version** turns it off. With `since` (a release, like `v0.8.12`), it adds `changes_since`: what changed for agents in every release after it (see [After an update](#after-an-update)). Costs nothing. |
 | `clean_column` | Free cleaning into a new column: names, first and last names, company names, emails, domains, phone numbers, Title Case, lowercase, spaces and garbled characters. No AI and no credits. See [Clean data](#clean-data). |
 | `lookup_column` | A new column filled for free from another sheet: a column of the first matching row, yes/no, a count, or the matching rows. See [Lookups](#lookups). |
 | `formula_column`, `write_formula` | A new column worked out for free from each row by a JavaScript formula, like picking an item out of an API response by a condition. `write_formula` writes the formula from plain words with your default AI model. See [Formulas](#formulas). |
@@ -953,7 +996,7 @@ URLs Cubex tells, with a signed POST, when a run finishes. Agents use `list_run_
 | Endpoint | Body or query |
 |---|---|
 | `GET /balances` | Same as `get_balances`. |
-| `GET /version` | Same as `get_version`. `read` scope. |
+| `GET /version` | Same as `get_version`; `?since=v0.8.12` adds `changes_since`. `read` scope. |
 | `GET /usage` | Same as `get_usage`: `?sheet_id=` (leave out for the whole account), `group_by` (`column`, `day` or `run`), `range` (`this_week`, `this_month`, `last_week`, `last_month`) or `from` and `to` (`2026-10-01`), `limit` (up to 1,000; totals always cover the whole range). `format=csv` downloads every row. Days are UTC, and a run counts on the day it started. `read` scope. |
 | `GET /enrichments` | `?q=work email`. Without `q`, the popular jobs. |
 | `GET /enrichments/:toolId` | A tool's inputs, outputs, price and providers. |

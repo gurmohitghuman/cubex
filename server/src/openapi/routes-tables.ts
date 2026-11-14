@@ -21,7 +21,11 @@ export const tableRoutes = (): RouteDoc[] => [
     method: 'get', path: '/version', operationId: 'getVersion', tag: 'account', scope: 'read',
     summary: 'The running Cubex version, the latest release and whether a newer one is out.',
     description: 'Reads what the daily release check kept (Settings, Account, Version); it never asks GitHub '
-      + 'itself. update_available is null when the running build is not a release or no answer is kept.',
+      + 'itself. update_available is null when the running build is not a release or no answer is kept. '
+      + 'With since, it adds changes_since: what changed for MCP agents in every release after that one.',
+    query: z.object({
+      since: z.string().optional().describe('A Cubex release, like v0.8.12. Anything else is refused with 400.'),
+    }),
   }),
   op({
     method: 'get', path: '/openapi.json', operationId: 'getOpenApiDocument', tag: 'account', scope: 'read',

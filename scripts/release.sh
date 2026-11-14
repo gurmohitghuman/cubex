@@ -126,6 +126,58 @@ cmd_notes() {
   echo "Fill in every TODO, then: scripts/release.sh cut $next $file"
 }
 
+# The changes for agents (server/src/mcp/agent-changes.ts, docs/releasing.md "Changes for agents").
+AGENT_CHANGES=server/src/mcp/agent-changes.ts
+
+# The releases the file lists in text $1, newest first, one a line (each written version: 'vX.Y.Z').
+agent_changes_versions() {
+  printf '%s\n' "$1" | grep -o "version: 'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'" | sed "s/version: '\(.*\)'/\1/"
+}
+
+# The newest release the file lists in text $1, or nothing.
+agent_changes_newest() {
+  agent_changes_versions "$1" | head -n 1
+}
+
+# Text $1 from release $2's line down: what a tag shipped, which later commits keep as it is. (A dot in
+# $2 matches any character, which no other line of the file can turn into a match.)
+agent_changes_from() {
+  printf '%s\n' "$1" | sed -n "/version: '$2'/,\$p"
+}
+
+# The newest release text $1 lists that isn't newer than $2, or nothing.
+agent_changes_kept() {
+  local v
+  for v in $(agent_changes_versions "$1"); do
+    newer "${v#v}" "${2#v}" || { echo "$v"; return 0; }
+  done
+}
+
+# Refuses cutting $2 (vX.Y.Z) at commit $3 after the latest tag $1 (or none) when the changes for agents
+# don't fit: the lines added since $1 must name $2, and what $1 shipped of the file must be unchanged. A
+# release listed now that isn't newer than $1 and that $1 didn't ship counts as a change to it (a release
+# out with no lines gets none afterwards). A tag from before the file shipped nothing to keep.
+agent_changes_check() {
+  local prev="$1" tag="$2" target="$3" now then listed first kept
+  now="$(git show "$target:$AGENT_CHANGES" 2>/dev/null)" || now=""
+  listed="$(agent_changes_newest "$now")"
+  if [ -n "$listed" ] && [ "$listed" != "$tag" ] && { [ -z "$prev" ] || newer "${listed#v}" "${prev#v}"; }; then
+    die "$AGENT_CHANGES lists this release's changes for agents under $listed:" \
+      "rename it to $tag on main first"
+  fi
+  [ -n "$prev" ] || return 0
+  then="$(git show "refs/tags/$prev:$AGENT_CHANGES" 2>/dev/null)" || return 0
+  first="$(agent_changes_newest "$then")"
+  kept="$(agent_changes_kept "$now" "$prev")"
+  if [ -n "$kept" ] && { [ -z "$first" ] || newer "${kept#v}" "${first#v}"; }; then
+    die "$AGENT_CHANGES lists $kept, but $prev shipped ${first:-no lines}${first:+ as its newest lines}:" \
+      "a change after $prev goes under $tag"
+  fi
+  [ "$kept" = "$first" ] && [ "$(agent_changes_from "$then" "$first")" = "$(agent_changes_from "$now" "$first")" ] \
+    || die "$AGENT_CHANGES changes what $prev shipped (${first:-nothing} and older):" \
+      "a change after $prev goes under $tag; put the shipped lines back as they were"
+}
+
 cmd_cut() {
   local tag="${1:-}" notes="${2:-}" prev target drafts
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "give the version as vX.Y.Z, not '$tag'"
@@ -135,6 +187,7 @@ cmd_cut() {
   fetch_public
   prev="$(latest_tag)" target="$(git rev-parse "$REMOTE/main")"
   if [ -n "$prev" ]; then newer "${tag#v}" "${prev#v}" || die "$tag isn't newer than $prev"; fi
+  agent_changes_check "$prev" "$tag" "$target"
   drafts="$(gh release list --repo "$CUBEX_REPO" --json tagName,isDraft \
     --jq '.[] | select(.isDraft) | .tagName')"
   [ -z "$drafts" ] || die "draft $drafts is still open: let its run finish, or: scripts/release.sh abandon $drafts"

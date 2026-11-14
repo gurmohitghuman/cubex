@@ -14,6 +14,7 @@ import {
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
 import { apiV1Limiter } from '../lib/limits';
 import { versionInfo } from '../services/version-info';
+import { changesSince } from '../services/version-changes';
 import tablesV1 from './api-v1-tables';
 import tableSheetsV1 from './api-v1-table-sheets';
 import sheetsV1 from './api-v1-sheets';
@@ -127,10 +128,14 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
 
 // GET /api/v1/version: the running version, the latest release the daily check found and whether it
 // is newer (services/version-info.ts; get_version and Settings read the same). Reads only what is kept:
-// it never asks GitHub.
+// it never asks GitHub. ?since=<release> adds what changed for agents after it, as get_version's since.
 router.get('/version', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
-    res.json(versionInfo(req.userId!));
+    const info = versionInfo(req.userId!);
+    if (req.query.since === undefined) return res.json(info);
+    const changes = changesSince(req.query.since);
+    if ('error' in changes) return res.status(400).json({ error: changes.error });
+    res.json({ ...info, changes_since: changes.ok });
   } catch (error) {
     console.error('GET /v1/version error:', error);
     res.status(500).json({ error: 'Failed to read the version' });
