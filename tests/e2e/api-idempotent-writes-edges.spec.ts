@@ -104,12 +104,13 @@ test('row-write replays answer after the sheet went to the trash, over REST and 
   expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-bt' }))
     .toEqual({ updated: 1, replayed: true })
 
-  // A new key there writes nothing: the sheet isn't found.
+  // A new key there writes nothing: the sheet isn't found (MCP adds that it is in the trash, and how to restore it).
   const fresh = await v1.post(`/api/v1/sheets/${sheetId}/rows`, { data: { ...rowsBody, idempotency_key: 'e2e-tr-2' } })
   expect(fresh.status()).toBe(404)
   expect(await fresh.json()).toEqual({ error: 'Sheet not found' })
   expect(await callError(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-3' }))
-    .toBe('Sheet not found')
+    .toMatch(new RegExp('^Sheet not found\\. It is sheet "Sheet1" \\(table "[^"]+"\\), which is in the trash: '
+      + 'restore_from_trash with trash_ids \\[\\d+\\] brings it back\\.$'))
   await mcp.close()
   await v1.dispose()
 })

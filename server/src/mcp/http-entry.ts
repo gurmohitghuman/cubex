@@ -12,13 +12,16 @@
 // closed over its caller (build-server.ts); the caller travels in
 // authInfo.extra, which the SDK passes to the factory untouched.
 import {
-  createMcpHandler, isLegacyRequest, ProtocolErrorCode, WebStandardStreamableHTTPServerTransport,
+  createMcpHandler, isLegacyRequest, PROTOCOL_VERSION_META_KEY, ProtocolErrorCode,
+  WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type { AuthInfo, McpHandlerRequestOptions, McpServer } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { buildMcpServer } from './build-server';
 import type { McpAuthCtx } from './tool-helpers';
-import { asTheSpecSays, BATCH_REFUSED, INTERNAL_ERROR, refusal, requestIdOf } from './http-answers';
+import {
+  asTheSpecSays, BATCH_REFUSED, EVERY_VERSION, INTERNAL_ERROR, refusal, requestIdOf, unsupportedVersion,
+} from './http-answers';
 import { redactError } from '../lib/redact';
 
 const CALLER = 'cubex';
@@ -94,15 +97,28 @@ async function bodyOf(request: Request, options?: McpHandlerRequestOptions): Pro
   return request.clone().json().catch(() => undefined);
 }
 
+// Whether the body names its protocol version (a 2026-07-28 request's _meta).
+function namesVersion(body: unknown): boolean {
+  const meta = (body as { params?: { _meta?: Record<string, unknown> } } | null)?.params?._meta;
+  return !!meta && typeof meta === 'object' && meta[PROTOCOL_VERSION_META_KEY] !== undefined;
+}
+
 // A batch is refused before either era sees it: 2026-07-28 and 2025-06-18 say
 // one message per POST (basic/transports), and the 2025-03-26 transport would
-// otherwise run up to 100 tool calls on one rate-limited request. Every answer
-// then goes through asTheSpecSays, and a throw anywhere below is logged
-// (redacted) and answered with -32603 and the request's id.
+// otherwise run up to 100 tool calls on one rate-limited request. So is a
+// header naming a version Cubex doesn't speak on a body that names none: the
+// SDK would ask for the _meta that version may not have (http-answers.ts
+// unsupportedVersion). Every answer then goes through asTheSpecSays, and a
+// throw anywhere below is logged (redacted) and answered with -32603 and the
+// request's id.
 export const mcpEntry = {
   fetch: async (request: Request, options?: McpHandlerRequestOptions): Promise<Response> => {
     const body = await bodyOf(request, options);
     if (Array.isArray(body)) return refusal(400, ProtocolErrorCode.InvalidRequest, BATCH_REFUSED);
+    const asked = request.headers.get('mcp-protocol-version');
+    if (asked !== null && !EVERY_VERSION.includes(asked) && !namesVersion(body)) {
+      return unsupportedVersion(asked, requestIdOf(body));
+    }
     try {
       return await asTheSpecSays((await isLegacyRequest(request, options?.parsedBody))
         ? await legacy(request, options) : await modern.fetch(request, options));

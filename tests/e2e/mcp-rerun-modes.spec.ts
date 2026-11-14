@@ -197,7 +197,8 @@ test('an AI rerun takes a new concurrency; a pause refuses it and an HTTP API re
   const http = await call('control_run', {
     run_type: 'http', run_id: '00000000-0000-4000-8000-000000000000', action: 'rerun', concurrency: 3,
   })
-  expect(JSON.parse(errorText(http)).error).toBe('HTTP run not found')
+  expect(JSON.parse(errorText(http)).error).toBe('HTTP run not found. No run has the run_id '
+    + '"00000000-0000-4000-8000-000000000000". list_runs lists a sheet\'s runs, newest first.')
 
   // v1: a number, from 1 to 100.
   const v1 = async (data: Record<string, unknown>) => {

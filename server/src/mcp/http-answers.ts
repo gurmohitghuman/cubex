@@ -42,9 +42,26 @@ export function refusal(status: number, code: number, message: string, id?: Requ
 }
 
 // Every version Cubex speaks, newest first: 2026-07-28 with _meta, and the
-// versions a client reaches with initialize.
+// versions a client reaches with initialize. The SDK names no list of the
+// versions it serves with _meta; its own -32022 lists them, and
+// tests/unit/mcp-http-entry-errors.test.ts checks that list is this one.
+const MODERN_VERSIONS = ['2026-07-28'];
 const everyVersion = (modernOnes: string[]): string[] =>
   [...new Set([...modernOnes, ...SUPPORTED_PROTOCOL_VERSIONS])].sort().reverse();
+export const EVERY_VERSION = everyVersion(MODERN_VERSIONS);
+export const UNSUPPORTED_NEXT = 'Send one of the versions in data.supported, newest first.';
+
+// A request whose MCP-Protocol-Version header names a version Cubex doesn't
+// speak, and whose body names none: 400 with -32022 listing every version it
+// does (basic/transports/streamable-http, Protocol Version Header). A body
+// that names a version is the SDK's to answer (-32022, or -32020 when the two
+// disagree).
+export function unsupportedVersion(requested: string, id?: RequestId): Response {
+  const error = { code: ProtocolErrorCode.UnsupportedProtocolVersion,
+    message: `Unsupported protocol version: ${requested}. ${UNSUPPORTED_NEXT}`,
+    data: { supported: EVERY_VERSION, requested } };
+  return Response.json({ jsonrpc: '2.0', ...(id !== undefined && { id }), error }, { status: 400 });
+}
 
 const LEGACY_CODE = { lowest: -32019, highest: -32000 };
 type Refusal = { id?: unknown; error?: { code?: unknown; message?: unknown; data?: { supported?: unknown } } };
@@ -57,7 +74,7 @@ type Refusal = { id?: unknown; error?: { code?: unknown; message?: unknown; data
 //     server error");
 //   - an Unsupported protocol version (-32022) lists every version Cubex speaks,
 //     since a server MUST list all it supports (basic/versioning); the SDK's
-//     lists only those a request with _meta can name.
+//     lists only those a request with _meta can name. Its words add what to send.
 // Anything else, and every answer with a 2xx status, is passed on untouched.
 export async function asTheSpecSays(res: Response): Promise<Response> {
   if (res.status < 400 || !isJsonContentType(res.headers.get('content-type'))) return res;
@@ -76,7 +93,11 @@ export async function asTheSpecSays(res: Response): Promise<Response> {
     changed = true;
   }
   const supported = error.code === ProtocolErrorCode.UnsupportedProtocolVersion ? error.data?.supported : undefined;
-  if (Array.isArray(supported) && error.data) { error.data.supported = everyVersion(supported); changed = true; }
+  if (Array.isArray(supported) && error.data) {
+    error.data.supported = everyVersion(supported);
+    if (typeof error.message === 'string') error.message = `${error.message.replace(/\.?$/, '.')} ${UNSUPPORTED_NEXT}`;
+    changed = true;
+  }
   if (!changed) return res;
   const headers = new Headers(res.headers);
   headers.delete('content-length');

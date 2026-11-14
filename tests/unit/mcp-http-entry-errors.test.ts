@@ -26,7 +26,8 @@ async function main() {
         params: { _meta: { ...META, 'io.modelcontextprotocol/protocolVersion': '2099-01-01' } } }
       const res = await post(body, headersFor('tools/list', undefined, '2099-01-01'))
       assert.deepEqual([res.status, res.type, JSON.parse(res.text)], [400, 'application/json', { jsonrpc: '2.0',
-        error: { code: -32022, message: 'Unsupported protocol version: 2099-01-01',
+        error: { code: -32022, message: 'Unsupported protocol version: 2099-01-01. Send one of the versions in '
+          + 'data.supported, newest first.',
           data: { supported: EVERY, requested: '2099-01-01' } }, id: 51 }])
     })
 

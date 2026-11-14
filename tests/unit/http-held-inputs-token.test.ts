@@ -213,7 +213,11 @@ for (const [surface, rerun] of Object.entries(RERUN)) {
       const sid = fresh(['Push'])
       const id = f.run(sid)
       const h = await hold(sid)
-      const want = `${surface === 'rest' ? f.status : 'error'} ${f.error}`
+      // MCP adds how to get a missing scope (mcp/next-steps.ts).
+      const more = surface === 'rest' || !f.error.includes('scope') ? '' : " A token's scopes are set when it is made: "
+        + 'the user can make a token with Use saved API keys ticked in Cubex (Settings, then Agent access) and '
+        + 'connect with it.'
+      const want = `${surface === 'rest' ? f.status : 'error'} ${f.error}${more}`
       for (let i = 0; i < TRIES; i++) assert.deepEqual(await rerun(id), { refused: true, error: want }, `try ${i}`)
       assert.equal(runsOn(sid), 2, 'no run made')
       h.stop()

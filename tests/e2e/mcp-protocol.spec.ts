@@ -17,7 +17,9 @@ const META = { 'io.modelcontextprotocol/protocolVersion': MODERN,
   'io.modelcontextprotocol/clientCapabilities': {} }
 const EVERY = [MODERN, '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07']
 const BOUNDS = 'max_chars_per_cell must be an integer from 1 to 200000.'
-const WRITE_REFUSED = { error: "This action requires the 'write' scope on your Cubex access token." }
+const WRITE_REFUSED = { error: "This action requires the 'write' scope on your Cubex access token. A token's scopes "
+  + 'are set when it is made: the user can make a token with Write ticked in Cubex (Settings, then Agent access) and '
+  + 'connect with it.' }
 
 const textOf = (res: { content?: unknown }) => (res.content as Array<{ text: string }>)[0].text
 
@@ -134,7 +136,8 @@ test('MCP 2026-07-28 on the wire: resultType, serverInfo, cache fields, headers 
   const old = await raw(token, 'tools/list', {}, { ...std('tools/list'), 'MCP-Protocol-Version': '2099-01-01' },
     { ...META, 'io.modelcontextprotocol/protocolVersion': '2099-01-01' })
   expect([old.status, old.body]).toEqual([400, { jsonrpc: '2.0', id: 41, error: { code: -32022,
-    message: 'Unsupported protocol version: 2099-01-01', data: { supported: EVERY, requested: '2099-01-01' } } }])
+    message: 'Unsupported protocol version: 2099-01-01. Send one of the versions in data.supported, newest first.',
+    data: { supported: EVERY, requested: '2099-01-01' } } }])
   // The envelope without clientCapabilities, or no _meta under the 2026-07-28 header: malformed, -32602.
   const bare = await raw(token, 'tools/list', {}, undefined, { 'io.modelcontextprotocol/protocolVersion': MODERN })
   const none = await raw(token, 'tools/list', {}, undefined, null)

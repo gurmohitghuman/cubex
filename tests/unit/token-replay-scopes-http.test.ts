@@ -6,7 +6,8 @@
 // password); the token with 'secrets' still gets the replay.
 // Whether a cURL command needs 'secrets' is read from the command alone: one without a key, started by a token
 // without the scope, replays for it after its sheet went to the trash or a {{column}} it names was removed.
-// Over the service, /api/v1 and MCP. The queue only records.
+// Over the service, /api/v1 and MCP (which adds how to get the scope, or that the sheet is in the trash). The
+// queue only records.
 import assert from 'node:assert/strict'
 import { httpKit, curlWith, SURFACE_NAMES, TRIES, type Args, type Surface } from './token-replay-http-kit'
 import keysMod from '../../server/src/services/saved-keys'
@@ -18,13 +19,15 @@ const { trashSheet } = trashMod as typeof import('../../server/src/services/tras
 const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { deleteSheetColumn } = deleteMod as typeof import('../../server/src/services/column-delete')
 const k = await httpKit('token-replay-scopes-http')
-const { uid, tid, ok, done, idle, start, refusal, fresh, runsOn, sheet } = k
+const { db, uid, tid, ok, done, idle, start, refusal, fresh, runsOn, sheet } = k
 const mapping = [{ json_path: '$.ok', column_name: 'Got' }]
 
 const CURL_SCOPE = "This cURL command has keys in it (Authorization header). Saving or using them needs the token's "
   + "'secrets' scope."
 const configScope = (key: string) => `This config references saved API key(s): ${key}. The access token needs the `
   + "'secrets' scope (in addition to 'run')."
+const SECRETS_NEXT = " A token's scopes are set when it is made: the user can make a token with Use saved API keys "
+  + 'ticked in Cubex (Settings, then Agent access) and connect with it.'
 
 // The token with 'secrets' starts `args` with `key`; the one without gets `message` (403) without the key and
 // with it, TRIES times, no run made; the token with 'secrets' then gets the replay.
@@ -33,7 +36,7 @@ async function scoped(surface: typeof SURFACE_NAMES[number], args: Args, key: st
   assert.ok(first.ok && first.ok.run_id, `${surface}: ${JSON.stringify(first)}`)
   await idle(args.sheet_id)
   const runs = runsOn(args.sheet_id)
-  const want = refusal(surface, 'forbidden', 403, message)
+  const want = refusal(surface, 'forbidden', 403, message, message + SECRETS_NEXT)
   assert.deepEqual(await start(surface, args, { secrets: false }), want, `${surface}: no key`)
   for (let i = 0; i < TRIES; i++) {
     assert.deepEqual(await start(surface, { ...args, idempotency_key: key }, { secrets: false }), want,
@@ -102,15 +105,16 @@ for (const surface of SURFACE_NAMES) {
 }
 
 // A cURL command without a key, started by the token without 'secrets' with `key`, then `change`: without the key
-// the start refuses as `now` says; with it, the first answer, every time, no run made.
+// the start refuses as `now` says (MCP as `now.mcp()` says, when set); with it, the first answer, every time, no
+// run made.
 async function keyless(surface: Surface, args: Args, key: string, change: (runId: string) => Promise<void>,
-  now: { fail: string; status: number; message: string }) {
+  now: { fail: string; status: number; message: string; mcp?: () => string }) {
   const first = await start(surface, { ...args, idempotency_key: key }, { secrets: false })
   assert.ok(first.ok && first.ok.run_id, `${surface}: ${JSON.stringify(first)}`)
   await idle(args.sheet_id)
   await change(first.ok.run_id as string)
-  assert.deepEqual(await start(surface, args, { secrets: false }), refusal(surface, now.fail, now.status, now.message),
-    `${surface}: no key`)
+  assert.deepEqual(await start(surface, args, { secrets: false }),
+    refusal(surface, now.fail, now.status, now.message, now.mcp?.()), `${surface}: no key`)
   const runs = runsOn(args.sheet_id)
   const want = { ...first.ok, replayed: true, ...(first.status ? { status: 200 } : {}) }
   for (let i = 0; i < TRIES; i++) {
@@ -129,7 +133,12 @@ for (const surface of SURFACE_NAMES) {
       master_column_name: 'Find', response_mapping: mapping }, `keyless-trash-${surface}`, async () => {
       const trashed = trashSheet(uid, tid, sid)
       assert.ok(!('error' in trashed), JSON.stringify(trashed))
-    }, { fail: 'not_found', status: 404, message: 'Sheet not found' })
+    }, { fail: 'not_found', status: 404, message: 'Sheet not found', mcp: () => {
+      const s = db.prepare('SELECT s.name, s.trash_id, t.name AS tn FROM sheets s JOIN tables t ON t.id = s.table_id '
+        + 'WHERE s.id = ?').get(sid) as { name: string; trash_id: number; tn: string }
+      return `Sheet not found. It is sheet "${s.name}" (table "${s.tn}"), which is in the trash: restore_from_trash `
+        + `with trash_ids [${s.trash_id}] brings it back.`
+    } })
   })
 
   await ok(`${surface}: a cURL start whose Authorization reads a {{column}}, retried with its key by a token `

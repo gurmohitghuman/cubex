@@ -91,9 +91,11 @@ export async function httpKit(name: string) {
     const json = JSON.parse(res.content[0].text) as Record<string, unknown>
     return res.isError ? { fail: 'error', message: json.error as string } : { ok: json }
   }
-  // A refusal as each surface says it: the service's fail kind, REST's status, MCP's isError.
-  const refusal = (surface: Surface, fail: string, status: number, message: string): Answer =>
-    surface === 'service' ? { fail, message } : surface === 'rest' ? { status, message } : { fail: 'error', message }
+  // A refusal as each surface says it: the service's fail kind, REST's status, MCP's isError (in `mcp`'s words
+  // when they differ: MCP adds a next step, mcp/next-steps.ts).
+  const refusal = (surface: Surface, fail: string, status: number, message: string, mcp = message): Answer =>
+    surface === 'service' ? { fail, message } : surface === 'rest' ? { status, message }
+      : { fail: 'error', message: mcp }
 
   return {
     ...kit, start, refusal, base, cookie,

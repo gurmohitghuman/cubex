@@ -13,6 +13,7 @@ import { TOOL_OUTPUTS, type ToolAnswer, type ToolName } from './tool-outputs';
 import { checkErrorOutput, toolOutput } from './output-schema';
 import type { SpendView } from '../lib/token-spend';
 import { digitsAsNumber } from '../lib/digits-text';
+import { rememberInputSchema } from './error-answers';
 
 // Option types that also take their value as text. An MCP client whose tool
 // list was loaded before an option existed sends it as a string ("true", "2"),
@@ -145,6 +146,7 @@ export function registerTool<N extends ToolName>(
   const schema = inputSchema === undefined || inputSchema instanceof z.ZodType
     ? inputSchema : z.object(inputSchema as z.ZodRawShape);
   const outputSchema = toolOutput(name, output);
+  rememberInputSchema(server, name, schema);
   server.registerTool(
     name, { title, annotations, ...rest, ...(schema ? { inputSchema: schema } : {}), outputSchema } as never,
     checkErrorOutput(name, output, withToolErrors(name, refuseWhileSheetBusy(name, handler))) as never,

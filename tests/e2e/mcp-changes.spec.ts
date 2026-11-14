@@ -57,9 +57,11 @@ test('the instructions name the release and what changed in it; get_version sinc
     // Both eras answer what REST answers; "0.8.12" reads as v0.8.12.
     expect(await call(legacy, 'get_version', { since: 'v0.8.12' })).toEqual(answer)
     expect(await call(modern, 'get_version', { since: '0.8.12' })).toEqual(answer)
-    // From the release before: only v0.8.14. Nothing after the running release; without since, no changes_since.
-    expect((await call(modern, 'get_version', { since: 'v0.8.13' })).changes_since.releases).toEqual([second])
-    expect((await call(modern, 'get_version', { since: 'v0.8.14' })).changes_since.releases).toEqual([])
+    // From the release before: v0.8.14, then what since v0.8.14 lists (the releases recorded after it, which
+    // never repeats v0.8.14); without since, no changes_since.
+    const after = (await call(modern, 'get_version', { since: 'v0.8.14' })).changes_since.releases
+    expect((await call(modern, 'get_version', { since: 'v0.8.13' })).changes_since.releases).toEqual([second, ...after])
+    expect(after.map((r: { version: string }) => r.version)).not.toContain('v0.8.14')
     expect(await call(legacy, 'get_version', {})).not.toHaveProperty('changes_since')
     // Older than the list: what it has, and where the rest is.
     expect((await call(legacy, 'get_version', { since: 'v0.8.1' })).changes_since.note)
