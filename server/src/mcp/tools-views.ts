@@ -7,8 +7,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { createView, deleteView, updateView, type ViewOutcome } from '../services/views';
 import { MAX_VIEWS_PER_SHEET } from '../lib/constants-filters';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { whereSchema } from './where-schema';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { nullableWhereLike } from './where-schema';
 
 const answer = (out: ViewOutcome) => ('fail' in out ? err(out.message) : ok({ view: out.ok }));
 
@@ -25,13 +25,13 @@ export function registerViewTools(server: McpServer, ctx: McpAuthCtx): void {
       + 'columns); the Default view can\'t be deleted, and deleting the view the app shows switches it to Default. '
       + 'Each change is a line in the sheet\'s History.',
     inputSchema: z.object({
-      sheet_id: z.string(),
-      action: z.enum(['create', 'change', 'delete']),
+      sheet_id: z.string().describe(SHEET_ID),
+      action: z.enum(['create', 'change', 'delete']).describe('What to do with the view'),
       view: z.string().optional().describe('change and delete: the view, by name or id'),
       name: z.string().optional().describe('create: required; change: the new name'),
       description: z.string().nullable().optional().describe('What the view is for, in a sentence; null clears it'),
       from: z.string().optional().describe('create only: the view to copy, by name or id (default: the one showing)'),
-      where: whereSchema.nullable().optional().describe('The view\'s filters (the where language); null clears them'),
+      where: nullableWhereLike('The view\'s filters; null clears them.'),
       hidden_columns: z.array(z.string()).max(MAX_COLUMNS_PER_SHEET).nullable().optional()
         .describe('Column names the view hides (at least one column stays showing); null or [] shows every column'),
     }).strict(),

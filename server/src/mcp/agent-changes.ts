@@ -57,6 +57,18 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + '"Tool not found".',
         details: 'Call the tool it names, and list the tools again: your list is older than the server.',
       },
+      {
+        change: 'server',
+        summary: 'Every tool declares an outputSchema in tools/list: the fields its structuredContent holds.',
+        details: 'The schemas are open: a later release may add fields, so ignore the ones you do not know. A '
+          + 'field marked optional is there only in some cases (an estimate, a preview, a dry run).',
+      },
+      {
+        change: 'server',
+        summary: 'The where language is described once, on read_rows\' where, and the "Only run if" rule language '
+          + 'once, on check_run_condition; the other tools\' where and run_if point there.',
+        details: 'Their shape is unchanged: the same where and run_if work on every tool that takes them.',
+      },
     ],
   },
   {

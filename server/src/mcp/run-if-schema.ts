@@ -1,5 +1,7 @@
 // The run_if argument every run-start tool (and set_auto_run) takes, described
 // once so the tools teach the same rule language (lib/run-condition-parse.ts).
+// The language itself is published once, in check_run_condition's description;
+// run_if points there, so tools/list carries it once.
 import { z } from 'zod';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 
@@ -11,9 +13,11 @@ export const RULE_LANGUAGE = 'Rule language: {{Column}} is "x" | is not "x" | co
   + '(2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 2024); cells holding ⏳ ❌ ⏭️ ➕ (Cubex\'s own words) count as '
   + 'empty.';
 
+export const RULE_POINTER = 'The rule language is check_run_condition\'s (its description says every check).';
+
 export const runIfSchema = z.string().max(MAX_RULE_CHARS).optional().describe(
   '"Only run if": rows that fail this rule are not run, cost nothing, and show "⏭️ Condition not met" '
-  + '(a real value an earlier run wrote is kept). ' + RULE_LANGUAGE
+  + `(a real value an earlier run wrote is kept). ${RULE_POINTER}`
   + ' Example: ({{Industry}} is "SaaS" OR {{Industry}} is "Fintech") AND {{Employees}} > 50. '
   + 'CHAINS: give each next column a rule on the previous one\'s result, e.g. {{Fit (Output)}} is "yes", once '
   + 'that run has finished; rows the previous rule kept out count as empty, so they stay out too. Check a rule '

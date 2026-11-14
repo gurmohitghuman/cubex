@@ -22,7 +22,7 @@ export const getEnrichment = open({
 });
 
 const range = obj({ low: num, high: num });
-// Started: run_id. With estimate_only (its default here): the estimate, and nothing started.
+// Started: run_id. With estimate_only: the estimate, and nothing started.
 export const runEnrichment = open({
   run_id: opt(str), run_type: opt(str), status_column: str, output_columns: strs,
   destination_sheet_id: opt(nul(str)), rows_in_scope: opt(num), rows_to_process: opt(num), test_rows: nul(num),

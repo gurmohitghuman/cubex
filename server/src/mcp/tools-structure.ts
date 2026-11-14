@@ -20,8 +20,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_table',
     {
       description:
-        'Create, rename, or delete a table (a workspace that holds one or more sheet tabs). create returns the new '
-        + 'table with its first sheet ("Sheet1") ready for add_column/append_rows/import_csv. delete puts the table '
+        'Create, rename or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). create '
+        + 'returns the new table with its first sheet ("Sheet1"); next: add_column, append_rows or import_csv. '
+        + 'delete puts the table '
         + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
         + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole. '
         + 'create_sample (no name needed) makes a new table named "Sample leads" (or "Sample leads 2"...) to try '
@@ -30,8 +31,8 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'column filled for free, a dry-run duplicate check of the one duplicate it holds, and an AI column set up '
         + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'delete', 'create_sample']),
-        table_id: z.string().optional().describe('Required for rename/delete'),
+        action: z.enum(['create', 'rename', 'delete', 'create_sample']).describe('What to do'),
+        table_id: z.string().optional().describe('rename, delete: the table (list_tables)'),
         name: z.string().optional().describe('Required for create/rename'),
       },
     },
@@ -65,7 +66,7 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_sheet',
     {
       description:
-        'Create, rename, copy, delete, or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
+        'Create, rename, copy, delete or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
         + 'create auto-names the sheet when name is omitted and can insert after a given tab. copy makes a new sheet '
         + 'right after sheet_id holding its values: the same rows in the same order under the same column names (or '
         + 'only the columns you list), as plain columns that nothing fills (no runs, formulas, lookups, rules or '
@@ -77,8 +78,8 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
         + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']),
-        table_id: z.string(),
+        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']).describe('What to do'),
+        table_id: z.string().describe('The table (list_tables)'),
         sheet_id: z.string().optional().describe('Required for rename/copy/delete'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),
         columns: z.array(z.string()).min(1).optional()

@@ -47,46 +47,33 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
     'control_run',
     {
       description:
-        'Pause, resume, or cancel an active run, or rerun a finished one. A cancel keeps the answers the run wrote; '
-        + 'the rows it hadn\'t reached get back what they held before it. rerun starts a NEW run reusing the column\'s '
-        + 'latest config and COSTS MONEY AGAIN — one AI call per targeted row. For an AI rerun you MUST pass either '
-        + 'row_ids or mode (there is no default): mode "errored" re-runs only ❌ rows (the usual retry), "empty" only '
-        + 'blank rows, "missing" empty+errored+unfinished, "all" EVERY row in the sheet, "out_of_date" only rows '
-        + 'whose result was made from input cells that changed since (read_rows include_status shows them as '
-        + 'out_of_date), "empty_or_out_of_date" those plus blank rows. HTTP takes the same modes (default all). '
-        + 'Check get_run_status or get_run_results first so you know how many rows you are about to re-bill. A '
-        + 'structured (output_columns) run reruns whole: one call per targeted row refills all its typed columns (and '
-        + 'its (Data) column), and the modes read its "(Status)" column (❌, blank, ⏳). An AI rerun takes '
-        + 'concurrency to change how many rows run at once (default: the run it repeats); rows that failed with '
-        + 'error_class "concurrency" (OpenRouter\'s in-flight credit budget) need a lower one. Returns the NEW run_id. '
-        + 'An HTTP API rerun or resume takes concurrency too: requests at once (its batch_size, default: the run\'s '
-        + 'own), and later reruns and the column\'s auto-run batches repeat it. first_rows (AI and HTTP) reruns only '
-        + 'among the sheet\'s top rows, a test before a big run: every one of them, or those mode picks. An AI rerun '
-        + 'or resume takes spend_limit_usd: the run\'s hard spend limit (a rerun\'s own; on resume it raises the limit '
-        + 'of a run that paused at it, pause_reason spend_limit; see run_ai_column). '
-        + 'A run you resume becomes this access token\'s, whoever started it: what it spends from then on counts '
-        + 'toward this token\'s spend cap, and so do calls already out when a run changes hands (they count for '
-        + 'the token that resumed it). '
-        + 'ENRICHMENT runs (run_type enrichment): a rerun buys rows from treg again (paid answers it still holds come '
-        + 'back cheaper or free), with the column\'s own setup; it needs row_ids or mode: "errored" (❌ rows), '
-        + '"empty" (rows not enriched yet, e.g. the rest after a test), "missing" (no result: empty, ⏭️ or ❌), '
-        + '"out_of_date", "empty_or_out_of_date" (as above), "all" (every row again). spend_limit_usd sets the new '
-        + 'run\'s limit, or on resume raises a paused run\'s limit (a run its limit paused). concurrency sets its rows '
-        + 'at once on a rerun or a resume, and the column keeps it for later reruns and auto-run; lower it when a '
-        + 'provider answers 429. '
-        + 'STOP A WHOLE SHEET: action cancel_all with sheet_id (no run_type or run_id) stops every active run on '
-        + 'it at once: AI, HTTP and enrichment runs and the setups being used on it (get_sheet lists them in '
-        + 'active_runs and active_setup_runs). It returns stopped_runs, stopped_setup_runs and a message. It '
-        + 'turns no auto-run off: a column whose auto-run batch it stopped pauses, as cancelling that one run '
-        + 'does (auto_run_paused; resume it to go on), and auto_run_on lists the columns where new rows still '
-        + 'start runs (set_auto_run with paused true and no column pauses them all). Calls already sent finish '
-        + 'and are billed; free clean and formula fills finish too (still_filling).'
+        'Pause, resume or cancel a run, rerun a finished one, or stop every run on a sheet. A cancel keeps the '
+        + 'answers the run wrote; rows it hadn\'t reached get back what they held. Check get_run_status or '
+        + 'get_run_results first, so you know how many rows you are about to pay for again. '
+        + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row) and '
+        + 'returns its run_id: poll it with get_run_status. AI, enrichment and waterfall reruns need row_ids or '
+        + 'mode: "errored" (❌ rows, the usual retry), "empty" (blank rows, e.g. the rest after a test), '
+        + '"missing" (no result: empty, ⏭️ or ❌), "out_of_date" (results made from input cells that changed '
+        + 'since), "empty_or_out_of_date", or "all" (every row). HTTP takes the same modes, default all. A '
+        + 'structured (output_columns) AI run reruns whole, its modes reading the "(Status)" column. first_rows '
+        + '(AI and HTTP) reruns only among the sheet\'s top rows, a test before a big run. An enrichment rerun '
+        + 'buys rows from treg again (answers it still holds come back cheaper or free). '
+        + 'concurrency changes rows at once on a rerun (and an HTTP or enrichment resume; the column keeps it): '
+        + 'lower it after rows failed with error_class "concurrency" or a provider\'s 429. spend_limit_usd sets a '
+        + 'rerun\'s hard limit, or raises the limit of a run that paused at it on resume. A run you resume becomes '
+        + 'this token\'s: what it spends from then on counts toward this token\'s spend cap. '
+        + 'CANCEL_ALL with sheet_id stops every active run on the sheet (AI, HTTP, enrichment and setups being '
+        + 'used: get_sheet\'s active_runs and active_setup_runs) and returns stopped_runs, stopped_setup_runs and '
+        + 'a message. It turns no auto-run off: a column whose auto-run batch it stopped pauses (auto_run_paused), '
+        + 'and auto_run_on lists columns where new rows still start runs (set_auto_run paused true with no column '
+        + 'pauses them all). Calls already sent finish and are billed; free fills finish too (still_filling).'
         + capToolNote(ctx.spend ?? null, true),
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional()
           .describe('Every action but cancel_all.'),
         run_id: z.string().optional().describe('Every action but cancel_all.'),
-        action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'cancel_all']),
+        action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'cancel_all'])
+          .describe('What to do; cancel_all stops every run on sheet_id'),
         sheet_id: z.string().optional().describe('cancel_all only: the sheet whose runs to stop.'),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional()
           .describe('rerun only: stable row ids to re-process. Wins over mode.'),

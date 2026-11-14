@@ -9,7 +9,7 @@ import {
   deleteSetupVersion, listSetupVersions, saveSetupVersion, updateSetupVersion,
 } from '../services/setup-version-store';
 import { restoreSetupVersion } from '../services/setup-version-restore';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
 const WHAT =
   'A setup version is a named copy of how a sheet\'s columns are set up, never their values: every column in '
@@ -26,7 +26,7 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       + 'field, version vs now), filled another way now (restoring leaves it) or not in the version (it stays). '
       + 'Changes nothing. Request URLs are masked, headers show by name and request bodies only as changed.',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       version_id: z.string().optional().describe('One version against the sheet now; leave out for the list'),
     }).strict(),
   }, async ({ sheet_id, version_id }) => {
@@ -48,8 +48,8 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       + '(version_id). delete deletes a version (version_id): it can\'t be undone, and the sheet doesn\'t '
       + 'change. Saving only reads the sheet. The sheet\'s History lists each save.',
     inputSchema: z.object({
-      sheet_id: z.string(),
-      action: z.enum(['save', 'rename', 'delete']),
+      sheet_id: z.string().describe(SHEET_ID),
+      action: z.enum(['save', 'rename', 'delete']).describe('What to do'),
       version_id: z.string().optional().describe('rename and delete: the version'),
       name: z.string().optional().describe('save: required; rename: the new name'),
       description: z.string().optional().describe('What the version is, in a sentence'),
@@ -92,8 +92,8 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       + 'filling. Needs the write and run scopes (secrets too when a request it puts back reads saved keys); a '
       + 'dry run needs read. The sheet\'s History lists each restore.',
     inputSchema: z.object({
-      sheet_id: z.string(),
-      version_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
+      version_id: z.string().describe('The version (list_setup_versions)'),
       dry_run: lenientBoolean().optional().describe('Default true: only say what restoring would do'),
     }).strict(),
   }, async ({ sheet_id, version_id, dry_run }) => {

@@ -9,7 +9,7 @@ import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
 import { COLUMN_COUNTS_MAX_COLUMNS } from '../lib/constants-columns';
 import { queryRows, type WhereItem } from '../services/row-selection';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
 import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerCellSchema } from './query-schema';
 import { parseColumns } from '../lib/row-select/paths';
@@ -23,8 +23,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'list_tables',
     {
       description:
-        'List every table in the Cubex workspace with its sheets (tabs), their ids, names, and row counts. '
-        + 'Start here to resolve a table/sheet name to a sheet_id.',
+        'List every table in the workspace with its sheets (tabs): ids, names, positions and row counts. Start '
+        + 'here to turn a table or sheet name into a sheet_id, then get_sheet for its columns or read_rows for its '
+        + 'rows.',
       inputSchema: {},
     },
     async () => missingScope(ctx, 'read') ?? ok({ tables: listTablesWithSheets(ctx.userId) }),
@@ -34,35 +35,25 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'get_sheet',
     {
       description:
-        'Sheet metadata: ordered column names, row count, data_version, row_generation, the sheet\'s '
-        + 'description, and the remaining row/column budget (limits). Check limits before a large append or '
-        + 'import: otherwise you discover the cap by having a write rejected. '
-        + 'column_details says, for every column in order, its kind (plain, ai, http, enrichment, waterfall, '
-        + 'webhook, clean, formula, lookup), what fills it (fill: its newest run with run_id and run_status, or its '
-        + 'setup; a column another column\'s run fills names that column in filled_by and its role), the columns '
-        + 'it reads, auto_run, run_if (the "Only run if" rule its next run checks) and its description. Prompts, '
-        + 'formulas and URLs are cut short unless you name the column in columns; credentials in a URL read "…". '
-        + 'include_counts adds each column\'s counts: filled (a value), errors (a failed run or ❌) and empty '
-        + `(the rest: not run, skipped, running), counting every row: up to ${COLUMN_COUNTS_MAX_COLUMNS} columns, `
-        + 'the ones in columns or else the first. Read it before choosing what to run or fix. '
-        + 'filling_columns lists columns still '
-        + 'filling (add_enrichment_field, clean_column, formula_column, lookup_column): their cells read '
-        + '"⏳ Processing..." until done. clean_columns, formula_columns and lookup_columns give each such '
-        + 'column\'s setup and auto-run (a lookup column\'s broken says why it stopped, and kept_changing why '
-        + 'rows it looked up may hold older values). '
-        + 'active_runs lists the AI, HTTP and enrichment runs working on the sheet now (run_type, run_id, '
-        + 'status, the column it fills, auto_run when an auto-run started it), and active_setup_runs the setups '
-        + 'being used on it; control_run with action cancel_all stops them all. views lists the saved views (name, '
-        + 'description, filters as a where, hidden_columns; active is the one the app shows): pass view to '
-        + 'read_rows or export_csv to read through one. auto_dedupe is the sheet\'s set_auto_dedupe setting '
-        + '(column, match, keep, state, removed_rows so far, shared_rows sharing a key with an older row when its '
-        + 'keys were last built, null while they build, waiting_rows still to check), or null.',
+        'A sheet\'s structure and state. Read it before choosing what to run or fix, then read_rows or a run '
+        + 'tool. Answers the columns in order, row_count, data_version, row_generation, its description and '
+        + 'limits (rows and columns left: check before a big append or import). column_details says for each '
+        + 'column its kind (plain, ai, http, enrichment, waterfall, webhook, clean, formula, lookup), what fills it '
+        + '(fill: its newest run or its setup; filled_by names the column whose run fills it), the columns it '
+        + 'reads, auto_run, run_if (the "Only run if" rule) and description. Prompts, formulas and URLs are cut '
+        + 'short unless the column is named in columns; credentials in a URL read "…". include_counts adds filled, '
+        + `errors and empty per column, reading every row (up to ${COLUMN_COUNTS_MAX_COLUMNS} columns: those in `
+        + 'columns, else the first). Also: filling_columns (their cells read "⏳ Processing..." until done), the '
+        + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped), active_runs and '
+        + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
+        + 'export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
           .describe('Columns to show in full (prompts, formulas, URLs) and to count first'),
         include_counts: lenientBoolean().optional()
-          .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets)'),
+          .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets). '
+            + 'Default false'),
       },
     },
     async ({ sheet_id, columns, include_counts }, mcp) => {
@@ -93,50 +84,42 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'read_rows',
     {
       description:
-        'Read rows as {id, index, data} ordered by index. Keyset paging: pass cursor = the index of the last row '
-        + 'from the previous page; next_cursor is null at the end. ' + `Max ${MCP_MAX_ROWS_PAGE} rows per call. `
-        + 'Pass columns to fetch only the fields you need — reading every column of a wide sheet is the main way '
-        + 'these calls get expensive. '
-        + 'PAGING A FILTERED READ: if you pass `where` AND a cursor, you must ALSO pass expected_data_version and '
-        + 'expected_row_generation, '
-        + 'echoing the values returned with the previous page (every response includes them). '
-        + 'This is required only for filtered paging — an unfiltered read pages with just a cursor. '
-        + 'The fence exists because filtered paging keysets on row index: if the sheet changes mid-page-walk, rows '
-        + 'would be silently skipped or repeated, '
-        + 'so you get a clean "restart paging" error instead of quietly wrong data. '
-        + 'Row ids are STABLE across sorts — use them with update_cells and delete_rows. '
-        + 'FILTERS: `where` (described on the field) finds rows by text, number, a list of values, OR groups, and run '
-        + 'state: [{"operator":"has_error"}] returns the rows where any AI, HTTP API or enrichment run failed, and '
-        + 'return_mode count says how many without reading them. include_status returns each run column\'s cell as '
-        + '{status, value, error}, so you never parse ❌ / ⏭️ / ⏳ yourself. '
-        + 'PROFILE OR SUM UP without reading rows: group_by and aggregates answer counts, sums and averages per '
-        + 'value (top values of a column: group_by:["Industry"]). columns can take one value out of a JSON cell. '
-        + `BY ID: row_ids (1 to ${ROWS_BY_ID_MAX}) returns exactly those rows in the order given, each with its `
-        + 'updated_at, and missing: the ids that are no row of this sheet (deleted ones included: list_trash). '
-        + 'Prefer it to re-read rows you know, such as the rows a run just touched. With include_status a failed '
-        + 'cell\'s error is the full message its run recorded when Cubex finds it within its budget (on a '
-        + 'column with thousands of runs it often doesn\'t), otherwise the cell\'s own words. It takes columns and '
-        + 'include_status only. Rows stop at about 40,000 characters: ask again with unread_ids. '
-        + 'CHANGED SINCE: updated_since (UTC, 2026-11-05T10:00:00Z) returns the rows whose cells changed at or after '
-        + 'that second, oldest change first, each with its updated_at, cells as stored; page with limit and cursor = '
-        + 'next_cursor (text). filling lists columns being filled again (their changed rows come in a later read). '
-        + 'Prefer it to keep a copy up to date: when next_cursor is null, pass as_of as the next updated_since and '
-        + 'dedupe by id (a row can come back). Deleted rows don\'t show: now and then list ids with return_mode '
-        + 'ids and drop the rows gone. A sort is no change. It takes columns, include_status, limit and cursor. '
-        + 'LONG CELLS: max_chars_per_cell (e.g. 200) cuts each cell\'s text to that many characters and lists the '
-        + 'cells cut in cut_cells {"<row id>": {"<column>": full length}}: page or scan long AI answers or JSON '
-        + 'without filling your context, then read the cells you need whole with row_ids + columns. Any read of '
-        + 'rows takes it. A cut never leaves half of a surrogate pair; an emoji of several characters can lose parts.',
+        'Read a sheet\'s rows as {id, index, data}, in index order, up to ' + `${MCP_MAX_ROWS_PAGE} a call. `
+        + 'Pass columns: reading every column of a wide sheet is what makes reads expensive. Row ids stay the '
+        + 'same across sorts: use them with update_cells and delete_rows. '
+        + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. A filtered read (where) that '
+        + 'pages also echoes expected_data_version and expected_row_generation from the page before, so a sheet '
+        + 'that changed answers "restart paging" instead of skipping or repeating rows. '
+        + 'FILTER with where: text, numbers, dates, lists of values, OR groups and run state '
+        + '([{"operator":"has_error"}]: rows where any run failed). return_mode count or ids answers without '
+        + 'cells. include_status reads each run column\'s cell as {status, value, error}, so you never parse '
+        + '❌ ⏭️ ⏳ yourself. '
+        + 'SUM UP without reading rows: group_by and aggregates count, sum and average per value (top values of '
+        + 'a column: group_by:["Industry"]). '
+        + `BY ID: row_ids (1 to ${ROWS_BY_ID_MAX}) returns those rows in that order with updated_at, and missing `
+        + '(ids that are no row here; list_trash has deleted ones). About 40,000 characters a call: read '
+        + 'unread_ids next. Prefer it to re-read rows you know, such as those a run just touched. With '
+        + 'include_status a failed cell\'s error is its run\'s full message when Cubex finds it. Takes columns, '
+        + 'include_status and max_chars_per_cell only. '
+        + 'CHANGED SINCE: updated_since returns rows whose cells changed at or after that UTC second, oldest '
+        + 'change first, with updated_at; page with cursor = next_cursor (text). To keep a copy up to date: when '
+        + 'next_cursor is null, pass as_of as the next updated_since and dedupe by id. Deleted rows don\'t show '
+        + '(list ids with return_mode ids now and then); a sort is no change; filling lists columns still being '
+        + 'filled. Takes columns, include_status, limit and cursor. '
+        + 'LONG CELLS: max_chars_per_cell cuts each cell and lists the cut ones in cut_cells; read those whole '
+        + 'with row_ids and columns.',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         // Digits sent as text are the number cursor (a model often quotes it).
         cursor: z.preprocess(v => (typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v.trim()) : v),
           z.union([z.number().int().min(0), z.string().min(1)])).optional()
           .describe('index of the last row already received, or the next_cursor (text) of an updated_since read'),
-        limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional(),
+        limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional()
+          .describe(`Rows a call, 1 to ${MCP_MAX_ROWS_PAGE} (the default)`),
         columns: columnsSchema.optional(),
         where: whereSchema.optional(),
-        return_mode: z.enum(['rows', 'ids', 'count']).optional(),
+        return_mode: z.enum(['rows', 'ids', 'count']).optional()
+          .describe('rows (default); ids: each row\'s id and index only; count: how many rows pass'),
         include_status: lenientBoolean().optional().describe(INCLUDE_STATUS_HELP),
         expected_data_version: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). Echo data_version from the previous page.'),
@@ -149,7 +132,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         expected_view_version: z.string().optional()
           .describe('REQUIRED when paging through a view (view + cursor). Echo view_version from the previous page.'),
         row_ids: z.array(z.string()).min(1).max(ROWS_BY_ID_MAX).optional()
-          .describe('Read exactly these rows by their stable ids, in this order'),
+          .describe(`Read exactly these rows by their stable ids, in this order (1 to ${ROWS_BY_ID_MAX})`),
         updated_since: z.string().optional()
           .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
         max_chars_per_cell: maxCharsPerCellSchema.optional(),

@@ -7,7 +7,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { RULE_WORDS_MAX_CHARS } from '../lib/constants-ai';
 import { checkRuleOnSheet, generateRule } from '../services/run-condition-ai';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { RULE_LANGUAGE } from './run-if-schema';
 import { capToolNote } from '../lib/token-spend';
 
@@ -21,7 +21,7 @@ export function registerRunConditionTools(server: McpServer, ctx: McpAuthCtx) {
         + 'whether each passes. A misspelled column or a bad rule is refused with the reason. Free: no AI. '
         + RULE_LANGUAGE,
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         rule: z.string().max(MAX_RULE_CHARS)
           .describe('The rule, e.g. {{Email status}} is "valid" AND {{Title}} contains "head"'),
       },
@@ -45,7 +45,7 @@ export function registerRunConditionTools(server: McpServer, ctx: McpAuthCtx) {
         + 'A request that needs judgment no column holds ("is a good fit") is refused: run an AI column that '
         + 'answers it first, then write a rule on that column.' + capToolNote(ctx.spend ?? null, false),
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         text: z.string().max(RULE_WORDS_MAX_CHARS).describe('Which rows should run, in plain words'),
         model: z.string().optional().describe('OpenRouter model id; default: the sheet\'s, then the account\'s'),
       },

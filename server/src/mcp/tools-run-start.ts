@@ -17,7 +17,7 @@ import { MAX_CONTENT_TOKENS_RANGE, MAX_PAGES_RANGE } from '../lib/web-fetch-opti
 import { SEARCH_ENGINES, SEARCH_MODES } from '../lib/web-search-options';
 import { tokenStartAiRun, type TokenAiRunArgs } from '../services/run-start-token';
 import { tokenStartHttpRun, type TokenHttpRunArgs } from '../services/run-start-token-http';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt, SHEET_ID } from './tool-helpers';
 import { runIfSchema } from './run-if-schema';
 import { capToolNote } from '../lib/token-spend';
 import { AI_SPEND_LIMIT_NOTE } from '../lib/ai-spend-limit';
@@ -39,40 +39,35 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
     'run_ai_column',
     {
       description:
-        'Run an AI prompt per row. DEFAULT: writes one "<column_name> (Output)" column. STRUCTURED: pass '
-        + 'output_columns to write SEVERAL typed columns from ONE call per row (e.g. a score AND a reason): never '
-        + 'run a second AI pass to reformat or extract from a prior run\'s output; and for pure string ops '
-        + '(extract/split/case/template) use transform_column (no AI cost). To clean names, company names, emails, '
-        + 'domains, phones, case or spaces, use clean_column instead: it is free. The prompt references other '
-        + 'columns as /column_name: the name in lowercase with each run of other characters turned into _ ("What '
-        + 'they sell (Output)" is /what_they_sell_output); an unknown or misspelled one is rejected with a '
-        + 'suggestion. Returns a run_id immediately; poll get_run_status; rows show "⏳ Processing..." until done. '
-        + 'Model resolves: explicit > sheet default > account default (errors if none). Omit target_row_ids to run '
-        + 'every row.'
-        + ' With output_columns, a new run on columns that already exist is refused. After a target_row_ids '
-        + 'test, finish the sheet with control_run rerun, mode "empty".'
-        + ' ONLY RUN IF: run_if skips rows that fail a rule (no AI call, "⏭️ Condition not met"), so a chain of '
-        + 'columns can each run only where the one before said so. WEB: web_search lets the model search, web_fetch '
-        + 'lets it read pages, but only on the sites named in the cells your prompt references (reference /domain or '
-        + '/website to keep each row on its own site). Both work with output_columns: the same single call fills the '
-        + 'typed columns plus a "<column_name> (Data)" column listing the sources it used. SEARCH COST: search fees '
-        + 'are usually most of a web run\'s cost. Choose the engine with search_engine (parallel in turbo or fast '
-        + 'mode is the cheapest, $0.001 a search) and limit searches with max_searches_per_row; estimate_only names '
-        + 'the engine the run will really use and prices it. Every row records its search words, how many searches '
-        + 'ran and what it cost: get_run_results returns them and the (Data) cell shows them in short. COST: one AI '
-        + 'call PER ROW, plus web fees when web_search or web_fetch is on. Call estimate_only:true for a priced '
-        + 'range (web fees included), or preview_rows:N to see real sample outputs, their sources, searches and the '
-        + 'measured cost before committing.'
-        + ' COST CEILING: max_cost_usd refuses to start (nothing is created, no run-start slot is used) when the '
-        + "estimate's high end plus one row's most (row_most_usd: the most of the sampled rows, the room the run's "
-        + 'spend limit keeps for the next row) is above it, or when the model has no known price unless '
-        + 'allow_unpriced is true; with '
-        + 'estimate_only the answer says over_ceiling and ceiling_problem instead. SPEND LIMIT: max_cost_usd '
-        + 'is also the run\'s hard spend limit, and spend_limit_usd sets one without the estimate check (with both, '
-        + `the lower one). ${AI_SPEND_LIMIT_NOTE}`
+        'Fill a column by running an AI prompt on each row: one OpenRouter call per row, paid. Prefer the free '
+        + 'tools when they can do it: clean_column (names, companies, emails, domains, phones, case, spaces), '
+        + 'formula_column or transform_column (extract, split, join, math, templates), lookup_column (values from '
+        + 'another sheet). For one value from several sources in order use waterfall_column; for treg.to data, '
+        + 'run_enrichment. '
+        + 'Writes "<column_name> (Output)". STRUCTURED: output_columns writes several typed columns from ONE call '
+        + 'per row (a score and a reason): never run a second AI pass to reformat or extract from a first one. A new '
+        + 'run with output_columns on columns that exist is refused. '
+        + 'The prompt names columns as /column_name: lowercase, each run of other characters as _ ("What they sell '
+        + '(Output)" is /what_they_sell_output); an unknown one is refused with a suggestion. The model: model, '
+        + 'else the sheet\'s default, else the account\'s (list_models, set_default_model). '
+        + 'Returns run_id at once: poll get_run_status (cells read "⏳ Processing..." until done), then read_rows or '
+        + 'get_run_results. target_row_ids runs only those rows; after such a test, finish the sheet with '
+        + 'control_run rerun, mode "empty". run_if skips rows that fail a rule (no AI call, "⏭️ Condition not '
+        + 'met"), so each column of a chain runs only where the one before said so. '
+        + 'WEB: web_search lets the model search and web_fetch read pages, only on the sites in the cells the '
+        + 'prompt references (reference /domain or /website to keep each row on its own site). Both work with '
+        + 'output_columns and add "<column_name> (Data)" listing the sources. Search fees are usually most of a '
+        + 'web run\'s cost: pick search_engine (parallel in turbo or fast mode costs $0.001 a search) and cap '
+        + 'max_searches_per_row; each row records its searches and cost (get_run_results). '
+        + 'COST: estimate_only prices it (web fees included); preview_rows runs a few rows for real and measures. '
+        + 'COST CEILING: max_cost_usd refuses to start (nothing created) when the estimate\'s high end plus one '
+        + 'row\'s most (row_most_usd) is above it, or when the model has no known price unless allow_unpriced is '
+        + 'true (estimate_only says over_ceiling and ceiling_problem instead). It is also the run\'s hard spend '
+        + 'limit; spend_limit_usd sets one without the check (with both, the lower one). '
+        + AI_SPEND_LIMIT_NOTE
         + capToolNote(ctx.spend ?? null, true),
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         column_name: z.string().describe('Base column name; default mode creates "<name> (Output)". With output_columns, this names the "<name> (Status)" column.'),
         prompt: z.string().describe('Per-row prompt; reference columns as /column_name'),
         output_columns: z.array(z.object({
@@ -82,43 +77,48 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         })).min(1).optional().describe('Structured output: one JSON object per row split into these typed columns, in a SINGLE AI call. Omit for classic single-column mode.'),
         model: z.string().optional().describe('OpenRouter model id, e.g. openai/gpt-4o-mini'),
         concurrency: z.number().int().min(1).max(MAX_AI_CONCURRENCY).optional()
-          .describe(`How many rows to process IN PARALLEL (1-${MAX_AI_CONCURRENCY}). This is the main throughput lever: a 1,000-row run at 5 takes ~20x longer than at 100. Omit to use the sheet's saved default. PAID OpenRouter models tolerate the full range; FREE models (ids ending ":free") rate-limit hard above ~${FREE_MODEL_CONCURRENCY_WARN} — going higher there causes per-row 429 failures, not speed.`),
-        system_prompt: z.string().optional(),
+          .describe(`Rows at once, 1-${MAX_AI_CONCURRENCY}: the main speed lever (1,000 rows at 5 take about 20 `
+            + 'times longer than at 100). Default: the sheet\'s saved one. Free models (ids ending ":free") fail with '
+            + `429 above about ${FREE_MODEL_CONCURRENCY_WARN}.`),
+        system_prompt: z.string().optional().describe('Instructions sent before each row\'s prompt'),
         web_search: lenientBoolean().optional().describe('Let the model search the web. Adds a "(Data)" column with the sources, search words and cost of each row. Works with output_columns.'),
         search_engine: lowercased([...SEARCH_ENGINES]).optional().describe(
-          "Engine web_search runs on (needs web_search). auto (default): the model's own search if it has one (OpenAI, Anthropic, Google, xAI models; billed by that provider at its list price: OpenAI about $0.01 a search, $0.025 on GPT-4.1), otherwise Exa. "
-          + 'native: the model\'s own search. exa: $0.007 a search ($0.012-$0.015 in deep modes). parallel: $0.005 a search, or $0.001 in turbo or fast mode. perplexity: $0.005. '
-          + 'Prices as of October 2026; estimate_only reports the live price of what will run.'),
+          'Engine web_search runs on (needs web_search). auto (default): the model\'s own search if it has one '
+          + '(OpenAI, Anthropic, Google, xAI models; billed by that provider, OpenAI about $0.01 a search), else '
+          + 'Exa. native: the model\'s own. exa: $0.007 a search ($0.012-$0.015 deep). parallel: $0.005, or $0.001 '
+          + 'in turbo or fast mode. perplexity: $0.005. estimate_only gives the live price of what will run.'),
         search_mode: lowercased(ALL_MODES).optional().describe(
           'Needs search_engine exa or parallel (not auto). Deeper modes search more thoroughly, take longer and cost more. '
           + 'exa: instant, fast, auto (default) $0.007; deep-lite, deep $0.012; deep-reasoning $0.015. '
           + 'parallel: turbo, fast $0.001; basic (default), advanced $0.005; turbo covers English and Japanese only.'),
         max_searches_per_row: lenientInt(1, MAX_SEARCHES_PER_ROW).optional().describe(
-          `Hard limit on searches per row (1-${MAX_SEARCHES_PER_ROW}; needs web_search). OpenRouter enforces it on exa, parallel and perplexity, and on Anthropic models' own search; a row that reaches it is made to answer. `
-          + "Other models' own search (OpenAI, Google, xAI) can't be limited: with search_engine auto Cubex then uses Exa (web_search.switched is true in the response), with native the run is refused."),
+          `Most searches a row (1-${MAX_SEARCHES_PER_ROW}; needs web_search); a row that reaches it answers. `
+          + 'OpenAI, Google and xAI models\' own search can\'t be capped: search_engine auto then uses Exa '
+          + '(web_search.switched true), native is refused.'),
         web_fetch: lenientBoolean().optional().describe('Let the model open web pages, limited per row to the sites in the cells the prompt references (a URL or a bare domain such as stripe.com). With output_columns, the "(Data)" column lists the pages it used.'),
         max_content_tokens: lenientInt(WEB_FETCH_MAX_CONTENT_TOKENS_MIN, WEB_FETCH_MAX_CONTENT_TOKENS_MAX,
           `max_content_tokens must be ${MAX_CONTENT_TOKENS_RANGE}.`).optional().describe(
           `Cut each page web_fetch reads to about this many tokens (${WEB_FETCH_MAX_CONTENT_TOKENS_MIN}-`
-          + `${WEB_FETCH_MAX_CONTENT_TOKENS_MAX}; needs web_fetch). A page's text goes into the prompt, so this `
-          + 'bounds what a row costs. With this or max_pages_per_row the pages are read through Exa ($0.001 a '
-          + 'page), since a model\'s own fetch doesn\'t cut pages; an OpenRouter workspace that limits web fetch '
-          + 'engines must allow Exa, or the run pauses (pause_reason web_engine). Reruns and saved setups keep it.'),
+          + `${WEB_FETCH_MAX_CONTENT_TOKENS_MAX}; needs web_fetch), which bounds what a row costs. With it or `
+          + 'max_pages_per_row pages are read through Exa ($0.001 a page); an OpenRouter workspace that limits '
+          + 'web fetch engines must allow Exa, or the run pauses (pause_reason web_engine).'),
         max_pages_per_row: lenientInt(1, WEB_FETCH_MAX_PAGES_PER_ROW, `max_pages_per_row must be ${MAX_PAGES_RANGE}.`)
           .optional().describe(`Most pages web_fetch may read for one row (1-${WEB_FETCH_MAX_PAGES_PER_ROW}, `
           + 'Cubex\'s own cap: Exa has none; needs web_fetch); further fetches are refused and the model answers '
           + 'from what it read. Read through Exa, as with max_content_tokens.'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids (from read_rows) to run; omit for all rows'),
         run_if: runIfSchema,
-        estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, model, estimated_cost_usd:{low,high}, web_fees_usd, web_search:{engine, runs_on, mode, price_per_search_usd, searches_per_row, switched, ...}, ... } and start nothing. No AI calls, no columns created. In web_search, engine is what the run sends, runs_on is what runs the searches, and mode is the one billed (the engine\'s default when you chose none). in_flight {concurrency, reserve_at_concurrency_usd, account_balance_usd, concurrency_ceiling, note, warning}: OpenRouter holds each running call\'s possible cost and lets the account hold only part of its balance at once, so a high concurrency can be refused (402) before the balance runs out; follow its warning. own_provider_key: true when your latest run on this model ran on your own provider key (BYOK).'
-          + ' in_flight comes back on your own provider key too: a row your key can\'t serve falls back to '
-          + 'OpenRouter credits and is held. assumptions.history_from says where the output size came from: column '
-          + '(this column\'s past runs), prompt (past runs of this prompt on this model), preview (previews of it), '
-          + 'model (any run on this model), or null (a default); history_rows is how many rows.'),
-        preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt on the first N rows (max ${PREVIEW_MAX_ROWS}) with the same web tools, and return the sample outputs (with their sources, search words and cost) + MEASURED cost + full-run projection. Nothing is created or saved: validate a prompt before the full run. On your own provider key (BYOK) cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add what the provider bills.`
-          + ' Each row also has paid_with ("own_key", "credits" when OpenRouter fell back to its credits, null when '
-          + 'it didn\'t say) and tokens {input, output, reasoning} (null where not reported). Later estimates of '
-          + 'this prompt use what the preview measured.'),
+        estimate_only: lenientBoolean().optional().describe('Price it and start nothing (no AI calls, no '
+          + 'columns): rows_to_process, model, estimated_cost_usd and per_row_usd {low, high}, web_fees_usd, '
+          + 'web_search (engine: what the run sends; runs_on: what runs the searches; mode: the one billed), '
+          + 'in_flight (OpenRouter holds each running call\'s possible cost, so a high concurrency can be refused '
+          + 'with 402 before the balance runs out: follow its warning), own_provider_key (your latest run on this '
+          + 'model used your own key) and assumptions (history_from: where the output size came from). Default false'),
+        preview_rows: lenientInt(1, PREVIEW_MAX_ROWS).optional().describe(`Run the prompt for real on the first N `
+          + `rows (up to ${PREVIEW_MAX_ROWS}) with the same web tools: each output with its sources, searches, cost, `
+          + 'paid_with and tokens, the measured cost and a full-run projection. Nothing is created or saved. On '
+          + 'your own provider key cost_usd is only OpenRouter\'s fee: provider_cost and projected_total_usd add '
+          + 'what the provider bills. Later estimates of this prompt use what it measured.'),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run (safe retries after a timeout/limit).'),
         webhook_id: webhookIdSchema,
         max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional().describe(
@@ -145,27 +145,32 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
     'run_http_enrichment',
     {
       description:
-        `Call an HTTP JSON API once per row and extract response fields into new columns. url/headers/body templates substitute {{column_name}} (or /column_name) per row; an empty cell substitutes as empty, and a {{name}} that matches no column or saved key is rejected at start. Each response_mapping entry JSONPath-extracts one field (e.g. $.results[0].email) into column_name; a path matching several values keeps the first, and an object or array is stored as JSON text. JSONPath filters are refused: to pick an item by a condition, map $ (the whole response) and add a formula_column reading it. A master status column tracks per-row ✅/❌. JSON responses only. Requests go ${HTTP_DEFAULT_BATCH_SIZE} at a time (batch_size); GET/HEAD responses are cached for 5 minutes, so an identical re-run within that window reuses them; private and internal addresses are always blocked. Returns a run_id — poll get_run_status (it counts failed rows). run_if skips rows that fail a rule (no request sent, "⏭️ Condition not met"). estimate_only checks the URL and {{names}} without sending anything. Referencing a saved API key by name requires the token to have the "secrets" scope. `
-        + 'Instead of url/method/headers/body you can pass curl: a whole cURL command, e.g. copied from the '
-        + "API's docs. A key Cubex finds in it is never stored in the column: pass save_keys: true to save each one "
-        + 'as a saved key (needs "secrets"; a key already saved with that value is used instead), or write '
-        + "{{key_name}} of a saved key in its place. A $VARIABLE in a key's spot uses the saved key with that name. "
-        + 'RETRIES: a request answered 429 or 503 is sent again (any method); another 5xx or no answer (refused, '
-        + 'timed out) is sent again for GET, PUT and DELETE, and for POST with retry_post. Up to `retries` more '
-        + `tries (default ${HTTP_RETRY_DEFAULT}, 0 turns it off), each waiting longer, following the API's `
-        + 'Retry-After up to 60 s; a 4xx is never retried. Cell values are escaped for where they go: inside a JSON '
-        + 'body string as JSON, in a query value "&", "#", "+" and a stray "%" are encoded (existing %XX escapes '
-        + 'stay); saved keys go in exactly as saved. skip_empty_values leaves out a query parameter or body '
-        + 'field whose {{column}} is empty instead of sending "". status_code_column adds a column with the HTTP '
-        + `status code (the same as a response_mapping entry with json_path "${HTTP_STATUS_PATH}"); a failed row `
-        + 'shows its code there too.',
+        'Call your own HTTP JSON API once per row and put fields of each answer into new columns. For treg.to '
+        + 'data use run_enrichment; to pick an item of an answer by a condition, map $ (the whole answer) and add '
+        + 'a formula_column reading it (JSONPath filters are refused). url, headers and body fill {{column_name}} '
+        + '(or /column_name) per row; an empty cell fills as empty, and a {{name}} that is no column or saved key '
+        + 'is refused at start. Or pass curl: a whole cURL command, e.g. from the API\'s docs. A key Cubex finds in '
+        + 'it is never stored in the column: save_keys saves it as a saved key (needs the "secrets" scope, as does '
+        + 'naming a saved key), or write {{key_name}} of a saved key in its place; a $VARIABLE in a key\'s spot '
+        + 'uses the saved key with that name. Cell values are escaped for where they go (JSON in a JSON body, '
+        + 'encoded in a query value); saved keys go in as saved. '
+        + 'Each response_mapping entry takes one field (e.g. $.results[0].email) into column_name: the first of '
+        + 'several matches, an object or list as JSON text. A status column tracks each row ✅/❌. JSON answers '
+        + `only. Requests go ${HTTP_DEFAULT_BATCH_SIZE} at a time (batch_size); GET and HEAD answers are kept 5 `
+        + 'minutes, so an identical rerun reuses them; private and internal addresses are blocked. RETRIES: 429 and '
+        + '503 are sent again (any method), another 5xx or no answer for GET, PUT and DELETE (POST with '
+        + `retry_post), up to retries more times (default ${HTTP_RETRY_DEFAULT}), following Retry-After up to 60 s; `
+        + 'a 4xx never. Returns run_id at once: poll get_run_status (it counts failed rows), then read_rows or '
+        + 'get_run_results. run_if skips rows that fail a rule (nothing sent, "⏭️ Condition not met"). '
+        + 'estimate_only checks the URL and {{names}} without sending anything.',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         url: z.string().optional().describe(
           'Request URL template, e.g. https://api.example.com/lookup?domain={{Domain}}. Required unless curl is given.',
         ),
         method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().describe('Default GET'),
-        headers: z.record(z.string(), z.string()).optional(),
+        headers: z.record(z.string(), z.string()).optional()
+          .describe('Header name -> value template, {{column_name}} and saved keys filled per row'),
         body: z.string().optional().describe('Request body template (POST, PUT and DELETE)'),
         curl: z.string().max(CURL_MAX_CHARS).optional()
           .describe('A whole cURL command, in place of url/method/headers/body. {{column_name}} works inside it.'),
@@ -176,7 +181,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           json_path: z.string()
             .describe(`JSONPath into the response, e.g. $.title, or "${HTTP_STATUS_PATH}" for the HTTP status code`),
           column_name: z.string().describe('New column to hold the extracted value'),
-        })).min(1),
+        })).min(1).describe('Which fields of each answer go into which new columns'),
         master_column_name: z.string().optional().describe('Name for the per-row status column; auto-named if omitted'),
         batch_size: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
           .describe(`Requests sent at once (default ${HTTP_DEFAULT_BATCH_SIZE}). Raise only if the API allows it.`),

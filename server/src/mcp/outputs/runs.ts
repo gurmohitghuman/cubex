@@ -9,12 +9,18 @@ const range = obj({ low: num, high: num });
 const replayed = opt(bool).describe('true: an idempotency_key retry answered with the first run');
 const runIf = { run_if: opt(str), rows_skipped_by_rule: opt(num), run_if_note: opt(str) };
 
-// Started: run_id. With estimate_only: the estimate, and nothing started.
+// Started: run_id. With estimate_only: the estimate; with preview_rows: real sample outputs and their measured
+// cost. Neither starts anything.
 export const runAiColumn = obj({
   run_id: opt(str), output_column: opt(str), status_column: opt(str), output_columns: opt(strs),
   data_column: opt(nul(str)), reused_rows: opt(num), target_rows: opt(num), rows_to_process: opt(num),
   model: opt(nul(str)), pricing_available: opt(bool), estimated_cost_usd: opt(nul(range)),
-  per_row_usd: opt(nul(range)), row_most_usd: opt(nul(num)), web_fees_usd: opt(nul(range)),
+  per_row_usd: opt(z.union([range, num, z.null()])).describe('A range when estimated, one number when measured'),
+  row_most_usd: opt(nul(num)), web_fees_usd: opt(nul(range)),
+  preview: opt(z.array(info('A sample row: its output, sources, searches, cost, paid_with and tokens'))),
+  sampled_rows: opt(num), rows_in_full_run: opt(num), measured_cost_usd: opt(nul(num)),
+  projected_full_run_usd: opt(nul(num)), projected_total_usd: opt(num),
+  provider_cost: opt(info('What your own provider key\'s provider bills, measured and projected')),
   web_search: opt(nul(info('The web search a row may make, and its price'))), basis: opt(str),
   in_flight: opt(info('What a row reserves while it runs')),
   assumptions: opt(info('The tokens the estimate assumes per row')), own_provider_key: opt(bool),

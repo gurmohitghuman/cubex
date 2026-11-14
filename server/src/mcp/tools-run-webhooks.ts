@@ -23,8 +23,10 @@ export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): voi
       + 'run_enrichment, apply_setup or a control_run rerun to be told when that run ends instead of polling often. '
       + 'Delivery isn\'t guaranteed, so get_run_status stays the source of truth. With webhook_id, also returns '
       + 'that webhook\'s last 50 deliveries (state, response_code, error). Add or change them with '
-      + 'manage_run_webhook, or in Settings, Run webhooks.',
-    inputSchema: z.object({ webhook_id: z.string().optional() }).strict(),
+      + 'manage_run_webhook, or in Settings, Run webhooks. Read-only.',
+    inputSchema: z.object({
+      webhook_id: z.string().optional().describe('One webhook, with its last 50 deliveries'),
+    }).strict(),
   }, async ({ webhook_id }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
@@ -45,7 +47,7 @@ export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): voi
       + 'once, and the old one stops signing at once. test: webhook_id; sends a signed "test" notice now and '
       + 'answers how it went (state, response_code, error).',
     inputSchema: z.object({
-      action: z.enum(['create', 'change', 'delete', 'new_secret', 'test']),
+      action: z.enum(['create', 'change', 'delete', 'new_secret', 'test']).describe('What to do'),
       webhook_id: z.string().optional().describe('Every action but create: the webhook (list_run_webhooks)'),
       url: z.string().optional().describe('create: required; change: the new URL'),
       every_run: lenientBoolean().optional().describe('true: every run; false: only runs started with its id'),

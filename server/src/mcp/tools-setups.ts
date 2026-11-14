@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { deleteSetup, getSetup, listSetups, specSummary } from '../services/setup-library';
 import { planSetup, saveSetup } from '../services/setup-save';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 
 // Setups: a saved copy of a chain of filled columns, to use again on another
 // sheet (services/setup-*.ts). list_setups, save_setup, delete_setup.
@@ -13,7 +13,8 @@ export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
       + 'clean data and formula columns, with their "Only run if" rules and auto-run), saved from one sheet to '
       + 'build the same columns on another. Each lists its steps, its inputs (the columns it reads that no step '
       + 'makes: the sheet it is used on needs columns for them) and the saved keys its requests name. Pass '
-      + 'setup_id for one setup in full: every step\'s prompt, request, formula and settings.',
+      + 'setup_id for one setup in full: every step\'s prompt, request, formula and settings. Read-only. Next: '
+      + 'apply_setup on a sheet.',
     inputSchema: z.object({
       setup_id: z.string().optional().describe('One setup in full; leave out for the list'),
     }).strict(),
@@ -36,7 +37,7 @@ export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
       + 'that adds rows to another sheet can\'t be saved. preview: true returns what the setup would hold (its '
       + 'steps in order, inputs and keys) and saves nothing. Saving changes nothing in the sheet.',
     inputSchema: z.object({
-      sheet_id: z.string(),
+      sheet_id: z.string().describe(SHEET_ID),
       name: z.string().optional().describe('The setup\'s name; required unless preview is true'),
       description: z.string().optional().describe('What it does, in a sentence'),
       columns: z.array(z.string()).min(1).describe('The filled columns to save, by name'),
@@ -58,7 +59,7 @@ export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
     description:
       'Delete a saved setup. PERMANENT: it can\'t be undone. Sheets the setup was used on keep their columns and '
       + 'values: a setup is a copy, never a link.',
-    inputSchema: z.object({ setup_id: z.string() }).strict(),
+    inputSchema: z.object({ setup_id: z.string().describe('The setup (list_setups)') }).strict(),
   }, async ({ setup_id }) => {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;

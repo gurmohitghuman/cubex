@@ -24,6 +24,9 @@ export const lenientBoolean = () =>
 export const lenientInt = (min: number, max: number, message?: string) =>
   z.preprocess(v => digitsAsNumber(v), z.number(message).int(message).min(min, message).max(max, message));
 
+// The sheet_id every sheet tool takes.
+export const SHEET_ID = 'The sheet\'s id (list_tables lists them)';
+
 export interface McpAuthCtx {
   userId: string;
   // The access token's id: the key for MCP's per-token rate windows.

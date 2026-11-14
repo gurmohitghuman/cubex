@@ -10,8 +10,8 @@ import { db } from '../lib/db';
 import { buildSheetCsv } from '../lib/csv-export';
 import { listRuns, RUN_LIST_MAX, RUN_LIST_DEFAULT } from '../services/run-list';
 import { MCP_EXPORT_MAX_CHARS } from '../lib/api-v1-constants';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { VIEW_HELP, WHERE_LANGUAGE, whereSchema } from './where-schema';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { VIEW_HELP, whereLike } from './where-schema';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -21,22 +21,17 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
     'export_csv',
     {
       description:
-        'Export sheet rows as CSV text, optionally narrowed with columns and where. '
-        + 'COST WARNING: the CSV comes back as a STRING IN YOUR CONTEXT, so exporting a wide or long '
-        + 'sheet is EXPENSIVE — always pass columns and where to fetch only what you need. '
-        + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the result says `
-        + 'truncated: true (with the total row count when there is no where); get the rest with read_rows '
-        + '(same columns/where, paged), '
-        + 'or save it all as a file of any size with create_download_link. '
-        + 'Use this when you want CSV specifically (to hand to another tool, or save verbatim); '
-        + 'for reading data to reason over, read_rows with the same columns/where is usually cheaper '
-        + 'and pages. Values are escaped against spreadsheet formula injection.',
+        'Export sheet rows as CSV text. The CSV comes back IN YOUR CONTEXT, so a wide or long sheet is EXPENSIVE: '
+        + 'always pass columns and where. Use it only when you need CSV itself (to hand on or save as it is); to '
+        + 'reason over data, read_rows is cheaper and pages; for a file of any size, create_download_link. '
+        + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the answer says `
+        + 'truncated: true and rest says how to get the others. Values are escaped against spreadsheet formula '
+        + 'injection. Read-only.',
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column (expensive on wide sheets).'),
-        where: whereSchema.optional()
-          .describe(`Only the rows it passes, the same as read_rows. ${WHERE_LANGUAGE}`),
+        where: whereLike('Only the rows it passes.').optional(),
         view: z.string().min(1).optional().describe(VIEW_HELP),
       },
     },
@@ -79,16 +74,14 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
     'list_runs',
     {
       description:
-        'List recent AI and HTTP runs, newest first — use this to FIND a run_id you no longer have '
-        + '(after a failed start, a disconnect, or a run someone else kicked off), then pass it to '
-        + "get_run_status, get_run_results, or control_run. filter 'active' shows only runs still "
-        + "pending/running/paused; 'terminal' shows finished ones. Omit sheet_id for the whole workspace. "
-        + 'Enrichment runs are listed as type http with an enrichment block (the tool) and cost_usd; use run_type '
-        + "'enrichment' (or 'http') for them. A running or pending run whose rows wait for a column another run "
-        + 'holds carries waiting, as get_run_status describes.',
+        'List recent runs, newest first: use it to FIND a run_id you no longer have (after a failed start, a '
+        + 'disconnect, or a run someone else started). Enrichment runs show as type http with an enrichment '
+        + 'block and cost_usd. A run whose rows wait for a column another run holds carries waiting. Read-only. '
+        + "Next: get_run_status, get_run_results or control_run (run_type 'enrichment' for an enrichment run).",
       inputSchema: {
         sheet_id: z.string().optional().describe('Limit to one sheet; omit for every sheet'),
-        filter: z.enum(['active', 'terminal', 'all']).optional().describe("Default 'all'"),
+        filter: z.enum(['active', 'terminal', 'all']).optional()
+          .describe('active: pending, running or paused; terminal: finished; all (default)'),
         limit: z.number().int().min(1).max(RUN_LIST_MAX).optional()
           .describe(`Max runs to return, default ${RUN_LIST_DEFAULT}, max ${RUN_LIST_MAX}`),
       },

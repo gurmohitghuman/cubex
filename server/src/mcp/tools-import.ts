@@ -10,7 +10,7 @@ import { importCsv } from '../services/csv-import';
 import { importSummary } from '../services/csv-upload';
 import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
 
 // What import_csv and an upload link answer about cells that look garbled.
@@ -40,7 +40,7 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user. '
         + GARBLED_HELP,
       inputSchema: {
-        sheet_id: z.string(),
+        sheet_id: z.string().describe(SHEET_ID),
         csv: z.string().min(1).describe('Raw CSV content including the header row'),
         mode: z.enum(['append', 'replace']).optional().describe('Default append'),
       },
