@@ -2,7 +2,7 @@
 // tools-lookup.ts, tools-enrich-manage.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { autoRunNotice, bool, info, nul, num, opt, str, strs } from './shared';
+import { autoRunNotice, bool, changed, info, nul, num, opt, str, strs } from './shared';
 
 const preview = {
   preview: opt(bool).describe('true: nothing was written; samples shows what it would write'),
@@ -14,12 +14,14 @@ const filling = { auto_run: opt(bool), status: opt(str), filled_rows: opt(num), 
 // The clean column's setup (its cleaner's options too), or a preview.
 export const cleanColumn = open({
   column: str, source_column: opt(str), cleaner: opt(str), auto_run: opt(bool), status: opt(str),
-  cleaned_rows: opt(num), blank_rows: opt(num), cleans_existing_column: opt(bool), ...preview,
+  cleaned_rows: opt(num), blank_rows: opt(num), cleans_existing_column: opt(bool), ...preview, changed,
 });
 
 export const formulaColumn = obj({
   column: nul(str), formula: str, reads: strs, ...filling, changes_existing_column: opt(bool),
-  first_error: opt(str), ...preview,
+  first_error: opt(str), description: opt(str), auto_run_paused: opt(str).describe('Why auto-run is paused'),
+  error: opt(str).describe('Why the fill failed'),
+  stopped: opt(str).describe('preview: the formula ran out of time or memory on the sample rows'), ...preview, changed,
 });
 
 export const writeFormula = obj({
@@ -34,10 +36,10 @@ export const lookupColumn = open({
   match_column: opt(str), match: opt(str), returns: opt(str), return_column: opt(nul(str)),
   return_columns: opt(z.union([strs, z.literal('all')])).describe('"all": every column'),
   limit: opt(num), ...filling, first_error: opt(str), broken: opt(str), changes_existing_column: opt(bool),
-  other_rows: opt(num), checked_rows: opt(num), checked_note: opt(str), ...preview,
+  other_rows: opt(num), checked_rows: opt(num), checked_note: opt(str), ...preview, changed,
 });
 
-export const addEnrichmentField = obj({ column: str, filling: bool, note: str });
+export const addEnrichmentField = obj({ column: str, filling: bool, note: str, changed });
 
 export const getListFields = obj({
   fields: z.array(obj({ path: str, label: str, filled: num, sample: str })), results_read: num,
@@ -46,7 +48,7 @@ export const getListFields = obj({
   dedupe_path: nul(str), destination_sheet_id: nul(str),
 });
 
-export const addListRows = obj({ source_rows_released: num, auto_run: opt(autoRunNotice), note: str });
+export const addListRows = obj({ source_rows_released: num, auto_run: opt(autoRunNotice), note: str, changed });
 
 const autoRunColumn = obj({
   column: str, kind: str, enabled: bool, sends_requests: bool, paused_reason: nul(str), paused_message: nul(str),
@@ -55,5 +57,5 @@ const autoRunColumn = obj({
 });
 export const setAutoRun = obj({
   auto_run: z.array(autoRunColumn), has_webhook: bool,
-  daily_limit: obj({ limit_usd: nul(num), used_today_usd: num, remaining_usd: nul(num) }),
+  daily_limit: obj({ limit_usd: nul(num), used_today_usd: num, remaining_usd: nul(num) }), changed,
 });

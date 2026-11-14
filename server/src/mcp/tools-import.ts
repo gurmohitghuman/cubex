@@ -2,7 +2,7 @@
 // /mcp body cap bounds the payload at 2MB) through the SAME parse + commit
 // pipeline as the /v1 and UI import routes. A larger file goes through an
 // upload link instead (mcp/tools-links.ts), straight from the agent's disk.
-import { verifySheetOwnership } from '../lib/sql-helpers';
+import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { scanCsvText, CsvHeaderCollisionError } from '../lib/csv-import-parse';
@@ -12,6 +12,7 @@ import { makeRateWindow, tooManyMessage } from '../lib/rate-window';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { IMPORT_GARBLED_SAMPLES } from '../lib/constants-clean';
+import { changedOf } from './changed';
 
 // What import_csv and an upload link answer about cells that look garbled.
 export const GARBLED_HELP = 'When cells look like text read with the wrong character set (they hold U+0080-U+009F, '
@@ -64,6 +65,8 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
       }
 
       const replace = mode === 'replace';
+      // A replace drops the columns the file doesn't have: changed names them too.
+      const before = replace ? getSheetColumns(sheet_id, ctx.userId, false) : [];
       const result = await importCsv(
         sheet_id, ctx.userId, scanned, replace, { bumpDataVersion: true, seedEmptyRow: false },
       );
@@ -75,9 +78,16 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         }
         return err(result.error);
       }
+      const { columns, rowsImported, rowsReplaced, autoDedupe } = result.ok;
+      const notice = await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsKept);
+      // Rows it added or replaced, and rows auto-dedupe took out of the ones already there.
+      const rows = rowsImported + rowsReplaced + Math.max(0, (autoDedupe?.removed ?? 0) - (autoDedupe?.notKept ?? 0));
       return ok({
-        ...importSummary(result.ok, replace, ctx.userId),
-        ...await appendAutorunNotice(ctx.userId, sheet_id, result.ok.rowsKept),
+        ...importSummary(result.ok, replace, ctx.userId), ...notice,
+        changed: changedOf(ctx.userId, [{
+          sheetId: sheet_id, columns: [...new Set([...before, ...columns])], rows,
+          moreComing: !!autoDedupe?.left || !!notice.auto_run,
+        }]),
       });
     },
   );

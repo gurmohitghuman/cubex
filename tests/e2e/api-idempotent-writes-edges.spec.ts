@@ -99,10 +99,11 @@ test('row-write replays answer after the sheet went to the trash, over REST and 
   const bt = await v1.post(`/api/v1/sheets/${sheetId}/rows/update`, { data: updateBody })
   expect(bt.status()).toBe(200)
   expect(await bt.json()).toEqual({ updated: 1, replayed: true })
+  // An MCP replay wrote nothing: its changed is [].
   expect(await call(mcp, 'append_rows', { sheet_id: sheetId, rows: [{ val: 'a' }], idempotency_key: 'e2e-tr-ap' }))
-    .toEqual({ rows: appended.rows, replayed: true })
+    .toEqual({ rows: appended.rows, replayed: true, changed: [] })
   expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-bt' }))
-    .toEqual({ updated: 1, replayed: true })
+    .toEqual({ updated: 1, replayed: true, changed: [] })
 
   // A new key there writes nothing: the sheet isn't found (MCP adds that it is in the trash, and how to restore it).
   const fresh = await v1.post(`/api/v1/sheets/${sheetId}/rows`, { data: { ...rowsBody, idempotency_key: 'e2e-tr-2' } })

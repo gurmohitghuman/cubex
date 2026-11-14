@@ -75,7 +75,7 @@ async function refusedWith(args: Record<string, unknown>, rows: number, cursor: 
   const out = await transform(args)
   assert.equal(out.isError, true)
   const { error, next_cursor, rows_done } = unfinished('T', rows, cursor).unfinished
-  assert.deepEqual(out.structuredContent, { error, next_cursor, rows_done })
+  assert.deepEqual(out.structuredContent, { error, next_cursor, rows_done, changed: [] })
   assert.deepEqual(answer(out), out.structuredContent, 'the text mirrors the structured content')
   assert.deepEqual(state(), before, 'nothing was written')
 }
@@ -92,7 +92,10 @@ async function main() {
     const cursor = first.next_cursor as string
     assert.match(cursor, /^0:9999:[0-9a-f]{12}$/)
     await refusedWith(call, 10_000, cursor)
-    assert.deepEqual(answer(await transform({ ...call, cursor })), { updated: 1, created_column: null })
+    const { changed, ...last } = answer(await transform({ ...call, cursor }))
+    assert.deepEqual(last, { updated: 1, created_column: null })
+    assert.deepEqual((changed as Array<{ columns: string[]; rows: number }>).map(i => [i.columns, i.rows]),
+      [[['T'], 1]])
     assert.equal(ending('t*-x'), ROWS)
     assert.equal(ending('*-x-x'), 0)
     assert.equal(records(), 0)
@@ -113,8 +116,8 @@ async function main() {
     assert.equal(valueAt(0), 't0-x-x-x', 'the first row again: once in each pass and once in the restart')
     assert.equal(valueAt(done), `t${done}-x-x`, 'a row the time-limited call never reached: once by the restart')
     await refusedWith(call, 10_000, restarted.next_cursor as string)
-    assert.deepEqual(answer(await transform({ ...call, cursor: restarted.next_cursor })),
-      { updated: 1, created_column: null })
+    const { changed: _, ...last } = answer(await transform({ ...call, cursor: restarted.next_cursor }))
+    assert.deepEqual(last, { updated: 1, created_column: null })
     assert.equal(valueAt(ROWS - 1), `t${ROWS - 1}-x-x`)
     assert.equal(records(), 0)
   })

@@ -1,7 +1,7 @@
 // What the saved setup tools answer (tools-setups.ts, tools-setup-runs.ts, tools-setup-versions.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, nul, num, opt, str, strs } from './shared';
+import { bool, changed, info, nul, num, opt, str, strs } from './shared';
 
 const setupFields = {
   id: str, name: str, description: nul(str), inputs: strs.describe('The input names the setup reads'),
@@ -33,11 +33,11 @@ const setupRun = obj({
 export const applySetup = obj({
   setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')),
   inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
-  carries_on: opt(strs).describe('The columns it carries on'),
+  carries_on: opt(strs).describe('The columns it carries on'), changed,
 });
 // No setup_run_id: setup_runs. With one: that setup run.
 export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });
-export const controlSetupRun = setupRun;
+export const controlSetupRun = obj({ ...setupRun.shape, changed });
 
 const version = obj({
   id: str, name: str, description: nul(str), auto: bool, by: str, saved_at: str, columns: num, filled: num,
@@ -49,4 +49,4 @@ const restore = {
 };
 export const listSetupVersions = obj({ versions: opt(z.array(version)), ...restore });
 export const manageSetupVersion = open({ version: opt(version), ok: opt(bool) });
-export const restoreSetupVersion = obj({ ...restore, version: info('The version restored') });
+export const restoreSetupVersion = obj({ ...restore, version: info('The version restored'), changed });

@@ -48,7 +48,8 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   const viaMcp = await call(mcp, 'append_rows', {
     sheet_id: sheetId, rows: [{ val: 'a' }, { val: 'b' }], idempotency_key: 'e2e-ap-1',
   })
-  expect(viaMcp).toEqual({ rows: firstBody.rows, replayed: true })
+  // An MCP replay wrote nothing: its changed is [].
+  expect(viaMcp).toEqual({ rows: firstBody.rows, replayed: true, changed: [] })
   expect(await count()).toBe(4)
 
   // One row: MCP first (no sheet_id), MCP again with the row's sheet_id, then REST PATCH: one write.
@@ -56,10 +57,12 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   const up = await call(mcp, 'update_cells', { row_id: rowId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1' })
   expect(up.replayed).toBe(false)
   expect(up.data.val).toBe('A1')
+  expect(up.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['val'], rows: 1,
+    row_ids: [rowId] })])
   const upAgain = await call(mcp, 'update_cells', {
     row_id: rowId, sheet_id: sheetId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1',
   })
-  expect(upAgain).toEqual({ ...up, replayed: true })
+  expect(upAgain).toEqual({ ...up, replayed: true, changed: [] })
   const patch = await v1.patch(`/api/v1/rows/${rowId}`, { data: { data: { val: 'A1' }, idempotency_key: 'e2e-up-1' } })
   expect(patch.status()).toBe(200)
   expect((await patch.json()).replayed).toBe(true)
@@ -80,7 +83,7 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
   })
   expect(await batchAgain.json()).toEqual({ updated: 2, replayed: true })
   expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-bt-1' }))
-    .toEqual({ updated: 2, replayed: true })
+    .toEqual({ updated: 2, replayed: true, changed: [] })
 
   // No key: each call writes, and the answer is as before (no replayed field). A bad key is a 400.
   const plain1 = await (await append({ rows: [{ data: { val: 'p' } }] })).json()

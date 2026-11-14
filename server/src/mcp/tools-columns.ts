@@ -13,6 +13,7 @@ import { reorderSheetColumns } from '../services/column-reorder';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
+import { changedOf } from './changed';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -39,9 +40,10 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       if (problem) return err(problem);
       const result = addSheetColumn(sheet_id, ctx.userId, name, { bumpDataVersion: true, seedEmptyRow: false });
       if ('fail' in result) return err(result.error);
-      if (description === undefined) return ok({ name: result.name });
+      const changed = () => changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [result.name] }]);
+      if (description === undefined) return ok({ name: result.name, changed: changed() });
       const described = describeColumn(sheet_id, ctx.userId, result.name, description);
-      return ok({ name: result.name, ...('ok' in described ? described.ok : {}) });
+      return ok({ name: result.name, ...('ok' in described ? described.ok : {}), changed: changed() });
     },
   );
 
@@ -68,7 +70,10 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         ? describeSheet(sheet_id, ctx.userId, description)
         : describeColumn(sheet_id, ctx.userId, column, description);
       if ('fail' in outcome) return err(outcome.message);
-      return ok({ ...(column === undefined ? {} : { column }), description: outcome.ok.description });
+      return ok({
+        ...(column === undefined ? {} : { column }), description: outcome.ok.description,
+        changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: column === undefined ? [] : [column] }]),
+      });
     },
   );
 
@@ -92,7 +97,9 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) {
         return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.error);
       }
-      return ok({ name: result.newName });
+      return ok({
+        name: result.newName, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [result.newName] }]),
+      });
     },
   );
 
@@ -120,7 +127,11 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in result) {
         return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.error);
       }
-      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.trashId, 'mcp', { moving: !!result.moving }) });
+      // A big column's cells move to the trash in the background (trash state "moving").
+      return ok({
+        deleted: true, trash: trashAnswer(ctx.userId, result.trashId, 'mcp', { moving: !!result.moving }),
+        changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [column], moreComing: !!result.moving }]),
+      });
     },
   );
 
@@ -145,7 +156,10 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         if (result.fail === 'busy') return err(result.error);
         return err(result.fail === 'column_not_found' ? `Column "${column}" not found in this sheet` : result.message);
       }
-      return ok({ rows_reordered: result.rowsReordered });
+      return ok({
+        rows_reordered: result.rowsReordered,
+        changed: changedOf(ctx.userId, [{ sheetId: sheet_id, rows: result.rowsReordered }]),
+      });
     },
   );
 
@@ -164,6 +178,7 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
     if (denied) return denied;
     if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
     const result = reorderSheetColumns(sheet_id, ctx.userId, order, { bumpDataVersion: true });
-    return 'fail' in result ? err(result.error) : ok({ order });
+    return 'fail' in result ? err(result.error)
+      : ok({ order, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: order }]) });
   });
 }

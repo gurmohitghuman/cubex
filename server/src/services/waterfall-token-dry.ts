@@ -13,10 +13,10 @@ import { waitForRunChange } from './run-status-wait';
 import { startWaterfallDryRun } from './waterfall-dry-run';
 import { replayKeysRefusal } from './waterfall-run-start';
 import { readDryRun, type DryRunView } from './waterfall-dry-read';
-import type { ToolAnswer } from '../mcp/tool-outputs';
+import type { ServiceAnswer } from '../mcp/tool-outputs';
 
 type Json = Record<string, unknown>;
-export type WaterfallAnswer = ToolAnswer<'waterfall_column'>;
+export type WaterfallAnswer = ServiceAnswer<'waterfall_column'>;
 const ENDED = new Set(['completed', 'failed', 'cancelled', 'paused']);
 
 export function dryRunJson(v: DryRunView) {

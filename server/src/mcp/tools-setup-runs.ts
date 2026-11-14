@@ -7,6 +7,11 @@ import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun } from '../services/setup-run-control';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { changedOf, type Changed } from './changed';
+
+// A setup run's sheet and the columns its steps fill, with work going on.
+const setupChanged = (userId: string, run: { sheet_id: string; steps: Array<{ column: string }> }): Changed[] =>
+  changedOf(userId, [{ sheetId: run.sheet_id, columns: run.steps.map(s => s.column), moreComing: true }]);
 import { capToolNote } from '../lib/token-spend';
 
 const names = z.record(z.string(), z.string());
@@ -64,7 +69,9 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
         : out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : '';
       return err(out.message + extra);
     }
-    return ok(out.ok);
+    // An estimate starts nothing.
+    const run = 'setup_run' in out.ok ? out.ok.setup_run : undefined;
+    return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
   });
 
   registerTool(server, 'get_setup_run', {
@@ -103,6 +110,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
     const out = await controlSetupRun(ctx.userId, setup_run_id, action, ctx.scopes.has('secrets'));
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // A pause leaves the cells as they are; a resume goes on, a cancel clears its runs' ⏳ cells.
+    return ok({ ...out.ok, changed: action === 'pause' ? [] : setupChanged(ctx.userId, out.ok) });
   });
 }

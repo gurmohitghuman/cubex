@@ -5,6 +5,7 @@ import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { AUTO_DEDUPE_KEEPS } from '../lib/auto-dedupe/key';
 import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { changedOf } from './changed';
 
 // remove_duplicates: find duplicate rows, and remove them on an explicit
 // dry_run: false (services/dedupe-agent.ts). set_auto_dedupe: keep one row per
@@ -46,7 +47,9 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
     const denied = missingScope(ctx, dedupeDryRun(a.dry_run) === false ? 'write' : 'read');
     if (denied) return denied;
     const out = await agentRemoveDuplicates(ctx.userId, sheet_id, a, 'mcp');
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    const removed = 'rows_removed' in out.ok ? out.ok.rows_removed : 0;
+    return ok({ ...out.ok, changed: removed ? changedOf(ctx.userId, [{ sheetId: sheet_id, rows: removed }]) : [] });
   });
 
   registerTool(server, 'set_auto_dedupe', {
@@ -84,9 +87,14 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
     if (off === true) {
       if (Object.keys(a).length > 0) return err('off: true takes no other field. Nothing was changed.');
       const out = turnOffAutoDedupe(ctx.userId, sheet_id);
-      return 'ok' in out ? ok({ auto_dedupe: null }) : err(out.message);
+      return 'ok' in out ? ok({ auto_dedupe: null, changed: changedOf(ctx.userId, [{ sheetId: sheet_id }]) })
+        : err(out.message);
     }
     const out = setAutoDedupe(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok({ auto_dedupe: out.ok }) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // Rows already there stay; rows that arrived while its keys build are checked once they are.
+    const { column, state, waiting_rows } = out.ok;
+    return ok({ auto_dedupe: out.ok, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [column],
+      moreComing: state === 'building' && waiting_rows > 0 }]) });
   });
 }

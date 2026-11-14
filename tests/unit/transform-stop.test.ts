@@ -80,8 +80,11 @@ async function main() {
     fault.disarm()
     assert.equal(out.isError, true)
     const s = out.structuredContent!
-    assert.deepEqual(Object.keys(s), ['error', 'next_cursor', 'rows_done'])
+    assert.deepEqual(Object.keys(s), ['error', 'next_cursor', 'rows_done', 'changed'])
     assert.deepEqual(JSON.parse(out.content[0].text), s, 'the text mirrors the structured content')
+    // The rows it wrote stay written: changed names them.
+    const [item, ...more] = s.changed as Array<{ sheet_id: string; columns: string[]; rows: number }>
+    assert.deepEqual([item.sheet_id, item.columns, item.rows, more.length], [sid, ['T'], 250, 0])
     cursor = s.next_cursor as string
     assert.match(cursor, /^0:249:[0-9a-f]{12}$/)
     assert.equal(s.rows_done, 250)
@@ -100,8 +103,8 @@ async function main() {
     const viaMcp = await transform({ sheet_id: sid, operation: 'template', template: '{{T}}-x', target_column: 'T' })
     assert.equal(viaMcp.isError, true)
     const s = viaMcp.structuredContent!
-    assert.deepEqual(Object.keys(s), ['error', 'next_cursor', 'rows_done'])
-    assert.deepEqual(s, { error: refusal(cursor).unfinished.error, next_cursor: cursor, rows_done: 250 })
+    assert.deepEqual(Object.keys(s), ['error', 'next_cursor', 'rows_done', 'changed'])
+    assert.deepEqual(s, { error: refusal(cursor).unfinished.error, next_cursor: cursor, rows_done: 250, changed: [] })
     assert.deepEqual(JSON.parse(viaMcp.content[0].text), s, 'the text mirrors the structured content')
     assert.deepEqual({ cells: cells(), version: dataVersion(sid) }, before)
   })
@@ -160,7 +163,9 @@ async function main() {
       text: JSON.stringify({ error: 'Something went wrong handling that request. Please try again.' }) }],
     isError: true })
     assert.equal(db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(late), 0)
-    assert.deepEqual(JSON.parse((await transform(call)).content[0].text), { updated: 300, created_column: null })
+    const { changed, ...ran } = JSON.parse((await transform(call)).content[0].text)
+    assert.deepEqual(ran, { updated: 300, created_column: null })
+    assert.deepEqual(changed.map((i: { columns: string[]; rows: number }) => [i.columns, i.rows]), [[['T'], 300]])
     assert.equal(db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.T') GLOB '*-x'`)
       .pluck().get(late), 300)
   })

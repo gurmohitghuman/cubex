@@ -18,6 +18,7 @@ import { SEARCH_ENGINES, SEARCH_MODES } from '../lib/web-search-options';
 import { tokenStartAiRun, type TokenAiRunArgs } from '../services/run-start-token';
 import { tokenStartHttpRun, type TokenHttpRunArgs } from '../services/run-start-token-http';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt, SHEET_ID } from './tool-helpers';
+import { runChanged } from './changed';
 import { runIfSchema } from './run-if-schema';
 import { capToolNote } from '../lib/token-spend';
 import { AI_SPEND_LIMIT_NOTE } from '../lib/ai-spend-limit';
@@ -139,7 +140,11 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const r = await tokenStartAiRun(ctx, args);
-      if (!('fail' in r)) return ok(r.ok);
+      if (!('fail' in r)) {
+        const o = r.ok;
+        return ok({ ...o, changed: runChanged(ctx.userId, args.sheet_id as string, r.started,
+          [o.output_column, o.status_column, ...(o.output_columns ?? []), o.data_column], o.target_rows) });
+      }
       return err(r.fail === 'over_ceiling' ? `${r.message} Estimate: ${JSON.stringify(r.estimate)}` : r.message);
     },
   );
@@ -209,7 +214,10 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
       const r = await tokenStartHttpRun(ctx, args);
-      return 'fail' in r ? err(r.message) : ok(r.ok);
+      if ('fail' in r) return err(r.message);
+      const o = r.ok;
+      return ok({ ...o, changed: runChanged(ctx.userId, args.sheet_id as string, r.started,
+        [o.master_column, ...(o.mapped_columns ?? []), args.status_code_column], o.target_rows) });
     },
   );
 }

@@ -72,7 +72,8 @@ export interface TransformParams {
 // `unfinished`: refused, another pass into the column is unfinished.
 export type TransformOutcome =
   | { ok: { updated: number; created_column: string | null; next_cursor?: string; note?: string } }
-  | { stopped: { error: string; next_cursor: string; rows_done: number } }
+  // wrote: the rows this call wrote, of rows_done.
+  | { stopped: { error: string; next_cursor: string; rows_done: number; wrote: number } }
   | { unfinished: Unfinished }
   | { fail: 'not_found' | 'invalid' | 'collision' | 'cap' | 'locked' | 'busy'; error: string };
 
@@ -124,7 +125,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
       }
       // The cursor its record holds: after the last page that wrote (the pages after it wrote nothing).
       return { stopped: { error: stoppedOnErrorWords(rows, next, walked.failed.error), next_cursor: next,
-        rows_done: rows } };
+        rows_done: rows, wrote: walked.updated } };
     }
     const ok = { updated: walked.updated, created_column: plan.targetExists ? null : plan.targetColumn };
     if (walked.stoppedAfter === null) return { ok };

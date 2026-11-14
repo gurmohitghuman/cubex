@@ -18,7 +18,7 @@ import { estimateHttpRun } from './run-estimate-http';
 import {
   bad, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller, type TokenRunResult,
 } from './run-start-token';
-import type { ToolAnswer } from '../mcp/tool-outputs';
+import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
@@ -54,7 +54,7 @@ function startNeedsSecrets(c: TokenCaller, a: TokenHttpRunArgs): boolean {
   return savedKeyRefsInConfig(c.userId, request).length > 0;
 }
 
-type HttpRunAnswer = ToolAnswer<'run_http_enrichment'>;
+type HttpRunAnswer = ServiceAnswer<'run_http_enrichment'>;
 
 export async function tokenStartHttpRun(
   c: TokenCaller, sent: TokenHttpRunArgs,

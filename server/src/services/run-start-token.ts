@@ -23,7 +23,7 @@ import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, type RunLedgerResult } from '../lib/run-idempotency';
-import type { ToolAnswer } from '../mcp/tool-outputs';
+import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { parseRunRequest, type RunParams } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
@@ -173,7 +173,7 @@ function aiSentHash(a: TokenAiRunArgs): string | null {
   return parsed.ok && !('error' in limits) ? aiRunRequestHash(a.sheet_id, a, parsed, limits) : null;
 }
 
-type AiRunAnswer = ToolAnswer<'run_ai_column'>;
+type AiRunAnswer = ServiceAnswer<'run_ai_column'>;
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult<AiRunAnswer>> {
   const first = replayFirst<AiRunAnswer>(c, a.idempotency_key, () => aiSentHash(a));

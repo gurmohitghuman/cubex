@@ -69,6 +69,8 @@ export async function agentAskAiVisibility(
   const started = await startAsk(userId, rec, again, refuse);
   if ('fail' in started) return started;
   return {
+    // The sheet the runs fill (the MCP answer's changed names it).
+    sheetId: rec.questions_sheet_id,
     ok: {
       runs: started.started.map(s => ({ column: s.column, run_id: s.runId, rows: s.rows })), problems: started.problems,
       next: 'Each run is an enrichment run: follow it with get_run_status (run type enrichment).',

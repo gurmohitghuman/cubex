@@ -112,6 +112,17 @@ function httpRunColumns(
 export type RunKind = 'ai' | 'http';
 const RUN_TABLE: Record<RunKind, string> = { ai: 'ai_runs', http: 'http_runs' };
 
+// The sheet a run fills and the columns it holds placeholders in; null when it isn't the user's.
+export function runSheetColumns(
+  kind: RunKind, runId: string, userId: string,
+): { sheetId: string; columns: string[] } | null {
+  const run = db.prepare(`SELECT * FROM ${RUN_TABLE[kind]} WHERE id = ? AND user_id = ?`).get(runId, userId) as
+    (AIRunCols & { id: string; sheet_id: string; master_column_name?: string | null }) | undefined;
+  if (!run) return null;
+  const columns = kind === 'ai' ? aiRunColumns(run) : httpRunColumns(run.id, userId, run.master_column_name ?? null);
+  return { sheetId: run.sheet_id, columns };
+}
+
 // Clear the placeholders a run that has just ended still holds, then drop its
 // placeholder_work='clearing' mark (migration 004). Whoever ends the run sets
 // that mark in the same statement (cancel, a worker's failure, a start that

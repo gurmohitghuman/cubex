@@ -44,7 +44,8 @@ async function scoped(surface: typeof SURFACE_NAMES[number], args: Args, key: st
   }
   assert.equal(runsOn(args.sheet_id), runs, `${surface}: no run made`)
   const again = await start(surface, { ...args, idempotency_key: key })
-  assert.deepEqual(again.ok, { ...first.ok, replayed: true }, `${surface}: the token with 'secrets' replays`)
+  assert.deepEqual(again.ok, { ...first.ok, replayed: true, ...('changed' in first.ok ? { changed: [] } : {}) },
+    `${surface}: the token with 'secrets' replays`)
 }
 
 for (const surface of SURFACE_NAMES) {
@@ -116,7 +117,8 @@ async function keyless(surface: Surface, args: Args, key: string, change: (runId
   assert.deepEqual(await start(surface, args, { secrets: false }),
     refusal(surface, now.fail, now.status, now.message, now.mcp?.()), `${surface}: no key`)
   const runs = runsOn(args.sheet_id)
-  const want = { ...first.ok, replayed: true, ...(first.status ? { status: 200 } : {}) }
+  const want = { ...first.ok, replayed: true, ...('changed' in first.ok ? { changed: [] } : {}),
+    ...(first.status ? { status: 200 } : {}) }
   for (let i = 0; i < TRIES; i++) {
     const again = await start(surface, { ...args, idempotency_key: key }, { secrets: false })
     assert.deepEqual({ ...again.ok, ...(again.status ? { status: again.status } : {}) }, want,

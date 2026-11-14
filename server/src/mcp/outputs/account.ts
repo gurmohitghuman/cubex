@@ -2,7 +2,7 @@
 // tools-trash.ts, tools-saved-keys.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, nul, num, opt, str, strs } from './shared';
+import { bool, changed, info, nul, num, opt, str, strs } from './shared';
 
 export const listModels = obj({
   models: z.array(obj({ id: str, name: str, context_length: nul(num), pricing: info('Dollars per token') })),
@@ -44,7 +44,7 @@ export const restoreFromTrash = open({
     trash_id: num, restored: opt(info('What came back and where')), error: opt(str), fail: opt(str),
   }))),
   trash_id: opt(num), sheet_id: opt(str), state: opt(str), rows: opt(num), place: opt(str),
-  columns_added: opt(strs), columns_left_out: opt(strs),
+  columns_added: opt(strs), columns_left_out: opt(strs), changed,
 });
 
 export const getSheetHistory = obj({

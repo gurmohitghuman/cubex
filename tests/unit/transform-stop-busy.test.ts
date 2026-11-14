@@ -118,7 +118,7 @@ async function main() {
     assert.deepEqual(out.stopped, { error: 'Stopped on an error after 250 rows: the sheet was busy (SQLITE_BUSY). '
       + `Those rows are written. Call transform_column again with the same arguments and cursor set to "${cursor}" `
       + 'to go on. Don\'t start over without cursor: that would apply the operation to those rows again.',
-    next_cursor: cursor, rows_done: 250 })
+    next_cursor: cursor, rows_done: 250, wrote: 250 })
     assert.ok(await movedFrom(busy, before), 'data_version moved')
     assert.equal(suffixed(busy, 't*-x'), 250)
     assert.ok('unfinished' in await transformColumn(uid, again(busy)))

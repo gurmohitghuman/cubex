@@ -14,6 +14,8 @@ import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { changedOf } from './changed';
+import { getSheetColumns } from '../lib/sql-helpers';
 
 export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -45,20 +47,24 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         return ok({
           id: result.ok.id, name: result.ok.name,
           sheets: [{ id: result.ok.sheetId, name: 'Sheet1', position: 0, row_count: 0 }],
+          changed: changedOf(ctx.userId, [{ sheetId: result.ok.sheetId }]),
         });
       }
       if (action === 'create_sample') {
         const result = await createSampleTable(ctx.userId);
-        return 'fail' in result ? err(result.message) : ok(sampleAnswer(result.ok, 'mcp'));
+        if ('fail' in result) return err(result.message);
+        const { sheetId, rows } = result.ok;
+        return ok({ ...sampleAnswer(result.ok, 'mcp'), changed: changedOf(ctx.userId,
+          [{ sheetId, columns: getSheetColumns(sheetId, ctx.userId, false), rows }]) });
       }
       if (!table_id) return err(`table_id is required for ${action}`);
       if (action === 'rename') {
         const result = renameTable(ctx.userId, table_id, name);
-        return 'fail' in result ? err(result.message) : ok(result.ok);
+        return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
       }
       const result = deleteTable(ctx.userId, table_id);
       if ('fail' in result) return err(result.message);
-      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.ok.trashId, 'mcp') });
+      return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.ok.trashId, 'mcp'), changed: [] });
     },
   );
 
@@ -95,7 +101,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
       if (denied) return denied;
       if (action === 'create') {
         const result = createSheet(ctx.userId, table_id, name, after_sheet_id);
-        return 'fail' in result ? err(result.message) : ok(result.ok);
+        if ('fail' in result) return err(result.message);
+        const made = result.ok.sheet;
+        return ok({ ...result.ok, changed: changedOf(ctx.userId, [made && { sheetId: made.id }]) });
       }
       if (action === 'copy') {
         if (!sheet_id) return err('sheet_id is required for copy');
@@ -105,23 +113,26 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         const result = await copySheetValues(ctx.userId, sheet_id, { name, columns });
         if ('fail' in result) return err(result.message);
         const { sheet, sheets, rowsCopied, columns: copied } = result.ok;
-        return ok({ sheet, sheets, rows_copied: rowsCopied, columns: copied });
+        return ok({
+          sheet, sheets, rows_copied: rowsCopied, columns: copied,
+          changed: changedOf(ctx.userId, [sheet && { sheetId: sheet.id, columns: copied, rows: rowsCopied }]),
+        });
       }
       if (action === 'reorder') {
         if (!ordered_sheet_ids) return err('ordered_sheet_ids is required for reorder');
         const result = reorderSheets(ctx.userId, table_id, ordered_sheet_ids);
-        return 'fail' in result ? err(result.message) : ok(result.ok);
+        return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
       }
       if (!sheet_id) return err(`sheet_id is required for ${action}`);
       const result = action === 'rename'
         ? renameSheet(ctx.userId, table_id, sheet_id, name)
         : deleteSheet(ctx.userId, table_id, sheet_id);
       if ('fail' in result) return err(result.message);
-      if (action !== 'delete') return ok(result.ok);
+      if (action !== 'delete') return ok({ ...result.ok, changed: [] });
       const dropped = result.ok.notAdded;
       return ok({
         deleted: true, sheets: result.ok.sheets, trash: trashAnswer(ctx.userId, result.ok.trashId ?? null, 'mcp'),
-        ...(dropped ? { list_results_dropped: dropped } : {}),
+        ...(dropped ? { list_results_dropped: dropped } : {}), changed: [],
       });
     },
   );

@@ -10,6 +10,7 @@ import {
 } from '../services/setup-version-store';
 import { restoreSetupVersion } from '../services/setup-version-restore';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { changedOf } from './changed';
 
 const WHAT =
   'A setup version is a named copy of how a sheet\'s columns are set up, never their values: every column in '
@@ -105,6 +106,12 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
     const dryRun = dry_run !== false;
     const out = await restoreSetupVersion(sheet_id, ctx.userId, version_id,
       { dryRun, hasSecretsScope: ctx.scopes.has('secrets'), reveal: false });
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    if (!('ok' in out)) return err(out.message);
+    // The columns it adds back or sets up again; a clean, formula or lookup column fills again on its own.
+    const set = out.ok.columns.filter(c => c.action === 'add_back' || c.action === 'restore');
+    const changed = out.ok.dry_run || out.ok.nothing || (!set.length && !out.ok.order_changed) ? []
+      : changedOf(ctx.userId, [{ sheetId: sheet_id, columns: set.map(c => c.column),
+        moreComing: set.some(c => c.kind === 'clean' || c.kind === 'formula' || c.kind === 'lookup') }]);
+    return ok({ ...out.ok, changed });
   });
 }

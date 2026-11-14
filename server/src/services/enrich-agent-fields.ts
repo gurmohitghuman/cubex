@@ -87,6 +87,8 @@ export async function agentAddListRows(
   const results = 'ok' in before ? before.ok.waiting.results : 0;
   const notice = dest ? await appendAutorunNotice(userId, dest, results) : {};
   return {
+    // destSheetId: where the rows go (the MCP answer's changed names it).
+    destSheetId: dest,
     ok: {
       source_rows_released: out.ok.released, ...notice,
       note: 'Their results are being added as rows in the destination sheet; each source row\'s status cell says '

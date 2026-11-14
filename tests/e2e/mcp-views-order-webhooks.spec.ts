@@ -97,8 +97,10 @@ test('set_column_order: the new order, rows untouched; partial, unknown or repea
     .map((r: { data: Record<string, string> }) => r.data)
   const before = await cells()
   expect(await columns()).toEqual(['val', 'Industry', 'Notes'])
-  expect(await call(client, 'set_column_order', { sheet_id: sheetId, order: ['Notes', 'val', 'Industry'] }))
-    .toEqual({ order: ['Notes', 'val', 'Industry'] })
+  const ordered = await call(client, 'set_column_order', { sheet_id: sheetId, order: ['Notes', 'val', 'Industry'] })
+  expect(ordered).toMatchObject({ order: ['Notes', 'val', 'Industry'] })
+  expect(ordered.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['Notes', 'val', 'Industry'],
+    rows: 0 })])
   expect(await columns()).toEqual(['Notes', 'val', 'Industry'])
   expect(await cells()).toEqual(before)
 

@@ -15,6 +15,9 @@ import { holdersFirst, restoreFromTrash } from '../services/trash-actions';
 import { restoreRows } from '../services/trash-restore';
 import { readSheetHistory } from '../services/sheet-history';
 import { SHEET_ID, McpAuthCtx, err, lenientInt, missingScope, ok, registerTool } from './tool-helpers';
+import { changedOf, type Touch } from './changed';
+import type { RestoreResult } from '../services/trash-actions';
+import type { RowsRestored } from '../services/trash-restore';
 
 export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'list_trash', {
@@ -97,12 +100,14 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     if (a.seqs) {
       if (a.trash_id === undefined) return err('seqs go with trash_id: the batch they are in.');
       const out = await restoreRows(ctx.userId, a.trash_id, a.seqs);
-      return 'ok' in out ? ok(out.ok) : err(out.message);
+      return 'ok' in out ? ok({ ...out.ok, changed: changedOf(ctx.userId, [restoredTouch(out.ok)]) })
+        : err(out.message);
     }
     const ids = a.trash_ids ?? (a.trash_id !== undefined ? [a.trash_id] : null);
     if (!ids) return err('Give trash_ids (or trash_id with seqs). list_trash shows what is in the trash.');
-    return ok({ results: await restoreFromTrash(ctx.userId, holdersFirst(ctx.userId, ids),
-      { surface: 'mcp', hasSecretsScope: ctx.scopes.has('secrets') }) });
+    const results = await restoreFromTrash(ctx.userId, holdersFirst(ctx.userId, ids),
+      { surface: 'mcp', hasSecretsScope: ctx.scopes.has('secrets') });
+    return ok({ results, changed: changedOf(ctx.userId, results.map(r => r.restored && restoredTouch(r.restored))) });
   });
 
   registerTool(server, 'get_sheet_history', {
@@ -127,4 +132,13 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
     return ok(readSheetHistory(sheet_id, ctx.userId, a));
   });
+}
+
+// Rows or a column back in a sheet. A sheet or table back from the trash changes its trash state only.
+function restoredTouch(r: NonNullable<RestoreResult['restored']> | RowsRestored): Touch | null {
+  if ('kind' in r) {
+    if (r.kind !== 'column') return null;
+    return { sheetId: r.sheet_id, columns: [r.name], rows: r.cells_restored, moreComing: r.state === 'restoring' };
+  }
+  return { sheetId: r.sheet_id, columns: r.columns_added, rows: r.rows, moreComing: r.state === 'restoring' };
 }

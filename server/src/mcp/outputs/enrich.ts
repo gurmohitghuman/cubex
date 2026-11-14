@@ -2,7 +2,7 @@
 // tools-waterfall.ts, tools-ai-visibility.ts, tools-balances.ts, tools-usage.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
-import { bool, info, nul, num, opt, str, strs } from './shared';
+import { bool, changed, info, nul, num, opt, str, strs } from './shared';
 
 const price = info('What a row costs: the price range in dollars and how it is charged');
 const toolEntry = obj({
@@ -36,6 +36,7 @@ export const runEnrichment = open({
   providers_on: opt(nul(strs).describe('null: a tool with one provider')),
   may_pass_daily_limit: opt(bool), treg_balance_usd: opt(num), treg_on_hold_usd: opt(num),
   may_pass_balance: opt(bool), notes: opt(strs), replayed: opt(bool), run_if: opt(str), run_if_note: opt(str),
+  changed,
 });
 
 // Started: run_id. With estimate_only (its default here): per_row, total and each step. dry_run: rows, each
@@ -48,14 +49,14 @@ export const waterfallColumn = open({
   rows: opt(z.union([num, z.array(info('A dry-run row: its inputs and every step it reached'))])),
   max_cost_per_row_usd: opt(num), spend_limit_usd: opt(nul(num)), run_limit_usd: opt(nul(num)),
   daily_limit: opt(nul(info('The account\'s daily enrichment limit'))), notes: opt(strs), note: opt(str),
-  column_name: opt(str), inputs: opt(info('Input key -> its column or fixed value')),
+  column_name: opt(str), inputs: opt(info('Input key -> its column or fixed value')), changed,
 });
 
 // estimate_only (its default): what it would make and cost. Otherwise the check and its runs.
 export const aiVisibility = open({
   estimate_only: opt(bool), problems: strs, id: opt(str), stage: opt(str), table_id: opt(str),
   questions_sheet_id: opt(str), sites_sheet_id: opt(nul(str)), low_usd: opt(num), high_usd: opt(num),
-  runs: opt(z.array(info('A run the check started'))), next: opt(str), note: opt(str),
+  runs: opt(z.array(info('A run the check started'))), next: opt(str), note: opt(str), changed,
 });
 
 export const getBalances = obj({

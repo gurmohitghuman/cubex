@@ -25,10 +25,14 @@ test('MCP: column_details, counts and descriptions', async () => {
   await expect.poll(async () => (await call(client, 'get_sheet', { sheet_id: sheetId })).filling_columns,
     { timeout: 15_000 }).toEqual([])
 
-  expect(await call(client, 'set_description', { sheet_id: sheetId, column: 'val', description: '  The value \n' }))
-    .toEqual({ column: 'val', description: 'The value' })
-  expect(await call(client, 'set_description', { sheet_id: sheetId, description: 'Seeded rows' }))
-    .toEqual({ description: 'Seeded rows' })
+  // changed names the column whose description changed; the sheet's own names none.
+  const described = await call(client, 'set_description', { sheet_id: sheetId, column: 'val',
+    description: '  The value \n' })
+  expect(described).toMatchObject({ column: 'val', description: 'The value' })
+  expect(described.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['val'], rows: 0 })])
+  const sheetWords = await call(client, 'set_description', { sheet_id: sheetId, description: 'Seeded rows' })
+  expect(sheetWords).toMatchObject({ description: 'Seeded rows' })
+  expect(sheetWords.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: [], rows: 0 })])
 
   const meta = await call(client, 'get_sheet', { sheet_id: sheetId, include_counts: true })
   expect(meta.description).toBe('Seeded rows')
@@ -45,14 +49,15 @@ test('MCP: column_details, counts and descriptions', async () => {
   expect(renamed.column_details.find((d: any) => d.name === 'Value').description).toBe('The value')
   // An empty description clears it: null in the answer, none in get_sheet.
   expect(await call(client, 'set_description', { sheet_id: sheetId, column: 'Value', description: '' }))
-    .toEqual({ column: 'Value', description: null })
+    .toMatchObject({ column: 'Value', description: null })
   const cleared = await call(client, 'get_sheet', { sheet_id: sheetId, columns: ['Value'] })
   expect(cleared.column_details[0].description ?? null).toBeNull()
   expect(await callError(client, 'get_sheet', { sheet_id: sheetId, columns: ['Nope'] })).toContain('"Nope"')
   expect(await callError(client, 'set_description', { sheet_id: sheetId, column: 'Nope', description: 'x' }))
     .toContain('not found')
   const added = await call(client, 'add_column', { sheet_id: sheetId, name: 'Notes', description: 'Free text' })
-  expect(added).toEqual({ name: 'Notes', description: 'Free text' })
+  expect(added).toMatchObject({ name: 'Notes', description: 'Free text' })
+  expect(added.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['Notes'] })])
   await client.close()
 
   // A read token reads them and can't write them.

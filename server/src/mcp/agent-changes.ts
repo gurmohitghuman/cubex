@@ -79,6 +79,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         summary: 'The server instructions are half as long and start with get_workspace; each tool\'s description '
           + 'says the rest.',
       },
+      {
+        change: 'server',
+        summary: 'Every tool that writes answers changed: for each sheet it wrote, the columns and rows it touched, '
+          + 'row_ids (the first 100) and the sheet\'s data_version and row_generation after it.',
+        details: '[] for a preview, dry run, estimate, replay, or a sheet or table renamed, moved or deleted. '
+          + 'more_coming: true means a run or fill goes on, so read again later. Tools that write no sheet data '
+          + 'leave it out.',
+      },
     ],
   },
   {

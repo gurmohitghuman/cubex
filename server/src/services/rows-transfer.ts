@@ -31,7 +31,8 @@ import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 export type { TransferRequest } from './transfer-ledger';
 
 export type TransferOutcome =
-  | { ok: TransferResult; replayed?: boolean }
+  // columns: the destination columns the rows were written to (not kept for a replay).
+  | { ok: TransferResult; replayed?: boolean; columns?: string[] }
   | {
     fail: 'invalid' | 'not_found' | 'conflict' | 'active_run' | 'cap' | 'budget' | 'rate' | 'active' | 'busy';
     error: string;
@@ -172,7 +173,7 @@ function executeTransfer(
   result.dest_row_count = countRows(request.destinationSheetId, userId);
   checkTime();
   writeTransferLedger(userId, request.idempotencyKey, hash, result);
-  return { ok: result };
+  return { ok: result, columns: [...new Set(plan.sourceToDestination.values())] };
 }
 
 // The change logs: the destination's, and for a move the source's too (it

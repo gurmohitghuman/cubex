@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { LOOKUP_LIST_MAX } from '../lib/constants';
 import { agentLookupColumn } from '../services/lookup-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { fillChanged } from './changed';
 
 // lookup_column: a column filled for free from another sheet, by matching a
 // column of this row against a column there (services/lookup-agent.ts).
@@ -52,6 +53,6 @@ export function registerLookupTool(server: McpServer, ctx: McpAuthCtx): void {
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
     const out = await agentLookupColumn(ctx.userId, sheet_id, a);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
+    return 'ok' in out ? ok({ ...out.ok, changed: fillChanged(ctx.userId, sheet_id, out.ok) }) : err(out.message);
   });
 }

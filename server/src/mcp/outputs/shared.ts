@@ -34,3 +34,14 @@ export const autoDedupe = info('What auto-dedupe did not keep or replaced (set_a
 
 // The versions a write or read answers, to echo on the next call.
 export const versions = { data_version: num, row_generation: num };
+
+// What a write changed, one item per sheet it touched (mcp/changed.ts); [] when this call changed nothing (a
+// preview, a dry run, an estimate, a replay).
+export const CHANGED_ROW_IDS = 100;
+// Described once, briefly: about 33 tools carry it in tools/list (docs/mcp.md, "What a write changed", says
+// the rest).
+export const changed = z.array(obj({
+  sheet_id: str, sheet: str, columns: strs, rows: num, row_ids: opt(strs), ...versions,
+  more_coming: opt(z.literal(true)),
+})).describe(`Each sheet written: columns and rows touched, the first ${CHANGED_ROW_IDS} row_ids, versions after; `
+  + 'more_coming: work goes on');

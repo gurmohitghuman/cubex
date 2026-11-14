@@ -22,6 +22,8 @@ import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../services/waterfall-agent-control';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { changedOf, type Changed, type Touch } from './changed';
+import { runSheetColumns } from '../lib/run-placeholders';
 import { capToolNote } from '../lib/token-spend';
 
 // An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
@@ -39,11 +41,21 @@ async function cancelAll(ctx: McpAuthCtx, sheetId: string | undefined, otherArgs
   if (!sheetId) return err('cancel_all needs sheet_id: the sheet whose runs to stop.');
   if (otherArgs) return err('cancel_all takes only sheet_id: it stops every run on the sheet, whatever its type.');
   const out = await stopSheetRuns(ctx.userId, sheetId);
-  return 'fail' in out ? err(out.message) : ok(out.ok);
+  if ('fail' in out) return err(out.message);
+  // Each stopped run's ⏳ cells are cleared, in the background on a big sheet.
+  const touches = out.ok.stopped_runs.map(r => runTouch(r.run_type === 'ai' ? 'ai' : 'http', r.run_id, ctx.userId));
+  return ok({ ...out.ok, changed: changedOf(ctx.userId, touches) });
+}
+
+// The sheet a run fills and its columns, with work going on: a rerun, a resume, or a cancel clearing its ⏳ cells.
+function runTouch(kind: 'ai' | 'http', runId: string, userId: string, rows = 0): Touch | null {
+  const run = runSheetColumns(kind, runId, userId);
+  return run && { sheetId: run.sheetId, columns: run.columns, rows, moreComing: true };
 }
 
 // A run's summary after an action; a run gone meanwhile (its sheet deleted) is answered as not found.
-const summaryOf = (summary: RunSummary | null) => (summary ? ok(summary) : err('Run not found'));
+const summaryOf = (summary: RunSummary | null, changed: Changed[]) => (summary ? ok({ ...summary, changed })
+  : err('Run not found'));
 
 export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -138,6 +150,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       if (webhook_id !== undefined && action !== 'rerun') return err('webhook_id goes with action rerun only.');
       const hookProblem = webhookIdProblem(ctx.userId, webhook_id);
       if (hookProblem) return err(hookProblem);
+      const going = () => changedOf(ctx.userId, [runTouch(run_type, run_id, ctx.userId)]);
       const hooked = (table: 'ai_runs' | 'http_runs', id: string) => {
         if (webhook_id) attachRunWebhook(table, id, ctx.userId, webhook_id);
         return webhook_id ? { webhook_id } : {};
@@ -157,6 +170,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
           run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
           ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
           ...hooked('http_runs', out.ok.runId),
+          changed: changedOf(ctx.userId, [runTouch('http', out.ok.runId, ctx.userId, out.ok.rowsInScope)]),
         });
       }
       if (waterfall && action === 'rerun') {
@@ -169,17 +183,18 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return ok({
           run_id: out.ok.runId, run_type: 'waterfall', rows_in_scope: out.ok.rowsInScope,
           ...hooked('http_runs', out.ok.runId),
+          changed: changedOf(ctx.userId, [runTouch('http', out.ok.runId, ctx.userId, out.ok.rowsInScope)]),
         });
       }
       if (waterfall && action === 'resume') {
         const resumed = await resumeWaterfallRun(run_id, ctx.userId, spend_limit_usd, ctx.scopes.has('secrets'));
         if ('fail' in resumed) return err(resumed.message);
-        return summaryOf(getHttpRunSummary(run_id, ctx.userId));
+        return summaryOf(getHttpRunSummary(run_id, ctx.userId), going());
       }
       if (enrichment && action === 'resume') {
         const resumed = await resumeEnrichmentRun(run_id, ctx.userId, spend_limit_usd, concurrency);
         if ('fail' in resumed) return err(resumed.message);
-        return summaryOf(getHttpRunSummary(run_id, ctx.userId));
+        return summaryOf(getHttpRunSummary(run_id, ctx.userId), going());
       }
 
       // Whether THIS token may resolve saved api_keys — gates resuming/rerunning
@@ -222,6 +237,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return ok({
           run_id: result.ok.runId, target_rows: result.ok.targetCount,
           ...hooked(run_type === 'ai' ? 'ai_runs' : 'http_runs', result.ok.runId),
+          changed: changedOf(ctx.userId, [runTouch(run_type, result.ok.runId, ctx.userId, result.ok.targetCount)]),
         });
       }
 
@@ -233,7 +249,8 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       const summary = run_type === 'ai'
         ? getAiRunSummary(run_id, ctx.userId)
         : getHttpRunSummary(run_id, ctx.userId);
-      return summaryOf(summary);
+      // A pause leaves the cells as they are; a resume goes on, a cancel clears its ⏳ cells.
+      return summaryOf(summary, action === 'pause' ? [] : going());
     },
   );
 }
