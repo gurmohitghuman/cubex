@@ -35,14 +35,18 @@ export function editDistance(a: string, b: string, max = Infinity): number {
 // Case, spaces and punctuation aside: "Company Name", "company_name" and "companyName" are one key.
 const keyOf = (s: string) => s.slice(0, 1000).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 200);
 
-// How far a key is from what was given: 0 the same, 1 one inside the other (each at least 3 characters),
-// else 2 plus the edits, when they are few for the length (1 for up to 7 characters, up to 3 for longer).
+// How far a key is from what was given: 0 the same; 1 one inside the other (at least 3 characters), when
+// the shorter is at least half the longer; 2 plus the edits, when they are few for the length (1 for up to
+// 7 characters, up to 3 for longer); 6 one inside the other when the shorter is less than half, after every
+// typo: for "Compny Name", "Company Name" (a typo of the whole) comes before "Name" (a part of it).
 // Infinity: not close.
 function farness(given: string, key: string): number {
   if (!given || !key) return Infinity;
   if (given === key) return 0;
   const [short, long] = given.length <= key.length ? [given, key] : [key, given];
-  if (short.length >= 3 && long.includes(short)) return 1 + (long.length - short.length) / 1000;
+  if (short.length >= 3 && long.includes(short)) {
+    return (short.length * 2 >= long.length ? 1 : 6) + (long.length - short.length) / 1000;
+  }
   const allowed = Math.min(3, Math.max(1, Math.floor(long.length / 8)));
   if (long.length - short.length > allowed) return Infinity;
   const edits = editDistance(given, key, allowed);

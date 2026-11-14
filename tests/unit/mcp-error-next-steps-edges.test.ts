@@ -77,7 +77,7 @@ async function main() {
       const near = ['Nam', 'Emal', 'Compny Name', 'Nme', 'Emil', 'Nmae', 'Eamil']
       assert.equal(withNextStep(u, { sheet_id: 's-leads' }, `Unknown column(s): ${near.join(', ')}`),
         `Unknown column(s): ${near.join(', ')}. Close matches: "Name", "Company Name" for "Nam", "Email" for "Emal", `
-        + '"Name", "Company Name" for "Compny Name", "Name" for "Nme", "Email" for "Emil". get_sheet lists the '
+        + '"Company Name", "Name" for "Compny Name", "Name" for "Nme", "Email" for "Emil". get_sheet lists the '
         + 'sheet\'s columns.')
       // 200 columns of 200 letters and 1,000 unknown names of 200: 135 s before the bound, about 0.1 s after.
       const names = Array.from({ length: 1000 }, () => letters(200))
