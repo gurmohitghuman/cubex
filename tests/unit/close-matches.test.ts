@@ -1,7 +1,7 @@
 // The close matches an MCP error suggests (lib/close-matches.ts): an item matches by any of its keys (its
-// name, its id), case, spaces and punctuation aside; the same key first, then one inside the other when the
-// shorter is at least half of it, then a few typos (a swap of two letters is one), then a short one inside,
-// never a far one; at most three. suggestColumn shares the edits.
+// name, its id), case, spaces and punctuation aside; the same key first, then a key holding what was sent,
+// then a few typos (a swap of two letters is one), then a key inside what was sent, never a far one; at
+// most three. suggestColumn shares the edits.
 // With a most, the edits answer the same up to it and one more past it, working only near the diagonal.
 import assert from 'node:assert/strict'
 import mod from '../../server/src/lib/close-matches'
@@ -86,13 +86,15 @@ check('a typo or two in a longer name, a swap, and a cut or mistyped id', () => 
   assert.deepEqual(named('d4c3b2a1-6f5e-4b7a-9d8c-5d4c3b2a1f0e'), [])
 })
 
-check('a typo of the whole name comes before a short name inside it; a long one inside comes first', () => {
-  const columns = ['Name', 'Company Name', 'Company'].map(name => ({ name }))
-  const near = (given: string) => closeMatches(given, columns, c => [c.name]).map(c => c.name)
-  assert.deepEqual(near('Compny Name'), ['Company Name', 'Name'])
-  assert.deepEqual(near('Company Nam'), ['Company Name', 'Company'])
-  assert.deepEqual(near('Nam'), ['Name', 'Company Name'])
-})
+check('a typo of the whole name comes before a name inside what was sent, however long; one holding it first',
+  () => {
+    const columns = ['Name', 'Company Name', 'Company', 'Address', 'Email Address'].map(name => ({ name }))
+    const near = (given: string) => closeMatches(given, columns, c => [c.name]).map(c => c.name)
+    assert.deepEqual(near('Compny Name'), ['Company Name', 'Name'])
+    assert.deepEqual(near('Emial Address'), ['Email Address', 'Address'])
+    assert.deepEqual(near('Company Nam'), ['Company Name', 'Company'])
+    assert.deepEqual(near('Nam'), ['Name', 'Company Name'])
+  })
 
 check('nothing close: none, and a short text never matches by being inside a name', () => {
   assert.deepEqual(named('Payroll'), [])
