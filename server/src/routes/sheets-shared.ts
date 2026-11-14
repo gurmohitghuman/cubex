@@ -7,6 +7,7 @@ import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { UPLOAD_DIR } from '../lib/uploads';
 import { AuthRequest } from '../middleware/auth';
 import { actAgain } from '../lib/actor';
+import { allowUpload } from '../lib/request-deadline';
 
 export interface SheetRow {
   id: string;
@@ -57,6 +58,7 @@ const upload = multer({
 // exception that bubbles to the global 500 handler. Also cleans up any partial
 // temp file multer wrote before aborting.
 export const csvUploadMiddleware = (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
+  allowUpload(req); // signed in or token-authed by now: the upload's own deadline (lib/request-deadline.ts)
   upload.single('file')(req, res, (err: any) => {
     // multer's stream events drop who is importing (lib/actor.ts): set it again.
     if (!err) return actAgain(req, res, next);

@@ -84,9 +84,9 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
 
 // From the token check on, the body has WEBHOOK_BODY_TIMEOUT_MS to arrive, as a
 // deadline (bytes trickling in don't extend it): then 408, and the connection is
-// closed. The server's requestTimeout is 0 (for the run progress streams), so
-// without it a URL holder could keep requests open at will. A body that comes
-// in after the 408 adds nothing (the handler checks).
+// closed. It is tighter than the deadline every request has
+// (lib/request-deadline.ts, 2 minutes). A body that comes in after the 408
+// adds nothing (the handler checks).
 function bodyDeadline(req: WebhookReq, res: express.Response, next: express.NextFunction) {
   const timer = setTimeout(() => {
     if (res.headersSent) return;

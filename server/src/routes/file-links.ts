@@ -16,6 +16,7 @@ import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
 import { redactError } from '../lib/redact';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
+import { allowUpload } from '../lib/request-deadline';
 import { FILE_LINK_TOKEN_PATTERN } from '../lib/api-v1-constants';
 import { importSummary, importUploadedCsv, tooBigMessage } from '../services/csv-upload';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
@@ -72,6 +73,7 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   const busyWith = sheetBusyWith(link.sheet_id);
   if (busyWith) return res.status(409).json({ error: busyMessage(busyWith) + stillWorks, busy: true });
   if (!useFileLink(link)) return notFound(res);
+  allowUpload(req); // the upload's own deadline, by its size (lib/request-deadline.ts)
 
   const replace = linkOptions<{ mode: string }>(link).mode === 'replace';
   // The import is the link's token's doing, over MCP (lib/actor.ts: the change log and trash say so).
