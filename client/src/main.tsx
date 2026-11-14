@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { TrashPage } from './pages/TrashPage'
 import { RouteErrorPage } from './pages/RouteErrorPage'
 import { reloadOnChunkError } from './lib/chunk-reload'
+import { TOAST_TOP_PX } from './lib/constants'
 
 // SheetPage is the only page that pulls in AG Grid (~300KB gzip, >half the JS
 // payload). Lazy-load it so login/dashboard/settings don't download that chunk
@@ -56,8 +57,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     {createPortal(<Toaster
       // Top centre: drawers and dialogs keep their action buttons bottom-right,
       // and a hovered toast pauses, so a bottom-right one sat on top of them.
+      // Below the top bar (TOAST_TOP_PX), clear of the sheet header's run buttons.
       position="top-center"
-      containerStyle={{ zIndex: 20100 }}
+      containerStyle={{ zIndex: 20100, top: TOAST_TOP_PX }}
       toastOptions={{
         duration: 4000,
         className: '',

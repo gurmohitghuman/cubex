@@ -220,3 +220,7 @@ export const WAITING_NOTICE_MAX_LINES = 3;
 // While a run is pending or waits, the sheet reads its run lists again this often (hooks/sheet/useWaitingRefresh.ts),
 // the same pace as its throttled reads on progress.
 export const WAITING_REFRESH_MS = 5_000;
+// Toasts start this far below the top of the window (main.tsx): under the 56px bar every page and drawer has there
+// (h-14), so one never covers the sheet header's run buttons. A hovered toast pauses, and one over "Resume all
+// runs" stayed on the very button its "Paused" message called for.
+export const TOAST_TOP_PX = 64;

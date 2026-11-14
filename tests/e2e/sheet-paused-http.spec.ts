@@ -10,8 +10,8 @@ import {
 // header names the column and says why, in the words the run saved, beside a Resume for that run, and Resume
 // carries the run on. provider_errors comes from the receiver failing row after row; storage and stalled (a full
 // disk, a worker that keeps stopping) are put in place in the test database as the runner writes them. Also: the
-// line next to the header's Pause and Resume when one run paused itself and another didn't, and a sheet with more
-// paused runs than the notice lists.
+// line next to the header's Pause and Resume when one run paused itself and another didn't, a sheet with more
+// paused runs than the notice lists, and a "Paused" toast that shows below the header, at desktop and phone width.
 const rx = new Receiver()
 let api: APIRequestContext
 let v1: APIRequestContext
@@ -154,3 +154,29 @@ test('more paused runs than the notice lists: the first three, then how many mor
   for (const runId of runs) await control(runId, 'cancel')
   await expect(notice(page)).toBeHidden({ timeout: 15_000 })
 })
+
+// A toast shows below the header, never over its run buttons: at the top of a phone-width screen one covered the
+// whole header, and a hovered toast (the pointer on its way to a button under it) stays. Hovered here, so it is
+// still showing when "Resume all runs" is clicked. SHOTS=<dir> saves the screen with the toast showing.
+for (const size of [{ name: 'desktop', width: 1280, height: 720 }, { name: 'phone', width: 390, height: 844 }]) {
+  test(`${size.name}: a "Paused" toast shows below the header, and "Resume all runs" clicks while it shows`, async ({
+    page, context,
+  }) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({ width: size.width, height: size.height })
+    const { tableId, sheetId } = await sheetOf(8)
+    await openSheet(page, context, api, tableId)
+    const runId = await braked(sheetId, `/p-toast-${size.name}`, 'Toast')
+    const shown = page.locator('[data-rht-toaster] [role="status"]').filter({ hasText: 'Paused:' })
+    await shown.hover()
+    const resume = page.getByTitle('Resume all runs')
+    const header = page.locator('header').filter({ has: resume })
+    // The toast's bar (its message sits inside it).
+    const [t, h] = [await shown.locator('xpath=..').boundingBox(), await header.boundingBox()]
+    expect(t!.y, 'the toast starts below the header').toBeGreaterThanOrEqual(h!.y + h!.height)
+    if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/toast-${size.name}.png` })
+    rx.on(`/p-toast-${size.name}`, OK)
+    await resume.click({ timeout: 5_000 })
+    expect(await finished(runId)).toBe('completed')
+  })
+}
