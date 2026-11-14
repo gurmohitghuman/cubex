@@ -10,6 +10,7 @@ import { FullPageLoader } from '@/components/LoadingSpinner'
 import { CubeLogo } from '@/components/CubeLogo'
 import { TablesTable } from '@/components/dashboard/TablesTable'
 import { CreateTableModal } from '@/components/dashboard/CreateTableModal'
+import { useToastsBelowTopBar } from '@/hooks/useToastsBelowTopBar'
 import { RenameTableModal } from '@/components/dashboard/RenameTableModal'
 import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
@@ -19,6 +20,7 @@ import { SettingsButton } from '@/components/dashboard/SettingsButton'
 
 export const DashboardPage: React.FC = () => {
   const { logout } = useAuth()
+  useToastsBelowTopBar()
   const [tables, setTables] = useState<Table[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
