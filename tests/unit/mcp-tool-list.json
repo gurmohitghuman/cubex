@@ -1,5 +1,5 @@
 {
-  "release": "v0.8.13",
+  "release": "v0.8.14",
   "tools": {
     "add_column": {
       "properties": {
@@ -987,7 +987,11 @@
       "type": "object"
     },
     "get_version": {
-      "properties": {},
+      "properties": {
+        "since": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "import_csv": {

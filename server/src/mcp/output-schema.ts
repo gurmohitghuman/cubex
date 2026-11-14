@@ -22,9 +22,12 @@ export const keyed = <T extends z.ZodType>(value: T) => z.record(z.string(), val
 
 // What a handler's answer must be to fit a schema (registerTool checks it at compile time): zod's input
 // type with the "any other key" of open, keyed and info objects left out, since an interface has no index
-// signature. Every named field is checked, null and absent included; an info or keyed value is any object.
+// signature. Every named field is checked, null and absent included; an info or keyed value is any object
+// but a list (a list is an object to the compiler), and zod refuses a list there as it does text or a number.
 export type Fits<T> = T extends readonly (infer E)[] ? Fits<E>[]
-  : T extends object ? { [K in keyof T as string extends K ? never : K]: Fits<T[K]> } : T;
+  : T extends object ? (string extends keyof T ? Named<T> & AnObject : Named<T>) : T;
+type Named<T> = { [K in keyof T as string extends K ? never : K]: Fits<T[K]> };
+type AnObject = object & { [Symbol.iterator]?: never };
 
 type Json = Record<string, unknown>;
 const isEmpty = (v: unknown) => !!v && typeof v === 'object' && Object.keys(v).length === 0;
