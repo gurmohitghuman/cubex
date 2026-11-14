@@ -203,6 +203,9 @@ export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
 // router declares its OWN express.json({ limit }) so this small cap governs the
 // public path. Oversize -> 413.
 export const WEBHOOK_MAX_BODY_BYTES = 512 * 1024;
+// The body must arrive this long after the headers (a deadline: a trickle doesn't extend it), else 408. 512 KB
+// in 30 s needs only ~17 KB/s; without it a request could be held open at will (requestTimeout is 0).
+export const WEBHOOK_BODY_TIMEOUT_MS = envInt('WEBHOOK_BODY_TIMEOUT_MS', 30_000);
 // Per-token ingestion rate limit (token-bucket keyed on the webhook source),
 // ~10 records/sec, burst 20, so a misbehaving sender can't flood a sheet.
 // Excess -> 429.
