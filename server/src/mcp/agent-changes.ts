@@ -37,6 +37,37 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.16',
+    changes: [
+      {
+        change: 'server',
+        summary: 'A tool error for an unknown sheet, table, column, run or setup adds the close matches among yours '
+          + '(names and ids), or says it is in the trash, and names the tool that lists them.',
+        details: 'Call again with an id it names. The tool\'s own words still come first, so a check on them still '
+          + 'works.',
+      },
+      {
+        change: 'server',
+        summary: 'Arguments that do not fit a tool\'s input schema are refused in plain words: the field, what it '
+          + 'takes (its type, range or choices) and what was sent.',
+        details: 'It is still a tool result with isError that starts "Input validation error: Invalid arguments for '
+          + 'tool <name>:". A message a field sets itself (such as max_chars_per_cell\'s range) is unchanged.',
+      },
+      {
+        change: 'server',
+        summary: 'A refusal for a missing scope also says how to get it: the user makes a token with that scope '
+          + 'ticked in Cubex (Settings, then Agent access).',
+      },
+      {
+        change: 'server',
+        summary: 'A tools/call whose arguments are not an object still gets -32602, now naming what was wrong in '
+          + 'plain words instead of the raw list of issues.',
+        details: 'A request whose MCP-Protocol-Version header names a version Cubex does not speak gets 400 with '
+          + '-32022 and every version it speaks in data.supported, as the 2026-07-28 transport asks.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.14',
     changes: [
       {

@@ -139,7 +139,8 @@ test('a row of a deleted sheet (alone or with its table) cannot be changed by it
     const client = await mcpClient(token, 'e2e trash row update')
     const [row] = await rowsOf(v1, sheetId)
     const change = { val: 'changed' }
-    const refused = async () => {
+    // Refused while the sheet is in the trash as item trashId; MCP adds how to bring it back when given sheet_id.
+    const refused = async (trashId: number) => {
       const patch = await v1.patch(`/api/v1/rows/${row.id}`, { data: { data: change } })
       expect(patch.status()).toBe(404)
       expect(await patch.json()).toEqual({ error: 'Sheet not found' })
@@ -150,7 +151,8 @@ test('a row of a deleted sheet (alone or with its table) cannot be changed by it
       expect(await many.json()).toEqual({ error: 'Sheet not found' })
       expect(await callError(client, 'update_cells', { row_id: row.id, data: change })).toBe('Sheet not found')
       expect(await callError(client, 'update_cells', { row_id: row.id, sheet_id: sheetId, data: change }))
-        .toBe('Sheet not found')
+        .toMatch(new RegExp('^Sheet not found\\. It is sheet "Sheet1" \\(table "[^"]+"\\), which is in the trash: '
+          + `restore_from_trash with trash_ids \\[${trashId}\\] brings it back\\.$`))
     }
     const restore = async (id: number) => {
       const out = await (await api.post('/api/trash/restore', { data: { ids: [id] } })).json()
@@ -159,14 +161,16 @@ test('a row of a deleted sheet (alone or with its table) cannot be changed by it
 
     const gone = await api.delete(`/api/tables/${tableId}/sheets/${sheetId}`)
     expect(gone.status(), await gone.text()).toBe(200)
-    await refused()
-    await restore((await gone.json()).trash.id)
+    const goneId = (await gone.json()).trash.id
+    await refused(goneId)
+    await restore(goneId)
     expect((await rowsOf(v1, sheetId))[0]).toEqual(row)
 
     const tableGone = await api.delete(`/api/tables/${tableId}`)
     expect(tableGone.status(), await tableGone.text()).toBe(200)
-    await refused()
-    await restore((await tableGone.json()).trash.id)
+    const tableGoneId = (await tableGone.json()).trash.id
+    await refused(tableGoneId)
+    await restore(tableGoneId)
     expect((await rowsOf(v1, sheetId))[0]).toEqual(row)
 
     const back = await v1.patch(`/api/v1/rows/${row.id}`, { data: { data: change } })

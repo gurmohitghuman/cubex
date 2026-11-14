@@ -55,7 +55,9 @@ async function main() {
       { name: 'append_rows', arguments: { sheet_id: uuid(), rows: [{ a: '1' }] } }, 'append_rows')).text)
     assert.equal(refused.result.isError, true)
     assert.deepEqual(JSON.parse(refused.result.content[0].text),
-      { error: "This action requires the 'write' scope on your Cubex access token." })
+      { error: "This action requires the 'write' scope on your Cubex access token. A token's scopes are set when it "
+        + 'is made: the user can make a token with Write ticked in Cubex (Settings, then Agent access) and connect '
+        + 'with it.' })
   })
 
   await check('subscriptions/listen: acknowledged with nothing, then closed at once', async () => {

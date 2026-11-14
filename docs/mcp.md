@@ -83,14 +83,16 @@ On every version:
 - A body that isn't valid JSON gets HTTP 400 with `-32700`, a body over 2 MB gets 413 with `-32700`, and a POST whose `Content-Type` isn't `application/json` gets 415 with `-32600`. So does JSON whose `charset` isn't a UTF one, such as `latin1`, or with a `Content-Encoding` other than `gzip` or `deflate` (that 415 sends `Accept-Encoding: gzip, deflate`).
 - A browser page from another site (a foreign `Origin` header) gets HTTP 403 with code `-31403`, and `GET` or `DELETE` on `/mcp` gets 405 with `-32600` and `Allow: POST`.
 - A failure inside Cubex gets HTTP 500 with `-32603`. The server log has the cause, with secrets redacted.
-- An error answer carries the request's `id` when Cubex read one, and no `id` otherwise, never `id: null`. No error uses a code from `-32000` to `-32019`, which the spec keeps for older servers. Cubex's own refusals above (the batch, the cursor, bad JSON, the size, the media type, the `Origin`, the 405 and the 500) say what was wrong and what to send instead. Other errors keep the MCP library's standard words, such as `Tool nope not found`, `Method not found`, or the list of what a tool's input schema rejected.
+- A `tools/call` whose `arguments` aren't an object, or that has no tool name, gets `-32602` saying what was wrong, such as `Invalid tools/call request: params.arguments must be an object, not text.`
+- A request whose `MCP-Protocol-Version` header names a version Cubex doesn't speak gets HTTP 400 with `-32022`, also when its body names no version (a client that starts with `initialize`): `Unsupported protocol version: 2099-01-01. Send one of the versions in data.supported, newest first.`, with every version Cubex speaks in `data.supported`.
+- An error answer carries the request's `id` when Cubex read one, and no `id` otherwise, never `id: null`. No error uses a code from `-32000` to `-32019`, which the spec keeps for older servers. Cubex's own refusals above (the batch, the cursor, bad JSON, the size, the media type, the `Origin`, the 405, the 500, the arguments and the version) say what was wrong and what to send instead, and so do tool errors ([Errors](#errors)). Other protocol errors keep the MCP library's standard words, such as `Tool nope not found` or `Method not found`.
 
 On 2026-07-28:
 
 - Every answer carries `resultType: "complete"` and Cubex's name and version in `_meta` (`io.modelcontextprotocol/serverInfo`). The version is the one `get_version` reports: the release that runs (`v0.8.12`), the build when it isn't a release, or `unknown` for a build that doesn't record it (Docker, Coolify).
 - `server/discover` and `tools/list` say how long a client may keep them: `ttlMs` 300000 (5 minutes) and `cacheScope` `"private"`. They can name your token's spend cap, so a cache must not share them between tokens. Cubex sends no notice when they change: the tools change with a new version of Cubex, and descriptions change with the token's spend cap and what it has spent. A client sees each change within 5 minutes. [After an update](#after-an-update) says how an agent finds out what changed.
 - `tools/list` gives every tool at once, in the same order every time. Every token sees every tool: one its scopes don't allow refuses with a message that names the scope.
-- Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true`, such as `Input validation error: Invalid arguments for tool read_rows: max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
+- Tool input schemas are JSON Schema 2020-12. A wrong type or a value out of range comes back as a tool result with `isError: true` ([Errors](#errors)).
 - Errors: a version Cubex doesn't speak gets HTTP 400 with code `-32022` and, in `data.supported`, every version it speaks, newest first: `2026-07-28`, then the five a client reaches with `initialize`. Headers that are missing or disagree with the body get 400 with `-32020` (an `Mcp-Name` sent as `=?base64?...?=` is decoded first). A `_meta` without `clientCapabilities`, or a request with the `MCP-Protocol-Version: 2026-07-28` header and no `_meta`, gets 400 with `-32602`. A method Cubex doesn't offer gets 404 with `-32601`.
 
 Not offered:
@@ -100,6 +102,17 @@ Not offered:
 - Progress and log messages, sessions (an `Mcp-Session-Id` header is ignored) and streams to resume. `GET` and `DELETE` on `/mcp` answer 405.
 - Anything on the spec's [deprecated list](https://modelcontextprotocol.io/specification/2026-07-28/deprecated): roots, sampling, logging, dynamic client registration and the old HTTP+SSE transport.
 - OAuth sign-in: Cubex uses its own access tokens.
+
+## Errors
+
+A tool that can't do what was asked answers a tool result with `isError: true`, so the client shows it to the agent, and its text is `{"error": "..."}`. Every error says what went wrong and what to call or change next. The tool's own words come first, and these add to them:
+
+- **An unknown sheet, table, column, run or setup** adds the close matches among yours, by name and by id, and the tool that lists them: `Sheet not found. No sheet has the sheet_id "Leads". Close matches: "Leads" (sheet_id "...", table "CRM"). list_tables lists every table and sheet with their ids.` A name sent where an id goes finds that name. A column matches in any case and spelling (`company name` for `Company Name`, `Emial` for `Email`). A run of another kind says which `run_type` to send. One in the trash says so, with the `trash_ids` that `restore_from_trash` takes. Close matches are looked for among your newest 500 sheets, tables, setups and runs of each kind, and a sheet's own columns, never in its rows.
+- **A missing scope** names the scope and how to get it: `This action requires the 'write' scope on your Cubex access token. A token's scopes are set when it is made: the user can make a token with Write ticked in Cubex (Settings, then Agent access) and connect with it.`
+- **Arguments that don't fit the tool's input schema** name the field, what it takes and what was sent, after the MCP library's first words: `Input validation error: Invalid arguments for tool read_rows: limit must be a whole number from 1 to 100, not 0.` A required field left out adds its description: `sheet_id is required (text): The sheet's id (list_tables lists them).` A field that sets its own words keeps them: `max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.`
+- **Other unknown ids** (a setup run, a run webhook, a setup version, a view, a row) name the tool that lists them, unless the error already names one.
+
+An error never shows Cubex's internals (paths, SQL, a stack): a failure inside Cubex answers `Something went wrong handling that request. Please try again.`, and the server log has the cause.
 
 ## After an update
 

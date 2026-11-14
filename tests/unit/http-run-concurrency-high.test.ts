@@ -71,8 +71,10 @@ async function main() {
     AI_WORDS, 'MCP: an AI rerun keeps its own bound')
   assert.deepEqual(await rest(`/ai-runs/${aiRun}/rerun`, { mode: 'all', concurrency: 120 }),
     { status: 400, json: { error: AI_WORDS } }, 'REST: the same words')
+  // Past the bound check: the run is unknown (MCP adds the next step, mcp/next-steps.ts).
   assert.equal(await answer({ run_type: 'http', run_id: noRun, action: 'rerun', concurrency: 120 }),
-    'HTTP run not found', 'MCP: an HTTP API rerun takes 120')
+    `HTTP run not found. No run has the run_id "${noRun}". list_runs lists a sheet's runs, newest first.`,
+    'MCP: an HTTP API rerun takes 120')
   assert.deepEqual(await rest(`/http-runs/${noRun}/rerun`, { concurrency: 120 }),
     { status: 404, json: { error: 'HTTP run not found' } }, 'REST: so does it')
   assert.equal(db.prepare('SELECT count(*) FROM ai_runs').pluck().get(), 1, 'no run was made')

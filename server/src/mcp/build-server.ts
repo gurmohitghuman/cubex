@@ -45,6 +45,7 @@ import { refuseToolListCursor } from './list-cursor';
 import { runningBuild } from '../lib/cubex-version';
 import { versionNote } from '../services/version-changes';
 import { answerReplacedTools } from './replaced-tools';
+import { answerErrorsWithNextSteps } from './error-answers';
 
 // The name and version every answer carries (serverInfo): the running release ("v0.8.12"), or the build
 // as the installer recorded it when it isn't a release, as get_version says (lib/cubex-version.ts);
@@ -119,10 +120,11 @@ export function buildMcpServer(ctx: McpAuthCtx): McpServer {
   // and a call to a tool it removed or renamed says what replaced it), and descriptions with the token's
   // cap and spend. A subscriptions/listen is acknowledged empty and closed.
   // Declared here, not in the options above: there McpServer installs tools/list
-  // at once, and the cursor and replaced-tool checks must wrap it before the first tool installs it.
+  // at once, and the cursor, replaced-tool and error checks must wrap it before the first tool installs it.
   server.server.registerCapabilities({ tools: { listChanged: false } });
   refuseToolListCursor(server);
   answerReplacedTools(server);
+  answerErrorsWithNextSteps(server, ctx);
   registerAllTools(server, ctx);
   return server;
 }
