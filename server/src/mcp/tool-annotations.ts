@@ -24,6 +24,7 @@ const write = (
   ({ title, readOnlyHint: false, destructiveHint, idempotentHint, openWorldHint });
 
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
+  get_workspace: read('Get the workspace overview'),
   list_tables: read('List tables and sheets'),
   get_sheet: read('Get sheet details'),
   read_rows: read('Read rows'),

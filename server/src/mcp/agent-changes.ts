@@ -40,6 +40,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.16',
     changes: [
       {
+        change: 'added',
+        tools: ['get_workspace'],
+        summary: 'get_workspace says where you are in one call: your token\'s scopes and spend, the enrichment daily '
+          + 'limit, the tables and sheets changed most recently, and the runs going now. Call it first.',
+        details: 'It lists at most 20 tables, 50 sheets, and 20 runs and setup runs, with the totals, and counts rows '
+          + 'up to 10,000 (row_count_at_least: true means more). note names the tool that lists what it left out.',
+      },
+      {
         change: 'server',
         summary: 'A tool error for an unknown sheet, table, column, run or setup adds the close matches among yours '
           + '(names and ids), or says it is in the trash, and names the tool that lists them.',
@@ -65,6 +73,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'plain words instead of the raw list of issues.',
         details: 'A request whose MCP-Protocol-Version header names a version Cubex does not speak gets 400 with '
           + '-32022 and every version it speaks in data.supported, as the 2026-07-28 transport asks.',
+      },
+      {
+        change: 'server',
+        summary: 'The server instructions are half as long and start with get_workspace; each tool\'s description '
+          + 'says the rest.',
       },
     ],
   },

@@ -9,6 +9,33 @@ export const listTables = obj({
   tables: z.array(obj({ id: str, name: str, created_at: str, updated_at: str, sheets: z.array(sheetEntry) })),
 });
 
+// get_workspace (services/workspace-overview.ts): each part bounded, the counts say what was left out.
+const runStatus = z.enum(['pending', 'running', 'paused']);
+export const getWorkspace = obj({
+  cubex_version: str,
+  access_token: obj({ name: str, scopes: strs, spend_cap_usd: nul(num), spent_usd: num, left_usd: nul(num) }),
+  enrichment_daily_limit: obj({ limit_usd: nul(num), used_today_usd: num, remaining_usd: nul(num) }),
+  default_ai_model: nul(str), table_count: num, sheet_count: num,
+  tables: z.array(obj({
+    id: str, name: str, sheet_count: num,
+    sheets: z.array(obj({
+      id: str, name: str, columns: nul(num).describe('null: not listed yet (get_sheet lists them)'),
+      row_count: num, row_count_at_least: opt(z.literal(true)).describe('true: more rows than row_count'),
+      data_version: num, updated_at: str,
+    })),
+  })),
+  active_run_count: num,
+  active_runs: z.array(obj({
+    run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']), run_id: str, sheet_id: str, column: str,
+    status: runStatus, processed_rows: num, total_rows: num, auto_run: bool,
+  })),
+  active_setup_run_count: num,
+  active_setup_runs: z.array(obj({
+    setup_run_id: str, setup: str, sheet_id: str, status: z.enum(['running', 'paused']),
+  })),
+  note: str,
+});
+
 const activeRun = obj({
   run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']), run_id: str,
   status: z.enum(['pending', 'running', 'paused']), column: str, auto_run: bool,

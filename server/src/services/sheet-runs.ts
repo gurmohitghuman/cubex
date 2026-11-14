@@ -36,20 +36,26 @@ export function activeSheetRuns(sheetId: string, userId: string): SheetRun[] {
       id: string; status: SheetRun['status']; master_column_name: string | null; autorun_id: string | null;
       config: string | null; created_at: string; rowid: number;
     }>).sort(byStart);
-  const firstOutput = db.prepare(`SELECT extracted_column_name FROM http_column_associations
-    WHERE run_id = ? AND user_id = ? ORDER BY rowid LIMIT 1`).pluck();
   return [
     ...ai.map(r => ({
       run_type: 'ai' as const, run_id: r.id, status: r.status, column: r.column_name, auto_run: false,
     })),
     ...http.map(r => ({
-      run_type: httpRunModeOf(r.config), run_id: r.id, status: r.status,
-      // A dry run has no column of its own: the one it was started for.
-      column: r.master_column_name ?? (firstOutput.get(r.id, userId) as string | undefined)
-        ?? waterfallConfigOf(r.config)?.waterfall.dry?.column ?? '',
+      run_type: httpRunModeOf(r.config), run_id: r.id, status: r.status, column: httpRunColumn(r, userId),
       auto_run: !!r.autorun_id,
     })),
   ];
+}
+
+// The column an HTTP API, enrichment or waterfall run fills: its main column. A dry run has no column of its
+// own: the one it was started for.
+export function httpRunColumn(
+  r: { id: string; master_column_name: string | null; config: string | null }, userId: string,
+): string {
+  if (r.master_column_name !== null) return r.master_column_name;
+  const first = db.prepare(`SELECT extracted_column_name FROM http_column_associations
+    WHERE run_id = ? AND user_id = ? ORDER BY rowid LIMIT 1`).pluck().get(r.id, userId) as string | undefined;
+  return first ?? waterfallConfigOf(r.config)?.waterfall.dry?.column ?? '';
 }
 
 export function activeSetupRuns(sheetId: string, userId: string): SheetSetupRun[] {
