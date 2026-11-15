@@ -132,6 +132,8 @@ export async function runChecks(
 // Keeps the lookup worker on one sheet's keys until they are current (one
 // driver per sheet), then makes its waiting checks: a new setting's build.
 const driving = new Set<string>();
+// Tests only: whether a driver is on the sheet.
+export const autoDedupeDriving = (sheetId: string): boolean => driving.has(sheetId);
 export function driveAutoDedupe(sheetId: string, userId: string): void {
   if (driving.has(sheetId)) return;
   driving.add(sheetId);

@@ -45,6 +45,25 @@ function holdEach(sql: string, ms: number): () => void {
   }
   return () => { (db as any).prepare = prepare }
 }
+// When each statement starting with one of `sqls` first runs from now on (performance.now()), until stop().
+function firstRuns(sqls: string[]): { seen: Map<string, number>; stop: () => void } {
+  const seen = new Map<string, number>()
+  const prepare = db.prepare.bind(db)
+  ;(db as any).prepare = (text: string) => {
+    const stmt = prepare(text) as any
+    const sql = sqls.find(q => text.trimStart().startsWith(q))
+    if (sql) {
+      for (const m of ['run', 'get', 'all']) {
+        const f = stmt[m].bind(stmt)
+        stmt[m] = (...a: unknown[]) => { if (!seen.has(sql)) seen.set(sql, performance.now()); return f(...a) }
+      }
+    }
+    return stmt
+  }
+  return { seen, stop: () => { (db as any).prepare = prepare } }
+}
+// The delete's wait ending (moveWithin reads the item's state) and its change log line.
+const WAIT_ENDS = 'SELECT state FROM trash_items WHERE id = ?', LOGGED = 'INSERT INTO sheet_changes'
 const COPY = 'INSERT INTO trash_rows (item_id, seq, row_index, row_id, data)'
 const until = async (what: () => boolean, ms = 180_000) => {
   for (const end = Date.now() + ms; !what() && Date.now() < end;) await new Promise(r => setTimeout(r, 20))
@@ -70,14 +89,19 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       takeWalCheckpointerStats()
       const t0 = Date.now(), p0 = performance.now()
       const watch = loopWatch(probe.records)
+      const marks = firstRuns([WAIT_ENDS, LOGGED])
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
+      marks.stop()
       const { longest, inside } = watch()
       const w = takeWalCheckpointerStats()
+      const at = (sql: string) => (marks.seen.has(sql) ? `${(marks.seen.get(sql)! - p0).toFixed(0)} ms` : 'never')
+      const first = probe.records()[0]?.at
       assert.equal(out.status, 200, JSON.stringify(out.body))
-      console.log(`      answered in ${took} ms; the loop held at most ${longest.ms.toFixed(0)} ms, `
-        + `${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ') || 'no transaction'}); `
-        + `worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
+      console.log(`      answered in ${took} ms; its first transaction ${first ? (first - p0).toFixed(0) : '-'} ms in, `
+        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the loop held at most `
+        + `${longest.ms.toFixed(0)} ms, ${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
+          || 'no transaction'}); worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
       assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
         `answered in ${took} ms`)
       id = out.body.trash.trash_id
