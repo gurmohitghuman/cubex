@@ -157,7 +157,9 @@ async function main() {
       const plan = (prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...sql.split('?').slice(1).map(() => 'x')) as
         Array<{ detail: string }>).map(p => p.detail)
       assert.ok(plan.every(d => !/^SCAN /.test(d)), `${sql}\n${plan.join('\n')}`)
-      assert.ok(!/\brows\b/.test(sql) || /\bLIMIT \?$/.test(sql.trim()), sql)
+      // A read of rows stops at its limit, and in index order: a sort (a temp B-tree) would read every row first.
+      assert.ok(!/\brows\b/.test(sql) || (/\bLIMIT \?$/.test(sql.trim())
+        && plan.every(d => !/USE TEMP B-TREE/.test(d))), `${sql}\n${plan.join('\n')}`)
     }
   })
 
