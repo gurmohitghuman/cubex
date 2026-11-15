@@ -25,7 +25,7 @@ const CHECKPOINTS: Entry[] = [
 const AUTO: Entry[] = [
   { file: 'server/src/lib/db.ts', count: 1, why: 'the connection\'s setting, DB_AUTO_CHECKPOINT_FRAMES' },
   { file: 'server/src/lib/slices.ts', count: 2, why: 'withoutAutoCheckpoint: off for one commit, then back' },
-  { file: 'server/src/lib/bulk-slices.ts', count: 1, why: 'holdAutoCheckpoint: off while bulk writers run' },
+  { file: 'server/src/lib/bulk-slices.ts', count: 1, why: 'holdAutoCheckpoint: raised while bulk writers run' },
 ]
 const NO_AUTO: Entry[] = [
   { file: 'server/src/lib/bulk-slices.ts', count: 2, why: 'the bulk writers\' slices, on either thread' },

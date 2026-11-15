@@ -22,6 +22,8 @@ const { deleteUndoColumn } = await import('../../server/src/lib/run-undo/columns
 const { autoCheckpointHolders } = await import('../../server/src/lib/bulk-slices')
 const { bulkWalKit } = await import('./bulk-wal-kit')
 console.error = () => {}
+// The undo measured on both OSes: enough rows for the WAL to reach the pause (WAL_BULK_PAUSE_FRAMES).
+const SMALL_UNDO_ROWS = 20_000
 
 // n rows whose Status and Answer hold earlier values, and an HTTP run that wrote new ones over `columns`.
 async function undoable(n: number, columns: string[]) {
@@ -162,18 +164,24 @@ await ok('a deleted column\'s slot doesn\'t count, though a column made later un
   assert.deepEqual([cells(u.sid, 'Answer')[N - 1], cells(u.sid, 'Status')[N - 1]], [`a${N - 1}`, `new Status ${N - 1}`])
 })
 
-await ok('200,000 rows with random ids, 3 formulas reading the column: the loop is never held 200 ms, no '
-  + 'checkpoint on this thread', async () => {
-  const n = 200_000
-  const u = await undoable(n, ['Answer'])
-  for (const k of [1, 2, 3]) await formula(u.sid, `F${k}`, `{{Answer}} + "${k}"`)
-  // As once the formulas have followed the run's writes: nothing waits for them.
-  db.prepare('DELETE FROM autorun_pending').run()
-  const { measure } = bulkWalKit()
-  let got!: Awaited<ReturnType<typeof undo>>
-  await measure('200,000 rows, 3 formulas', async () => { got = await undo(u.sid, u.runId) }, { pause: true })
-  assert.deepEqual(got.sizes, checkpointed(n, 3).sizes, 'rows per slice')
-  assert.deepEqual([cells(u.sid, 'Answer')[0], cells(u.sid, 'Answer')[n - 1]], ['a0', `a${n - 1}`])
-})
+// The 200,000-row undo takes the Windows runner's disk over 11 minutes (a checkpoint cycle there takes about 12 s):
+// Linux only, and the smaller case, which reaches the pause too, runs on both.
+const { measure } = bulkWalKit()
+for (const n of [SMALL_UNDO_ROWS, 200_000]) {
+  const name = `${n.toLocaleString('en-US')} rows with random ids, 3 formulas reading the column: the loop is never `
+    + 'held 200 ms, no checkpoint on this thread'
+  if (n > SMALL_UNDO_ROWS && process.platform === 'win32') { console.log(`skip ${name} (Linux only)`); continue }
+  await ok(name, async () => {
+    const u = await undoable(n, ['Answer'])
+    for (const k of [1, 2, 3]) await formula(u.sid, `F${k}`, `{{Answer}} + "${k}"`)
+    // As once the formulas have followed the run's writes: nothing waits for them.
+    db.prepare('DELETE FROM autorun_pending').run()
+    let got!: Awaited<ReturnType<typeof undo>>
+    await measure(`${n.toLocaleString('en-US')} rows, 3 formulas`, async () => { got = await undo(u.sid, u.runId) },
+      { pause: true })
+    assert.deepEqual(got.sizes, checkpointed(n, 3).sizes, 'rows per slice')
+    assert.deepEqual([cells(u.sid, 'Answer')[0], cells(u.sid, 'Answer')[n - 1]], ['a0', `a${n - 1}`])
+  })
+}
 
 done()

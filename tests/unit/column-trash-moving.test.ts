@@ -1,3 +1,4 @@
+// Over 200 lines: one big column's way into the trash and back, its cases sharing the holds and the surfaces.
 // A big column's way into the trash and back (migration 054). Its delete waits for the cells to move into the
 // item only COLUMN_DELETE_WAIT_MS (services/column-trash.ts moveWithin), then answers "moving": the column is
 // gone from the sheet, the move goes on with the sheet busy, and the item ends holding every cell once. While it
@@ -6,20 +7,26 @@
 // With Settings at 0 days the delete waits for its strip however long, as before. A restore of over 20,000 cells
 // answers "restoring", and the column shows once they are all back; when its setup can't come back by then,
 // the change log says why. Each slice of the move is held a little (its statement sleeps once it has run), so
-// the move outlasts the wait on any machine.
+// the move outlasts the wait on any machine. The 300,000-row delete prints the event loop's longest stretch while
+// it waited (how far in, the transactions inside it) and the checkpoint worker's work.
 import assert from 'node:assert/strict'
+import { performance } from 'node:perf_hooks'
 import storeMod from '../../server/src/lib/trash/store'
 import writeMod from '../../server/src/services/setup-version-write'
 import columnsMod from '../../server/src/lib/sheet-columns'
 import sheetsMod from '../../server/src/services/trash-sheets'
 import constMod from '../../server/src/lib/constants'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import { columnTrashKit } from './column-trash-kit'
+import { loopWatch } from './bulk-wal-kit'
+import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { trashSurfaces } from './column-trash-surfaces'
 const { setTrashDays } = storeMod as typeof import('../../server/src/lib/trash/store')
 const { writeLookupSetup } = writeMod as typeof import('../../server/src/services/setup-version-write')
 const { appendColumnsToOrder } = columnsMod as typeof import('../../server/src/lib/sheet-columns')
 const { trashSheet } = sheetsMod as typeof import('../../server/src/services/trash-sheets')
 const { COLUMN_DELETE_WAIT_MS, TRASH_RESTORE_WAIT_ROWS } = constMod as typeof import('../../server/src/lib/constants')
+const { checkpointAsked, takeWalCheckpointerStats } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const k = columnTrashKit('column-trash-moving')
 const { db, uid, tid, ok, done, idle, sheet, order, cells, item, stored, del, restoreOne, history } = k
 console.error = () => {}
@@ -59,11 +66,18 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
     const release = holdEach(COPY, 20)
     let id = 0
     try {
-      const t0 = Date.now()
+      const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+      takeWalCheckpointerStats()
+      const t0 = Date.now(), p0 = performance.now()
+      const watch = loopWatch(probe.records)
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
+      const { longest, inside } = watch()
+      const w = takeWalCheckpointerStats()
       assert.equal(out.status, 200, JSON.stringify(out.body))
-      console.log(`      answered in ${took} ms`)
+      console.log(`      answered in ${took} ms; the loop held at most ${longest.ms.toFixed(0)} ms, `
+        + `${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ') || 'no transaction'}); `
+        + `worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
       assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
         `answered in ${took} ms`)
       id = out.body.trash.trash_id

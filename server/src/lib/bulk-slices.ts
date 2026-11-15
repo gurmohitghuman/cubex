@@ -15,9 +15,13 @@
 //   never starts the WAL over itself, which syncs the WAL's new header inside its commit.
 // - After the last slice, what's left is copied back on the worker and the WAL started over before the job goes
 //   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over.
-// - While any runs, SQLite's own checkpoint is off on the API connection (holdAutoCheckpoint): the WAL holds up
-//   to about 14,000 frames meanwhile, and any other commit there (an autosave, the job's own) would copy them
-//   back inside it.
+// - While any runs, SQLite's own checkpoint on the API connection waits for the job's room (holdAutoCheckpoint:
+//   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
+//   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
+//   job's own) would copy them back inside it. The job alone stays under the room (its pause is fitted to it). A
+//   writer outside the runner (an import meanwhile) that takes the WAL past it copies the WAL back in its own
+//   commit, as with no job, so the WAL stays bounded: with SQLite's own checkpoint off, such a writer kept the
+//   worker from ever copying every frame, and the WAL grew as long as both went on.
 // - No deadline by default: a background job waits for the worker as long as it takes. A writer with one passes
 //   `until`; past it, walRoom no longer waits and the slice is still written, in turn.
 // - With no worker (it couldn't start, or stopped twice) checkpoints run on this thread, as before:
@@ -26,7 +30,7 @@
 import { isMainThread } from 'worker_threads';
 import { db } from './db';
 import {
-  DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES, WAL_BULK_ROOM_SHARE,
+  DB_AUTO_CHECKPOINT_FRAMES, DB_WAL_SIZE_LIMIT, WAL_BULK_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES, WAL_BULK_ROOM_SHARE,
   WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS,
 } from './constants';
 import { withoutAutoCheckpoint, yieldToRequests } from './slices';
@@ -42,9 +46,9 @@ let holders = 0;
 const auto = () => db.pragma('wal_autocheckpoint', { simple: true }) as number;
 const setAuto = (frames: number) => { db.pragma(`wal_autocheckpoint = ${frames}`); };
 
-// SQLite's own checkpoint off on the API connection until the answer is called (in a finally): the first holder
-// turns it off, the last puts it back. Found off with no holder, or released once too often, it is logged and set
-// right.
+// SQLite's own checkpoint on the API connection held at the job's room (walRoomFrames) until the answer is called
+// (in a finally): the first holder raises it, the last puts it back. Found changed with no holder, or released once
+// too often, it is logged and set right.
 export function holdAutoCheckpoint(): () => void {
   if (holders === 0 && auto() !== DB_AUTO_CHECKPOINT_FRAMES) {
     console.error(`SQLite's own WAL checkpoint was at ${auto()} with no bulk writer running; set back to `
@@ -52,7 +56,7 @@ export function holdAutoCheckpoint(): () => void {
     setAuto(DB_AUTO_CHECKPOINT_FRAMES);
   }
   holders++;
-  setAuto(0);
+  setAuto(walRoomFrames());
   let released = false;
   return () => {
     if (released) {
@@ -70,11 +74,11 @@ export function holdAutoCheckpoint(): () => void {
 // Tests only: how many hold it now.
 export const autoCheckpointHolders = (): number => holders;
 
-// The frames the WAL may reach during a job: WAL_BULK_ROOM_SHARE of journal_size_limit (none set: no bound).
+// The frames the WAL may reach during a job: WAL_BULK_ROOM_SHARE of journal_size_limit (none set: lib/db.ts's).
 function walRoomFrames(): number {
   const limit = db.pragma('journal_size_limit', { simple: true }) as number;
   const page = db.pragma('page_size', { simple: true }) as number;
-  return limit > 0 ? Math.floor((WAL_BULK_ROOM_SHARE * limit) / (page + 24)) : Infinity;
+  return Math.floor((WAL_BULK_ROOM_SHARE * (limit > 0 ? limit : DB_WAL_SIZE_LIMIT)) / (page + 24));
 }
 // `b`, its pause brought forward so a slice of `biggest` frames (0: none written yet) still fits in `room`.
 function fitted(b: WalBounds, room: number, biggest: number): WalBounds {

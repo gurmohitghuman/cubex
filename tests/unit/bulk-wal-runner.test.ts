@@ -2,12 +2,13 @@
 // The background bulk writers' runner itself (lib/bulk-slices.ts), on a job that rewrites rows with random ids
 // slice after slice: its WAL copied back on the worker (no checkpoint, no SQLite checkpoint inside a commit and
 // no WAL start-over on the API connection, the loop never held 200 ms, the WAL bounded); SQLite's own
-// checkpoint off on the API connection while runners go and back on after, whatever ends them (a step that
-// throws, a job stopped part way, two at once), a second release or a setting found off logged and set right;
-// with no worker (its file can't load) checkpoints on this thread as before, SQLite's own back on, logged once;
-// a worker stopped mid-job started again; a reader holding the frames doesn't stop the job; past a deadline the
-// slices are still written; big slices bring the pause forward, so the WAL stays within its share of
-// journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next commit.
+// checkpoint on the API connection held at the job's room while runners go and back after, whatever ends them (a
+// step that throws, a job stopped part way, two at once), a second release or a setting found changed logged and
+// set right; with no worker (its file can't load) checkpoints on this thread as before, SQLite's own back on,
+// logged once; a worker stopped mid-job started again; a reader holding the frames doesn't stop the job; past a
+// deadline the slices are still written; big slices bring the pause forward, so the WAL stays within its share of
+// journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next commit; a
+// writer outside the runner committing all through a job doesn't take the WAL past journal_size_limit.
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
@@ -20,8 +21,9 @@ import { bulkWalKit, SLOW_CHECKPOINT_MS } from './bulk-wal-kit'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
-const { closeWalCheckpointer, setCheckpointWorkerFileForTests, stopCheckpointWorkerForTests,
-  takeWalCheckpointerStats } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests, setCheckpointWorkerFileForTests,
+  stopCheckpointWorkerForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
+  walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { asBulkWriter, autoCheckpointHolders, holdAutoCheckpoint, runInCheckpointedSlices } =
   bulkMod as typeof import('../../server/src/lib/bulk-slices')
 
@@ -36,11 +38,18 @@ async function ok(label: string, fn: () => void | Promise<void>) {
   try { await fn(); console.log('ok  ', label) }
   catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
 }
-const { measure } = bulkWalKit()
+const { probe, measure } = bulkWalKit()
 const auto = () => db.pragma('wal_autocheckpoint', { simple: true }) as number
+const page = db.pragma('page_size', { simple: true }) as number
+const sizeLimit = db.pragma('journal_size_limit', { simple: true }) as number
+// The frames a job may take the WAL to with journal_size_limit at `limit`: SQLite's own checkpoint waits for it.
+const roomFor = (limit: number) => Math.floor((WAL_BULK_ROOM_SHARE * limit) / (page + 24))
 
 // 20,000 rows with random ids and about 300 bytes each: a slice of 500 rewrites pages all over the table.
 const ROWS = 20_000, SLICE = 500
+// Commits outside the runner in the last case (about twice journal_size_limit's frames), and how long the worker's
+// checkpoints are held meanwhile (longer than those commits take).
+const OUTSIDE_COMMITS = 400, OUTSIDE_DELAY_MS = 3_000
 const uid = uuid(), tid = uuid(), sid = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
@@ -70,12 +79,16 @@ const back = () => {
   assert.equal(autoCheckpointHolders(), 0)
 }
 
-await ok('a job: its WAL copied back on the worker, waiting at the pause; SQLite\'s own checkpoint off meanwhile',
+// The setting read every 2 ms, so between slices (a slice itself commits with it at 0).
+await ok('a job: its WAL copied back on the worker, waiting at the pause; SQLite\'s own checkpoint at its room',
   async () => {
     const seen: number[] = []
-    await measure('rewrite', () => runInCheckpointedSlices(rewrite('a', () => { seen.push(auto()) })), { pause: true })
+    await measure('rewrite', async () => {
+      const sampler = setInterval(() => seen.push(auto()), 2)
+      try { await runInCheckpointedSlices(rewrite('a')) } finally { clearInterval(sampler) }
+    }, { pause: true })
     assert.equal(count('a'), ROWS)
-    assert.ok(seen.length === ROWS / SLICE && seen.every(v => v === 0), `seen ${[...new Set(seen)]}`)
+    assert.ok(seen.length > 0 && seen.every(v => v === roomFor(sizeLimit)), `seen ${[...new Set(seen)]}`)
   })
 
 await ok('a step that throws: the error comes out, SQLite\'s own checkpoint is back on', async () => {
@@ -98,20 +111,23 @@ await ok('a job stopped part way (its step answers false, or its work ends betwe
   back()
 })
 
-await ok('two at once: off until both end, then back on', async () => {
+await ok('two at once: held until both end, then back', async () => {
   let release!: () => void
   const held = new Promise<void>(r => { release = r })
   const first = asBulkWriter(async w => { await w.slice(rewrite('e')); await held })
-  await new Promise(r => setTimeout(r, 20))
-  await runInCheckpointedSlices(rewrite('f', k => k < 2))
-  assert.equal(auto(), 0, 'still off: the first is going')
-  assert.equal(autoCheckpointHolders(), 1)
-  release()
-  await first
+  try {
+    await new Promise(r => setTimeout(r, 20))
+    await runInCheckpointedSlices(rewrite('f', k => k < 2))
+    assert.equal(auto(), roomFor(sizeLimit), 'still held: the first is going')
+    assert.equal(autoCheckpointHolders(), 1)
+  } finally {
+    release()
+    await first
+  }
   back()
 })
 
-await ok('let go of twice, or found off with no runner: logged, and set right', async () => {
+await ok('let go of twice, or found changed with no runner: logged, and set right', async () => {
   logged.length = 0
   const release = holdAutoCheckpoint()
   release()
@@ -182,8 +198,7 @@ await ok('big slices: the pause comes sooner, the WAL within its share of journa
   const small = 8 * 1024 * 1024
   db.pragma(`journal_size_limit = ${small}`)
   try {
-    const page = db.pragma('page_size', { simple: true }) as number
-    const room = Math.floor((WAL_BULK_ROOM_SHARE * small) / (page + 24))
+    const room = roomFor(small)
     const r = await measure('big slices', () => runInCheckpointedSlices(rewrite('l', () => true, 2_000)))
     assert.equal(count('l'), ROWS)
     assert.ok(r.w.mostTransactionFrames > room / 2, `slices of ${r.w.mostTransactionFrames} frames`)
@@ -211,6 +226,41 @@ await ok('a reader holding the last frames as the job ends: tried again, the WAL
     await gone
     reader.close()
   }
+})
+
+// A writer outside the runner (an import, say) on the API connection all through a job: 1,000 rows of 300 bytes
+// rewritten a commit (about 80 frames), a turn between. Past the job's room its commits run SQLite's own
+// checkpoint, as with no job, and the WAL starts over. With SQLite's own checkpoint off, the worker never copied
+// every frame (more kept coming), so the WAL never started over: it grew as long as both went on. The worker's
+// checkpoints are held OUTSIDE_DELAY_MS, so those commits come while none runs: a commit's own checkpoint can't
+// run while the worker's does (the next commit tries again), and on a slow disk the WAL passes the room by what
+// writers add in that time.
+await ok('a writer outside the runner all through a job: the WAL stays under journal_size_limit', async () => {
+  db.exec('CREATE TABLE outside_writes (id INTEGER PRIMARY KEY, v TEXT)')
+  const fill = db.prepare('INSERT INTO outside_writes (v) VALUES (?)')
+  db.transaction(() => { for (let i = 0; i < 1_000; i++) fill.run('o'.repeat(300)) }).immediate()
+  const touch = db.prepare('UPDATE outside_writes SET v = ?')
+  await checkpointInBackground()
+  await walCheckpointerIdle()
+  probe.reset()
+  setCheckpointDelayForTests(OUTSIDE_DELAY_MS)
+  let done = false, commits = 0
+  try {
+    const job = runInCheckpointedSlices(rewrite('n')).finally(() => { done = true })
+    while (!done && commits < OUTSIDE_COMMITS) {
+      db.transaction(() => { touch.run(String(commits++).padEnd(300, 'o')) }).immediate()
+      await new Promise(r => setImmediate(r))
+    }
+    await job
+  } finally { setCheckpointDelayForTests(0) }
+  const w = probe.read()
+  const peakBytes = 32 + w.mostWalFrames * (page + 24)
+  console.log(`      outside: ${commits} commits, WAL peak ${w.mostWalFrames} frames (${peakBytes} bytes of `
+    + `${sizeLimit}), ${w.ownCheckpoints} commits ran SQLite's own checkpoint`)
+  assert.equal(count('n'), ROWS)
+  back()
+  assert.ok(commits * 80 > roomFor(sizeLimit), `only ${commits} commits outside the runner`)
+  assert.ok(peakBytes < sizeLimit, `the WAL peaked at ${peakBytes} bytes, past journal_size_limit`)
 })
 
 await closeWalCheckpointer()

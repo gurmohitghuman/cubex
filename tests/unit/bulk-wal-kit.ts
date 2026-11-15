@@ -14,7 +14,7 @@ import dbMod from '../../server/src/lib/db'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
-import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
 const { checkpointAsked, checkpointInBackground, setCheckpointDelayForTests, takeWalCheckpointerStats,
@@ -24,6 +24,23 @@ const { autoCheckpointHolders } = bulkMod as typeof import('../../server/src/lib
 export const SLOW_CHECKPOINT_MS = 300
 // The event loop's longest stretch allowed while a bulk writer runs.
 export const LOOP_LIMIT_MS = 200
+
+// The event loop sampled every 5 ms until the answer is called: its longest stretch (`at`: performance.now()) and
+// the transactions of `records` inside it.
+export function loopWatch(records: () => TransactionRecord[]) {
+  let last = performance.now()
+  const stretches: Array<{ at: number; ms: number }> = []
+  const sampler = setInterval(() => {
+    const now = performance.now()
+    stretches.push({ at: last, ms: now - last })
+    last = now
+  }, 5)
+  return () => {
+    clearInterval(sampler)
+    const longest = stretches.reduce((a, b) => (b.ms > a.ms ? b : a), { at: 0, ms: 0 })
+    return { longest, inside: records().filter(r => r.at < longest.at + longest.ms && r.at + r.ms > longest.at) }
+  }
+}
 
 export function bulkWalKit() {
   const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
@@ -40,13 +57,8 @@ export function bulkWalKit() {
     await walCheckpointerIdle()
     probe.reset()
     takeWalCheckpointerStats()
-    let last = performance.now()
-    const stretches: Array<{ at: number; ms: number }> = []
-    const sampler = setInterval(() => {
-      const now = performance.now()
-      stretches.push({ at: last, ms: now - last })
-      last = now
-    }, 5)
+    const watch = loopWatch(probe.records)
+    let watched: ReturnType<ReturnType<typeof loopWatch>> | undefined
     setCheckpointDelayForTests(SLOW_CHECKPOINT_MS)
     const t0 = performance.now()
     let ms = 0
@@ -58,7 +70,7 @@ export function bulkWalKit() {
         await new Promise(r => setTimeout(r, 5))
       }
     } finally {
-      clearInterval(sampler)
+      watched = watch()
       setCheckpointDelayForTests(0)
     }
     await walCheckpointerIdle()
@@ -68,8 +80,7 @@ export function bulkWalKit() {
     const w = probe.read()
     const k = takeWalCheckpointerStats()
     const records = probe.records()
-    const longest = stretches.reduce((a, b) => (b.ms > a.ms ? b : a), { at: 0, ms: 0 })
-    const inside = records.filter(r => r.at < longest.at + longest.ms && r.at + r.ms > longest.at)
+    const { longest, inside } = watched
     const peakBytes = 32 + w.mostWalFrames * (pageSize + 24)
     const mb = (b: number) => (b / 1024 / 1024).toFixed(1)
     console.log(`      ${label}: ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms, `
@@ -86,7 +97,7 @@ export function bulkWalKit() {
     assert.equal(k.onThisThread, 0, 'checkpoints run on this thread')
     assert.ok(peakBytes < sizeLimit, `the WAL peaked at ${peakBytes} bytes, past journal_size_limit`)
     assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint is back on')
-    assert.equal(autoCheckpointHolders(), 0, 'bulk writers still holding SQLite\'s own checkpoint off')
+    assert.equal(autoCheckpointHolders(), 0, 'bulk writers still holding SQLite\'s own checkpoint')
     if (opts.pause) {
       assert.ok(w.mostWalFrames >= WAL_BULK_PAUSE_FRAMES && k.pauses > 0,
         `the WAL never reached the pause (${w.mostWalFrames} frames, ${k.pauses} waits)`)

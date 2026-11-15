@@ -28,9 +28,11 @@ export const WAL_PAUSE_FRAMES = 1500;
 export const WAL_PAUSE_RETRY_MS = 25;
 
 // SQLite's own checkpoint (wal_autocheckpoint, lib/db.ts): it runs inside the commit that leaves the WAL at this
-// many frames or more, on that connection's thread. On the API connection it is off while a background bulk
-// writer runs (lib/bulk-slices.ts), and back at this value once the last one ends.
+// many frames or more, on that connection's thread. On the API connection it waits for the bulk writers' room
+// while one runs (lib/bulk-slices.ts), and is back at this value once the last one ends.
 export const DB_AUTO_CHECKPOINT_FRAMES = 2000;
+// journal_size_limit (lib/db.ts): the WAL file is cut back to this size when it starts over.
+export const DB_WAL_SIZE_LIMIT = 64 * 1024 * 1024;
 
 // Background bulk writers (lib/bulk-slices.ts: an undo, moves in and out of the trash, emptying it, a clear,
 // dedupe): as WAL_CHECKPOINT_FRAMES and WAL_PAUSE_FRAMES, much higher. On a slow disk such a job's whole time is

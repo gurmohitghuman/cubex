@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
-import { DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV } from './constants';
+import { DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV, DB_WAL_SIZE_LIMIT } from './constants';
 import { registerRowFilterFunctions } from './row-filter/sql-functions';
 import { registerRunInputFunctions } from './run-inputs/fingerprint';
 
@@ -77,13 +77,13 @@ db.pragma('temp_store = MEMORY');
 // wild. journal_size_limit truncates the WAL back down at the next
 // checkpoint after it exceeds the limit; it does NOT cap mid-transaction
 // growth, so a single huge write can still exceed it briefly.
-db.pragma('journal_size_limit = 67108864');
+db.pragma(`journal_size_limit = ${DB_WAL_SIZE_LIMIT}`);
 // Trigger an auto-checkpoint after ~2000 WAL pages (~8MB at 4KB pages),
 // up from the SQLite default of 1000. Slightly less checkpoint chatter
 // during burst writes (CSV import, AI run streaming) at the cost of a
 // marginally larger WAL between checkpoints — well within the size limit.
-// Off on the API connection while a background bulk writer runs (lib/bulk-slices.ts): its checkpoints go to the
-// WAL checkpoint worker's thread.
+// Raised on the API connection while a background bulk writer runs (lib/bulk-slices.ts): its checkpoints go to
+// the WAL checkpoint worker's thread.
 db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
 
 // Seed the query planner's stats so the first few queries on a fresh
