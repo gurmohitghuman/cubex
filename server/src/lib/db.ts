@@ -68,7 +68,11 @@ db.pragma('busy_timeout = 5000');
 db.pragma('cache_size = -64000');
 // Memory-mapped I/O: let SQLite read pages directly from the OS page cache without
 // copying into the SQLite cache. 256MB is enough for typical Cubex DBs.
-db.pragma('mmap_size = 268435456');
+// Not on Windows: there SQLite asks the file's size each time it maps the file again (when its next read finds the
+// WAL changed by another connection), and that waits while another connection syncs the file to disk. The
+// checkpoint worker's sync (lib/wal-checkpointer.ts) held a read on the server's thread 1.7 s that way on the
+// Windows runner (a 300,000-row column into the trash).
+db.pragma(`mmap_size = ${process.platform === 'win32' ? 0 : 268435456}`);
 // Speeds up large multi-row writes (CSV imports especially). 4MB is a safe default.
 db.pragma('temp_store = MEMORY');
 // Cap the WAL at 64MB. Without this, a long-running reader (e.g. an AI run
