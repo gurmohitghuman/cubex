@@ -32,6 +32,7 @@ import { runMigrations } from './db/migrate';
 import { assertEncryptionConfigured } from './lib/crypto';
 import { applyServerMiddleware } from './lib/server-middleware';
 import { escapeC1InJson } from './lib/json-c1-escape';
+import { answerStall } from './lib/answer-stall';
 import { serveClientInProduction } from './lib/serve-client';
 import { BUILD_HEADER, currentBuildId } from './lib/build-id';
 import { startBackground, installShutdownHandlers } from './lib/server-lifecycle';
@@ -116,6 +117,9 @@ if (!HOST && !isProduction) {
 // First, so every answer goes through it: JSON and event streams carry
 // U+0080-U+009F as escapes (lib/json-c1-escape.ts).
 app.use(escapeC1InJson);
+// Then the deadline on an answer whose client stopped reading it (lib/answer-stall.ts): it wraps the writes
+// above, so it sees each answer's own buffers.
+app.use(answerStall);
 // Before anything reads a body: the deadline on receiving each request (lib/request-deadline.ts).
 app.use(requestDeadline);
 applyServerMiddleware(app, { isProduction });

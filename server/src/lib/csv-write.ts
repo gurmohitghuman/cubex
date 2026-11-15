@@ -76,7 +76,8 @@ export function responseWriter(res: Response): (chunk: string) => Promise<boolea
   };
 }
 
-// Resolves when the client has taken the buffered output, or has gone away.
+// Resolves when the client has taken the buffered output, or has gone away (one that stopped reading is cut
+// off after a while: lib/answer-stall.ts).
 function drained(res: Response): Promise<void> {
   return new Promise(resolve => {
     if (res.destroyed) return resolve();

@@ -1,0 +1,285 @@
+// Over 200 lines: one server through the real chain, each check another way an answer goes out or stalls.
+// The deadline on an answer whose client stopped reading it (lib/answer-stall.ts), through index.ts's middleware
+// and the real routes on a real socket, with the deadline at 1 s. A client that stops reading is cut off after
+// about that long, whatever writes the answer: one large write, a stream still writing, a file sent by
+// express.static or res.sendFile, and a CSV export through a download link or /api/v1, whose hold on its sheet
+// then ends. A slow but steady reader gets all of a single large write, however long it takes. Without libuv's
+// queue size (internal, so maybe missing), progress is the finished writes alone: a file still goes to a steady
+// reader and is cut for a stalled one. Nothing silent is timed: a paused run's progress stream, read or not, an
+// event stream waiting longer than the deadline, a handler answering later. A small answer to a client
+// that never reads finishes, and the keep-alive timeout closes the connection; a keep-alive request after a large
+// answer is answered. The client can't see a hang-up it doesn't read, so the server's sockets are watched.
+// The server listens on a Unix socket (a named pipe on Windows): its buffers are small and fixed, where TCP's on
+// this machine grow with the connection (tens of MB on loopback), which would swallow a stalled answer whole.
+// Answers go out through the same Node stream code either way.
+import http from 'node:http'
+import fs from 'node:fs'
+import net from 'node:net'
+import os from 'node:os'
+import path from 'node:path'
+
+// Read when the modules load, so before the imports below.
+process.env.RESPONSE_STALL_TIMEOUT_MS = '1000'
+const STALL = 1000
+const express = (await import('express')).default
+const { v4: uuid } = await import('uuid')
+const { db } = await import('../../server/src/lib/db')
+const { runMigrations } = await import('../../server/src/db/migrate')
+const { createFileLink } = await import('../../server/src/lib/file-links')
+const { generateAccessToken } = await import('../../server/src/lib/access-token')
+const { withSheetBusy } = await import('../../server/src/lib/sheet-busy')
+const { writeSSEHeaders } = await import('../../server/src/lib/sse')
+const { escapeC1InJson } = await import('../../server/src/lib/json-c1-escape')
+const { answerStall, progressOf } = await import('../../server/src/lib/answer-stall')
+const { signToken } = await import('../../server/src/lib/auth')
+const { requestDeadline } = await import('../../server/src/lib/request-deadline')
+const { applyServerMiddleware } = await import('../../server/src/lib/server-middleware')
+const { applyServerTimeouts } = await import('../../server/src/lib/server-timeouts')
+
+if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
+runMigrations()
+
+let failures = 0
+function check(label: string, cond: boolean, detail?: unknown) {
+  if (cond) console.log('ok  ', label)
+  else { failures++; console.log('FAIL', label, detail === undefined ? '' : JSON.stringify(detail)) }
+}
+const logged: string[] = []
+console.error = (...a: unknown[]) => { logged.push(a.map(String).join(' ')) }
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// A sheet whose CSV (about 12 MB) is larger than the socket buffers, and a read token.
+const uid = uuid(), tid = uuid(), sid = uuid(), tokenId = uuid()
+db.prepare('INSERT INTO users (id, password_hash) VALUES (?, ?)').run(uid, 'x')
+db.prepare('INSERT INTO tables (id, user_id, name) VALUES (?, ?, ?)').run(tid, uid, 'T')
+db.prepare('INSERT INTO sheets (id, table_id, user_id, name, column_order) VALUES (?, ?, ?, ?, ?)')
+  .run(sid, tid, uid, 'Leads', JSON.stringify(['Notes']))
+const insertRow = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)')
+db.transaction(() => {
+  for (let i = 0; i < 40_000; i++) {
+    insertRow.run(uuid(), sid, uid, i, JSON.stringify({ Notes: `${'n'.repeat(300)}${i}` }))
+  }
+}).immediate()
+const pat = generateAccessToken()
+db.prepare('INSERT INTO access_tokens (id,user_id,name,token_hash,token_prefix,scopes) VALUES (?,?,?,?,?,?)')
+  .run(tokenId, uid, 'agent', pat.tokenHash, pat.tokenPrefix, 'read')
+// A paused run, for its progress stream, and a session for the stream.
+const runId = uuid()
+db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, status)
+  VALUES (?, ?, ?, ?, ?, ?, 'paused')`).run(runId, sid, uid, 'Fit', 'Is /Notes a fit?', 'test/model')
+const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
+const exportBusy = async () => {
+  const r = await withSheetBusy(sid, 'checking', async () => 'ran')
+  return typeof r === 'object' ? r.busy : r
+}
+
+// A 32 MB file for express.static and res.sendFile.
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stall-'))
+const BIG = 32 * 1024 * 1024
+fs.writeFileSync(path.join(dir, 'big.bin'), Buffer.alloc(BIG, 120))
+
+// When the server closed each tagged connection (the test's own, ahead of the chain).
+const closedAt = new Map<string, number>()
+// As index.ts: the escaping, the stall deadline, the request deadline, the global middleware, then the routes.
+const app = express()
+app.use((req, _res, next) => {
+  const tag = req.query.c
+  if (typeof tag === 'string') req.socket.once('close', () => closedAt.set(tag, Date.now()))
+  next()
+})
+app.use(escapeC1InJson)
+app.use(answerStall)
+app.use(requestDeadline)
+applyServerMiddleware(app, { isProduction: false })
+app.use('/api/files', (await import('../../server/src/routes/file-links')).default)
+app.use('/api/v1', (await import('../../server/src/routes/api-v1')).default)
+app.use('/api/ai', (await import('../../server/src/routes/ai-stream')).default)
+app.use('/static', express.static(dir))
+// The same files, the socket's handle without libuv's queue size.
+app.use('/noqueue', (req, _res, next) => {
+  const handle = (req.socket as net.Socket & { _handle?: object })._handle
+  if (handle) Object.defineProperty(handle, 'writeQueueSize', { get: () => undefined })
+  next()
+}, express.static(dir))
+app.get('/t/sendfile', (_req, res) => res.sendFile(path.join(dir, 'big.bin')))
+app.get('/t/big', (_req, res) => { res.type('application/octet-stream').end(Buffer.alloc(BIG, 120)) })
+app.get('/t/two-mb', (_req, res) => { res.type('application/octet-stream').end(Buffer.alloc(2 * 1024 * 1024, 120)) })
+// An event stream that goes on writing: 64 KB every 10 ms, so the socket buffers fill within a second.
+app.get('/t/events', (_req, res) => {
+  writeSSEHeaders(res)
+  const tick = setInterval(() => res.write(`data: ${'x'.repeat(65_536)}\n\n`), 10)
+  res.on('close', () => clearInterval(tick))
+})
+// Silent longer than the deadline, then one event: a paused run's progress stream.
+app.get('/t/quiet', (_req, res) => {
+  writeSSEHeaders(res)
+  const later = setTimeout(() => res.end('data: {"type":"done"}\n\n'), 2500)
+  res.on('close', () => clearTimeout(later))
+})
+app.get('/t/slow', (_req, res) => { setTimeout(() => res.json({ ok: true }), 2500) })
+const finished: number[] = []
+app.get('/t/small', (_req, res) => {
+  res.on('finish', () => finished.push(Date.now()))
+  res.json({ small: 'x'.repeat(1000) })
+})
+const SOCK = process.platform === 'win32' ? `\\\\.\\pipe\\cubex-stall-${process.pid}`
+  : path.join(os.tmpdir(), `stall-${process.pid}.sock`)
+const server = app.listen(SOCK)
+applyServerTimeouts(server)
+server.keepAliveTimeout = 3000
+await new Promise(r => server.once('listening', r))
+
+const open = (p: string, headers: Record<string, string> = {}) => {
+  const c = net.connect(SOCK)
+  c.on('error', () => {})
+  c.write([`GET ${p} HTTP/1.1`, 'Host: localhost', ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`)]
+    .join('\r\n') + '\r\n\r\n')
+  return c
+}
+// A client that sends its request (tagged ?c=<n>) and never reads: ms until the server closed the connection
+// (-1: not in 8 s).
+let tags = 0
+async function stalled(p: string, headers: Record<string, string> = {}, during?: () => Promise<void>) {
+  const tag = String(++tags)
+  const c = open(`${p}${p.includes('?') ? '&' : '?'}c=${tag}`, headers)
+  await new Promise(r => c.once('connect', r))
+  const started = Date.now()
+  await during?.()
+  while (!closedAt.has(tag) && Date.now() - started < 8000) await sleep(20)
+  c.destroy()
+  return closedAt.has(tag) ? closedAt.get(tag)! - started : -1
+}
+const cutInTime = (ms: number) => ms >= STALL - 100 && ms < 3 * STALL + 500
+
+// A client that sends its request and reads it a chunk at a time, one every 10 ms: the body's bytes, and its time.
+function steady(p: string): Promise<{ bytes: number; length: number; ms: number }> {
+  return new Promise(resolve => {
+    const c = open(p)
+    const started = Date.now()
+    let head = '', length = -1, bytes = 0
+    const done = () => { c.destroy(); resolve({ bytes, length, ms: Date.now() - started }) }
+    c.on('data', (d: Buffer) => {
+      if (length < 0) {
+        head += d.toString('latin1')
+        const cut = head.indexOf('\r\n\r\n')
+        if (cut >= 0) { length = Number(/content-length: (\d+)/i.exec(head)?.[1]); bytes = head.length - cut - 4 }
+      } else bytes += d.length
+      if (length >= 0 && bytes >= length) return done()
+      c.pause()
+      setTimeout(() => c.resume(), 10)
+    })
+    c.on('close', done)
+  })
+}
+
+// Clients that stop reading are cut off, whatever writes the answer.
+{
+  const big = await stalled('/t/big')
+  check(`one large write, client stopped reading: cut after ${big} ms`, cutInTime(big), big)
+  const events = await stalled('/t/events')
+  check(`an event stream still writing, client stopped reading: cut after ${events} ms (its buffers fill first)`,
+    events >= STALL && events < 5 * STALL, events)
+  const stat = await stalled('/static/big.bin')
+  check(`a file through express.static: cut after ${stat} ms`, cutInTime(stat), stat)
+  const sent = await stalled('/t/sendfile')
+  check(`a file through res.sendFile: cut after ${sent} ms`, cutInTime(sent), sent)
+}
+
+// A CSV export held by a client that stopped reading: cut off, and the sheet is free again.
+for (const [label, p, headers] of [
+  ['through a download link', () => `/api/files/download/${createFileLink({ userId: uid, tokenId, sheetId: sid,
+    kind: 'download', options: {} }).token}`, {}],
+  ['through /api/v1 with a read token', () => `/api/v1/sheets/${sid}/export`, { Authorization: `Bearer ${pat.token}` }],
+] as const) {
+  let during = ''
+  const ms = await stalled(p(), headers, async () => { await sleep(STALL / 2); during = await exportBusy() })
+  await sleep(50)
+  const after = await exportBusy()
+  check(`an export ${label}, client stopped reading: the sheet held, then cut after ${ms} ms and free`,
+    /exporting/.test(during) && cutInTime(ms) && after === 'ran', { during, ms, after })
+}
+
+// A slow but steady reader gets all of it, however long it takes.
+{
+  const r = await steady('/t/big')
+  check(`a steady reader of one large write gets all ${r.length} bytes over ${r.ms} ms`, r.bytes === BIG
+    && r.length === BIG && r.ms > 2 * STALL, r)
+}
+
+// Without libuv's queue size, progress is the finished writes alone, and nothing throws.
+{
+  const fake = (handle: unknown) =>
+    ({ bytesWritten: 100, writableLength: 40, _handle: handle }) as unknown as net.Socket
+  const read = [null, undefined, {}, { writeQueueSize: 'x' }, { writeQueueSize: 7 }].map(h => progressOf(fake(h)))
+  check('without the queue size (no handle, none, not a number), progress is the bytes handed over',
+    read.every((r, i) => r.handed === 60 && r.queued === (i === 4 ? 7 : 0)), read)
+  const r = await steady('/noqueue/big.bin')
+  check(`without the queue size, a steady reader of a file gets all ${r.length} bytes over ${r.ms} ms`,
+    r.bytes === BIG && r.length === BIG && r.ms > 2 * STALL, r)
+  const cut = await stalled('/noqueue/big.bin')
+  check(`without the queue size, a file to a client that stopped reading: cut after ${cut} ms`, cutInTime(cut), cut)
+}
+
+// Nothing silent is timed.
+{
+  // A paused run's progress stream, read and not read: open 8 times the deadline, its events in.
+  const stream = `/api/ai/runs/${runId}/stream`
+  let text = ''
+  const reader = open(`${stream}?c=reader`, { Cookie: cookie })
+  reader.on('data', d => { text += d })
+  const unread = await stalled(stream, { Cookie: cookie })
+  check('a paused run\'s progress stream, read or never read, is open 8 times the deadline later',
+    unread === -1 && !closedAt.has('reader') && !reader.destroyed && /"status":"paused"/.test(text),
+    { unread, text: text.slice(-120) })
+  reader.destroy()
+
+  const quiet = await new Promise<string>(resolve => {
+    const c = open('/t/quiet')
+    let text = ''
+    c.on('data', d => { text += d })
+    c.on('close', () => resolve(text))
+    setTimeout(() => c.destroy(), 6000)
+  })
+  check('an event stream silent for 2.5 s keeps its connection, and its event arrives', quiet.includes('"done"'),
+    quiet.slice(-80))
+  const slow = await new Promise<{ status: number; body: string }>(resolve => {
+    http.get({ socketPath: SOCK, path: '/t/slow' }, r => {
+      let body = ''
+      r.on('data', d => { body += d })
+      r.on('end', () => resolve({ status: r.statusCode ?? 0, body }))
+    })
+  })
+  check('a handler answering after 2.5 s is delivered', slow.status === 200 && JSON.parse(slow.body).ok === true, slow)
+}
+
+// A small answer to a client that never reads finishes; the keep-alive timeout closes the connection.
+{
+  const from = finished.length
+  const ms = await stalled('/t/small')
+  check(`a small answer, never read: finished at once, closed by the keep-alive timeout after ${ms} ms`,
+    finished.length === from + 1 && ms >= 2900 && ms < 4500, { ms, finished: finished.length - from })
+}
+
+// A keep-alive request after a large answer read in full, past the deadline: answered.
+{
+  const c = net.connect(SOCK)
+  let text = ''
+  c.on('data', d => { text += d.toString('latin1') })
+  c.write('GET /t/two-mb HTTP/1.1\r\nHost: localhost\r\n\r\n')
+  while (text.length < 2 * 1024 * 1024) await sleep(20)
+  await sleep(2 * STALL)
+  const before = text.length
+  c.write('GET /t/small HTTP/1.1\r\nHost: localhost\r\n\r\n')
+  await sleep(300)
+  check('a keep-alive request 2 s after a large answer is answered on the same connection',
+    text.slice(before).startsWith('HTTP/1.1 200') && !c.destroyed, text.slice(before, before + 40))
+  c.destroy()
+}
+
+check('nothing logged', logged.length === 0, logged.slice(0, 3))
+server.close()
+server.closeAllConnections()
+fs.rmSync(dir, { recursive: true, force: true })
+if (process.platform !== 'win32') fs.rmSync(SOCK, { force: true })
+if (failures > 0) { console.log(`\n${failures} check(s) failed`); process.exit(1) }
+console.log('\nall answer stall checks passed')
