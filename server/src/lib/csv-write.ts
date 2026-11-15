@@ -66,17 +66,25 @@ export async function writeSheetCsv(
   return rowCount;
 }
 
+// At most this much in one write. A client that stopped reading is cut off once a write makes no progress for a
+// while, and Windows shows none inside a write, so there the wait grows with the write (lib/answer-stall.ts).
+const WRITE_MAX_BYTES = 1024 * 1024;
+
 // `write` for an HTTP response: it waits while the client is behind, and stops
-// once the client has gone.
+// once the client has gone. A page goes out in writes of at most WRITE_MAX_BYTES.
 export function responseWriter(res: Response): (chunk: string) => Promise<boolean> {
   return async chunk => {
-    if (res.destroyed) return false;
-    if (!res.write(chunk)) await drained(res);
+    const bytes = Buffer.from(chunk);
+    for (let at = 0; at < bytes.length; at += WRITE_MAX_BYTES) {
+      if (res.destroyed) return false;
+      if (!res.write(bytes.subarray(at, at + WRITE_MAX_BYTES))) await drained(res);
+    }
     return !res.destroyed;
   };
 }
 
-// Resolves when the client has taken the buffered output, or has gone away.
+// Resolves when the client has taken the buffered output, or has gone away (one that stopped reading is cut
+// off after a while: lib/answer-stall.ts).
 function drained(res: Response): Promise<void> {
   return new Promise(resolve => {
     if (res.destroyed) return resolve();
