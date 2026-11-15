@@ -1,5 +1,5 @@
-// Shared by the tests of the deadline on an answer whose client stopped reading it (answer-stall,
-// answer-stall-unseen): the check and log capture, a server on a Unix socket (a named pipe on Windows) with the
+// Shared by the tests of the deadline on an answer whose client stopped reading it (answer-stall, -slow and
+// -unseen): the check and log capture, a server on a Unix socket (a named pipe on Windows) with the
 // server's timeouts, the time each tagged connection closed, and clients that never read or read a chunk every
 // 10 ms. A Unix socket, not TCP: TCP's buffers here grow to 32 MB a side and would take a stalled answer whole. A
 // Unix socket's are small and fixed, and answers go out through the same Node stream code either way. The client
@@ -102,5 +102,5 @@ export function stallKit(name: string) {
       c.on('close', done)
     })
   }
-  return { check, logged, closedAt, tagged, listen, open, stalled, steady }
+  return { check, logged, closedAt, tagged, listen, open, stalled, steady, sock: SOCK }
 }

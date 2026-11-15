@@ -61,9 +61,9 @@ export function answerStall(_req: Request, res: Response, next: NextFunction): v
     timer = undefined;
     if (idle() || res.socket !== socket) return;
     const now = progressOf(socket!);
-    if (moved(now, seen)) { seen = now; movedAt = Date.now(); timer = setTimeout(look, STALL_WAIT_MS); return; }
+    if (moved(now, seen)) { seen = now; movedAt = performance.now(); timer = setTimeout(look, STALL_WAIT_MS); return; }
     // The time is fixed when data last moved: the write in flight then, not what piled up behind it since.
-    const left = movedAt + STALL_WAIT_MS + (seen.unseen / RESPONSE_MIN_BYTES_PER_SECOND) * 1000 - Date.now();
+    const left = movedAt + STALL_WAIT_MS + (seen.unseen / RESPONSE_MIN_BYTES_PER_SECOND) * 1000 - performance.now();
     if (left > 0) { timer = setTimeout(look, Math.min(MAX_WAIT_MS, left)); return; }
     res.destroy();
   };
@@ -71,8 +71,11 @@ export function answerStall(_req: Request, res: Response, next: NextFunction): v
     if (timer || idle()) return;
     socket = res.socket;
     seen = progressOf(socket!);
-    movedAt = Date.now();
+    movedAt = performance.now();
     timer = setTimeout(look, STALL_WAIT_MS);
+    // res.write keeps its data in the socket until the next tick (it corks it), and only then is the write handed to
+    // the system: what is left of it is read from there, or its progress would show only once all of it is out.
+    process.nextTick(() => { if (res.socket === socket) seen = progressOf(socket!); });
   };
   res.write = ((...a: unknown[]) => { const r = write(...a); watch(); return r; }) as typeof res.write;
   res.end = ((...a: unknown[]) => { const r = end(...a); watch(); return r; }) as typeof res.end;
