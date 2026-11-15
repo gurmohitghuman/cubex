@@ -156,6 +156,11 @@ await test('Check now within a minute of the last check answers from what it kep
   assert.equal(seen.length, before + 1)
   assert.equal(versionInfo(USER).latest_release!.version, 'v0.8.11')
   // The automatic check counts too, and a last check that failed says so again without asking.
+  // Check now tells a failed last check by its stamp: the good answer's checked_at is not the last try's.
+  // Both are stamped to the millisecond and the stand-in answers well within one, which GitHub never does,
+  // so the failed check starts on a later millisecond than the good one above, as it always does for real.
+  const good = store.readReleaseState(USER).latest!.checked_at
+  while (new Date().toISOString() <= good) await new Promise(r => setTimeout(r, 1))
   reply = { status: 403, body: '{}', headers: { 'x-ratelimit-remaining': '0' } }
   db.prepare('UPDATE settings SET release_tried_at = NULL WHERE user_id = ?').run(USER)
   await check.checkDueReleases()
