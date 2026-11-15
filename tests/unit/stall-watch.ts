@@ -77,7 +77,12 @@ export function stallWatch(db: Database.Database, dbPath: string) {
   const watcher = fs.existsSync(`${dbPath}-shm`)
     ? new Worker(WATCHER, { eval: true, workerData: { dbPath, stop } }) : null
   watcher?.unref()
-  const answer = watcher ? new Promise<any>(r => watcher.once('message', r)) : Promise.resolve(null)
+  // A watcher that fails (a file it can't open) answers nothing: no watcher, then.
+  const answer = watcher ? new Promise<any>(r => {
+    watcher.once('message', r)
+    watcher.once('error', () => r(null))
+    watcher.once('exit', () => r(null))
+  }) : Promise.resolve(null)
   const here = (t: number) => t - performance.timeOrigin
 
   // The record, `from` on: the calls and pauses, then the watcher's WAL index events and its longest file calls.
@@ -91,10 +96,10 @@ export function stallWatch(db: Database.Database, dbPath: string) {
     const ms = (t: number) => (t - from).toFixed(0)
     const took = [...calls, ...gcs].sort((a, b) => b.ms - a.ms).slice(0, 6)
       .map(c => `${c.what} ${c.ms.toFixed(0)} ms at ${ms(c.at)}`).join(' | ') || 'none'
-    if (!seen) return `slow calls: ${took}; no watcher (no -shm file)`
+    if (!seen) return `slow calls: ${took}; no watcher (no -shm file, or it failed)`
     const events = seen.events.map((e: { at: number; what: string }) => `${e.what} ${ms(here(e.at))}`).join(', ')
     const most = Object.entries(seen.most as Record<string, { at: number; ms: number }>)
-      .map(([k, v]) => `${k} ${v.ms.toFixed(0)} ms at ${ms(here(v.at))}`).join(', ')
+      .map(([k, v]) => (v.at ? `${k} ${v.ms.toFixed(0)} ms at ${ms(here(v.at))}` : `${k} none`)).join(', ')
     return `slow calls: ${took}; the WAL index: ${events || 'no change'}; the watcher's longest reads: ${most}`
   }
 }

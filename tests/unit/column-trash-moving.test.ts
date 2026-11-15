@@ -8,7 +8,7 @@
 // answers "restoring", and the column shows once they are all back; when its setup can't come back by then,
 // the change log says why. Each slice of the move is held a little (its statement sleeps once it has run), so
 // the move outlasts the wait on any machine. The 300,000-row delete prints the event loop's longest stretch while
-// it waited (how far in, the transactions inside it) and the checkpoint worker's work.
+// it waited (how far in, the transactions inside it), the checkpoint worker's work and what was slow (stall-watch.ts).
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import storeMod from '../../server/src/lib/trash/store'
@@ -78,10 +78,11 @@ const until = async (what: () => boolean, ms = 180_000) => {
 const big = (n: number) => sheet(['Email', 'Big'], Array.from({ length: n }, (_, i) =>
   ({ Email: `u${i}@x.co`, Big: `v${i}:${'x'.repeat(52)}` })))
 const stillMoving = (name: string) => `"${name}" is still moving to the trash, try again in a moment.`
-// How long past its wait the delete may answer. The delete's own commit and the move's checkpoints sync the disk on
-// the server's thread, and the answer goes out between them: with every sync made 300 ms slow, it came 1.2 s past
-// the wait instead of 0.1 s. The Windows runner's disk is that slow at times (8,057 ms in all, once): there it
-// gets more. Answering "moving" before the move ends is checked by the state and the cells still moving.
+// How long past its wait the delete may answer. Its own commit can start the WAL over, a disk sync on the server's
+// thread: with every sync made 300 ms slow, it came 0.4 s past the wait instead of 0.1 s (1.2 s while the move's
+// checkpoints synced on that thread too). The Windows runner's disk is slower at times (8,057 ms in all once, the
+// checkpoints still on that thread): there it gets more. Answering "moving" before the move ends is checked by the
+// state and the cells still moving.
 const PAST_WAIT_MS = process.platform === 'win32' ? 5000 : 1500
 
 await ok('a 300,000-row delete answers "moving" within its wait; a restore meanwhile is refused; all cells end in',
