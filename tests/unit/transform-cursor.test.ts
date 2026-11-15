@@ -1,3 +1,4 @@
+// Over 200 lines: the cases share one 25,000-row sheet and the passes over it; split, each file would build it.
 // transform_column's per-call limits (services/column-transform.ts): a call stopped by its time budget or its row
 // cap keeps the rows it wrote and answers next_cursor with a note; the same call with that cursor goes on, so a
 // transform that reads its own target still changes each row once. After a sort, the pass's cursor and every other
@@ -30,7 +31,7 @@ const { transformColumn, TRANSFORM_STOPPED_NOTE } =
   transformMod as typeof import('../../server/src/services/column-transform')
 const { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
-const { checkpointInBackground } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointInBackground, walRoom } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
 const { SESSION_COOKIE_NAME } = cookieMod as typeof import('../../server/src/lib/cookie')
@@ -145,6 +146,11 @@ async function main() {
   })
 
   await check('a finished call answers {updated, created_column}, in that order', async () => {
+    // The sort above left its writes in the WAL: on the Windows runner's disk copying them back took all the call's
+    // 2 s, and it answered that it waited (transform-wal-wait.test.ts). Caught up first, however long, it finishes.
+    const t0 = realNow()
+    assert.equal(await walRoom(Date.now() + 120_000), 'room')
+    console.log(`      the WAL caught up in ${realNow() - t0} ms first`)
     const out = await transformColumn(uid, { sheetId: small, operation: 'upper', sourceColumn: 'Name',
       targetColumn: 'Loud' })
     assert.deepEqual(out, { ok: { updated: 3, created_column: 'Loud' } })

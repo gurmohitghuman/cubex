@@ -46,6 +46,11 @@ const until = async (what: () => boolean, ms = 180_000) => {
 const big = (n: number) => sheet(['Email', 'Big'], Array.from({ length: n }, (_, i) =>
   ({ Email: `u${i}@x.co`, Big: `v${i}:${'x'.repeat(52)}` })))
 const stillMoving = (name: string) => `"${name}" is still moving to the trash, try again in a moment.`
+// How long past its wait the delete may answer. The delete's own commit and the move's checkpoints sync the disk on
+// the server's thread, and the answer goes out between them: with every sync made 300 ms slow, it came 1.2 s past
+// the wait instead of 0.1 s. The Windows runner's disk is that slow at times (8,057 ms in all, once): there it
+// gets more. Answering "moving" before the move ends is checked by the state and the cells still moving.
+const PAST_WAIT_MS = process.platform === 'win32' ? 5000 : 1500
 
 await ok('a 300,000-row delete answers "moving" within its wait; a restore meanwhile is refused; all cells end in',
   async () => {
@@ -58,7 +63,9 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
       assert.equal(out.status, 200, JSON.stringify(out.body))
-      assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + 1500, `answered in ${took} ms`)
+      console.log(`      answered in ${took} ms`)
+      assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
+        `answered in ${took} ms`)
       id = out.body.trash.trash_id
       assert.equal(out.body.trash.state, 'moving')
       assert.equal(out.body.trash.note, 'Its cells are still going to the trash, in the background: the column is '
