@@ -116,7 +116,8 @@ export const tableRoutes = (): RouteDoc[] => [
       view: z.string().optional().describe('A saved view, by name or id: export its rows and visible columns.'),
     }),
     produces: ['csv'], conflict: true,
-    responses: { 200: 'The CSV. An empty sheet gives an empty body.' },
+    responses: { 200: 'The CSV: the rows there when it began (rows added while it downloads are not in it). An '
+      + 'empty sheet gives an empty body.' },
   }),
   op({
     method: 'post', path: '/sheets/{id}/columns', operationId: 'addColumn', tag: 'columns', scope: 'write',

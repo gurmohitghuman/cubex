@@ -82,7 +82,8 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + 'contents passing through your context. Returns a one-time link; download it with the curl command in '
         + 'the result to save it anywhere on your machine, or give the link to the user to open in a browser. '
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
-        + 'download the data, so give it only to the user. Values are escaped against spreadsheet formula injection.',
+        + 'download the data, so give it only to the user. The file holds the rows there when the download begins. '
+        + 'Values are escaped against spreadsheet formula injection.',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).min(1).optional()

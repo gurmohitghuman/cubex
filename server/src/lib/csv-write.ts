@@ -29,19 +29,27 @@ export const csvLine = (columns: string[], data: Record<string, string>): string
 // a filter, a row it leaves out comes as null: SQLite checks it, and a page
 // still reads EXPORT_PAGE_ROWS rows however few pass, so no page holds the
 // server for long.
+// Only the rows there when it begins, up to the last of them: a row added
+// meanwhile goes past it (nextRowIndex, lib/sheet-busy.ts) and isn't read, so
+// a sheet that keeps growing (webhooks, appends) can't keep an export going.
+// A row edited meanwhile is read as it is when reached. A row deleted
+// meanwhile is in the export if it was reached before, and not if after.
 export async function eachPage(
   sheetId: string, userId: string, apply: (rows: Array<string | null>) => boolean | Promise<boolean>,
   filter?: CompiledFilter,
 ): Promise<void> {
   const page = db.prepare(`
     SELECT row_index, ${filter ? `CASE WHEN ${filter.sql} THEN data END` : 'data'} FROM rows
-    WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?
+    WHERE sheet_id = ? AND user_id = ? AND row_index > ? AND row_index <= ? ORDER BY row_index LIMIT ?
   `).raw();
   const params = filter?.params ?? [];
+  const last = (db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
+    .get(sheetId, userId) as number | null) ?? Number.MIN_SAFE_INTEGER;
   for (let after = Number.MIN_SAFE_INTEGER; ;) {
-    const rows = page.all(...params, sheetId, userId, after, EXPORT_PAGE_ROWS) as Array<[number, string | null]>;
+    const rows = page.all(...params, sheetId, userId, after, last, EXPORT_PAGE_ROWS) as Array<[number, string | null]>;
     if (!(await apply(rows.map(r => r[1]))) || rows.length < EXPORT_PAGE_ROWS) return;
     after = rows[rows.length - 1][0];
+    if (after >= last) return;
     await yieldToRequests();
   }
 }
