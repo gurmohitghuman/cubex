@@ -7,7 +7,7 @@
 // goes on filling it. With Settings keeping deleted rows 0 days there is none.
 import { db } from '../lib/db';
 import { TRASH_SLICE_ROWS } from '../lib/constants';
-import { runInCheckpointedSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { removeRows, sealBatch } from '../lib/trash/move';
 import { insertTrashItem, sheetFacts, trashKeeps } from '../lib/trash/store';
 

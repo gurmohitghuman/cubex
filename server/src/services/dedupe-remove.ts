@@ -12,7 +12,7 @@
 import { db } from '../lib/db';
 import { countRows, getSheetColumns, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetGone, stayBusyToFinish, whenSheetFree, withLiveSheetBusy } from '../lib/sheet-busy';
-import { runInSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { autorunAfterRemoval } from '../lib/autorun-mark';
 import {
   dedupeJobs, dropDedupeChunk, dropDedupeJob, nextDedupeChunk, saveDedupePlan, type DedupeJob,
@@ -89,9 +89,10 @@ function deleteChunk(job: DedupeJob, chunk: number, rowIds: Float64Array, item: 
 }
 
 // Deletes the journaled rows chunk by chunk, then drops the journal and moves
-// the fence. Each chunk is followed, a turn later, by a PASSIVE WAL checkpoint
-// of its few hundred pages: left to the auto-checkpoint, a commit now and then
-// copied 8 MB back and held the server up to a second (constants-dedupe.ts).
+// the fence. Each chunk's few hundred pages are copied back from the WAL on the
+// checkpoint worker's thread (lib/bulk-slices.ts): left to the auto-checkpoint,
+// a commit now and then copied 8 MB back and held the server up to a second
+// (constants-dedupe.ts).
 // An error midway moves the fence too (rows are gone) and keeps the sheet busy
 // while the rest is retried in the background (lib/sheet-busy.ts).
 async function carryOut(job: DedupeJob): Promise<number | null> {
@@ -99,14 +100,11 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
     data_version = data_version + 1 WHERE id = ? AND user_id = ?`).run(job.sheet_id, job.user_id);
   // The removed rows' trash batch, the one a restart left filling if any (trash-batch.ts).
   const item = openSlicedBatch(job.sheet_id, job.user_id, 'duplicates');
-  let checkpoint = false;
   try {
-    await runInSlices(() => {
-      if (checkpoint) { db.pragma('wal_checkpoint(PASSIVE)'); checkpoint = false; return true; }
+    await runInCheckpointedSlices(() => {
       const next = nextDedupeChunk(job.sheet_id);
       if (!next) return false;
       db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item)).immediate();
-      checkpoint = true;
       return true;
     });
     let kept: number | null = null;

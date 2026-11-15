@@ -39,6 +39,7 @@ const DEFERRED: Entry[] = [
   { file: 'tests/unit/transform-wal-answer.test.ts', fn: 'main', why: 'a reader holding old frames' },
   { file: 'tests/unit/transform-wal-wait.test.ts', fn: 'main', why: 'a reader holding old frames' },
   { file: 'tests/unit/wal-restart-worker.test.ts', fn: 'main', why: 'a reader holding old frames' },
+  { file: 'tests/unit/bulk-wal-runner.test.ts', fn: '(top level)', count: 2, why: 'a reader holding old frames' },
 ]
 
 interface Spot { file: string; fn: string; at: string }

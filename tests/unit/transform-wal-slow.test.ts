@@ -107,8 +107,7 @@ async function main() {
   await check('checkpoints of over a second: the walk waits for the worker between pages, the loop is never '
     + 'held 200 ms, no checkpoint runs on the API connection, the WAL stays bounded, every row is written once',
   async () => {
-    // The worker started first: its connection's PRAGMA optimize (lib/db.ts) writes a few frames once, which would
-    // otherwise land in the pass's WAL and could take it past its bound by those.
+    // The worker started first: starting it isn't part of the pass.
     await checkpointInBackground()
     probe.reset()
     takeWalCheckpointerStats()

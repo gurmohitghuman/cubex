@@ -9,16 +9,16 @@ export const TRASH_SWEEP_MS = 10 * 60 * 1000;
 // A grid delete larger than the server takes in one call comes in several: the
 // calls name the first one's batch and land in it, while it is this recent.
 export const TRASH_GROUP_MS = 10 * 60 * 1000;
-// Rows moved into a batch, put back, or deleted for good with their sheet, per
-// transaction, each followed by a PASSIVE WAL checkpoint (lib/slices.ts
-// runInCheckpointedSlices): moving a row dirties about one page of the row-id
+// Rows moved into a batch, put back, or deleted with their sheet, per
+// transaction, the WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts runInCheckpointedSlices): moving a row dirties about one page of the row-id
 // index (ids are random) and SQLite zeroes what it frees. Measured at 1M rows:
 // 5,000 rows a slice took 110-190 ms and SQLite's own checkpoints added stalls
 // of a second or more; 250 rows and a checkpoint each, 2-6 ms and 5-13 ms (p99),
 // as removing duplicates found (lib/constants-dedupe.ts).
 export const TRASH_SLICE_ROWS = 250;
 // A column deleted to the trash (lib/trash/column-move.ts): rows per slice of its strip, each slice copying
-// the cells into the trash and removing them in one transaction, with a PASSIVE checkpoint after it. The
+// the cells into the trash and removing them in one transaction, the WAL copied back on the worker. The
 // strip alone takes 5,000 rows (HEAVY_SLICE_ROWS); copying the cells too writes them twice, so a slice of
 // 5,000 rows holding 2 KB cells held the server 310-350 ms (140-150 ms without the copy). 1,000 rows and a
 // checkpoint each keep a slice near a fifth of that.

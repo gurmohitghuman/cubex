@@ -19,7 +19,8 @@
 // holds it. 'reader': a reader still on the old frames kept SQLite from starting over, and the write added a frame,
 // which the next checkpoint copies. 'read-only': the connection can't write (PRAGMA query_only, or a file it can't
 // write); skipped quietly, the checkpoint's numbers as they were. 'done': started over. On a read-only database
-// file the checkpoint itself fails first (and the worker may not start: lib/db.ts's PRAGMA optimize writes).
+// file the checkpoint itself fails first. Its connection skips lib/db.ts's PRAGMA optimize (it plans no query), so
+// opening it writes nothing.
 import { parentPort, workerData } from 'worker_threads';
 import { db } from './db';
 import { FREE, HELD, HOLD_MS, READ_ONLY, TURN, WORKER, walShared } from './wal-shared';

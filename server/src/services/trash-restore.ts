@@ -18,7 +18,7 @@ import {
 } from '../lib/constants';
 import { countRows, touchSheet } from '../lib/sql-helpers';
 import { continueInBackground, nextRowIndex, stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
-import { runInCheckpointedSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { autorunRowsRemoved, autorunSkipRestore } from '../lib/autorun-mark';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
 import {

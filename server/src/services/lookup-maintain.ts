@@ -1,3 +1,4 @@
+// Over 200 lines: the three steps share one key writer; split, they could drift.
 // Keeping a looked-up sheet's keys (lookup_keys, and lookup_text for contains)
 // equal to its rows, in short steps (one transaction of at most
 // LOOKUP_STEP_ROWS rows or LOOKUP_STEP_MS each):
@@ -17,10 +18,11 @@
 // while the sheet sorts, imports or renames a column: whatever moves meanwhile
 // is logged again (the triggers) and read again, and lookups don't match until
 // then (services/lookup-blocked.ts).
-// Over 200 lines: the three steps share one key writer; split, they could drift.
 import { db } from '../lib/db';
 import { LOOKUP_STEP_MS, LOOKUP_STEP_ROWS } from '../lib/constants';
+import { isMainThread } from 'worker_threads';
 import { withoutAutoCheckpoint, yieldToRequests } from '../lib/slices';
+import { checkpointInBackground } from '../lib/wal-checkpointer';
 import { lookupKey, lookupText, lookupValue } from '../lib/lookup/normalize';
 import { lookupSourceState, sheetLookupSources, type LookupSource } from './lookup-source';
 import { addText, removeText } from './lookup-text';
@@ -258,10 +260,13 @@ export async function maintainLookupSheet(
   }
 }
 
-// After a step: the WAL copied back while it is small.
+// After a step: the WAL copied back while it is small, on this connection in the lookup worker's thread. On the
+// API thread (the lookup worker couldn't start, lookup-host.ts), on the WAL checkpoint worker's thread instead
+// (lib/wal-checkpointer.ts), so its disk syncs don't hold the server.
 export async function settleWal(): Promise<void> {
   await yieldToRequests();
-  db.pragma('wal_checkpoint(PASSIVE)');
+  if (isMainThread) await checkpointInBackground();
+  else db.pragma('wal_checkpoint(PASSIVE)');
   await yieldToRequests();
 }
 

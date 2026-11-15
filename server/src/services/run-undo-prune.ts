@@ -1,4 +1,4 @@
-// Undo journals (migration 041) go for good, a slice at a time, never holding
+// Undo journals (migration 041) are deleted, a slice at a time, never holding
 // the server: one kept UNDO_KEEP_DAYS after its run started (once the run has
 // stopped), and an undone one's rows as soon as it is done (its counts stay
 // until it is that old). The trash's sweep calls pruneRunUndos every
@@ -6,7 +6,7 @@
 // a sheet emptied from the trash drops its journals first (dropSheetUndos).
 import { db } from '../lib/db';
 import { UNDO_DROP_SLICE_ROWS, UNDO_KEEP_DAYS } from '../lib/constants';
-import { runInCheckpointedSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 
 // A run that may still write: going, or clearing its ⏳.
 const goes = (table: string, kind: string) => `EXISTS (SELECT 1 FROM ${table} r WHERE run_undos.run_kind = '${kind}'
@@ -52,7 +52,7 @@ async function dropRows(undoId: number): Promise<void> {
   await runInCheckpointedSlices(() => slice.run(undoId, undoId, UNDO_DROP_SLICE_ROWS).changes === UNDO_DROP_SLICE_ROWS);
 }
 
-// A sheet going for good (services/trash-purge.ts, before the sheet itself):
+// A sheet being deleted (services/trash-purge.ts, before the sheet itself):
 // the journals of its runs, then their records.
 export async function dropSheetUndos(sheetId: string): Promise<void> {
   const ids = db.prepare('SELECT id FROM run_undos WHERE sheet_id = ?').pluck().all(sheetId) as number[];

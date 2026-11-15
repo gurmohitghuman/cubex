@@ -1,6 +1,7 @@
 // Auto-dedupe's waiting checks (auto_dedupe_checks), made on the API thread a
 // short transaction at a time (a budget of rows looked at, rows removed and
-// time, then a WAL checkpoint): rows that arrived while the keys were built or
+// time; the WAL copied back on the checkpoint worker's thread, lib/bulk-slices.ts):
+// rows that arrived while the keys were built or
 // had a backlog, a CSV import's rows (auto-dedupe-import.ts), and checks whose
 // losing row a run held (tried again after AUTO_DEDUPE_RETRY_MS). A round every
 // AUTO_DEDUPE_TICK_MS makes them; keys that aren't current are brought up to
@@ -8,6 +9,7 @@
 import { db } from '../lib/db';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import {
   AUTO_DEDUPE_CHECK_MS, AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_LOOK_ROWS,
   AUTO_DEDUPE_RETRY_MS, AUTO_DEDUPE_ROUND_MS, AUTO_DEDUPE_TICK_MS,
@@ -106,31 +108,32 @@ export async function runChecks(
   sheetId: string, userId: string, opts: { ownBusy: boolean; deadline: number },
 ): Promise<ChecksRun> {
   const out: ChecksRun = { removed: 0, trashId: null, left: false };
-  // Open tabs reload once the rows are gone, not after every slice.
-  const done = (r: ChecksRun): ChecksRun => {
-    if (r.removed > 0) db.transaction(() => bumpDataVersion(sheetId, userId)).immediate();
-    return r;
-  };
-  for (;;) {
-    const r = checkSlice(sheetId, userId, opts.ownBusy);
-    out.removed += r.removed;
-    out.trashId = r.trashId ?? out.trashId;
-    if (r.state === 'done') return done(out);
-    if (r.state === 'later' || r.state === 'held') return done({ ...out, left: true, stopped: r.state });
-    if (Date.now() >= opts.deadline) return done({ ...out, left: true, stopped: 'time' });
-    if (r.state === 'keys') {
-      await maintainAutoDedupeInBackground(sheetId, userId, Math.min(AUTO_DEDUPE_ROUND_MS, opts.deadline - Date.now()));
-    } else {
-      await yieldToRequests();
-      db.pragma('wal_checkpoint(PASSIVE)');
-      await yieldToRequests();
+  return asBulkWriter(async w => {
+    // Open tabs reload once the rows are gone, not after every slice.
+    const done = async (r: ChecksRun): Promise<ChecksRun> => {
+      if (r.removed > 0) await w.slice(() => bumpDataVersion(sheetId, userId));
+      return r;
+    };
+    for (;;) {
+      const r = await w.slice(() => checkSlice(sheetId, userId, opts.ownBusy));
+      out.removed += r.removed;
+      out.trashId = r.trashId ?? out.trashId;
+      if (r.state === 'done') return done(out);
+      if (r.state === 'later' || r.state === 'held') return done({ ...out, left: true, stopped: r.state });
+      if (Date.now() >= opts.deadline) return done({ ...out, left: true, stopped: 'time' });
+      if (r.state === 'keys') {
+        await maintainAutoDedupeInBackground(sheetId, userId,
+          Math.min(AUTO_DEDUPE_ROUND_MS, opts.deadline - Date.now()));
+      } else await yieldToRequests();
     }
-  }
+  }, opts.deadline);
 }
 
 // Keeps the lookup worker on one sheet's keys until they are current (one
 // driver per sheet), then makes its waiting checks: a new setting's build.
 const driving = new Set<string>();
+// Tests only: whether a driver is on the sheet.
+export const autoDedupeDriving = (sheetId: string): boolean => driving.has(sheetId);
 export function driveAutoDedupe(sheetId: string, userId: string): void {
   if (driving.has(sheetId)) return;
   driving.add(sheetId);

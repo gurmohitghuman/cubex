@@ -14,7 +14,7 @@
 // prunes the change log and old undo journals (services/run-undo-prune.ts).
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS, TRASH_PURGE_BATCH_ROWS, TRASH_SLICE_ROWS, TRASH_SWEEP_MS } from '../lib/constants';
-import { runInCheckpointedSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { sheetHeld } from '../lib/sheet-busy';
 import { purgeSheetResults } from '../lib/import-undo';
 import { autorunDropPending } from '../lib/autorun-mark';
@@ -88,7 +88,8 @@ async function purgeBatch(itemId: number): Promise<void> {
 }
 
 // Deletes `sql` (a DELETE taking its slice size last) until nothing is left,
-// with a PASSIVE checkpoint after each slice (lib/constants-trash.ts).
+// the WAL copied back on the checkpoint worker's thread (lib/bulk-slices.ts,
+// lib/constants-trash.ts).
 async function deleteInSlices(sql: string, params: unknown[], size: number): Promise<void> {
   const stmt = db.prepare(sql);
   await runInCheckpointedSlices(() => stmt.run(...params, size).changes > 0);

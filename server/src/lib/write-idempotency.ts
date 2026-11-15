@@ -10,7 +10,7 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { runInCheckpointedSlices } from './slices';
+import { runInCheckpointedSlices } from './bulk-slices';
 import {
   IDEMPOTENT_WRITE_KEYS_MAX, IDEMPOTENT_WRITE_PRUNE_APPENDS, IDEMPOTENT_WRITE_PRUNE_ROWS, IDEMPOTENT_WRITE_TTL_MS,
 } from './api-v1-constants';
@@ -97,8 +97,8 @@ export function writeWriteLedger(userId: string, key: string, kind: WriteKind, h
 // The sweep's beat (lib/server-lifecycle.ts): row-write keys over a day old,
 // never inside a write's transaction. A slice at a time, a kind at a time
 // (appends' answers are the big ones, so their slices are smaller), yielding
-// to requests and with a PASSIVE checkpoint after each slice, as the trash
-// purge does (lib/slices.ts): secure_delete zeroes every page a slice frees.
+// to requests, the WAL copied back on the checkpoint worker's thread, as the
+// trash purge does (lib/bulk-slices.ts): secure_delete zeroes every page a slice frees.
 // One sweep at a time. Resolves to how many went.
 let sweeping = false;
 export async function pruneWriteKeys(now = Date.now()): Promise<number> {

@@ -1,6 +1,7 @@
 import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
-import { runInCheckpointedRowSlices, runInSlices, yieldToRequests } from './slices';
+import { runInSlices, yieldToRequests } from './slices';
+import { runInCheckpointedSlices } from './bulk-slices';
 
 // Whole-sheet rewrites (placeholder seeding and clearing, a column's copy or
 // strip) visit rows in storage (rowid) order. Row order and storage order part
@@ -49,8 +50,8 @@ export async function sheetRowIds(
 // for a statement filtering on `rowid IN (SELECT value FROM json_each(?))`, one
 // slice per event-loop turn (lib/slices.ts). `apply` returns false to stop
 // early. `checkpointed`: for slices that write pages all over the database,
-// each commits with SQLite's own WAL checkpoint off and is followed by one in a
-// turn of its own (runInCheckpointedRowSlices). Write the sheet filter as
+// each commits with SQLite's own WAL checkpoint off and the WAL is copied back
+// on the checkpoint worker's thread (lib/bulk-slices.ts). Write the sheet filter as
 // `+sheet_id = ? AND +user_id = ?`: without the `+`, a fresh install (no
 // planner statistics yet) walks the sheet's whole index on every slice (about
 // 0.1 s each at 1M rows) instead of looking rows up by rowid.
@@ -67,6 +68,6 @@ export async function eachRowIdSlice(
     i = end;
     return keepGoing !== false && i < rowIds.length;
   };
-  if (rowIds.length > 0 && opts.checkpointed) await runInCheckpointedRowSlices(step);
+  if (rowIds.length > 0 && opts.checkpointed) await runInCheckpointedSlices(step);
   else await runInSlices(step);
 }

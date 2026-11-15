@@ -28,7 +28,7 @@ const { autoDedupeKey, whoGoes } = keyMod as typeof import('../../server/src/lib
 const { setAutoDedupe, turnOffAutoDedupe, autoDedupeView } =
   settingMod as typeof import('../../server/src/services/auto-dedupe-setting')
 const { maintainAutoDedupeSheet } = indexMod as typeof import('../../server/src/services/auto-dedupe-index')
-const { runChecks } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
+const { autoDedupeDriving, runChecks } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
 const { appendRows, patchRowById } = rowsMod as typeof import('../../server/src/services/rows-write')
 const { restoreRows } = restoreMod as typeof import('../../server/src/services/trash-restore')
 const { autoDedupeChecking } = storeMod as typeof import('../../server/src/lib/auto-dedupe/store')
@@ -62,6 +62,12 @@ async function turnOn(s: string, keep: 'oldest' | 'newest' = 'oldest') {
   const out = setAutoDedupe(uid, s, { column: 'Email', match: 'email', keep })
   assert.ok('ok' in out, JSON.stringify(out))
   assert.equal(await maintainAutoDedupeSheet(s, uid, Date.now() + 10_000), 'ready')
+  // The driver turning it on started makes the sheet's checks once the keys are current: done first, so a case's
+  // own runChecks (it yields before each slice) never races it for a check.
+  for (const end = Date.now() + 10_000; autoDedupeDriving(s) && Date.now() < end;) {
+    await new Promise(r => setTimeout(r, 5))
+  }
+  assert.equal(autoDedupeDriving(s), false, 'the driver turning it on started is done')
 }
 const append = (s: string, rows: Array<Record<string, string>>) => {
   const out = appendRows(s, uid, rows)

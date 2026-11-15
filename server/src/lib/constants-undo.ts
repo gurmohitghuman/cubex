@@ -10,9 +10,10 @@ export const UNDO_SLICE_ROWS = 2_000;
 // (lib/autorun-mark.ts markDerivedInputs); on rows with random ids each queued
 // row writes a page of its own. With R such columns a slice holds this many /
 // (1 + R) journal rows (1,000 at 1, 500 at 3, still 10 on a full sheet of 200
-// columns), commits with SQLite's own checkpoint off and is checkpointed in a
-// turn of its own (lib/slices.ts).
-// Measured at 200,000 rows on random ids. Three formulas: slices up to 45 ms,
+// columns), commits with SQLite's own checkpoint off, and the WAL is copied
+// back on the checkpoint worker's thread (lib/bulk-slices.ts).
+// Measured at 200,000 rows on random ids, the checkpoints then on the API
+// thread after each slice. Three formulas: slices up to 45 ms,
 // checkpoints up to 62 ms, the whole undo 23 to 24 s in the background. In
 // slices of 2,000 rows SQLite's own checkpoint ran inside 93 of 102 commits
 // (slices up to 222 ms, the whole undo 14 to 15 s). One formula: slices up to

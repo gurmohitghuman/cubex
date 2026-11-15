@@ -11,8 +11,9 @@ export const DEDUPE_READ_MS = 20;
 export const DEDUPE_FIRST_PAGE_ROWS = 2_000;
 export const DEDUPE_MIN_PAGE_ROWS = 100;
 export const DEDUPE_MAX_PAGE_ROWS = 10_000;
-// Rows deleted per transaction, one journal chunk each, with a WAL checkpoint
-// after each (services/dedupe-remove.ts). Far fewer than other heavy jobs: a
+// Rows deleted per transaction, one journal chunk each, the WAL copied back on
+// the checkpoint worker's thread (services/dedupe-remove.ts, lib/bulk-slices.ts).
+// Far fewer than other heavy jobs: a
 // delete dirties about one page per row in the row-id index (ids are random)
 // and SQLite zeroes what it frees (secure_delete). Measured at 1M rows: 1,000
 // rows a commit, with the auto-checkpoint, held the server up to 1.2 s; 250
@@ -48,8 +49,8 @@ export const AUTO_DEDUPE_INLINE_MS = 25;
 export const AUTO_DEDUPE_INLINE_ROWS = 10_000;
 // Waiting checks are made on the API thread a transaction at a time: at most
 // AUTO_DEDUPE_LOOK_ROWS rows looked at, AUTO_DEDUPE_CHECK_ROWS rows removed
-// (with a WAL checkpoint after, as when removing duplicates: a delete dirties
-// about a page a row) or AUTO_DEDUPE_CHECK_MS, by a round this often.
+// (the WAL copied back on the checkpoint worker's thread, as when removing duplicates:
+// a delete dirties about a page a row) or AUTO_DEDUPE_CHECK_MS, by a round this often.
 export const AUTO_DEDUPE_CHECK_ROWS = 250;
 export const AUTO_DEDUPE_LOOK_ROWS = 2_000;
 export const AUTO_DEDUPE_CHECK_MS = 25;

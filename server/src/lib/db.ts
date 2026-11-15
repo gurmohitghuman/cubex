@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
+import { isMainThread, workerData } from 'worker_threads';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
-import { DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV } from './constants';
+import { DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV, DB_WAL_SIZE_LIMIT } from './constants';
 import { registerRowFilterFunctions } from './row-filter/sql-functions';
 import { registerRunInputFunctions } from './run-inputs/fingerprint';
 
@@ -68,7 +69,11 @@ db.pragma('busy_timeout = 5000');
 db.pragma('cache_size = -64000');
 // Memory-mapped I/O: let SQLite read pages directly from the OS page cache without
 // copying into the SQLite cache. 256MB is enough for typical Cubex DBs.
-db.pragma('mmap_size = 268435456');
+// Not on Windows: there SQLite asks the file's size each time it maps the file again (when its next read finds the
+// WAL changed by another connection), and that waits while another connection syncs the file to disk. The
+// checkpoint worker's sync (lib/wal-checkpointer.ts) held a read on the server's thread 1.7 s that way on the
+// Windows runner (a 300,000-row column into the trash).
+db.pragma(`mmap_size = ${process.platform === 'win32' ? 0 : 268435456}`);
 // Speeds up large multi-row writes (CSV imports especially). 4MB is a safe default.
 db.pragma('temp_store = MEMORY');
 // Cap the WAL at 64MB. Without this, a long-running reader (e.g. an AI run
@@ -77,18 +82,26 @@ db.pragma('temp_store = MEMORY');
 // wild. journal_size_limit truncates the WAL back down at the next
 // checkpoint after it exceeds the limit; it does NOT cap mid-transaction
 // growth, so a single huge write can still exceed it briefly.
-db.pragma('journal_size_limit = 67108864');
+db.pragma(`journal_size_limit = ${DB_WAL_SIZE_LIMIT}`);
 // Trigger an auto-checkpoint after ~2000 WAL pages (~8MB at 4KB pages),
 // up from the SQLite default of 1000. Slightly less checkpoint chatter
 // during burst writes (CSV import, AI run streaming) at the cost of a
 // marginally larger WAL between checkpoints — well within the size limit.
-db.pragma('wal_autocheckpoint = 2000');
+// Raised on the API connection while a background bulk writer runs (lib/bulk-slices.ts): its checkpoints go to
+// the WAL checkpoint worker's thread.
+db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
 
 // Seed the query planner's stats so the first few queries on a fresh
 // connection don't pick a bad plan. Mask 0x10002 = "analyze any table that
 // might benefit" without the slow full-scan modes. Cheap at boot.
 // Recommended by the SQLite team for long-lived connections.
-db.pragma('optimize = 0x10002');
+// Not on the WAL checkpoint worker's connection (lib/wal-checkpoint-worker.ts): it never plans a query. Opened
+// mid-job, at the first checkpoint asked, its optimize analyzed a 300,000-row sheet's rows for 0.4 to 1.5 s before
+// that checkpoint, and with reads unmapped (as on Windows) it held the write lock a bulk writer's slice waited for
+// on the server's thread (360 ms).
+const checkpointWorker = !isMainThread
+  && (workerData as { walCheckpointer?: boolean } | null)?.walCheckpointer === true;
+if (!checkpointWorker) db.pragma('optimize = 0x10002');
 
 // Run PRAGMA optimize on shutdown so the next boot inherits up-to-date
 // stats reflecting whatever the user did this session. Single best-effort
@@ -96,6 +109,7 @@ db.pragma('optimize = 0x10002');
 // graceful shutdown path (via server-lifecycle) AND beforeExit as a
 // belt-and-suspenders for non-signal exits.
 process.on('beforeExit', () => {
+  if (checkpointWorker) return;
   try { db.pragma('optimize'); } catch { /* shutting down — best effort */ }
 });
 

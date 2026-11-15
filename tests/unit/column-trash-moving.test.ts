@@ -1,3 +1,4 @@
+// Over 200 lines: one big column's way into the trash and back, its cases sharing the holds and the surfaces.
 // A big column's way into the trash and back (migration 054). Its delete waits for the cells to move into the
 // item only COLUMN_DELETE_WAIT_MS (services/column-trash.ts moveWithin), then answers "moving": the column is
 // gone from the sheet, the move goes on with the sheet busy, and the item ends holding every cell once. While it
@@ -6,20 +7,27 @@
 // With Settings at 0 days the delete waits for its strip however long, as before. A restore of over 20,000 cells
 // answers "restoring", and the column shows once they are all back; when its setup can't come back by then,
 // the change log says why. Each slice of the move is held a little (its statement sleeps once it has run), so
-// the move outlasts the wait on any machine.
+// the move outlasts the wait on any machine. The 300,000-row delete prints the event loop's longest stretch while
+// it waited (how far in, the transactions inside it), the checkpoint worker's work and what was slow (stall-watch.ts).
 import assert from 'node:assert/strict'
+import { performance } from 'node:perf_hooks'
 import storeMod from '../../server/src/lib/trash/store'
 import writeMod from '../../server/src/services/setup-version-write'
 import columnsMod from '../../server/src/lib/sheet-columns'
 import sheetsMod from '../../server/src/services/trash-sheets'
 import constMod from '../../server/src/lib/constants'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import { columnTrashKit } from './column-trash-kit'
+import { loopWatch } from './bulk-wal-kit'
+import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { stallWatch } from './stall-watch'
 import { trashSurfaces } from './column-trash-surfaces'
 const { setTrashDays } = storeMod as typeof import('../../server/src/lib/trash/store')
 const { writeLookupSetup } = writeMod as typeof import('../../server/src/services/setup-version-write')
 const { appendColumnsToOrder } = columnsMod as typeof import('../../server/src/lib/sheet-columns')
 const { trashSheet } = sheetsMod as typeof import('../../server/src/services/trash-sheets')
 const { COLUMN_DELETE_WAIT_MS, TRASH_RESTORE_WAIT_ROWS } = constMod as typeof import('../../server/src/lib/constants')
+const { checkpointAsked, takeWalCheckpointerStats } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const k = columnTrashKit('column-trash-moving')
 const { db, uid, tid, ok, done, idle, sheet, order, cells, item, stored, del, restoreOne, history } = k
 console.error = () => {}
@@ -38,6 +46,30 @@ function holdEach(sql: string, ms: number): () => void {
   }
   return () => { (db as any).prepare = prepare }
 }
+// When each statement starting with one of `sqls` first runs from now on (performance.now(), and how long it took),
+// until stop().
+function firstRuns(sqls: string[]): { seen: Map<string, { at: number; ms: number }>; stop: () => void } {
+  const seen = new Map<string, { at: number; ms: number }>()
+  const prepare = db.prepare.bind(db)
+  ;(db as any).prepare = (text: string) => {
+    const stmt = prepare(text) as any
+    const sql = sqls.find(q => text.trimStart().startsWith(q))
+    if (sql) {
+      for (const m of ['run', 'get', 'all']) {
+        const f = stmt[m].bind(stmt)
+        stmt[m] = (...a: unknown[]) => {
+          if (seen.has(sql)) return f(...a)
+          const at = performance.now()
+          try { return f(...a) } finally { seen.set(sql, { at, ms: performance.now() - at }) }
+        }
+      }
+    }
+    return stmt
+  }
+  return { seen, stop: () => { (db as any).prepare = prepare } }
+}
+// The delete's wait ending (moveWithin reads the item's state) and its change log line.
+const WAIT_ENDS = 'SELECT state FROM trash_items WHERE id = ?', LOGGED = 'INSERT INTO sheet_changes'
 const COPY = 'INSERT INTO trash_rows (item_id, seq, row_index, row_id, data)'
 const until = async (what: () => boolean, ms = 180_000) => {
   for (const end = Date.now() + ms; !what() && Date.now() < end;) await new Promise(r => setTimeout(r, 20))
@@ -46,10 +78,11 @@ const until = async (what: () => boolean, ms = 180_000) => {
 const big = (n: number) => sheet(['Email', 'Big'], Array.from({ length: n }, (_, i) =>
   ({ Email: `u${i}@x.co`, Big: `v${i}:${'x'.repeat(52)}` })))
 const stillMoving = (name: string) => `"${name}" is still moving to the trash, try again in a moment.`
-// How long past its wait the delete may answer. The delete's own commit and the move's checkpoints sync the disk on
-// the server's thread, and the answer goes out between them: with every sync made 300 ms slow, it came 1.2 s past
-// the wait instead of 0.1 s. The Windows runner's disk is that slow at times (8,057 ms in all, once): there it
-// gets more. Answering "moving" before the move ends is checked by the state and the cells still moving.
+// How long past its wait the delete may answer. Its own commit can start the WAL over, a disk sync on the server's
+// thread: with every sync made 300 ms slow, it came 0.4 s past the wait instead of 0.1 s (1.2 s while the move's
+// checkpoints synced on that thread too). The Windows runner's disk is slower at times (8,057 ms in all once, the
+// checkpoints still on that thread): there it gets more. Answering "moving" before the move ends is checked by the
+// state and the cells still moving.
 const PAST_WAIT_MS = process.platform === 'win32' ? 5000 : 1500
 
 await ok('a 300,000-row delete answers "moving" within its wait; a restore meanwhile is refused; all cells end in',
@@ -59,11 +92,29 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
     const release = holdEach(COPY, 20)
     let id = 0
     try {
-      const t0 = Date.now()
+      const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+      takeWalCheckpointerStats()
+      const t0 = Date.now(), p0 = performance.now()
+      const watch = loopWatch(probe.records)
+      const marks = firstRuns([WAIT_ENDS, LOGGED])
+      const stall = stallWatch(db, process.env.DB_PATH!)
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
+      const { longest, inside } = watch()
+      const w = takeWalCheckpointerStats()
+      const stalled = stall(p0)
+      marks.stop()
+      const at = (sql: string) => {
+        const m = marks.seen.get(sql)
+        return m ? `${(m.at - p0).toFixed(0)} ms (taking ${m.ms.toFixed(0)} ms)` : 'never'
+      }
+      const first = probe.records()[0]?.at
       assert.equal(out.status, 200, JSON.stringify(out.body))
-      console.log(`      answered in ${took} ms`)
+      console.log(`      answered in ${took} ms; its first transaction ${first ? (first - p0).toFixed(0) : '-'} ms in, `
+        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the loop held at most `
+        + `${longest.ms.toFixed(0)} ms, ${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
+          || 'no transaction'}); worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
+      console.log(`        ${await stalled}`)
       assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
         `answered in ${took} ms`)
       id = out.body.trash.trash_id

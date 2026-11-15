@@ -57,8 +57,8 @@ async function main() {
     const sheet = sheetNow()
     takeWalCheckpointerStats()
     const r = await checkpointInBackground()
-    // At or past what was written: the worker's own start may write too (its connection's PRAGMA optimize).
-    assert.ok(r && r.checkpointed === r.log && r.log >= before.log, JSON.stringify(r))
+    // Exactly what was written: the worker's own start writes nothing (its connection skips PRAGMA optimize).
+    assert.ok(r && r.checkpointed === r.log && r.log === before.log, JSON.stringify(r))
     assert.equal(takeWalCheckpointerStats().restarts, 1)
     assert.deepEqual(walState(), { log: 1, checkpointed: 0 }, 'the WAL holds only the worker\'s own write')
     assert.equal(db.pragma('user_version', { simple: true }), 7)
