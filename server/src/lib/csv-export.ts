@@ -134,7 +134,7 @@ export async function buildSheetCsv(
 // freezes the server. Same columns, escaping, row order and line breaks as
 // buildSheetCsv. Heavy operations (a sort, an import, a column rewrite) wait
 // until it finishes (lib/sheet-busy.ts), so rows can't move under its cursor;
-// rows added meanwhile aren't in it (eachPage, lib/csv-write.ts);
+// rows added past its last row meanwhile aren't in it (eachPage, lib/csv-write.ts);
 // writes wait for the client to drain, and a client that leaves stops it.
 // Sends headers and body itself and returns 'ok'; otherwise sends nothing.
 export async function streamSheetCsv(

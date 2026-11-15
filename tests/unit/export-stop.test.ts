@@ -1,5 +1,5 @@
-// An export holds the rows there when it begins, up to the last of them (lib/csv-write.ts eachPage): rows added
-// while it goes out are not in it, so a sheet that keeps growing can't keep it, and its hold on the sheet, going.
+// An export holds the rows up to the last one the sheet had when it begins (lib/csv-write.ts eachPage): rows added
+// past that while it goes out are not in it, so a sheet that keeps growing can't keep it, or its hold, going.
 // Through /api/v1 and a download link, on a Unix socket (answer-stall-kit.ts): a client that stops reading while
 // rows are appended through the service and through the webhook route gets exactly the rows from the start, and
 // the sheet is free once it ends. One reading about 400 KB/s while rows are appended faster than that (it would

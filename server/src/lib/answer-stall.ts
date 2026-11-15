@@ -7,7 +7,7 @@ import { envInt } from './env-int';
 // must keep moving out to the system, and if none moves for RESPONSE_STALL_TIMEOUT_MS, the answer and its
 // connection are closed. Any byte moving counts, but bytes are seen moving only as the system takes them into its
 // network buffers, which can hold MBs, so a very slow reader can still be cut. Measured on Linux at the default:
-// below about 20 to 40 KB/s over TCP on the same machine (a proxy in front), 2.5 to 5 KB/s on a Unix socket
+// below about 50 KB/s over TCP on the same machine (a proxy in front), 2.5 to 5 KB/s on a Unix socket
 // (docs/configuration.md).
 // Nothing is timed while an answer is silent: a run's progress stream between events, the long-poll before it
 // answers, a handler still working out its answer. Closing an answer fires its 'close', which ends a CSV export

@@ -29,11 +29,12 @@ export const csvLine = (columns: string[], data: Record<string, string>): string
 // a filter, a row it leaves out comes as null: SQLite checks it, and a page
 // still reads EXPORT_PAGE_ROWS rows however few pass, so no page holds the
 // server for long.
-// Only the rows there when it begins, up to the last of them: a row added
-// meanwhile goes past it (nextRowIndex, lib/sheet-busy.ts) and isn't read, so
-// a sheet that keeps growing (webhooks, appends) can't keep an export going.
-// A row edited meanwhile is read as it is when reached. A row deleted
-// meanwhile is in the export if it was reached before, and not if after.
+// Only up to the sheet's last row when it begins: a row added meanwhile goes
+// past it (nextRowIndex, lib/sheet-busy.ts) and isn't read, so a sheet that
+// keeps growing (webhooks, appends) can't keep an export going. Once the
+// sheet's last rows are deleted, though, the next rows added take their places
+// and are read. A row edited meanwhile is read as it is when reached. A row
+// deleted meanwhile is in the export if it was reached before, and not if after.
 export async function eachPage(
   sheetId: string, userId: string, apply: (rows: Array<string | null>) => boolean | Promise<boolean>,
   filter?: CompiledFilter,
