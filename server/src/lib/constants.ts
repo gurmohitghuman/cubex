@@ -32,6 +32,8 @@ export * from './constants-server';
 export * from './constants-wal';
 // The running version and the release check, same split.
 export * from './constants-version';
+// Undoing a run, same split.
+export * from './constants-undo';
 import { envInt } from './env-int';
 
 // Centralized regexes used by multiple routes
@@ -143,26 +145,6 @@ export const SHEET_COPY_ATTEMPTS = 5;
 // takes well under a minute).
 export const RUN_CLEANUP_SWEEP_MS = 60_000;
 export const RUN_CLEANUP_STALE_MINUTES = 5;
-
-// Undoing a run (lib/run-undo/, services/run-undo*.ts, migration 041). A run's
-// undo journal is kept this many days after it starts (a week covers "that run
-// was wrong" found the next working day), then deleted, a slice at a time.
-export const UNDO_KEEP_DAYS = 7;
-// Journal rows put back per write transaction, in rowid order.
-export const UNDO_SLICE_ROWS = 2_000;
-// An undo of up to this many rows answers once it is done; a bigger one
-// answers at once and goes on in the background (its state says how far).
-export const UNDO_WAIT_ROWS = 20_000;
-// Journal rows deleted per transaction once they aren't needed (their own order: cheap).
-export const UNDO_DROP_SLICE_ROWS = 5_000;
-// An undo that fails this many times in a row stops (the run can be undone again).
-export const UNDO_RETRY_MAX = 5;
-// A run that ended before it wrote a row drops its journal (lib/run-undo/unused.ts): it first reads the
-// journal, to be sure it holds nothing but the run's ⏳, this many / (1 + its columns) rows a turn (a turn
-// checks each row's cell of every column). Measured at 200,000 rows: a turn of 20,000 rows took up to 26 ms
-// with 2 columns, 89 ms with 10 and 166 ms with 20; sized so, up to 22 ms whatever the columns, the whole
-// check as long as before (0.2 s with 2 columns, 0.8 s with 10, 1.6 s with 20).
-export const UNDO_EMPTY_CHECK_ROWS = 20_000;
 
 // HTTP API defaults
 export const HTTP_REQUEST_TIMEOUT_MS = 30000;

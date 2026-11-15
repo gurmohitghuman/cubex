@@ -9,9 +9,10 @@
 // on (resumeRunUndos). The app's column menu, POST /api/v1/{ai,http}-runs/:id/undo
 // and MCP undo_run all come here; services/run-undo-view.ts reads what it would do.
 import { db } from '../lib/db';
-import { UNDO_RETRY_MAX, UNDO_SLICE_ROWS, UNDO_WAIT_ROWS } from '../lib/constants';
+import { UNDO_QUEUE_ROWS, UNDO_RETRY_MAX, UNDO_SLICE_ROWS, UNDO_WAIT_ROWS } from '../lib/constants';
 import { continueInBackground, stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
-import { runInSlices } from '../lib/slices';
+import { runInCheckpointedRowSlices, runInSlices } from '../lib/slices';
+import { derivedReaderCount } from '../lib/autorun-mark';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { undoSlice, type UndoJob } from '../lib/run-undo/restore';
 import { bumpDataVersion } from './data-plane-shared';
@@ -95,8 +96,21 @@ async function carryOn(job: UndoJob, run: RunInfo): Promise<void> {
   }
 }
 
+// A slice also queues each row it puts back once for every clean, formula and
+// lookup column reading a column it restores (lib/autorun-mark.ts), and on rows
+// with random ids that queuing is most of its work. So with R such columns
+// (counted once, up front: a slice queues only the columns it changed, so R is
+// the most) a slice holds UNDO_QUEUE_ROWS / (1 + R) journal rows (at least
+// one), commits with SQLite's own checkpoint off and is checkpointed in a turn
+// of its own (lib/slices.ts; the numbers are in lib/constants-undo.ts). With
+// none, a slice is UNDO_SLICE_ROWS rows and runs no checkpoint, as before.
 async function goOn(job: UndoJob, run: RunInfo): Promise<void> {
-  await runInSlices(() => undoSlice(job, UNDO_SLICE_ROWS));
+  const readers = derivedReaderCount(job.sheetId, job.userId, job.columns.filter((c): c is string => c !== null));
+  if (readers === 0) await runInSlices(() => undoSlice(job, UNDO_SLICE_ROWS));
+  else {
+    const rows = Math.max(1, Math.floor(UNDO_QUEUE_ROWS / (1 + readers)));
+    await runInCheckpointedRowSlices(() => undoSlice(job, rows));
+  }
   db.transaction(() => {
     const n = db.prepare(`UPDATE run_undos SET state = 'undone', undone_at = datetime('now')
       WHERE id = ? AND state = 'undoing' RETURNING restored, skipped, gone`).get(job.id) as
