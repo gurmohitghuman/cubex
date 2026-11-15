@@ -2,7 +2,8 @@
 // The deadline on receiving each request (lib/request-deadline.ts), through index.ts's middleware and the real
 // routes on a real socket, with the deadline at 1 s and uploads at 50 KB/s. A body sent slowly to sign-in, which
 // needs no account, or to a signed-in JSON route with a large declared size gets 408 and the server hangs up at the
-// deadline; a route that answered before reading the body hangs up then too. A CSV upload, through an upload link
+// deadline; a route that answered before reading the body hangs up then too; a client still sending when its 408
+// comes reads it and isn't reset, and is hung up once it stops. A CSV upload, through an upload link
 // and in the app, gets longer by its size: a 100 KB file sent over 1.5 s is imported, and one sent slower is cut
 // off at its own deadline, leaving nothing behind. An answer that takes longer than the deadline, once the request
 // is all in, isn't cut off. A request pipelined behind another's answer, its body never sent, is hung up at its
@@ -72,6 +73,9 @@ const slowAnswer = (_req: unknown, res: import('express').Response) => {
   }, 100)
 }
 app.post('/api/slow-answer', slowAnswer)
+// Records each request that got to it, its body all read.
+const reached: unknown[] = []
+app.post('/api/late', (req, res) => { reached.push(req.body); res.json({ ok: true }) })
 app.post('/api/files/slow-answer', slowAnswer)
 app.use(['/api', '/mcp'], (_req, res) => { res.status(404).json({ error: 'Not found' }) })
 const server = app.listen(0, '127.0.0.1')
@@ -81,16 +85,17 @@ const port = (server.address() as AddressInfo).port
 const cookie = `cubex_session=${signToken({ userId: uid, sessionEpoch: 0 })}`
 
 // A request on a raw socket, its body sent `chunk` bytes every `everyMs`. Unless `close`, it asks to keep the
-// connection open, so it ends only when the server hangs up. status: the answer's (0 if none); ms: from the
-// headers to the hang-up (the test gives up at 8 s).
-type Sent = { status: number; ms: number; sent: number; body: string }
+// connection open, so it ends only when the server hangs up. With `lingerMs`, it goes on sending that long after
+// the answer comes, server hung up or not, then ends its side. status: the answer's (0 if none); ms: from the
+// headers to the hang-up (the test gives up at 8 s); reset: the server reset the connection.
+type Sent = { status: number; ms: number; sent: number; body: string; reset: boolean }
 function send(method: string, path: string, body: Buffer, o: { chunk: number; everyMs: number; close?: boolean;
-  headers?: Record<string, string> }): Promise<Sent> {
+  headers?: Record<string, string>; lingerMs?: number }): Promise<Sent> {
   return new Promise(resolve => {
-    const sock = net.connect(port, '127.0.0.1')
+    const sock = net.connect({ port, host: '127.0.0.1', allowHalfOpen: o.lingerMs !== undefined })
     const head = [`${method} ${path} HTTP/1.1`, 'Host: 127.0.0.1', `Content-Length: ${body.length}`,
       ...(o.close ? ['Connection: close'] : []), ...Object.entries(o.headers ?? {}).map(([k, v]) => `${k}: ${v}`)]
-    let text = '', sent = 0
+    let text = '', sent = 0, reset = false
     sock.write(head.join('\r\n') + '\r\n\r\n')
     const started = Date.now()
     const drip = setInterval(() => {
@@ -99,13 +104,19 @@ function send(method: string, path: string, body: Buffer, o: { chunk: number; ev
       sent = Math.min(body.length, sent + o.chunk)
     }, o.everyMs)
     const giveUp = setTimeout(() => sock.destroy(), 8000)
-    sock.on('data', d => { text += d.toString() })
-    sock.on('error', () => {})
+    let answered = false
+    sock.on('data', d => {
+      text += d.toString()
+      if (o.lingerMs === undefined || answered || !text.includes('\r\n\r\n')) return
+      answered = true
+      setTimeout(() => { clearInterval(drip); sock.end() }, o.lingerMs)
+    })
+    sock.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'ECONNRESET' || e.code === 'EPIPE') reset = true })
     sock.on('close', () => {
       clearInterval(drip)
       clearTimeout(giveUp)
       const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(text)?.[1] ?? 0)
-      resolve({ status, ms: Date.now() - started, sent, body: text.slice(text.indexOf('\r\n\r\n') + 4) })
+      resolve({ status, ms: Date.now() - started, sent, body: text.slice(text.indexOf('\r\n\r\n') + 4), reset })
     })
   })
 }
@@ -129,6 +140,24 @@ const uploadMs = uploadDeadlineMs(file.length)
   const early = await send('PUT', '/api/files/upload/not-a-link', file, { chunk: 1024, everyMs: 100 })
   check('a route that answered before reading the body: the server hangs up at the deadline', early.status === 404
     && near(early, 1000), { status: early.status, ms: early.ms })
+  // A client on Windows drops what it hadn't read yet when the connection is reset, the 408 with it.
+  const going = await send('POST', '/api/auth/login', Buffer.from(JSON.stringify({ password: 'p'.repeat(60) })),
+    { chunk: 1, everyMs: 100, headers: json, lingerMs: 300 })
+  check('a client still sending when its 408 comes reads it, is not reset, and the connection closes when it stops',
+    going.status === 408 && !going.reset && near(going, 1300), going)
+  // What it sends after its 408 never reaches the route, even the rest of its body; one that never stops is hung up
+  // 5 s after its 408.
+  const [late, endless] = await Promise.all([
+    send('POST', '/api/late', Buffer.from(`{"name":"late"${' '.repeat(1000)}}`), { chunk: 100, everyMs: 100,
+      headers: { ...json, Cookie: cookie }, lingerMs: 500 }),
+    send('POST', '/api/auth/login', Buffer.from(JSON.stringify({ password: 'p'.repeat(60) })),
+      { chunk: 1, everyMs: 100, headers: json, lingerMs: 7000 }),
+  ])
+  await new Promise(r => setTimeout(r, 200))
+  check('a body finished after its 408 never reaches its route', late.status === 408 && late.sent > 1000
+    && reached.length === 0, { ...late, reached })
+  check('a client that never stops sending after its 408 is hung up 5 s later', endless.status === 408
+    && near(endless, 6000), endless)
 }
 
 // Uploads get longer, by their size.
