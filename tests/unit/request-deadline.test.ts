@@ -1,10 +1,12 @@
+// Over 200 lines: one server through the real chain, each part another way a request arrives.
 // The deadline on receiving each request (lib/request-deadline.ts), through index.ts's middleware and the real
 // routes on a real socket, with the deadline at 1 s and uploads at 50 KB/s. A body sent slowly to a route that
 // needs no account (sign-in, and a JSON route with a large declared size) gets 408 and the server hangs up at the
 // deadline; a route that answered before reading the body hangs up then too. A CSV upload, through an upload link
 // and in the app, gets longer by its size: a 100 KB file sent over 1.5 s is imported, and one sent slower is cut
 // off at its own deadline, leaving nothing behind. An answer that takes longer than the deadline, once the request
-// is all in, isn't cut off. Node's requestTimeout is the backstop past the longest deadline.
+// is all in, isn't cut off. A request pipelined behind another's answer, its body never sent, is hung up at its
+// deadline without a 408 landing inside that answer. Node's requestTimeout is the backstop past the longest deadline.
 import type { AddressInfo } from 'node:net'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -173,6 +175,26 @@ const uploadMs = uploadDeadlineMs(file.length)
     body: JSON.stringify({ password: 'p' }) })
   check('the server still answers at once after the cut-offs', after.status > 0 && after.status !== 408,
     after.status)
+}
+
+// A request pipelined behind another's answer, its body never sent: at its deadline the server hangs up (the
+// answer before it is cut short), and its 408 isn't written into that answer, whose socket it doesn't own yet.
+{
+  const piped = await new Promise<{ text: string; ms: number }>(resolve => {
+    const sock = net.connect(port, '127.0.0.1')
+    let text = ''
+    const started = Date.now()
+    sock.write('POST /api/slow-answer HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n'
+      + 'Content-Length: 7\r\n\r\n{"a":1}POST /api/auth/login HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+      + 'Content-Type: application/json\r\nContent-Length: 50\r\n\r\n')
+    const giveUp = setTimeout(() => sock.destroy(), 8000)
+    sock.on('data', d => { text += d.toString() })
+    sock.on('error', () => {})
+    sock.on('close', () => { clearTimeout(giveUp); resolve({ text, ms: Date.now() - started }) })
+  })
+  check('pipelined behind a slow answer, its body never sent: hung up at its deadline, no 408 inside the answer',
+    piped.text.startsWith('HTTP/1.1 200') && !piped.text.includes('HTTP/1.1 408') && piped.ms >= 900
+    && piped.ms < 1400, { ms: piped.ms, text: piped.text.slice(-60) })
 }
 
 // Node's own deadline, from a request's first byte, is past the longest one here.
