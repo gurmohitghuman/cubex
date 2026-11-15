@@ -229,14 +229,17 @@ async function main() {
   check('a replace without the column forgets its record and auto-run',
     !formulaColumnFor(sheetId, uid, 'Domain') && !entryFor(sheetId, uid, 'Domain'))
 
-  // Big JSON cells: a slice reads only what it can work out, so the fill stays quick.
+  // Big JSON cells: a slice reads only what it can work out, so the fill stays quick: within 10 s on Linux (under
+  // 2 s there). The fill rewrites 600 rows of 60 KB, about 36 MB, so a slow disk slows it: with every disk sync made
+  // 300 ms slow, 5 s on Linux; on the Windows runner usually 2 s, but 12 and 18 s at its slowest. Windows gets 30 s.
+  const BIG_FILL_MS = process.platform === 'win32' ? 30_000 : 10_000
   const big = JSON.stringify({ emails: [{ type: 'work', value: 'big@x.com' }], pad: 'p'.repeat(60_000) })
   db.transaction(() => { for (let k = 0; k < 600; k++) addRow({ Response: big, Name: `b${k}` }) }).immediate()
   const tBig = Date.now()
   await create('Big work email', '{{Response}}?.emails?.[0]?.value')
   check(`600 rows of 60 KB JSON filled in ${Date.now() - tBig} ms`, formulaColumnFor(sheetId, uid, 'Big work email')
     ?.fill_status === 'done' && cells('Big work email').filter(v => v === 'big@x.com').length === 600
-    && Date.now() - tBig < 10_000)
+    && Date.now() - tBig < BIG_FILL_MS)
 
   // Many rows: time-bounded slices still reach every row.
   const many = db.transaction(() => { for (let k = 0; k < 12_000; k++) addRow({ Name: `n${k}`, Score: String(k) }) })

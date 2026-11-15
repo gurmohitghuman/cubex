@@ -67,28 +67,37 @@ const stoppedOn = async (id: string) => {
   try { return await transformColumn(uid, again(id)) } finally { fault.disarm() }
 }
 
-// Another connection, in a thread of its own: once told (flag 0), it takes the write lock, says so (flag 1) and
-// holds it holdMs, past the app connection's busy_timeout (5,000 ms, lib/db.ts), then lets it go.
-function lockHolder(holdMs = 6500) {
+// Another connection, in a thread of its own: it opens the database and says it is ready, then once told
+// (flag 0) it takes the write lock, says so (flag 1) and holds it holdMs, past the app connection's busy_timeout
+// (5,000 ms, lib/db.ts), then lets it go. Ready before the call starts, so telling it waits only for the lock.
+// That wait used to cover the thread starting and loading SQLite too, the test's own wait counted as the event
+// loop held: 31 to 38 ms of the 36 to 41 ms measured on Linux; the Windows runner once measured 489 ms in all.
+async function lockHolder(holdMs = 6500) {
   const flags = new Int32Array(new SharedArrayBuffer(8))
-  const worker = new Worker(`const { workerData } = require('node:worker_threads');
+  const worker = new Worker(`const { workerData, parentPort } = require('node:worker_threads');
     const Database = require(workerData.sqlite);
     const f = new Int32Array(workerData.flags.buffer);
-    Atomics.wait(f, 0, 0);
     const db = new Database(workerData.dbPath);
+    parentPort.postMessage('ready');
+    Atomics.wait(f, 0, 0);
     db.exec('BEGIN IMMEDIATE');
     Atomics.store(f, 1, 1); Atomics.notify(f, 1);
     Atomics.wait(f, 0, 1, workerData.holdMs);
     db.exec('ROLLBACK'); db.close();`, { eval: true, workerData: { flags, holdMs,
     sqlite: requireHere.resolve('better-sqlite3'), dbPath: process.env.DB_PATH } })
   const exited = new Promise((resolve, reject) => { worker.on('exit', resolve); worker.on('error', reject) })
-  return { exited, lockNow() {
+  await new Promise((resolve, reject) => { worker.once('message', resolve); worker.once('error', reject) })
+  // How long telling it held this thread, printed: the test's own wait, inside the event loop's longest stretch.
+  let lockMs = 0
+  return { exited, lockMs: () => lockMs, lockNow() {
+    const t0 = performance.now()
     Atomics.store(flags, 0, 1); Atomics.notify(flags, 0)
     assert.equal(Atomics.wait(flags, 1, 0, 3000), 'ok', 'the other connection took the lock')
+    lockMs = Math.round(performance.now() - t0)
   } }
 }
 // The lock is taken where the call first reads the WAL's size (or checkpoints) once its first page wrote a row.
-async function lockedAfterFirstPage(holder: ReturnType<typeof lockHolder>, id: string) {
+async function lockedAfterFirstPage(holder: Awaited<ReturnType<typeof lockHolder>>, id: string) {
   const [pragma, prepare] = [db.pragma, db.prepare]
   let armed = true, wrote = false
   db.prepare = ((sql: string) => {
@@ -107,7 +116,7 @@ async function lockedAfterFirstPage(holder: ReturnType<typeof lockHolder>, id: s
 async function main() {
   await check('a second page that waits out busy_timeout on another connection\'s lock: next_cursor and '
     + 'rows_done, in words naming SQLITE_BUSY; data_version moved; going on changes every row once', async () => {
-    const holder = lockHolder()
+    const holder = await lockHolder()
     const before = dataVersion(busy)
     const t0 = Date.now()
     const out = await lockedAfterFirstPage(holder, busy)
@@ -147,7 +156,7 @@ async function main() {
   await check('the data_version write meeting a lock held for seconds never holds the event loop: it is tried '
     + 'again, and moves once the lock is let go', async () => {
     // The call's one page commits, then the other connection takes the lock and holds it 3 s.
-    const holder = lockHolder(3000)
+    const holder = await lockHolder(3000)
     const before = dataVersion(late)
     let lastTick = Date.now(), loopMax = 0
     const sampler = setInterval(() => {
@@ -162,7 +171,8 @@ async function main() {
       await holder.exited
       assert.ok(await movedFrom(late, before), 'data_version moved once the lock was let go')
     } finally { clearInterval(sampler) }
-    console.log(`      the event loop was held at most ${loopMax} ms`)
+    console.log(`      the event loop was held at most ${loopMax} ms (of it, ${holder.lockMs()} ms the test's own wait `
+      + 'for the other connection to take the lock)')
     assert.ok(loopMax < 200, `the event loop was held ${loopMax} ms`)
   })
 }
