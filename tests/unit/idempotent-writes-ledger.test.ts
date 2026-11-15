@@ -4,7 +4,7 @@
 // over a day old is free at once for a run start and for transfer_rows, which
 // record it, so their retry replays; the sweep deletes expired row-write keys
 // (never a run's) a slice at a time, appends in smaller slices, yielding
-// between slices and checkpointing the WAL; the refusal's words live in one place.
+// between slices, its WAL copied back on the checkpoint worker; the refusal's words live in one place.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -128,7 +128,8 @@ await ok('the sweep deletes row-write keys over a day old, never a run\'s', asyn
   assert.ok(has(u, 'bt-new'))
 })
 
-await ok('the sweep goes a slice at a time, appends in small slices, yielding and checkpointing between', async () => {
+await ok('the sweep goes a slice at a time, appends in small slices, yielding between, its WAL copied back on '
+  + 'the worker', async () => {
   await pruneWriteKeys() // nothing else expired is left
   const u = user(), n = IDEMPOTENT_WRITE_PRUNE_APPENDS * 2 + 10
   db.transaction(() => {
@@ -140,15 +141,23 @@ await ok('the sweep goes a slice at a time, appends in small slices, yielding an
     calls.push(source)
     return (pragma as (s: string, o?: unknown) => unknown).call(db, source, options)
   }) as typeof db.pragma
+  const seen: number[] = []
   try {
     const sweep = pruneWriteKeys()
-    assert.equal(writeKeys(u), n - IDEMPOTENT_WRITE_PRUNE_APPENDS, 'one slice, then it yields to requests')
+    // Requests run between its slices: seen from turns of the event loop while it goes on.
+    for (let left = n; left > 0;) {
+      await new Promise(r => setImmediate(r))
+      left = writeKeys(u)
+      seen.push(left)
+    }
     assert.equal(await sweep, n)
   } finally {
     db.pragma = pragma
   }
   assert.equal(writeKeys(u), 0)
-  assert.ok(calls.filter(c => c === 'wal_checkpoint(PASSIVE)').length >= 3, JSON.stringify(calls))
+  assert.ok(seen.includes(n - IDEMPOTENT_WRITE_PRUNE_APPENDS), `slices of ${IDEMPOTENT_WRITE_PRUNE_APPENDS}: ${seen}`)
+  // Its checkpoints run on the checkpoint worker (lib/bulk-slices.ts); NOOP only reads the WAL's size.
+  assert.deepEqual(calls.filter(c => /wal_checkpoint/i.test(c) && !/noop/i.test(c)), [], JSON.stringify(calls))
 })
 
 await ok('the refusal\'s words are written once (data-plane-shared.ts), so no surface can drift', () => {

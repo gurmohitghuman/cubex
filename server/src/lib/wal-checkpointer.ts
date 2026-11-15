@@ -22,7 +22,7 @@
 // The next write on this thread then starts the WAL over, and syncs its header
 // here: that much of the wait stays on the event loop while degraded.
 // A worker that had started and stops is started once more. Used by
-// transform_column.
+// transform_column and the background bulk writers (lib/bulk-slices.ts).
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
@@ -139,8 +139,10 @@ export function checkpointInBackground(): Promise<Checkpointed | null> {
   return running;
 }
 
-// `p`, or 'late' once `until` (ms since the epoch) comes first.
+// `p`, or 'late' once `until` (ms since the epoch) comes first. No deadline (Infinity, a background job): `p`
+// (a timer that long would fire at once).
 export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'> {
+  if (!Number.isFinite(until)) return p;
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<'late'>(r => { timer = setTimeout(() => r('late'), Math.max(0, until - Date.now())); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
@@ -154,16 +156,20 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
 // wouldn't free them. A checkpoint already running when the size was read may
 // have copied before it, its answer still on its way to this thread (a page
 // kept the thread busy): it never saw the frames written since, so its "nothing
-// more" says nothing about them, and another checkpoint is asked for.
+// more" says nothing about them, and another checkpoint is asked for. `bounds`: the transform walk's by default;
+// background bulk writers pass theirs (lib/bulk-slices.ts).
 export type WalRoom = 'room' | 'late' | 'held';
-export async function walRoom(until: number): Promise<WalRoom> {
+export interface WalBounds { ask: number; pause: number }
+export async function walRoom(
+  until: number, bounds: WalBounds = { ask: WAL_CHECKPOINT_FRAMES, pause: WAL_PAUSE_FRAMES },
+): Promise<WalRoom> {
   const startedAt = Date.now();
   let paused = false;
   try {
     for (let s = walState(); s;) {
       const earlier = running;
-      if (s.log - s.checkpointed >= WAL_CHECKPOINT_FRAMES) void checkpointInBackground();
-      if (s.log < WAL_PAUSE_FRAMES || s.checkpointed >= s.log) return 'room';
+      if (s.log - s.checkpointed >= bounds.ask) void checkpointInBackground();
+      if (s.log < bounds.pause || s.checkpointed >= s.log) return 'room';
       if (Date.now() >= until) return 'late';
       paused = true;
       const asked = checkpointInBackground();

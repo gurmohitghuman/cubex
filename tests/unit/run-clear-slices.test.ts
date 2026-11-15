@@ -2,8 +2,9 @@
 // for each clean, formula and lookup column reading the run's columns, in the
 // slice's own transaction. With none, its slices are HEAVY_SLICE_ROWS rows, as
 // before, and run no checkpoint. With R of them, a slice holds
-// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at least 1), commits with
-// SQLite's own checkpoint off and is followed by a checkpoint of its own. A
+// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at least 1) and commits with
+// SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
+// thread (lib/bulk-slices.ts): no checkpoint runs on this connection. A
 // column reading other columns, one with auto-run off and an auto-run that
 // costs don't count. A run's clear that puts K columns back from its undo
 // journal (lib/run-undo/clear-back.ts) holds at most
@@ -72,7 +73,8 @@ async function clear(sid: string, opts: { columns?: string[]; run?: { kind: 'htt
   const before = auto()
   let rowsLeft = left(sid)
   db.pragma = ((source: string, options?: object) => {
-    if (source.startsWith('wal_checkpoint')) events.push(source)
+    // NOOP only reads the WAL's size (lib/wal-checkpointer.ts).
+    if (source.startsWith('wal_checkpoint') && !/noop/i.test(source)) events.push(source)
     return pragma.call(db, source, options)
   }) as typeof db.pragma
   try {
@@ -93,10 +95,10 @@ async function clear(sid: string, opts: { columns?: string[]; run?: { kind: 'htt
 const split = (n: number, size: number) =>
   Array.from({ length: Math.ceil(n / size) }, (_, i) => Math.min(size, n - i * size))
 // What a clear of n rows does with R reading columns: slices of the queue
-// budget's share, each committed with SQLite's own checkpoint off, then checkpointed.
+// budget's share, each committed with SQLite's own checkpoint off, and no checkpoint on this connection.
 const checkpointed = (n: number, readers: number) => {
   const sizes = split(n, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers)))
-  return { sizes, events: sizes.flatMap(() => ['slice, auto-checkpoint off', 'wal_checkpoint(PASSIVE)']) }
+  return { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }
 }
 const expectClear = async (sid: string, want: { sizes: number[]; events: string[] },
   opts: Parameters<typeof clear>[1] = {}) => {
@@ -173,7 +175,7 @@ await ok('seven columns put back, one formula reading one: the journal\'s share 
   assert.ok(backRows(7) < PLACEHOLDER_CLEAR_QUEUE_ROWS / 2)
   const sizes = split(N, backRows(7))
   await expectClear(r.sid,
-    { sizes, events: sizes.flatMap(() => ['slice, auto-checkpoint off', 'wal_checkpoint(PASSIVE)']) }, r)
+    { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }, r)
   assert.deepEqual(COLUMNS.map(c => cells(r.sid, c)[N - 1]), COLUMNS.map(c => `${c} ${N - 1}`))
 })
 

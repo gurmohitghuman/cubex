@@ -51,9 +51,9 @@ await ok('a CSV replace waits for another connection holding the write lock; eve
   const csv = await scanCsvText('Email,Name,Email clean\n'
     + 'a@x.com,Ann,a@x.com\nb@x.com,Bob,b@x.com\nc@x.com,Cy,c@x.com\n')
   const before = rival.writes()
-  // Right after the first slice picked its rows, before its transaction starts.
-  const pick = /^SELECT rowid FROM rows WHERE sheet_id = \? AND user_id = \? AND row_index >= \?/
-  const shot = rival.arm({ inTx: false, sql: pick, hold: HOLD_MS })
+  // Right before the first trash slice's transaction (its rows are picked inside it, lib/bulk-slices.ts): the
+  // runner's first read of the WAL's size.
+  const shot = rival.arm({ inTx: false, sql: /^PRAGMA wal_checkpoint\(NOOP\)$/, hold: HOLD_MS })
   const out = await attempt(() => importCsv(S, uid, csv, true))
   const waited = Date.now() - shot.at
   await idle(S)

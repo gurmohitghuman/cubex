@@ -20,7 +20,7 @@ import { db } from '../lib/db';
 import { MAX_COLUMNS_PER_SHEET, TRASH_RESTORE_WAIT_ROWS, TRASH_SLICE_ROWS } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { continueInBackground, stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';
-import { runInCheckpointedRowSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { derivedReaderCount } from '../lib/autorun-mark';
 import { getTrashItem, type TrashItem } from '../lib/trash/store';
 import { columnSetupOf, freeColumnName, restoreCellsSlice } from '../lib/trash/column-restore';
@@ -118,7 +118,7 @@ async function carryOn(itemId: number, sheetId: string, userId: string, later: F
   try {
     // Each cell written queues the row for every clean, formula or lookup column reading it: fewer a slice.
     const size = Math.max(1, Math.floor(TRASH_SLICE_ROWS / (1 + derivedReaderCount(sheetId, userId, [name]))));
-    await runInCheckpointedRowSlices(() => restoreCellsSlice(itemId, sheetId, userId, name, size) > 0);
+    await runInCheckpointedSlices(() => restoreCellsSlice(itemId, sheetId, userId, name, size) > 0);
     const done = db.transaction(() => finishColumnRestore(itemId, sheetId, userId, name)).immediate();
     if (done.fill) {
       if (later) later.push(done.fill);

@@ -1,19 +1,16 @@
 // Undoing a run (services/run-undo.ts) puts each journal row's cells back and queues the row once for every
 // clean, formula and lookup column reading a restored column, in the slice's own transaction. With none, a slice
 // is UNDO_SLICE_ROWS journal rows, as before, and runs no checkpoint. With R of them, a slice holds
-// UNDO_QUEUE_ROWS / (1 + R) rows (at least 1), commits with SQLite's own checkpoint off and is followed by a
-// checkpoint of its own. A column reading other columns, one with auto-run off, an auto-run that costs and a
-// deleted column's slot don't count. The real undo runs: each slice's size is read off the journal's cursor
-// after it, and the checkpoints through the database's pragma calls. At 200,000 rows with random ids (as older
-// sheets have) and 3 formulas reading the column, no slice holds the event loop 200 ms, with disk syncs off: the
-// checkpoints sync on this thread in turns of their own (lib/slices.ts), and the slice after one starts the WAL
-// over and syncs its new header in its commit. A slow disk makes a sync take 300 ms at times (as on the Windows
-// runner), which says nothing of the slice's own work, the part its size sets.
+// UNDO_QUEUE_ROWS / (1 + R) rows (at least 1) and commits with SQLite's own checkpoint off, its WAL copied back
+// on the checkpoint worker's thread (lib/bulk-slices.ts): no checkpoint runs on this connection. A column reading
+// other columns, one with auto-run off, an auto-run that costs and a deleted column's slot don't count. The real
+// undo runs: each slice's size is read off the journal's cursor after it, and the checkpoints through the
+// database's pragma calls. At 200,000 rows with random ids (as older sheets have) and 3 formulas reading the
+// column, with disk syncs as the server has them and each checkpoint on the worker held 300 ms (a slow disk;
+// bulk-wal-kit.ts): the event loop is never held 200 ms, and no checkpoint's sync runs on this thread.
 import assert from 'node:assert/strict'
-import { monitorEventLoopDelay, performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
-import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet, cells, run, journal } = undoKit('run-undo-slices')
 
 const { undoRun } = await import('../../server/src/services/run-undo')
@@ -22,6 +19,8 @@ const { startFormulaColumn, setFormulaColumnAutorun } = await import('../../serv
 const { formulaColumnFor } = await import('../../server/src/lib/formula-columns')
 const { startCleanColumn } = await import('../../server/src/services/clean-column')
 const { deleteUndoColumn } = await import('../../server/src/lib/run-undo/columns')
+const { autoCheckpointHolders } = await import('../../server/src/lib/bulk-slices')
+const { bulkWalKit } = await import('./bulk-wal-kit')
 console.error = () => {}
 
 // n rows whose Status and Answer hold earlier values, and an HTTP run that wrote new ones over `columns`.
@@ -43,17 +42,16 @@ const clean = async (sid: string, source: string, column: string) => {
 }
 
 // The undo, watched: the journal rows each slice put back and, in order, each slice (with SQLite's own
-// checkpoint setting as its commit saw it) and each WAL checkpoint it ran. With a probe on, also each slice's
-// record (its time, whether it started the WAL over) and each checkpoint's time.
+// checkpoint setting as its commit saw it) and each WAL checkpoint it ran on this connection.
 const { pragma } = db
 const auto = () => pragma.call(db, 'wal_autocheckpoint', { simple: true }) as number
 const putBack = db.prepare(`SELECT COUNT(*) FROM run_undo_rows r JOIN run_undos u ON u.id = r.undo_id
   WHERE u.id = ? AND r.row_id <= u.cursor`).pluck()
 // Checkpoints are counted while the journal is undoing: dropping its rows afterwards checkpoints too.
 const undoing = db.prepare('SELECT state = \'undoing\' FROM run_undos WHERE id = ?').pluck()
-async function undo(sid: string, runId: string, probe?: ReturnType<typeof sqliteWriteProbe>) {
+async function undo(sid: string, runId: string) {
   const undoId = journal('http', runId)!.id
-  const sizes: number[] = [], events: string[] = [], slices: TransactionRecord[] = [], checkpointMs: number[] = []
+  const sizes: number[] = [], events: string[] = []
   const autoBefore = auto()
   let back = 0
   const wrapped = db.transaction, pragmaNow = db.pragma
@@ -62,24 +60,25 @@ async function undo(sid: string, runId: string, probe?: ReturnType<typeof sqlite
     const w = ((...a: unknown[]) => t(...a)) as unknown as Record<string, unknown>
     for (const k of ['default', 'deferred', 'exclusive'] as const) w[k] = t[k]
     w.immediate = (...a: unknown[]) => {
-      const seen = probe?.records().length ?? 0
       const out = t.immediate(...a)
       const now = putBack.get(undoId) as number
-      if (now !== back) {
+      // Only the undo's own slices: its journal's rows are dropped afterwards, slice by slice too (fewer then).
+      if (now > back) {
         sizes.push(now - back)
         back = now
         events.push(`slice, auto-checkpoint ${auto() === 0 ? 'off' : 'on'}`)
-        if (probe) slices.push(...probe.records().slice(seen))
       }
       return out
     }
     return w
   }) as unknown as typeof db.transaction
   db.pragma = ((source: string, options?: object) => {
-    if (!source.startsWith('wal_checkpoint') || !undoing.get(undoId)) return pragmaNow.call(db, source, options)
+    // NOOP only reads the WAL's size (lib/wal-checkpointer.ts).
+    if (!source.startsWith('wal_checkpoint') || /noop/i.test(source) || !undoing.get(undoId)) {
+      return pragmaNow.call(db, source, options)
+    }
     events.push(source)
-    const t0 = performance.now()
-    try { return pragmaNow.call(db, source, options) } finally { checkpointMs.push(performance.now() - t0) }
+    return pragmaNow.call(db, source, options)
   }) as typeof db.pragma
   try {
     const out = await undoRun(uid, 'http', runId)
@@ -90,8 +89,10 @@ async function undo(sid: string, runId: string, probe?: ReturnType<typeof sqlite
     db.pragma = pragmaNow
   }
   assert.equal(journal('http', runId)!.state, 'undone')
+  // Its journal's rows are dropped in the background, a bulk writer too: back on once that ends.
+  while (autoCheckpointHolders() > 0) await new Promise(r => setTimeout(r, 5))
   assert.equal(auto(), autoBefore, 'SQLite\'s own checkpoint is as it was')
-  return { sizes, events, slices, checkpointMs }
+  return { sizes, events }
 }
 // n rows in slices of `size`: every slice full but the last.
 const split = (n: number, size: number) =>
@@ -102,10 +103,10 @@ const plain = (n: number) => {
   return { sizes, events: sizes.map(() => 'slice, auto-checkpoint on') }
 }
 // With R reading columns: slices of the queue budget's share, each committed with SQLite's own checkpoint off,
-// then checkpointed.
+// and no checkpoint on this connection (they run on the worker).
 const checkpointed = (n: number, readers: number) => {
   const sizes = split(n, Math.floor(UNDO_QUEUE_ROWS / (1 + readers)))
-  return { sizes, events: sizes.flatMap(() => ['slice, auto-checkpoint off', 'wal_checkpoint(PASSIVE)']) }
+  return { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }
 }
 const expectUndo = async (u: { sid: string; runId: string }, want: { sizes: number[]; events: string[] }) => {
   const got = await undo(u.sid, u.runId)
@@ -161,34 +162,18 @@ await ok('a deleted column\'s slot doesn\'t count, though a column made later un
   assert.deepEqual([cells(u.sid, 'Answer')[N - 1], cells(u.sid, 'Status')[N - 1]], [`a${N - 1}`, `new Status ${N - 1}`])
 })
 
-await ok('200,000 rows with random ids, 3 formulas reading the column: no slice holds the event loop 200 ms',
-  async () => {
-    const n = 200_000
-    const u = await undoable(n, ['Answer'])
-    for (const k of [1, 2, 3]) await formula(u.sid, `F${k}`, `{{Answer}} + "${k}"`)
-    // As once the formulas have followed the run's writes: nothing waits for them.
-    db.prepare('DELETE FROM autorun_pending').run()
-    const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
-    probe.reset()
-    const sync = pragma.call(db, 'synchronous', { simple: true }) as number
-    pragma.call(db, 'synchronous = OFF')
-    const loop = monitorEventLoopDelay({ resolution: 10 })
-    loop.enable()
-    const t0 = performance.now()
-    let got: Awaited<ReturnType<typeof undo>>
-    try { got = await undo(u.sid, u.runId, probe) } finally { pragma.call(db, `synchronous = ${sync}`) }
-    const whole = performance.now() - t0
-    loop.disable()
-    const longest = Math.max(...got.slices.map(r => r.ms))
-    const ms = (x: number) => `${x.toFixed(0)} ms`
-    console.log(`      ${got.slices.length} slices of ${got.sizes[0]} rows, disk syncs off: the longest `
-      + `${ms(longest)}; ${got.checkpointMs.length} checkpoints, the longest ${ms(Math.max(0, ...got.checkpointMs))}; `
-      + `the event loop held at most ${ms(loop.max / 1e6 - 10)}; the whole undo ${(whole / 1000).toFixed(1)} s`)
-    console.log(`      slowest slices: ${[...got.slices].sort((a, b) => b.ms - a.ms).slice(0, 5).map(transactionLine)
-      .join(' | ')}`)
-    assert.deepEqual(got.sizes, checkpointed(n, 3).sizes, 'rows per slice')
-    assert.ok(longest < 200, `a slice held the event loop ${ms(longest)}`)
-    assert.deepEqual([cells(u.sid, 'Answer')[0], cells(u.sid, 'Answer')[n - 1]], ['a0', `a${n - 1}`])
-  })
+await ok('200,000 rows with random ids, 3 formulas reading the column: the loop is never held 200 ms, no '
+  + 'checkpoint on this thread', async () => {
+  const n = 200_000
+  const u = await undoable(n, ['Answer'])
+  for (const k of [1, 2, 3]) await formula(u.sid, `F${k}`, `{{Answer}} + "${k}"`)
+  // As once the formulas have followed the run's writes: nothing waits for them.
+  db.prepare('DELETE FROM autorun_pending').run()
+  const { measure } = bulkWalKit()
+  let got!: Awaited<ReturnType<typeof undo>>
+  await measure('200,000 rows, 3 formulas', async () => { got = await undo(u.sid, u.runId) }, { pause: true })
+  assert.deepEqual(got.sizes, checkpointed(n, 3).sizes, 'rows per slice')
+  assert.deepEqual([cells(u.sid, 'Answer')[0], cells(u.sid, 'Answer')[n - 1]], ['a0', `a${n - 1}`])
+})
 
 done()

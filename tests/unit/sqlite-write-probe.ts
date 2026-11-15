@@ -10,7 +10,10 @@
 // before its BEGIN, so a wait for the lock counts in it), its time, the WAL's frames (and of
 // them copied) before and after it, whether it started the WAL over (the WAL header's checkpoint count or salt
 // changed, or its frames fell: SQLite then syncs the new header to disk inside that commit, on this connection's
-// thread), and whether a checkpoint asked of the worker was still unanswered when it began (`checkpointing`).
+// thread), whether a checkpoint asked of the worker was still unanswered when it began (`checkpointing`), and
+// whether SQLite's own checkpoint ran inside its commit (`ownCheckpoint`: the commit left the WAL at or past
+// wal_autocheckpoint with it on; with a worker copying the WAL back meanwhile, the main file's mtime can't tell).
+// A transaction begun inside another (a savepoint) is part of that one, not a record of its own.
 import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import type Database from 'better-sqlite3'
@@ -18,11 +21,12 @@ import type Database from 'better-sqlite3'
 export interface WriteProbeStats {
   transactions: number; longestTransactionMs: number; transactionsWritingMainFile: number
   mostTransactionFrames: number; checkpoints: number; longestCheckpointMs: number; mostCheckpointFrames: number
-  walReads: number; mostWalFrames: number; mostWalFramesBeforeWrite: number
+  walReads: number; mostWalFrames: number; mostWalFramesBeforeWrite: number; ownCheckpoints: number
 }
 
 export interface TransactionRecord {
   n: number; at: number; ms: number; before: WalNow; after: WalNow; startedOver: boolean; checkpointing: boolean
+  ownCheckpoint: boolean
 }
 interface WalNow { log: number; checkpointed: number }
 // One short line: `#n 12.3 ms, WAL 1500/1500 -> 53/0, started over, checkpoint asked`.
@@ -43,7 +47,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
   }
   const zero = (): WriteProbeStats => ({ transactions: 0, longestTransactionMs: 0, transactionsWritingMainFile: 0,
     mostTransactionFrames: 0, checkpoints: 0, longestCheckpointMs: 0, mostCheckpointFrames: 0, walReads: 0,
-    mostWalFrames: 0, mostWalFramesBeforeWrite: 0 })
+    mostWalFrames: 0, mostWalFramesBeforeWrite: 0, ownCheckpoints: 0 })
   let s = zero()
   const pragma = db.pragma.bind(db)
   // Frames in the WAL now, and of them copied back (SQLite starts it over from its first frame once all were).
@@ -60,6 +64,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
   }
   let records: TransactionRecord[] = []
   const timed = (f: (...a: unknown[]) => unknown) => (...a: unknown[]) => {
+    if (db.inTransaction) return f(...a)
     const before = mtime()
     const w0 = wal()
     const h0 = walHeader()
@@ -73,7 +78,10 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
       const w1 = wal()
       const h1 = walHeader()
       const log1 = w1.log
-      records.push({ n: s.transactions, at: t0, ms, before: w0, after: w1, checkpointing: asked,
+      const auto = pragma('wal_autocheckpoint', { simple: true }) as number
+      const ownCheckpoint = auto > 0 && log1 >= auto
+      if (ownCheckpoint) s.ownCheckpoints++
+      records.push({ n: s.transactions, at: t0, ms, before: w0, after: w1, checkpointing: asked, ownCheckpoint,
         startedOver: (h1 !== null && h1 !== h0) || log1 < w0.log })
       s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
       s.mostWalFrames = Math.max(s.mostWalFrames, walFrames())
