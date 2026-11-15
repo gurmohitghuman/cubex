@@ -45,9 +45,10 @@ function holdEach(sql: string, ms: number): () => void {
   }
   return () => { (db as any).prepare = prepare }
 }
-// When each statement starting with one of `sqls` first runs from now on (performance.now()), until stop().
-function firstRuns(sqls: string[]): { seen: Map<string, number>; stop: () => void } {
-  const seen = new Map<string, number>()
+// When each statement starting with one of `sqls` first runs from now on (performance.now(), and how long it took),
+// until stop().
+function firstRuns(sqls: string[]): { seen: Map<string, { at: number; ms: number }>; stop: () => void } {
+  const seen = new Map<string, { at: number; ms: number }>()
   const prepare = db.prepare.bind(db)
   ;(db as any).prepare = (text: string) => {
     const stmt = prepare(text) as any
@@ -55,7 +56,11 @@ function firstRuns(sqls: string[]): { seen: Map<string, number>; stop: () => voi
     if (sql) {
       for (const m of ['run', 'get', 'all']) {
         const f = stmt[m].bind(stmt)
-        stmt[m] = (...a: unknown[]) => { if (!seen.has(sql)) seen.set(sql, performance.now()); return f(...a) }
+        stmt[m] = (...a: unknown[]) => {
+          if (seen.has(sql)) return f(...a)
+          const at = performance.now()
+          try { return f(...a) } finally { seen.set(sql, { at, ms: performance.now() - at }) }
+        }
       }
     }
     return stmt
@@ -95,7 +100,10 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       marks.stop()
       const { longest, inside } = watch()
       const w = takeWalCheckpointerStats()
-      const at = (sql: string) => (marks.seen.has(sql) ? `${(marks.seen.get(sql)! - p0).toFixed(0)} ms` : 'never')
+      const at = (sql: string) => {
+        const m = marks.seen.get(sql)
+        return m ? `${(m.at - p0).toFixed(0)} ms (taking ${m.ms.toFixed(0)} ms)` : 'never'
+      }
       const first = probe.records()[0]?.at
       assert.equal(out.status, 200, JSON.stringify(out.body))
       console.log(`      answered in ${took} ms; its first transaction ${first ? (first - p0).toFixed(0) : '-'} ms in, `

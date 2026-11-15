@@ -37,6 +37,10 @@ export function loopWatch(records: () => TransactionRecord[]) {
   }, 5)
   return () => {
     clearInterval(sampler)
+    // The stretch since the last tick too: a block that ends just before the answer the caller awaited may never
+    // see the sampler run again (a timers pass uses the time it started at).
+    const now = performance.now()
+    stretches.push({ at: last, ms: now - last })
     const longest = stretches.reduce((a, b) => (b.ms > a.ms ? b : a), { at: 0, ms: 0 })
     return { longest, inside: records().filter(r => r.at < longest.at + longest.ms && r.at + r.ms > longest.at) }
   }
