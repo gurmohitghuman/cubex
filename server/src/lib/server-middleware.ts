@@ -1,6 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { sessionBodyParsers } from './session-body';
 
 // No CORS middleware: the browser only ever talks to its own origin. In
 // production the server serves the built client on the same port, and in dev
@@ -66,10 +67,8 @@ export const applyServerMiddleware = (app: express.Express, opts: { isProduction
       || p === '/api/auth' || p.startsWith('/api/auth/');
   };
 
-  // 32 MB end-to-end JSON limit for everything else (autosave batches, bulk
-  // edits). CSV uploads are multipart and go through multer's own size cap.
-  const globalJson = express.json({ limit: '32mb' });
-  const globalUrlencoded = express.urlencoded({ extended: true, limit: '32mb' });
-  app.use((req, res, next) => (ownsBodyParsing(req.path) ? next() : globalJson(req, res, next)));
-  app.use((req, res, next) => (ownsBodyParsing(req.path) ? next() : globalUrlencoded(req, res, next)));
+  // 32 MB JSON and forms for everything else (autosave batches, bulk edits),
+  // read only for a signed-in session (lib/session-body.ts). CSV uploads are
+  // multipart and go through multer's own size cap.
+  app.use(sessionBodyParsers(ownsBodyParsing));
 };

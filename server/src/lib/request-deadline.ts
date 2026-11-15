@@ -58,10 +58,15 @@ function cutOff(req: express.Request, res: express.Response): void {
   socket.destroy();
 }
 
-export function requestDeadline(req: express.Request, res: express.Response, next: express.NextFunction): void {
-  // Without Content-Length or Transfer-Encoding there is no body: the request was all in with its headers.
+// Without Transfer-Encoding, and with no Content-Length or one of 0, there is no body: the request was all in with
+// its headers.
+export function hasBody(req: IncomingMessage): boolean {
   const length = req.headers['content-length'];
-  if (req.headers['transfer-encoding'] === undefined && (length === undefined || length === '0')) return next();
+  return req.headers['transfer-encoding'] !== undefined || (length !== undefined && length !== '0');
+}
+
+export function requestDeadline(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  if (!hasBody(req)) return next();
   arm(req, res, Date.now(), REQUEST_BODY_TIMEOUT_MS);
   req.once('end', () => clear(req));
   req.once('close', () => clear(req));
