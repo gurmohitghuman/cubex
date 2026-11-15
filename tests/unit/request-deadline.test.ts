@@ -1,7 +1,7 @@
 // Over 200 lines: one server through the real chain, each part another way a request arrives.
 // The deadline on receiving each request (lib/request-deadline.ts), through index.ts's middleware and the real
-// routes on a real socket, with the deadline at 1 s and uploads at 50 KB/s. A body sent slowly to a route that
-// needs no account (sign-in, and a JSON route with a large declared size) gets 408 and the server hangs up at the
+// routes on a real socket, with the deadline at 1 s and uploads at 50 KB/s. A body sent slowly to sign-in, which
+// needs no account, or to a signed-in JSON route with a large declared size gets 408 and the server hangs up at the
 // deadline; a route that answered before reading the body hangs up then too. A CSV upload, through an upload link
 // and in the app, gets longer by its size: a 100 KB file sent over 1.5 s is imported, and one sent slower is cut
 // off at its own deadline, leaving nothing behind. An answer that takes longer than the deadline, once the request
@@ -116,15 +116,15 @@ const csv = (n: number) => Buffer.from('email,note\n'
 const file = csv(2000) // about 100 KB: an upload's deadline is 1 s + 2 s
 const uploadMs = uploadDeadlineMs(file.length)
 
-// Slow bodies where no account is needed.
+// Slow bodies: sign-in needs no account; the app's JSON routes read a body only when signed in.
 {
   const login = await send('POST', '/api/auth/login', Buffer.from(JSON.stringify({ password: 'p'.repeat(60) })),
     { chunk: 1, everyMs: 100, headers: json })
   check('a sign-in sent slowly: 408 and the server hangs up at the deadline', login.status === 408
     && near(login, 1000), login)
   const big = await send('POST', '/api/tables', Buffer.alloc(100 * 1024, 32), { chunk: 1024, everyMs: 100,
-    headers: json })
-  check('a JSON body with a large declared size gets the same deadline (only an upload gets more)',
+    headers: { ...json, Cookie: cookie } })
+  check('signed in, a JSON body with a large declared size gets the same deadline (only an upload gets more)',
     big.status === 408 && near(big, 1000), { status: big.status, ms: big.ms })
   const early = await send('PUT', '/api/files/upload/not-a-link', file, { chunk: 1024, everyMs: 100 })
   check('a route that answered before reading the body: the server hangs up at the deadline', early.status === 404
@@ -167,7 +167,7 @@ const uploadMs = uploadDeadlineMs(file.length)
 {
   for (const [path, label] of [['/api/slow-answer', 'its body read'], ['/api/files/slow-answer', 'its body unread']]) {
     const answer = await send('POST', path, Buffer.from('{"a":1}'), { chunk: 100, everyMs: 10, close: true,
-      headers: json })
+      headers: { ...json, Cookie: cookie } })
     check(`an answer that takes 1.5 s, longer than the deadline, comes whole (${label})`, answer.status === 200
       && answer.body === '[1' + ',1'.repeat(14) + ']' && answer.ms >= 1400, { status: answer.status, ms: answer.ms })
   }
@@ -185,7 +185,7 @@ const uploadMs = uploadDeadlineMs(file.length)
     let text = ''
     const started = Date.now()
     sock.write('POST /api/slow-answer HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n'
-      + 'Content-Length: 7\r\n\r\n{"a":1}POST /api/auth/login HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+      + `Cookie: ${cookie}\r\nContent-Length: 7\r\n\r\n{"a":1}POST /api/auth/login HTTP/1.1\r\nHost: 127.0.0.1\r\n`
       + 'Content-Type: application/json\r\nContent-Length: 50\r\n\r\n')
     const giveUp = setTimeout(() => sock.destroy(), 8000)
     sock.on('data', d => { text += d.toString() })
