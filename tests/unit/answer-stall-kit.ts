@@ -1,9 +1,9 @@
-// Shared by the tests of the deadline on an answer whose client stopped reading it (answer-stall, -slow and
-// -unseen): the check and log capture, a server on a Unix socket (a named pipe on Windows) with the
-// server's timeouts, the time each tagged connection closed, and clients that never read or read a chunk every
-// 10 ms. A Unix socket, not TCP: TCP's buffers here grow to 32 MB a side and would take a stalled answer whole. A
-// Unix socket's are small and fixed, and answers go out through the same Node stream code either way. The client
-// can't see a hang-up it doesn't read, so the server's sockets are watched.
+// Shared by the tests of the deadline on an answer whose client stopped reading it (answer-stall, -slow and -unseen)
+// and of an export's end (export-stop): the check and log capture, a server on a Unix socket (a named pipe on Windows)
+// with the server's timeouts, the time each tagged connection closed, and clients that never read or read a chunk every
+// 10 ms. A Unix socket, not TCP: TCP's buffers here grow to 32 MB a side and would take a stalled answer whole. A Unix
+// socket's are small and fixed, and answers go out through the same Node stream code either way. The client can't see a
+// hang-up it doesn't read, so the server's sockets are watched.
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
