@@ -9,10 +9,10 @@ import { envInt } from './env-int';
 // once its route knows who is sending it (allowUpload). Node's own requestTimeout can't tell routes apart, so it
 // is only the backstop, past the longest deadline here (receiveBackstopMs, lib/server-timeouts.ts).
 //
-// Past the deadline the request gets 408 and its connection is closed, the way Node answers its own timeout: on
-// the socket, not through res, so a route still reading sees a closed request, and what it sends later goes
-// nowhere. If the route already answered (before reading the body), the connection is just closed. Only
-// receiving is timed: once the request is all in, the answer can take as long as it needs (run progress streams).
+// Past the deadline the request gets 408, on the socket, not through res: the route still reading gets nothing
+// more of the body and sees its request closed with the connection, and what it sends later goes nowhere. If the
+// route already answered (before reading the body), the connection is just closed. Only receiving is timed: once
+// the request is all in, the answer can take as long as it needs (run progress streams).
 
 // 2 minutes: the largest JSON body the app takes (32 MB) at about 2 Mbit/s.
 export const REQUEST_BODY_TIMEOUT_MS = envInt('REQUEST_BODY_TIMEOUT_MS', 120_000);
@@ -29,6 +29,9 @@ export const receiveBackstopMs = (): number =>
   HTTP_HEADERS_TIMEOUT_MS + uploadDeadlineMs(MAX_CSV_UPLOAD_BYTES) + 60_000;
 
 const TIMED_OUT = 'HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n';
+// How long a connection that got its 408 waits for the client to close its side: time to read the 408 on a slow
+// link and stop sending.
+const CLOSE_GRACE_MS = 5_000;
 // The time left until a deadline, at most setTimeout's longest wait (about 24.8 days; longer would fire at once).
 export const waitMs = (started: number, ms: number): number =>
   Math.min(2_147_483_647, Math.max(0, started + ms - Date.now()));
@@ -54,8 +57,20 @@ function cutOff(req: express.Request, res: express.Response): void {
   if (req.complete || socket.destroyed) return;
   // Only while this request's answer owns the socket: a request pipelined behind another one's answer has none
   // yet, and the 408 would land inside that answer.
-  if (!res.headersSent && res.socket === socket && socket.writable) socket.write(TIMED_OUT);
-  socket.destroy();
+  if (res.headersSent || res.socket !== socket || !socket.writable) {
+    socket.destroy();
+    return;
+  }
+  // The 408 goes out first, then the connection ends. Closing it at once, with the body still arriving, resets
+  // it, and a client on Windows drops what it hadn't read yet when reset, the 408 with it. So until the client
+  // closes its side, or the grace runs out, what it still sends is read and dropped, never passed on to the request.
+  // Replacing the socket's 'data' listeners takes it back from Node's request parser, as Node does for an upgrade.
+  socket.removeAllListeners('data');
+  socket.on('data', () => {});
+  socket.resume();
+  socket.end(TIMED_OUT);
+  const grace = setTimeout(() => socket.destroy(), CLOSE_GRACE_MS);
+  socket.once('close', () => clearTimeout(grace));
 }
 
 // Without Transfer-Encoding, and with no Content-Length or one of 0, there is no body: the request was all in with
