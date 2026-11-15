@@ -1,6 +1,6 @@
 import { db } from './db';
-import { HEAVY_SLICE_ROWS } from './constants';
-import { yieldToRequests } from './slices';
+import { RESULTS_SLICE_ROWS } from './constants';
+import { runInCheckpointedSlices } from './bulk-slices';
 import type { PositionMap } from './sort-plan';
 
 // After a physical sort (services/sheet-sort.ts), stored results must follow
@@ -52,9 +52,11 @@ export async function mapResults(sheetId: string, userId: string, map: PositionM
   }
 }
 
-// The sheet's results, HEAVY_SLICE_ROWS at a time in rowid order, each slice in
-// one transaction. `+run_id` keeps SQLite walking the table in rowid order
-// instead of sorting every matching row for each slice.
+// The sheet's results, RESULTS_SLICE_ROWS at a time in rowid order (a result
+// can hold 16 KB), each slice read and written in one transaction whose WAL is
+// copied back on the checkpoint worker's thread (lib/bulk-slices.ts). `+run_id`
+// keeps SQLite walking the table in rowid order instead of sorting every
+// matching row for each slice.
 async function eachSlice(
   table: 'ai_results' | 'http_results', sheetId: string, userId: string,
   apply: (rows: Array<[number, number]>) => void,
@@ -69,11 +71,12 @@ async function eachSlice(
       WHERE +run_id IN (SELECT id FROM http_runs WHERE sheet_id = ? AND user_id = ?) AND rowid > ?
       ORDER BY rowid LIMIT ?`)
   ).raw();
-  for (let after = 0; ;) {
-    const rows = slice.all(sheetId, userId, after, HEAVY_SLICE_ROWS) as Array<[number, number]>;
-    if (rows.length === 0) return;
-    db.transaction(() => apply(rows)).immediate();
+  let after = 0;
+  await runInCheckpointedSlices(() => {
+    const rows = slice.all(sheetId, userId, after, RESULTS_SLICE_ROWS) as Array<[number, number]>;
+    if (rows.length === 0) return false;
+    apply(rows);
     after = rows[rows.length - 1][0];
-    await yieldToRequests();
-  }
+    return true;
+  });
 }

@@ -1,10 +1,10 @@
 // A run's ⏳ clear (lib/placeholder-cells.ts) queues every row it clears once
 // for each clean, formula and lookup column reading the run's columns, in the
-// slice's own transaction. With none, its slices are HEAVY_SLICE_ROWS rows, as
-// before, and run no checkpoint. With R of them, a slice holds
-// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at least 1) and commits with
-// SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
-// thread (lib/bulk-slices.ts): no checkpoint runs on this connection. A
+// slice's own transaction. With none, its slices are HEAVY_SLICE_ROWS rows.
+// With R of them, a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
+// least 1). Either way each commits with SQLite's own checkpoint off, its WAL
+// copied back on the checkpoint worker's thread (lib/bulk-slices.ts): no
+// checkpoint runs on this connection. A
 // column reading other columns, one with auto-run off and an auto-run that
 // costs don't count. A run's clear that puts K columns back from its undo
 // journal (lib/run-undo/clear-back.ts) holds at most
@@ -94,12 +94,12 @@ async function clear(sid: string, opts: { columns?: string[]; run?: { kind: 'htt
 // n rows in slices of `size`: every slice full but the last.
 const split = (n: number, size: number) =>
   Array.from({ length: Math.ceil(n / size) }, (_, i) => Math.min(size, n - i * size))
-// What a clear of n rows does with R reading columns: slices of the queue
-// budget's share, each committed with SQLite's own checkpoint off, and no checkpoint on this connection.
-const checkpointed = (n: number, readers: number) => {
-  const sizes = split(n, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers)))
-  return { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }
-}
+// What a clear does in slices of `sizes`: each committed with SQLite's own checkpoint off, and no checkpoint on
+// this connection (they run on the worker).
+const sliced = (sizes: number[]) => ({ sizes, events: sizes.map(() => 'slice, auto-checkpoint off') })
+// With R reading columns: slices of the queue budget's share.
+const checkpointed = (n: number, readers: number) =>
+  sliced(split(n, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))))
 const expectClear = async (sid: string, want: { sizes: number[]; events: string[] },
   opts: Parameters<typeof clear>[1] = {}) => {
   const got = await clear(sid, opts)
@@ -108,7 +108,7 @@ const expectClear = async (sid: string, want: { sizes: number[]; events: string[
 }
 const N = HEAVY_SLICE_ROWS + 1
 
-await ok('no column reads the run\'s columns: slices of HEAVY_SLICE_ROWS and no checkpoint, as before', async () => {
+await ok('no column reads the run\'s columns: slices of HEAVY_SLICE_ROWS, on the worker too', async () => {
   const sid = sheetOf(N)
   await formula(sid, 'Who', '{{Name}} + "!"')
   // Auto-run on, then off through the column's own setting: its entry stays, reading Answer.
@@ -118,8 +118,7 @@ await ok('no column reads the run\'s columns: slices of HEAVY_SLICE_ROWS and no 
     WHERE sheet_id = ? AND status_column = 'Off'`).get(sid), { enabled: 0, input_columns: '["Answer"]' })
   db.prepare(`INSERT INTO autorun_columns (id,user_id,sheet_id,status_column,kind,input_columns)
     VALUES (?,?,?,'Hook','http',?)`).run(uuid(), uid, sid, JSON.stringify(['Answer']))
-  const sizes = split(N, HEAVY_SLICE_ROWS)
-  await expectClear(sid, { sizes, events: sizes.map(() => 'slice, auto-checkpoint on') })
+  await expectClear(sid, sliced(split(N, HEAVY_SLICE_ROWS)))
 })
 
 await ok('one formula reads Answer (another reads that formula): half the queue budget, checkpointed', async () => {
@@ -149,17 +148,16 @@ await ok('twenty read Answer: slices of 95 rows, checkpointed (no floor brings b
 
 // A run's clear putting K columns back: PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice.
 const backRows = (k: number) => Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / (1 + k))
-const unwatched = (sizes: number[]) => ({ sizes, events: sizes.map(() => 'slice, auto-checkpoint on') })
 
-await ok('a run putting one column back, none reading it: smaller slices, SQLite\'s own checkpoint on', async () => {
+await ok('a run putting one column back, none reading it: smaller slices', async () => {
   const r = await seededRun(N, ['Answer'])
-  await expectClear(r.sid, unwatched(split(N, backRows(1))), r)
+  await expectClear(r.sid, sliced(split(N, backRows(1))), r)
   assert.deepEqual([cells(r.sid, 'Answer')[0], cells(r.sid, 'Answer')[N - 1]], ['Answer 0', `Answer ${N - 1}`])
 })
 
 await ok('two columns put back; a column the journal has no slot for doesn\'t count', async () => {
   const r = await seededRun(N, ['Status', 'Answer'])
-  await expectClear(r.sid, unwatched(split(N, backRows(2))), { ...r, columns: ['Status', 'Answer', 'C1'] })
+  await expectClear(r.sid, sliced(split(N, backRows(2))), { ...r, columns: ['Status', 'Answer', 'C1'] })
   assert.deepEqual(cells(r.sid, 'Status').slice(0, 2), ['Status 0', 'Status 1'])
 })
 
@@ -173,9 +171,7 @@ await ok('seven columns put back, one formula reading one: the journal\'s share 
   const r = await seededRun(N, COLUMNS)
   await formula(r.sid, 'F', '{{C5}} + "!"')
   assert.ok(backRows(7) < PLACEHOLDER_CLEAR_QUEUE_ROWS / 2)
-  const sizes = split(N, backRows(7))
-  await expectClear(r.sid,
-    { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }, r)
+  await expectClear(r.sid, sliced(split(N, backRows(7))), r)
   assert.deepEqual(COLUMNS.map(c => cells(r.sid, c)[N - 1]), COLUMNS.map(c => `${c} ${N - 1}`))
 })
 

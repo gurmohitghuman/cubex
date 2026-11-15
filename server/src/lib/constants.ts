@@ -104,17 +104,22 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// Stored AI/HTTP results written per slice (a sheet's results deleted, a sort moving them with their rows). An
+// answer keeps up to ENRICH_STORED_RAW_MAX_BYTES (16 KB) raw, and deleting or moving one writes every page it spans
+// (lib/db.ts zeroes freed pages: secure_delete). 5,000 such results in one slice wrote 81 to 82 MB of WAL, past
+// journal_size_limit (64 MB), and held the server 235 to 343 ms; 500 wrote about 8.5 MB in under 30 ms.
+export const RESULTS_SLICE_ROWS = 500;
 // A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
 // for every clean, formula and lookup column reading the run's columns, in the
 // same transaction; on rows with random ids each queued row writes a page of
 // its own. With R such columns a slice holds this many / (1 + R) rows (1,000
-// at 1, 500 at 3, still 10 on a full sheet of 200 columns), commits with
-// SQLite's own checkpoint off and is checkpointed in a turn of its own
-// (lib/slices.ts).
+// at 1, 500 at 3, still 10 on a full sheet of 200 columns), and on a job
+// thread is checkpointed after it (lib/row-order.ts; on the server's thread
+// every slice's WAL is copied back on the checkpoint worker's).
 // Measured at 200,000 rows with 3 formulas on random ids: slices up to 40 ms,
 // checkpoints up to 70 ms, the whole clear 23 to 25 s in the background. Left
 // on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
-// With none, slices stay HEAVY_SLICE_ROWS rows, with no checkpoint.
+// With none, slices stay HEAVY_SLICE_ROWS rows.
 export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
 // A cancelled or failed run's clear puts each ⏳ cell back to what its undo
 // journal kept (lib/run-undo/clear-back.ts): one journal lookup per cell, about

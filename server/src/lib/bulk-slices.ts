@@ -10,11 +10,13 @@
 //   later at the soonest.
 // - The pause comes sooner when one more slice as big as the job's biggest so far would take the WAL past
 //   WAL_BULK_ROOM_SHARE of journal_size_limit (big rows make big slices); before the first, at the ask mark.
-// - Each slice is one transaction, `step` inside it (its own transactions nest in it), committed with SQLite's
-//   own checkpoint off and taken in turn with the worker's write that starts the WAL over (lib/wal-turn.ts): it
-//   never starts the WAL over itself, which syncs the WAL's new header inside its commit.
+// - Each slice is one transaction, `step` inside it (its own run flat in it: oneTransaction, lib/slices.ts; a
+//   nested one would be a savepoint, slow), committed with SQLite's own checkpoint off and taken in turn with the
+//   worker's write that starts the WAL over (lib/wal-turn.ts): it never starts the WAL over itself, which syncs the
+//   WAL's new header inside its commit.
 // - After the last slice, what's left is copied back on the worker and the WAL started over before the job goes
-//   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over.
+//   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over;
+//   unless the WAL holds fewer frames than SQLite's own checkpoint waits for (a short job).
 // - While any runs, SQLite's own checkpoint on the API connection waits for the job's room (holdAutoCheckpoint:
 //   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
 //   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
@@ -140,10 +142,13 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
 // started over after the job's last frame. Else the next commit on this connection copies the rest back inside it,
 // or starts the WAL over and syncs its new header there. A checkpoint already running when the job ended never saw
 // its last frames, and a reader can hold them a moment: tried again, WAL_PAUSE_RETRY_MS later, three tries at most.
-// With no worker, one checkpoint here, as before.
+// With no worker, one checkpoint here, as before. A short job (a run started on 10 rows) that leaves fewer frames
+// than SQLite's own checkpoint waits for, none of them copied yet, doesn't wait: the next commit here copies none
+// back and starts nothing over, as with no runner, and a worker's checkpoint would hold the job up for nothing.
 async function startedOver(until: number): Promise<void> {
   const end = walState();
-  if (!end) return;
+  if (!end || end.log === 0) return;
+  if (end.log < DB_AUTO_CHECKPOINT_FRAMES && end.checkpointed < end.log) return;
   if (!checkpointsOnWorker()) {
     if (end.checkpointed < end.log) await byDeadline(checkpointInBackground(), until);
     return;

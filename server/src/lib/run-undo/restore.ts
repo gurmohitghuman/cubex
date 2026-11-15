@@ -8,6 +8,7 @@
 // is marked undone in the same transaction (migration 044).
 import type { Statement } from 'better-sqlite3';
 import { db } from '../db';
+import { oneTransaction } from '../slices';
 import { jsonPath } from '../json-path';
 import { parseRowData } from '../sql-rows';
 import { markDerivedInputs } from '../autorun-mark';
@@ -56,7 +57,7 @@ const MARK_UNDONE: Record<RunRef['kind'], string> = {
 
 // Returns whether journal rows are left after this slice.
 export function undoSlice(job: UndoJob, limit: number): boolean {
-  return db.transaction((): boolean => {
+  return oneTransaction((): boolean => {
     const head = db.prepare('SELECT cursor, state FROM run_undos WHERE id = ?').get(job.id) as
       { cursor: number; state: string } | undefined;
     if (head?.state !== 'undoing') return false;
@@ -123,5 +124,5 @@ export function undoSlice(job: UndoJob, limit: number): boolean {
       WHERE id = ?`).run(recs[recs.length - 1].row_id, restored, skipped, gone, job.id);
     markDerivedInputs(job.sheetId, job.userId, columns, { rowids });
     return recs.length === limit;
-  }).immediate();
+  });
 }

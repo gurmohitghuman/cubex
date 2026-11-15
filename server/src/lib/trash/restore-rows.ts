@@ -12,7 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import { MAX_COLUMNS_PER_SHEET, TRASH_PLACE_CHECK_ROWS } from '../constants';
-import { yieldToRequests } from '../slices';
+import { oneTransaction, yieldToRequests } from '../slices';
 import { appendColumnsToOrder, getSheetColumns } from '../sql-helpers';
 import { nextRowIndex } from '../sheet-busy';
 import { RUNNING_MARK } from '../run-markers';
@@ -104,12 +104,12 @@ interface TrashRow { seq: number; row_index: number; row_id: string; data: strin
 
 // One transaction: up to `limit` of the batch's rows (in order, or the picked
 // ones) go back, leave the batch, and count as restored. Returns how many. It
-// reads first, so it takes the write lock first (.immediate(): SQLITE_BUSY).
+// reads first, so it takes the write lock first (oneTransaction: SQLITE_BUSY).
 export function restoreSlice(
   itemId: number, sheetId: string, userId: string, plan: ColumnPlan, limit: number, picks: number[] | null,
 ): number {
   let n = 0;
-  db.transaction(() => {
+  oneTransaction(() => {
     const item = db.prepare('SELECT restore_at, restored FROM trash_items WHERE id = ?').get(itemId) as
       { restore_at: number | null; restored: number };
     const list = picks ? JSON.stringify(picks) : null;
@@ -150,6 +150,6 @@ export function restoreSlice(
     db.prepare(`UPDATE trash_items SET restored = restored + ?, row_count = row_count - ?,
       bytes = MAX(0, bytes - ?) WHERE id = ?`).run(rows.length, rows.length, bytes, itemId);
     n = rows.length;
-  }).immediate();
+  });
   return n;
 }

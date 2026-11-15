@@ -53,9 +53,35 @@ export function bulkWalKit() {
   const auto = () => db.pragma('wal_autocheckpoint', { simple: true }) as number
   db.exec('CREATE TABLE IF NOT EXISTS bulk_wal_after (id INTEGER PRIMARY KEY)')
   const after = db.prepare('INSERT INTO bulk_wal_after DEFAULT VALUES')
+  // Transactions opened inside a slice while the job runs (where each was called): a slice is one transaction
+  // already (lib/bulk-slices.ts makes it), and one nested in it is a savepoint, which keeps every statement's pages
+  // in SQLite's statement journal (lib/slices.ts, oneTransaction). Transaction functions made before the job aren't
+  // seen.
+  const realTransaction = db.transaction
+  let nested: string[] = []
+  let inSlice = 0
+  const watchNesting = (on: boolean) => {
+    db.transaction = !on ? realTransaction : ((fn: (...a: unknown[]) => unknown) => {
+      const t = realTransaction.call(db, fn) as unknown as Record<string, (...a: unknown[]) => unknown>
+      const slice = /bulk-slices\.[jt]s/.test(new Error().stack!)
+      const seen = (call: (...a: unknown[]) => unknown) => (...a: unknown[]) => {
+        if (inSlice > 0) nested.push(new Error().stack!.split('\n')[2].trim())
+        if (!slice) return call(...a)
+        inSlice++
+        try { return call(...a) } finally { inSlice-- }
+      }
+      const w = seen(t as unknown as (...a: unknown[]) => unknown) as unknown as Record<string, unknown>
+      for (const k of ['default', 'deferred', 'immediate', 'exclusive']) w[k] = seen(t[k])
+      return w
+    }) as unknown as typeof db.transaction
+  }
 
   // `pause`: the job writes enough for the WAL to reach WAL_BULK_PAUSE_FRAMES, so it waits for the worker.
-  async function measure(label: string, job: () => Promise<unknown>, opts: { pause?: boolean } = {}) {
+  // `pastAuto`: enough for it to pass DB_AUTO_CHECKPOINT_FRAMES, where a commit with SQLite's own checkpoint on
+  // would copy the WAL back inside it.
+  async function measure(
+    label: string, job: () => Promise<unknown>, opts: { pause?: boolean; pastAuto?: boolean } = {},
+  ) {
     // The worker started first: starting it isn't part of the job.
     await checkpointInBackground()
     await walCheckpointerIdle()
@@ -64,6 +90,8 @@ export function bulkWalKit() {
     const watch = loopWatch(probe.records)
     let watched: ReturnType<ReturnType<typeof loopWatch>> | undefined
     setCheckpointDelayForTests(SLOW_CHECKPOINT_MS)
+    nested = []
+    watchNesting(true)
     const t0 = performance.now()
     let ms = 0
     try {
@@ -75,6 +103,7 @@ export function bulkWalKit() {
       }
     } finally {
       watched = watch()
+      watchNesting(false)
       setCheckpointDelayForTests(0)
     }
     await walCheckpointerIdle()
@@ -102,6 +131,11 @@ export function bulkWalKit() {
     assert.ok(peakBytes < sizeLimit, `the WAL peaked at ${peakBytes} bytes, past journal_size_limit`)
     assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint is back on')
     assert.equal(autoCheckpointHolders(), 0, 'bulk writers still holding SQLite\'s own checkpoint')
+    assert.deepEqual([...new Set(nested)], [], 'transactions nested in a slice (savepoints)')
+    if (opts.pastAuto) {
+      assert.ok(w.mostWalFrames >= DB_AUTO_CHECKPOINT_FRAMES,
+        `the WAL never passed SQLite's own mark (${w.mostWalFrames} frames)`)
+    }
     if (opts.pause) {
       assert.ok(w.mostWalFrames >= WAL_BULK_PAUSE_FRAMES && k.pauses > 0,
         `the WAL never reached the pause (${w.mostWalFrames} frames, ${k.pauses} waits)`)

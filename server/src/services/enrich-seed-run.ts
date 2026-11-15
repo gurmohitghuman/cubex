@@ -12,7 +12,7 @@ import { PLACEHOLDER } from '../lib/placeholder-cells';
 import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from '../lib/run-markers';
 import { eachRowIdSlice, sheetRowIds } from '../lib/row-order';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
-import { yieldToRequests } from '../lib/slices';
+import { oneTransaction, yieldToRequests } from '../lib/slices';
 import { redactSecrets } from '../lib/redact';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
 import { seedVerdict, type SeedPlan } from '../lib/enrich-seed';
@@ -103,7 +103,7 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
       }
     }
     // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
-    db.transaction(() => {
+    oneTransaction(() => {
       if (take.length) {
         journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(take) }, running);
         set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);
@@ -112,7 +112,7 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
         journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(keptOut) }, notMetCell);
         mark.run(markPath, JSON.stringify(keptOut), job.sheetId, job.userId);
       }
-    }).immediate();
+    });
     seeded += take.length;
   });
   return stopped ? null : { seeded, missing, notMet };

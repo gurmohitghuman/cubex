@@ -14,7 +14,7 @@ import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice } from './row-order';
-import { yieldToRequests } from './slices';
+import { asBulkWriter, runInCheckpointedSlices } from './bulk-slices';
 import { BLANK_CHARS } from './enrich-seed';
 import { CONDITION_NOT_MET } from './run-markers';
 import { followQueued, isFollowKind } from './autorun-kick';
@@ -187,12 +187,13 @@ function keepByRowid(e: FencedEntry, sheetId: string, userId: string, idsJson: s
 // Drops queued rows in slices, so a big queue never holds the write lock in
 // one go: a sheet's (a CSV replace) or one entry's (turning it on afresh).
 // Call before the transaction that finishes the job; that one drops the rest.
+// The WAL is copied back on the checkpoint worker's thread (lib/bulk-slices.ts).
 export async function autorunDropPending(sheetId: string, userId: string, entryId?: string): Promise<void> {
   const one = entryId === undefined ? '' : ' AND id = ?';
   const del = db.prepare(`DELETE FROM autorun_pending WHERE rowid IN (SELECT rowid FROM autorun_pending
     WHERE autorun_id IN (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?${one}) LIMIT ?)`);
   const params = entryId === undefined ? [sheetId, userId] : [sheetId, userId, entryId];
-  while (del.run(...params, HEAVY_SLICE_ROWS).changes >= HEAVY_SLICE_ROWS) await yieldToRequests();
+  await runInCheckpointedSlices(() => del.run(...params, HEAVY_SLICE_ROWS).changes >= HEAVY_SLICE_ROWS);
 }
 
 // A sort, before any row moves (the sheet is busy, so no auto-run starts):
@@ -240,22 +241,7 @@ export function autorunAfterReplace(sheetId: string, userId: string, skipThrough
 export async function autorunSkipImport(
   sheetId: string, userId: string, firstRow: number, lastRow: number,
 ): Promise<void> {
-  if (lastRow < firstRow) return;
-  const page = db.prepare(`SELECT row_index, rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
-    AND row_index < ? ORDER BY row_index LIMIT ?`).raw();
-  for (const e of entriesOf(sheetId, userId)) {
-    // A clean or formula column costs nothing: it works the imported rows out anyway.
-    if (isFollowKind(e.kind) || e.w >= lastRow) continue;
-    for (let after = e.w; ;) {
-      const rows = page.all(sheetId, userId, after, firstRow, HEAVY_SLICE_ROWS) as Array<[number, number]>;
-      if (rows.length === 0) break;
-      keepByRowid(e, sheetId, userId, JSON.stringify(rows.map(r => r[1])));
-      after = rows[rows.length - 1][0];
-      await yieldToRequests();
-    }
-    db.prepare('UPDATE autorun_columns SET watermark_row_index = MAX(watermark_row_index, ?) WHERE id = ?')
-      .run(lastRow, e.id);
-  }
+  if (lastRow >= firstRow) await keepThenFence(sheetId, userId, firstRow - 1, lastRow);
 }
 
 // Rows coming back from the trash (services/trash-restore.ts; the sheet busy,
@@ -264,18 +250,32 @@ export async function autorunSkipImport(
 // The rows there now between an entry's fence and `through` are kept by id
 // (still new to it), then the fence passes `through`.
 export async function autorunSkipRestore(sheetId: string, userId: string, through: number): Promise<void> {
+  await keepThenFence(sheetId, userId, through, through);
+}
+
+// For each entry fenced below `fence`: its rows past the fence up to row_index `through` kept by id,
+// HEAVY_SLICE_ROWS a slice, then the fence moved to `fence` in the last one. Each slice reads and writes in one
+// transaction whose WAL is copied back on the checkpoint worker's thread (lib/bulk-slices.ts).
+async function keepThenFence(
+  sheetId: string, userId: string, through: number, fence: number,
+): Promise<void> {
   const page = db.prepare(`SELECT row_index, rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
     AND row_index <= ? ORDER BY row_index LIMIT ?`).raw();
-  for (const e of entriesOf(sheetId, userId)) {
-    if (isFollowKind(e.kind) || e.w >= through) continue;
-    for (let after = e.w; ;) {
-      const rows = page.all(sheetId, userId, after, through, HEAVY_SLICE_ROWS) as Array<[number, number]>;
-      if (rows.length === 0) break;
-      keepByRowid(e, sheetId, userId, JSON.stringify(rows.map(r => r[1])));
-      after = rows[rows.length - 1][0];
-      await yieldToRequests();
+  const fenceAt = db.prepare(
+    'UPDATE autorun_columns SET watermark_row_index = MAX(watermark_row_index, ?) WHERE id = ?');
+  await asBulkWriter(async w => {
+    for (const e of entriesOf(sheetId, userId)) {
+      // A clean or formula column costs nothing: it works those rows out anyway.
+      if (isFollowKind(e.kind) || e.w >= fence) continue;
+      let after = e.w;
+      const step = (): boolean => {
+        const rows = page.all(sheetId, userId, after, through, HEAVY_SLICE_ROWS) as Array<[number, number]>;
+        if (rows.length === 0) { fenceAt.run(fence, e.id); return false; }
+        keepByRowid(e, sheetId, userId, JSON.stringify(rows.map(r => r[1])));
+        after = rows[rows.length - 1][0];
+        return true;
+      };
+      while (await w.slice(step)) { /* the next */ }
     }
-    db.prepare('UPDATE autorun_columns SET watermark_row_index = MAX(watermark_row_index, ?) WHERE id = ?')
-      .run(through, e.id);
-  }
+  });
 }

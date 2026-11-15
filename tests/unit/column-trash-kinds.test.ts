@@ -78,8 +78,9 @@ for (const renamed of [false, true]) {
     const started = db.prepare('SELECT * FROM ai_runs WHERE id = ?').get(rerun.ok.runId) as Record<string, any>
     assert.deepEqual([started.column_name, started.prompt, started.model, started.setup_only],
       [as('Pitch'), 'Write a line for /Name at /Email', 'openai/gpt-x', 0])
-    assert.ok(enqueued.some(j => j.args[0] === rerun.ok.runId), 'its job was queued')
+    // Seeded after the start answered (services/run-seed.ts), then queued.
     await idle(sid)
+    assert.ok(enqueued.some(j => j.args[0] === rerun.ok.runId), 'its job was queued')
   })
 
   await ok(`an HTTP API column comes back with its request and fields, and its rerun starts from it${tag}`,
@@ -112,8 +113,8 @@ for (const renamed of [false, true]) {
         { config: string; setup_only: number }
       assert.equal(JSON.parse(started.config).requestConfig.url, config.requestConfig.url)
       assert.equal(started.setup_only, 0)
-      assert.ok(enqueued.length > 0, 'its job was queued')
       await idle(sid)
+      assert.ok(enqueued.length > 0, 'its job was queued')
     })
 
   await ok(`a formula column comes back and works its rows out again, auto-run off${tag}`, async () => {
