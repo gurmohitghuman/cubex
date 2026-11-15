@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
+import { isMainThread, workerData } from 'worker_threads';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
 import { DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV, DB_WAL_SIZE_LIMIT } from './constants';
 import { registerRowFilterFunctions } from './row-filter/sql-functions';
@@ -94,7 +95,13 @@ db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
 // connection don't pick a bad plan. Mask 0x10002 = "analyze any table that
 // might benefit" without the slow full-scan modes. Cheap at boot.
 // Recommended by the SQLite team for long-lived connections.
-db.pragma('optimize = 0x10002');
+// Not on the WAL checkpoint worker's connection (lib/wal-checkpoint-worker.ts): it never plans a query. Opened
+// mid-job, at the first checkpoint asked, its optimize analyzed a 300,000-row sheet's rows for 0.4 to 1.5 s before
+// that checkpoint, and with reads unmapped (as on Windows) it held the write lock a bulk writer's slice waited for
+// on the server's thread (360 ms).
+const checkpointWorker = !isMainThread
+  && (workerData as { walCheckpointer?: boolean } | null)?.walCheckpointer === true;
+if (!checkpointWorker) db.pragma('optimize = 0x10002');
 
 // Run PRAGMA optimize on shutdown so the next boot inherits up-to-date
 // stats reflecting whatever the user did this session. Single best-effort
@@ -102,6 +109,7 @@ db.pragma('optimize = 0x10002');
 // graceful shutdown path (via server-lifecycle) AND beforeExit as a
 // belt-and-suspenders for non-signal exits.
 process.on('beforeExit', () => {
+  if (checkpointWorker) return;
   try { db.pragma('optimize'); } catch { /* shutting down — best effort */ }
 });
 

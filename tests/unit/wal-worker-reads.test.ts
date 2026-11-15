@@ -6,6 +6,8 @@
 // Linux has it; printed only, to show whether this machine waits), then with the server's own setting, whose
 // longest read must stay under LOOP_LIMIT_MS. A watcher thread (stall-watch.ts) prints when the copy started and
 // ended and whether its own size queries on the file waited meanwhile, so a run whose sync never waited shows as one.
+// First, opening the worker's connection analyzes no table (lib/db.ts skips PRAGMA optimize there): on a table that
+// a new connection's optimize analyzes (an index, 2,000 rows, never analyzed), no sqlite_stat1 line comes.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import Database from 'better-sqlite3'
@@ -38,10 +40,22 @@ const MAPPED = 268_435_456
 const ROWS = 12_000
 
 db.exec(`CREATE TABLE reads_cold (id INTEGER PRIMARY KEY, v TEXT); CREATE TABLE reads_big (b BLOB);
-  CREATE TABLE reads_other (id INTEGER PRIMARY KEY)`)
+  CREATE TABLE reads_other (id INTEGER PRIMARY KEY); CREATE TABLE unanalyzed (id INTEGER PRIMARY KEY, v TEXT);
+  CREATE INDEX unanalyzed_v ON unanalyzed (v)`)
 db.prepare('INSERT INTO reads_cold (v) VALUES (?)').run('cold')
-// The cold row's page into the database file, read from there from now on; the WAL started over.
-await checkpointInBackground()
+const addOne = db.prepare('INSERT INTO unanalyzed (v) VALUES (?)')
+db.transaction(() => { for (let i = 0; i < 2_000; i++) addOne.run(`v${i % 97}`) }).immediate()
+const analyzed = () => db.prepare("SELECT COUNT(*) FROM sqlite_schema WHERE name = 'sqlite_stat1'").pluck().get()
+  ? db.prepare("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'unanalyzed'").pluck().get() as number : 0
+
+await ok('opening the worker\'s connection analyzes no table', async () => {
+  assert.equal(analyzed(), 0, 'analyzed before the worker started')
+  // The worker starts here. The cold row's page goes into the database file, read from there from now on, and the
+  // WAL starts over.
+  const r = await checkpointInBackground()
+  assert.ok(r && r.startOver === 'done', JSON.stringify(r))
+  assert.equal(analyzed(), 0, 'the worker\'s connection analyzed the table')
+})
 const other = new Database(dbPath)
 other.pragma('busy_timeout = 5000')
 // Its commits never copy the WAL back themselves: the worker does.

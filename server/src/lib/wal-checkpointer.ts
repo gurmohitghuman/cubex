@@ -47,7 +47,8 @@ export function walState(): WalState | null {
 let workerFile = (): string => join(__dirname, `wal-checkpoint-worker${extname(__filename)}`);
 function newWorker(): Worker {
   const file = workerFile();
-  const workerData = { shared: walShared };
+  // walCheckpointer: lib/db.ts skips PRAGMA optimize on this thread's connection.
+  const workerData = { shared: walShared, walCheckpointer: true };
   if (!file.endsWith('.ts')) return new Worker(file, { workerData });
   const tsx = require.resolve('tsx/cjs/api');
   return new Worker(`require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`,

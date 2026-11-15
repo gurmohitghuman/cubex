@@ -56,7 +56,7 @@ export function bulkWalKit() {
 
   // `pause`: the job writes enough for the WAL to reach WAL_BULK_PAUSE_FRAMES, so it waits for the worker.
   async function measure(label: string, job: () => Promise<unknown>, opts: { pause?: boolean } = {}) {
-    // The worker started first: its connection's PRAGMA optimize writes a few frames once.
+    // The worker started first: starting it isn't part of the job.
     await checkpointInBackground()
     await walCheckpointerIdle()
     probe.reset()
