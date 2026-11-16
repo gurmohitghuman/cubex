@@ -1,19 +1,16 @@
-// Auto-run on a derived column (an autorun_columns entry of kind 'clean',
-// 'formula' or 'lookup', derived-kind.ts): the column follows its inputs. An enrichment or
-// HTTP API column's auto-run fills a row once; a derived column works a row
-// out again whenever one of its inputs is written (lib/autorun-mark.ts queues
-// every such row, whatever the column's cell holds), and works out the new
-// rows above its watermark. A person's own edit to its cell stays until an
-// input changes again. It's free and has no side effects, so there are no
-// caps and no "Only run if". Each slice reads and writes in one short
-// transaction (its WAL copied back on the checkpoint worker's thread:
-// lib/bulk-slices.ts), so what it writes is the row's inputs as they are then, and
-// nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply).
-// A pass that has to wait (a lookup whose other sheet is sorting) ends the
-// tick, and the entry comes back after LOOKUP_FOLLOW_RETRY_MS.
+// Auto-run on a derived column (an autorun_columns entry of kind 'clean', 'formula' or 'lookup', derived-kind.ts): the
+// column follows its inputs. An enrichment or HTTP API column's auto-run fills a row once; a derived column works a row
+// out again whenever one of its inputs is written (lib/autorun-mark.ts queues every such row, whatever the column's
+// cell holds), and works out the new rows above its watermark. A person's own edit to its cell stays until an input
+// changes again. It's free and has no side effects, so there are no caps and no "Only run if". Each slice reads and
+// writes in one short transaction (its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts; a slice
+// of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter), so what it writes is the
+// row's inputs as they are then, and nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply). A pass
+// that has to wait (a lookup whose other sheet is sorting) ends the tick, and the entry comes back after
+// LOOKUP_FOLLOW_RETRY_MS.
 import { db } from '../lib/db';
 import {
-  CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, DERIVED_QUEUED_SLICE_ROWS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
+  CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, DERIVED_QUEUED_FIRST_ROWS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
@@ -25,11 +22,14 @@ import { clearEntryPause, loadEntry, pauseEntry, type AutorunEntry } from './aut
 import { generationMoved, hasWork } from './autorun-fence';
 import type { DerivedKind, DerivedPass, DerivedRecord } from './derived-kind';
 import { derivedKindOf } from './derived-kinds';
-import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
+import {
+  asDerivedRead, derivedSelect, pageAfter, queuedRowsAfter, readDerivedRows, writeDerivedCells,
+} from './derived-write';
 
-// page: how many rows the next slice reads (derived-write.ts pageAfter).
+// page: how many rows the next slice reads (derived-write.ts pageAfter); queued: queued rows at most (queuedRowsAfter).
 interface Step {
   kind: DerivedKind; entry: AutorunEntry; rec: DerivedRecord; pass: DerivedPass; inputs: string[]; page: number;
+  queued: number; queuedRead: number;
 }
 
 // Inside each slice's transaction: the sheet is free and out of the trash, and the column set up as
@@ -48,16 +48,18 @@ const cellPathOf = (s: Step) => jsonPath(s.rec.column_name);
 // Rows an input was written in. True while there are more. Call inside a transaction (a slice).
 function queuedSlice(s: Step): boolean {
   const e = s.entry;
+  s.queuedRead = 0;
   if (!stillCurrent(s)) return false;
   const sel = derivedSelect(s.rec.column_name, s.inputs, 'r.');
   // Queued rows are scattered (constants-clean.ts): fewer to a slice than new ones.
-  const most = Math.min(s.page, DERIVED_QUEUED_SLICE_ROWS);
+  const most = Math.min(s.page, s.queued);
   const read = readDerivedRows(db.prepare(`SELECT p.row_id AS id, p.quiet AS quiet, r.rowid AS rowid,
       r.row_index AS i, r.sheet_id AS sheet, ${sel.sql}
     FROM autorun_pending p LEFT JOIN rows r ON r.id = p.row_id
     WHERE p.autorun_id = ? ORDER BY p.row_id LIMIT ?`)
     .iterate(...sel.params, e.id, most), most, s.inputs.length);
   const rows = read.rows;
+  s.queuedRead = rows.length;
   // A row gone (deleted, or replaced by an import) just leaves the queue. The
   // rest are written in storage order, and leave it once worked out.
   const live = rows.filter(r => r.sheet === e.sheet_id).sort((a, b) => (a.rowid as number) - (b.rowid as number));
@@ -143,19 +145,19 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
     const rec = kind.forColumn(e.sheet_id, e.user_id, e.status_column);
     if (!ready(kind, e, rec) || generationMoved(e) || !hasWork(e)) return;
     const pass = await kind.open(rec, 'follow');
-    if ('error' in pass) {
-      pauseEntry(e.id, 'setup', pass.error);
-      return;
-    }
+    if ('error' in pass) { pauseEntry(e.id, 'setup', pass.error); return; }
     try {
-      const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS };
+      const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS,
+        queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0 };
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
       await asBulkWriter(async w => {
         for (let more = true; more;) {
           await pass.prepare();
           if (!pass.waiting?.()) {
             // Queued rows first (a person's edit), then new ones, each a slice of its own.
-            more = await w.slice(() => queuedSlice(s)) || await w.slice(() => newSlice(s));
+            more = await w.slice(() => queuedSlice(s));
+            s.queued = queuedRowsAfter(s.queued, s.queuedRead, w.lastFrames());
+            more = more || await w.slice(() => newSlice(s));
           }
           const failure = pass.failure();
           if (failure) {

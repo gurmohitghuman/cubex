@@ -60,6 +60,13 @@ export function bulkWalKit() {
   const realTransaction = db.transaction
   let nested: string[] = []
   let inSlice = 0
+  // `turns`: the event loop's turns counted (an immediate that sets the next), and slices written in a turn another
+  // slice was written in (lib/slice-turn.ts allows one a turn): none served between them.
+  let turn = 0
+  let spinning = false
+  let sliceTurn = -1
+  let sharedTurns = 0
+  const spin = () => { turn++; if (spinning) setImmediate(spin) }
   const watchNesting = (on: boolean) => {
     db.transaction = !on ? realTransaction : ((fn: (...a: unknown[]) => unknown) => {
       const t = realTransaction.call(db, fn) as unknown as Record<string, (...a: unknown[]) => unknown>
@@ -67,6 +74,8 @@ export function bulkWalKit() {
       const seen = (call: (...a: unknown[]) => unknown) => (...a: unknown[]) => {
         if (inSlice > 0) nested.push(new Error().stack!.split('\n')[2].trim())
         if (!slice) return call(...a)
+        if (turn === sliceTurn) sharedTurns++
+        sliceTurn = turn
         inSlice++
         try { return call(...a) } finally { inSlice-- }
       }
@@ -78,9 +87,9 @@ export function bulkWalKit() {
 
   // `pause`: the job writes enough for the WAL to reach WAL_BULK_PAUSE_FRAMES, so it waits for the worker.
   // `pastAuto`: enough for it to pass DB_AUTO_CHECKPOINT_FRAMES, where a commit with SQLite's own checkpoint on
-  // would copy the WAL back inside it.
+  // would copy the WAL back inside it. `turns`: no two slices written in one turn of the event loop.
   async function measure(
-    label: string, job: () => Promise<unknown>, opts: { pause?: boolean; pastAuto?: boolean } = {},
+    label: string, job: () => Promise<unknown>, opts: { pause?: boolean; pastAuto?: boolean; turns?: boolean } = {},
   ) {
     // The worker started first: starting it isn't part of the job.
     await checkpointInBackground()
@@ -91,6 +100,9 @@ export function bulkWalKit() {
     let watched: ReturnType<ReturnType<typeof loopWatch>> | undefined
     setCheckpointDelayForTests(SLOW_CHECKPOINT_MS)
     nested = []
+    sharedTurns = 0
+    sliceTurn = -1
+    if (opts.turns) { spinning = true; spin() }
     watchNesting(true)
     const t0 = performance.now()
     let ms = 0
@@ -103,6 +115,7 @@ export function bulkWalKit() {
       }
     } finally {
       watched = watch()
+      spinning = false
       watchNesting(false)
       setCheckpointDelayForTests(0)
     }
@@ -122,6 +135,7 @@ export function bulkWalKit() {
       + `${k.restarts} start-overs; WAL peak ${w.mostWalFrames} frames, ${mb(peakBytes)} MB of ${mb(sizeLimit)} `
       + `(${(100 - (peakBytes / sizeLimit) * 100).toFixed(0)}% left)`)
     console.log(`        in the longest stretch: ${inside.map(transactionLine).join(' | ') || 'no transaction'}`)
+    if (opts.turns) console.log(`        slices written in a turn another slice was written in: ${sharedTurns}`)
     const startedOver = records.filter(r => r.startedOver).map(transactionLine)
     assert.ok(longest.ms < LOOP_LIMIT_MS, `the event loop was held ${longest.ms.toFixed(0)} ms`)
     assert.equal(w.checkpoints, 0, 'checkpoints run on the API connection')
@@ -136,11 +150,12 @@ export function bulkWalKit() {
       assert.ok(w.mostWalFrames >= DB_AUTO_CHECKPOINT_FRAMES,
         `the WAL never passed SQLite's own mark (${w.mostWalFrames} frames)`)
     }
+    if (opts.turns) assert.equal(sharedTurns, 0, 'slices written in a turn another slice was written in')
     if (opts.pause) {
       assert.ok(w.mostWalFrames >= WAL_BULK_PAUSE_FRAMES && k.pauses > 0,
         `the WAL never reached the pause (${w.mostWalFrames} frames, ${k.pauses} waits)`)
     }
-    return { ms, loopMs: longest.ms, w, k, records, peakBytes }
+    return { ms, loopMs: longest.ms, w, k, records, peakBytes, sharedTurns }
   }
   return { probe, measure }
 }

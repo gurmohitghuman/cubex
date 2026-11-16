@@ -13,7 +13,7 @@
 // - Each slice is one transaction, `step` inside it (its own run flat in it: oneTransaction, lib/slices.ts; a
 //   nested one would be a savepoint, slow), committed with SQLite's own checkpoint off and taken in turn with the
 //   worker's write that starts the WAL over (lib/wal-turn.ts): it never starts the WAL over itself, which syncs the
-//   WAL's new header inside its commit.
+//   WAL's new header inside its commit. One slice a turn of the event loop, across writers (lib/slice-turn.ts).
 // - After the last slice, what's left is copied back on the worker and the WAL started over before the job goes
 //   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over;
 //   unless the job wrote few frames and the WAL holds fewer than SQLite's own checkpoint waits for (a short job).
@@ -40,6 +40,7 @@ import {
   byDeadline, checkpointInBackground, checkpointsOnWorker, walRoom, walState, type WalBounds,
 } from './wal-checkpointer';
 import { inWalTurn, walTurnCheck } from './wal-turn';
+import { takeSliceTurn } from './slice-turn';
 
 const BULK: WalBounds = { ask: WAL_BULK_CHECKPOINT_FRAMES, pause: WAL_BULK_PAUSE_FRAMES };
 const ON_THIS_THREAD: WalBounds = { ask: WAL_CHECKPOINT_FRAMES, pause: WAL_PAUSE_FRAMES };
@@ -91,6 +92,8 @@ function fitted(b: WalBounds, room: number, biggest: number): WalBounds {
 export interface BulkWriter {
   // One slice: `step` in one transaction, after room in the WAL, in turn. Answers what `step` does.
   slice<T>(step: () => T): Promise<T>;
+  // The WAL frames (pages) the last slice wrote: 0 before the first, or with none read (off the main thread).
+  lastFrames(): number;
 }
 
 // Runs `work` as a bulk writer (above), its slices made through the BulkWriter it is given.
@@ -102,7 +105,9 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
   const room = walRoomFrames();
   let biggest = 0;
   let written = 0;
+  let last = 0;
   const writer: BulkWriter = {
+    lastFrames: () => last,
     async slice<T>(step: () => T): Promise<T> {
       const onWorker = checkpointsOnWorker();
       // The worker couldn't start, or stopped twice: checkpoints run here from now on.
@@ -115,18 +120,24 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
       // after the slice would come back in that same turn: two slices back to back, nothing served between
       // (about 100 ms at once undoing 200,000 rows with three formulas).
       await yieldToRequests();
+      // One slice a turn of the event loop, whichever writer's (lib/slice-turn.ts).
+      const done = await takeSliceTurn();
       const tx = db.transaction(() => { walTurnCheck(); return step(); });
-      // Always written (`anyway`): never 'late'. In turn, so the WAL isn't started over between the two reads.
-      const out = await inWalTurn(() => {
-        const before = walState();
-        const r = withoutAutoCheckpoint(() => tx.immediate());
-        const after = walState();
-        if (before && after) {
-          biggest = Math.max(biggest, after.log - before.log);
-          written += Math.max(0, after.log - before.log);
-        }
-        return r;
-      }, until, true) as T;
+      let out: T;
+      try {
+        // Always written (`anyway`): never 'late'. In turn, so the WAL isn't started over between the two reads.
+        out = await inWalTurn(() => {
+          const before = walState();
+          const r = withoutAutoCheckpoint(() => tx.immediate());
+          const after = walState();
+          last = before && after ? Math.max(0, after.log - before.log) : 0;
+          biggest = Math.max(biggest, last);
+          written += last;
+          return r;
+        }, until, true) as T;
+      } finally {
+        done();
+      }
       wrote = true;
       return out;
     },
@@ -173,6 +184,7 @@ async function startedOver(until: number, written: number): Promise<void> {
 
 // Off the main thread: each slice with SQLite's own checkpoint off, then a checkpoint on this connection.
 const onThisThread: BulkWriter = {
+  lastFrames: () => 0,
   async slice<T>(step: () => T): Promise<T> {
     const out = withoutAutoCheckpoint(() => db.transaction(step).immediate());
     await yieldToRequests();

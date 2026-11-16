@@ -12,7 +12,9 @@
 // run's own words (⏳, ❌, ⏭️, ➕) is empty, never data: "⏭️ Not found" must not
 // become the last name "Found".
 import { db } from '../lib/db';
-import { DERIVED_SLICE_CHARS, DERIVED_SLICE_MS, HEAVY_SLICE_ROWS } from '../lib/constants';
+import {
+  DERIVED_QUEUED_SLICE_FRAMES, DERIVED_QUEUED_SLICE_ROWS, DERIVED_SLICE_CHARS, DERIVED_SLICE_MS, HEAVY_SLICE_ROWS,
+} from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { holdsRunMarker } from '../lib/run-markers';
 import type { DerivedPass } from './derived-kind';
@@ -70,6 +72,15 @@ export function readDerivedRows(
 // up to HEAVY_SLICE_ROWS.
 export const pageAfter = (page: number, read: number, done: number): number =>
   (done < read ? Math.max(64, done * 2) : Math.min(HEAVY_SLICE_ROWS, Math.max(page, 64) * 2));
+
+// How many queued rows a follow's next slice reads (constants-clean.ts): as many as fit DERIVED_QUEUED_SLICE_FRAMES
+// at the frames a row took in the last slice (`read` rows, `frames` written), at most twice `read`, from 64 to
+// DERIVED_QUEUED_SLICE_ROWS. None read: `rows` as it was.
+export function queuedRowsAfter(rows: number, read: number, frames: number): number {
+  if (read === 0) return rows;
+  const fit = frames > 0 ? Math.floor((read * DERIVED_QUEUED_SLICE_FRAMES) / frames) : read * 2;
+  return Math.max(64, Math.min(DERIVED_QUEUED_SLICE_ROWS, read * 2, fit));
+}
 
 // keepWhenEmpty (new rows): a row whose inputs are all empty keeps a cell it
 // arrived with, as a person's edit stays until an input changes.

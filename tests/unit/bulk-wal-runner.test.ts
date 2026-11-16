@@ -234,7 +234,9 @@ await ok('a reader holding the last frames as the job ends: tried again, the WAL
 // every frame (more kept coming), so the WAL never started over: it grew as long as both went on. The worker's
 // checkpoints are held OUTSIDE_DELAY_MS, so those commits come while none runs: a commit's own checkpoint can't
 // run while the worker's does (the next commit tries again), and on a slow disk the WAL passes the room by what
-// writers add in that time.
+// writers add in that time. The job goes on, the rows rewritten again from the first, until that writer has made
+// OUTSIDE_COMMITS: counted, not timed. That writer gets 2 commits between two slices and the rest while the job
+// waits for a held checkpoint, so on a slow disk (commits of 60 ms) a job of one pass ended before them.
 await ok('a writer outside the runner all through a job: the WAL stays under journal_size_limit', async () => {
   db.exec('CREATE TABLE outside_writes (id INTEGER PRIMARY KEY, v TEXT)')
   const fill = db.prepare('INSERT INTO outside_writes (v) VALUES (?)')
@@ -244,9 +246,14 @@ await ok('a writer outside the runner all through a job: the WAL stays under jou
   await walCheckpointerIdle()
   probe.reset()
   setCheckpointDelayForTests(OUTSIDE_DELAY_MS)
-  let done = false, commits = 0
+  let done = false, commits = 0, slices = 0
   try {
-    const job = runInCheckpointedSlices(rewrite('n')).finally(() => { done = true })
+    const step = () => {
+      const at = (slices++ * SLICE) % ROWS
+      set.run('n', JSON.stringify(rowids.slice(at, at + SLICE)))
+      return slices * SLICE < ROWS || commits < OUTSIDE_COMMITS
+    }
+    const job = runInCheckpointedSlices(step).finally(() => { done = true })
     while (!done && commits < OUTSIDE_COMMITS) {
       db.transaction(() => { touch.run(String(commits++).padEnd(300, 'o')) }).immediate()
       await new Promise(r => setImmediate(r))
@@ -255,8 +262,8 @@ await ok('a writer outside the runner all through a job: the WAL stays under jou
   } finally { setCheckpointDelayForTests(0) }
   const w = probe.read()
   const peakBytes = 32 + w.mostWalFrames * (page + 24)
-  console.log(`      outside: ${commits} commits, WAL peak ${w.mostWalFrames} frames (${peakBytes} bytes of `
-    + `${sizeLimit}), ${w.ownCheckpoints} commits ran SQLite's own checkpoint`)
+  console.log(`      outside: ${commits} commits during ${slices} slices of the job, WAL peak ${w.mostWalFrames} `
+    + `frames (${peakBytes} bytes of ${sizeLimit}), ${w.ownCheckpoints} commits ran SQLite's own checkpoint`)
   assert.equal(count('n'), ROWS)
   back()
   assert.ok(commits * 80 > roomFor(sizeLimit), `only ${commits} commits outside the runner`)

@@ -40,6 +40,7 @@ const READS = 'reads only'
 const YIELDS: Entry[] = [
   { file: 'server/src/lib/slices.ts', count: 2, why: 'runInSlices and yieldToRequests themselves' },
   { file: 'server/src/lib/bulk-slices.ts', count: 3, why: 'the runner: before each slice, and between slices' },
+  { file: 'server/src/lib/slice-turn.ts', count: 2, why: 'the runner\'s slices, one a turn of the event loop' },
   { file: 'server/src/lib/row-order.ts', count: 3,
     why: 'sheetRowIds reads (2); plain slices off the server\'s thread only (1)' },
   { file: 'server/src/services/column-transform-pages.ts', count: 1, why: 'transform_column\'s pages (walRoom)' },
