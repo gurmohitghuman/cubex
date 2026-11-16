@@ -2,7 +2,8 @@
 // its ⏳ seeded through lib/row-order.ts) ends with fewer frames in the WAL than SQLite's own checkpoint waits for,
 // so it neither asks the worker for a checkpoint nor waits for one, however slow the disk (each checkpoint on the
 // worker held 5 s here): the run is queued at once. A job that leaves 2,000 frames or more still waits for the
-// worker to copy them back and start the WAL over, so the next commit on this connection does neither.
+// worker to copy them back and start the WAL over, so the next commit on this connection does neither; and so does a
+// big job whose WAL started over part way and ends under 2,000 frames (the next commit would take it past).
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -71,6 +72,26 @@ await ok('a job leaving 2,000 frames or more: it waits for the worker, the WAL s
   const s = takeWalCheckpointerStats()
   assert.ok(s.checkpoints >= 1 && s.restarts >= 1, JSON.stringify(s))
   // Started over by the worker's write (lib/wal-turn.ts): its one frame.
+  assert.ok(walState()!.log <= 1, `the WAL started over (${walState()!.log} frames)`)
+})
+
+await ok('a big job ending under 2,000 frames, the WAL started over part way: it still waits', async () => {
+  const sid = sheet(Array.from({ length: 20_000 }, (_, i) => ({ Name: `n${i}`, P: 'p'.repeat(500) })), ['Name', 'P'])
+  await fresh()
+  const all = db.prepare(`UPDATE rows SET data = json_set(data, '$.Name', 'x') WHERE sheet_id = ?`)
+  const some = db.prepare(`UPDATE rows SET data = json_set(data, '$.Name', 'y') WHERE sheet_id = ? AND row_index < ?`)
+  let last = 0
+  await asBulkWriter(async w => {
+    await w.slice(() => all.run(sid))
+    // The worker copies the first slice back and starts the WAL over before the next.
+    await fresh()
+    const from = walState()!.log
+    await w.slice(() => some.run(sid, 8_000))
+    last = walState()!.log - from
+  })
+  assert.ok(last >= DB_AUTO_CHECKPOINT_FRAMES / 2 && last < DB_AUTO_CHECKPOINT_FRAMES, `last slice: ${last} frames`)
+  const s = takeWalCheckpointerStats()
+  assert.ok(s.checkpoints >= 1 && s.restarts >= 1, `the job didn't wait for the worker: ${JSON.stringify(s)}`)
   assert.ok(walState()!.log <= 1, `the WAL started over (${walState()!.log} frames)`)
 })
 

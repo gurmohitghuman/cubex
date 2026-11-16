@@ -2,17 +2,18 @@
 // (services/derived-fill.ts) and the same column following its source once every source cell was written again
 // (services/derived-follow.ts, tick after tick until its queue is empty). Rows with random ids and a 300-character
 // cell, each checkpoint on the worker held 300 ms: the event loop is never held 200 ms, no checkpoint's sync runs
-// on the API thread, the WAL stays under journal_size_limit, SQLite's own checkpoint is back on afterwards, and
-// every cell ends cleaned.
+// on the API thread, the WAL stays under journal_size_limit, SQLite's own checkpoint is back on afterwards, every
+// cell ends cleaned, and the sheet is free as soon as the fill reads as done.
 import assert from 'node:assert/strict'
 import { undoKit } from './run-undo-kit'
 import { bulkWalKit } from './bulk-wal-kit'
-const { db, uid, ok, done, idle, sheet, cells } = undoKit('bulk-wal-derived')
+const { db, uid, ok, done, sheet, cells } = undoKit('bulk-wal-derived')
 const { startCleanColumn } = await import('../../server/src/services/clean-column')
 const { waitForCleanFill } = await import('../../server/src/services/clean-fill')
 const { cleanFollowTick } = await import('../../server/src/services/clean-follow')
 const { markAutorunInputs } = await import('../../server/src/lib/autorun-mark')
 const { entryFor } = await import('../../server/src/services/autorun-entry')
+const { sheetBusyWith } = await import('../../server/src/lib/sheet-busy')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const { measure } = bulkWalKit()
@@ -28,7 +29,8 @@ await ok('a clean column filled, then following its source: the WAL copied back 
     const started = await startCleanColumn(uid, sid, { source: 'Name', cleaner: 'trim' })
     assert.ok('ok' in started, JSON.stringify(started))
     filled = await waitForCleanFill(started.ok.id, 120_000)
-    await idle(sid)
+    // Told "done", the sheet is free: the fill wrote its end once its WAL was copied back.
+    assert.equal(sheetBusyWith(sid), null, 'the sheet is still busy once the fill reads as done')
   }, { pastAuto: true })
   assert.equal(filled?.fill_status, 'done', JSON.stringify(filled))
   assert.equal(filled?.filled_rows, N)

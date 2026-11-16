@@ -95,6 +95,7 @@ function rowsToAdd(
 // The run a full sheet stops (stopForRoom), once the add's transaction has committed.
 export interface AddStop { runId: string; name: string }
 
+// Tests only: one journal row's add in its own transaction, the stop after it (the drain uses addListItemsIn).
 export function addListItems(journalId: string, count: DestCount = { rows: null }): AddOutcome {
   const { out, stop } = db.transaction(() => addListItemsIn(journalId, count)).immediate();
   if (stop) stopAfterAdd(stop);

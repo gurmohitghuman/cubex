@@ -52,7 +52,10 @@ async function work<R extends DerivedRecord>(
     const stmt = db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
       FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`);
     const cellPath = jsonPath(job.column_name);
-    return await asBulkWriter(async w => {
+    // How the fill ended, written once the writer is done: its WAL copied back on the worker, so the sheet goes
+    // free right after (a caller told "done" can start the next thing there).
+    let ended = null as { status: 'done' | 'failed'; error: string | null } | null;
+    const out = await asBulkWriter(async (w): Promise<DerivedWait | typeof TRASHED | null> => {
       let page = HEAVY_SLICE_ROWS;
       for (let at = 0; at < rowIds.length;) {
         await pass.prepare();
@@ -89,16 +92,18 @@ async function work<R extends DerivedRecord>(
         if (stopped) return null;
         const failure = pass.failure();
         if (failure) {
-          finishFill(kind, job, 'failed', failure);
+          ended = { status: 'failed', error: failure };
           return null;
         }
         const waitAfter = pass.waiting?.();
         if (waitAfter) return waitAfter;
         at = next;
       }
-      finishFill(kind, job, 'done', null);
+      ended = { status: 'done', error: null };
       return null;
     });
+    if (ended) finishFill(kind, job, ended.status, ended.error);
+    return out;
   } finally {
     pass.dispose();
   }
