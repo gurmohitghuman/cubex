@@ -1,6 +1,7 @@
 // Pausing, resuming and stopping a setup being used on a sheet. Its record
-// moves first (the runner then starts nothing new), then the runs of the
-// layer working now follow, through the same run controls as the column menu
+// moves first (the runner then starts nothing new; resumed, the sweep leaves
+// its runs to go on), then the runs of the layer working now follow, through
+// the same run controls as the column menu
 // (services/run-lifecycle.ts); a run still writing its placeholders is paused
 // by the runner's next sweep. Clean and formula fills are free and short: they
 // finish. A stopped setup leaves the columns it made, as a stopped run does.
@@ -13,9 +14,12 @@
 // counted, or pause again at once).
 import { db } from '../lib/db';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
-import { pauseRun, resumeCapRefusal, resumeModelRefusal, resumeRun, cancelRun } from './run-lifecycle';
+import {
+  pauseRun, resumeCapRefusal, resumeModelRefusal, resumeRun, cancelRun, type ControlOutcome,
+} from './run-lifecycle';
 import { modelList } from '../lib/ai-model-check';
 import { advanceSetupRun } from './setup-runner';
+import { holdPaused } from './setup-step-state';
 import {
   getSetupRun, loadSetupRun, planOf, setStatus, stepsOf, type SetupRunRow, type SetupRunView, type StepRecord,
 } from './setup-run-store';
@@ -34,6 +38,23 @@ function keysAhead(r: SetupRunRow): string[] {
     && (steps[i].state !== 'done' || (r.auto_run && s.autoRun))
     ? savedKeyRefsInConfig(r.user_id, { method: s.request.method, url: s.request.url, headers: s.request.headers,
       body: s.request.body ?? undefined }) : []));
+}
+
+// A run's resume refused, as the setup's resume answers it; null: resumed, or it had ended meanwhile.
+function refusal(out: ControlOutcome): RunFail | null {
+  if (!('fail' in out)) return null;
+  if (out.fail === 'secrets_required' || out.fail === 'spend_cap') return { fail: 'forbidden', message: out.message };
+  if (out.fail === 'model_gone' || out.fail === 'bad_request') return { fail: 'bad_request', message: out.message };
+  // A hold that began after the checks before it: the setup stays paused, as that step's run does.
+  return out.fail === 'held' ? { fail: 'conflict', message: out.message } : null;
+}
+
+// A resume refused, or failed (a run's job couldn't be queued): the record as it was (paused, its token and
+// message), and the runs resumed before that paused again with it. A pause or stop that came meanwhile stays.
+function putBack(r: SetupRunRow): void {
+  const back = db.prepare(`UPDATE setup_runs SET status = 'paused', access_token_id = ?, error_message = ?,
+    updated_at = datetime('now') WHERE id = ? AND status = 'running'`).run(r.access_token_id, r.error_message, r.id);
+  if (back.changes > 0) holdPaused(loadSetupRun(r.id)!);
 }
 
 const runsOf = (steps: StepRecord[]) =>
@@ -78,23 +99,30 @@ export async function controlSetupRun(
       }
       db.prepare('UPDATE setup_runs SET allow_secrets = 0 WHERE id = ? AND user_id = ?').run(id, userId);
     }
+    // The record goes running before any of its runs move: the sweep pauses a paused setup's runs
+    // (setup-sweep.ts), so one meanwhile would pause each run just resumed, its job would then run nothing, and
+    // the step would wait with no end. Its later steps spend for whom it was resumed for; a pause at the cap
+    // (setup-runner.ts) said why in error_message, and that ends with the pause.
+    const moved = db.prepare(`UPDATE setup_runs SET status = 'running', access_token_id = ?, error_message = NULL,
+      updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'paused'`).run(owner, id, userId);
+    if (moved.changes === 0) {
+      return { fail: 'conflict', message: `It isn't paused (it's ${loadSetupRun(id)?.status}).` };
+    }
     // A token without 'secrets' resumes nothing that reads a saved key (run-lifecycle.ts says which).
     for (const x of runs) {
-      const out = await resumeRun(x.kind, x.runId, userId, hasSecretsScope && !!r.allow_secrets);
-      if ('fail' in out && (out.fail === 'secrets_required' || out.fail === 'spend_cap')) {
-        return { fail: 'forbidden', message: out.message };
+      // Paused or stopped meanwhile: no more runs resume (the sweep pauses one resumed as the pause came).
+      if (loadSetupRun(id)?.status !== 'running') break;
+      let out: ControlOutcome;
+      try {
+        out = await resumeRun(x.kind, x.runId, userId, hasSecretsScope && !!r.allow_secrets);
+      } catch (err) {
+        // Its job couldn't be queued (that run is paused again): the setup goes back too, then the error.
+        putBack(r);
+        throw err;
       }
-      if ('fail' in out && (out.fail === 'model_gone' || out.fail === 'bad_request')) {
-        return { fail: 'bad_request', message: out.message };
-      }
-      // A hold that began after the check above: the setup stays paused, as that step's run does.
-      if ('fail' in out && out.fail === 'held') return { fail: 'conflict', message: out.message };
+      const refused = refusal(out);
+      if (refused) { putBack(r); return refused; }
     }
-    // Its later steps spend for whom it was resumed for; a pause at the cap (setup-runner.ts) said why in
-    // error_message, and that ends with the pause.
-    db.prepare(`UPDATE setup_runs SET access_token_id = ?, error_message = NULL
-      WHERE id = ? AND user_id = ? AND status = 'paused'`).run(owner, id, userId);
-    setStatus(id, 'running');
     void advanceSetupRun(id);
   } else {
     if (r.status !== 'running' && r.status !== 'paused') {

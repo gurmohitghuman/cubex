@@ -9,7 +9,7 @@ import { pruneWriteKeys } from './write-idempotency';
 import { writeTokenUsesNow } from './token-last-used';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
-import { startSetupLoop } from '../services/setup-runner';
+import { startSetupLoop } from '../services/setup-sweep';
 import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
