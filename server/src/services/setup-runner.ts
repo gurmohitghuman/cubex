@@ -2,8 +2,8 @@
 // once every step whose columns it reads has finished: AI columns have no
 // auto-run, so nothing else would run them after the columns they read are
 // filled. advanceSetupRun starts the current layer's steps, checks the ones
-// running, and moves to the next layer when all are done; the sweep (every
-// SETUP_SWEEP_MS) calls it for each live record, so a restart picks a chain
+// running, and moves to the next layer when all are done; the sweep
+// (setup-sweep.ts) calls it for each live record, so a restart picks a chain
 // up from the table alone. A step in 'again' mode carries a column the sheet
 // has on (setup-step-again.ts): no row left to do is done, a run working on
 // it is waited for. A step whose start is refused because another run holds a
@@ -13,7 +13,6 @@
 // the chain; rows that failed inside a run don't (they read as empty further
 // on). The last layer done, the setup's auto-runs are turned on (not after a test).
 import { db } from '../lib/db';
-import { SETUP_SWEEP_MS } from '../lib/constants-setups';
 import { isBusyMessage, sheetHeld } from '../lib/sheet-busy';
 import { heldWaitWords } from '../lib/run-held-words';
 import { mainColumn } from '../lib/setups/spec';
@@ -170,30 +169,4 @@ async function advance(id: string): Promise<void> {
     db.prepare(`UPDATE setup_runs SET layer = layer + 1, updated_at = datetime('now')
       WHERE id = ? AND status = 'running' AND layer = ?`).run(id, r.layer);
   }
-}
-
-let timer: ReturnType<typeof setInterval> | null = null;
-let sweeping = false;
-
-export async function setupSweep(): Promise<void> {
-  if (sweeping) return;
-  sweeping = true;
-  try {
-    const live = db.prepare(`SELECT * FROM setup_runs WHERE status IN ('running', 'paused') ORDER BY created_at`)
-      .all() as SetupRunRow[];
-    for (const r of live) {
-      try {
-        if (r.status === 'paused') holdPaused(r);
-        else await advanceSetupRun(r.id);
-      } catch (err) {
-        console.error(`Setup run ${r.id} couldn't move on this round:`, err);
-      }
-    }
-  } finally { sweeping = false; }
-}
-
-export function startSetupLoop(): void {
-  if (timer) return;
-  timer = setInterval(() => { void setupSweep(); }, SETUP_SWEEP_MS);
-  timer.unref?.();
 }
