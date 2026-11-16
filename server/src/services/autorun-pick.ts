@@ -9,6 +9,7 @@ import { db } from '../lib/db';
 import { AUTORUN_SCAN_PAGE } from '../lib/constants';
 import { parseRowData } from '../lib/sql-rows';
 import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { candidateVerdict, type CandidatePlan } from '../lib/autorun-rules';
 import type { AutorunEntry } from './autorun-entry';
 
@@ -20,40 +21,43 @@ const PENDING_PAGE = 500;
 // several sweeps instead of one long one.
 const NEW_ROWS_PER_SWEEP = 50_000;
 
-// One page of queued rows, read and decided in one transaction: a write that
-// queues a row again after it was read can't be lost to this page's delete.
+// One page of queued rows, read and decided in one transaction (a slice of a
+// bulk writer, its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts):
+// a write that queues a row again after it was read can't be lost to this page's delete.
 function pendingPage(e: AutorunEntry, plan: CandidatePlan, after: string, room: number):
   { taken: string[]; last: string | null } {
   const taken: string[] = [];
   let last: string | null = null;
-  db.transaction(() => {
-    const rows = db.prepare(`SELECT p.row_id AS id, r.data AS data, r.sheet_id AS sheet FROM autorun_pending p
-      LEFT JOIN rows r ON r.id = p.row_id WHERE p.autorun_id = ? AND p.row_id > ? ORDER BY p.row_id LIMIT ?`)
-      .all(e.id, after, PENDING_PAGE) as Array<{ id: string; data: string | null; sheet: string | null }>;
-    const forget: string[] = [];
-    for (const r of rows) {
-      if (taken.length >= room) break;
-      last = r.id;
-      if (r.data === null || r.sheet !== e.sheet_id) { forget.push(r.id); continue; }
-      if (candidateVerdict(parseRowData(r.data), plan, true) === 'take') taken.push(r.id);
-      else forget.push(r.id);
-    }
-    if (forget.length) {
-      db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
-        .run(e.id, JSON.stringify(forget));
-    }
-  }).immediate();
+  const rows = db.prepare(`SELECT p.row_id AS id, r.data AS data, r.sheet_id AS sheet FROM autorun_pending p
+    LEFT JOIN rows r ON r.id = p.row_id WHERE p.autorun_id = ? AND p.row_id > ? ORDER BY p.row_id LIMIT ?`)
+    .all(e.id, after, PENDING_PAGE) as Array<{ id: string; data: string | null; sheet: string | null }>;
+  const forget: string[] = [];
+  for (const r of rows) {
+    if (taken.length >= room) break;
+    last = r.id;
+    if (r.data === null || r.sheet !== e.sheet_id) { forget.push(r.id); continue; }
+    if (candidateVerdict(parseRowData(r.data), plan, true) === 'take') taken.push(r.id);
+    else forget.push(r.id);
+  }
+  if (forget.length) {
+    db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
+      .run(e.id, JSON.stringify(forget));
+  }
   return { taken, last };
 }
 
 export async function pickRows(e: AutorunEntry, plan: CandidatePlan, limit: number): Promise<Picked> {
   const taken = new Map<string, boolean>();
-  for (let after = ''; taken.size < limit;) {
-    const page = pendingPage(e, plan, after, limit - taken.size);
-    for (const id of page.taken) taken.set(id, true);
-    if (page.last === null) break;
-    after = page.last;
-    await yieldToRequests();
+  // Most sweeps find nothing queued: no writer then.
+  if (db.prepare('SELECT 1 FROM autorun_pending WHERE autorun_id = ? LIMIT 1').get(e.id)) {
+    await asBulkWriter(async w => {
+      for (let after = ''; taken.size < limit;) {
+        const page = await w.slice(() => pendingPage(e, plan, after, limit - taken.size));
+        for (const id of page.taken) taken.set(id, true);
+        if (page.last === null) break;
+        after = page.last;
+      }
+    });
   }
 
   let watermark = e.watermark_row_index;

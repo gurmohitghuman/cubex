@@ -14,6 +14,7 @@
 import { db } from '../lib/db';
 import { ANSWER_PRUNE_SWEEP_MS } from '../lib/constants';
 import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { walkRunResults, type WalkPos } from './run-results-walk';
 
 const PRUNE = `UPDATE http_results
@@ -140,8 +141,9 @@ async function pruneSuperseded(run: DueRun, col: Column): Promise<void> {
     AND +row_index IN (SELECT value FROM json_each(?)) AND +user_id = ?`);
   const save = db.prepare(`UPDATE http_runs SET prune_cursor = ?, prune_generation = ?
     WHERE id = ? AND user_id = ? AND answers_pruned = 0`);
-  const outcome = await walkRunResults({
-    runId: run.id, sheetId: run.sheet_id, userId: run.user_id, answered: true,
+  // Each slice one transaction of a bulk writer (run-results-walk.ts).
+  const outcome = await asBulkWriter(bulk => walkRunResults({
+    runId: run.id, sheetId: run.sheet_id, userId: run.user_id, answered: true, bulk,
     from: { cursor: run.cursor, generation: run.generation },
     step: (slice, to: WalkPos) => {
       const lo = slice.indexes[0];
@@ -152,12 +154,10 @@ async function pruneSuperseded(run: DueRun, col: Column): Promise<void> {
       for (const o of supersededNow(run, overlapping)) {
         rowids.push(...(atRows.pluck().all(o.id, lo, hi, at, run.user_id) as number[]));
       }
-      db.transaction(() => {
-        pruneAnswers(run.user_id, rowids);
-        save.run(to.cursor, to.generation, run.id, run.user_id);
-      }).immediate();
+      pruneAnswers(run.user_id, rowids);
+      save.run(to.cursor, to.generation, run.id, run.user_id);
     },
-  });
+  }));
   if (outcome === 'done') markDone(run);
 }
 

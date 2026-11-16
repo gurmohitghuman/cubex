@@ -3,7 +3,8 @@
 // with the sheet busy (lib/sheet-busy.ts), so no edit lands between a row's
 // read and its write, in storage (rowid) order (lib/row-order.ts): each slice
 // reads its rows, writes the cells that change and moves the cursor in one
-// short transaction. A restart goes on from the cursor (resumeDerivedFills at
+// short transaction, its WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts). A restart goes on from the cursor (resumeDerivedFills at
 // boot). Writes are idempotent; a slice that fails is retried a few times,
 // then the fill ends as failed and frees the sheet, as it does when the kind
 // stops the pass (a formula too slow). A pass that has to wait (a lookup whose
@@ -18,7 +19,7 @@ import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { sheetRowIds } from '../lib/row-order';
-import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import { redactSecrets } from '../lib/redact';
@@ -51,51 +52,53 @@ async function work<R extends DerivedRecord>(
     const stmt = db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
       FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`);
     const cellPath = jsonPath(job.column_name);
-    let page = HEAVY_SLICE_ROWS;
-    for (let at = 0; at < rowIds.length;) {
-      await pass.prepare();
-      const waitBefore = pass.waiting?.();
-      if (waitBefore) return waitBefore;
-      let stopped = false, trashed = false;
-      let next = at;
-      db.transaction(() => {
-        if (!verifySheetOwnership(job.sheet_id, job.user_id)) { trashed = true; return; }
-        // Edited, or started again meanwhile (an agent's second call): this fill is over.
-        const now = kind.load(job.id);
-        if (!now || now.fill_status !== 'filling' || !kind.sameSetup(now, job)) {
-          stopped = true;
-          return;
+    return await asBulkWriter(async w => {
+      let page = HEAVY_SLICE_ROWS;
+      for (let at = 0; at < rowIds.length;) {
+        await pass.prepare();
+        const waitBefore = pass.waiting?.();
+        if (waitBefore) return waitBefore;
+        let stopped = false, trashed = false;
+        let next = at;
+        await w.slice(() => {
+          if (!verifySheetOwnership(job.sheet_id, job.user_id)) { trashed = true; return; }
+          // Edited, or started again meanwhile (an agent's second call): this fill is over.
+          const now = kind.load(job.id);
+          if (!now || now.fill_status !== 'filling' || !kind.sameSetup(now, job)) {
+            stopped = true;
+            return;
+          }
+          const end = Math.min(rowIds.length, at + page);
+          const ids = JSON.stringify(Array.from(rowIds.subarray(at, end)));
+          const read = readDerivedRows(stmt.iterate(...sel.params, ids, job.sheet_id, job.user_id), page,
+            inputs.length);
+          const rows = read.rows.map(r => asDerivedRead(r, inputs.length));
+          const counts = writeDerivedCells(job.user_id, cellPath, rows, pass);
+          // A column another column's auto-run reads queues these rows for it.
+          markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { rowids: counts.changed });
+          // The slice may end early (time, a pass to prepare, the read cut short):
+          // the cursor moves past the rows it worked out, and past deleted rows
+          // once every row of the chunk was read and worked out.
+          if (counts.done < rows.length) next = rowIds.indexOf(rows[counts.done].rowid, at);
+          else if (read.capped && rows.length > 0) next = rowIds.indexOf(rows[rows.length - 1].rowid, at) + 1;
+          else next = end;
+          if (next > at) kind.advance(job, rowIds[next - 1], counts);
+          page = pageAfter(page, rows.length, counts.done);
+        });
+        if (trashed) return TRASHED;
+        if (stopped) return null;
+        const failure = pass.failure();
+        if (failure) {
+          finishFill(kind, job, 'failed', failure);
+          return null;
         }
-        const end = Math.min(rowIds.length, at + page);
-        const ids = JSON.stringify(Array.from(rowIds.subarray(at, end)));
-        const read = readDerivedRows(stmt.iterate(...sel.params, ids, job.sheet_id, job.user_id), page, inputs.length);
-        const rows = read.rows.map(r => asDerivedRead(r, inputs.length));
-        const counts = writeDerivedCells(job.user_id, cellPath, rows, pass);
-        // A column another column's auto-run reads queues these rows for it.
-        markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { rowids: counts.changed });
-        // The slice may end early (time, a pass to prepare, the read cut short):
-        // the cursor moves past the rows it worked out, and past deleted rows
-        // once every row of the chunk was read and worked out.
-        if (counts.done < rows.length) next = rowIds.indexOf(rows[counts.done].rowid, at);
-        else if (read.capped && rows.length > 0) next = rowIds.indexOf(rows[rows.length - 1].rowid, at) + 1;
-        else next = end;
-        if (next > at) kind.advance(job, rowIds[next - 1], counts);
-        page = pageAfter(page, rows.length, counts.done);
-      }).immediate();
-      if (trashed) return TRASHED;
-      if (stopped) return null;
-      const failure = pass.failure();
-      if (failure) {
-        finishFill(kind, job, 'failed', failure);
-        return null;
+        const waitAfter = pass.waiting?.();
+        if (waitAfter) return waitAfter;
+        at = next;
       }
-      const waitAfter = pass.waiting?.();
-      if (waitAfter) return waitAfter;
-      at = next;
-      await yieldToRequests();
-    }
-    finishFill(kind, job, 'done', null);
-    return null;
+      finishFill(kind, job, 'done', null);
+      return null;
+    });
   } finally {
     pass.dispose();
   }

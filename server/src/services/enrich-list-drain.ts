@@ -2,9 +2,10 @@
 // that adds journaled results (enrichment_list_items) as rows. Workers can't
 // append: the busy lock and the append floor live in this process. Each round
 // goes destination by destination, so one that has to wait never holds
-// another's rows. Each source row's rows go in one synchronous transaction,
-// checked just before against a sort, an import or a column change on either
-// sheet (lib/sheet-busy.ts); the loop never holds the sheets itself, so a run
+// another's rows. Each source row's rows go in one synchronous transaction, a
+// slice of the round's bulk writer (its WAL copied back on the checkpoint
+// worker's thread: lib/bulk-slices.ts), checked in it against a sort, an import
+// or a column change on either sheet (lib/sheet-busy.ts); the loop never holds the sheets itself, so a run
 // start or a pick of fields there is never refused as busy. Per destination
 // they go oldest first: one that has to wait (for room, for its source sheet
 // to be free) holds the ones after it, so a rerun's newer rows never land
@@ -19,10 +20,10 @@
 import { db } from '../lib/db';
 import { ENRICH_LIST_DRAIN_ATTEMPTS, ENRICH_LIST_DRAIN_BATCH, ENRICH_LIST_DRAIN_MS } from '../lib/constants';
 import { sheetBusyWith } from '../lib/sheet-busy';
-import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter, type BulkWriter } from '../lib/bulk-slices';
 import { failedCell } from '../lib/enrich-cells';
 import { redactError, redactSecrets } from '../lib/redact';
-import { addListItems, type AddOutcome, type DestCount } from './enrich-list-add';
+import { addListItemsIn, stopAfterAdd, type AddOutcome, type DestCount } from './enrich-list-add';
 import { waitForRoom, writeSourceCell } from './enrich-list-source';
 import { releaseDestRunWaits } from './enrich-list-dest-run';
 
@@ -31,6 +32,9 @@ interface Pending { id: string; source_sheet_id: string; source_row_id: string; 
 // Results of a test whose fields were picked while it still ran: its worker
 // journaled them as waiting, and they can go now.
 function releasePicked(): void {
+  // Read first: an update takes the write lock even when it matches nothing, and this runs every round.
+  if (!db.prepare(`SELECT 1 FROM enrichment_list_items WHERE status = 'pending' AND wait_reason = 'fields'
+    LIMIT 1`).get()) return;
   db.prepare(`UPDATE enrichment_list_items SET wait_reason = NULL, updated_at = datetime('now')
     WHERE status = 'pending' AND wait_reason = 'fields' AND run_id IN (
       SELECT id FROM http_runs WHERE id IN (SELECT run_id FROM enrichment_list_items
@@ -60,9 +64,16 @@ function giveUp(id: string, error: unknown): void {
 // fault, so it's tried again without counting.
 const TRANSIENT = /^SQLITE_(BUSY|LOCKED|FULL|IOERR)/;
 
-function tryAdd(id: string, count: DestCount): AddOutcome | { error: true } {
+// One journal row's rows in one slice, unless either sheet is busy then ('busy'). A failed add is
+// rolled back with its slice, then counted here.
+async function tryAdd(w: BulkWriter, id: string, sourceSheet: string, dest: string, count: DestCount):
+  Promise<AddOutcome | { error: true } | 'busy'> {
   try {
-    return addListItems(id, count);
+    const done = await w.slice(() =>
+      (sheetBusyWith(dest) || sheetBusyWith(sourceSheet) ? null : addListItemsIn(id, count)));
+    if (!done) return 'busy';
+    if (done.stop) stopAfterAdd(done.stop);
+    return done.out;
   } catch (error) {
     console.error(`Adding list results ${id} as rows failed:`, redactError(error));
     count.rows = null;
@@ -87,33 +98,35 @@ export async function drainListItems(): Promise<void> {
     const dests = db.prepare(`SELECT DISTINCT dest_sheet_id FROM enrichment_list_items
       WHERE status = 'pending' AND (wait_reason IS NULL OR wait_reason = 'room')
         AND dest_sheet_id IN (SELECT id FROM sheets WHERE trash_id IS NULL)`).pluck().all() as string[];
-    for (const dest of dests) {
-      const items = db.prepare(`SELECT id, source_sheet_id, source_row_id, item_count FROM enrichment_list_items
-        WHERE rowid IN (
-          SELECT rowid FROM enrichment_list_items WHERE dest_sheet_id = ? AND status = 'pending'
-            AND (wait_reason IS NULL OR wait_reason = 'room') ORDER BY created_at, rowid LIMIT ?)
-        ORDER BY created_at, rowid`).all(dest, ENRICH_LIST_DRAIN_BATCH) as Pending[];
-      const count: DestCount = { rows: null };
-      for (const [i, item] of items.entries()) {
-        // A sort, an import or a column change on either sheet: the next round goes on.
-        if (sheetBusyWith(dest) || sheetBusyWith(item.source_sheet_id)) break;
-        const out = tryAdd(item.id, count);   // synchronous: nothing runs between the check and the add
-        // The ones behind a full sheet wait for room as well, but a removal with
-        // nothing of its row ahead goes on (it makes room).
-        if ('wait' in out && out.wait === 'room') {
-          const ahead = new Set(items.slice(0, i + 1).map(x => x.source_row_id));
-          for (const behind of items.slice(i + 1)) {
-            if (behind.item_count === 0 && !ahead.has(behind.source_row_id) && !sheetBusyWith(dest)
-              && !sheetBusyWith(behind.source_sheet_id)) {
-              tryAdd(behind.id, count);
-              await yieldToRequests();
-            } else { waitForRoom(behind.id); ahead.add(behind.source_row_id); }
+    if (dests.length === 0) return;
+    await asBulkWriter(async w => {
+      for (const dest of dests) {
+        const items = db.prepare(`SELECT id, source_sheet_id, source_row_id, item_count FROM enrichment_list_items
+          WHERE rowid IN (
+            SELECT rowid FROM enrichment_list_items WHERE dest_sheet_id = ? AND status = 'pending'
+              AND (wait_reason IS NULL OR wait_reason = 'room') ORDER BY created_at, rowid LIMIT ?)
+          ORDER BY created_at, rowid`).all(dest, ENRICH_LIST_DRAIN_BATCH) as Pending[];
+        const count: DestCount = { rows: null };
+        for (const [i, item] of items.entries()) {
+          const out = await tryAdd(w, item.id, item.source_sheet_id, dest, count);
+          // A sort, an import or a column change on either sheet: the next round goes on.
+          if (out === 'busy') break;
+          // The ones behind a full sheet wait for room as well, but a removal with
+          // nothing of its row ahead goes on (it makes room).
+          if ('wait' in out && out.wait === 'room') {
+            const ahead = new Set(items.slice(0, i + 1).map(x => x.source_row_id));
+            for (const behind of items.slice(i + 1)) {
+              const removal = behind.item_count === 0 && !ahead.has(behind.source_row_id);
+              if (!removal || await tryAdd(w, behind.id, behind.source_sheet_id, dest, count) === 'busy') {
+                waitForRoom(behind.id);
+                ahead.add(behind.source_row_id);
+              }
+            }
           }
+          if ('error' in out || ('wait' in out && out.wait === 'room')) break;
         }
-        if ('error' in out || ('wait' in out && out.wait === 'room')) break;
-        await yieldToRequests();
       }
-    }
+    });
   } finally {
     draining = false;
   }

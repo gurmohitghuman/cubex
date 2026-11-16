@@ -27,6 +27,11 @@ export const DERIVED_SLICE_MS = 100;
 // (up to 200,000 characters) in every row. The next slice then reads about
 // twice as many rows as the last one worked out, never more than HEAVY_SLICE_ROWS.
 export const DERIVED_SLICE_CHARS = 8_000_000;
+// A follow's slice of queued rows (an input was written in them) reads them by
+// row id: on rows with random ids each is on a page of its own. 5,000 of them
+// on 20,000 rows wrote about 3,600 pages and held the server 147 to 188 ms in
+// one transaction; a slice reads at most this many queued rows.
+export const DERIVED_QUEUED_SLICE_ROWS = 1_000;
 // The name, company, email, domain and phone cleaners (lib/clean/) read a
 // value longer than this as not one of those and return '' rather than work
 // through it.
