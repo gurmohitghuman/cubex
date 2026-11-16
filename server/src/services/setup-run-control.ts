@@ -49,8 +49,8 @@ function refusal(out: ControlOutcome): RunFail | null {
   return out.fail === 'held' ? { fail: 'conflict', message: out.message } : null;
 }
 
-// A refused resume: the record as it was (paused, its token and message), and the runs resumed before the
-// refusal paused again with it. A pause or stop that came meanwhile stays.
+// A resume refused, or failed (a run's job couldn't be queued): the record as it was (paused, its token and
+// message), and the runs resumed before that paused again with it. A pause or stop that came meanwhile stays.
 function putBack(r: SetupRunRow): void {
   const back = db.prepare(`UPDATE setup_runs SET status = 'paused', access_token_id = ?, error_message = ?,
     updated_at = datetime('now') WHERE id = ? AND status = 'running'`).run(r.access_token_id, r.error_message, r.id);
@@ -112,7 +112,14 @@ export async function controlSetupRun(
     for (const x of runs) {
       // Paused or stopped meanwhile: no more runs resume (the sweep pauses one resumed as the pause came).
       if (loadSetupRun(id)?.status !== 'running') break;
-      const out = await resumeRun(x.kind, x.runId, userId, hasSecretsScope && !!r.allow_secrets);
+      let out: ControlOutcome;
+      try {
+        out = await resumeRun(x.kind, x.runId, userId, hasSecretsScope && !!r.allow_secrets);
+      } catch (err) {
+        // Its job couldn't be queued (that run is paused again): the setup goes back too, then the error.
+        putBack(r);
+        throw err;
+      }
       const refused = refusal(out);
       if (refused) { putBack(r); return refused; }
     }

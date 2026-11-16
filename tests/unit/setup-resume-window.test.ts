@@ -6,6 +6,7 @@
 //   - a pause while the resume waits on its first run's job: it pauses that run, and the second isn't resumed;
 //   - a refusal after the first run was resumed (a column the second reads is held meanwhile): the setup is
 //     paused again as it was, and the first run with it;
+//   - the second run's job can't be queued: the resume throws, the setup is paused again as it was, both runs too;
 //   - a setup resumed during a sweep, after an older setup's turn (services/setup-sweep.ts): the sweep reads it
 //     again at its turn, and leaves its run pending (the list read it paused).
 import assert from 'node:assert/strict'
@@ -28,8 +29,10 @@ process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${(stand.address() as Addres
 const queued: unknown[][] = []
 let holding = false
 let release: (() => void) | null = null
+let failFor: string | null = null
 createRequire(path.resolve('server/src/queue.ts'))('sidequest').Sidequest.build = () => ({
   enqueue: (...args: unknown[]) => {
+    if (args[0] === failFor) return Promise.reject(new Error('jobs.db is full'))
     queued.push(args)
     return holding ? new Promise(r => { release = () => { release = null; r({}) } }) : Promise.resolve({})
   },
@@ -157,6 +160,19 @@ await ok('a refusal after the first run was resumed: the setup is paused again a
     assert.deepEqual([runStatus(first), runStatus(second)], ['paused', 'paused'], 'not waiting for a sweep')
     await setupSweep()
     assert.deepEqual([runStatus(first), runStatus(second)], ['paused', 'paused'])
+    setStatus(id, 'cancelled')
+  })
+
+await ok('the second run\'s job can\'t be queued: the resume throws, the setup and both runs are paused again',
+  async () => {
+    const { id, runs: [first, second] } = pausedSetup(2)
+    const before = record(id)
+    failFor = second
+    try {
+      await assert.rejects(controlSetupRun(uid, id, 'resume', true), /jobs\.db is full/)
+    } finally { failFor = null }
+    assert.deepEqual(record(id), before)
+    assert.deepEqual([runStatus(first), runStatus(second)], ['paused', 'paused'], 'not waiting for a sweep')
     setStatus(id, 'cancelled')
   })
 
