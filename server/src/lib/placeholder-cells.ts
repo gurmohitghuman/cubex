@@ -40,16 +40,19 @@ export { PLACEHOLDER };
 // process (lib/autorun-kick.ts); a run worker's clear (a failed run) waits for
 // the auto-run sweep, as its other writes do.
 // On rows with random ids each queued row writes a page of its own (and its
-// own row one more), so with R columns reading these (counted once up front) a
-// slice queues at most PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows: it ends
-// before the row past that (at least one row a slice; the numbers are in
-// lib/constants.ts), and on a job thread it is checkpointed after it
-// (lib/row-order.ts). Otherwise a slice is HEAVY_SLICE_ROWS rows. On the
+// own row one more), so with R columns reading these a slice queues at most
+// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows: it ends before the row past
+// that (at least one row a slice; the numbers are in lib/constants.ts). R is
+// counted again in each slice's transaction: nothing holds off a column that
+// starts reading these while the clear goes, and it fills rows ahead of the
+// clear from the ⏳. Otherwise a slice is HEAVY_SLICE_ROWS rows. On the
 // server's thread each slice commits with SQLite's own checkpoint off, its WAL
-// copied back on the checkpoint worker's thread (lib/bulk-slices.ts). Journal
-// lookups cost too: putting K columns back takes one per cell, and telling the
-// columns reading them one more, so a slice also holds at most
-// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows, or / (1 + 2K) when read.
+// copied back on the checkpoint worker's thread (lib/bulk-slices.ts); on a job
+// thread it is checkpointed after it when columns read these from the start
+// (lib/row-order.ts). Journal lookups cost too: putting K columns back takes
+// one per cell, and telling the columns reading them one more, so a slice also
+// holds at most PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows, or / (1 + 2K) when
+// read.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void, run?: RunRef,
 ): Promise<void> {
@@ -84,30 +87,33 @@ export async function clearProcessingPlaceholders(
     ') ORDER BY rowid LIMIT ?').pluck();
   const tellArgs = told.flatMap(t => t.args);
   const rowIds = await sheetRowIds(sheetId, userId);
-  const readers = derivedReaderCount(sheetId, userId, columnNames);
+  let readers = derivedReaderCount(sheetId, userId, columnNames);
   const restoring = slots.filter(s => s !== null).length;
-  const lookups = readers > 0 ? 2 * restoring : restoring;
-  const rows = Math.min(HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS / (1 + lookups));
-  const most = readers > 0 ? Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))) : 0;
+  const sliceRows = (read: boolean) => Math.max(1, Math.floor(Math.min(HEAVY_SLICE_ROWS,
+    PLACEHOLDER_CLEAR_BACK_ROWS / (1 + (read ? 2 : 1) * restoring))));
+  const readRows = sliceRows(true);
   const bump = db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?');
   await eachRowIdSlice(rowIds, (json, window) => {
     let took = window.length;
+    const first = (n: number) => (n === window.length ? json : JSON.stringify(Array.from(window.subarray(0, n))));
     // The clear and its queuing commit together, the write lock taken up front.
     oneTransaction(() => {
+      readers = derivedReaderCount(sheetId, userId, columnNames);
       let heard: number[] = [];
-      if (most > 0) {
-        heard = tell.all(json, sheetId, userId, ...tellArgs, most + 1) as number[];
+      if (readers > 0) {
+        took = Math.min(took, readRows);
+        const most = Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers)));
+        heard = tell.all(first(took), sheetId, userId, ...tellArgs, most + 1) as number[];
         // One row too many: the slice ends before it.
         if (heard.length > most) took = window.indexOf(heard.pop()!);
       }
-      const ids = took === window.length ? json : JSON.stringify(Array.from(window.subarray(0, took)));
-      const cleared = clear.all(...setArgs, ids, sheetId, userId, ...paths) as number[];
+      const cleared = clear.all(...setArgs, first(took), sheetId, userId, ...paths) as number[];
       if (heard.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: heard });
       if (cleared.length > 0) bump.run(sheetId, userId);
     });
     afterSlice?.();
     return took;
-  }, { rows: Math.max(1, Math.floor(rows)), checkpointed: readers > 0 });
+  }, { rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0 });
   bump.run(sheetId, userId);
 }
 

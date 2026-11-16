@@ -4,7 +4,8 @@
 // empties is told to none. A cell put back is, and so is one the journal has no slot for. A run's first try on a
 // new column tells none, and its slices are as big as the journal lookups allow, not the queue's share; when cells
 // put back come thick, a slice ends before the row past the queue's share. The sheet's data_version moves after
-// each slice, so open grids lose the ⏳ as the clear goes. The readers still end right.
+// each slice, so open grids lose the ⏳ as the clear goes. A column started while the clear goes (nothing holds it
+// off) fills rows ahead of it from the ⏳, and hears of the cells put back after it started. The readers end right.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -112,5 +113,26 @@ await ok('cells put back come thick: a slice ends before the row past the queue\
   await follow(sid, 'F0')
   assert.deepEqual(cells(sid, 'F0'), Array.from({ length: n }, (_, i) => `${i >= thin ? `old ${i}` : ''}-0`))
 })
+
+await ok('a formula started while the clear goes, none reading the cells before: told of the cells put back after',
+  async () => {
+    // Seven columns put back: slices of PLACEHOLDER_CLEAR_BACK_ROWS / 8 rows, so the formula's fill, started after
+    // the first, runs ahead of the clear and works "!" out of the ⏳ there.
+    const columns = ['A', 'B', 'C', 'D', 'E', 'G', 'H']
+    const n = 20_000
+    const sid = sheet(Array.from({ length: n }, (_, i) => ({ Name: `n${i}`,
+      ...Object.fromEntries(columns.map(c => [c, `${c}${i}`])) })), ['Name', ...columns])
+    const run = await seededRun(sid, columns)
+    let started: Promise<object> | undefined
+    await clearProcessingPlaceholders(sid, uid, columns, () => {
+      started ??= startFormulaColumn(uid, sid, { column: 'F', formula: '{{A}} + "!"' })
+    }, run)
+    assert.ok(started && 'ok' in await started, 'F started')
+    await idle(sid)
+    await follow(sid, 'F')
+    assert.deepEqual(cells(sid, 'A'), Array.from({ length: n }, (_, i) => `A${i}`))
+    const wrong = cells(sid, 'F').filter((f, i) => f !== `A${i}!`).length
+    assert.equal(wrong, 0, `F wrong on ${wrong} rows: the clear never told it of the cells it put back`)
+  })
 
 done()
