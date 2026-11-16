@@ -32,6 +32,13 @@ export const DERIVED_SLICE_CHARS = 8_000_000;
 // on 20,000 rows wrote about 3,600 pages and held the server 147 to 188 ms in
 // one transaction; a slice reads at most this many queued rows.
 export const DERIVED_QUEUED_SLICE_ROWS = 1_000;
+// Within that, a queued slice is sized by the pages it writes: a tick's first
+// reads DERIVED_QUEUED_FIRST_ROWS, each next as many rows as fit
+// DERIVED_QUEUED_SLICE_FRAMES WAL frames at what a row took in the last (at
+// most twice as many as it read). 1,000 queued rows of 3 formulas on 25,000
+// random-id rows wrote 1,600 to 2,000 frames, 50 to 76 ms a slice on Windows.
+export const DERIVED_QUEUED_SLICE_FRAMES = 800;
+export const DERIVED_QUEUED_FIRST_ROWS = 250;
 // The name, company, email, domain and phone cleaners (lib/clean/) read a
 // value longer than this as not one of those and return '' rather than work
 // through it.
