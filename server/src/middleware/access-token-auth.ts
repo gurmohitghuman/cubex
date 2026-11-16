@@ -7,6 +7,7 @@ import { Response, NextFunction } from 'express';
 import { db } from '../lib/db';
 import { AuthRequest } from './auth';
 import { expandScopes, sha256Hex, AccessTokenScope } from '../lib/access-token';
+import { noteTokenUse } from '../lib/token-last-used';
 import {
   ACCESS_TOKEN_PATTERN,
   ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS,
@@ -24,7 +25,8 @@ export interface TokenAuthRequest extends AuthRequest {
 // last_used_at throttle: one DB write per token per interval, guarded by an
 // in-memory map so token auth stays read-only on the hot path. Per-process is
 // fine (api-v1 runs on the main server thread only). The size backstop only
-// costs an extra timestamp write per token if it ever trips.
+// costs an extra timestamp write per token if it ever trips. The write itself
+// follows the request, never waiting on this thread (lib/token-last-used.ts).
 const lastUsedWrites = new Map<string, number>();
 const LAST_USED_MAP_MAX = 10_000;
 
@@ -63,11 +65,7 @@ export const authenticateAccessToken = (req: TokenAuthRequest, res: Response, ne
   if (now - last > ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS) {
     if (lastUsedWrites.size >= LAST_USED_MAP_MAX) lastUsedWrites.clear();
     lastUsedWrites.set(row.id, now);
-    try {
-      db.prepare(`UPDATE access_tokens SET last_used_at = datetime('now') WHERE id = ?`).run(row.id);
-    } catch {
-      // Non-fatal: a busy writer must never fail an authenticated request.
-    }
+    noteTokenUse(row.id, now);
   }
 
   req.userId = row.user_id;

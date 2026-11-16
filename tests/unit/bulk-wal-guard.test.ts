@@ -35,6 +35,8 @@ const NO_AUTO: Entry[] = [
   { file: 'server/src/lib/bulk-slices.ts', count: 2, why: 'the bulk writers\' slices, on either thread' },
   { file: 'server/src/services/column-transform-pages.ts', count: 1, why: 'transform_column\'s pages (walRoom)' },
   { file: 'server/src/services/lookup-maintain.ts', count: 1, why: 'on the lookup worker\'s thread' },
+  { file: 'server/src/lib/token-last-used.ts', count: 1,
+    why: 'an access token\'s last-use write, one small commit on the server\'s thread' },
 ]
 const READS = 'reads only'
 const YIELDS: Entry[] = [

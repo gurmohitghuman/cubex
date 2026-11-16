@@ -6,6 +6,7 @@ import type { RecoveredRuns } from './orphan-runs';
 import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { pruneWebhookKeys } from './webhook-idempotency';
 import { pruneWriteKeys } from './write-idempotency';
+import { writeTokenUsesNow } from './token-last-used';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startSetupLoop } from '../services/setup-runner';
@@ -105,6 +106,8 @@ export const installShutdownHandlers = (server: Server) => {
     if (webhookBucketSweep) { clearInterval(webhookBucketSweep); webhookBucketSweep = null; }
     try { await stopQueue(); }
     catch (err) { console.error('Queue shutdown failed:', err); }
+    // Access token uses not yet written (lib/token-last-used.ts), now that runs no longer write.
+    writeTokenUsesNow();
     // The checkpoint worker closes its connection (lib/wal-checkpointer.ts), and lib/wal-turn.ts its own.
     try { await closeWalCheckpointer(); closeWalTurnReader(); }
     catch (err) { console.error('Closing the WAL checkpoint worker failed:', err); }
