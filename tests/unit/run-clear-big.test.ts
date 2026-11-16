@@ -4,7 +4,8 @@
 // holds the event loop 100 ms. Stop all of 4 such runs on a sorted sheet (its row ids far from row order, so every
 // page of them is sorted and the pages merged): the 4 clears never hold it 100 ms either, together. The longest
 // stretch and transaction are printed. The formulas are started on one row and the rest come with their cells
-// worked out already (what a fill of '' gives), so the setup stays short.
+// worked out already (what a fill of '' gives), so the setup stays short. The Windows runner's disk made the clear
+// about 4 times slower (13.7 s, the loop held 56 ms) and the test take 98 s: there it runs 50,000 rows, within 20 s.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -22,9 +23,10 @@ console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-const N = 200_000
+const WINDOWS = process.platform === 'win32'
+const N = WINDOWS ? 50_000 : 200_000
 const READERS = 20
-const CLEAR_MS = 5_000
+const CLEAR_MS = WINDOWS ? 20_000 : 5_000
 const LOOP_MS = 100
 const work = db.prepare('SELECT COUNT(*) FROM http_runs WHERE sheet_id = ? AND placeholder_work IS NOT NULL').pluck()
 const version = db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck()
@@ -66,8 +68,8 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
   return { ms, loopMs: longest.ms, seen: seen.size }
 }
 
-await ok(`a first run on a new column, ${READERS} formulas reading it, cancelled at ${N} rows: within 5 s, `
-  + 'none told, grids follow, the loop never held 100 ms', async () => {
+await ok(`a first run on a new column, ${READERS} formulas reading it, cancelled at ${N} rows: `
+  + `within ${CLEAR_MS / 1000} s, none told, grids follow, the loop never held 100 ms`, async () => {
   const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
   const sid = sheet([{ Name: 'n0' }], ['Name', 'Answer'])
   for (const [k, column] of columns.entries()) {

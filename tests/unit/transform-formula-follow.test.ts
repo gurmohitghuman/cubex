@@ -3,7 +3,8 @@
 // they are told at once and follow by themselves. The event loop is sampled every 5 ms from the first call to the
 // last formula done, as transform-pages.test.ts does: it is never held 200 ms, and every formula ends right. On a
 // 200,000-row sheet the longest stretch was 31, 50 and 70 ms (170 ms once with 3, no transaction in it); this size
-// keeps the case near a minute.
+// keeps the case near a minute. The Windows runner's disk took 7 minutes at it (3 formulas: written in 131 s,
+// followed in 288 s, the loop held 128 ms): there it runs 10,000 rows, in slices of the same size.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
@@ -20,7 +21,7 @@ console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-const N = 50_000
+const N = process.platform === 'win32' ? 10_000 : 50_000
 const LOOP_MS = 200
 const NOTES = 'n'.repeat(200)
 // Any row still queued for a formula (EXISTS: counting them every few ms would hold the loop itself).
