@@ -48,3 +48,9 @@ export const WAL_BULK_PAUSE_FRAMES = 12000;
 // and the pause plus one such slice took the WAL to 67 MB. So a bulk writer pauses sooner when its biggest slice
 // so far would take the WAL past this share of journal_size_limit (lib/bulk-slices.ts).
 export const WAL_BULK_ROOM_SHARE = 0.9;
+// The job queue's database (lib/jobs-db.ts, lib/job-inserts.ts): at start, switching it to WAL waits this long at
+// most for another process holding it, trying again this often; at shutdown, the inserts already asked of its
+// worker get this long to land (a run whose insert didn't is still pending, and the next start queues it again).
+export const JOBS_DB_SWITCH_WAIT_MS = 2_000;
+export const JOBS_DB_SWITCH_RETRY_MS = 50;
+export const JOB_INSERTS_DRAIN_MS = 5_000;

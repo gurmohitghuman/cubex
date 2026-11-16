@@ -13,6 +13,8 @@ import { DATA_DIR } from './lib/db-path';
 import { parseTargetRows } from './lib/run-targets';
 import type { RecoveredRuns } from './lib/orphan-runs';
 import { clearRunPlaceholders } from './lib/run-placeholders';
+import { jobsDbInWal } from './lib/jobs-db';
+import { closeJobInserts, enqueueJob, startJobInserts } from './lib/job-inserts';
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const JOBS_SHIM_PATH = path.resolve(REPO_ROOT, 'sidequest.jobs.cjs');
@@ -31,33 +33,24 @@ const { HTTPRerunJob } = require(path.join(COMPILED_JOBS_DIR, 'http-rerun-job'))
   HTTPRerunJob: JobClassType;
 };
 
-// Sidequest is configured to point at server/data/jobs.db — a separate file
-// from cubex.db so:
-//   1. Heavy job-table writes (claimed/started/completed transitions) don't
-//      contend with cubex.db's WAL.
-//   2. cubex.db can be VACUUMed / backed up / restored independently of the
-//      job state.
-//   3. If we ever drop the queue (e.g. swap to Redis-backed BullMQ), no
-//      data migration is needed.
+// Sidequest is configured to point at server/data/jobs.db, a separate file from cubex.db, so:
+//   1. Heavy job-table writes (claimed/started/completed transitions) don't contend with cubex.db's WAL.
+//   2. cubex.db can be VACUUMed / backed up / restored independently of the job state.
+//   3. If we ever drop the queue (e.g. swap to Redis-backed BullMQ), no data migration is needed.
 //
-// Sidequest forks one worker process of its own, which runs each job in a
-// thread of its pool. Those threads have their own JS context — they
-// can't see the API process's request handlers, in-memory caches, or SSE
-// clients. That's why ai-runner / http-runner write everything observable to the DB.
+// Sidequest forks one worker process of its own, which runs each job in a thread of its pool. Those threads have
+// their own JS context: they can't see the API process's request handlers, in-memory caches, or SSE clients.
+// That's why ai-runner / http-runner write everything observable to the DB.
 //
-// Manual job resolution: worker threads load job code via `await import()`,
-// which (a) doesn't inherit tsx's TS hook and (b) chokes on ESM `import`
-// syntax under root "type":"module". We sidestep both by pointing
-// Sidequest at a `.cjs` shim file (Node always treats `.cjs` as CJS) that
-// re-exports the compiled job classes from server/dist/jobs/. That means
-// the dev loop must run `tsc -p server/tsconfig.json --watch` alongside the
-// API so dist stays fresh.
+// Manual job resolution: worker threads load job code via `await import()`, which (a) doesn't inherit tsx's TS
+// hook and (b) chokes on ESM `import` syntax under root "type":"module". We sidestep both by pointing Sidequest
+// at a `.cjs` shim file (Node always treats `.cjs` as CJS) that re-exports the compiled job classes from
+// server/dist/jobs/. That means the dev loop must run `tsc -p server/tsconfig.json --watch` alongside the API so
+// dist stays fresh.
 //
-// Concurrency: Sidequest's maxConcurrentJobs governs how many JOBS run in
-// parallel; each job (AI run / HTTP run) then has its OWN per-row
-// concurrency configured in ai_runs.concurrency / batchSize.
-// We start at 4 concurrent jobs — enough to handle a few users running
-// simultaneously without saturating CPU on a small server.
+// Concurrency: Sidequest's maxConcurrentJobs governs how many JOBS run in parallel; each job (AI run / HTTP run)
+// then has its OWN per-row concurrency configured in ai_runs.concurrency / batchSize. We start at 4 concurrent
+// jobs, enough to handle a few users running simultaneously without saturating CPU on a small server.
 
 // Next to cubex.db by default, so one data directory holds everything that
 // must persist (queued/resumable runs included).
@@ -69,6 +62,8 @@ export async function startQueue(): Promise<void> {
   if (started) return;
   started = true;
 
+  // In WAL mode before any of the queue's connections opens it (lib/jobs-db.ts).
+  await jobsDbInWal(JOBS_DB_PATH);
   await Sidequest.start({
     backend: {
       driver: '@sidequest/sqlite-backend',
@@ -92,10 +87,8 @@ export async function startQueue(): Promise<void> {
 
   console.log(`🧰 Sidequest started (jobs.db: ${JOBS_DB_PATH}, shim: ${JOBS_SHIM_PATH})`);
 
-  // Tighten perms on jobs.db and its WAL/SHM siblings after Sidequest has
-  // created them. process.umask(0o077) in index.ts handles future-created
-  // files, but Sidequest may have created jobs.db before that (depending on
-  // boot order). Belt-and-suspenders: chmod every existing sibling now.
+  // Tighten perms on jobs.db and its WAL/SHM siblings: process.umask(0o077) in index.ts handles files created
+  // after it, but jobs.db may predate that. Belt-and-suspenders: chmod every existing sibling now.
   for (const ext of ['', '-wal', '-shm', '-journal']) {
     const p = `${JOBS_DB_PATH}${ext}`;
     try {
@@ -104,21 +97,24 @@ export async function startQueue(): Promise<void> {
       console.warn(`⚠️  Could not chmod ${p} to 0o600:`, (err as Error).message);
     }
   }
+  // Jobs are inserted on a worker thread from now on (lib/job-inserts.ts).
+  startJobInserts(JOBS_DB_PATH);
 }
 
 export async function stopQueue(): Promise<void> {
   if (!started) return;
   started = false;
   try {
+    // The inserts already asked land first (lib/job-inserts.ts).
+    await closeJobInserts();
     await Sidequest.stop();
   } catch (err) {
     console.error('Error stopping Sidequest:', err);
   }
 }
 
-// Enqueue helpers used by routes. Thin wrappers so the routes don't need to
-// import Sidequest + the Job class directly — and so future swaps (different
-// queue backend, different routing) only touch this file.
+// Enqueue helpers used by routes, so they don't import the queue or the job classes: each job is built on this
+// thread and inserted on the insert worker's (lib/job-inserts.ts).
 
 // Stamp the run's CURRENT worker_generation into the job args; the worker
 // rejects on mismatch at startup. This kills the stale-QUEUED-job race:
@@ -134,19 +130,19 @@ function currentGeneration(table: 'ai_runs' | 'http_runs', runId: string): numbe
 }
 
 export async function enqueueAIRun(runId: string): Promise<void> {
-  await Sidequest.build(AIRunJob).enqueue(runId, currentGeneration('ai_runs', runId));
+  await enqueueJob(AIRunJob, runId, currentGeneration('ai_runs', runId));
 }
 
 export async function enqueueAIRerun(runId: string, targetRows: number[]): Promise<void> {
-  await Sidequest.build(AIRerunJob).enqueue(runId, targetRows, currentGeneration('ai_runs', runId));
+  await enqueueJob(AIRerunJob, runId, targetRows, currentGeneration('ai_runs', runId));
 }
 
 export async function enqueueHTTPRun(runId: string): Promise<void> {
-  await Sidequest.build(HTTPRunJob).enqueue(runId, currentGeneration('http_runs', runId));
+  await enqueueJob(HTTPRunJob, runId, currentGeneration('http_runs', runId));
 }
 
 export async function enqueueHTTPRerun(runId: string, targetRows: number[]): Promise<void> {
-  await Sidequest.build(HTTPRerunJob).enqueue(runId, targetRows, currentGeneration('http_runs', runId));
+  await enqueueJob(HTTPRerunJob, runId, targetRows, currentGeneration('http_runs', runId));
 }
 
 // Re-enqueue the runs that resetOrphanedRuns() recovered (flipped 'running'/
