@@ -208,6 +208,8 @@ await ok('a waterfall start reading a column a run holds: refused, nothing made 
   await h.back()
   const res = await start()
   assert.equal(res.status, 200, JSON.stringify(res.body))
+  // Its seed goes on after the answer: done before the next case counts the jobs queued.
+  await idle(sid)
 })
 
 await ok('a running waterfall whose input a later run fills: its rows wait instead of skipping as missing it, '

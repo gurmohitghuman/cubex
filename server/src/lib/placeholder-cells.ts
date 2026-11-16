@@ -4,7 +4,7 @@ import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
-import { clearBackFor, KEPT_VALUE_SQL } from './run-undo/clear-back';
+import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, markDerivedInputs } from './autorun-mark';
 import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS, PLACEHOLDER_CLEAR_QUEUE_ROWS } from './constants';
 
@@ -25,64 +25,90 @@ export { PLACEHOLDER };
 // its value, so results the run wrote before it ended stay, and json_replace
 // never creates a key: a row without one of the columns stays without it.
 // Rows go in storage order (lib/row-order.ts); `afterSlice` runs after each
-// slice (a progress heartbeat). Open grids reload when it's done (data_version).
+// slice (a progress heartbeat). Open grids reload as slices land: each slice
+// that cleared a row moves the sheet's data_version.
 // A clean, formula or lookup column reading these columns holds what it
-// worked out from the cell before the run, or from the ⏳ (read as empty) if
-// the row changed meanwhile, so it works the rows the clear changed out again:
-// queued in the slice's transaction, by the rowids it changed (rows holding a
-// real result aren't), quiet, so nothing that costs runs (lib/autorun-mark.ts).
-// Queuing tells them at once in the API process (lib/autorun-kick.ts); a run
-// worker's clear (a failed run) waits for the auto-run sweep, as its other
-// writes do.
-// That queuing is most of a slice's work: on rows with random ids, each queued
-// row writes a page of its own. So with R columns reading these (counted once
-// up front), a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
-// least one; the numbers are in lib/constants.ts), and on a job thread it is
-// checkpointed after it (lib/row-order.ts). With none, a slice is
-// HEAVY_SLICE_ROWS rows. On the server's thread each slice commits with
-// SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
-// thread (lib/bulk-slices.ts). Putting K columns back costs a journal lookup
-// per cell, so a slice also holds at most PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K)
-// rows.
+// worked out from the cell before the run, or from the ⏳ if the row changed
+// meanwhile. Each of them reads a ⏳ as empty (tests/unit/readers-read-
+// placeholder-empty.test.ts), so a cell that read as empty before the run
+// (the journal kept nothing, '', a ⏳ or a list job's words: KEPT_EMPTY_SQL)
+// and becomes '' changes nothing it worked out: a run's first try on a new
+// column tells them nothing. Every other cleared row is queued for them in the
+// slice's transaction (a cell put back, or one whose old value the journal
+// didn't keep: a run from before runs could be undone), quiet, so nothing that
+// costs runs (lib/autorun-mark.ts). Queuing tells them at once in the API
+// process (lib/autorun-kick.ts); a run worker's clear (a failed run) waits for
+// the auto-run sweep, as its other writes do.
+// On rows with random ids each queued row writes a page of its own (and its
+// own row one more), so with R columns reading these (counted once up front) a
+// slice queues at most PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows: it ends
+// before the row past that (at least one row a slice; the numbers are in
+// lib/constants.ts), and on a job thread it is checkpointed after it
+// (lib/row-order.ts). Otherwise a slice is HEAVY_SLICE_ROWS rows. On the
+// server's thread each slice commits with SQLite's own checkpoint off, its WAL
+// copied back on the checkpoint worker's thread (lib/bulk-slices.ts). Journal
+// lookups cost too: putting K columns back takes one per cell, and telling the
+// columns reading them one more, so a slice also holds at most
+// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows, or / (1 + 2K) when read.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void, run?: RunRef,
 ): Promise<void> {
   if (columnNames.length === 0) return;
   const paths = columnNames.map(jsonPath);
   const back = run ? clearBackFor(run, userId, columnNames) : null;
+  const slots = paths.map((_, i) => back?.slots[i] ?? null);
   // Per column: its path, then its new value: where it holds ⏳, what was kept
   // there (one lookup by the journal's primary key) or ''; else itself.
   const sets = paths.map((p, i) => {
-    const slot = back?.slots[i] ?? null;
-    const value = slot === null ? { sql: "''", args: [] }
-      : { sql: `COALESCE(${KEPT_VALUE_SQL}, '')`, args: [back!.undoId, slot] };
+    const value = slots[i] === null ? { sql: "''", args: [] }
+      : { sql: `COALESCE(${KEPT_VALUE_SQL}, '')`, args: [back!.undoId, slots[i]] };
     return {
       sql: `?, CASE WHEN json_extract(data, ?) = '${PLACEHOLDER}' THEN ${value.sql} ELSE json_extract(data, ?) END`,
       args: [p, p, ...value.args, p],
     };
   });
+  const sliceSql = ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND (';
   const clear = db.prepare(
     'UPDATE rows SET data = json_replace(data, ' + sets.map(s => s.sql).join(', ') + ')' +
-    ", updated_at = datetime('now')" +
-    ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? AND (' +
+    ", updated_at = datetime('now')" + sliceSql +
     paths.map(() => `json_extract(data, ?) = '${PLACEHOLDER}'`).join(' OR ') + ') RETURNING rowid',
   ).pluck();
   const setArgs = sets.flatMap(s => s.args);
+  // The rows of a slice the columns reading these must hear of, in storage order: a cell holding ⏳ that didn't
+  // read as empty before the run.
+  const told = paths.map((p, i) => (slots[i] === null
+    ? { sql: `json_extract(data, ?) = '${PLACEHOLDER}'`, args: [p] }
+    : { sql: `(json_extract(data, ?) = '${PLACEHOLDER}' AND NOT ${KEPT_EMPTY_SQL})`,
+      args: [p, back!.undoId, slots[i]] }));
+  const tell = db.prepare('SELECT rowid FROM rows' + sliceSql + told.map(t => t.sql).join(' OR ') +
+    ') ORDER BY rowid LIMIT ?').pluck();
+  const tellArgs = told.flatMap(t => t.args);
   const rowIds = await sheetRowIds(sheetId, userId);
   const readers = derivedReaderCount(sheetId, userId, columnNames);
-  const restoring = back ? back.slots.filter(s => s !== null).length : 0;
-  const rows = Math.min(HEAVY_SLICE_ROWS, readers === 0 ? Infinity : PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers),
-    restoring === 0 ? Infinity : PLACEHOLDER_CLEAR_BACK_ROWS / (1 + restoring));
-  const slicing = { rows: Math.max(1, Math.floor(rows)), checkpointed: readers > 0 };
-  await eachRowIdSlice(rowIds, ids => {
+  const restoring = slots.filter(s => s !== null).length;
+  const lookups = readers > 0 ? 2 * restoring : restoring;
+  const rows = Math.min(HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS / (1 + lookups));
+  const most = readers > 0 ? Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))) : 0;
+  const bump = db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?');
+  await eachRowIdSlice(rowIds, (json, window) => {
+    let took = window.length;
     // The clear and its queuing commit together, the write lock taken up front.
     oneTransaction(() => {
+      let heard: number[] = [];
+      if (most > 0) {
+        heard = tell.all(json, sheetId, userId, ...tellArgs, most + 1) as number[];
+        // One row too many: the slice ends before it.
+        if (heard.length > most) took = window.indexOf(heard.pop()!);
+      }
+      const ids = took === window.length ? json : JSON.stringify(Array.from(window.subarray(0, took)));
       const cleared = clear.all(...setArgs, ids, sheetId, userId, ...paths) as number[];
-      if (cleared.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: cleared });
+      if (heard.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: heard });
+      if (cleared.length > 0) bump.run(sheetId, userId);
     });
     afterSlice?.();
-  }, slicing);
-  db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
+    return took;
+  }, { rows: Math.max(1, Math.floor(rows)), checkpointed: readers > 0 });
+  bump.run(sheetId, userId);
 }
 
 // Seed the placeholder into `columns` of a run's target rows: every row up to

@@ -1,17 +1,19 @@
-// A run's ⏳ clear (lib/placeholder-cells.ts) queues every row it clears once
-// for each clean, formula and lookup column reading the run's columns, in the
-// slice's own transaction. With none, its slices are HEAVY_SLICE_ROWS rows.
-// With R of them, a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
-// least 1). Either way each commits with SQLite's own checkpoint off, its WAL
-// copied back on the checkpoint worker's thread (lib/bulk-slices.ts): no
-// checkpoint runs on this connection. A
-// column reading other columns, one with auto-run off and an auto-run that
+// A run's ⏳ clear (lib/placeholder-cells.ts) queues the rows it clears for
+// each clean, formula and lookup column reading the run's columns, in the
+// slice's own transaction (here every cleared row: no run's journal says a cell
+// read as empty before it; run-clear-told.test.ts has those). With none, its
+// slices are HEAVY_SLICE_ROWS rows. With R of them, a slice queues at most
+// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at least 1). Either way each commits
+// with SQLite's own checkpoint off, its WAL copied back on the checkpoint
+// worker's thread (lib/bulk-slices.ts): no checkpoint runs on this connection.
+// A column reading other columns, one with auto-run off and an auto-run that
 // costs don't count. A run's clear that puts K columns back from its undo
 // journal (lib/run-undo/clear-back.ts) holds at most
-// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice, and the queue budget
-// still caps it when columns read them. The real clear runs: each slice's size
-// is read off the sheet after it (how many rows still hold ⏳), and the
-// checkpoints through the database's pragma calls.
+// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice, or / (1 + 2K) when
+// columns read them (a second journal lookup a cell), and the queue budget
+// still caps it. The real clear runs: each slice's size is read off the sheet
+// after it (how many rows still hold ⏳), and the checkpoints through the
+// database's pragma calls.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -97,7 +99,7 @@ const split = (n: number, size: number) =>
 // What a clear does in slices of `sizes`: each committed with SQLite's own checkpoint off, and no checkpoint on
 // this connection (they run on the worker).
 const sliced = (sizes: number[]) => ({ sizes, events: sizes.map(() => 'slice, auto-checkpoint off') })
-// With R reading columns: slices of the queue budget's share.
+// With R reading columns and every cleared row queued: slices of the queue budget's share.
 const checkpointed = (n: number, readers: number) =>
   sliced(split(n, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))))
 const expectClear = async (sid: string, want: { sizes: number[]; events: string[] },
@@ -146,8 +148,8 @@ await ok('twenty read Answer: slices of 95 rows, checkpointed (no floor brings b
   await expectClear(sid, want)
 })
 
-// A run's clear putting K columns back: PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice.
-const backRows = (k: number) => Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / (1 + k))
+// A run's clear putting K columns back: PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice, (1 + 2K) when read.
+const backRows = (k: number, read = false) => Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / (1 + (read ? 2 : 1) * k))
 
 await ok('a run putting one column back, none reading it: smaller slices', async () => {
   const r = await seededRun(N, ['Answer'])
@@ -170,8 +172,8 @@ await ok('three formulas read the column put back: the queue budget is smaller, 
 await ok('seven columns put back, one formula reading one: the journal\'s share is smaller, checkpointed', async () => {
   const r = await seededRun(N, COLUMNS)
   await formula(r.sid, 'F', '{{C5}} + "!"')
-  assert.ok(backRows(7) < PLACEHOLDER_CLEAR_QUEUE_ROWS / 2)
-  await expectClear(r.sid, sliced(split(N, backRows(7))), r)
+  assert.ok(backRows(7, true) < PLACEHOLDER_CLEAR_QUEUE_ROWS / 2)
+  await expectClear(r.sid, sliced(split(N, backRows(7, true))), r)
   assert.deepEqual(COLUMNS.map(c => cells(r.sid, c)[N - 1]), COLUMNS.map(c => `${c} ${N - 1}`))
 })
 

@@ -12,6 +12,8 @@
 // (print.ts: isEmptyCell, oldValueOf, isListWords; nothing would ever replace
 // those). Done in SQL inside the clear's own UPDATE: one lookup by the
 // journal rows' primary key per cell that still holds ⏳, none for the rest.
+// With columns worked out from these, the clear looks once more per such cell
+// (KEPT_EMPTY_SQL): those columns need to hear only of the rest.
 // The ref is the first 8 characters of rows.id, as an undo checks it
 // (restore.ts, since migration 041). Row ids start with their millisecond
 // clock (lib/ordered-id.ts), so it surely tells a newer row from the deleted
@@ -39,9 +41,19 @@ export function clearBackFor(run: RunRef, userId: string, columns: string[]): Cl
 // The blank characters around a cell, as SQLite's ltrim takes them.
 const BLANK = `char(${[...BLANK_CHARS].map(c => c.codePointAt(0)).join(', ')})`;
 
+// A kept cell (c, one of a journal row's cells) whose old value never goes back: none, '', a ⏳ or a list job's
+// words. Every column worked out from a cell (clean, formula, lookup) reads each of those as empty.
+const OLD_EMPTY = `(c.value ->> 1 IS NULL OR c.value ->> 1 IN ('', '${PLACEHOLDER}')
+  OR instr(ltrim(c.value ->> 1, ${BLANK}), '${LIST_MARK}') = 1)`;
+const KEPT_CELL = `FROM run_undo_rows u, json_each(u.cells) c
+  WHERE u.undo_id = ? AND u.row_id = rows.rowid AND u.ref = substr(rows.id, 1, 8) AND c.value ->> 0 = ?`;
+
 // SQL over the `rows` row an UPDATE is writing: the value kept for it at a
 // slot, as JSON (json_replace writes it with its type), or NULL when nothing
 // goes back. Its parameters: the journal's id, then the slot.
-export const KEPT_VALUE_SQL = `(SELECT c.value -> 1 FROM run_undo_rows u, json_each(u.cells) c
-  WHERE u.undo_id = ? AND u.row_id = rows.rowid AND u.ref = substr(rows.id, 1, 8) AND c.value ->> 0 = ?
-    AND c.value ->> 1 NOT IN ('', '${PLACEHOLDER}') AND instr(ltrim(c.value ->> 1, ${BLANK}), '${LIST_MARK}') <> 1)`;
+export const KEPT_VALUE_SQL = `(SELECT c.value -> 1 ${KEPT_CELL} AND NOT ${OLD_EMPTY})`;
+
+// SQL over a `rows` row: 1 when the journal kept its cell at a slot and that old value never goes back (above),
+// so the cell read as empty before the run, as its ⏳ does and as the '' a clear leaves does. Its parameters: the
+// journal's id, then the slot.
+export const KEPT_EMPTY_SQL = `EXISTS (SELECT 1 ${KEPT_CELL} AND ${OLD_EMPTY})`;
