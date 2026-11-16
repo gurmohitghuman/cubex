@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { HEAVY_JOB_RETRY_MS } from '../lib/constants';
-import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { pruneAnswers } from './answer-prune';
 import { walkRunResults } from './run-results-walk';
 import { countStoredAnswers } from './answer-store-size';
@@ -57,31 +57,42 @@ const moveTo = (jobId: string, rid: number) => db.prepare(`UPDATE answer_prune_j
   .run(rid, jobId);
 
 // Prunes from where the job got to; false when it must wait (a busy sheet).
+// One bulk writer for the whole pass (lib/bulk-slices.ts): each step past a
+// run, and each slice of a run's walk, is one of its transactions, its WAL
+// copied back on the checkpoint worker's thread.
 async function work(jobId: string): Promise<boolean> {
-  for (;;) {
-    const job = loadJob(jobId);
-    if (!job || job.status !== 'running') return true;
-    const run = nextRun(job);
-    if (!run) {
-      db.prepare(`UPDATE answer_prune_jobs SET status = 'done', updated_at = datetime('now') WHERE id = ?`).run(jobId);
-      return true;
-    }
-    if (run.due) {
+  return asBulkWriter(async bulk => {
+    for (;;) {
+      // Where the job got to, and the run there: a run that isn't due is passed in the same transaction.
+      const at = await bulk.slice((): { job: AgeJob; run: RunAt } | 'over' | 'passed' => {
+        const job = loadJob(jobId);
+        if (!job || job.status !== 'running') return 'over';
+        const run = nextRun(job);
+        if (!run) {
+          db.prepare(`UPDATE answer_prune_jobs SET status = 'done', updated_at = datetime('now') WHERE id = ?`)
+            .run(jobId);
+          return 'over';
+        }
+        if (!run.due) { moveTo(jobId, run.rid + 1); return 'passed'; }
+        return { job, run };
+      });
+      if (at === 'over') return true;
+      if (at === 'passed') continue;
+      const { job, run } = at;
       const save = db.prepare(`UPDATE answer_prune_jobs SET pruned = pruned + ?, run_cursor = ?, row_cursor = ?,
         row_generation = ?, updated_at = datetime('now') WHERE id = ? AND status = 'running'`);
       const outcome = await walkRunResults({
-        runId: run.id, sheetId: run.sheet_id, userId: job.user_id, answered: true,
+        runId: run.id, sheetId: run.sheet_id, userId: job.user_id, answered: true, bulk,
         from: run.rid === job.run_cursor
           ? { cursor: job.row_cursor, generation: job.row_generation } : { cursor: -1, generation: null },
-        step: (slice, to) => db.transaction(() => {
+        step: (slice, to) => {
           save.run(pruneAnswers(job.user_id, slice.rowids), run.rid, to.cursor, to.generation, jobId);
-        }).immediate(),
+        },
       });
       if (outcome === 'busy') return false;
+      await bulk.slice(() => moveTo(jobId, run.rid + 1));
     }
-    moveTo(jobId, run.rid + 1);
-    await yieldToRequests();
-  }
+  });
 }
 
 function runAgeJob(jobId: string): void {

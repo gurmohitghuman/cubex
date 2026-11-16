@@ -37,7 +37,6 @@ const NO_AUTO: Entry[] = [
   { file: 'server/src/services/lookup-maintain.ts', count: 1, why: 'on the lookup worker\'s thread' },
 ]
 const READS = 'reads only'
-const NEXT = 'writes; moves onto the runner in the next change'
 const YIELDS: Entry[] = [
   { file: 'server/src/lib/slices.ts', count: 2, why: 'runInSlices and yieldToRequests themselves' },
   { file: 'server/src/lib/bulk-slices.ts', count: 3, why: 'the runner: before each slice, and between slices' },
@@ -68,16 +67,11 @@ const YIELDS: Entry[] = [
   { file: 'server/src/services/sheet-sort.ts', count: 1, why: `${READS} (its writes: sort-plan, sort-results)` },
   { file: 'server/src/services/trash-actions.ts', count: 1, why: READS },
   { file: 'server/src/services/usage-csv.ts', count: 1, why: READS },
-  { file: 'server/src/services/answer-field-fill.ts', count: 3, why: `${NEXT} (2); rebuildTaken reads (1)` },
-  { file: 'server/src/services/answer-prune.ts', count: 2, why: `${NEXT} (1); addRuns reads (1)` },
-  { file: 'server/src/services/answer-prune-age.ts', count: 1, why: NEXT },
-  { file: 'server/src/services/autorun-pick.ts', count: 2, why: `${NEXT} (1); the scan for new rows reads (1)` },
-  { file: 'server/src/services/derived-fill.ts', count: 1, why: NEXT },
-  { file: 'server/src/services/derived-follow.ts', count: 1, why: NEXT },
-  { file: 'server/src/services/enrich-list-drain.ts', count: 2, why: NEXT },
-  { file: 'server/src/services/run-config-rewrite.ts', count: 1, why: NEXT },
-  { file: 'server/src/services/run-results-walk.ts', count: 1, why: `${NEXT} (the answer prunes walk with it)` },
-  { file: 'server/src/services/sheet-history.ts', count: 1, why: NEXT },
+  { file: 'server/src/services/answer-field-fill.ts', count: 1, why: `rebuildTaken ${READS}` },
+  { file: 'server/src/services/answer-prune.ts', count: 2,
+    why: `between passes (1; each pass's writes: run-results-walk on a bulk writer); addRuns ${READS} (1)` },
+  { file: 'server/src/services/autorun-pick.ts', count: 1, why: `the scan for new rows ${READS}` },
+  { file: 'server/src/services/run-results-walk.ts', count: 1, why: `a walk that ${READS} (one that writes: bulk)` },
 ]
 
 type Rule = 'checkpoint' | 'auto' | 'no-auto' | 'yield'

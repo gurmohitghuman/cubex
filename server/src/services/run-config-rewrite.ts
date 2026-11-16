@@ -13,7 +13,7 @@
 import { db } from '../lib/db';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { pendingPurges, purgeColumnKey } from '../lib/column-purge';
-import { yieldToRequests } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import {
   deleteColumnNewest, deleteHttpRunsPage, renameColumnNewest, renameHttpRunsPage, RUNS_PAGE,
 } from '../lib/http-columns';
@@ -59,18 +59,20 @@ export function recordRunRewrite(sheetId: string, userId: string, oldName: strin
   forgetPruneColumns(sheetId);
 }
 
-// The sheet's rewrites in the order they were made, a page per transaction.
+// The sheet's rewrites in the order they were made, a page per transaction
+// (its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts).
 // Call with the sheet busy.
 export async function finishRunRewrites(sheetId: string): Promise<void> {
   const next = db.prepare('SELECT * FROM run_config_rewrites WHERE sheet_id = ? ORDER BY id LIMIT 1');
+  if (!next.get(sheetId)) return;   // none (every rename and delete asks first)
   let worked = false;
-  for (;;) {
+  await runInCheckpointedSlices(() => {
     const r = next.get(sheetId) as Rewrite | undefined;
-    if (!r) break;
-    db.transaction(() => step(r)).immediate();
+    if (!r) return false;
+    step(r);
     worked = true;
-    await yieldToRequests();
-  }
+    return true;
+  });
   // Open tabs read the column types and the ⚡ spend again.
   if (worked) {
     const owner = db.prepare('SELECT user_id FROM sheets WHERE id = ?').pluck().get(sheetId) as string | undefined;

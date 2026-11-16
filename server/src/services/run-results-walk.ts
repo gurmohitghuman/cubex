@@ -5,10 +5,14 @@
 // busy, and a walk whose sheet's rows moved since its cursor was taken (the
 // row_generation fence) starts over. Each slice reads and does its work in
 // one synchronous step, so nothing moves under it; the step must be idempotent.
+// A walk that writes (the prunes) gives its slices to a bulk writer: each is
+// one transaction, its WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts). One that only reads (the size) yields between them.
 import { db } from '../lib/db';
 import { ANSWER_PRUNE_SLICE } from '../lib/constants';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { yieldToRequests } from '../lib/slices';
+import type { BulkWriter } from '../lib/bulk-slices';
 
 export interface WalkPos { cursor: number; generation: number | null }
 export interface WalkSlice { rowids: number[]; indexes: number[] }
@@ -21,6 +25,8 @@ export interface RunWalk {
   step: (slice: WalkSlice, to: WalkPos) => void;
   // The sheet's rows moved since `from`: the walk starts over (a count drops what it had).
   restarted?: () => void;
+  // A walk that writes: each slice one transaction of this bulk writer (`step` writes flat in it).
+  bulk?: BulkWriter;
 }
 
 const generationOf = (sheetId: string, userId: string): number | null =>
@@ -33,7 +39,8 @@ export async function walkRunResults(w: RunWalk): Promise<'done' | 'busy'> {
   const read = db.prepare(`SELECT rowid, row_index FROM http_results WHERE run_id = ? AND row_index > ?
     AND +user_id = ? ${w.answered ? 'AND response_data IS NOT NULL' : ''} ORDER BY row_index LIMIT ?`);
   let pos = w.from;
-  for (;;) {
+  // One slice: how the walk ends, or null while more are left.
+  const slice = (): 'done' | 'busy' | null => {
     if (sheetBusyWith(w.sheetId)) return 'busy';
     const generation = generationOf(w.sheetId, w.userId);
     if (generation === null) return 'done';   // the sheet is gone, and its runs with it
@@ -45,7 +52,11 @@ export async function walkRunResults(w: RunWalk): Promise<'done' | 'busy'> {
     if (rows.length === 0) return 'done';
     pos = { cursor: rows[rows.length - 1].row_index, generation };
     w.step({ rowids: rows.map(r => r.rowid), indexes: rows.map(r => r.row_index) }, pos);
-    if (rows.length < ANSWER_PRUNE_SLICE) return 'done';
-    await yieldToRequests();
+    return rows.length < ANSWER_PRUNE_SLICE ? 'done' : null;
+  };
+  for (;;) {
+    const end = w.bulk ? await w.bulk.slice(slice) : slice();
+    if (end) return end;
+    if (!w.bulk) await yieldToRequests();
   }
 }

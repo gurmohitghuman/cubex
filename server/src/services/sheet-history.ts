@@ -6,7 +6,7 @@ import { db } from '../lib/db';
 import {
   CHANGE_LOG_DAYS, CHANGE_LOG_PAGE_DEFAULT, CHANGE_LOG_PAGE_MAX, CHANGE_LOG_PRUNE_SLICE,
 } from '../lib/constants';
-import { yieldToRequests } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { actorLabel, type Via } from '../lib/actor';
 
 export interface SheetChange {
@@ -95,9 +95,13 @@ export function historyAsk(q: Record<string, unknown>):
   return { before, limit, column };
 }
 
-// Lines older than CHANGE_LOG_DAYS go, a slice at a time.
+// Lines older than CHANGE_LOG_DAYS go, a slice at a time, each slice's WAL copied back on the checkpoint
+// worker's thread (lib/bulk-slices.ts).
 export async function pruneChangeLog(): Promise<void> {
+  const cutoff = `-${CHANGE_LOG_DAYS} days`;
+  // Most sweeps find none: no writer then.
+  if (!db.prepare(`SELECT 1 FROM sheet_changes WHERE at < datetime('now', ?) LIMIT 1`).get(cutoff)) return;
   const del = db.prepare(`DELETE FROM sheet_changes WHERE id IN (SELECT id FROM sheet_changes
     WHERE at < datetime('now', ?) ORDER BY at LIMIT ?)`);
-  while (del.run(`-${CHANGE_LOG_DAYS} days`, CHANGE_LOG_PRUNE_SLICE).changes > 0) await yieldToRequests();
+  await runInCheckpointedSlices(() => del.run(cutoff, CHANGE_LOG_PRUNE_SLICE).changes >= CHANGE_LOG_PRUNE_SLICE);
 }

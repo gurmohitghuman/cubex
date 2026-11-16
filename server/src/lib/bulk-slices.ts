@@ -16,7 +16,7 @@
 //   WAL's new header inside its commit.
 // - After the last slice, what's left is copied back on the worker and the WAL started over before the job goes
 //   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over;
-//   unless the WAL holds fewer frames than SQLite's own checkpoint waits for (a short job).
+//   unless the job wrote few frames and the WAL holds fewer than SQLite's own checkpoint waits for (a short job).
 // - While any runs, SQLite's own checkpoint on the API connection waits for the job's room (holdAutoCheckpoint:
 //   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
 //   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
@@ -101,6 +101,7 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
   let wrote = false;
   const room = walRoomFrames();
   let biggest = 0;
+  let written = 0;
   const writer: BulkWriter = {
     async slice<T>(step: () => T): Promise<T> {
       const onWorker = checkpointsOnWorker();
@@ -120,7 +121,10 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
         const before = walState();
         const r = withoutAutoCheckpoint(() => tx.immediate());
         const after = walState();
-        if (before && after) biggest = Math.max(biggest, after.log - before.log);
+        if (before && after) {
+          biggest = Math.max(biggest, after.log - before.log);
+          written += Math.max(0, after.log - before.log);
+        }
         return r;
       }, until, true) as T;
       wrote = true;
@@ -131,7 +135,7 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
     return await work(writer);
   } finally {
     try {
-      if (wrote) await startedOver(until);
+      if (wrote) await startedOver(until, written);
     } finally {
       release?.();
     }
@@ -142,13 +146,16 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
 // started over after the job's last frame. Else the next commit on this connection copies the rest back inside it,
 // or starts the WAL over and syncs its new header there. A checkpoint already running when the job ended never saw
 // its last frames, and a reader can hold them a moment: tried again, WAL_PAUSE_RETRY_MS later, three tries at most.
-// With no worker, one checkpoint here, as before. A short job (a run started on 10 rows) that leaves fewer frames
-// than SQLite's own checkpoint waits for, none of them copied yet, doesn't wait: the next commit here copies none
-// back and starts nothing over, as with no runner, and a worker's checkpoint would hold the job up for nothing.
-async function startedOver(until: number): Promise<void> {
+// With no worker, one checkpoint here, as before. A short job (a run started on 10 rows: under SHORT_JOB_FRAMES
+// written) that leaves fewer frames than SQLite's own checkpoint waits for, none of them copied yet, doesn't wait:
+// the next commit here copies none back and starts nothing over, as with no runner, and a worker's checkpoint would
+// hold the job up for nothing. A big job that ends just under the mark (the WAL started over part way) still waits:
+// else the next small commit takes the WAL past it and copies the job's frames back inside it.
+const SHORT_JOB_FRAMES = DB_AUTO_CHECKPOINT_FRAMES / 2;
+async function startedOver(until: number, written: number): Promise<void> {
   const end = walState();
   if (!end || end.log === 0) return;
-  if (end.log < DB_AUTO_CHECKPOINT_FRAMES && end.checkpointed < end.log) return;
+  if (written < SHORT_JOB_FRAMES && end.log < DB_AUTO_CHECKPOINT_FRAMES && end.checkpointed < end.log) return;
   if (!checkpointsOnWorker()) {
     if (end.checkpointed < end.log) await byDeadline(checkpointInBackground(), until);
     return;

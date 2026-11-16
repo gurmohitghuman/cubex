@@ -1,6 +1,8 @@
 // Adding one journal row's results as rows (services/enrich-list-drain.ts
-// calls it once neither sheet is busy; it's synchronous, so none can start
-// meanwhile). ONE immediate transaction:
+// calls addListItemsIn in a slice of its bulk writer, once neither sheet is
+// busy, checked in that slice; it's synchronous, so none can start meanwhile).
+// Over 200 lines: the add in one transaction, and the stop for a full sheet after it.
+// ONE transaction:
 // re-read the journal row (still pending), append its rows where appends go
 // (nextRowIndex, under the row limit), record where each came from
 // (enrichment_list_rows), move the rows the same source row added there
@@ -90,10 +92,28 @@ function rowsToAdd(
   return { rows, skipped };
 }
 
+// The run a full sheet stops (stopForRoom), once the add's transaction has committed.
+export interface AddStop { runId: string; name: string }
+
+// Tests only: one journal row's add in its own transaction, the stop after it (the drain uses addListItemsIn).
 export function addListItems(journalId: string, count: DestCount = { rows: null }): AddOutcome {
+  const { out, stop } = db.transaction(() => addListItemsIn(journalId, count)).immediate();
+  if (stop) stopAfterAdd(stop);
+  return out;
+}
+
+// The wait is recorded either way: a stop that fails here is tried again next round.
+export function stopAfterAdd(stop: AddStop): void {
+  try { stopForRoom(stop.runId, stop.name); } catch (error) {
+    console.error(`Stopping run ${stop.runId} for a full sheet failed (tried again):`, redactError(error));
+  }
+}
+
+// The add itself. Call inside a transaction, then stopAfterAdd(stop) once it commits.
+export function addListItemsIn(journalId: string, count: DestCount): { out: AddOutcome; stop: AddStop | null } {
   let out: AddOutcome = { gone: true };
   let stopRunId: string | null = null, stopName = '';
-  db.transaction(() => {
+  const add = (): void => {
     const j = db.prepare(`SELECT id, user_id, run_id, source_sheet_id, source_row_id, dest_sheet_id, items_json,
       item_count, wait_reason FROM enrichment_list_items WHERE id = ? AND status = 'pending'`)
       .get(journalId) as Journal | undefined;
@@ -188,12 +208,7 @@ export function addListItems(journalId: string, count: DestCount = { rows: null 
       .run(added, j.run_id, j.user_id);
     bump(j.dest_sheet_id, j.user_id);
     out = { added, skipped: skipped + notKept };
-  }).immediate();
-  // The wait is recorded either way: a stop that fails here is tried again next round.
-  if (stopRunId) {
-    try { stopForRoom(stopRunId, stopName); } catch (error) {
-      console.error(`Stopping run ${stopRunId} for a full sheet failed (tried again):`, redactError(error));
-    }
-  }
-  return out;
+  };
+  add();
+  return { out, stop: stopRunId ? { runId: stopRunId, name: stopName } : null };
 }

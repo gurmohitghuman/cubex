@@ -12,15 +12,17 @@
 //     not taken back by an undo: migration 044), later (older) runs skip it.
 // So the work follows the results, never runs x rows: auto-run leaves a run
 // per batch, and a column can hold tens of thousands of them. Each slice
-// works out its cells outside the write lock, then writes them and moves the
-// job's cursor in one short transaction; a restart goes on from the cursor
+// works out its cells, writes them and moves the job's cursor in one short
+// transaction, its WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts); a restart goes on from the cursor
 // (resumeFieldJobs at boot). Writes are idempotent; a slice that fails is
 // retried a few times, then the job ends as failed and frees the sheet.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-helpers';
-import { runInSlices, yieldToRequests } from '../lib/slices';
+import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter, runInCheckpointedSlices } from '../lib/bulk-slices';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { fillEnded } from './derived-fill-wait';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
@@ -75,17 +77,18 @@ async function link(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
       WHERE run_id = ? AND extracted_column_name = ? AND +sheet_id = ? AND +user_id = ?)`);
   const move = db.prepare(`UPDATE enrichment_field_jobs SET run_pos = ?, updated_at = datetime('now')
     WHERE id = ? AND user_id = ? AND status = 'running'`);
-  for (let i = job.run_pos; i < runs.length; i += LINK_BATCH) {
-    const batch = runs.slice(i, i + LINK_BATCH);
-    db.transaction(() => {
-      for (const r of batch) {
-        insert.run(uuidv4(), job.sheet_id, job.user_id, job.status_column, job.column_name, r.id,
-          r.id, job.column_name, job.sheet_id, job.user_id);
-      }
-      move.run(i + batch.length, job.id, job.user_id);
-    }).immediate();
-    await yieldToRequests();
-  }
+  await asBulkWriter(async w => {
+    for (let i = job.run_pos; i < runs.length; i += LINK_BATCH) {
+      const batch = runs.slice(i, i + LINK_BATCH);
+      await w.slice(() => {
+        for (const r of batch) {
+          insert.run(uuidv4(), job.sheet_id, job.user_id, job.status_column, job.column_name, r.id,
+            r.id, job.column_name, job.sheet_id, job.user_id);
+        }
+        move.run(i + batch.length, job.id, job.user_id);
+      });
+    }
+  });
   db.prepare(`UPDATE enrichment_field_jobs SET stage = 'fill', run_pos = 0, row_cursor = -1,
     updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`).run(job.id, job.user_id);
 }
@@ -127,7 +130,7 @@ async function fill(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
   let pos = job.run_pos;
   let after = job.row_cursor;
   let cell = pos < runs.length ? cellRule(runs[pos].id, job.user_id, job.json_path) : null;
-  await runInSlices(() => {
+  await runInCheckpointedSlices(() => {
     if (pos >= runs.length || !cell) return false;
     const results = readSlice(runs[pos].id, job.user_id, after);
     const cells: Array<[number, string]> = [];
@@ -140,12 +143,10 @@ async function fill(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
     const done = results.length < HEAVY_SLICE_ROWS;
     const nextPos = done ? pos + 1 : pos;
     const nextAfter = done ? -1 : results[results.length - 1].row_index;
-    db.transaction(() => {
-      for (const [rowIndex, value] of cells) write.run(cellPath, value, job.sheet_id, job.user_id, rowIndex);
-      // A column another column's auto-run reads queues these rows for it.
-      markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { indexes: cells.map(c => c[0]) });
-      move.run(nextPos, nextAfter, job.id, job.user_id);
-    }).immediate();
+    for (const [rowIndex, value] of cells) write.run(cellPath, value, job.sheet_id, job.user_id, rowIndex);
+    // A column another column's auto-run reads queues these rows for it.
+    markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { indexes: cells.map(c => c[0]) });
+    move.run(nextPos, nextAfter, job.id, job.user_id);
     pos = nextPos;
     after = nextAfter;
     if (done && pos < runs.length) cell = cellRule(runs[pos].id, job.user_id, job.json_path);

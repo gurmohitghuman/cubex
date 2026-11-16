@@ -6,17 +6,18 @@
 // rows above its watermark. A person's own edit to its cell stays until an
 // input changes again. It's free and has no side effects, so there are no
 // caps and no "Only run if". Each slice reads and writes in one short
-// transaction, so what it writes is the row's inputs as they are then, and
+// transaction (its WAL copied back on the checkpoint worker's thread:
+// lib/bulk-slices.ts), so what it writes is the row's inputs as they are then, and
 // nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply).
 // A pass that has to wait (a lookup whose other sheet is sorting) ends the
 // tick, and the entry comes back after LOOKUP_FOLLOW_RETRY_MS.
 import { db } from '../lib/db';
 import {
-  CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
+  CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, DERIVED_QUEUED_SLICE_ROWS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
-import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import { onFollowQueued } from '../lib/autorun-kick';
@@ -44,63 +45,59 @@ function stillCurrent(s: Step): boolean {
 
 const cellPathOf = (s: Step) => jsonPath(s.rec.column_name);
 
-// Rows an input was written in, a slice a transaction. True while there are more.
+// Rows an input was written in. True while there are more. Call inside a transaction (a slice).
 function queuedSlice(s: Step): boolean {
   const e = s.entry;
-  let more = false;
-  db.transaction(() => {
-    if (!stillCurrent(s)) return;
-    const sel = derivedSelect(s.rec.column_name, s.inputs, 'r.');
-    const read = readDerivedRows(db.prepare(`SELECT p.row_id AS id, p.quiet AS quiet, r.rowid AS rowid,
-        r.row_index AS i, r.sheet_id AS sheet, ${sel.sql}
-      FROM autorun_pending p LEFT JOIN rows r ON r.id = p.row_id
-      WHERE p.autorun_id = ? ORDER BY p.row_id LIMIT ?`)
-      .iterate(...sel.params, e.id, s.page), s.page, s.inputs.length);
-    const rows = read.rows;
-    // A row gone (deleted, or replaced by an import) just leaves the queue. The
-    // rest are written in storage order, and leave it once worked out.
-    const live = rows.filter(r => r.sheet === e.sheet_id).sort((a, b) => (a.rowid as number) - (b.rowid as number));
-    const reads = live.map(r => asDerivedRead(r, s.inputs.length));
-    const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass);
-    const worked = new Set(live.slice(0, counts.done).map(r => r.id));
-    const leave = rows.filter(r => r.sheet !== e.sheet_id || worked.has(r.id)).map(r => r.id);
-    db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
-      .run(e.id, JSON.stringify(leave));
-    finishSlice(s, counts.changed, new Set(live.filter(r => r.quiet === 1).map(r => r.rowid as number)));
-    more = read.capped || counts.done < live.length;
-    s.page = pageAfter(s.page, live.length, counts.done);
-  }).immediate();
+  if (!stillCurrent(s)) return false;
+  const sel = derivedSelect(s.rec.column_name, s.inputs, 'r.');
+  // Queued rows are scattered (constants-clean.ts): fewer to a slice than new ones.
+  const most = Math.min(s.page, DERIVED_QUEUED_SLICE_ROWS);
+  const read = readDerivedRows(db.prepare(`SELECT p.row_id AS id, p.quiet AS quiet, r.rowid AS rowid,
+      r.row_index AS i, r.sheet_id AS sheet, ${sel.sql}
+    FROM autorun_pending p LEFT JOIN rows r ON r.id = p.row_id
+    WHERE p.autorun_id = ? ORDER BY p.row_id LIMIT ?`)
+    .iterate(...sel.params, e.id, most), most, s.inputs.length);
+  const rows = read.rows;
+  // A row gone (deleted, or replaced by an import) just leaves the queue. The
+  // rest are written in storage order, and leave it once worked out.
+  const live = rows.filter(r => r.sheet === e.sheet_id).sort((a, b) => (a.rowid as number) - (b.rowid as number));
+  const reads = live.map(r => asDerivedRead(r, s.inputs.length));
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass);
+  const worked = new Set(live.slice(0, counts.done).map(r => r.id));
+  const leave = rows.filter(r => r.sheet !== e.sheet_id || worked.has(r.id)).map(r => r.id);
+  db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
+    .run(e.id, JSON.stringify(leave));
+  finishSlice(s, counts.changed, new Set(live.filter(r => r.quiet === 1).map(r => r.rowid as number)));
+  const more = read.capped || counts.done < live.length;
+  s.page = pageAfter(s.page, live.length, counts.done);
   return more;
 }
 
-// New rows above the watermark, a slice a transaction. The watermark and the
-// sheet's row generation are read inside it, so a delete, sort or import that
-// moved the fence since the tick began is never passed over.
+// New rows above the watermark. The watermark and the sheet's row generation
+// are read inside the slice's transaction, so a delete, sort or import that
+// moved the fence since the tick began is never passed over. Call inside a transaction (a slice).
 function newSlice(s: Step): boolean {
   const e = s.entry;
-  let more = false;
-  db.transaction(() => {
-    if (!stillCurrent(s)) return;
-    const fence = db.prepare(`SELECT watermark_row_index AS w, row_generation_seen AS g FROM autorun_columns
-      WHERE id = ? AND enabled = 1`).get(e.id) as { w: number; g: number } | undefined;
-    const gen = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
-      .pluck().get(e.sheet_id, e.user_id) as number | undefined;
-    if (!fence || gen !== fence.g) return;
-    const sel = derivedSelect(s.rec.column_name, s.inputs);
-    const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
-      FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?`)
-      .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.page), s.page, s.inputs.length);
-    const rows = read.rows.map(r => asDerivedRead(r, s.inputs.length));
-    if (rows.length === 0) return;
-    // A new row whose inputs are empty keeps a cell it arrived with.
-    const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true });
-    if (counts.done > 0) {
-      db.prepare('UPDATE autorun_columns SET watermark_row_index = ? WHERE id = ?').run(rows[counts.done - 1].i, e.id);
-    }
-    finishSlice(s, counts.changed);
-    more = read.capped || counts.done < rows.length;
-    s.page = pageAfter(s.page, rows.length, counts.done);
-  }).immediate();
+  if (!stillCurrent(s)) return false;
+  const fence = db.prepare(`SELECT watermark_row_index AS w, row_generation_seen AS g FROM autorun_columns
+    WHERE id = ? AND enabled = 1`).get(e.id) as { w: number; g: number } | undefined;
+  const gen = db.prepare('SELECT row_generation FROM sheets WHERE id = ? AND user_id = ?')
+    .pluck().get(e.sheet_id, e.user_id) as number | undefined;
+  if (!fence || gen !== fence.g) return false;
+  const sel = derivedSelect(s.rec.column_name, s.inputs);
+  const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
+    FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?`)
+    .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.page), s.page, s.inputs.length);
+  const rows = read.rows.map(r => asDerivedRead(r, s.inputs.length));
+  if (rows.length === 0) return false;
+  // A new row whose inputs are empty keeps a cell it arrived with.
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true });
+  if (counts.done > 0) {
+    db.prepare('UPDATE autorun_columns SET watermark_row_index = ? WHERE id = ?').run(rows[counts.done - 1].i, e.id);
+  }
+  finishSlice(s, counts.changed);
+  const more = read.capped || counts.done < rows.length;
+  s.page = pageAfter(s.page, rows.length, counts.done);
   return more;
 }
 
@@ -153,22 +150,23 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
     try {
       const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS };
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
-      for (let more = true; more;) {
-        await pass.prepare();
-        if (!pass.waiting?.()) {
-          // Queued rows first (a person's edit), then new ones.
-          more = queuedSlice(s) || newSlice(s);
+      await asBulkWriter(async w => {
+        for (let more = true; more;) {
+          await pass.prepare();
+          if (!pass.waiting?.()) {
+            // Queued rows first (a person's edit), then new ones, each a slice of its own.
+            more = await w.slice(() => queuedSlice(s)) || await w.slice(() => newSlice(s));
+          }
+          const failure = pass.failure();
+          if (failure) {
+            pauseEntry(e.id, pass.failureReason ?? 'too_slow',
+              `${failure} Auto-run is paused; turn it on again once it's fixed.`);
+            return;
+          }
+          if (pass.waiting?.()) { kickDerivedFollow(e.id, LOOKUP_FOLLOW_RETRY_MS); return; }
+          if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) { again.add(e.id); return; }
         }
-        const failure = pass.failure();
-        if (failure) {
-          pauseEntry(e.id, pass.failureReason ?? 'too_slow',
-            `${failure} Auto-run is paused; turn it on again once it's fixed.`);
-          return;
-        }
-        if (pass.waiting?.()) { kickDerivedFollow(e.id, LOOKUP_FOLLOW_RETRY_MS); return; }
-        if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) { again.add(e.id); return; }
-        if (more) await yieldToRequests();
-      }
+      });
     } finally {
       pass.dispose();
     }
