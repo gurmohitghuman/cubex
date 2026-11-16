@@ -1,10 +1,12 @@
 // transform_column writing 50,000 rows (services/column-transform-pages.ts) into a column 0, 1 or 3 formula
 // columns read, then the formulas following every row it wrote (services/derived-follow.ts), as in the server:
-// they are told at once and follow by themselves. The event loop is sampled every 5 ms from the first call to the
-// last formula done, as transform-pages.test.ts does: it is never held 200 ms, and every formula ends right. On a
-// 200,000-row sheet the longest stretch was 31, 50 and 70 ms (170 ms once with 3, no transaction in it); this size
-// keeps the case near a minute. The Windows runner's disk took 7 minutes at it (3 formulas: written in 131 s,
-// followed in 288 s, the loop held 128 ms): there it runs 10,000 rows, in slices of the same size.
+// they are told at once and follow by themselves, and the auto-run sweep (every 15 s) catches up one whose kick
+// found the sheet still busy with the transform (on the Windows runner a page outlasts the kick). The event loop is
+// sampled every 5 ms from the first call to the last formula done, as transform-pages.test.ts does: it is never
+// held 200 ms, and every formula ends right. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
+// (170 ms once with 3, no transaction in it); this size keeps the case near a minute. The Windows runner's disk took
+// 7 minutes at it (3 formulas: written in 131 s, followed in 288 s, the loop held 128 ms): there it runs 10,000
+// rows, in slices of the same size.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
@@ -13,10 +15,12 @@ import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('transform-formula-follow')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
 const { startDerivedFollow } = await import('../../server/src/services/derived-follow')
+const { startAutorunLoop } = await import('../../server/src/services/autorun-loop')
 const { transformColumn } = await import('../../server/src/services/column-transform')
 const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
   await import('../../server/src/lib/wal-checkpointer')
 startDerivedFollow()
+startAutorunLoop()
 console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
