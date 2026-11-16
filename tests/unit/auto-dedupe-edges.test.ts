@@ -36,7 +36,7 @@ const { setAutoDedupe, autoDedupeView, insertAutoDedupeSetting } =
   settingMod as typeof import('../../server/src/services/auto-dedupe-setting')
 const { maintainAutoDedupeSheet, buildStep, drainStep } =
   indexMod as typeof import('../../server/src/services/auto-dedupe-index')
-const { runChecks } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
+const { runChecks, autoDedupeDriving } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
 const { appendRows } = rowsMod as typeof import('../../server/src/services/rows-write')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { deleteSheetColumn } = deleteMod as typeof import('../../server/src/services/column-delete')
@@ -186,6 +186,9 @@ async function main() {
   await ok('a row arriving while a CSV replace is under way waits for it', async () => {
     on(R, { column: 'Email', match: 'email' })
     await ready(R)
+    // The driver the setting started makes the sheet's waiting checks once its keys are ready: it ends first, so
+    // the check below is this scenario's own (a driver still going could take the row first, the same row gone).
+    while (autoDedupeDriving(R)) await new Promise(r => setTimeout(r, 5))
     db.prepare(`INSERT INTO import_jobs (sheet_id, user_id, is_replace, first_row, end_row, columns)
       VALUES (?, ?, 1, 0, 2, '["Email"]')`).run(R, uid)
     const out = appendRows(R, uid, [{ Email: 'a@x.com', Name: 'during' }])
