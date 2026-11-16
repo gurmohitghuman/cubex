@@ -5,9 +5,13 @@
 //   or a `.checkpoint(...)` call, matches a CHECKPOINTS entry;
 // - a literal setting wal_autocheckpoint (`wal_autocheckpoint = ...`) matches an AUTO entry;
 // - a call of withoutAutoCheckpoint (SQLite's own checkpoint off for a commit, so someone must copy the WAL back)
-//   matches a NO_AUTO entry.
+//   matches a NO_AUTO entry;
+// - a call of yieldToRequests, runInSlices or setImmediate (a loop letting requests in between its slices) matches a
+//   YIELDS entry. A writer on the server's thread runs its slices through lib/bulk-slices.ts, which yields for it,
+//   so what is listed reads only, runs on another thread, runs once, or moves onto the runner later (says so).
 // Each entry is a file, how many it holds and why; a file holding more or fewer than its count fails, as does one
-// not listed. A fixture proves each rule catches its case. What it can't see: SQL built from pieces at run time.
+// not listed. A fixture proves each rule catches its case. What it can't see: SQL built from pieces at run time, a
+// loop paced by timers, and a writer handing its slices to a listed reader's loop (sheet-slices, run-results-walk).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -32,8 +36,52 @@ const NO_AUTO: Entry[] = [
   { file: 'server/src/services/column-transform-pages.ts', count: 1, why: 'transform_column\'s pages (walRoom)' },
   { file: 'server/src/services/lookup-maintain.ts', count: 1, why: 'on the lookup worker\'s thread' },
 ]
+const READS = 'reads only'
+const NEXT = 'writes; moves onto the runner in the next change'
+const YIELDS: Entry[] = [
+  { file: 'server/src/lib/slices.ts', count: 2, why: 'runInSlices and yieldToRequests themselves' },
+  { file: 'server/src/lib/bulk-slices.ts', count: 3, why: 'the runner: before each slice, and between slices' },
+  { file: 'server/src/lib/row-order.ts', count: 3,
+    why: 'sheetRowIds reads (2); plain slices off the server\'s thread only (1)' },
+  { file: 'server/src/services/column-transform-pages.ts', count: 1, why: 'transform_column\'s pages (walRoom)' },
+  { file: 'server/src/services/lookup-maintain.ts', count: 2,
+    why: 'the lookup\'s steps, on its own thread; on the server\'s, the WAL copied back on the worker' },
+  { file: 'server/src/services/auto-dedupe-checks.ts', count: 1, why: 'between rounds, each one a bulk writer' },
+  { file: 'server/src/lib/trash/lookups.ts', count: 1, why: 'once, after the restore\'s commit: kicks follows' },
+  { file: 'server/src/services/trash-restore-column-finish.ts', count: 1, why: 'once, after the request: fills' },
+  { file: 'server/src/services/trash-restore-sheet.ts', count: 1, why: 'once, after the request: fills' },
+  { file: 'server/src/lib/column-repair.ts', count: 2, why: READS },
+  { file: 'server/src/lib/csv-write.ts', count: 1, why: READS },
+  { file: 'server/src/lib/run-rows.ts', count: 1, why: READS },
+  { file: 'server/src/lib/run-undo/unused.ts', count: 1, why: READS },
+  { file: 'server/src/lib/sheet-slices.ts', count: 1, why: `${READS} (every caller of walkSlices reads)` },
+  { file: 'server/src/lib/sort-order.ts', count: 3, why: READS },
+  { file: 'server/src/lib/trash/restore-rows.ts', count: 1, why: `${READS} (its writes run on the runner)` },
+  { file: 'server/src/services/answer-store-size.ts', count: 1, why: READS },
+  { file: 'server/src/services/dedupe-scan.ts', count: 1, why: READS },
+  { file: 'server/src/services/enrich-reuse-count.ts', count: 1, why: READS },
+  { file: 'server/src/services/enrich-row-count.ts', count: 1, why: READS },
+  { file: 'server/src/services/enrich-seed-run.ts', count: 1, why: `${READS} (its seed runs through row-order)` },
+  { file: 'server/src/services/enrich-spend.ts', count: 1, why: READS },
+  { file: 'server/src/services/rerun-targets.ts', count: 1, why: READS },
+  { file: 'server/src/services/run-condition-rows.ts', count: 1, why: READS },
+  { file: 'server/src/services/sheet-sort.ts', count: 1, why: `${READS} (its writes: sort-plan, sort-results)` },
+  { file: 'server/src/services/trash-actions.ts', count: 1, why: READS },
+  { file: 'server/src/services/usage-csv.ts', count: 1, why: READS },
+  { file: 'server/src/services/answer-field-fill.ts', count: 3, why: `${NEXT} (2); rebuildTaken reads (1)` },
+  { file: 'server/src/services/answer-prune.ts', count: 2, why: `${NEXT} (1); addRuns reads (1)` },
+  { file: 'server/src/services/answer-prune-age.ts', count: 1, why: NEXT },
+  { file: 'server/src/services/autorun-pick.ts', count: 2, why: `${NEXT} (1); the scan for new rows reads (1)` },
+  { file: 'server/src/services/derived-fill.ts', count: 1, why: NEXT },
+  { file: 'server/src/services/derived-follow.ts', count: 1, why: NEXT },
+  { file: 'server/src/services/enrich-list-drain.ts', count: 2, why: NEXT },
+  { file: 'server/src/services/run-config-rewrite.ts', count: 1, why: NEXT },
+  { file: 'server/src/services/run-results-walk.ts', count: 1, why: `${NEXT} (the answer prunes walk with it)` },
+  { file: 'server/src/services/sheet-history.ts', count: 1, why: NEXT },
+]
 
-type Rule = 'checkpoint' | 'auto' | 'no-auto'
+type Rule = 'checkpoint' | 'auto' | 'no-auto' | 'yield'
+const YIELDING = new Set(['yieldToRequests', 'runInSlices', 'setImmediate'])
 // A literal's text: a template's pieces joined, its ${...} left out.
 function literal(n: ts.Node): string | null {
   if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text
@@ -54,6 +102,7 @@ function scan(name: string, text: string): Rule[] {
       const f = n.expression
       if (ts.isPropertyAccessExpression(f) && f.name.text === 'checkpoint') found.push('checkpoint')
       if (ts.isIdentifier(f) && f.text === 'withoutAutoCheckpoint') found.push('no-auto')
+      if (ts.isIdentifier(f) && YIELDING.has(f.text)) found.push('yield')
     }
     if (!ts.isTemplateExpression(n)) ts.forEachChild(n, walk)
   }
@@ -94,17 +143,20 @@ ok('the fixture: each rule catches its case, and only that', () => {
     db.pragma('wal_checkpoint(PASSIVE)'); db.exec('PRAGMA wal_checkpoint'); db.pragma(\`wal_checkpoint(\${m})\`)
     db.checkpoint(); db.pragma(\`wal_autocheckpoint = \${n}\`); db.exec('PRAGMA wal_autocheckpoint=0')
     withoutAutoCheckpoint(() => 1)
-    // db.pragma('wal_checkpoint(TRUNCATE)') in a comment
+    await yieldToRequests(); await runInSlices(step); setImmediate(go)
+    // db.pragma('wal_checkpoint(TRUNCATE)') in a comment; await yieldToRequests()
     db.pragma('wal_checkpoint(NOOP)'); db.prepare('PRAGMA wal_checkpoint( noop )')
     db.pragma('wal_autocheckpoint', { simple: true }); const checkpoint = 1; walCheckpoint(); auto.withoutAutoCheckpoint
+    function yieldToRequests() {}; x.setImmediate(go); runInCheckpointedSlices(step); 'runInSlices(step)'
   `
   assert.deepEqual(scan('fixture.ts', src).sort(),
-    ['auto', 'auto', 'checkpoint', 'checkpoint', 'checkpoint', 'checkpoint', 'no-auto'])
+    ['auto', 'auto', 'checkpoint', 'checkpoint', 'checkpoint', 'checkpoint', 'no-auto', 'yield', 'yield', 'yield'])
 })
 ok('server/src was read', () => assert.ok(files.length > 200 && files.includes('server/src/lib/bulk-slices.ts')))
 ok('WAL checkpoints run only where listed (CHECKPOINTS)', () => check('checkpoint', CHECKPOINTS))
 ok('SQLite\'s own checkpoint is set only where listed (AUTO)', () => check('auto', AUTO))
 ok('SQLite\'s own checkpoint is turned off for a commit only where listed (NO_AUTO)', () => check('no-auto', NO_AUTO))
+ok('loops yield between slices only where listed (YIELDS)', () => check('yield', YIELDS))
 
 if (failures > 0) { console.error(`${failures} bulk-wal-guard assertion(s) failed`); process.exit(1) }
 console.log('All bulk-wal-guard assertions passed.')

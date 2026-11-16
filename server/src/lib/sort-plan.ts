@@ -1,6 +1,6 @@
 import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
-import { runInSlices } from './slices';
+import { runInCheckpointedSlices } from './bulk-slices';
 
 // The plan of a physical sort (services/sheet-sort.ts) and the two row moves
 // that carry it out. Rows first move to base + new position, above every
@@ -11,7 +11,9 @@ import { runInSlices } from './slices';
 //
 // The plan is journaled in sort_jobs/sort_chunks (migration 004) before any
 // row moves, and the job's stage is recorded as each step starts. Every step
-// is idempotent, so a restart redoes the step it stopped in.
+// is idempotent, so a restart redoes the step it stopped in. Both the plan and
+// the moves write in slices whose WAL is copied back on the checkpoint
+// worker's thread (lib/bulk-slices.ts).
 export type SortStage = 'planning' | 'moving' | 'parking' | 'mapping' | 'shifting';
 
 export interface SortPlan {
@@ -68,7 +70,7 @@ export async function savePlan(sheetId: string, userId: string, plan: SortPlan):
     .run(sheetId, userId, plan.base, n);
   const insert = db.prepare('INSERT INTO sort_chunks (sheet_id, chunk, plan) VALUES (?, ?, ?)');
   let i = 0;
-  await runInSlices(() => {
+  await runInCheckpointedSlices(() => {
     const end = Math.min(n, i + CHUNK_ROWS);
     const triples = new Float64Array((end - i) * 3);
     for (let j = i; j < end; j++) {
@@ -126,9 +128,9 @@ export async function moveRowsDown(plan: SortPlan): Promise<void> {
 async function eachPlanSlice(plan: SortPlan, apply: (i: number) => void): Promise<void> {
   const n = plan.rowIds.length;
   let i = 0;
-  await runInSlices(() => {
+  await runInCheckpointedSlices(() => {
     const end = Math.min(n, i + HEAVY_SLICE_ROWS);
-    db.transaction(() => { for (; i < end; i++) apply(i); }).immediate();
+    for (; i < end; i++) apply(i);
     return i < n;
   });
 }

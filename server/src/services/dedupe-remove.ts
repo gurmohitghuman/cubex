@@ -10,6 +10,7 @@
 // autosave writes by position and would bring a deleted row back, so it
 // reloads instead. A restart finishes a journaled removal.
 import { db } from '../lib/db';
+import { oneTransaction } from '../lib/slices';
 import { countRows, getSheetColumns, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetGone, stayBusyToFinish, whenSheetFree, withLiveSheetBusy } from '../lib/sheet-busy';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
@@ -104,7 +105,7 @@ async function carryOut(job: DedupeJob): Promise<number | null> {
     await runInCheckpointedSlices(() => {
       const next = nextDedupeChunk(job.sheet_id);
       if (!next) return false;
-      db.transaction(() => deleteChunk(job, next.chunk, next.rowIds, item)).immediate();
+      oneTransaction(() => deleteChunk(job, next.chunk, next.rowIds, item));
       return true;
     });
     let kept: number | null = null;

@@ -5,7 +5,7 @@
 // never deletes one twice.
 import { db } from '../db';
 import { DEDUPE_DELETE_CHUNK_ROWS } from '../constants-dedupe';
-import { runInSlices } from '../slices';
+import { runInCheckpointedSlices } from '../bulk-slices';
 
 export type DedupeStage = 'planning' | 'deleting';
 export interface DedupeJob { sheet_id: string; user_id: string; floor: number; row_count: number; stage: DedupeStage }
@@ -13,7 +13,8 @@ export interface DedupeJob { sheet_id: string; user_id: string; floor: number; r
 // Chunks written per transaction while saving (about 400 KB).
 const CHUNKS_PER_SLICE = 200;
 
-// Saves the plan, then marks the job 'deleting'. A failure part-way drops
+// Saves the plan, its slices' WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts), then marks the job 'deleting'. A failure part-way drops
 // what was saved: nothing has been deleted yet.
 export async function saveDedupePlan(
   sheetId: string, userId: string, floor: number, rowIds: Float64Array,
@@ -23,14 +24,12 @@ export async function saveDedupePlan(
   const insert = db.prepare('INSERT INTO dedupe_chunks (sheet_id, chunk, plan) VALUES (?, ?, ?)');
   let i = 0, chunk = 0;
   try {
-    await runInSlices(() => {
-      db.transaction(() => {
-        for (let k = 0; k < CHUNKS_PER_SLICE && i < rowIds.length; k++) {
-          const end = Math.min(rowIds.length, i + DEDUPE_DELETE_CHUNK_ROWS);
-          insert.run(sheetId, chunk++, Buffer.from(rowIds.slice(i, end).buffer));
-          i = end;
-        }
-      }).immediate();
+    await runInCheckpointedSlices(() => {
+      for (let k = 0; k < CHUNKS_PER_SLICE && i < rowIds.length; k++) {
+        const end = Math.min(rowIds.length, i + DEDUPE_DELETE_CHUNK_ROWS);
+        insert.run(sheetId, chunk++, Buffer.from(rowIds.slice(i, end).buffer));
+        i = end;
+      }
       return i < rowIds.length;
     });
     db.prepare("UPDATE dedupe_jobs SET stage = 'deleting' WHERE sheet_id = ?").run(sheetId);

@@ -229,9 +229,15 @@ await ok('a failed slice is tried again; one that keeps failing stops the copy a
   const { tid, src } = fixture(300)
   db.exec(`CREATE TEMP TRIGGER copy_fails BEFORE INSERT ON rows WHEN instr(NEW.data, 'u250@') > 0
     BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END`)
+  let failedOnce = () => {}
+  const failed = new Promise<void>(resolve => { failedOnce = resolve })
+  console.error = (m: unknown) => { if (String(m).startsWith('Copying values into sheet')) failedOnce() }
   const running = copySheetValues(uid, src)
   const dest = jobs()[0].sheet_id
-  assert.equal(rowsOf(dest).length, 0, 'the failed slice left nothing')
+  await failed
+  console.error = () => {}
+  // Its first row went in with its journal (services/sheet-copy.ts); the slice that failed added nothing.
+  assert.equal(rowsOf(dest).length, 1, 'the failed slice left nothing')
   db.exec('DROP TRIGGER copy_fails')
   const out = await running
   assert.ok('ok' in out && out.ok.rowsCopied === 300, JSON.stringify(out))

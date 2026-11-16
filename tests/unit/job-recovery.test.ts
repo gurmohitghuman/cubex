@@ -102,7 +102,14 @@ await ok('seed: every row up to lastRow gets the placeholder, then the run is qu
 await ok('seed: a cancel mid-seed stops it, and the cancel\'s clear removes what was written', async () => {
   const sid = plainSheet(12_000)
   const id = seedingRun(sid)
-  setImmediate(() => db.prepare("UPDATE ai_runs SET status = 'cancelled', placeholder_work = 'clearing' WHERE id = ?").run(id))
+  // Cancelled between slices, once the first is written (each slice runs in a turn of its own).
+  const cancelOnceSeeding = (): void => {
+    setImmediate(() => {
+      if (placeholders(sid) === 0) return cancelOnceSeeding()
+      db.prepare("UPDATE ai_runs SET status = 'cancelled', placeholder_work = 'clearing' WHERE id = ?").run(id)
+    })
+  }
+  cancelOnceSeeding()
   let queued = 0
   await start({ runId: id, sheetId: sid, columns: ['o'], targets: null, lastRow: 11_999, enqueue: async () => { queued++ } })
   assert.equal(queued, 0)

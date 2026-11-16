@@ -1,4 +1,5 @@
 import { db } from './db';
+import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
@@ -36,12 +37,13 @@ export { PLACEHOLDER };
 // That queuing is most of a slice's work: on rows with random ids, each queued
 // row writes a page of its own. So with R columns reading these (counted once
 // up front), a slice holds PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at
-// least one), commits with SQLite's own checkpoint off, and the WAL is copied
-// back on the checkpoint worker's thread (lib/bulk-slices.ts; the numbers
-// are in lib/constants.ts). With none, a slice is HEAVY_SLICE_ROWS rows and
-// runs no checkpoint, as for every other heavy job. Putting K columns back
-// costs a journal lookup per cell, so a slice also holds at most
-// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows.
+// least one; the numbers are in lib/constants.ts), and on a job thread it is
+// checkpointed after it (lib/row-order.ts). With none, a slice is
+// HEAVY_SLICE_ROWS rows. On the server's thread each slice commits with
+// SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
+// thread (lib/bulk-slices.ts). Putting K columns back costs a journal lookup
+// per cell, so a slice also holds at most PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K)
+// rows.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void, run?: RunRef,
 ): Promise<void> {
@@ -74,10 +76,10 @@ export async function clearProcessingPlaceholders(
   const slicing = { rows: Math.max(1, Math.floor(rows)), checkpointed: readers > 0 };
   await eachRowIdSlice(rowIds, ids => {
     // The clear and its queuing commit together, the write lock taken up front.
-    db.transaction(() => {
+    oneTransaction(() => {
       const cleared = clear.all(...setArgs, ids, sheetId, userId, ...paths) as number[];
       if (cleared.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: cleared });
-    }).immediate();
+    });
     afterSlice?.();
   }, slicing);
   db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?').run(sheetId, userId);
@@ -113,10 +115,10 @@ export async function seedProcessingPlaceholders(args: {
     if (!live()) { stopped = true; return false; }
     // The write lock first: a read before a write in a deferred transaction
     // fails at once (SQLITE_BUSY) when a run worker committed in between.
-    db.transaction(() => {
+    oneTransaction(() => {
       journalSeed(run, sheetId, userId, { rowids: ids }, cells, skip);
       set.run(...paths, ids, sheetId, userId, skip);
-    }).immediate();
+    });
   });
   return !stopped;
 }

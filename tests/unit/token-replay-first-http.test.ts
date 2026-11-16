@@ -104,6 +104,7 @@ for (const surface of SURFACE_NAMES) {
     const args = { sheet_id: fresh(), url: 'https://api.example.com/ask?n={{Name}}', master_column_name: 'Ask',
       response_mapping: mapping('Said'), idempotency_key: `no-curl-${surface}` }
     assert.ok((await start(surface, args)).ok)
+    await idle(args.sheet_id) // seeded after the start answered (services/run-seed.ts)
     for (const save_keys of [true, false, { 'Authorization header': 'x' }]) {
       assert.deepEqual(await start(surface, { ...args, save_keys }),
         refusal(surface, 'bad_request', 400, 'save_keys goes with curl.'), JSON.stringify(save_keys))
@@ -117,6 +118,7 @@ for (const surface of ['service', 'rest'] as const) {
     const args = { sheet_id: fresh(), url: 'https://api.example.com/ask?n={{Name}}', master_column_name: 'Ask',
       response_mapping: mapping('Said'), idempotency_key: `hook-empty-${surface}` }
     assert.ok((await start(surface, args)).ok)
+    await idle(args.sheet_id) // seeded after the start answered (services/run-seed.ts)
     for (const webhook_id of ['', '  ', 0, false]) {
       assert.deepEqual(await start(surface, { ...args, webhook_id }),
         refusal(surface, 'bad_request', 400, 'webhook_id must be the id of a run webhook.'), JSON.stringify(webhook_id))
@@ -132,6 +134,7 @@ for (const surface of SURFACE_NAMES) {
       const args = { sheet_id: fresh(), curl: curlWith(`Both${surface}`), save_keys: true, master_column_name: 'Find',
         response_mapping: mapping('Got'), idempotency_key: `curl-both-${surface}` }
       assert.ok((await start(surface, args)).ok)
+      await idle(args.sheet_id) // seeded after the start answered (services/run-seed.ts)
       const built = curlForToken({ userId: uid, scopes: new Set(['secrets']) }, args.sheet_id, args.curl, true)
       assert.ok('ok' in built, JSON.stringify(built))
       const { url, method, headers, body } = built.ok.prepared.request

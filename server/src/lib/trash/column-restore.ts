@@ -5,6 +5,7 @@
 // value there now, stay in the item; a later restore of it (its leftovers) puts them into that column once
 // their rows are back and empty there. A restore never deletes a trashed value for good.
 import { db } from '../db';
+import { oneTransaction } from '../slices';
 import { MAX_COLUMN_NAME_LENGTH } from '../constants-columns';
 import { appendColumnsToOrder, getSheetColumns, jsonPath } from '../sql-helpers';
 import { stripInvisibleNameChars } from '../name-safety';
@@ -61,7 +62,7 @@ interface Cell { seq: number; row_id: string; value: string; size: number }
 export function restoreCellsSlice(itemId: number, sheetId: string, userId: string, name: string,
   limit: number): number {
   let n = 0;
-  db.transaction(() => {
+  oneTransaction(() => {
     const item = db.prepare('SELECT column_name, restore_cursor FROM trash_items WHERE id = ?').get(itemId) as
       { column_name: string; restore_cursor: number } | undefined;
     if (!item) return;
@@ -99,7 +100,7 @@ export function restoreCellsSlice(itemId: number, sheetId: string, userId: strin
       restore_cursor = ? WHERE id = ?`)
       .run(written.length, skipped, kept, done.length, bytes, cells[cells.length - 1].seq, itemId);
     n = cells.length;
-  }).immediate();
+  });
   return n;
 }
 

@@ -1,3 +1,4 @@
+import { isMainThread } from 'worker_threads';
 import { db } from './db';
 import { HEAVY_SLICE_ROWS } from './constants';
 import { runInSlices, yieldToRequests } from './slices';
@@ -48,13 +49,17 @@ export async function sheetRowIds(
 // Calls `apply` with each slice of `rowIds` (`rows` of them: HEAVY_SLICE_ROWS
 // unless a caller whose slices do more per row asks for fewer) as a JSON array,
 // for a statement filtering on `rowid IN (SELECT value FROM json_each(?))`, one
-// slice per event-loop turn (lib/slices.ts). `apply` returns false to stop
-// early. `checkpointed`: for slices that write pages all over the database,
-// each commits with SQLite's own WAL checkpoint off and the WAL is copied back
-// on the checkpoint worker's thread (lib/bulk-slices.ts). Write the sheet filter as
-// `+sheet_id = ? AND +user_id = ?`: without the `+`, a fresh install (no
-// planner statistics yet) walks the sheet's whole index on every slice (about
-// 0.1 s each at 1M rows) instead of looking rows up by rowid.
+// slice per event-loop turn. `apply` returns false to stop early.
+// On the server's thread each slice is one transaction (`apply` inside it, its
+// own run flat: oneTransaction), committed with SQLite's own WAL checkpoint off and
+// the WAL copied back on the checkpoint worker's thread (lib/bulk-slices.ts): a
+// checkpoint inside a commit there syncs the disk while requests wait. Job
+// threads and the lookup worker checkpoint their own connection, on their own
+// thread, so their slices stay plain (lib/slices.ts), unless `checkpointed`
+// (slices that write pages all over the database: a checkpoint after each).
+// Write the sheet filter as `+sheet_id = ? AND +user_id = ?`: without the `+`,
+// a fresh install (no planner statistics yet) walks the sheet's whole index on
+// every slice (about 0.1 s each at 1M rows) instead of looking rows up by rowid.
 export async function eachRowIdSlice(
   rowIds: Float64Array, apply: (idsJson: string) => boolean | void,
   opts: { rows?: number; checkpointed?: boolean } = {},
@@ -68,6 +73,6 @@ export async function eachRowIdSlice(
     i = end;
     return keepGoing !== false && i < rowIds.length;
   };
-  if (rowIds.length > 0 && opts.checkpointed) await runInCheckpointedSlices(step);
+  if (rowIds.length > 0 && (isMainThread || opts.checkpointed)) await runInCheckpointedSlices(step);
   else await runInSlices(step);
 }

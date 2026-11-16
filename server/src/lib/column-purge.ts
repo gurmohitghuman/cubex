@@ -1,4 +1,5 @@
 import { db } from './db';
+import { oneTransaction } from './slices';
 import { COLUMN_TRASH_SLICE_ROWS } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
@@ -91,10 +92,10 @@ export async function purgeColumnKey(sheetId: string, userId: string, name: stri
   else {
     // The cells are written twice (into the trash, out of the rows): smaller slices, each checkpointed.
     await eachRowIdSlice(rowIds, ids => {
-      db.transaction(() => {
+      oneTransaction(() => {
         copyCellsToItem(item, sheetId, userId, name, path, ids);
         stripSlice(ids);
-      }).immediate();
+      });
     }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true });
   }
   if (item === null) forgetPurge(sheetId, name);

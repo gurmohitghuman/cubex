@@ -19,7 +19,7 @@ import { columnsToCopy, defaultCopyName } from '../lib/sheet-copy';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { makeRateWindow } from '../lib/rate-window';
 import { SHEET_COPIES_PER_MIN } from '../lib/api-v1-constants';
-import { BEING_COPIED, COPYING_INTO, runSheetCopy } from './sheet-copy-job';
+import { BEING_COPIED, COPYING_INTO, copyFirstRow, runSheetCopy } from './sheet-copy-job';
 import { copyTransformPasses } from './column-transform-pass-moves';
 
 // Copies a token starts, per minute (MCP and /api/v1 take a slot before copying).
@@ -65,7 +65,7 @@ export async function copySheetValues(
     db.transaction(() => {
       const { n, top } = db.prepare(`SELECT COUNT(*) AS n, MAX(row_index) AS top FROM rows
         WHERE sheet_id = ? AND user_id = ?`).get(sheetId, userId) as { n: number; top: number | null };
-      // Rows added from now on get higher rowids: the copy leaves them out.
+      // Rows added from now on get higher rowids: the copy leaves them out (its first row goes in below).
       const maxRowid = (db.prepare('SELECT MAX(rowid) FROM rows').pluck().get() as number | null) ?? 0;
       const finalName = name ?? defaultCopyName(source.name, nm => sheetNameTaken(source.table_id, userId, nm));
       const created = createSheetTxn(source.table_id, userId, finalName, sheetId, { seed: false });
@@ -80,6 +80,9 @@ export async function copySheetValues(
       db.prepare(`INSERT INTO sheet_copy_jobs (sheet_id, user_id, source_sheet_id, columns, end_row, max_rowid,
           row_count, change_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(created.sheetId, userId, sheetId, JSON.stringify(columns), top ?? -1, maxRowid, n, changeId);
+      // Its first row now, so the highest rowid is the copy's own: deleting the source's newest rows meanwhile
+      // can't hand their rowids to rows added after them (services/sheet-copy-job.ts).
+      copyFirstRow(created.sheetId);
       made = { id: created.sheetId, rows: n };
     }).immediate();
     const copy = made as { id: string; rows: number } | null;

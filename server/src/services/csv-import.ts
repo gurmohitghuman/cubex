@@ -21,7 +21,7 @@ import { CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
 import { validateCsvImport } from '../lib/csv-import-validate';
 import type { ScannedCsv } from '../lib/csv-import-parse';
 import { nextRowIndex, sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
-import { yieldToRequests } from '../lib/slices';
+import { asBulkWriter } from '../lib/bulk-slices';
 import { abortRunsForSheets } from './run-control';
 import { isPristineSeedSheet } from './transfer-seed';
 import { getLockedRunColumns } from '../routes/sheets-shared';
@@ -157,7 +157,7 @@ export async function importCsv(
       let firstRid: number | null = null;
       let lastRid: number | null = null;
       let dedupeQueued = false;
-      const flush = db.transaction(() => {
+      const flush = (): void => {
         for (const row of batch) {
           // The journal reserved exactly rowCount rows; never write past them.
           if (next >= job.end_row) break;
@@ -173,12 +173,16 @@ export async function importCsv(
           firstRid ??= lastRid;
         }
         batch = [];
+      };
+      // Each flush one slice of a bulk writer: its WAL copied back on the checkpoint worker's thread
+      // (lib/bulk-slices.ts), never inside its commit, which syncs the disk while requests wait.
+      await asBulkWriter(async w => {
+        for await (const row of csv.rows()) {
+          batch.push(row);
+          if (batch.length >= HEAVY_SLICE_ROWS) await w.slice(flush);
+        }
+        await w.slice(flush);
       });
-      for await (const row of csv.rows()) {
-        batch.push(row);
-        if (batch.length >= HEAVY_SLICE_ROWS) { flush.immediate(); await yieldToRequests(); }
-      }
-      flush.immediate();
       if (!replace && opts.skipAutorun) await autorunSkipImport(sheetId, userId, startingRow, next - 1);
       if (replace) await autorunDropPending(sheetId, userId);
 

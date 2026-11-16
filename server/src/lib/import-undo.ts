@@ -1,6 +1,6 @@
 import { db } from './db';
-import { HEAVY_SLICE_ROWS } from './constants';
-import { runInSlices } from './slices';
+import { HEAVY_SLICE_ROWS, RESULTS_SLICE_ROWS } from './constants';
+import { asBulkWriter, runInCheckpointedSlices } from './bulk-slices';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
 import { autorunAfterReplace, autorunDropPending, autorunRowsRemoved } from './autorun-mark';
 import { forgetUnlistedCleanColumns } from './clean-columns';
@@ -23,17 +23,18 @@ export interface ImportJob {
   first_row: number; end_row: number; columns: string;
 }
 
-// Deletes the sheet's rows with first <= row_index < end, a slice at a time.
+// Deletes the sheet's rows with first <= row_index < end, a slice at a time, the WAL copied back on the checkpoint
+// worker's thread (lib/bulk-slices.ts), as the results below.
 export async function deleteRowRange(sheetId: string, userId: string, first: number, end: number): Promise<void> {
   const slice = db.prepare(`
     DELETE FROM rows WHERE rowid IN (
       SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?
       ORDER BY row_index LIMIT ?
     )`);
-  await runInSlices(() => slice.run(sheetId, userId, first, end, HEAVY_SLICE_ROWS).changes > 0);
+  await runInCheckpointedSlices(() => slice.run(sheetId, userId, first, end, HEAVY_SLICE_ROWS).changes > 0);
 }
 
-// Deletes every stored AI/HTTP result of the sheet's runs, a slice at a time.
+// Deletes every stored AI/HTTP result of the sheet's runs, RESULTS_SLICE_ROWS a slice (a result can hold 16 KB).
 export async function purgeSheetResults(sheetId: string, userId: string): Promise<void> {
   const slices = [
     db.prepare(`
@@ -47,9 +48,11 @@ export async function purgeSheetResults(sheetId: string, userId: string): Promis
         ) LIMIT ?
       )`),
   ];
-  for (const slice of slices) {
-    await runInSlices(() => slice.run(sheetId, userId, HEAVY_SLICE_ROWS).changes > 0);
-  }
+  await asBulkWriter(async w => {
+    for (const slice of slices) {
+      while (await w.slice(() => slice.run(sheetId, userId, RESULTS_SLICE_ROWS).changes > 0)) { /* the next */ }
+    }
+  });
 }
 
 // The column list a replace leaves: the file's columns, then any held by rows

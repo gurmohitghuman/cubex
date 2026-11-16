@@ -1,21 +1,25 @@
 // The rows of a sheet copy (services/sheet-copy.ts), journaled in
 // sheet_copy_jobs (migration 047). Each slice reads the source's next rows in
 // row order and adds them to the new sheet, cursor and all, in one short
-// transaction (lib/slices.ts), so a restart goes on from the last slice and
+// transaction, its WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts), so a restart goes on from the last slice and
 // never adds a row twice (resumeSheetCopies at boot). The new rows get
 // time-ordered ids (lib/ordered-id.ts), which keep each slice's commit small.
 // The copy runs with the new sheet busy and the source held for reading
 // (lib/sheet-busy.ts): the source can't be sorted, have rows moved or columns
 // renamed under the cursor, while edits and new rows go on. Only the rows it
 // had at the start are copied (by rowid), never more than were counted then,
-// so the copy stays in its reserved range. A slice that fails is tried again,
+// so the copy stays in its reserved range. Its first row goes in with the
+// journal (services/sheet-copy.ts), so the highest rowid is the copy's own from
+// the start: SQLite gives a new row the highest rowid plus one, so a row added
+// to the source later can't reuse the rowid of one deleted meanwhile. A slice that fails is tried again,
 // waiting longer each time; after SHEET_COPY_ATTEMPTS failures in a row the
 // copy stops with the rows it has, and says so.
 import { db } from '../lib/db';
 import {
   HEAVY_JOB_RETRY_MAX_MS, HEAVY_JOB_RETRY_MS, HEAVY_SLICE_ROWS, SHEET_COPY_ATTEMPTS, SHEET_COPY_SLICE_CHARS,
 } from '../lib/constants';
-import { runInSlices } from '../lib/slices';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { stayBusyToFinish, whenSheetFree, withSheetRead } from '../lib/sheet-busy';
 import { copiedCells } from '../lib/sheet-copy';
 import { orderedUuid } from '../lib/ordered-id';
@@ -42,16 +46,49 @@ export type CopyEnd = { copied: number; stopped: string | null };
 export async function runSheetCopy(sheetId: string, retryMs = HEAVY_JOB_RETRY_MS): Promise<CopyEnd> {
   const job = loadJob(sheetId);
   if (!job) return { copied: 0, stopped: null };
+  const slice = copySlicer(job);
+  let failed = 0;
+  let wait = retryMs;
+  let copiedAtFailure = -1;
+  for (;;) {
+    try {
+      await runInCheckpointedSlices(() => slice(HEAVY_SLICE_ROWS));
+      return finishCopy(sheetId, null);
+    } catch (error) {
+      // Failures count in a row: one after rows went in starts the count again.
+      const copied = loadJob(sheetId)?.copied ?? 0;
+      if (copied !== copiedAtFailure) { failed = 0; wait = retryMs; copiedAtFailure = copied; }
+      failed++;
+      console.error(`Copying values into sheet ${sheetId} failed (${failed} in a row):`, error);
+      if (failed >= SHEET_COPY_ATTEMPTS) {
+        // Every row in, only finishing failed: it isn't a copy that stopped.
+        const stopped = copied >= job.row_count ? null : (error as Error).message || String(error);
+        return finishOrKeepTrying(sheetId, stopped);
+      }
+      await new Promise(resolve => setTimeout(resolve, wait));
+      wait = Math.min(wait * 2, HEAVY_JOB_RETRY_MAX_MS);
+    }
+  }
+}
+
+// The copy's first row, added in the transaction that journals it (services/sheet-copy.ts; see above).
+export function copyFirstRow(sheetId: string): void {
+  copySlicer(loadJob(sheetId)!)(1);
+}
+
+// One slice of the copy: up to `most` rows of the source after the cursor (or SHEET_COPY_SLICE_CHARS of their
+// data) added to the new sheet, the cursor with them. True while more are left. Call inside a transaction.
+function copySlicer(job: SheetCopyJob): (most: number) => boolean {
+  const sheetId = job.sheet_id;
   const columns = JSON.parse(job.columns) as string[];
   const read = db.prepare(`SELECT row_index AS i, data FROM rows WHERE sheet_id = ? AND user_id = ?
     AND row_index > ? AND row_index <= ? AND rowid <= ? ORDER BY row_index LIMIT ?`);
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
   const advance = db.prepare('UPDATE sheet_copy_jobs SET after_row = ?, copied = ? WHERE sheet_id = ?');
   const passes = copiedPassMapper(job.source_sheet_id, sheetId, job.user_id);
-  // One slice: up to HEAVY_SLICE_ROWS rows or SHEET_COPY_SLICE_CHARS of their data. True while more are left.
-  const slice = db.transaction((): boolean => {
+  return (most: number): boolean => {
     const at = loadJob(sheetId)!;
-    const left = Math.min(HEAVY_SLICE_ROWS, job.row_count - at.copied);
+    const left = Math.min(most, job.row_count - at.copied);
     if (left <= 0) return false;
     const rows: Array<{ i: number; data: string }> = [];
     let chars = 0;
@@ -73,29 +110,7 @@ export async function runSheetCopy(sheetId: string, retryMs = HEAVY_JOB_RETRY_MS
     passes(placed);
     advance.run(rows[rows.length - 1].i, next, sheetId);
     return true;
-  });
-  let failed = 0;
-  let wait = retryMs;
-  let copiedAtFailure = -1;
-  for (;;) {
-    try {
-      await runInSlices(() => slice.immediate());
-      return finishCopy(sheetId, null);
-    } catch (error) {
-      // Failures count in a row: one after rows went in starts the count again.
-      const copied = loadJob(sheetId)?.copied ?? 0;
-      if (copied !== copiedAtFailure) { failed = 0; wait = retryMs; copiedAtFailure = copied; }
-      failed++;
-      console.error(`Copying values into sheet ${sheetId} failed (${failed} in a row):`, error);
-      if (failed >= SHEET_COPY_ATTEMPTS) {
-        // Every row in, only finishing failed: it isn't a copy that stopped.
-        const stopped = copied >= job.row_count ? null : (error as Error).message || String(error);
-        return finishOrKeepTrying(sheetId, stopped);
-      }
-      await new Promise(resolve => setTimeout(resolve, wait));
-      wait = Math.min(wait * 2, HEAVY_JOB_RETRY_MAX_MS);
-    }
-  }
+  };
 }
 
 function parseRow(data: string): Record<string, unknown> {

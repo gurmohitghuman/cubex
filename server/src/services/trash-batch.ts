@@ -6,6 +6,7 @@
 // lock), so a job a restart cut short finds its batch by sheet and kind, and
 // goes on filling it. With Settings keeping deleted rows 0 days there is none.
 import { db } from '../lib/db';
+import { oneTransaction } from '../lib/slices';
 import { TRASH_SLICE_ROWS } from '../lib/constants';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { removeRows, sealBatch } from '../lib/trash/move';
@@ -52,7 +53,7 @@ export async function trashRowRange(
   await runInCheckpointedSlices(() => {
     const rowids = slice.all(sheetId, userId, first, end, TRASH_SLICE_ROWS) as number[];
     if (rowids.length === 0) return false;
-    db.transaction(() => { moved += removeRows(sheetId, userId, { rowids }, item, false).count; }).immediate();
+    oneTransaction(() => { moved += removeRows(sheetId, userId, { rowids }, item, false).count; });
     return true;
   });
   if (item === null) return { trashId: null, moved };

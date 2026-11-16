@@ -8,7 +8,7 @@
 // date in the lookup worker first (auto-dedupe-index.ts).
 import { db } from '../lib/db';
 import { sheetBusyWith } from '../lib/sheet-busy';
-import { yieldToRequests } from '../lib/slices';
+import { oneTransaction, yieldToRequests } from '../lib/slices';
 import { asBulkWriter } from '../lib/bulk-slices';
 import {
   AUTO_DEDUPE_CHECK_MS, AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_LOOK_ROWS,
@@ -34,7 +34,7 @@ interface Slice { state: SliceState; removed: number; trashId: number | null }
 
 function checkSlice(sheetId: string, userId: string, ownBusy: boolean): Slice {
   const out: Slice = { state: 'done', removed: 0, trashId: null };
-  db.transaction(() => {
+  oneTransaction(() => {
     const s = autoDedupeOf(sheetId, userId);
     if (!s) return;
     if (sheetInTrash(sheetId, userId)) { out.state = 'held'; return; }
@@ -58,7 +58,7 @@ function checkSlice(sheetId: string, userId: string, ownBusy: boolean): Slice {
     out.removed = removal.removed.length;
     out.trashId = trashId;
     out.state = 'more';
-  }).immediate();
+  });
   return out;
 }
 

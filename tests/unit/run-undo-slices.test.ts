@@ -1,8 +1,8 @@
 // Undoing a run (services/run-undo.ts) puts each journal row's cells back and queues the row once for every
 // clean, formula and lookup column reading a restored column, in the slice's own transaction. With none, a slice
-// is UNDO_SLICE_ROWS journal rows, as before, and runs no checkpoint. With R of them, a slice holds
-// UNDO_QUEUE_ROWS / (1 + R) rows (at least 1) and commits with SQLite's own checkpoint off, its WAL copied back
-// on the checkpoint worker's thread (lib/bulk-slices.ts): no checkpoint runs on this connection. A column reading
+// is UNDO_SLICE_ROWS journal rows. With R of them, a slice holds UNDO_QUEUE_ROWS / (1 + R) rows (at least 1).
+// Either way each commits with SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts): no checkpoint runs on this connection. A column reading
 // other columns, one with auto-run off, an auto-run that costs and a deleted column's slot don't count. The real
 // undo runs: each slice's size is read off the journal's cursor after it, and the checkpoints through the
 // database's pragma calls. At 200,000 rows with random ids (as older sheets have) and 3 formulas reading the
@@ -99,17 +99,16 @@ async function undo(sid: string, runId: string) {
 // n rows in slices of `size`: every slice full but the last.
 const split = (n: number, size: number) =>
   Array.from({ length: Math.ceil(n / size) }, (_, i) => Math.min(size, n - i * size))
-// What an undo of n rows does with no column reading them: UNDO_SLICE_ROWS a slice, SQLite's own checkpoint on.
-const plain = (n: number) => {
-  const sizes = split(n, UNDO_SLICE_ROWS)
-  return { sizes, events: sizes.map(() => 'slice, auto-checkpoint on') }
-}
-// With R reading columns: slices of the queue budget's share, each committed with SQLite's own checkpoint off,
-// and no checkpoint on this connection (they run on the worker).
-const checkpointed = (n: number, readers: number) => {
-  const sizes = split(n, Math.floor(UNDO_QUEUE_ROWS / (1 + readers)))
+// What an undo of n rows does: slices of `size`, each committed with SQLite's own checkpoint off, and no
+// checkpoint on this connection (they run on the worker).
+const slicesOf = (n: number, size: number) => {
+  const sizes = split(n, size)
   return { sizes, events: sizes.map(() => 'slice, auto-checkpoint off') }
 }
+// With no column reading them: UNDO_SLICE_ROWS a slice.
+const plain = (n: number) => slicesOf(n, UNDO_SLICE_ROWS)
+// With R reading columns: the queue budget's share.
+const checkpointed = (n: number, readers: number) => slicesOf(n, Math.floor(UNDO_QUEUE_ROWS / (1 + readers)))
 const expectUndo = async (u: { sid: string; runId: string }, want: { sizes: number[]; events: string[] }) => {
   const got = await undo(u.sid, u.runId)
   assert.deepEqual(got.sizes, want.sizes, 'rows per slice')
@@ -117,7 +116,7 @@ const expectUndo = async (u: { sid: string; runId: string }, want: { sizes: numb
 }
 const N = UNDO_SLICE_ROWS + 1
 
-await ok('no column reads the run\'s column: slices of UNDO_SLICE_ROWS and no checkpoint, as before', async () => {
+await ok('no column reads the run\'s column: slices of UNDO_SLICE_ROWS, on the worker too', async () => {
   const u = await undoable(N, ['Answer'])
   await formula(u.sid, 'Who', '{{Name}} + "!"')
   // Auto-run on, then off through the column's own setting: its entry stays, reading Answer.

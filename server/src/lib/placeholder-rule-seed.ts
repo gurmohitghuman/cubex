@@ -9,6 +9,7 @@
 // here, before ⏳ goes in, so a rule can read the run's own column ("only
 // where Output is empty").
 import { db } from './db';
+import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './placeholder-cells';
@@ -53,7 +54,7 @@ export async function seedPlaceholdersByRule(args: {
       if (takesConditionMark(main) && !isConditionNotMet(main)) mark.push(r[0] as number);
     }
     // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
-    db.transaction(() => {
+    oneTransaction(() => {
       if (pass.length) {
         journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(pass) }, running);
         run.run(...paths, JSON.stringify(pass), sheetId, userId);
@@ -62,7 +63,7 @@ export async function seedPlaceholdersByRule(args: {
         journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(mark) }, keptOutCells);
         keepOut.run(jsonPath(rule.markColumn), CONDITION_NOT_MET, ...others, JSON.stringify(mark), sheetId, userId);
       }
-    }).immediate();
+    });
   });
   return stopped ? null : { notMet };
 }
