@@ -81,6 +81,7 @@ parentPort?.on('message', (ask: CheckpointAsk) => {
   }
   if (ask.delayMs > 0) Atomics.wait(pause, 0, 0, ask.delayMs);
   let reply: CheckpointReply;
+  const zt = Date.now();
   try {
     const [r] = db.pragma('wal_checkpoint(PASSIVE)') as Array<Omit<CheckpointReply, 'id'>>;
     reply = { id: ask.id, busy: r.busy, log: r.log, checkpointed: r.checkpointed };
@@ -88,6 +89,6 @@ parentPort?.on('message', (ask: CheckpointAsk) => {
   } catch (err) {
     reply = { id: ask.id, busy: 1, log: -1, checkpointed: -1, error: String((err as Error)?.message ?? err) };
   }
-  parentPort!.postMessage(reply);
+  parentPort!.postMessage({ ...reply, ms: Date.now() - zt });
 });
 parentPort?.postMessage('ready');
