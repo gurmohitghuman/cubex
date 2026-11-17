@@ -8,7 +8,8 @@
 // use and never keeping Cubex running, copies the WAL back on its own
 // connection. Between its transactions a writer calls walRoom: past
 // WAL_CHECKPOINT_FRAMES uncopied frames it asks the worker for a checkpoint and
-// goes on; at WAL_PAUSE_FRAMES in all it waits (awaiting, never blocking) until
+// goes on (not on Windows: writesWaitForCheckpoints, below); at WAL_PAUSE_FRAMES
+// in all it waits (awaiting, never blocking, WAL_CHECKPOINT_WAIT_MS at most) until
 // the worker has copied them, so the WAL starts over and stays bounded
 // (lib/constants-wal.ts), unless its deadline comes first or a reader holds the
 // frames: the writer then stops there. The worker starts the WAL over itself
@@ -26,7 +27,7 @@
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
-import { WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS } from './constants';
+import { WAL_CHECKPOINT_FRAMES, WAL_CHECKPOINT_WAIT_MS, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS } from './constants';
 import { FREE, HELD, TURN, WORKER, walShared } from './wal-shared';
 import type { CheckpointAsk, CheckpointReply, StartOver } from './wal-checkpoint-worker';
 
@@ -149,6 +150,36 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
+// On Windows a commit on this thread that writes the WAL while the worker's checkpoint runs can wait inside it: on
+// the Windows CI runner such a bulk slice took 58 to 110 ms (others about 31), once over a second, the extra time in
+// its commit, and only while the WAL file grew (as after a server start). There writers don't overlap a checkpoint:
+// walRoom asks only at the pause, and a write in turn (lib/wal-turn.ts) begins only once a running checkpoint has
+// answered. Linux writes on meanwhile, a sync there holding no other connection's writes. Tests switch it.
+let waitForCheckpoints = process.platform === 'win32';
+export const writesWaitForCheckpoints = (): boolean => waitForCheckpoints;
+// Tests only: on or off; null, the platform's own.
+export function setWritesWaitForCheckpointsForTests(on: boolean | null): void {
+  waitForCheckpoints = on ?? process.platform === 'win32';
+}
+
+// A checkpoint's answer; 'late' once `until` comes; 'stuck' after WAL_CHECKPOINT_WAIT_MS (logged): that checkpoint
+// isn't waited for again (gaveUpOnRunning), so a worker that never answers holds no writer for longer.
+let waitLimitMs = WAL_CHECKPOINT_WAIT_MS;
+let gaveUpOn: Promise<Checkpointed | null> | null = null;
+export async function answerWithin(
+  p: Promise<Checkpointed | null>, until: number,
+): Promise<Checkpointed | null | 'late' | 'stuck'> {
+  const limit = Date.now() + waitLimitMs;
+  const r = await byDeadline(p, Math.min(until, limit));
+  if (r !== 'late' || until <= limit) return r;
+  gaveUpOn = p;
+  console.error(`A WAL checkpoint gave no answer in ${waitLimitMs} ms; writers go on without waiting for it.`);
+  return 'stuck';
+}
+export const gaveUpOnRunning = (): boolean => running !== null && running === gaveUpOn;
+// Tests only: the most a writer waits for a checkpoint's answer (null: WAL_CHECKPOINT_WAIT_MS).
+export function setCheckpointWaitLimitForTests(ms: number | null): void { waitLimitMs = ms ?? WAL_CHECKPOINT_WAIT_MS; }
+
 // Between a bulk writer's transactions: 'room' to go on; 'late' once `until` (ms
 // since the epoch), the writer's own deadline, comes, even while a slow
 // checkpoint still runs; 'held' at once when a checkpoint asked for after the
@@ -157,8 +188,9 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
 // wouldn't free them. A checkpoint already running when the size was read may
 // have copied before it, its answer still on its way to this thread (a page
 // kept the thread busy): it never saw the frames written since, so its "nothing
-// more" says nothing about them, and another checkpoint is asked for. `bounds`: the transform walk's by default;
-// background bulk writers pass theirs (lib/bulk-slices.ts).
+// more" says nothing about them, and another checkpoint is asked for. Also 'held' when the checkpoint gave no
+// answer in WAL_CHECKPOINT_WAIT_MS (answerWithin). `bounds`: the transform walk's by default; background bulk
+// writers pass theirs (lib/bulk-slices.ts).
 export type WalRoom = 'room' | 'late' | 'held';
 export interface WalBounds { ask: number; pause: number }
 export async function walRoom(
@@ -169,13 +201,15 @@ export async function walRoom(
   try {
     for (let s = walState(); s;) {
       const earlier = running;
-      if (s.log - s.checkpointed >= bounds.ask) void checkpointInBackground();
+      if (!waitForCheckpoints && s.log - s.checkpointed >= bounds.ask) void checkpointInBackground();
       if (s.log < bounds.pause || s.checkpointed >= s.log) return 'room';
       if (Date.now() >= until) return 'late';
       paused = true;
       const asked = checkpointInBackground();
-      const r = await byDeadline(asked, until);
+      if (asked === gaveUpOn) return 'held';
+      const r = await answerWithin(asked, until);
       if (r === 'late') return 'late';
+      if (r === 'stuck') return 'held';
       const after = walState();
       if (asked !== earlier && after && after.log === s.log && after.checkpointed === s.checkpointed) {
         if (r && !r.busy) return 'held';

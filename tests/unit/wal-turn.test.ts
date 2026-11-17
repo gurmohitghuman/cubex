@@ -11,7 +11,9 @@
 // asks; an empty WAL (its first write writes and syncs the header) is begun by the worker too. A worker whose
 // connection can't write (query_only, a tests-only switch) skips quietly, its checkpoint's numbers unchanged, and
 // the page goes on. Each case reads the WAL itself, per transaction (sqlite-write-probe.ts), never a disk's speed,
-// save the bounds on the loop and on a transaction's wait for the lock.
+// save the bounds on the loop and on a transaction's wait for the lock. On every platform a write here doesn't wait
+// for a checkpoint running first (the Windows path, lib/wal-checkpointer.ts): these are the turns themselves, met
+// when that wait gave up or the write is late; wal-checkpoint-waits.test.ts covers the wait.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
@@ -26,8 +28,9 @@ import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
-const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, takeWalCheckpointerStats, walCheckpointerIdle,
-  walState } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setWritesWaitForCheckpointsForTests,
+  takeWalCheckpointerStats, walCheckpointerIdle, walState } =
+  walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { FREE, PAGE, TURN, endStartOverHoldForTests, holdStartOverForTests, startOverHeldForTests,
   startOverReadOnlyForTests, walShared } = sharedMod as typeof import('../../server/src/lib/wal-shared')
 const { closeWalTurnReader, setBeforeTurnWriteForTests, takeWalTurnStats } =
@@ -36,6 +39,7 @@ const { closeWalTurnReader, setBeforeTurnWriteForTests, takeWalTurnStats } =
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 console.warn = () => {}
+setWritesWaitForCheckpointsForTests(false)
 // What reaches stderr, the worker thread's console.error included (Node writes a worker's output to it).
 const logged: string[] = []
 const toStderr = process.stderr.write.bind(process.stderr) as (chunk: unknown, ...rest: unknown[]) => boolean
