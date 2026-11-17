@@ -6,7 +6,9 @@
 // checkpoint comes mid-slice for the other: no slice begins while a checkpoint runs. A transform's pages
 // (services/column-transform-pages.ts): none either. A slice that waits leaves the event loop free (timers run, no
 // stretch over 50 ms). A checkpoint that never answers holds a writer no longer than the wait's limit, once; a
-// worker that stops answers its waiters. Timing-free but those two; the longest slice and stretch are printed.
+// worker that stops answers its waiters. One that outlasts the limit: the slice waiting before it begins goes on,
+// but a wait at the pause has no limit, so the WAL stays bounded. Timing-free but the waits' limit and the worker
+// stopping; the longest slice and stretch are printed.
 // Off (Linux's default) a writer still asks part way and writes on while the worker copies.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
@@ -17,6 +19,7 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
 import turnMod from '../../server/src/lib/wal-turn'
 import transformMod from '../../server/src/services/column-transform'
+import constMod from '../../server/src/lib/constants'
 import { loopWatch } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
@@ -25,6 +28,7 @@ const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { asBulkWriter } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
 const { takeWalTurnStats } = turnMod as typeof import('../../server/src/lib/wal-turn')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
+const { WAL_BULK_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -155,6 +159,23 @@ await ok('a worker that stops while a slice waits: the slice goes on at once', a
   const s = await sliceAfterHeldCheckpoint(3_000, stop)
   console.log(`      began after ${s.began.toFixed(0)} ms`)
   assert.ok(s.began >= 150 && s.began < 1_500, `the slice began after ${s.began.toFixed(0)} ms`)
+})
+
+await ok('a checkpoint that outlasts the limit: a slice waiting before it begins goes on, and one at the pause '
+  + 'waits it out, so the WAL stays under its bound', async () => {
+  // Every checkpoint held 1 s, past a 300 ms limit: the job ending first asks one that the other's next slice gives
+  // up on; at its pause the other waits however long (going on there would take the WAL past its bound).
+  w.setCheckpointWaitLimitForTests(300)
+  w.setCheckpointDelayForTests(1_000)
+  const before = logged.length
+  try {
+    const m = await measured('slow checkpoints', () => Promise.all([job(1, 20_000), job(20_001, ROWS)]))
+    const p = probe.read()
+    assert.ok(logged.slice(before).some(l => l.includes('gave no answer in 300 ms')), 'no slice went on')
+    assert.ok(p.mostWalFrames <= WAL_BULK_PAUSE_FRAMES + 2 * p.mostTransactionFrames,
+      `the WAL held ${p.mostWalFrames} frames, past ${WAL_BULK_PAUSE_FRAMES} and two slices`)
+    assert.ok(m.k.pauses > 0 && m.k.pausedMs > 300, `no pause outlasted the limit: ${JSON.stringify(m.k)}`)
+  } finally { w.setCheckpointDelayForTests(0); w.setCheckpointWaitLimitForTests(null) }
 })
 
 await ok('the platform\'s own: on Windows only; off, a writer asks part way and writes on during the copy',

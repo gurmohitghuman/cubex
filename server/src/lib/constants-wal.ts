@@ -28,9 +28,9 @@ export const WAL_PAUSE_FRAMES = 1500;
 // writer's own deadline.
 export const WAL_PAUSE_RETRY_MS = 25;
 
-// A writer waiting for a checkpoint's answer (lib/wal-checkpointer.ts) waits this long at most, so a worker that
-// never answers can't hold it forever: it then goes on as if the checkpoint weren't running, and never waits for
-// that one again. The longest checkpoint seen on the Windows CI runner took about 3 s.
+// On Windows a write waiting for a running checkpoint's answer before it begins (lib/wal-turn.ts) waits this long
+// at most, so a worker that never answers can't hold it forever: it then goes on as if the checkpoint weren't
+// running, and never waits for that one again. The slowest checkpoint seen on the Windows CI runner took 12 s.
 export const WAL_CHECKPOINT_WAIT_MS = 30_000;
 
 // SQLite's own checkpoint (wal_autocheckpoint, lib/db.ts): it runs inside the commit that leaves the WAL at this

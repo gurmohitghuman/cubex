@@ -8,9 +8,9 @@
 // use and never keeping Cubex running, copies the WAL back on its own
 // connection. Between its transactions a writer calls walRoom: past
 // WAL_CHECKPOINT_FRAMES uncopied frames it asks the worker for a checkpoint and
-// goes on (not on Windows: writesWaitForCheckpoints, below); at WAL_PAUSE_FRAMES
-// in all it waits (awaiting, never blocking, WAL_CHECKPOINT_WAIT_MS at most) until
-// the worker has copied them, so the WAL starts over and stays bounded
+// goes on (not on Windows: writesWaitForCheckpoints, below); at
+// WAL_PAUSE_FRAMES in all it waits (awaiting, never blocking) until the worker
+// has copied them, so the WAL starts over and stays bounded
 // (lib/constants-wal.ts), unless its deadline comes first or a reader holds the
 // frames: the writer then stops there. The worker starts the WAL over itself
 // after a checkpoint that copied every frame, before it answers, so the sync of
@@ -162,8 +162,10 @@ export function setWritesWaitForCheckpointsForTests(on: boolean | null): void {
   waitForCheckpoints = on ?? process.platform === 'win32';
 }
 
-// A checkpoint's answer; 'late' once `until` comes; 'stuck' after WAL_CHECKPOINT_WAIT_MS (logged): that checkpoint
-// isn't waited for again (gaveUpOnRunning), so a worker that never answers holds no writer for longer.
+// A checkpoint's answer for a write waiting before it begins (lib/wal-turn.ts); 'late' once `until` comes; 'stuck'
+// after WAL_CHECKPOINT_WAIT_MS (logged): that checkpoint isn't waited for again (gaveUpOnRunning), so a worker
+// that never answers holds no write for longer. walRoom's wait at the pause has no such limit: going on there
+// would take the WAL past its bound.
 let waitLimitMs = WAL_CHECKPOINT_WAIT_MS;
 let gaveUpOn: Promise<Checkpointed | null> | null = null;
 export async function answerWithin(
@@ -188,9 +190,8 @@ export function setCheckpointWaitLimitForTests(ms: number | null): void { waitLi
 // wouldn't free them. A checkpoint already running when the size was read may
 // have copied before it, its answer still on its way to this thread (a page
 // kept the thread busy): it never saw the frames written since, so its "nothing
-// more" says nothing about them, and another checkpoint is asked for. Also 'held' when the checkpoint gave no
-// answer in WAL_CHECKPOINT_WAIT_MS (answerWithin). `bounds`: the transform walk's by default; background bulk
-// writers pass theirs (lib/bulk-slices.ts).
+// more" says nothing about them, and another checkpoint is asked for. `bounds`: the transform walk's by default;
+// background bulk writers pass theirs (lib/bulk-slices.ts).
 export type WalRoom = 'room' | 'late' | 'held';
 export interface WalBounds { ask: number; pause: number }
 export async function walRoom(
@@ -206,10 +207,8 @@ export async function walRoom(
       if (Date.now() >= until) return 'late';
       paused = true;
       const asked = checkpointInBackground();
-      if (asked === gaveUpOn) return 'held';
-      const r = await answerWithin(asked, until);
+      const r = await byDeadline(asked, until);
       if (r === 'late') return 'late';
-      if (r === 'stuck') return 'held';
       const after = walState();
       if (asked !== earlier && after && after.log === s.log && after.checkpointed === s.checkpointed) {
         if (r && !r.busy) return 'held';
