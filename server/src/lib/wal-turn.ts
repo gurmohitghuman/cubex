@@ -84,7 +84,6 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
       const t0 = Date.now();
       await answerWithin(running, until);
       stats.checkpointWaitMs += Date.now() - t0;
-      if (process.env.ZZ_WAL_LOG) process.stdout.write(`        zz ${Date.now() % 1e6} turn waited ${Date.now() - t0} ms\n`);
       continue;
     }
     if (Atomics.compareExchange(walShared, TURN, FREE, PAGE) !== FREE) {

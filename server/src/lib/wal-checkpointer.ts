@@ -67,8 +67,6 @@ let stops = 0;
 const waiting = new Map<number, (r: CheckpointReply) => void>();
 const zero = () => ({ starts: 0, checkpoints: 0, onThisThread: 0, restarts: 0, pauses: 0, pausedMs: 0 });
 let stats = zero();
-// Experiment (not for merge): each checkpoint and wait, printed when ZZ_WAL_LOG is set.
-const zz = (m: string) => { if (process.env.ZZ_WAL_LOG) process.stdout.write(`        zz ${Date.now() % 1e6} ${m}\n`); };
 const fallBack = (why: string, err: unknown) => {
   onMainThread = true;
   console.error(`The WAL checkpoint worker ${why}, so checkpoints run on the main thread until Cubex restarts:`, err);
@@ -122,16 +120,12 @@ async function runOne(): Promise<Checkpointed | null> {
     return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1 } : null;
   }
   const id = ++seq;
-  const zt = Date.now();
-  zz(`ck ${id} asked`);
   const r = await new Promise<CheckpointReply>(resolve => {
     waiting.set(id, resolve);
     // A pending answer keeps the process alive only while it is awaited.
     w.ref();
     w.postMessage({ id, delayMs } as CheckpointAsk);
   }).finally(() => { if (waiting.size === 0) w.unref(); });
-  zz(`ck ${id} answered after ${Date.now() - zt} ms (worker ${(r as { ms?: number }).ms} ms): log ${r.log} copied `
-    + `${r.checkpointed} busy ${r.busy} startOver ${r.startOver} ${r.error ?? ''}`);
   if (r.error && r.error !== 'stopped') console.error('A WAL checkpoint failed:', r.error);
   if (r.startOver === 'done') stats.restarts++;
   return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1, startOver: r.startOver } : null;
@@ -179,7 +173,6 @@ export async function answerWithin(
   const r = await byDeadline(p, Math.min(until, limit));
   if (r !== 'late' || until <= limit) return r;
   gaveUpOn = p;
-  zz(`stuck after ${waitLimitMs} ms`);
   console.error(`A WAL checkpoint gave no answer in ${waitLimitMs} ms; writers go on without waiting for it.`);
   return 'stuck';
 }
@@ -213,12 +206,8 @@ export async function walRoom(
       if (Date.now() >= until) return 'late';
       paused = true;
       const asked = checkpointInBackground();
-      zz(`pause at ${s.log}/${s.checkpointed} (${bounds.ask}/${bounds.pause})${asked === earlier ? ' running' : ''}`);
-      if (asked === gaveUpOn) { zz('held: gave up on it'); return 'held'; }
-      const zt = Date.now();
+      if (asked === gaveUpOn) return 'held';
       const r = await answerWithin(asked, until);
-      const za = walState();
-      zz(`paused ${Date.now() - zt} ms: ${typeof r === 'string' ? r : JSON.stringify(r)}, now ${za?.log}/${za?.checkpointed}`);
       if (r === 'late') return 'late';
       if (r === 'stuck') return 'held';
       const after = walState();
