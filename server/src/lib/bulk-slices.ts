@@ -4,10 +4,11 @@
 // after every slice, on a slow disk they held the server up to 670 ms each (undoing 200,000 rows with three
 // formulas reading them, every sync 300 ms slower).
 // - Before each slice, walRoom with the bulk bounds (lib/constants-wal.ts): past WAL_BULK_CHECKPOINT_FRAMES
-//   uncopied it asks the worker and goes on; at WAL_BULK_PAUSE_FRAMES in the WAL it awaits, the event loop free,
-//   until the worker has copied every frame and started the WAL over. A reader holding the frames (a backup):
-//   the job goes on, the WAL growing meanwhile as it would with no worker, and asks again WAL_PAUSE_RETRY_MS
-//   later at the soonest.
+//   uncopied it asks the worker and goes on (not on Windows, where a slice never overlaps a checkpoint: it asks only
+//   at the pause, and waits for one running, lib/wal-turn.ts); at WAL_BULK_PAUSE_FRAMES in the WAL it awaits, the
+//   event loop free, until the worker has copied every frame and started the WAL over. A reader holding the
+//   frames (a backup): the job goes on, the WAL growing meanwhile as it would with no worker, and asks again
+//   WAL_PAUSE_RETRY_MS later at the soonest.
 // - The pause comes sooner when one more slice as big as the job's biggest so far would take the WAL past
 //   WAL_BULK_ROOM_SHARE of journal_size_limit (big rows make big slices); before the first, at the ask mark.
 // - Each slice is one transaction, `step` inside it (its own run flat in it: oneTransaction, lib/slices.ts; a
