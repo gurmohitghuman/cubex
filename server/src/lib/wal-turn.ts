@@ -31,7 +31,7 @@ import {
 } from './wal-checkpointer';
 
 const STARTS_OVER = new Error('This write would start the WAL over on the API thread.');
-const zero = () => ({ writes: 0, turnWaits: 0, checkpointWaits: 0, asks: 0, caughtInside: 0 });
+const zero = () => ({ writes: 0, turnWaits: 0, checkpointWaits: 0, checkpointWaitMs: 0, asks: 0, caughtInside: 0 });
 let stats = zero();
 let checking = false;
 let reader: { noop: Database.Statement } | undefined;
@@ -81,7 +81,9 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
     const running = late || !writesWaitForCheckpoints() || gaveUpOnRunning() ? null : checkpointAnswer();
     if (running) {
       stats.checkpointWaits++;
+      const t0 = Date.now();
       await answerWithin(running, until);
+      stats.checkpointWaitMs += Date.now() - t0;
       continue;
     }
     if (Atomics.compareExchange(walShared, TURN, FREE, PAGE) !== FREE) {
@@ -114,8 +116,8 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
   }
 }
 
-// Writes made in turn, waits for the worker's turn, waits for a running checkpoint (Windows), asks for a checkpoint to
-// start the WAL over (of them, those a transaction's first statement made), since the last read.
+// Writes made in turn, waits for the worker's turn, waits for a running checkpoint (Windows) and their time, asks for
+// a checkpoint to start the WAL over (of them, those a transaction's first statement made), since the last read.
 export function takeWalTurnStats(): ReturnType<typeof zero> {
   const s = stats;
   stats = zero();
