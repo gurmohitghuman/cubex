@@ -8,9 +8,8 @@
 // use and never keeping Cubex running, copies the WAL back on its own
 // connection. Between its transactions a writer calls walRoom: past
 // WAL_CHECKPOINT_FRAMES uncopied frames it asks the worker for a checkpoint and
-// goes on (not on Windows: writesWaitForCheckpoints, below); at
-// WAL_PAUSE_FRAMES in all it waits (awaiting, never blocking) until the worker
-// has copied them, so the WAL starts over and stays bounded
+// goes on; at WAL_PAUSE_FRAMES in all it waits (awaiting, never blocking) until
+// the worker has copied them, so the WAL starts over and stays bounded
 // (lib/constants-wal.ts), unless its deadline comes first or a reader holds the
 // frames: the writer then stops there. The worker starts the WAL over itself
 // after a checkpoint that copied every frame, before it answers, so the sync of
@@ -27,7 +26,7 @@
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
-import { WAL_CHECKPOINT_FRAMES, WAL_CHECKPOINT_WAIT_MS, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS } from './constants';
+import { WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS } from './constants';
 import { FREE, HELD, TURN, WORKER, walShared } from './wal-shared';
 import type { CheckpointAsk, CheckpointReply, StartOver } from './wal-checkpoint-worker';
 
@@ -150,38 +149,6 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-// On Windows a commit on this thread that writes the WAL while the worker's checkpoint runs can wait inside it: on
-// the Windows CI runner such a bulk slice took 58 to 110 ms (others about 31), once over a second, the extra time in
-// its commit, and only while the WAL file grew (as after a server start). There writers don't overlap a checkpoint:
-// walRoom asks only at the pause, and a write in turn (lib/wal-turn.ts) begins only once a running checkpoint has
-// answered. Linux writes on meanwhile, a sync there holding no other connection's writes. Tests switch it.
-let waitForCheckpoints = process.platform === 'win32';
-export const writesWaitForCheckpoints = (): boolean => waitForCheckpoints;
-// Tests only: on or off; null, the platform's own.
-export function setWritesWaitForCheckpointsForTests(on: boolean | null): void {
-  waitForCheckpoints = on ?? process.platform === 'win32';
-}
-
-// A checkpoint's answer for a write waiting before it begins (lib/wal-turn.ts); 'late' once `until` comes; 'stuck'
-// after WAL_CHECKPOINT_WAIT_MS (logged): that checkpoint isn't waited for again (gaveUpOnRunning), so a worker
-// that never answers holds no write for longer. walRoom's wait at the pause has no such limit: going on there
-// would take the WAL past its bound.
-let waitLimitMs = WAL_CHECKPOINT_WAIT_MS;
-let gaveUpOn: Promise<Checkpointed | null> | null = null;
-export async function answerWithin(
-  p: Promise<Checkpointed | null>, until: number,
-): Promise<Checkpointed | null | 'late' | 'stuck'> {
-  const limit = Date.now() + waitLimitMs;
-  const r = await byDeadline(p, Math.min(until, limit));
-  if (r !== 'late' || until <= limit) return r;
-  gaveUpOn = p;
-  console.error(`A WAL checkpoint gave no answer in ${waitLimitMs} ms; writers go on without waiting for it.`);
-  return 'stuck';
-}
-export const gaveUpOnRunning = (): boolean => running !== null && running === gaveUpOn;
-// Tests only: the most a writer waits for a checkpoint's answer (null: WAL_CHECKPOINT_WAIT_MS).
-export function setCheckpointWaitLimitForTests(ms: number | null): void { waitLimitMs = ms ?? WAL_CHECKPOINT_WAIT_MS; }
-
 // Between a bulk writer's transactions: 'room' to go on; 'late' once `until` (ms
 // since the epoch), the writer's own deadline, comes, even while a slow
 // checkpoint still runs; 'held' at once when a checkpoint asked for after the
@@ -202,7 +169,7 @@ export async function walRoom(
   try {
     for (let s = walState(); s;) {
       const earlier = running;
-      if (!waitForCheckpoints && s.log - s.checkpointed >= bounds.ask) void checkpointInBackground();
+      if (s.log - s.checkpointed >= bounds.ask) void checkpointInBackground();
       if (s.log < bounds.pause || s.checkpointed >= s.log) return 'room';
       if (Date.now() >= until) return 'late';
       paused = true;

@@ -39,7 +39,7 @@ async function ok(label: string, fn: () => void | Promise<void>) {
   try { await fn(); console.log('ok  ', label) }
   catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
 }
-if (process.platform !== 'win32') w.setWritesWaitForCheckpointsForTests(true)
+if (process.platform !== 'win32') (w as any).setWritesWaitForCheckpointsForTests?.(true)
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, w.checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 

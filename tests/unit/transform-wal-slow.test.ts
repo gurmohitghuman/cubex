@@ -1,17 +1,23 @@
-// transform_column on a slow disk (services/column-transform-pages.ts, lib/wal-checkpointer.ts): each checkpoint on the
-// worker takes over a second, as a disk sync might, so the worker falls behind the pages. The walk waits for it between
-// pages (on Windows, for a checkpoint running, before a page: lib/wal-turn.ts), never on the event loop: the loop is
-// never held 200 ms, no checkpoint runs on the API connection (only SQLite's NOOP, which reads the WAL's size), the WAL
-// never holds more than WAL_PAUSE_FRAMES and one page (no page begins with WAL_PAUSE_FRAMES uncopied, the next call's
-// first one too), and every row is written exactly once. With no worker (its file can't load), the checkpoints run on
-// the API thread, as before, a start tried once and logged once for the whole pass (not once per checkpoint); closed, a
-// later use starts a new worker. A worker that stops is started once more; stopped again, the checkpoints stay on the
-// API thread, logged once. Each pass prints its 5 slowest transactions (sqlite-write-probe.ts) and checks that none on
-// the API connection started the WAL over: that commit syncs the WAL's new header on the event loop (with every WAL
-// sync made 300 ms slow, the code before the worker started the WAL over held the loop that long after each wait). The
-// pass with no worker is the one where that is expected (checkpoints, and so the WAL starting over, run on the API
-// thread, as documented): there the check is turned around, which also shows it sees a start-over. The third case
-// writes nothing.
+// transform_column on a slow disk (services/column-transform-pages.ts,
+// lib/wal-checkpointer.ts): each checkpoint on the worker takes over a second,
+// as a disk sync might, so the worker falls behind the pages. The walk waits
+// for it between pages, never on the event loop: the loop is never held 200 ms,
+// no checkpoint runs on the API connection (only SQLite's NOOP, which reads the
+// WAL's size), the WAL never holds more than WAL_PAUSE_FRAMES and one page (no
+// page begins with WAL_PAUSE_FRAMES uncopied, the next call's first one too), and
+// every row is written exactly once. With no worker (its file can't load), the
+// checkpoints run on the API thread, as before, a start tried once and logged
+// once for the whole pass (not once per checkpoint); closed, a later use starts
+// a new worker. A worker that stops is started once more; stopped again, the
+// checkpoints stay on the API thread, logged once. Each pass prints its 5 slowest
+// transactions (sqlite-write-probe.ts) and checks that none on the API
+// connection started the WAL over: that commit syncs the WAL's new header on the
+// event loop (with every WAL sync made 300 ms slow, the code before the worker
+// started the WAL over held the loop that long after each wait). The pass with
+// no worker is the one where that is expected (checkpoints, and so the WAL
+// starting over, run on the API thread, as documented): there the check is
+// turned around, which also shows it sees a start-over. The third case writes
+// nothing.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -20,7 +26,6 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
-import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -29,7 +34,6 @@ const { WAL_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/con
 const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
   setCheckpointWorkerFileForTests, stopCheckpointWorkerForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
   walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { takeWalTurnStats } = turnMod as typeof import('../../server/src/lib/wal-turn')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -107,17 +111,14 @@ async function main() {
     await checkpointInBackground()
     probe.reset()
     takeWalCheckpointerStats()
-    takeWalTurnStats()
     setCheckpointDelayForTests(1100)
     try {
       const run = await pass('x')
       await walCheckpointerIdle()
       const w = probe.read()
-      const k = takeWalCheckpointerStats(), t = takeWalTurnStats()
-      // Waits at the pause (lib/wal-checkpointer.ts) and, on Windows, for a checkpoint running before a page.
-      const waits = k.pauses + t.checkpointWaits, waitedMs = k.pausedMs + t.checkpointWaitMs
+      const k = takeWalCheckpointerStats()
       console.log('     ', JSON.stringify({ ...run, checkpoints: k.checkpoints, onThisThread: k.onThisThread,
-        waits, waitedMs, workerRestarts: k.restarts, mainCheckpoints: w.checkpoints,
+        waits: k.pauses, waitedMs: k.pausedMs, workerRestarts: k.restarts, mainCheckpoints: w.checkpoints,
         walReads: w.walReads, longestPageMs: Math.round(w.longestTransactionMs),
         mostPageFrames: w.mostTransactionFrames, mostWalFrames: w.mostWalFrames,
         mostBeforeWrite: w.mostWalFramesBeforeWrite }))
@@ -125,7 +126,7 @@ async function main() {
       assert.ok(run.loopMaxMs < 200, `the event loop was held ${run.loopMaxMs} ms`)
       assert.equal(w.checkpoints, 0, 'a checkpoint ran on the API connection')
       assert.ok(w.walReads > 0)
-      assert.ok(waits > 0 && waitedMs >= 1000, `the walk didn't wait for the worker: ${JSON.stringify({ k, t })}`)
+      assert.ok(k.pauses > 0 && k.pausedMs >= 1000, `the walk didn't wait for the worker: ${JSON.stringify(k)}`)
       assert.equal(k.onThisThread, 0)
       assert.ok(w.mostWalFrames <= WAL_PAUSE_FRAMES + w.mostTransactionFrames,
         `the WAL held ${w.mostWalFrames} frames, past ${WAL_PAUSE_FRAMES} and a page (${w.mostTransactionFrames})`)
