@@ -35,8 +35,8 @@ async function seededRun(sid: string, columns: string[]) {
 }
 const held = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND instr(data, ?) > 0').pluck()
 const version = db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck()
-// The clear, watched: rows per slice, and how far data_version moved by the end of each.
-async function clear(sid: string, columns: string[], run: { kind: 'http'; id: string }) {
+// The clear, watched: rows per slice, and how far data_version moved by the end of each. `then` runs after each.
+async function clear(sid: string, columns: string[], run: { kind: 'http'; id: string }, then?: () => void) {
   const sizes: number[] = [], moved: number[] = []
   const v0 = version.get(sid) as number
   let rowsLeft = held.get(sid, PLACEHOLDER) as number
@@ -45,6 +45,7 @@ async function clear(sid: string, columns: string[], run: { kind: 'http'; id: st
     sizes.push(rowsLeft - now)
     rowsLeft = now
     moved.push((version.get(sid) as number) - v0)
+    then?.()
   }, run)
   return { sizes, moved }
 }
@@ -124,10 +125,17 @@ await ok('a formula started while the clear goes, none reading the cells before:
       ...Object.fromEntries(columns.map(c => [c, `${c}${i}`])) })), ['Name', ...columns])
     const run = await seededRun(sid, columns)
     let started: Promise<object> | undefined
-    await clearProcessingPlaceholders(sid, uid, columns, () => {
+    const { sizes } = await clear(sid, columns, run, () => {
       started ??= startFormulaColumn(uid, sid, { column: 'F', formula: '{{A}} + "!"' })
-    }, run)
+    })
     assert.ok(started && 'ok' in await started, 'F started')
+    // Unread, a slice holds BACK / 8 rows; once F reads the cells, BACK / 15 (a second lookup per cell), every row
+    // told (under the queue's share of 1,000).
+    const [alone, read] = [Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / 8), Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / 15)]
+    const k = sizes.indexOf(read)
+    assert.ok(k > 0, `the slices once F read the cells: ${sizes.join(', ')}`)
+    assert.deepEqual(sizes.slice(0, k), Array(k).fill(alone), 'rows per slice before F read the cells')
+    assert.ok(sizes.slice(k).every(r => r <= read), `rows per slice once F read the cells: ${sizes.slice(k)}`)
     await idle(sid)
     await follow(sid, 'F')
     assert.deepEqual(cells(sid, 'A'), Array.from({ length: n }, (_, i) => `A${i}`))
