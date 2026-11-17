@@ -111,21 +111,24 @@ export const HEAVY_SLICE_ROWS = 5_000;
 export const RESULTS_SLICE_ROWS = 500;
 // A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
 // for every clean, formula and lookup column reading the run's columns, in the
-// same transaction; on rows with random ids each queued row writes a page of
-// its own. With R such columns a slice holds this many / (1 + R) rows (1,000
-// at 1, 500 at 3, still 10 on a full sheet of 200 columns), and on a job
-// thread is checkpointed after it (lib/row-order.ts; on the server's thread
-// every slice's WAL is copied back on the checkpoint worker's).
+// same transaction, unless its cells read as empty before the run; on rows with
+// random ids each queued row writes a page of its own. With R such columns a
+// slice queues at most this many / (1 + R) rows (1,000 at 1, 500 at 3, still 10
+// on a full sheet of 200 columns), and on a job thread is checkpointed after it
+// (lib/row-order.ts; on the server's thread every slice's WAL is copied back on
+// the checkpoint worker's).
 // Measured at 200,000 rows with 3 formulas on random ids: slices up to 40 ms,
 // checkpoints up to 70 ms, the whole clear 23 to 25 s in the background. Left
 // on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
-// With none, slices stay HEAVY_SLICE_ROWS rows.
+// With none, slices stay HEAVY_SLICE_ROWS rows. A run's first try on a new
+// column queues none: with 20 formulas reading it, 3.1 to 3.5 s (106.8 s).
 export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
 // A cancelled or failed run's clear puts each ⏳ cell back to what its undo
 // journal kept (lib/run-undo/clear-back.ts): one journal lookup per cell, about
 // as costly as the rest of that row's clear. With K columns put back a slice
-// holds at most this many / (1 + K) rows (3,500 at 1, 2,333 at 2), and no more
-// than the queue budget above when columns read them.
+// holds at most this many / (1 + K) rows (3,500 at 1, 2,333 at 2). When columns
+// read them, a second lookup per cell (did it read as empty before?) makes that
+// / (1 + 2K), and the queue budget above still holds.
 // Measured at 200,000 rows on random ids, none reading them: slices of 5,000
 // rows went from a median 20 ms to 30 ms with one column put back (up to 201
 // ms with SQLite's own checkpoint inside). Sized so: a median 21 ms, the
