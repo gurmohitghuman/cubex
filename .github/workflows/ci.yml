@@ -77,7 +77,7 @@ jobs:
       - name: Unit tests
         # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
         # No server, no network; each test gets its own temp DB_PATH (scripts/unit-tests.mjs).
-        run: npm run test:unit -- zz-win
+        run: npm run test:unit
 
       - name: Build (server + client)
         # Catches the cases typecheck misses: SQL migrations missing from

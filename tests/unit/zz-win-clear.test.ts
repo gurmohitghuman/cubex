@@ -145,11 +145,27 @@ async function watched(label: string, sid: string, stop: () => Promise<unknown>)
   console.log(`      ${label}: ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms at `
     + `${rel(longest.at)}, ${records.length} transactions`)
   console.log(`        worker: ${seen ? seen.events.map(e => `${e.what} ${abs(e.at)}`).join(', ') || 'nothing' : 'no watcher'}`)
-  const slowTx = [...txs].sort((a, b) => b.ms - a.ms).slice(0, 6)
+  // The worker's copies, from the WAL index: each from its start to its end (or the next start).
+  const ev = (seen?.events ?? []).map(e => ({ ...e, at: e.at - performance.timeOrigin }))
+  const copies: Array<{ to: string; from: number; until: number }> = []
+  for (const e of ev) {
+    if (e.what === 'WAL started over') { for (const c of copies) if (c.until === Infinity) c.until = e.at; continue }
+    const m = /^copy to (\d+) (started|ended)/.exec(e.what)
+    if (!m || m[1] === '0') continue
+    if (m[2] === 'started') copies.push({ to: m[1], from: e.at, until: Infinity })
+    else { const c = copies.find(x => x.to === m[1] && x.until === Infinity); if (c) c.until = e.at }
+  }
+  console.log(`        copies: ${copies.map(c => `${c.to} ${rel(c.from)} for ${Number.isFinite(c.until)
+    ? (c.until - c.from).toFixed(0) : '?'} ms`).join(', ') || 'none'}`)
+  const during = (t: Tx) => copies.filter(c => t.at < c.until && t.at + t.ms > c.from)
+    .map(c => `during copy to ${c.to} (${(t.at - c.from).toFixed(0)} ms in)`).join(', ')
+  const sorted = [...txs].sort((a, b) => b.ms - a.ms)
+  const slowTx = sorted.filter((t, i) => i < 3 || t.ms >= 55)
   for (const t of slowTx) {
     const r = records.find(x => Math.abs(x.at - t.at) < 0.5)
     console.log(`        tx ${rel(t.at)}: ${t.ms.toFixed(1)} ms, statements ${t.stmtMs.toFixed(1)} ms (${t.n}; slowest `
-      + `${t.slow.ms.toFixed(1)} ms ${t.slow.sql}), rest ${(t.ms - t.stmtMs).toFixed(1)} ms; ${r ? transactionLine(r) : ''}`)
+      + `${t.slow.ms.toFixed(1)} ms ${t.slow.sql.slice(0, 30)}), rest ${(t.ms - t.stmtMs).toFixed(1)} ms; `
+      + `${r ? transactionLine(r) : ''} ${during(t)}`)
   }
   const stalls = (seen?.slow ?? []).sort((a, b) => b.ms - a.ms).slice(0, 10)
   console.log(`        watcher's calls of 5 ms or more: ${stalls.map(s => `${s.what} ${s.ms.toFixed(0)} ms ${abs(s.at)}`).join(', ') || 'none'}`)
@@ -161,7 +177,7 @@ async function watched(label: string, sid: string, stop: () => Promise<unknown>)
     + `${not.length} (longest ${top(not)} ms)`)
 }
 
-for (let rep = 1; rep <= 3; rep++) {
+for (let rep = 1; rep <= 4; rep++) {
   await ok(`a first run, ${READERS} formulas reading it, cancelled at ${N} rows (${rep})`, async () => {
     const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
     const sid = sheet([{ Name: 'n0' }], ['Name', 'Answer'])
