@@ -17,8 +17,9 @@ const { seedProcessingPlaceholders, PLACEHOLDER } = await import('../../server/s
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
 const { cancelRun } = await import('../../server/src/services/run-lifecycle')
 const { stopSheetRuns } = await import('../../server/src/services/sheet-runs-stop')
-const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
+const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, walCheckpointerIdle } =
   await import('../../server/src/lib/wal-checkpointer')
+const { withoutAutoCheckpoint } = await import('../../server/src/lib/slices')
 console.error = () => {}
 const dbPath = process.env.DB_PATH!
 const probe = sqliteWriteProbe(db, dbPath, checkpointAsked)
@@ -125,9 +126,26 @@ async function running(sid: string, column: string): Promise<string> {
     targets: null, lastRow: N - 1, live: () => true })
   return id
 }
-async function watched(label: string, sid: string, stop: () => Promise<unknown>) {
+// The WAL file grown to about 60 MB, then started over: the next commits overwrite it and never make it longer.
+db.exec('CREATE TABLE zz_grow (b BLOB)')
+const growRow = db.prepare('INSERT INTO zz_grow (b) VALUES (randomblob(3000))')
+db.transaction(() => { for (let i = 0; i < 14_500; i++) growRow.run() }).immediate()
+const regrow = db.prepare('UPDATE zz_grow SET b = randomblob(3000)')
+async function grownWal() {
+  withoutAutoCheckpoint(() => db.transaction(() => { regrow.run() }).immediate())
+  for (let i = 0; i < 6; i++) {
+    const r = await checkpointInBackground()
+    if (r?.startOver === 'done') break
+    await sleep(20)
+  }
+}
+const walBytes = () => { try { return fs.statSync(`${dbPath}-wal`).size } catch { return 0 } }
+async function watched(label: string, sid: string, stop: () => Promise<unknown>, grown: boolean) {
   await walCheckpointerIdle()
   probe.reset()
+  if (grown) await grownWal()
+  label += grown ? ', WAL file grown first' : ', WAL file emptied first'
+  label += ` (${(walBytes() / 1024 / 1024).toFixed(0)} MB)`
   txs = []
   const end = watcher()
   await sleep(20)
@@ -141,7 +159,7 @@ async function watched(label: string, sid: string, stop: () => Promise<unknown>)
   const { seen, gcs } = await end()
   const rel = (t: number) => `+${(t - t0).toFixed(0)}`
   const abs = (t: number) => rel(t - performance.timeOrigin)
-  const records = probe.records()
+  const records = probe.records().filter(r => r.at >= t0)
   console.log(`      ${label}: ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms at `
     + `${rel(longest.at)}, ${records.length} transactions`)
   console.log(`        worker: ${seen ? seen.events.map(e => `${e.what} ${abs(e.at)}`).join(', ') || 'nothing' : 'no watcher'}`)
@@ -177,7 +195,8 @@ async function watched(label: string, sid: string, stop: () => Promise<unknown>)
     + `${not.length} (longest ${top(not)} ms)`)
 }
 
-for (let rep = 1; rep <= 4; rep++) {
+for (let rep = 1; rep <= Number(process.env.ZZ_REPS ?? 8); rep++) {
+  const grown = rep % 2 === 0
   await ok(`a first run, ${READERS} formulas reading it, cancelled at ${N} rows (${rep})`, async () => {
     const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
     const sid = sheet([{ Name: 'n0' }], ['Name', 'Answer'])
@@ -188,7 +207,7 @@ for (let rep = 1; rep <= 4; rep++) {
     addRows(sid, i => i, i => ({ Name: `n${i}`, ...Object.fromEntries(columns.map((c, k) => [c, `-${k}`])) }))
     db.prepare(`UPDATE autorun_columns SET watermark_row_index = ? WHERE sheet_id = ?`).run(N - 1, sid)
     const id = await running(sid, 'Answer')
-    await watched(`first ${rep}`, sid, () => cancelRun('http', id, uid))
+    await watched(`first ${rep}`, sid, () => cancelRun('http', id, uid), grown)
     assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
   })
   await ok(`Stop all of 4 runs on a sorted sheet of ${N} rows (${rep})`, async () => {
@@ -196,7 +215,7 @@ for (let rep = 1; rep <= 4; rep++) {
     const sid = sheet([{ Name: 'n0' }], ['Name', ...columns])
     addRows(sid, i => (i * 7_919) % N, i => ({ Name: `n${i}` }))
     for (const c of columns) await running(sid, c)
-    await watched(`stop all ${rep}`, sid, () => stopSheetRuns(uid, sid))
+    await watched(`stop all ${rep}`, sid, () => stopSheetRuns(uid, sid), grown)
     assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
   })
 }
