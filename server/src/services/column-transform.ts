@@ -36,6 +36,7 @@ import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished 
 import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
 import { settle, stopAt } from './column-transform-end';
 import { inWalTurn, walTurnCheck } from '../lib/wal-turn';
+import { walSettle } from '../lib/wal-checkpointer';
 import { redactError } from '../lib/redact';
 
 const CELL_OPS: TransformOp[] = ['regex_extract', 'split', 'template', 'upper', 'lower', 'trim', 'to_number'];
@@ -82,6 +83,9 @@ type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track' | 'unti
   & { targetExists: boolean; generation: number; regex?: RegexPages };
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
+  // The pages' frames go back on the worker once the call's last write is made (settle, stopAt): asked sooner,
+  // those writes would wait for that checkpoint on Windows (writesWaitForCheckpoints, lib/wal-checkpointer.ts).
+  let wrote = false;
   const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
     const plan = planTransform(userId, p);
     if ('fail' in plan || 'unfinished' in plan) return plan;
@@ -100,6 +104,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
         added = true;
       }
       walked = await walkTransform({ ...plan, sheetId: p.sheetId, userId, track, until });
+      wrote = walked.wrote;
     } finally {
       plan.regex?.close();
       // Open grids and readers learn of a column added or pages written, whatever stopped the call.
@@ -133,7 +138,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
     // its first page, only its wait for the WAL took its time.
     return { ok: { ...ok, next_cursor: await stopAt(track, walked.stoppedAfter, walked.updated, until),
       note: walked.pages === 0 ? TRANSFORM_WAITED_NOTE : TRANSFORM_STOPPED_NOTE } };
-  });
+  }).finally(() => { if (wrote) walSettle(); });
   if (sheetGone(out)) return { fail: 'not_found', error: 'Sheet not found' };
   if ('busy' in out) return { fail: 'busy', error: out.busy };
   return out;

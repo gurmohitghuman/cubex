@@ -5,7 +5,8 @@
 // after its transactions (frames in it, frames already copied).
 
 // Once this many frames wait in the WAL uncopied, the writer asks the worker for
-// a checkpoint and goes on writing. About 4 MB, SQLite's own default mark. Every
+// a checkpoint and goes on writing (on Windows it asks only at the pause, below,
+// lib/wal-checkpointer.ts). About 4 MB, SQLite's own default mark. Every
 // checkpoint ends in a disk sync whatever its size (about 50 ms each on the
 // Windows CI runner), so about 20 transform pages (about 50 frames each) share
 // one instead of each paying its own: 1,201 of them took a 300,000-row pass to
@@ -26,6 +27,12 @@ export const WAL_PAUSE_FRAMES = 1500;
 // or a reader still reads older frames) tries again this much later, until the
 // writer's own deadline.
 export const WAL_PAUSE_RETRY_MS = 25;
+
+// On Windows a write waiting for a running checkpoint's answer before it begins (lib/wal-turn.ts) waits this long
+// at most, so a worker that never answers can't hold it forever: it then goes on as if the checkpoint weren't
+// running, and never waits for that one again. On the Windows CI runner's throttled disk one checkpoint took over
+// 30 s (a wait that had this limit gave up on it), and another 24 s.
+export const WAL_CHECKPOINT_WAIT_MS = 30_000;
 
 // SQLite's own checkpoint (wal_autocheckpoint, lib/db.ts): it runs inside the commit that leaves the WAL at this
 // many frames or more, on that connection's thread. On the API connection it waits for the bulk writers' room

@@ -6,10 +6,10 @@
 // stretch and transaction are printed. The formulas are started on one row and the rest come with their cells
 // worked out already (what a fill of '' gives), so the setup stays short.
 // On Windows it runs 50,000 rows and checks only what holds whatever the timing: none told, every ⏳ cleared, grids
-// following. There the slice that asks the worker for a checkpoint now and then holds the server far longer (103
-// and 1,039 ms on two runs, where the others held it 31 to 88 ms), in the WAL and checkpoint handling every bulk
-// write shares, not in the clear; it is a to-do item of its own. The 100 ms and 5 s are proven on Linux; on Windows
-// the loop hold and the longest transaction are still printed.
+// following. There a slice that committed while the worker copied the WAL back held the server far longer (103
+// and 1,039 ms on two runs). No slice overlaps a checkpoint there now (wal-checkpoint-waits.test.ts), but a slice
+// still takes 50 to 80 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
+// 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'

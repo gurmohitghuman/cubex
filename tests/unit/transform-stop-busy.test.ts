@@ -92,7 +92,8 @@ async function lockHolder(holdMs = 6500) {
   return { exited, lockMs: () => lockMs, lockNow() {
     const t0 = performance.now()
     Atomics.store(flags, 0, 1); Atomics.notify(flags, 0)
-    assert.equal(Atomics.wait(flags, 1, 0, 3000), 'ok', 'the other connection took the lock')
+    // 'not-equal': it took the lock before this wait began.
+    assert.notEqual(Atomics.wait(flags, 1, 0, 3000), 'timed-out', 'the other connection took the lock')
     lockMs = Math.round(performance.now() - t0)
   } }
 }
