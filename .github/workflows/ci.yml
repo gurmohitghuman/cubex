@@ -71,7 +71,6 @@ jobs:
 
       - name: Typecheck (server + client)
         # Hits both tsconfig.json files in one command.
-        if: false
         run: npm run typecheck
 
       - name: Unit tests
@@ -82,11 +81,9 @@ jobs:
       - name: Build (server + client)
         # Catches the cases typecheck misses: SQL migrations missing from
         # the copy step, broken Vite plugin config, missing dist outputs.
-        if: false
         run: npm run build
 
       - name: Verify build outputs exist
-        if: false
         # Belt and braces: confirm the artifacts that production needs
         # actually got produced. If the build "succeeds" but produces no
         # dist/, the deploy will fail mysteriously. Bash on Windows too (Git Bash).
