@@ -7,8 +7,8 @@
 // worked out already (what a fill of '' gives), so the setup stays short.
 // On Windows it runs 50,000 rows and checks only what holds whatever the timing: none told, every ⏳ cleared, grids
 // following. There a slice that committed while the worker copied the WAL back held the server far longer (103
-// and 1,039 ms on two runs). No slice overlaps a checkpoint there now (wal-checkpoint-waits.test.ts), but a commit
-// still waits 30 to 45 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
+// and 1,039 ms on two runs). No slice overlaps a checkpoint there now (wal-checkpoint-waits.test.ts), but a slice
+// still takes 50 to 80 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'

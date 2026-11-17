@@ -1,3 +1,4 @@
+// Over 200 lines: the cases share one table, its writer and the measuring helper, and read as one story.
 // On Windows no write in turn begins while the checkpoint worker's checkpoint runs (lib/wal-checkpointer.ts,
 // lib/wal-turn.ts): there a commit that writes the WAL meanwhile waited inside it (58 to 110 ms where others took
 // about 31, once over a second) while the WAL file grew, as after a server start. The switch is on here on every
@@ -7,8 +8,10 @@
 // (services/column-transform-pages.ts): none either. A slice that waits leaves the event loop free (timers run, no
 // stretch over 50 ms). A checkpoint that never answers holds a writer no longer than the wait's limit, once; a
 // worker that stops answers its waiters. One that outlasts the limit: the slice waiting before it begins goes on,
-// but a wait at the pause has no limit, so the WAL stays bounded. Timing-free but the waits' limit and the worker
-// stopping; the longest slice and stretch are printed.
+// but a wait at the pause has no limit, so the WAL stays bounded. A write whose own time runs out while it waits
+// doesn't count as one that gave no answer: the next slice still waits. A transform call on a few rows asks for its
+// closing checkpoint after its last write, so it waits for none. Timing-free but the waits' limit, the worker
+// stopping and those last two (held checkpoints, wide margins); the longest slice and stretch are printed.
 // Off (Linux's default) a writer still asks part way and writes on while the worker copies.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
@@ -26,7 +29,7 @@ const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { asBulkWriter } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
-const { takeWalTurnStats } = turnMod as typeof import('../../server/src/lib/wal-turn')
+const { inWalTurn, takeWalTurnStats } = turnMod as typeof import('../../server/src/lib/wal-turn')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { WAL_BULK_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
 
@@ -87,16 +90,22 @@ await ok('two bulk writers at once, the WAL emptied first, one ending mid-way: n
   assert.deepEqual(m.during.map(transactionLine), [], 'slices begun while a checkpoint ran')
 })
 
-await ok('a transform\'s pages, the WAL emptied first: none begins while a checkpoint runs', async () => {
+// A sheet of `rows` rows whose column N holds `cell(i)`, and its owner.
+function seeded(rows: number, cell: (i: number) => string) {
   const sid = uuid(), uid = uuid(), tid = uuid()
   db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
   db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
   db.prepare(`INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,'S',0,'["N"]')`)
     .run(sid, tid, uid)
   const add = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+  db.transaction(() => { for (let i = 0; i < rows; i++) add.run(uuid(), sid, uid, i, JSON.stringify({ N: cell(i) })) })
+    .immediate()
+  return { sid, uid }
+}
+
+await ok('a transform\'s pages, the WAL emptied first: none begins while a checkpoint runs', async () => {
   // Cells of about 200 characters: the walk's pages take the WAL past its pause more than once.
-  const cell = (i: number) => JSON.stringify({ N: `n${i}-${'x'.repeat(200)}` })
-  db.transaction(() => { for (let i = 0; i < 20_000; i++) add.run(uuid(), sid, uid, i, cell(i)) }).immediate()
+  const { sid, uid } = seeded(20_000, i => `n${i}-${'x'.repeat(200)}`)
   const m = await measured('a transform', async () => {
     const out = await transformColumn(uid, { sheetId: sid, operation: 'template', template: '{{N}}!',
       targetColumn: 'M' })
@@ -176,6 +185,51 @@ await ok('a checkpoint that outlasts the limit: a slice waiting before it begins
       `the WAL held ${p.mostWalFrames} frames, past ${WAL_BULK_PAUSE_FRAMES} and two slices`)
     assert.ok(m.k.pauses > 0 && m.k.pausedMs > 300, `no pause outlasted the limit: ${JSON.stringify(m.k)}`)
   } finally { w.setCheckpointDelayForTests(0); w.setCheckpointWaitLimitForTests(null) }
+})
+
+await ok('a write whose own time runs out while it waits gave no answer only by its own deadline: the next slice '
+  + 'still waits for that checkpoint', async () => {
+  const before = logged.length
+  await w.walCheckpointerIdle()
+  await w.checkpointInBackground()
+  rewrite.run(1, 50)
+  w.setCheckpointDelayForTests(1_500)
+  const asked = w.checkpointInBackground()
+  w.setCheckpointDelayForTests(0)
+  const t0 = performance.now()
+  // A write in turn with 300 ms of time waits for that checkpoint first: late, nothing written.
+  assert.equal(await inWalTurn(() => rewrite.run(61, 70), Date.now() + 300), 'late')
+  let began = 0
+  await asBulkWriter(bulk => bulk.slice(() => { began = performance.now() - t0; rewrite.run(51, 60) }))
+  await asked
+  console.log(`      the slice began after ${began.toFixed(0)} ms`)
+  assert.deepEqual(logged.slice(before).filter(l => l.includes('gave no answer')), [], 'a checkpoint given up on')
+  assert.ok(began >= 1_000, `the slice began ${began.toFixed(0)} ms in, during the checkpoint`)
+})
+
+await ok('a transform call on a few rows, every checkpoint held 300 ms: it waits for none, its own closing one '
+  + 'asked after its last write', async () => {
+  const { sid, uid } = seeded(10, i => `r${i}`)
+  await w.walCheckpointerIdle()
+  // Frames to copy back, so the call's first write doesn't ask the worker to start the WAL over and wait for it.
+  rewrite.run(1, 2)
+  w.setCheckpointDelayForTests(300)
+  takeWalTurnStats()
+  try {
+    const t0 = performance.now()
+    const out = await transformColumn(uid, { sheetId: sid, operation: 'template', template: '{{N}}!',
+      targetColumn: 'M' })
+    const ms = performance.now() - t0
+    const t = takeWalTurnStats()
+    console.log(`      the call took ${ms.toFixed(0)} ms: ${JSON.stringify(t)}`)
+    assert.ok('ok' in out && out.ok.updated === 10, JSON.stringify(out))
+    assert.equal(t.checkpointWaits, 0, 'the call waited for a checkpoint')
+    assert.ok(w.checkpointAsked(), 'no closing checkpoint was asked')
+    assert.ok(ms < 250, `the call took ${ms.toFixed(0)} ms`)
+  } finally {
+    w.setCheckpointDelayForTests(0)
+    await w.walCheckpointerIdle()
+  }
 })
 
 await ok('the platform\'s own: on Windows only; off, a writer asks part way and writes on during the copy',

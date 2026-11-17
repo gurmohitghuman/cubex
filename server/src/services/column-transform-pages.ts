@@ -38,7 +38,7 @@ import {
 import { jsonPath, parseRowData } from '../lib/sql-helpers';
 import { autorunReaderCount, markAutorunInputs } from '../lib/autorun-mark';
 import { withoutAutoCheckpoint, yieldToRequests } from '../lib/slices';
-import { walRoom, walSettle } from '../lib/wal-checkpointer';
+import { walRoom } from '../lib/wal-checkpointer';
 import { inWalTurn, walTurnCheck } from '../lib/wal-turn';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 import type { PassTracker } from './column-transform-passes';
@@ -65,9 +65,11 @@ export interface PageRow { id: string; data: Record<string, string> }
 // Rows written and pages committed, and the last row_index looked at when the
 // call stopped with rows left (null: it got to the end of the sheet). `failed`:
 // a page failed; stoppedAfter is then where the pages committed before it got.
+// `wrote`: a page wrote, so the call asks for its frames to be copied back once
+// its own last write is made (column-transform.ts).
 export type WalkResult =
-  | { updated: number; pages: number; stoppedAfter: number | null; failed?: undefined }
-  | { updated: number; pages: number; stoppedAfter: number; failed: { error: unknown } };
+  | { updated: number; pages: number; wrote: boolean; stoppedAfter: number | null; failed?: undefined }
+  | { updated: number; pages: number; wrote: boolean; stoppedAfter: number; failed: { error: unknown } };
 
 const PREPARE_TRIES = 3;
 
@@ -157,9 +159,7 @@ export async function walkTransform(w: TransformWalk): Promise<WalkResult> {
       await yieldToRequests();
     }
   } catch (error) {
-    return { updated, pages, stoppedAfter: after, failed: { error } };
-  } finally {
-    if (wroteAny) walSettle();
+    return { updated, pages, wrote: wroteAny, stoppedAfter: after, failed: { error } };
   }
-  return { updated, pages, stoppedAfter: done ? null : after };
+  return { updated, pages, wrote: wroteAny, stoppedAfter: done ? null : after };
 }
