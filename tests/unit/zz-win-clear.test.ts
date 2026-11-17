@@ -1,5 +1,5 @@
 // Experiment (not for merge): where the time goes in a bulk slice that runs while the checkpoint worker copies the
-// WAL back. run-clear-big's two cases at 50,000 rows, 3 times each, with: every transaction's time split into its
+// WAL back. run-clear-big's two cases at 50,000 rows, 8 times each, the WAL file emptied first, with: every
 // statements (reads, and pages spilled) and the rest (BEGIN and the commit, which writes the WAL); the worker's
 // copy started (set before its WAL sync), ended (after its database sync) and the WAL started over, read from the
 // WAL index by a watcher thread; that thread's own size queries and reads of the database and WAL files, any that
@@ -196,7 +196,7 @@ async function watched(label: string, sid: string, stop: () => Promise<unknown>,
 }
 
 for (let rep = 1; rep <= Number(process.env.ZZ_REPS ?? 8); rep++) {
-  const grown = rep % 2 === 0
+  const grown = false
   await ok(`a first run, ${READERS} formulas reading it, cancelled at ${N} rows (${rep})`, async () => {
     const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
     const sid = sheet([{ Name: 'n0' }], ['Name', 'Answer'])
