@@ -126,12 +126,15 @@ export async function startHiringCheck(
   const est = await searchEstimate(userId, rec, plan);
   if ('fail' in est) return est;
   if (est.rows === 0) return bad('No search has a role title to search for.');
+  // With no price, the run would have no most to stop at.
+  if (!est.priceKnown) return bad("treg doesn't say what the search costs now, so a check can't keep to a most. "
+    + 'Try again later.');
   const refused = opts.refuse?.() ?? null;
   if (refused) return { fail: 'forbidden', message: refused };
   const id = insertHiringCheck(userId, rec.id, plan.label, plan.since, est.rows);
   if (!id) return { fail: 'conflict', message: 'A check of this table is still going.' };
   const run = newestColumnRun(rec.searches_sheet_id!, userId, plan.column)!;
-  const input = rerunInput(recallChoices(run.config, plan.column), ALL, est.priceKnown ? est.highUsd : null);
+  const input = rerunInput(recallChoices(run.config, plan.column), ALL, est.highUsd);
   const list = input.list!;
   // First seen: this check's day, in every role it adds.
   const copy = list.copy.filter(c => !(c.from === '' && c.to === ROLE_COLUMNS.firstSeen));

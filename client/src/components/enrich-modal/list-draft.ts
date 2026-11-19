@@ -33,6 +33,10 @@ export interface ListDraft {
   // The same text written into each new row (set by an agent or a template, kept on Edit).
   fixed?: Array<{ to: string; value: string }>
   itemsPath?: string | null        // where the results are, when not where the catalog says
+  // Kept on Edit (a template's): a copy under another name ({from: to}), keep mode, the duplicate check's other paths.
+  copyAs?: Record<string, string>
+  keep?: true
+  dedupeAlso?: { path: string; also: string[] }
 }
 
 // "Results per row": 1 to 100, narrowed by the range treg declares for a
@@ -76,13 +80,18 @@ export function buildListDraft(
 
 export function listRequest(l: ListDraft): EnrichListRequest {
   const on = l.fields?.filter(f => f.enabled) ?? null
+  const dedupePath = on?.some(f => f.path === l.dedupePath) ? l.dedupePath : null
   return {
     dest: l.dest.kind === 'new' ? { newSheetName: l.dest.name.trim() } : { sheetId: l.dest.sheetId },
     provider: l.provider, maxItems: l.maxItems,
     fields: on && on.length ? on.map(f => ({ path: f.path, columnName: f.columnName.trim() })) : null,
-    copy: [...l.copy.map(c => ({ from: c, to: c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f }))],
-    dedupePath: on?.some(f => f.path === l.dedupePath) ? l.dedupePath : null,
+    copy: [
+      ...l.copy.map(c => ({ from: c, to: l.copyAs?.[c] ?? c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f })),
+    ],
+    dedupePath,
     ...(l.itemsPath ? { itemsPath: l.itemsPath } : {}),
+    ...(l.keep ? { keep: true } : {}),
+    ...(l.dedupeAlso && dedupePath === l.dedupeAlso.path ? { dedupeAlso: l.dedupeAlso.also } : {}),
   }
 }
 

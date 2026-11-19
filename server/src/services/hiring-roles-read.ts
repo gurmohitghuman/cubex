@@ -16,6 +16,7 @@ export interface RolesRead {
   roles: number; newRoles: number;
   byName: number;                       // roles with no domain, summed up by company name
   noCompany: number;                    // roles with neither: left out
+  newNoLink: number;                    // new roles with no link: a later check can add them again
   missing: string[];                    // Roles columns the summary reads that aren't there
 }
 
@@ -24,7 +25,9 @@ const READ = ['title', 'company', 'domain', 'posted', 'link'] as const;
 export async function readRoles(userId: string, rolesSheetId: string, runId: string | null): Promise<RolesRead> {
   const listed = new Set(getSheetColumns(rolesSheetId, userId, false));
   const missing = READ.map(k => ROLE_COLUMNS[k]).filter(c => !listed.has(c));
-  const out: RolesRead = { companies: new Map(), roles: 0, newRoles: 0, byName: 0, noCompany: 0, missing };
+  const out: RolesRead = {
+    companies: new Map(), roles: 0, newRoles: 0, byName: 0, noCompany: 0, newNoLink: 0, missing,
+  };
   const read = db.prepare(`SELECT r.row_index, ${READ.map(() => 'json_extract(r.data, ?)').join(', ')},
       EXISTS (SELECT 1 FROM enrichment_list_rows l WHERE l.dest_row_id = r.id AND l.run_id = ?)
     FROM rows r WHERE r.sheet_id = ? AND r.user_id = ? AND r.row_index > ? ORDER BY r.row_index LIMIT ?`).raw();
@@ -50,6 +53,7 @@ export async function readRoles(userId: string, rolesSheetId: string, runId: str
       }
       out.roles++;
       if (isNew) out.newRoles++;
+      if (isNew && !link) out.newNoLink++;
       if (key.byName) out.byName++;
     }
     if (page.length < HIRING_SUMMARY_READ_ROWS) break;

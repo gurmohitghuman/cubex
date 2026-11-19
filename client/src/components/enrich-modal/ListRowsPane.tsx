@@ -130,7 +130,7 @@ export const ListRowsPane: React.FC<Props> = (p) => {
           {list.copy.map(c => (
             <span key={c}
               className="inline-flex items-center gap-1 border border-gray-300 bg-white px-2 py-0.5 text-xs">
-              {c}
+              {list.copyAs?.[c] ? `${c} → ${list.copyAs[c]}` : c}
               <button type="button" aria-label={`Stop copying ${c}`} className="text-gray-400 hover:text-gray-700"
                 onClick={() => update({ copy: list.copy.filter(x => x !== c) })}><X className="h-3 w-3" /></button>
             </span>

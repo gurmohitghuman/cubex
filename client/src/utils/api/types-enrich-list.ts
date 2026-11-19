@@ -17,6 +17,10 @@ export interface EnrichListRequest {
   copy: Array<{ from: string; to: string; value?: string }>
   dedupePath: string | null
   itemsPath?: string | null   // a single tool's results, when its example shows that list empty
+  // Keep mode: a rerun adds only results the sheet never had and keeps the rows from before.
+  keep?: boolean
+  // The duplicate check's other paths, read in order when dedupePath's is empty.
+  dedupeAlso?: string[]
 }
 
 export interface EnrichListEstimate {

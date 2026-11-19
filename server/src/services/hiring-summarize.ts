@@ -111,6 +111,10 @@ export async function summarizeHiring(
       + 'summed up by company name.');
   }
   if (read.noCompany) problems.push(`${plural(read.noCompany, 'role')} had no company name or domain: left out.`);
+  if (read.newNoLink) {
+    problems.push(`${plural(read.newNoLink, 'new role')} had no link, so a later check can add `
+      + `${read.newNoLink === 1 ? 'it' : 'them'} again.`);
+  }
   const listed = new Set(getSheetColumns(sheets.companies, userId, false));
   const columns = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => listed.has(c));
   const gone = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => !listed.has(c));

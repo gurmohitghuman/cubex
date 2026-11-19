@@ -3,7 +3,8 @@
 // plain (joining the company found by domain when the names match), counted in the problems; a role with neither
 // left out; the first check names nothing new, a later one names what its run added and clears the rest; a
 // company whose roles are gone shows 0; a row the person deleted is made again and one they edited is still
-// found; a second pass writes no cell; a deleted column is left out; a full sheet says so.
+// found; a second pass writes no cell; a deleted column is left out; a full sheet says so; new roles with no
+// link are said.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 process.env.MAX_ROWS_PER_SHEET = '14'
@@ -16,11 +17,11 @@ const roles = sheet([], Object.values(R))
 const companies = sheet([{ [C.openRoles]: 'my note' }], Object.values(C))
 const sheets = { roles, companies }
 let index = 0
-const role = (company: string, domain: string, title: string, posted: string, runId: string) => {
+const role = (company: string, domain: string, title: string, posted: string, runId: string, link = true) => {
   const id = uuid()
   db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)').run(id, roles, uid, index++,
     JSON.stringify({ [R.title]: title, [R.company]: company, [R.domain]: domain, [R.posted]: posted,
-      [R.link]: `https://jobs.example/${index}` }))
+      [R.link]: link ? `https://jobs.example/${index}` : '' }))
   db.prepare(`INSERT INTO enrichment_list_rows (dest_row_id,user_id,dest_sheet_id,source_sheet_id,source_row_id,
     status_column,run_id) VALUES (?,?,?,?,?,?,?)`).run(id, uid, roles, null, 'src', 'Roles found', runId)
   return id
@@ -129,6 +130,14 @@ await ok('a full Companies sheet adds what fits and says how many were not', asy
   assert.equal(s.companiesNew, 1)
   assert.ok(s.problems.includes("Companies is full: 1 company wasn't added."), s.problems.join())
   assert.equal(rows().length, 14)
+})
+
+await ok('new roles with no link are said (a later check can add them again)', async () => {
+  const r4 = uuid()
+  role('Acme', 'acme.com', 'SE', '2026-11-20', r4, false)
+  role('Acme', 'acme.com', 'SE II', '2026-11-20', r4, false)
+  const s = await summarizeHiring(uid, sheets, { label: '2026-11-20', sinceLabel: '2026-11-19', runId: r4 })
+  assert.ok(s.problems.includes('2 new roles had no link, so a later check can add them again.'), s.problems.join())
 })
 
 done()
