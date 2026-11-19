@@ -17,7 +17,7 @@ import { getColumnTypes } from '../lib/column-types';
 import { dayIn } from '../lib/ai-visibility/check';
 import { nowDate } from '../lib/clock';
 import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
-import { micro, money, moneyUp } from '../lib/cost-ceiling';
+import { micro, moneyUp } from '../lib/cost-ceiling';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import { HIRING_TOOL_ID, ROLE_COLUMNS, SEARCH_COLUMNS } from '../lib/hiring/names';
 import { newestColumnRun } from './enrich-column';
@@ -136,9 +136,13 @@ export async function startHiringCheck(
   // In micro-dollars, as run ceilings are (lib/cost-ceiling.ts). A most that isn't a number counts as none.
   const sent = Number.isFinite(opts.maxCostUsd) ? opts.maxCostUsd : 0;
   if (micro(est.highUsd) > micro(sent)) {
+    // Both rounded up, as the dialog shows a most; the one sent to the micro-dollar when the two would read alike.
+    const now = moneyUp(est.highUsd);
+    const [whole, frac] = sent.toFixed(6).split('.');
+    const was = moneyUp(sent) === now ? `$${whole}.${frac.replace(/0+$/, '').padEnd(2, '0')}` : moneyUp(sent);
     return { fail: 'over_ceiling', estimate: hiringEstimate(est, plan, null), message: 'The check could now cost up '
-      + `to ${moneyUp(est.highUsd)}, more than the ${money(sent)} it was sent (searches or prices changed since the `
-      + 'estimate). Nothing was searched: confirm the new most to check.' };
+      + `to ${now}, more than the ${was} it was sent (searches or prices changed since the estimate). Nothing was `
+      + 'searched: confirm the new most to check.' };
   }
   // The search keeps the roles found before: with no key to know them by, it would add them all again.
   const recalled = recallChoices(newestColumnRun(rec.searches_sheet_id!, userId, plan.column)!.config, plan.column);

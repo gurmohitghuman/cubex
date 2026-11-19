@@ -1,10 +1,11 @@
 // A hiring check's summary (services/hiring-summarize.ts) and what else happens to its sheets meanwhile, and its
 // batches: Roles and Companies are held for reading while it runs, so a sort of either is refused, while nothing
 // that only checks for a busy sheet (a cell edit, an append) is held up; a summary that finds a sort going waits
-// for it; a sheet put in the trash meanwhile stops it with nothing more written ({ gone }); a read of Roles keeps
-// at most its most of companies (past it, a whole read only counts them and a batch's read stops), and the
-// batches together keep each company once; summed up in batches (a most of a few companies), Companies is the
-// same as one read makes, a role found by name joining its domain, and a second pass writes nothing.
+// for it; a sheet put in the trash meanwhile (while it adds rows or changes cells) stops it with nothing more
+// written ({ gone }); a read of Roles keeps at most its most of companies (past it, a whole read only counts them
+// and a batch's read stops), and the batches together keep each company once; summed up in batches (a most of a
+// few companies), Companies is the same as one read makes, a role found by name joining its domain, and a second
+// pass writes nothing.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -22,19 +23,24 @@ const check = { label: '2026-11-19', sinceLabel: null, runId }
 const role = (i: number, companies: number): Cells => ({ [R.title]: 'SDR', [R.company]: `Company ${i % companies}`,
   [R.domain]: `c${i % companies}.com`, [R.posted]: '2026-11-18', [R.link]: `https://jobs.example/${i}` })
 
-// A Roles sheet of `n` roles at `companies` companies (by domain), then `more`, each added by the check's run.
-function rolesSheet(n: number, companies: number, more: Cells[] = []): string {
-  const sid = sheet([], Object.values(R))
+// Roles added to a Roles sheet by a check's run, after the rows it has.
+function addRoles(sid: string, roles: Cells[], run = runId): void {
   const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
   const list = db.prepare(`INSERT INTO enrichment_list_rows (dest_row_id,user_id,dest_sheet_id,source_row_id,
     status_column,run_id,dedupe_key) VALUES (?,?,?,'src','Roles found',?,?)`)
+  const from = count(sid)
   db.transaction(() => {
-    [...Array.from({ length: n }, (_, i) => role(i, companies)), ...more].forEach((cells, i) => {
+    roles.forEach((cells, i) => {
       const id = uuid()
-      insert.run(id, sid, uid, i, JSON.stringify(cells))
-      list.run(id, uid, sid, runId, `key-${i}`)
+      insert.run(id, sid, uid, from + i, JSON.stringify(cells))
+      list.run(id, uid, sid, run, `key-${from + i}`)
     })
   }).immediate()
+}
+// A Roles sheet of `n` roles at `companies` companies (by domain), then `more`, each added by the check's run.
+function rolesSheet(n: number, companies: number, more: Cells[] = []): string {
+  const sid = sheet([], Object.values(R))
+  addRoles(sid, [...Array.from({ length: n }, (_, i) => role(i, companies)), ...more])
   return sid
 }
 const companiesSheet = () => sheet([], Object.values(C))
@@ -88,6 +94,29 @@ await ok('Companies put in the trash between slices: it stops, no row added afte
   assert.ok(at > 0 && at < n, `${at} rows when it went`)
   assert.deepEqual(await going, { gone: true })
   assert.equal(count(companies), at)
+})
+
+await ok('Companies put in the trash between slices of changed cells: it stops, no cell changed after', async () => {
+  const n = 3 * HIRING_SUMMARY_WRITE_ROWS
+  const roles = rolesSheet(n, n)
+  const companies = companiesSheet()
+  const first = await summarizeHiring(uid, { roles, companies }, check)
+  assert.ok(!('gone' in first) && first.companiesNew === n, JSON.stringify(first))
+  // A later check's run finds one more role at every company: each Companies row gets new cells.
+  const later = uuid()
+  addRoles(roles, Array.from({ length: n }, (_, i) => role(n + i, n)), later)
+  const changed = () => db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ?
+    AND json_extract(data, '$."${C.openRoles}"') = '2'`).pluck().get(companies) as number
+  let over = false
+  const going = summarizeHiring(uid, { roles, companies }, { label: '2026-11-20', sinceLabel: check.label,
+    runId: later }).finally(() => { over = true })
+  while (changed() === 0 && !over) await new Promise(resolve => setImmediate(resolve))
+  trash(companies)
+  const at = changed()
+  assert.ok(at > 0 && at < n, `${at} rows changed when it went`)
+  assert.deepEqual(await going, { gone: true })
+  assert.equal(changed(), at)
+  assert.equal(count(companies), n, 'and no row added')
 })
 
 await ok('Roles put in the trash between pages: it stops before writing anything', async () => {

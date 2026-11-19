@@ -1,8 +1,8 @@
 // The hiring table's pure parts (lib/hiring/): which company a role belongs to
 // (its domain, else its name made plain) and its batch, a company's roles
 // folded into what Companies shows (titles, the newest day, links, what's new
-// since the check before), the request parse, the provider's fields, and the
-// table's name.
+// since the check before), the request parse, the provider's fields, the
+// table's name, and a check's most as the dialog shows it.
 import assert from 'node:assert/strict'
 
 let failures = 0
@@ -16,6 +16,8 @@ const { parseHiringInput } = await import('../../server/src/lib/hiring/input')
 const { jobFields } = await import('../../server/src/lib/hiring/job-fields')
 const { hiringTableBase, COMPANY_COLUMNS: C, ROLE_COLUMNS } = await import('../../server/src/lib/hiring/names')
 const K = await import('../../server/src/lib/constants')
+const { moneyUp } = await import('../../server/src/lib/cost-ceiling')
+const { moneyUp: shownUp } = await import('../../client/src/lib/enrich-format')
 
 ok('a company name made plain: case, spaces and a trailing Inc, LLC or Ltd', () => {
   for (const n of ['Acme', 'ACME  Inc.', 'Acme, Inc', 'acme llc', 'Acme L.L.C.', 'Acme Ltd.', 'Acme Limited',
@@ -176,6 +178,13 @@ ok('the table\'s name: the roles, cut to fit', () => {
   assert.equal(hiringTableBase(['<b>SDR</b>'], 100), 'Hiring: bSDR/b')
   const long = hiringTableBase(Array.from({ length: 20 }, (_, i) => `Role number ${i}`), 40)
   assert.ok(Array.from(long).length <= 40 && long.endsWith('…'), long)
+})
+
+ok('a most in the check dialog: rounded up, as the server says it', () => {
+  assert.equal(shownUp(0.075), '$0.075', 'never $0.07')
+  const values = [0, 0.0104, 0.1125, 0.9999, 1, 1.875, 12.345, 0.000001]
+  for (let i = 1; i < 20_000; i++) values.push(i / 1e6, i * 0.0375 / 7, i / 997)
+  for (const v of values) assert.equal(shownUp(v), moneyUp(v), String(v))
 })
 
 if (failures > 0) { console.error(`${failures} hiring-pure assertion(s) failed`); process.exit(1) }

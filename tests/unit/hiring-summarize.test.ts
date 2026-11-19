@@ -17,15 +17,16 @@ const roles = sheet([], Object.values(R))
 const companies = sheet([{ [C.openRoles]: 'my note' }], Object.values(C))
 const sheets = { roles, companies }
 let index = 0
-const role = (company: string, domain: string, title: string, posted: string, runId: string, link = true) => {
+const role = (company: string, domain: string, title: string, posted: string, runId: string, link = true,
+  key = link) => {
   const id = uuid()
   db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)').run(id, roles, uid, index++,
     JSON.stringify({ [R.title]: title, [R.company]: company, [R.domain]: domain, [R.posted]: posted,
       [R.link]: link ? `https://jobs.example/${index}` : '' }))
-  // As a keep-mode add records it: the result's key, none when it had no link.
+  // As a keep-mode add records it: the result's key (its link, else its job id), none when it had neither.
   db.prepare(`INSERT INTO enrichment_list_rows (dest_row_id,user_id,dest_sheet_id,source_sheet_id,source_row_id,
     status_column,run_id,dedupe_key) VALUES (?,?,?,?,?,?,?,?)`)
-    .run(id, uid, roles, null, 'src', 'Roles found', runId, link ? `key-${index}` : null)
+    .run(id, uid, roles, null, 'src', 'Roles found', runId, key ? `key-${index}` : null)
   return id
 }
 const sum = async (check: { label: string; sinceLabel: string | null; runId: string | null }) => {
@@ -143,6 +144,8 @@ await ok('new roles with no key to tell them apart are said (a later check can a
   const r4 = uuid()
   role('Acme', 'acme.com', 'SE', '2026-11-20', r4, false)
   role('Acme', 'acme.com', 'SE II', '2026-11-20', r4, false)
+  // No link but a job id: it has a key, so it isn't counted.
+  role('Acme', 'acme.com', 'SE III', '2026-11-20', r4, false, true)
   const s = await sum({ label: '2026-11-20', sinceLabel: '2026-11-19', runId: r4 })
   const said = '2 new roles had no link or job id to tell them apart, so a later check can add them again.'
   assert.ok(s.problems.includes(said), s.problems.join())

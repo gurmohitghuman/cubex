@@ -106,7 +106,8 @@ test('the app: make the table from the dashboard, check it from the estimate it 
   await expect(confirm).toContainText(
     'Searches 2 role titles for roles in Texas, US, posted in the last 30 days, adding up to 50', { timeout: 30_000 })
   await expect(confirm.getByTestId('hiring-check-matches')).toContainText('About 240 open roles match')
-  await expect(confirm.getByTestId('hiring-check-cost')).toContainText('never more')
+  // Two searches at the stand-in's price: the most reads as it is, never rounded down to $0.07.
+  await expect(confirm.getByTestId('hiring-check-cost')).toContainText('never more: the check stops at $0.075.')
   expect(await paidCalls()).toEqual([])
   await page.screenshot({ path: process.env.HIRING_SHOTS ? `${process.env.HIRING_SHOTS}/confirm.png` : undefined })
   await confirm.getByTestId('hiring-check-go').click()

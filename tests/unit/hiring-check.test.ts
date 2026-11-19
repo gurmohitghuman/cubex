@@ -19,6 +19,7 @@ const { estimateHiringCheck, hiringPlan, startHiringCheck } = await import('../.
 const { resumeHiringChecks } = await import('../../server/src/services/hiring-check-watch')
 const { hiringFor, insertHiringCheck, loadHiringCheck } = await import('../../server/src/services/hiring-store')
 const { countJobs } = await import('../../server/src/services/job-count')
+const { moneyUp } = await import('../../server/src/lib/cost-ceiling')
 const { ROLE_COLUMNS: R, SEARCH_COLUMNS: S } = await import('../../server/src/lib/hiring/names')
 const TREG = process.env.TREG_BASE_URL!
 
@@ -81,8 +82,13 @@ await ok('a start under the most worked out again is refused with the new estima
   assert.ok('fail' in c && c.fail === 'over_ceiling', JSON.stringify(c))
   assert.equal(c.estimate?.searches, 3)
   assert.ok(c.estimate!.highUsd > high, JSON.stringify(c.estimate))
-  assert.match(c.message, /more than the \$[\d.]+ it was sent .* Nothing was searched/)
   newHigh = c.estimate!.highUsd
+  // Both mosts rounded up, as the dialog shows them; the one sent to the micro-dollar when they'd read alike.
+  const said = `could now cost up to ${moneyUp(newHigh)}, more than the ${moneyUp(high)} it was sent`
+  assert.ok(c.message.includes(said) && c.message.includes('Nothing was searched'), `${high}: ${c.message}`)
+  const near = await startHiringCheck(uid, rec(), { maxCostUsd: newHigh - 0.000001 })
+  const nearSaid = `up to ${moneyUp(newHigh)}, more than the $${(newHigh - 0.000001).toFixed(6).replace(/0+$/, '')} `
+  assert.ok('fail' in near && near.message.includes(nearSaid), `${newHigh}: ${'fail' in near && near.message}`)
   for (const most of [newHigh / 2, Number.NaN, undefined as unknown as number]) {
     const r = await startHiringCheck(uid, rec(), { maxCostUsd: most })
     assert.ok('fail' in r && r.fail === 'over_ceiling', `${most}: ${JSON.stringify(r)}`)

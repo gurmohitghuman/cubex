@@ -4,11 +4,13 @@ import { Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { hiringAPI, type HiringEstimate, type HiringPlan, type HiringView } from '@/utils/api/hiring'
 import { checkDay } from '@/lib/hiring'
+import { moneyUp } from '@/lib/enrich-format'
 
 // A check's estimate (a pure read on the server, free: only the job index's
 // free count is asked), then the check when the person says so: one search
 // per role title, adding only roles never found before, with the estimate's
-// most as its limit. Companies is summed up when the search is done.
+// most as its limit. Companies is summed up when the search is done. Its
+// cost is shown rounded up, so the most never reads as less than it is.
 const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`
 const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? w : ws}`
 
@@ -48,6 +50,7 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
     const e = shown?.estimate
     const where = [v.place, v.country].filter(Boolean).join(', ')
     const daily = e?.dailyLimit.remainingUsd ?? null
+    const [low, high] = e ? [moneyUp(e.lowUsd), moneyUp(e.highUsd)] : ['', '']
     const recent = v.postedWithinDays
       ? `${where ? ',' : ''} posted in the last ${plural(v.postedWithinDays, 'day')}` : ''
     return (
@@ -76,8 +79,8 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
                 </p>
               )}
               <p className="text-sm text-gray-900" data-testid="hiring-check-cost">
-                {e.lowUsd === e.highUsd ? usd(e.highUsd) : `${usd(e.lowUsd)} to ${usd(e.highUsd)}`} from your treg
-                balance, never more: the check stops at {usd(e.highUsd)}.
+                {low === high ? high : `${low} to ${high}`} from your treg balance, never more: the check stops
+                at {high}.
               </p>
               {daily !== null && daily < e.highUsd && (
                 <p className="text-xs text-amber-700">
