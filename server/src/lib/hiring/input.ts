@@ -4,6 +4,7 @@
 import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
 import { digitsAsNumber } from '../digits-text';
+import { usdLimitOf } from '../cost-ceiling';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PLACE_CHARS,
   HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLE_CHARS, HIRING_MAX_ROLES,
@@ -42,7 +43,25 @@ function parseRoles(v: unknown): string[] | string {
 const whole = (v: unknown, lo: number, hi: number): boolean =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= lo && v <= hi;
 
-export function parseHiringInput(v: unknown): HiringInput | string {
+// The names the asker sends (the app camelCase, /api/v1 and MCP snake_case), for the refusals to use.
+const NAMES = {
+  camel: { days: 'postedWithinDays', perSearch: 'perSearch' },
+  snake: { days: 'posted_within_days', perSearch: 'per_search' },
+};
+export const postedDaysRefusal = (name: string) =>
+  `${name} must be 1 to ${HIRING_MAX_POSTED_DAYS} (or null for any time).`;
+export const perSearchRefusal = (name: string) => `${name} must be 1 to ${ENRICH_LIST_MAX_ITEMS}.`;
+
+// The most a check may spend (dollars, the high end its estimate showed), or why it can't start without one.
+export function checkMostOf(raw: unknown, name: string): { value: number } | { error: string } {
+  const most = usdLimitOf(raw, name);
+  if ('error' in most) return most;
+  return most.value === null ? { error: `A check needs ${name}: the most it may cost in dollars, the high end `
+    + 'of its estimate (ask for the estimate first). Nothing was searched.' } : { value: most.value };
+}
+
+export function parseHiringInput(v: unknown, names: keyof typeof NAMES = 'camel'): HiringInput | string {
+  const n = NAMES[names];
   if (!isObj(v)) return 'Send the role titles to search for.';
   const roles = parseRoles(v.roles);
   if (typeof roles === 'string') return roles;
@@ -56,11 +75,9 @@ export function parseHiringInput(v: unknown): HiringInput | string {
   }
   // Whole numbers, also as digits ("30"), as MCP's lenientInt takes them.
   const days = v.postedWithinDays === undefined ? HIRING_DEFAULT_POSTED_DAYS : digitsAsNumber(v.postedWithinDays);
-  if (days !== null && !whole(days, 1, HIRING_MAX_POSTED_DAYS)) {
-    return `postedWithinDays must be 1 to ${HIRING_MAX_POSTED_DAYS} (or null for any time).`;
-  }
+  if (days !== null && !whole(days, 1, HIRING_MAX_POSTED_DAYS)) return postedDaysRefusal(n.days);
   const perSearch = digitsAsNumber(v.perSearch ?? HIRING_DEFAULT_PER_SEARCH);
-  if (!whole(perSearch, 1, ENRICH_LIST_MAX_ITEMS)) return `perSearch must be 1 to ${ENRICH_LIST_MAX_ITEMS}.`;
+  if (!whole(perSearch, 1, ENRICH_LIST_MAX_ITEMS)) return perSearchRefusal(n.perSearch);
   return {
     roles, country: typeof c === 'string' && c ? c.toUpperCase() : null, place: place || null,
     postedWithinDays: days as number | null, perSearch: perSearch as number,

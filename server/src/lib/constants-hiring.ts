@@ -21,3 +21,14 @@ export const HIRING_CHECK_POLL_MS = 2_000;
 // and written in one bulk writer slice.
 export const HIRING_SUMMARY_READ_ROWS = 2_000;
 export const HIRING_SUMMARY_WRITE_ROWS = 500;
+// Companies summed up at once. Past this many, Roles is read once per batch of
+// companies (a hash of the company key picks its batch), each read keeping only
+// its batch's totals, so memory stays bounded whatever the number of companies.
+export const HIRING_SUMMARY_MAX_COMPANIES = 100_000;
+// A batch may grow to this many times the most before the batches are made smaller.
+export const HIRING_SUMMARY_BATCH_SLACK = 2;
+// Past the most, the first read counts the companies from one key in this many
+// (by the same hash), to know how many batches to make.
+export const HIRING_SUMMARY_COUNT_SAMPLE = 64;
+// A walk over the companies kept in memory lets other requests in after this long.
+export const HIRING_SUMMARY_SLICE_MS = 25;

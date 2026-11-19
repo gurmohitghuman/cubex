@@ -68,6 +68,11 @@ async function summarizeCheck(userId: string, id: string): Promise<void> {
   }
   const done = await summarizeHiring(userId, { roles: rec.roles_sheet_id!, companies: rec.companies_sheet_id },
     { label: c.label, sinceLabel: c.since_label, runId: c.run_id });
+  if ('gone' in done) {
+    updateHiringCheck(userId, id, { stage: 'stopped', problems: ['Roles or Companies went to the trash while '
+      + 'Companies was summed up: nothing more was written.'] });
+    return;
+  }
   const searched = c.run_id ? searchState(userId, c.run_id) : null;
   const stopped = !c.run_id || (searched && !searched.going && searched.problems.length > 0);
   updateHiringCheck(userId, id, {

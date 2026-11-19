@@ -3,8 +3,10 @@
 // cost, and the free count of roles they match where the job index has one.
 // Then, only when asked, the search: one run of the Searches column on every
 // search row, keeping the roles found before (keep mode: only roles Roles
-// never had are added, First seen this check's day), its spend limit the
-// estimate's most, so a check never spends more than its estimate showed.
+// never had are added, First seen this check's day). The start carries the
+// most the asker was shown: worked out again, a higher most (searches added,
+// a price raised) is refused with the new estimate, so a check never spends
+// more than its estimate showed; the run's spend limit is the new most.
 // Once the run is over and its roles are in, the summary per company (free:
 // services/hiring-check-watch.ts). Each stage is journaled (hiring_checks,
 // migration 061): a restart waits for the run as before and then sums up; it
@@ -15,6 +17,7 @@ import { getColumnTypes } from '../lib/column-types';
 import { dayIn } from '../lib/ai-visibility/check';
 import { nowDate } from '../lib/clock';
 import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
+import { micro, money, moneyUp } from '../lib/cost-ceiling';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import { HIRING_TOOL_ID, ROLE_COLUMNS, SEARCH_COLUMNS } from '../lib/hiring/names';
 import { newestColumnRun } from './enrich-column';
@@ -38,6 +41,8 @@ export interface HiringEstimate {
   matches: JobCount | null;
 }
 export interface CheckOpts { timeZone?: string | null }
+// A start over the most it was sent: the estimate now, to show and confirm.
+export type HiringStartFail = RunFail & { estimate?: HiringEstimate };
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const ALL = { mode: 'all' as const, status: 'any' as const, test: null, rowIndexes: null };
@@ -108,19 +113,18 @@ export async function estimateHiringCheck(userId: string, rec: HiringRecord, opt
   const [est, matches] = await Promise.all([searchEstimate(userId, rec, plan),
     countJobs(userId, plan.provider, searchTerms(userId, rec.searches_sheet_id!))]);
   if ('fail' in est) return est;
-  return {
-    plan,
-    estimate: {
-      searches: est.rows, rolesUpTo: est.addsRowsTo?.addUpTo ?? est.rows * plan.perSearch, priceKnown: est.priceKnown,
-      lowUsd: est.lowUsd, highUsd: est.highUsd, dailyLimit: est.dailyLimit, matches,
-    },
-  };
+  return { plan, estimate: hiringEstimate(est, plan, matches) };
 }
 
-// refuse: an agent's check before the search starts (its spend cap and run-start window).
+const hiringEstimate = (est: RerunEstimate, plan: HiringPlan, matches: JobCount | null): HiringEstimate => ({
+  searches: est.rows, rolesUpTo: est.addsRowsTo?.addUpTo ?? est.rows * plan.perSearch, priceKnown: est.priceKnown,
+  lowUsd: est.lowUsd, highUsd: est.highUsd, dailyLimit: est.dailyLimit, matches,
+});
+// maxCostUsd: the most the asker was shown (the estimate's highUsd). refuse: an
+// agent's check before the search starts (its spend cap and run-start window).
 export async function startHiringCheck(
-  userId: string, rec: HiringRecord, opts: CheckOpts & { refuse?: () => string | null } = {},
-): Promise<{ ok: HiringCheckView } | RunFail> {
+  userId: string, rec: HiringRecord, opts: CheckOpts & { maxCostUsd: number; refuse?: () => string | null },
+): Promise<{ ok: HiringCheckView } | HiringStartFail> {
   const plan = hiringPlan(userId, rec, opts);
   if ('fail' in plan) return plan;
   const est = await searchEstimate(userId, rec, plan);
@@ -129,12 +133,24 @@ export async function startHiringCheck(
   // With no price, the run would have no most to stop at.
   if (!est.priceKnown) return bad("treg doesn't say what the search costs now, so a check can't keep to a most. "
     + 'Try again later.');
+  // In micro-dollars, as run ceilings are (lib/cost-ceiling.ts). A most that isn't a number counts as none.
+  const sent = Number.isFinite(opts.maxCostUsd) ? opts.maxCostUsd : 0;
+  if (micro(est.highUsd) > micro(sent)) {
+    return { fail: 'over_ceiling', estimate: hiringEstimate(est, plan, null), message: 'The check could now cost up '
+      + `to ${moneyUp(est.highUsd)}, more than the ${money(sent)} it was sent (searches or prices changed since the `
+      + 'estimate). Nothing was searched: confirm the new most to check.' };
+  }
+  // The search keeps the roles found before: with no key to know them by, it would add them all again.
+  const recalled = recallChoices(newestColumnRun(rec.searches_sheet_id!, userId, plan.column)!.config, plan.column);
+  if (!recalled.list?.dedupePath) {
+    return bad(`"${plan.column}" in Searches no longer skips results already added, so a check would add every `
+      + 'role again. Edit it, turn on skipping by Link, and check again.');
+  }
   const refused = opts.refuse?.() ?? null;
   if (refused) return { fail: 'forbidden', message: refused };
   const id = insertHiringCheck(userId, rec.id, plan.label, plan.since, est.rows);
   if (!id) return { fail: 'conflict', message: 'A check of this table is still going.' };
-  const run = newestColumnRun(rec.searches_sheet_id!, userId, plan.column)!;
-  const input = rerunInput(recallChoices(run.config, plan.column), ALL, est.highUsd);
+  const input = rerunInput(recalled, ALL, est.highUsd);
   const list = input.list!;
   // First seen: this check's day, in every role it adds.
   const copy = list.copy.filter(c => !(c.from === '' && c.to === ROLE_COLUMNS.firstSeen));

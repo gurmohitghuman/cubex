@@ -2,9 +2,13 @@
 // against the repo's mock treg, the job queue only recording (no search runs): making the table calls nothing
 // paid and starts no run; the estimate is free (only the free counts are called) and makes no run nor check; a
 // check's run keeps the roles found before, stamps First seen with its day and has the estimate's most as its
-// spend limit; one check of a table at a time; the journal moves on once the run is over, and a restart only
-// waits (a running search is never started again, a paused one stops the check with what to do, one that never
-// started says so). The free count is asked only with a treg key and a provider that has one.
+// spend limit; a start whose most is under the most worked out again (a search added since the estimate) is
+// refused with the new estimate before anything runs, and starts once sent that most; one whose column no longer
+// skips results already added is refused; one check of a table at a time; the journal moves on once the run is
+// over, and a restart only waits (a running search is never started again, a paused one stops the check with what
+// to do, one that never started says so). The free count is asked only with a treg key and a provider that has
+// one.
+// Over 200 lines: one table's checks in order, each step on the state the one before left.
 import assert from 'node:assert/strict'
 import { tregKit, sleep } from './token-replay-treg-kit'
 const kit = await tregKit('hiring-check')
@@ -64,24 +68,63 @@ await ok('the estimate: free, no run, no check; the count asked only of the free
   assert.equal(checks(), 0)
 })
 
+const searchRows = () => db.prepare('SELECT id FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck()
+  .all(t.searchesSheetId) as string[]
+
+// The most once a search is added after the estimate (the check below sends it).
+let newHigh = 0
+await ok('a start under the most worked out again is refused with the new estimate: no run, no check', async () => {
+  await resetCalls()
+  db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 99, ?)').run(
+    crypto.randomUUID(), t.searchesSheetId, uid, JSON.stringify({ [S.role]: 'AE', [S.country]: 'US', [S.days]: '14' }))
+  const c = await startHiringCheck(uid, rec(), { timeZone: 'UTC', maxCostUsd: high })
+  assert.ok('fail' in c && c.fail === 'over_ceiling', JSON.stringify(c))
+  assert.equal(c.estimate?.searches, 3)
+  assert.ok(c.estimate!.highUsd > high, JSON.stringify(c.estimate))
+  assert.match(c.message, /more than the \$[\d.]+ it was sent .* Nothing was searched/)
+  newHigh = c.estimate!.highUsd
+  for (const most of [newHigh / 2, Number.NaN, undefined as unknown as number]) {
+    const r = await startHiringCheck(uid, rec(), { maxCostUsd: most })
+    assert.ok('fail' in r && r.fail === 'over_ceiling', `${most}: ${JSON.stringify(r)}`)
+  }
+  assert.equal(runs(t.searchesSheetId), 0)
+  assert.equal(checks(), 0)
+  assert.deepEqual(await calls(), [], 'nothing paid called')
+})
+
+await ok('a start refused when the column no longer skips results already added', async () => {
+  const newest = db.prepare(`SELECT id FROM http_runs WHERE sheet_id = ? ORDER BY created_at DESC, rowid DESC
+    LIMIT 1`).pluck().get(t.searchesSheetId) as string
+  const was = db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(newest) as string
+  db.prepare("UPDATE http_runs SET config = json_remove(config, '$.enrichment.list.dedupe') WHERE id = ?").run(newest)
+  const c = await startHiringCheck(uid, rec(), { maxCostUsd: newHigh })
+  db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(was, newest)
+  assert.ok('fail' in c && c.fail === 'bad_request', JSON.stringify(c))
+  assert.match(c.message, /no longer skips results already added/)
+  assert.equal(runs(t.searchesSheetId), 0)
+  assert.equal(checks(), 0)
+})
+
 let checkId = ''
-const CHECK = 'a check: one run on every search, roles kept, First seen its day, its limit the estimate\'s most'
+const CHECK = 'sent the new most, a check: one run on every search, roles kept, First seen its day, that most '
+  + 'its limit'
 await ok(CHECK, async () => {
-  const c = await startHiringCheck(uid, rec(), { timeZone: 'UTC' })
+  assert.equal(searchRows().length, 3)
+  const c = await startHiringCheck(uid, rec(), { timeZone: 'UTC', maxCostUsd: newHigh })
   assert.ok('ok' in c, JSON.stringify(c))
   checkId = c.ok.id
   assert.equal(c.ok.stage, 'searching')
   assert.equal(runs(t.searchesSheetId), 1)
   const config = JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(c.ok.runId) as string)
   const e = config.enrichment
-  assert.equal(e.spendLimitUsd, high)
+  assert.equal(e.spendLimitUsd, newHigh)
   assert.equal(e.list.keep, true)
   assert.deepEqual(e.list.copy.filter((x: { to: string }) => x.to === R.firstSeen).map((x: { value: string }) =>
     x.value), [c.ok.label])
 })
 
 await ok('one check of a table at a time', async () => {
-  const again = await startHiringCheck(uid, rec())
+  const again = await startHiringCheck(uid, rec(), { maxCostUsd: newHigh })
   assert.deepEqual(again, { fail: 'conflict', message: 'A check of this table is still going.' })
   assert.equal(insertHiringCheck(uid, t.id, 'x', null, 1), null, 'the index holds too')
   assert.equal(runs(t.searchesSheetId), 1)

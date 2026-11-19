@@ -1,11 +1,13 @@
 // Keep-mode list runs (lib/enrich-list.ts `keep`, services/enrich-list-seen.ts,
-// migration 061) against a migrated throwaway DB: the request parse and the
-// duplicate key's other paths; a rerun adds only results the sheet never saw
-// and moves nothing to the trash; a result seen again only moves its last-seen
-// time; a row deleted since stays out; two source rows finding one result add
-// it once; the seen table is written in the add's own transaction (a sheet
-// with no room adds nothing and records nothing); an empty answer isn't
-// journaled; recall keeps both options; replace mode as before.
+// migration 061) against a migrated throwaway DB: the request parse (keep
+// needs a dedupe path) and the duplicate key's other paths; a rerun adds only
+// results the sheet never saw (a result is known by any of its keys: its id,
+// then its link) and moves nothing to the trash; a result seen again only
+// moves its last-seen time; a row deleted since stays out; two source rows
+// finding one result add it once; the seen table is written in the add's own
+// transaction (a sheet with no room adds nothing and records nothing); an
+// empty answer isn't journaled; recall keeps both options; fields picked
+// later for a keep column need a dedupe path; replace mode as before.
 import { v4 as uuid } from 'uuid'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
@@ -24,6 +26,7 @@ async function main() {
   const { parseListInput } = await import('../../server/src/lib/enrich-list-input')
   const { recallChoices } = await import('../../server/src/lib/enrich-run-recall')
   const { addListItems } = await import('../../server/src/services/enrich-list-add')
+  const { giveFields } = await import('../../server/src/services/enrich-list-held')
   const { writeEnrichmentResult } = await import('../../server/src/services/enrich-row-write')
   runMigrations()
 
@@ -37,6 +40,10 @@ async function main() {
   check('dedupeAlso needs a dedupePath, takes paths only; keep is true or false',
     bad({ dedupeAlso: ['$.id'] }) && bad({ dedupePath: '$.link', dedupeAlso: ['$..id'] })
     && bad({ dedupePath: '$.link', dedupeAlso: '$.id' }) && bad({ keep: 'yes' }))
+  check('keep needs a dedupePath: the field that tells results apart',
+    parseListInput({ dest: { newSheetName: 'R' }, fields: [{ path: '$.link', columnName: 'Link' }], keep: true })
+      === 'keep needs dedupePath: the field that tells results apart.'
+    && !bad({ keep: true, dedupePath: '$.link' }) && !bad({ keep: false }))
   check('left out, neither is set', (() => {
     const p = parseListInput({ dest: { newSheetName: 'R' } }) as Record<string, unknown>
     return !('keep' in p) && !('dedupeAlso' in p)
@@ -45,6 +52,10 @@ async function main() {
   check('the key: the link, else the id, both under the link\'s path',
     k({ link: 'u1', id: 'a' }) === L.dedupeKey({ link: 'u1' }, '$.link')
     && k({ id: 'a' }) !== null && k({ id: 'a' }) === k({ link: '', id: 'a' }) && k({}) === null)
+  const ks = (item: unknown) => L.dedupeKeys(item, '$.link', ['$.id'])
+  check('every key: one per path the result fills, the first the key above',
+    JSON.stringify(ks({ link: 'u1', id: 'a' })) === JSON.stringify([k({ link: 'u1' }), k({ id: 'a' })])
+    && JSON.stringify(ks({ id: 'a' })) === JSON.stringify([k({ id: 'a' })]) && ks({}).length === 0)
 
   // --- Fixtures ---------------------------------------------------------------------
   const uid = uuid(), tableId = uuid(), src = uuid(), dest = uuid()
@@ -110,6 +121,11 @@ async function main() {
   const r3 = run(true)
   const a3 = addListItems(journal(r3, rowIds[0], [job('SDR', 2)]))
   check('a row deleted since stays out', 'added' in a3 && a3.added === 0 && !links().includes('https://jobs.example/2'))
+  // The result first added by its id (x9) comes back with a link, then with the link alone.
+  const both = addListItems(journal(run(true), rowIds[0], [{ title: 'SDR', id: 'x9', link: 'https://jobs.example/9' }]))
+  const linkOnly = addListItems(journal(run(true), rowIds[0], [job('SDR', 9)]))
+  check('a result known by its id is known with its link too, then by the link alone', 'added' in both
+    && both.added === 0 && 'added' in linkOnly && linkOnly.added === 0 && !links().includes('https://jobs.example/9'))
   const r4 = run(true)
   addListItems(journal(r4, rowIds[0], [job('SDR', 5)]))
   const a4 = addListItems(journal(r4, rowIds[1], [job('BDR', 5), job('BDR', 6)]))
@@ -149,6 +165,17 @@ async function main() {
   const recalled = recallChoices(config as never, 'Roles found').list
   check('recall keeps keep and the duplicate check\'s other paths', recalled?.keep === true
     && JSON.stringify(recalled.dedupeAlso) === '["$.id"]' && recalled.dedupePath === '$.link')
+
+  // --- Fields picked later (a test run's results waiting for them) ------------------------
+  const held = run(true)
+  const heldRuns = () => db.prepare('SELECT * FROM http_runs WHERE id = ?').all(held) as never[]
+  const order = () => db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(dest)
+  const was = order()
+  const refused = giveFields(uid, heldRuns(), [{ path: '$.company', columnName: 'Company' }], null)
+  check('fields for a keep column with nothing to tell results apart are refused, nothing written',
+    'fail' in refused && /send dedupe_path/.test(refused.message) && order() === was)
+  check('with a field to tell them apart, they are taken',
+    'released' in giveFields(uid, heldRuns(), [{ path: '$.title', columnName: 'Title' }], '$.link'))
 
   // --- Replace mode, as before --------------------------------------------------------------
   const before2 = links().length

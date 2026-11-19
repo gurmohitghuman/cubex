@@ -25,3 +25,12 @@ export function companyKey(domain: string, name: string): CompanyKey | null {
   const n = plainCompanyName(name);
   return n ? { key: `name:${n}`, domain: '', byName: true } : null;
 }
+
+// Which of `of` batches a company is summed up in (services/hiring-summarize.ts):
+// a hash of its key (FNV-1a), so a key lands in the same batch on every read.
+export function keyBatch(key: string, of: number): number {
+  if (of <= 1) return 0;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193);
+  return (h >>> 0) % of;
+}

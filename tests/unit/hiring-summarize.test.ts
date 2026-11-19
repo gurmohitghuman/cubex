@@ -4,7 +4,7 @@
 // left out; the first check names nothing new, a later one names what its run added and clears the rest; a
 // company whose roles are gone shows 0; a row the person deleted is made again and one they edited is still
 // found; a second pass writes no cell; a deleted column is left out; a full sheet says so; new roles with no
-// link are said.
+// key to tell them apart are said.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 process.env.MAX_ROWS_PER_SHEET = '14'
@@ -22,9 +22,16 @@ const role = (company: string, domain: string, title: string, posted: string, ru
   db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)').run(id, roles, uid, index++,
     JSON.stringify({ [R.title]: title, [R.company]: company, [R.domain]: domain, [R.posted]: posted,
       [R.link]: link ? `https://jobs.example/${index}` : '' }))
+  // As a keep-mode add records it: the result's key, none when it had no link.
   db.prepare(`INSERT INTO enrichment_list_rows (dest_row_id,user_id,dest_sheet_id,source_sheet_id,source_row_id,
-    status_column,run_id) VALUES (?,?,?,?,?,?,?)`).run(id, uid, roles, null, 'src', 'Roles found', runId)
+    status_column,run_id,dedupe_key) VALUES (?,?,?,?,?,?,?,?)`)
+    .run(id, uid, roles, null, 'src', 'Roles found', runId, link ? `key-${index}` : null)
   return id
+}
+const sum = async (check: { label: string; sinceLabel: string | null; runId: string | null }) => {
+  const s = await summarizeHiring(uid, sheets, check)
+  assert.ok(!('gone' in s), 'both sheets are there')
+  return s
 }
 type Row = Record<string, string>
 const rows = (): Row[] => (db.prepare('SELECT data FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck()
@@ -43,7 +50,7 @@ role('', '', 'SDR', '2026-11-04', r1)
 const first = { label: '2026-11-11', sinceLabel: null, runId: r1 }
 
 await ok('the first check: one row per company, grouped by domain, else by name; what was left out said', async () => {
-  const s = await summarizeHiring(uid, sheets, first)
+  const s = await sum(first)
   assert.equal(s.roles, 6)
   assert.equal(s.newRoles, 6)
   assert.equal(s.companiesNew, 4)
@@ -63,7 +70,7 @@ await ok('the first check: one row per company, grouped by domain, else by name;
 
 await ok('a second pass writes no cell and adds no row', async () => {
   const before = rows().length
-  const s = await summarizeHiring(uid, sheets, first)
+  const s = await sum(first)
   assert.equal(s.cellsWritten, 0)
   assert.equal(s.companiesNew, 0)
   assert.equal(rows().length, before)
@@ -75,7 +82,7 @@ await ok('a later check: what its run added is named, a company with no roles le
   role('Solo Corp', '', 'BDR', '2026-11-17', r2)
   role('Copperleaf Systems', 'copperleaf.dev', 'SDR', '2026-11-16', r2)
   db.prepare('DELETE FROM rows WHERE id = ?').run(bluefin)
-  const s = await summarizeHiring(uid, sheets, second)
+  const s = await sum(second)
   assert.equal(s.newRoles, 3)
   assert.equal(s.companiesNew, 1)
   assert.equal(s.companiesHiringMore, 2)
@@ -95,7 +102,7 @@ await ok('a row the person deleted is made again; one they edited is still found
     .run(companies, `$."${C.domain}"`, 'copperleaf.dev')
   db.prepare('UPDATE rows SET data = json_set(data, ?, ?) WHERE sheet_id = ? AND json_extract(data, ?) = ?')
     .run(`$."${C.company}"`, 'ACME (our best lead)', companies, `$."${C.domain}"`, 'acme.com')
-  const s = await summarizeHiring(uid, sheets, second)
+  const s = await sum(second)
   assert.equal(s.companiesNew, 1)
   assert.equal(s.cellsWritten, 0)
   assert.equal(rows().filter(r => r[C.domain] === 'acme.com').length, 1)
@@ -103,7 +110,7 @@ await ok('a row the person deleted is made again; one they edited is still found
 })
 
 await ok('a check with nothing new clears the New cells, and writes only those', async () => {
-  const s = await summarizeHiring(uid, sheets, { label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
+  const s = await sum({ label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
   assert.equal(s.newRoles, 0)
   assert.equal(s.companiesHiringMore, 0)
   assert.ok(rows().every(r => !r[C.newRoles] && !r[C.newSince]))
@@ -114,7 +121,7 @@ await ok('a Companies column the person deleted is left out and said', async () 
   const order = Object.values(C).filter(c => c !== C.links)
   db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(JSON.stringify(order), companies)
   role('Acme', 'acme.com', 'CSM', '2026-11-19', r3)
-  const s = await summarizeHiring(uid, sheets, { label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
+  const s = await sum({ label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
   assert.ok(s.problems.includes(`Companies has no "${C.links}" column: left out.`), s.problems.join())
   assert.equal(s.cellsWritten, 5, 'Open roles, Role titles, Newest posted, New since and New roles of Acme')
   assert.ok(!byDomain('acme.com')![C.links].includes('jobs.example/12'))
@@ -126,18 +133,19 @@ await ok('a full Companies sheet adds what fits and says how many were not', asy
   for (let i = 0; i < room; i++) filler.run(uuid(), companies, uid, 100 + i, '{}')
   role('Harborview Health', 'harborview.org', 'SDR', '2026-11-19', r3)
   role('Northwind Labs', 'northwind.ai', 'SDR', '2026-11-19', r3)
-  const s = await summarizeHiring(uid, sheets, { label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
+  const s = await sum({ label: '2026-11-19', sinceLabel: '2026-11-18', runId: r3 })
   assert.equal(s.companiesNew, 1)
   assert.ok(s.problems.includes("Companies is full: 1 company wasn't added."), s.problems.join())
   assert.equal(rows().length, 14)
 })
 
-await ok('new roles with no link are said (a later check can add them again)', async () => {
+await ok('new roles with no key to tell them apart are said (a later check can add them again)', async () => {
   const r4 = uuid()
   role('Acme', 'acme.com', 'SE', '2026-11-20', r4, false)
   role('Acme', 'acme.com', 'SE II', '2026-11-20', r4, false)
-  const s = await summarizeHiring(uid, sheets, { label: '2026-11-20', sinceLabel: '2026-11-19', runId: r4 })
-  assert.ok(s.problems.includes('2 new roles had no link, so a later check can add them again.'), s.problems.join())
+  const s = await sum({ label: '2026-11-20', sinceLabel: '2026-11-19', runId: r4 })
+  const said = '2 new roles had no link or job id to tell them apart, so a later check can add them again.'
+  assert.ok(s.problems.includes(said), s.problems.join())
 })
 
 done()

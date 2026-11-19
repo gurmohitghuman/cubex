@@ -14,10 +14,8 @@ import { providerCanAnswer } from './readiness'
 import { providerRows, type ProviderRow } from './providers'
 import type { InputBinding } from './draft'
 
-export const LIST_DEFAULT_ITEMS = 10
-export const LIST_MAX_ITEMS = 100
-// Fields ticked at first: the ones the results fill, up to this many.
-const DEFAULT_ON = 20
+export const LIST_DEFAULT_ITEMS = 10, LIST_MAX_ITEMS = 100
+const DEFAULT_ON = 20   // fields ticked at first: the ones the results fill, up to this many
 
 export type ListDest = { kind: 'new'; name: string } | { kind: 'sheet'; sheetId: string }
 export interface ListFieldPick {
@@ -194,7 +192,8 @@ export function fieldsProblem(l: ListDraft, test = false): string | null {
   }
   const dup = names.find((n, i) => names.findIndex(m => nameClash(n, [m])) !== i)
   if (dup) return `Two columns of the new rows would be named ${dup}. Rename the field, or stop copying the column.`
-  // Skip ticked: its field must be one kept (a field unticked since leaves it unpicked).
-  return l.dedupePath !== null && on.length > 0 && !on.some(f => f.path === l.dedupePath)
-    ? 'Pick the field that tells results apart, or untick Skip results already added.' : null
+  // Skip ticked (always, in keep mode): its field must be one kept (a field unticked since leaves it unpicked).
+  if (on.length === 0 || on.some(f => f.path === l.dedupePath) || (l.dedupePath === null && !l.keep)) return null
+  return l.keep ? 'Pick the field that tells results apart: this column adds only results it never added.'
+    : 'Pick the field that tells results apart, or untick Skip results already added.'
 }

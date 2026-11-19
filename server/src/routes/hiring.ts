@@ -3,7 +3,7 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
 import { getSheetForClient, getTableForClient } from '../lib/sheet-crud-helpers';
-import { parseHiringInput } from '../lib/hiring/input';
+import { checkMostOf, parseHiringInput } from '../lib/hiring/input';
 import { timeZoneOf } from '../lib/ai-visibility/check';
 import { createHiringTable } from '../services/hiring-create';
 import { estimateHiringCheck, startHiringCheck } from '../services/hiring-check';
@@ -50,8 +50,9 @@ router.get('/:id', (req: AuthRequest, res) => {
   }
 });
 
-// POST /:id/check: {estimateOnly, timeZone}: the estimate answers {plan, estimate};
-// the check answers once its search has started.
+// POST /:id/check: {estimateOnly, timeZone, maxCostUsd}: the estimate answers {plan, estimate};
+// the check (maxCostUsd: the most the estimate showed) answers once its search has started, or
+// 409 {over_ceiling, estimate} when the most is now higher.
 router.post('/:id/check', async (req: AuthRequest, res) => {
   try {
     const rec = recordOf(req, res);
@@ -64,8 +65,13 @@ router.post('/:id/check', async (req: AuthRequest, res) => {
       if ('fail' in est) return res.status(runFailHttpStatus(est)).json({ error: est.message });
       return res.json(est);
     }
-    const out = await startHiringCheck(req.userId!, rec, opts);
-    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    const most = checkMostOf(b.maxCostUsd, 'maxCostUsd');
+    if ('error' in most) return res.status(400).json({ error: most.error });
+    const out = await startHiringCheck(req.userId!, rec, { ...opts, maxCostUsd: most.value });
+    if ('fail' in out) {
+      return res.status(runFailHttpStatus(out)).json({ error: out.message,
+        ...(out.estimate ? { over_ceiling: true, estimate: out.estimate } : {}) });
+    }
     res.json({ check: out.ok, hiring: hiringView(hiringFor(req.userId!, rec.id) ?? rec) });
   } catch (error) {
     console.error('Check hiring table error:', error);

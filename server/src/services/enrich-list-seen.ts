@@ -11,14 +11,10 @@ export function seenCheck(destSheetId: string, userId: string): (key: string) =>
   return key => !!q.get(destSheetId, key, userId);
 }
 
-// added: keys of the rows this add made; again: keys found again (their last-seen time moves).
-export function noteSeen(
-  destSheetId: string, userId: string, runId: string, added: readonly string[], again: readonly string[],
-): void {
-  const add = db.prepare(`INSERT INTO enrichment_list_seen (dest_sheet_id, dedupe_key, user_id, first_run_id)
+// The keys of the results this add saw: of the rows it made, and of the ones
+// it found again. A new key is noted; one seen before moves its last-seen time.
+export function noteSeen(destSheetId: string, userId: string, runId: string, keys: readonly string[]): void {
+  const note = db.prepare(`INSERT INTO enrichment_list_seen (dest_sheet_id, dedupe_key, user_id, first_run_id)
     VALUES (?, ?, ?, ?) ON CONFLICT(dest_sheet_id, dedupe_key) DO UPDATE SET last_seen_at = datetime('now')`);
-  for (const key of added) add.run(destSheetId, key, userId, runId);
-  const touch = db.prepare(`UPDATE enrichment_list_seen SET last_seen_at = datetime('now')
-    WHERE dest_sheet_id = ? AND dedupe_key = ? AND user_id = ?`);
-  for (const key of new Set(again)) touch.run(destSheetId, key, userId);
+  for (const key of new Set(keys)) note.run(destSheetId, key, userId, runId);
 }

@@ -17,6 +17,8 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
     const [shown, setShown] = useState<{ plan: HiringPlan; estimate: HiringEstimate } | null>(null)
     const [busy, setBusy] = useState(false)
 
+    // Asked again when a check is refused for costing more than the estimate shown.
+    const [asked, setAsked] = useState(0)
     useEffect(() => {
       let live = true
       hiringAPI.estimate(v.id).then(s => { if (live) setShown(s) }).catch((err: any) => {
@@ -24,17 +26,20 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
         if (live) onClose()
       })
       return () => { live = false }
-    }, [v.id, onClose])
+    }, [v.id, onClose, asked])
 
-    const check = async () => {
+    const check = async (most: number) => {
       setBusy(true)
       try {
-        const { check: c } = await hiringAPI.check(v.id)
+        const { check: c } = await hiringAPI.check(v.id, most)
         toast.success(`Searching ${plural(c.searches, 'role title')}. Companies fills in when it's done.`)
         onStarted()
         onClose()
       } catch (err: any) {
-        toast.error(err?.response?.data?.error || "Couldn't start the check.")
+        const data = err?.response?.data
+        toast.error(data?.error || "Couldn't start the check.")
+        // It could cost more now: show the new estimate to confirm.
+        if (data?.over_ceiling) { setShown(null); setAsked(n => n + 1) }
         setBusy(false)
       }
     }
@@ -84,7 +89,7 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-secondary disabled:opacity-50" disabled={busy}
               onClick={onClose}>Cancel</button>
-            <button type="button" className="btn-primary disabled:opacity-50" onClick={() => void check()}
+            <button type="button" className="btn-primary disabled:opacity-50" onClick={() => e && void check(e.highUsd)}
               disabled={busy || !e || !e.priceKnown || e.searches === 0} data-testid="hiring-check-go">
               {busy ? 'Starting…' : p?.since ? 'Check again' : 'Check now'}</button>
           </div>

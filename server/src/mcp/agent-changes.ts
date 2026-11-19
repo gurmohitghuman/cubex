@@ -44,8 +44,9 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         tools: ['hiring_signals'],
         summary: 'New tool hiring_signals: a table of the companies hiring for chosen roles, and what is new at each '
           + 'check. create is free; check is paid and estimates first.',
-        details: 'check with estimate_only:false starts one enrichment run (follow it with get_run_status) that '
-          + 'adds only roles never found before, then sums Companies up again: read_rows with New roles > 0.',
+        details: 'check with estimate_only:false and max_cost_usd (the estimate\'s high_usd) starts one enrichment '
+          + 'run (follow it with get_run_status) adding only roles never found before, then sums up Companies: '
+          + 'read_rows with New roles > 0.',
       },
     ],
   },

@@ -2,12 +2,14 @@ import { test, expect } from '@playwright/test'
 import { authedApi, makeAccessToken, BASE } from './helpers'
 import { freshTreg, rowsOf, waitRun } from './helpers-enrich'
 import { mockTreg } from './helpers-treg'
-import { call, mcpClient } from './helpers-mcp'
+import { call, callError, mcpClient } from './helpers-mcp'
 
 // A hiring table for agents and in the app (services/hiring-*.ts, mcp/tools-hiring.ts, routes/api-v1-hiring.ts):
-// the MCP tool asks for the estimate unless told otherwise, checks by the Companies sheet's id too, and read_rows
-// filters the companies with new roles; /api/v1 needs write to make one and run to check it. In the app, the
-// dashboard's dialog makes the table, which opens on its first check's estimate, and the banner follows the check.
+// the MCP tool asks for the estimate unless told otherwise, checks by the Companies sheet's id too, only with the
+// estimate's most (max_cost_usd; under the most now: refused with the estimate now, nothing searched), and
+// read_rows filters the companies with new roles; /api/v1 needs write to make one and run to check it, and refuses
+// a check the same way. In the app, the dashboard's dialog makes the table, which opens on its first check's
+// estimate, and the banner follows the check.
 
 const paidCalls = async () => (await mockTreg.requests()).map(r => r.path)
   .filter(p => p.startsWith('/call/') && !p.endsWith('.count'))
@@ -32,10 +34,20 @@ test('MCP and /api/v1: create free, the estimate by default, check, the companie
   const est = await call(client, 'hiring_signals', { action: 'check', id: made.companies_sheet_id })
   expect(est).toMatchObject({ estimate_only: true, searches: 1, roles_up_to: 25, new_since: null,
     matches: { about: 120, searches_counted: 1, at_least: false } })
+  expect(est.high_usd).toBeGreaterThan(0)
+  const refused = (args: Record<string, unknown>) =>
+    callError(client, 'hiring_signals', { action: 'check', id: made.id, estimate_only: false, ...args })
+  expect(await refused({})).toMatch(/^A check needs max_cost_usd/)
+  const low = await refused({ max_cost_usd: est.high_usd / 2 })
+  expect(low).toMatch(/more than the \$[\d.]+ it was sent/)
+  expect(JSON.parse(low.split(' Estimate: ')[1])).toMatchObject({ high_usd: est.high_usd })
   expect(await paidCalls()).toEqual([])
 
-  const checkOnce = async () => {
-    const c = await call(client, 'hiring_signals', { action: 'check', id: made.id, estimate_only: false })
+  // estimate_only as text too, as a client with an old tool list sends it.
+  const checkOnce = async (estimateOnly: boolean | string) => {
+    const { high_usd } = await call(client, 'hiring_signals', { action: 'check', id: made.id })
+    const c = await call(client, 'hiring_signals',
+      { action: 'check', id: made.id, estimate_only: estimateOnly, max_cost_usd: high_usd })
     expect(c.stage).toBe('searching')
     await waitRun(api, c.run_id, ['completed'])
     return until(() => call(client, 'hiring_signals', { action: 'get', id: made.id }),
@@ -43,10 +55,10 @@ test('MCP and /api/v1: create free, the estimate by default, check, the companie
   }
   const newOnes = async () => (await call(client, 'read_rows', { sheet_id: made.companies_sheet_id,
     where: [{ column: 'New roles', operator: 'gt', value: '0' }], columns: ['Domain', 'New roles'] })).rows
-  expect((await checkOnce()).checks[0]).toMatchObject({ roles_added: 10, companies_new: 5 })
+  expect((await checkOnce(false)).checks[0]).toMatchObject({ roles_added: 10, companies_new: 5 })
   expect(await newOnes()).toEqual([])
   await mockTreg.set({ jobsNew: { SDR: 1 } })
-  const again = await checkOnce()
+  const again = await checkOnce('false')
   expect(again.checks[0]).toMatchObject({ roles_added: 1, companies_hiring_more: 1, new_since: again.checks[1].day })
   const domains = (await newOnes()).map((r: { data: Record<string, string> }) => r.data.Domain)
   expect(domains).toEqual(['harborview-health.io'])
@@ -61,6 +73,14 @@ test('MCP and /api/v1: create free, the estimate by default, check, the companie
   const runner = { Authorization: `Bearer ${await makeAccessToken(api, ['run'], 'e2e hiring runner')}` }
   const restEst = await (await api.post(`/api/v1/hiring/${id}/check`, { headers: runner, data: {} })).json()
   expect(restEst).toMatchObject({ estimate_only: true, searches: 1 })
+  const restCheck = (data: Record<string, unknown>) =>
+    api.post(`/api/v1/hiring/${id}/check`, { headers: runner, data: { estimate_only: false, ...data } })
+  const none = await restCheck({})
+  expect(none.status()).toBe(400)
+  expect((await none.json()).error).toMatch(/^A check needs max_cost_usd/)
+  const over = await restCheck({ max_cost_usd: restEst.high_usd / 2 })
+  expect(over.status()).toBe(409)
+  expect(await over.json()).toMatchObject({ over_ceiling: true, estimate: { high_usd: restEst.high_usd } })
   const bad = await api.post('/api/v1/hiring', { headers: writer, data: { roles: [], country: 'USA' } })
   expect(bad.status()).toBe(400)
   await api.dispose()

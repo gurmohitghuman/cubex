@@ -18,7 +18,7 @@ import { nextRowIndex } from '../lib/sheet-busy';
 import { settleRows } from './auto-dedupe-settle';
 import { redactError } from '../lib/redact';
 import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
-import { dedupeKey, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
+import { dedupeKey, dedupeKeys, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { stopForRoom, writeSourceCell } from './enrich-list-source';
 import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-dest-run';
@@ -80,24 +80,25 @@ function addedCheck(j: Journal, replaced: Set<string>): (key: string) => boolean
 }
 
 // Cells of each row to add, skipping results already added (when asked).
-// again: keys of the results skipped because the destination had them.
+// again: keys of the results skipped because the destination had them. In
+// keep mode a result has a key per path it fills: seen when any one was, and
+// `keys` (each row's, and again's) notes them all.
 function rowsToAdd(list: EnrichListConfig, payload: Payload, there: (key: string) => boolean): {
-  rows: Array<{ cells: Record<string, string>; key: string | null }>; skipped: number; again: string[];
+  rows: Array<{ cells: Record<string, string>; key: string | null; keys: string[] }>; skipped: number; again: string[];
 } {
   const copied: Record<string, string> = {};
   for (const c of list.copy) copied[c.to] = payload.copy[c.id] ?? '';
   const seen = new Set<string>();
-  const rows: Array<{ cells: Record<string, string>; key: string | null }> = [];
+  const rows: Array<{ cells: Record<string, string>; key: string | null; keys: string[] }> = [];
   const again: string[] = [];
   let skipped = 0;
   for (const item of payload.items) {
-    const key = list.dedupe ? dedupeKey(item, list.dedupe.path, list.dedupe.also) : null;
-    if (key) {
-      if (seen.has(key)) { skipped++; continue; }
-      if (there(key)) { skipped++; again.push(key); continue; }
-      seen.add(key);
-    }
-    rows.push({ cells: { ...copied, ...itemCells(item, list.fields ?? []) }, key });
+    const keys = !list.dedupe ? [] : list.keep ? dedupeKeys(item, list.dedupe.path, list.dedupe.also)
+      : [dedupeKey(item, list.dedupe.path, list.dedupe.also)].filter((k): k is string => k !== null);
+    if (keys.some(k => seen.has(k))) { skipped++; continue; }
+    if (keys.some(there)) { skipped++; again.push(...keys); continue; }
+    for (const k of keys) seen.add(k);
+    rows.push({ cells: { ...copied, ...itemCells(item, list.fields ?? []) }, key: keys[0] ?? null, keys });
   }
   return { rows, skipped, again };
 }
@@ -200,7 +201,7 @@ export function addListItemsIn(journalId: string, count: DestCount): { out: AddO
       from.run(id, j.user_id, j.dest_sheet_id, j.source_sheet_id, j.source_row_id, column ?? '', j.run_id, r.key);
     }
     if (list.keep) {
-      noteSeen(j.dest_sheet_id, j.user_id, j.run_id, rows.flatMap(r => (r.key ? [r.key] : [])), again);
+      noteSeen(j.dest_sheet_id, j.user_id, j.run_id, [...rows.flatMap(r => r.keys), ...again]);
     }
     if (earlier.length) {
       const replaced = earlier.map(e => e.dest_row_id);

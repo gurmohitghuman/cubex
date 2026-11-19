@@ -36,6 +36,11 @@ export function fieldlessRuns(sheetId: string, userId: string, column: string): 
 export function giveFields(
   userId: string, runs: RunRow[], fields: ListField[], dedupePath: string | null,
 ): { released: number } | RunFail {
+  // A keep-mode column knows a result by its key: never left without one. Checked before anything is written.
+  if (!dedupePath && runs.some(run => listOf(JSON.parse(run.config))?.keep)) {
+    return { fail: 'bad_request', message: 'This column adds only results it never saw before, so it needs the '
+      + 'field that tells them apart: send dedupe_path.' };
+  }
   let released = 0;
   for (const run of runs) {
     const config = JSON.parse(run.config);

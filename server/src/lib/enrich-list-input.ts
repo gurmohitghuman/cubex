@@ -139,6 +139,8 @@ export function parseListInput(v: unknown): ListInput | null | string {
     return `dedupeAlso takes up to ${ENRICH_LIST_MAX_DEDUPE_ALSO} JSON paths, beside a dedupePath.`;
   }
   if (v.keep !== undefined && v.keep !== null && typeof v.keep !== 'boolean') return 'keep must be true or false.';
+  // Keep mode knows a result by its key: with none, every rerun would add every result again.
+  if (v.keep === true && !dedupePath) return 'keep needs dedupePath: the field that tells results apart.';
   const itemsPath = parseItemsPath(v.itemsPath);
   if (itemsPath === undefined) return 'itemsPath must be a JSON path to the results.';
   return {

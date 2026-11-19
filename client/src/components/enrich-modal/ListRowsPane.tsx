@@ -157,7 +157,7 @@ export const ListRowsPane: React.FC<Props> = (p) => {
         <h4 className="meta-label">Fields to keep</h4>
         {list.fields ? (
           <ListFieldsPicker fields={list.fields} onChange={fields => update({ fields })} results={fieldsFrom}
-            dedupePath={list.dedupePath} onDedupe={dedupePath => update({ dedupePath })} />
+            dedupePath={list.dedupePath} onDedupe={dedupePath => update({ dedupePath })} keep={!!list.keep} />
         ) : (
           <p className="text-xs text-gray-600" data-testid="enrich-list-fields-later">
             treg returns each provider&apos;s own fields, and its catalog doesn&apos;t list them. Run on a few rows

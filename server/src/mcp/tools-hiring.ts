@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { ENRICH_LIST_MAX_ITEMS, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES } from '../lib/constants';
+import {
+  ENRICH_LIST_MAX_ITEMS, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES,
+} from '../lib/constants';
+import { perSearchRefusal, postedDaysRefusal } from '../lib/hiring/input';
 import { agentCheckHiring, agentCreateHiring, agentGetHiring } from '../services/hiring-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
@@ -10,27 +13,29 @@ import { changedOf, madeSheet } from './changed';
 export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'hiring_signals', {
     description:
-      'Companies hiring for chosen roles. create (free): a table "Hiring: <roles>" with Companies (a row per '
-      + 'company, with New roles since the last check), Roles and Searches (a row per role title). check (run '
-      + 'scope, PAID): one enrichment run adding only roles never found before, then Companies is summed up. '
-      + 'estimate_only defaults to true: the most it can cost and a free count of roles; a check never spends '
-      + 'more. get (free): the table and its checks.',
+      'Companies hiring for chosen roles. create (free): a table of Companies (New roles since the last check), '
+      + 'Roles and Searches. check (run scope, PAID): adds only new roles, sums up Companies. estimate_only '
+      + '(default true): high_usd, its most, and a free count; then estimate_only false with max_cost_usd = '
+      + 'high_usd. get: the checks.',
     inputSchema: z.object({
-      action: z.enum(['create', 'check', 'get']).describe('create (free), check (paid) or get'),
+      action: z.enum(['create', 'check', 'get']).describe('check is paid'),
       id: z.string().optional()
-        .describe('check, get: the id from create'),
-      roles: z.array(z.string()).optional()
-        .describe(`create: role titles, one search each (at most ${HIRING_MAX_ROLES})`),
-      country: z.string().optional().describe('create: country code (US); none: any'),
-      place: z.string().optional().describe('create: city or region'),
-      posted_within_days: lenientInt(1, HIRING_MAX_POSTED_DAYS, `posted_within_days: 1 to ${HIRING_MAX_POSTED_DAYS}`)
+        .describe('check, get: from create'),
+      roles: z.union([z.array(z.string()), z.string()]).optional()
+        .describe(`create: role titles (a list or lines; at most ${HIRING_MAX_ROLES})`),
+      country: z.string().nullable().optional().describe('create: country code (US)'),
+      place: z.string().nullable().optional().describe('create: city or region'),
+      posted_within_days: lenientInt(1, HIRING_MAX_POSTED_DAYS, postedDaysRefusal('posted_within_days'))
         .nullable().optional()
-        .describe('create: posted in the last N days (default 30; null: any)'),
-      per_search: lenientInt(1, ENRICH_LIST_MAX_ITEMS, `per_search: 1 to ${ENRICH_LIST_MAX_ITEMS}`).optional()
-        .describe('create: most roles per search (default 25)'),
+        .describe('create: posted within N days (default 30; null: any)'),
+      per_search: lenientInt(1, ENRICH_LIST_MAX_ITEMS, perSearchRefusal('per_search')).optional()
+        .describe('create: roles per search (default 25)'),
       estimate_only: lenientBoolean().optional().describe('check: default true'),
+      // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
+      max_cost_usd: z.number().optional()
+        .describe('check: the estimate\'s high_usd'),
       time_zone: z.string().optional()
-        .describe('check: IANA time zone (default UTC)'),
+        .describe('check: IANA zone (default UTC)'),
     }).strict(),
   }, async (a) => {
     if (a.action === 'create') {
@@ -51,8 +56,10 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
     const out = await agentCheckHiring(ctx.userId, ctx.tokenId, a.id,
-      { estimateOnly: a.estimate_only !== false, timeZone: a.time_zone });
-    if (!('ok' in out)) return err(out.message);
+      { estimateOnly: a.estimate_only, timeZone: a.time_zone, maxCostUsd: a.max_cost_usd });
+    if (!('ok' in out)) {
+      return err(out.estimate ? `${out.message} Estimate: ${JSON.stringify(out.estimate)}` : out.message);
+    }
     const sheetId = 'sheetId' in out ? out.sheetId : null;
     // The search fills Searches' status column and adds rows to Roles; Companies follows when it's done.
     return ok({ ...out.ok, changed: sheetId ? changedOf(ctx.userId, [{ sheetId, moreComing: true }]) : [] });

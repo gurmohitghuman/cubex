@@ -1,108 +1,42 @@
-// A check's summary (services/hiring-check.ts): Companies brought up to
-// Roles. Roles is read into one total per company (services/hiring-roles-read.ts);
-// then each Companies row, a slice at a time in a bulk writer, gets the cells
-// its company's roles give it, written only where they differ (a company with
-// nothing new this time has its "New" cells cleared, one with no roles left
-// shows 0); then a company with no row gets one, First seen this check's day.
-// Rows are matched by the company key (lib/hiring/company-key.ts) of their
-// Domain and Company cells, so a row the person edited or sorted is still found.
-import { db } from '../lib/db';
-import { countRows, getSheetColumns, jsonPath } from '../lib/sql-helpers';
+// A check's summary (services/hiring-check-watch.ts): Companies brought up to
+// Roles. Both sheets are held for reading meanwhile (lib/sheet-busy.ts), so no
+// sort or import moves their rows under the walks; cell edits go on. Roles is
+// read into one total per company (services/hiring-roles-read.ts), then
+// Companies is written from them (services/hiring-summarize-write.ts). Past
+// HIRING_SUMMARY_MAX_COMPANIES companies, the companies go in batches by a
+// hash of their key: Roles read once per batch, each read keeping only its
+// batch's totals (a batch that still grows too big splits in two), so memory
+// stays bounded. A sheet put in the trash meanwhile stops it ({ gone }).
+import { getSheetColumns } from '../lib/sql-helpers';
 import { asBulkWriter } from '../lib/bulk-slices';
-import { sheetBusyWith, nextRowIndex } from '../lib/sheet-busy';
-import { markAutorunEdits } from '../lib/autorun-mark';
-import { HIRING_SUMMARY_WRITE_ROWS, MAX_ROWS_PER_SHEET, SAMPLE_STEP_POLL_MS } from '../lib/constants';
-import { companyKey } from '../lib/hiring/company-key';
+import { withSheetRead } from '../lib/sheet-busy';
+import { HIRING_SUMMARY_BATCH_SLACK, HIRING_SUMMARY_MAX_COMPANIES, SAMPLE_STEP_POLL_MS } from '../lib/constants';
 import { COMPANY_COLUMNS } from '../lib/hiring/names';
-import { companyCells, newCompanyRow, type CompanyAcc } from '../lib/hiring/summary';
-import { orderedUuid } from '../lib/ordered-id';
-import { bumpDataVersion } from './data-plane-shared';
-import { settleEdits, settleRows } from './auto-dedupe-settle';
-import { readRoles } from './hiring-roles-read';
+import { nameRemap, readRoles, type RolesRead } from './hiring-roles-read';
+import { writeCompanies, type CompaniesTarget, type SummaryCheck, type Written } from './hiring-summarize-write';
 
-export interface SummaryCheck { label: string; sinceLabel: string | null; runId: string | null }
+export type { SummaryCheck } from './hiring-summarize-write';
 export interface SummaryDone {
   roles: number; newRoles: number; companiesNew: number; companiesHiringMore: number;
   cellsWritten: number; problems: string[];
 }
+export interface SummaryOpts { maxCompanies?: number }   // tests: a smaller most, to see the batches
 
 const SUMMARY = ['openRoles', 'titles', 'newest', 'links', 'newSince', 'newRoles'] as const;
+const HOLD = 'summing up the roles per company';
+const GONE = { gone: true } as const;
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 
-async function whenFree(sheetId: string): Promise<void> {
-  while (sheetBusyWith(sheetId)) await new Promise(resolve => setTimeout(resolve, SAMPLE_STEP_POLL_MS));
-}
-
-// json_set with n path/value pairs, prepared once per n.
-const setters = new Map<number, ReturnType<typeof db.prepare<unknown[]>>>();
-function setter(n: number) {
-  let s = setters.get(n);
-  if (!s) {
-    s = db.prepare<unknown[]>(`UPDATE rows SET data = json_set(data${', ?, ?'.repeat(n)}), updated_at = datetime('now')
-      WHERE rowid = ?`);
-    setters.set(n, s);
+// Holds Roles and Companies for reading while `work` runs, once neither is busy.
+async function holdingBoth<T extends object>(roles: string, companies: string, work: () => Promise<T>): Promise<T> {
+  for (;;) {
+    const out = await withSheetRead(roles, () => withSheetRead(companies, work, HOLD), HOLD);
+    if (!('busy' in out)) return out as T;
+    await new Promise(resolve => setTimeout(resolve, SAMPLE_STEP_POLL_MS));
   }
-  return s;
 }
 
-// One slice: Companies rows after `after`, each brought up to its company. Answers where it got to.
-function updateSlice(
-  sheetId: string, userId: string, after: number, companies: Map<string, CompanyAcc>, matched: Set<string>,
-  check: SummaryCheck, columns: string[], tally: { cells: number },
-): { last: number; done: boolean } | 'busy' {
-  if (sheetBusyWith(sheetId)) return 'busy';
-  const read = db.prepare(`SELECT rowid, id, row_index, json_extract(data, ?), json_extract(data, ?)
-      ${columns.map(() => ', json_extract(data, ?)').join('')}
-    FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?`).raw();
-  const page = read.all(jsonPath(COMPANY_COLUMNS.domain), jsonPath(COMPANY_COLUMNS.company),
-    ...columns.map(jsonPath), sheetId, userId, after, HIRING_SUMMARY_WRITE_ROWS) as unknown[][];
-  const edits: Array<{ column: string; rowId: string }> = [];
-  const settles: Array<{ rid: number; columns: string[] }> = [];
-  const text = (v: unknown) => (v === null || v === undefined ? '' : String(v));
-  for (const row of page) {
-    const key = companyKey(text(row[3]).trim(), text(row[4]).trim());
-    if (!key) continue;   // a row the person added without a company: left alone
-    const acc = companies.get(key.key) ?? null;
-    if (acc) matched.add(key.key);
-    const want = companyCells(acc, check);
-    const pairs: unknown[] = [];
-    const changed: string[] = [];
-    columns.forEach((c, i) => {
-      if (text(row[5 + i]) === want[c]) return;
-      pairs.push(jsonPath(c), want[c]);
-      changed.push(c);
-    });
-    if (changed.length === 0) continue;
-    setter(changed.length).run(...pairs, row[0]);
-    tally.cells += changed.length;
-    for (const column of changed) edits.push({ column, rowId: row[1] as string });
-    settles.push({ rid: row[0] as number, columns: changed });
-  }
-  if (edits.length) {
-    markAutorunEdits(sheetId, userId, edits);
-    settleEdits(sheetId, userId, settles);
-    bumpDataVersion(sheetId, userId);
-  }
-  const done = page.length < HIRING_SUMMARY_WRITE_ROWS;
-  return { last: done ? after : page[page.length - 1][2] as number, done };
-}
-
-// One slice of new company rows (the listed columns only). false: the sheet was busy.
-function appendSlice(sheetId: string, userId: string, rows: Array<Record<string, string>>): boolean {
-  if (sheetBusyWith(sheetId)) return false;
-  let next = nextRowIndex(sheetId, userId);
-  const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
-  const rids = rows.map(cells => Number(insert.run(orderedUuid(), sheetId, userId, next++, JSON.stringify(cells))
-    .lastInsertRowid));
-  settleRows(sheetId, userId, rids, 'arrived');
-  bumpDataVersion(sheetId, userId);
-  return true;
-}
-
-export async function summarizeHiring(
-  userId: string, sheets: { roles: string; companies: string }, check: SummaryCheck,
-): Promise<SummaryDone> {
-  const read = await readRoles(userId, sheets.roles, check.runId);
+function problemsOf(read: RolesRead, gone: string[], notAdded: number): string[] {
   const problems: string[] = [];
   if (read.missing.length) problems.push(`Roles has no ${read.missing.map(c => `"${c}"`).join(', ')} column: `
     + 'the summary left it out.');
@@ -111,53 +45,73 @@ export async function summarizeHiring(
       + 'summed up by company name.');
   }
   if (read.noCompany) problems.push(`${plural(read.noCompany, 'role')} had no company name or domain: left out.`);
-  if (read.newNoLink) {
-    problems.push(`${plural(read.newNoLink, 'new role')} had no link, so a later check can add `
-      + `${read.newNoLink === 1 ? 'it' : 'them'} again.`);
+  if (read.newNoKey) {
+    const them = read.newNoKey === 1 ? 'it' : 'them';
+    problems.push(`${plural(read.newNoKey, 'new role')} had no link or job id to tell ${them} apart, so a later `
+      + `check can add ${them} again.`);
   }
-  const listed = new Set(getSheetColumns(sheets.companies, userId, false));
-  const columns = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => listed.has(c));
-  const gone = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => !listed.has(c));
   if (gone.length) problems.push(`Companies has no ${gone.map(c => `"${c}"`).join(', ')} column: left out.`);
-  const matched = new Set<string>();
-  const tally = { cells: 0 };
-  let added = 0;
-  await asBulkWriter(async w => {
-    for (let after = -1; ;) {
-      await whenFree(sheets.companies);
-      const r = await w.slice(() => updateSlice(sheets.companies, userId, after, read.companies, matched, check,
-        columns, tally));
-      if (r === 'busy') continue;
-      if (r.done) break;
-      after = r.last;
-    }
-    // Companies with no row yet, a batch at a time, in the order Roles first had them.
-    const unmatched = read.companies.size - matched.size;
-    const room = Math.max(0, Math.min(unmatched, MAX_ROWS_PER_SHEET - countRows(sheets.companies, userId)));
-    const left = unmatched - room;
-    if (left > 0) {
-      problems.push(`Companies is full: ${plural(left, 'company', 'companies')} `
-        + `${left === 1 ? "wasn't" : "weren't"} added.`);
-    }
-    const rest = read.companies.entries();
-    while (added < room) {
-      const batch: Array<Record<string, string>> = [];
-      while (batch.length < Math.min(HIRING_SUMMARY_WRITE_ROWS, room - added)) {
-        const [key, acc] = rest.next().value as [string, CompanyAcc];
-        if (matched.has(key)) continue;
-        batch.push(Object.fromEntries(Object.entries(newCompanyRow(acc, check)).filter(([c]) => listed.has(c))));
-      }
-      for (;;) {
-        await whenFree(sheets.companies);
-        if (await w.slice(() => appendSlice(sheets.companies, userId, batch))) break;
-      }
-      added += batch.length;
-    }
+  if (notAdded > 0) {
+    problems.push(`Companies is full: ${plural(notAdded, 'company', 'companies')} `
+      + `${notAdded === 1 ? "wasn't" : "weren't"} added.`);
+  }
+  return problems;
+}
+
+export async function summarizeHiring(
+  userId: string, sheets: { roles: string; companies: string }, check: SummaryCheck, opts: SummaryOpts = {},
+): Promise<SummaryDone | typeof GONE> {
+  return holdingBoth(sheets.roles, sheets.companies, () => summarize(userId, sheets, check, opts));
+}
+
+async function summarize(
+  userId: string, sheets: { roles: string; companies: string }, check: SummaryCheck, opts: SummaryOpts,
+): Promise<SummaryDone | typeof GONE> {
+  const cap = opts.maxCompanies ?? HIRING_SUMMARY_MAX_COMPANIES;
+  const listed = new Set(getSheetColumns(sheets.companies, userId, false));
+  const target = (batch: CompaniesTarget['batch']): CompaniesTarget => ({
+    sheetId: sheets.companies, userId, check, listed, batch,
+    columns: SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => listed.has(c)),
   });
-  const more = check.sinceLabel === null ? 0
-    : [...matched].filter(k => (read.companies.get(k)?.newCount ?? 0) > 0).length;
+  const total: Written = { cells: 0, added: 0, more: 0, notAdded: 0 };
+  const sum = (w: Written) => { for (const k of Object.keys(total) as Array<keyof Written>) total[k] += w[k]; };
+  const first = await readRoles(userId, sheets.roles, check.runId, { batch: null, cap });
+  if ('gone' in first) return GONE;
+  // The read whose counts the problems use (every whole read counts every role), or null: a sheet went.
+  const read = await asBulkWriter(async (w): Promise<RolesRead | null> => {
+    if (!('overflow' in first)) {
+      const out = await writeCompanies(w, target(null), first.companies);
+      if (out === 'gone') return null;
+      sum(out);
+      return first;
+    }
+    const remap = await nameRemap(userId, sheets.roles);
+    if (remap === 'gone') return null;
+    let stats: RolesRead | null = null;
+    // As many batches as keep about `cap` companies each, from the count the first read made.
+    const of = Math.max(2, Math.ceil(first.overflow / cap));
+    const queue = Array.from({ length: of }, (_, index) => ({ index, of }));
+    for (let b = queue.shift(); b; b = queue.shift()) {
+      const part = await readRoles(userId, sheets.roles, check.runId,
+        { batch: { ...b, remap }, cap: cap * HIRING_SUMMARY_BATCH_SLACK });
+      if ('gone' in part) return null;
+      // Still too big (the hash put more in it): its keys split between two batches of twice as many.
+      if ('overflow' in part) {
+        queue.push({ index: b.index, of: b.of * 2 }, { index: b.index + b.of, of: b.of * 2 });
+        continue;
+      }
+      const out = await writeCompanies(w, target(b), part.companies);
+      if (out === 'gone') return null;
+      sum(out);
+      // Its counts only: the next batch's read never holds this one's companies too.
+      stats = { ...part, companies: new Map() };
+    }
+    return stats;
+  });
+  if (!read) return GONE;
+  const gone = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => !listed.has(c));
   return {
-    roles: read.roles, newRoles: read.newRoles, companiesNew: added, companiesHiringMore: more,
-    cellsWritten: tally.cells, problems,
+    roles: read.roles, newRoles: read.newRoles, companiesNew: total.added, companiesHiringMore: total.more,
+    cellsWritten: total.cells, problems: problemsOf(read, gone, total.notAdded),
   };
 }

@@ -1,7 +1,8 @@
 // The hiring table's pure parts (lib/hiring/): which company a role belongs to
-// (its domain, else its name made plain), a company's roles folded into what
-// Companies shows (titles, the newest day, links, what's new since the check
-// before), the request parse, the provider's fields, and the table's name.
+// (its domain, else its name made plain) and its batch, a company's roles
+// folded into what Companies shows (titles, the newest day, links, what's new
+// since the check before), the request parse, the provider's fields, and the
+// table's name.
 import assert from 'node:assert/strict'
 
 let failures = 0
@@ -9,7 +10,7 @@ function ok(label: string, fn: () => void) {
   try { fn(); console.log('ok  ', label) } catch (e) { failures++; console.log('FAIL', label, (e as Error).message) }
 }
 
-const { companyKey, plainCompanyName } = await import('../../server/src/lib/hiring/company-key')
+const { companyKey, keyBatch, plainCompanyName } = await import('../../server/src/lib/hiring/company-key')
 const S = await import('../../server/src/lib/hiring/summary')
 const { parseHiringInput } = await import('../../server/src/lib/hiring/input')
 const { jobFields } = await import('../../server/src/lib/hiring/job-fields')
@@ -35,6 +36,16 @@ ok('the key: the domain made plain first, else the name', () => {
 
 const role = (title: string, posted: string, link: string, isNew = false) =>
   ({ title, company: 'Acme', posted, link, isNew })
+
+ok('a company\'s batch: the same on every read, spread out, and a batch split in two keeps each key in one half',
+  () => {
+    const keys = Array.from({ length: 4_000 }, (_, i) => `c${i}.com`)
+    assert.equal(keyBatch('acme.com', 1), 0)
+    assert.deepEqual(keys.map(k => keyBatch(k, 3)), keys.map(k => keyBatch(k, 3)))
+    const sizes = [0, 1, 2].map(b => keys.filter(k => keyBatch(k, 3) === b).length)
+    assert.ok(sizes.every(n => n > 1_200 && n < 1_470), sizes.join())
+    for (const k of keys) assert.ok([keyBatch(k, 3), keyBatch(k, 3) + 3].includes(keyBatch(k, 6)), k)
+  })
 
 ok('a company folded: count, titles once each (", …" past 5), the newest day, the newest 3 links', () => {
   const a = S.newAcc('acme.com')
@@ -136,6 +147,12 @@ ok('the request: refused plainly when wrong', () => {
   bad({ roles: 'SDR', perSearch: '1.5' })
   bad({ roles: 'SDR', postedWithinDays: '-3' })
   bad({ roles: 'SDR', perSearch: '' })
+  // Each refusal names the option as its asker sends it: the app camelCase, /api/v1 and MCP snake_case.
+  assert.equal(parseHiringInput({ roles: 'SDR', perSearch: 0 }), `perSearch must be 1 to ${K.ENRICH_LIST_MAX_ITEMS}.`)
+  assert.equal(parseHiringInput({ roles: 'SDR', postedWithinDays: 0 }, 'snake'),
+    `posted_within_days must be 1 to ${K.HIRING_MAX_POSTED_DAYS} (or null for any time).`)
+  assert.equal(parseHiringInput({ roles: 'SDR', perSearch: '1.5' }, 'snake'),
+    `per_search must be 1 to ${K.ENRICH_LIST_MAX_ITEMS}.`)
   bad({ roles: ['x'.repeat(K.HIRING_MAX_ROLE_CHARS + 1)] })
   bad({ roles: Array.from({ length: K.HIRING_MAX_ROLES + 1 }, (_, i) => `Role ${i}`) })
   bad({ roles: 'SDR', place: 'p'.repeat(K.HIRING_MAX_PLACE_CHARS + 1) })

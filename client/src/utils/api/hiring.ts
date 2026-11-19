@@ -42,6 +42,7 @@ export const hiringAPI = {
   estimate: (id: string): Promise<{ plan: HiringPlan; estimate: HiringEstimate }> =>
     api.post(`/hiring/${id}/check`, { estimateOnly: true, timeZone: timeZone() }, noServerToast)
       .then(res => res.data),
-  check: (id: string): Promise<{ check: HiringCheck; hiring: HiringView }> =>
-    api.post(`/hiring/${id}/check`, { timeZone: timeZone() }, noServerToast).then(res => res.data),
+  // maxCostUsd: the most the estimate showed. Over it now (searches or prices changed): 409 with over_ceiling.
+  check: (id: string, maxCostUsd: number): Promise<{ check: HiringCheck; hiring: HiringView }> =>
+    api.post(`/hiring/${id}/check`, { timeZone: timeZone(), maxCostUsd }, noServerToast).then(res => res.data),
 }

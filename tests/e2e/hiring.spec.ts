@@ -8,7 +8,9 @@ import { mockTreg } from './helpers-treg'
 // paid call, estimated with no paid call (only the free counts), checked: the roles into Roles, a row per company
 // in Companies (Quillmark's role with no domain joins it by name); checked again: only the two new roles added,
 // a role deleted since stays out, the roles from before untouched, the two companies with new roles say so. A
-// provider answering more roles than asked never makes a check spend more than its estimate.
+// check carries the most its estimate showed: one sent none, or less than the most now, searches nothing (409
+// with the estimate now). A provider answering more roles than asked never makes a check spend more than its
+// estimate.
 
 const DOMAINS = ['bluefin-data.io', 'copperleaf-systems.io', 'harborview-health.io', 'northwind-labs.io',
   'quillmark.io']
@@ -32,9 +34,13 @@ export async function makeHiring(api: APIRequestContext, input: Record<string, u
 }
 const hiring = async (api: APIRequestContext, id: string) => (await (await api.get(`/api/hiring/${id}`)).json()).hiring
 
-// A check started and followed to its end: its run, its roles added, its summary.
+const estimate = async (api: APIRequestContext, id: string) =>
+  (await (await api.post(`/api/hiring/${id}/check`, { data: { estimateOnly: true } })).json()).estimate
+
+// A check started with the most its estimate shows, and followed to its end: its run, its roles, its summary.
 async function check(api: APIRequestContext, h: { id: string; searchesSheetId: string }) {
-  const res = await api.post(`/api/hiring/${h.id}/check`, { data: { timeZone: 'UTC' } })
+  const maxCostUsd = (await estimate(api, h.id)).highUsd
+  const res = await api.post(`/api/hiring/${h.id}/check`, { data: { timeZone: 'UTC', maxCostUsd } })
   const started = await res.json()
   expect(res.ok(), JSON.stringify(started)).toBeTruthy()
   expect(started.check.stage).toBe('searching')
@@ -59,6 +65,13 @@ test('make, estimate, check, check again: only the new roles, what is new per co
   expect(est.estimate).toMatchObject({ searches: 2, rolesUpTo: 50, priceKnown: true,
     matches: { about: 240, counted: 2, capped: false } })
   expect(est.plan.since).toBeNull()
+  // Started with no most, or under the most now: nothing searched, the estimate now to confirm.
+  const none = await api.post(`/api/hiring/${h.id}/check`, { data: {} })
+  expect(none.status()).toBe(400)
+  expect((await none.json()).error).toMatch(/^A check needs maxCostUsd/)
+  const low = await api.post(`/api/hiring/${h.id}/check`, { data: { maxCostUsd: est.estimate.highUsd / 2 } })
+  expect(low.status()).toBe(409)
+  expect(await low.json()).toMatchObject({ over_ceiling: true, estimate: { highUsd: est.estimate.highUsd } })
   expect(await paidCalls()).toEqual([])
   expect((await hiring(api, h.id)).checks).toEqual([])
 
@@ -108,7 +121,7 @@ test('a provider answering more roles than asked: the check never spends more th
   const api = await authedApi()
   await freshTreg(api, { jobsOverfill: 5 })
   const h = (await makeHiring(api, { roles: ['Account Executive', 'RevOps Manager'], perSearch: 3 })).hiring
-  const est = (await (await api.post(`/api/hiring/${h.id}/check`, { data: { estimateOnly: true } })).json()).estimate
+  const est = await estimate(api, h.id)
   expect(est.highUsd).toBeGreaterThan(0)
   const done = await check(api, h)
   expect(done.stage).toBe('done')

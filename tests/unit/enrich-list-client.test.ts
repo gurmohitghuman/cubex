@@ -101,6 +101,9 @@ check('"skip" ticked with no field (or an unticked one) waits for the field',
   /tells results apart/.test(fieldsProblem({ ...withFields, dedupePath: '' }) ?? '')
   && /tells results apart/.test(fieldsProblem({ ...withFields, dedupePath: '$.home_page_email' }) ?? '')
   && fieldsProblem(withFields) === null)
+check('a column that adds only new results (a hiring search) has no untick to fall back on: it needs the field',
+  /adds only results it never added/.test(fieldsProblem({ ...withFields, dedupePath: null, keep: true }) ?? '')
+  && fieldsProblem({ ...withFields, dedupePath: null }) === null)
 check('results per row cleared (NaN) is caught',
   /1 to 100/.test(listProblem({ ...list, maxItems: NaN }, tool, given, sheets, true) ?? ''))
 check('buildListDraft without inputs picks no provider that cannot search',
