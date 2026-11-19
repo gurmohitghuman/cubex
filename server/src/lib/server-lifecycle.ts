@@ -20,6 +20,7 @@ import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
+import { resumeHiringChecks } from '../services/hiring-check';
 import { closeWalCheckpointer } from './wal-checkpointer';
 import { closeWalTurnReader } from './wal-turn';
 
@@ -72,6 +73,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       startDerivedFollow();
       // An AI visibility check a restart cut short finishes its free part (services/ai-visibility-check.ts).
       resumeAiVisibilityChecks();
+      // A hiring check a restart cut short waits for its search again, then sums up (services/hiring-check.ts).
+      resumeHiringChecks();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:
       // a failure rolls the individual run to 'failed' inside resumeRecoveredRuns.

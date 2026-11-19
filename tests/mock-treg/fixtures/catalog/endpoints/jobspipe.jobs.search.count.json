@@ -1,0 +1,33 @@
+{
+ "endpoint": {
+  "id": "jobspipe.jobs.search.count",
+  "name": "Count matching job postings",
+  "summary": "Count the job postings a search matches, and the most credits pulling them would cost, before paying for rows.",
+  "provider": "jobspipe",
+  "provider_display": "JobsPipe",
+  "kind": "data",
+  "method": "POST",
+  "platform_eligible": true,
+  "status": null,
+  "superseded_by": null,
+  "cost": {
+   "type": "free",
+   "unit": "call",
+   "usd": 0.0,
+   "note": "Free."
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {}
+  }
+ },
+ "example_response": {
+  "rows": 1616,
+  "rows_approximate": true,
+  "new_jobs_credits": 571,
+  "new_jobs_credits_exact": false,
+  "stops_at_balance": true,
+  "balance": 25000,
+  "max_rows": 10000
+ }
+}

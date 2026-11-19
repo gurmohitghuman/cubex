@@ -171,7 +171,10 @@ export async function buildEnrichmentConfig(
         destSheetId: '', itemsPath: list.itemsPath, ...(list.itemsPath !== tool.list?.path ? { itemsNamed: true } : {}),
         provider: list.provider, maxItems: input.list.maxItems,
         fields: input.list.fields, copy: [],
-        dedupe: input.list.dedupePath ? { path: input.list.dedupePath } : null,
+        dedupe: input.list.dedupePath ? {
+          path: input.list.dedupePath, ...(input.list.dedupeAlso?.length ? { also: input.list.dedupeAlso } : {}),
+        } : null,
+        ...(input.list.keep ? { keep: true as const } : {}),
       },
     } : {}),
     cleanDomains: input.cleanDomains, fresh: input.fresh, ...(input.noReuse ? { noReuse: true } : {}),

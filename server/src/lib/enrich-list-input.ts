@@ -3,7 +3,7 @@
 // against the sheets at start (services/enrich-list-build.ts).
 import {
   UUID_PATTERN, ENRICH_LIST_DEFAULT_ITEMS, ENRICH_LIST_MAX_COPY, ENRICH_LIST_MAX_COPY_VALUE, ENRICH_LIST_MAX_FIELDS,
-  ENRICH_LIST_MAX_ITEMS,
+  ENRICH_LIST_MAX_ITEMS, ENRICH_LIST_MAX_DEDUPE_ALSO,
 } from './constants';
 import { validateMappingPath } from './jsonpath-extract';
 import { stripControlChars } from './csv-safety';
@@ -19,6 +19,11 @@ export interface ListInput {
   // A column of the asking row ({from, to}), or the same text in every added row ({from: '', to, value}).
   copy: ListCopyInput[];
   dedupePath: string | null;
+  // Paths read in turn when a result has no value at dedupePath (set by a
+  // template or an agent, kept on Edit).
+  dedupeAlso?: string[];
+  // Keep the rows added before: a rerun adds only results the sheet never saw (lib/enrich-list.ts).
+  keep?: boolean;
   // Where a single tool's results are, when its example shows that list empty
   // (null: where the catalog says).
   itemsPath?: string | null;
@@ -95,6 +100,14 @@ export function parseDedupe(v: unknown, fields: ListField[] | null): string | nu
   return v;
 }
 
+// More paths for the duplicate check: only beside its own path.
+function parseDedupeAlso(v: unknown, dedupePath: string | null): string[] | null | undefined {
+  if (v === undefined || v === null) return null;
+  if (!dedupePath || !Array.isArray(v) || v.length > ENRICH_LIST_MAX_DEDUPE_ALSO) return undefined;
+  const ok = v.every(p => typeof p === 'string' && p.length <= 500 && validateMappingPath(p).ok);
+  return ok && v.length > 0 ? [...new Set(v as string[])] : ok ? null : undefined;
+}
+
 function parseDest(v: unknown): ListInput['dest'] | null {
   if (!isObj(v)) return null;
   if (typeof v.sheetId === 'string' && UUID_PATTERN.test(v.sheetId)) return { sheetId: v.sheetId };
@@ -121,7 +134,15 @@ export function parseListInput(v: unknown): ListInput | null | string {
   if (typeof copy === 'string') return copy;
   const dedupePath = parseDedupe(v.dedupePath, fields);
   if (dedupePath === undefined) return 'Skip duplicates by one of the fields you keep.';
+  const also = parseDedupeAlso(v.dedupeAlso, dedupePath);
+  if (also === undefined) {
+    return `dedupeAlso takes up to ${ENRICH_LIST_MAX_DEDUPE_ALSO} JSON paths, beside a dedupePath.`;
+  }
+  if (v.keep !== undefined && v.keep !== null && typeof v.keep !== 'boolean') return 'keep must be true or false.';
   const itemsPath = parseItemsPath(v.itemsPath);
   if (itemsPath === undefined) return 'itemsPath must be a JSON path to the results.';
-  return { dest, provider, maxItems, fields, copy, dedupePath, ...(itemsPath ? { itemsPath } : {}) };
+  return {
+    dest, provider, maxItems, fields, copy, dedupePath, ...(also ? { dedupeAlso: also } : {}),
+    ...(v.keep === true ? { keep: true } : {}), ...(itemsPath ? { itemsPath } : {}),
+  };
 }

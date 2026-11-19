@@ -5,6 +5,7 @@
 // miss is free (every provider here charges per success), as on live treg.
 import { fixture, hasFixture, providerCalls, state } from './state.mjs'
 import { providerAnswer } from './answers.mjs'
+import { listField } from './lists.mjs'
 
 const micro = (usd) => Math.round((usd ?? 0) * 1e6)
 const list = (h) => String(h ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
@@ -72,7 +73,10 @@ export function runWaterfall(toolId, body, headers) {
       tried.push({ endpoint_id: p.endpoint_id, provider: p.provider, outcome: 'error', status: answer.error, charged_micro: 0 })
       continue
     }
-    const charged = answer.output ? price : 0
+    // Priced per result (the plan says so): each row the answer has, never past the max cost.
+    const field = p.cost?.type === 'per_result' ? listField(toolId) : null
+    const rows = field ? (answer.output?.[field]?.length ?? 0) : null
+    const charged = !answer.output ? 0 : rows !== null ? Math.min(price * rows, maxCost - spent) : price
     spent += charged
     tried.push({ endpoint_id: p.endpoint_id, provider: p.provider, outcome: answer.output ? 'hit' : 'miss', status: 200, charged_micro: charged })
     if (answer.output) { hit = { p, output: answer.output }; break }

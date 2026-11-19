@@ -53,7 +53,9 @@ export function giveFields(
     if ('fail' in cols) return cols;
     appendColumnsToOrder(dest, userId, cols.newColumns);
     list.fields = cols.fields;
-    list.dedupe = dedupePath ? { path: dedupePath } : null;
+    // Its other paths stay while the path does.
+    const also = list.dedupe?.path === dedupePath ? list.dedupe.also : undefined;
+    list.dedupe = dedupePath ? { path: dedupePath, ...(also ? { also } : {}) } : null;
     db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(config), run.id);
     // Their rows now say the results are on their way.
     releasedCells(run, userId, listCell.adding);

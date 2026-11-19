@@ -24,6 +24,7 @@ export * from './constants-run-safety';
 export * from './constants-trash';
 // AI visibility tables, same split.
 export * from './constants-ai-visibility';
+export * from './constants-hiring';
 // Cost ceilings and the AI run spend limit, same split.
 export * from './constants-spend';
 // The HTTP server's timeouts, same split (a file of its own: lib/server-timeouts.ts reads nothing else).

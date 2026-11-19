@@ -1,6 +1,6 @@
-// /api/v1 routes: clean, formula and lookup columns, enrichments, waterfalls
-// and AI visibility tables (api-v1-clean.ts, api-v1-formula.ts, api-v1-lookup.ts,
-// api-v1-enrich.ts, api-v1-waterfall.ts, api-v1-ai-visibility.ts).
+// /api/v1 routes: clean, formula and lookup columns, enrichments, waterfalls,
+// AI visibility and hiring tables (api-v1-clean.ts, api-v1-formula.ts, api-v1-lookup.ts,
+// api-v1-enrich.ts, api-v1-waterfall.ts, api-v1-ai-visibility.ts, api-v1-hiring.ts).
 import { z } from 'zod';
 import {
   AI_VISIBILITY_MAX_BRAND_CHARS, AI_VISIBILITY_MAX_COMPETITORS, AI_VISIBILITY_MAX_QUESTIONS,
@@ -8,7 +8,10 @@ import {
 import { ENGINES } from '../lib/ai-visibility/engines';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
-import { OPENROUTER_BALANCE_CACHE_MS } from '../lib/constants';
+import {
+  ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_POSTED_DAYS,
+  HIRING_MAX_ROLES, OPENROUTER_BALANCE_CACHE_MS,
+} from '../lib/constants';
 
 const idempotency = z.object({
   'Idempotency-Key': z.string().max(200).optional()
@@ -151,6 +154,35 @@ export const fillRoutes = (): RouteDoc[] => [
     body: z.object({
       brand: brand.optional().describe('Your brand. Left out, it stays.'),
       other_brands: otherBrands.optional().describe('Replaces the list of competitors. Left out, it stays.'),
+    }),
+  }),
+  op({
+    method: 'post', path: '/hiring', operationId: 'createHiring', tag: 'hiring', scope: 'write',
+    summary: 'Make a table of the companies hiring for chosen roles: Companies, Roles and Searches.',
+    description: 'Nothing is searched yet: a check does that.',
+    body: z.object({
+      roles: z.array(z.string())
+        .describe(`The role titles to search for, one search each. At most ${HIRING_MAX_ROLES}.`),
+      country: z.string().length(2).optional().describe('The country of the roles, such as US. Left out: any.'),
+      place: z.string().optional().describe('A city or region, such as Texas.'),
+      posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
+        .describe(`Only roles posted in the last N days. Default ${HIRING_DEFAULT_POSTED_DAYS}; null: any time.`),
+      per_search: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
+        .describe(`Roles each search adds at most. Default ${HIRING_DEFAULT_PER_SEARCH}.`),
+    }),
+    responses: { 201: 'The new table.' },
+  }),
+  op({
+    method: 'get', path: '/hiring/{id}', operationId: 'getHiring', tag: 'hiring', scope: 'read',
+    summary: 'A hiring table, its sheets and its last checks.',
+  }),
+  op({
+    method: 'post', path: '/hiring/{id}/check', operationId: 'checkHiring', tag: 'hiring', scope: 'run',
+    summary: 'Search every row of Searches again, add only roles never found before, and sum up Companies.',
+    description: 'An estimate unless estimate_only is false. A check never spends more than its estimate.',
+    body: z.object({
+      estimate_only: z.boolean().optional().describe('false checks for real. Default true: the cost and the count.'),
+      time_zone: z.string().optional().describe("The user's IANA time zone, for the check's day. Default UTC."),
     }),
   }),
 ];
