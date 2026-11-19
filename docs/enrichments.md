@@ -110,6 +110,10 @@ You have a sheet of target accounts and want the people who work there, one row 
 
 The status column says what each account added (`✅ 10 rows added`, with `, 2 already there` when duplicates were skipped). If the destination sheet reaches its row limit, the run pauses; make room, then resume.
 
+### Companies hiring for a role
+
+**Find companies hiring** (on the dashboard, in **New Table**, or below Popular in the enrichment drawer) makes a ready-made table: a Searches sheet with a row per role title, and an enrichment column on it that adds the roles each search finds to a Roles sheet. That column keeps the rows from before: running it again adds only roles the sheet never had (a role you deleted from it isn't added again), and nothing goes to the trash. Each check then sums the roles up per company on the Companies sheet, with what's new since the check before. See [Find companies hiring](../README.md#find-companies-hiring).
+
 ### From a webhook to Smartlead, hands off
 
 New sign-ups arrive by webhook. You want each one to get a verified work email and, if the email is valid, go straight into a Smartlead campaign. Three columns do it, each filling the next.

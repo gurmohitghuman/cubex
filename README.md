@@ -200,6 +200,19 @@ On the dashboard or in **New Table**, **Check AI visibility** makes a table that
 
 Agents use `ai_visibility`; the [MCP guide](docs/mcp.md#ai-visibility) has the details.
 
+### Find companies hiring
+
+A company hiring for a role often needs what you sell: one hiring SDRs may want a sales tool. On the dashboard or in **New Table**, **Find companies hiring** makes a table of the companies with open roles for the titles you name, and shows what's new each time you check. It runs on your treg key.
+
+- Give the role titles, one per line, as job posts name them ("Sales Development Representative", "RevOps Manager"), the country, a city or region if you like, how recent (30 days by default) and how many roles each search adds (25 by default, up to 100: the price dial).
+- Making the table searches nothing. It's named "Hiring: <roles>" and has three sheets: **Companies** (a row per company), **Roles** (every role found, with its link) and **Searches** (a row per role title).
+- **Check now** in the table's banner first shows what a check costs, and about how many open roles match where the job index gives a free count. A check never spends more than that: its run stops there.
+- A check searches every row of Searches and adds only roles never found before, each with **First seen**, the day of the check. A role you delete from Roles isn't added again. Then Companies is summed up: **Open roles**, **Role titles**, **Newest posted**, **Links** to the newest roles, and **First seen**. Companies are matched by domain; a role whose job post gives no domain is matched by company name (ignoring case and a trailing Inc, LLC or Ltd), and the check says how many were.
+- From the second check on, **New since last check** says what's new ("New since Nov 11: 2 roles (SDR, BDR)") and **New roles** counts them. Filter New roles above 0 for the companies hiring more since you last looked; on the others, both are cleared.
+- Add a role title as a row of Searches, then check again. Your own columns and notes on Companies stay: each row is found by its Domain.
+
+Agents use `hiring_signals`; the [MCP guide](docs/mcp.md#companies-hiring) has the details.
+
 ### Clean data
 
 Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.
