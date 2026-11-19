@@ -27,7 +27,7 @@ export interface SummaryDone {
 }
 
 const SUMMARY = ['openRoles', 'titles', 'newest', 'links', 'newSince', 'newRoles'] as const;
-const plural = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 
 async function whenFree(sheetId: string): Promise<void> {
   while (sheetBusyWith(sheetId)) await new Promise(resolve => setTimeout(resolve, SAMPLE_STEP_POLL_MS));
@@ -130,7 +130,11 @@ export async function summarizeHiring(
     // Companies with no row yet, a batch at a time, in the order Roles first had them.
     const unmatched = read.companies.size - matched.size;
     const room = Math.max(0, Math.min(unmatched, MAX_ROWS_PER_SHEET - countRows(sheets.companies, userId)));
-    if (room < unmatched) problems.push(`Companies is full: ${plural(unmatched - room, 'company')} weren't added.`);
+    const left = unmatched - room;
+    if (left > 0) {
+      problems.push(`Companies is full: ${plural(left, 'company', 'companies')} `
+        + `${left === 1 ? "wasn't" : "weren't"} added.`);
+    }
     const rest = read.companies.entries();
     while (added < room) {
       const batch: Array<Record<string, string>> = [];

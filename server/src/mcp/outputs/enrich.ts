@@ -60,12 +60,7 @@ export const aiVisibility = open({
 });
 
 // create and get: the table and its last checks; check: the estimate (its default) or the check started.
-export const hiringSignals = open({
-  estimate_only: opt(bool), id: opt(str), table_id: opt(str), companies_sheet_id: opt(str),
-  roles_sheet_id: opt(nul(str)), searches_sheet_id: opt(nul(str)), stage: opt(str), run_id: opt(nul(str)),
-  low_usd: opt(num), high_usd: opt(num), checks: opt(z.array(info('A check: its day, stage and what it found'))),
-  problems: opt(strs), next: opt(str), changed,
-});
+export const hiringSignals = open({ id: opt(str), stage: opt(str), high_usd: opt(num), next: opt(str), changed });
 
 export const getBalances = obj({
   treg: info('The treg.to balance in dollars, or why it is unknown'),

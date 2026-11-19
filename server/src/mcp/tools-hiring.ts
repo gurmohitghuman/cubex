@@ -10,32 +10,26 @@ import { changedOf, madeSheet } from './changed';
 export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'hiring_signals', {
     description:
-      'Find the companies hiring for chosen roles, a buying signal, and see what is new at each check. action '
-      + '"create" (free, searches nothing) makes a table "Hiring: <roles>": Companies (one row per company: Open '
-      + 'roles, Role titles, Newest posted, Links, "New since last check" such as "New since Nov 11: 2 roles (SDR, '
-      + 'BDR)", New roles, First seen), Roles (every open role found: Title, Company, Domain, Location, Posted, '
-      + 'Link, First seen, Search) and Searches (one row per role title, with its country, place and age). '
-      + 'action "check" (run scope) searches every row of Searches: PAID treg calls, one enrichment run (follow '
-      + 'it with get_run_status, run type enrichment); only roles never found before are added, then Companies is '
-      + 'summed up again. estimate_only DEFAULTS TO TRUE and returns the most it can cost and, where the job index '
-      + 'has one, its free count of matching roles ("about"); call again with estimate_only:false to start. A '
-      + 'check never spends more than its estimate. action "get" (free) shows the table and its last checks. Read '
-      + 'Companies with read_rows (filter New roles > 0 for the companies with new roles).',
+      'Companies hiring for chosen roles. create (free): a table "Hiring: <roles>" with Companies (a row per '
+      + 'company, with New roles since the last check), Roles and Searches (a row per role title). check (run '
+      + 'scope, PAID): one enrichment run adding only roles never found before, then Companies is summed up. '
+      + 'estimate_only defaults to true: the most it can cost and a free count of roles; a check never spends '
+      + 'more. get (free): the table and its checks.',
     inputSchema: z.object({
-      action: z.enum(['create', 'check', 'get']).describe('create the table (free), check it (paid), or get it'),
+      action: z.enum(['create', 'check', 'get']).describe('create (free), check (paid) or get'),
       id: z.string().optional()
-        .describe('check, get: the id create returned, or the table\'s Companies sheet id (list_tables)'),
-      roles: z.array(z.string()).max(HIRING_MAX_ROLES * 10).optional()
-        .describe(`create: the role titles to search for, one search each (at most ${HIRING_MAX_ROLES})`),
-      country: z.string().optional().describe('create: two-letter country of the roles (US); left out: any'),
-      place: z.string().optional().describe('create: a city or region (Texas), finer than the country'),
+        .describe('check, get: the id from create'),
+      roles: z.array(z.string()).optional()
+        .describe(`create: role titles, one search each (at most ${HIRING_MAX_ROLES})`),
+      country: z.string().optional().describe('create: country code (US); none: any'),
+      place: z.string().optional().describe('create: city or region'),
       posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
-        .describe('create: only roles posted in the last N days (default 30; null: any time)'),
+        .describe('create: posted in the last N days (default 30; null: any)'),
       per_search: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
-        .describe('create: roles each search adds at most (default 25): the price dial'),
-      estimate_only: lenientBoolean().optional().describe('check: default true (only the cost)'),
+        .describe('create: most roles per search (default 25)'),
+      estimate_only: lenientBoolean().optional().describe('check: default true'),
       time_zone: z.string().optional()
-        .describe('check: the user\'s IANA time zone (America/New_York), for the check\'s day; default UTC'),
+        .describe('check: IANA time zone (default UTC)'),
     }).strict(),
   }, async (a) => {
     if (a.action === 'create') {

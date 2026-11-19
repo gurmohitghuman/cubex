@@ -20,7 +20,7 @@ import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
-import { resumeHiringChecks } from '../services/hiring-check';
+import { resumeHiringChecks } from '../services/hiring-check-watch';
 import { closeWalCheckpointer } from './wal-checkpointer';
 import { closeWalTurnReader } from './wal-turn';
 

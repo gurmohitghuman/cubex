@@ -54,14 +54,14 @@
     "limit": {
      "type": "int",
      "required": false,
-     "note": "filter; default 10; rows to return — most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. On treg.companies.jobs, a board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"
+     "note": "filter; default 10; rows to return: most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. On treg.companies.jobs, a board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"
     }
    },
    "note": "Send what you know; treg sends each provider only the fields it accepts ({domain, title} | {name, title} | {title} | {name} | {domain}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
   },
   "kind": "routed",
   "method": "POST",
-  "name": "companies.jobs.search — routed: best of 7 providers, own keys first",
+  "name": "companies.jobs.search: routed: best of 7 providers, own keys first",
   "observed": {
    "ok_rate": 0.9951,
    "hit_rate": null,
@@ -83,7 +83,7 @@
    "predictleads.companies.job_openings"
   ],
   "status": null,
-  "summary": "Search open job postings by title across companies, or at one company by name or domain — provider-native job rows in `jobs`",
+  "summary": "Search open job postings by title across companies, or at one company by name or domain: provider-native job rows in `jobs`",
   "superseded_by": null,
   "test_request": {
    "body": {

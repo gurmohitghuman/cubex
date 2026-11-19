@@ -5,8 +5,8 @@
 // search row, keeping the roles found before (keep mode: only roles Roles
 // never had are added, First seen this check's day), its spend limit the
 // estimate's most, so a check never spends more than its estimate showed.
-// Once the run is over and its roles are in, the summary per company (free,
-// services/hiring-summarize.ts). Each stage is journaled (hiring_checks,
+// Once the run is over and its roles are in, the summary per company (free:
+// services/hiring-check-watch.ts). Each stage is journaled (hiring_checks,
 // migration 061): a restart waits for the run as before and then sums up; it
 // never starts a search on its own. One check of a table at a time.
 import { db } from '../lib/db';
@@ -14,17 +14,17 @@ import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { getColumnTypes } from '../lib/column-types';
 import { dayIn } from '../lib/ai-visibility/check';
 import { nowDate } from '../lib/clock';
-import { HIRING_CHECK_POLL_MS, HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
+import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import { HIRING_TOOL_ID, ROLE_COLUMNS, SEARCH_COLUMNS } from '../lib/hiring/names';
 import { newestColumnRun } from './enrich-column';
 import { rerunEnrichmentColumn, type RerunEstimate } from './enrich-rerun';
 import { startEnrichmentRun } from './enrich-run-start';
 import { countJobs, type JobCount, type SearchTerms } from './job-count';
-import { summarizeHiring } from './hiring-summarize';
+import { watchHiringCheck } from './hiring-check-watch';
 import {
-  hiringCheckGoing, hiringCheckView, insertHiringCheck, lastSearchedDay, loadHiringCheck, updateHiringCheck,
-  type HiringCheckView, type HiringRecord,
+  hiringCheckGoing, hiringCheckView, insertHiringCheck, lastSearchedDay, loadHiringCheck, sheetLive,
+  updateHiringCheck, type HiringCheckView, type HiringRecord,
 } from './hiring-store';
 import type { RunFail } from './run-shared';
 
@@ -41,8 +41,6 @@ export interface CheckOpts { timeZone?: string | null }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const ALL = { mode: 'all' as const, status: 'any' as const, test: null, rowIndexes: null };
-const live = (userId: string, id: string | null) => !!id && !!db.prepare(`SELECT 1 FROM sheets WHERE id = ?
-  AND user_id = ? AND trash_id IS NULL`).get(id, userId);
 
 // The Searches column: the one whose job search adds rows to Roles (found by what fills it, not by name).
 export function searchColumnOf(userId: string, rec: HiringRecord): string | null {
@@ -60,7 +58,7 @@ const today = (timeZone: string | null) => dayIn(nowDate().toISOString().replace
 
 // What a check would do now, or why it can't (a pure read).
 export function hiringPlan(userId: string, rec: HiringRecord, opts: CheckOpts = {}): HiringPlan | RunFail {
-  if (!live(userId, rec.searches_sheet_id) || !live(userId, rec.roles_sheet_id)) {
+  if (!sheetLive(userId, rec.searches_sheet_id) || !sheetLive(userId, rec.roles_sheet_id)) {
     return bad('This table no longer has its Searches and Roles sheets.');
   }
   const column = searchColumnOf(userId, rec);
@@ -138,7 +136,8 @@ export async function startHiringCheck(
   // First seen: this check's day, in every role it adds.
   const copy = list.copy.filter(c => !(c.from === '' && c.to === ROLE_COLUMNS.firstSeen));
   input.list = { ...list, copy: [...copy, { from: '', to: ROLE_COLUMNS.firstSeen, value: plan.label }], keep: true };
-  const started = await startEnrichmentRun(userId, rec.searches_sheet_id!, { ...input, noReuse: true });
+  const started = await startEnrichmentRun(userId, rec.searches_sheet_id!, { ...input, noReuse: true })
+    .catch((error: Error): RunFail => ({ fail: 'upstream', message: error.message }));
   if ('fail' in started) {
     updateHiringCheck(userId, id, { stage: 'stopped', problems: [`The search didn't start: ${started.message}`] });
     return started;
@@ -146,78 +145,4 @@ export async function startHiringCheck(
   updateHiringCheck(userId, id, { runId: started.ok.runId });
   watchHiringCheck(userId, id);
   return { ok: hiringCheckView(loadHiringCheck(userId, id)!) };
-}
-
-// The search's state: still going, or over (with what to say about it).
-function searchState(userId: string, runId: string): { going: true } | { going: false; added: number;
-  problems: string[] } {
-  const run = db.prepare(`SELECT status, pause_reason, list_rows_added FROM http_runs WHERE id = ? AND user_id = ?`)
-    .get(runId, userId) as { status: string; pause_reason: string | null; list_rows_added: number } | undefined;
-  if (!run) return { going: false, added: 0, problems: ['The search\'s run is gone.'] };
-  if (run.status === 'pending' || run.status === 'running') return { going: true };
-  const items = db.prepare(`SELECT COUNT(*) AS n, IFNULL(SUM(wait_reason IS NULL), 0) AS adding
-    FROM enrichment_list_items WHERE run_id = ? AND user_id = ? AND status = 'pending'`)
-    .get(runId, userId) as { n: number; adding: number };
-  if (items.adding > 0) return { going: true };
-  const problems: string[] = [];
-  if (run.status === 'paused') {
-    problems.push(`The search paused${run.pause_reason ? ` (${run.pause_reason})` : ''}: what it found so far is `
-      + 'summed up. Check again to search every row.');
-  }
-  if (run.status === 'failed' || run.status === 'cancelled') problems.push(`The search ${run.status === 'failed'
-    ? 'failed' : 'was cancelled'}: what it found so far is summed up.`);
-  if (items.n > 0) problems.push(`Results of ${items.n} search${items.n === 1 ? '' : 'es'} are waiting to be added.`);
-  return { going: false, added: run.list_rows_added, problems };
-}
-
-const watching = new Set<string>();
-
-// Waits for the check's search, then sums it up. Each look is a short read; the summary runs once.
-export function watchHiringCheck(userId: string, id: string): void {
-  if (watching.has(id)) return;
-  watching.add(id);
-  const look = async (): Promise<void> => {
-    const c = loadHiringCheck(userId, id);
-    if (!c || c.stage === 'done' || c.stage === 'stopped') { watching.delete(id); return; }
-    if (c.stage === 'searching') {
-      const s = c.run_id ? searchState(userId, c.run_id) : { going: false as const, added: 0, problems: [] };
-      if (s.going) { setTimeout(() => void look(), HIRING_CHECK_POLL_MS).unref(); return; }
-      updateHiringCheck(userId, id, { stage: 'summarizing', rolesAdded: s.added, problems: s.problems });
-    }
-    try {
-      await summarizeCheck(userId, id);
-    } catch (error) {
-      console.error(`Summing up hiring check ${id} stopped:`, error);
-      updateHiringCheck(userId, id,
-        { stage: 'stopped', problems: [`The summary stopped: ${(error as Error).message}`] });
-    }
-    watching.delete(id);
-  };
-  setTimeout(() => void look(), HIRING_CHECK_POLL_MS).unref();
-}
-
-async function summarizeCheck(userId: string, id: string): Promise<void> {
-  const c = loadHiringCheck(userId, id)!;
-  const rec = db.prepare('SELECT * FROM hiring_signals WHERE id = ? AND user_id = ?').get(c.signal_id, userId) as
-    HiringRecord | undefined;
-  if (!rec || !live(userId, rec.roles_sheet_id) || !live(userId, rec.companies_sheet_id)) {
-    updateHiringCheck(userId, id, { stage: 'stopped', problems: ['The Roles or Companies sheet is no longer there.'] });
-    return;
-  }
-  const done = await summarizeHiring(userId, { roles: rec.roles_sheet_id!, companies: rec.companies_sheet_id },
-    { label: c.label, sinceLabel: c.since_label, runId: c.run_id });
-  const searched = c.run_id ? searchState(userId, c.run_id) : null;
-  const stopped = !c.run_id || (searched && !searched.going && searched.problems.length > 0);
-  updateHiringCheck(userId, id, {
-    stage: stopped ? 'stopped' : 'done', companiesNew: done.companiesNew, companiesHiringMore: done.companiesHiringMore,
-    problems: done.problems,
-  });
-}
-
-// At boot: a check a restart cut short waits for its search again (the run
-// goes on by itself), then sums up. Nothing is searched here.
-export function resumeHiringChecks(): void {
-  const going = db.prepare(`SELECT id, user_id FROM hiring_checks WHERE stage IN ('searching', 'summarizing')`)
-    .all() as Array<{ id: string; user_id: string }>;
-  for (const c of going) watchHiringCheck(c.user_id, c.id);
 }

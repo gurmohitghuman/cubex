@@ -20,7 +20,7 @@ const recordOf = (req: AuthRequest, res: express.Response) => {
   return rec;
 };
 
-// POST / — a new table; answers like POST /api/tables/sample (the table, its
+// POST /: a new table; answers like POST /api/tables/sample (the table, its
 // sheets and the sheet to open), plus the record.
 router.post('/', async (req: AuthRequest, res) => {
   try {
@@ -50,7 +50,7 @@ router.get('/:id', (req: AuthRequest, res) => {
   }
 });
 
-// POST /:id/check — {estimateOnly, timeZone}: the estimate answers {plan, estimate};
+// POST /:id/check: {estimateOnly, timeZone}: the estimate answers {plan, estimate};
 // the check answers once its search has started.
 router.post('/:id/check', async (req: AuthRequest, res) => {
   try {
