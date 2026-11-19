@@ -83,8 +83,8 @@ test('the app: make the table from the dashboard, check it from the estimate it 
   await dialog.getByTestId('hiring-create').click()
 
   const confirm = page.getByTestId('hiring-check-confirm')
-  await expect(confirm).toContainText('Searches 2 role titles for roles in Texas, US posted in the last 30 days',
-    { timeout: 30_000 })
+  await expect(confirm).toContainText(
+    'Searches 2 role titles for roles in Texas, US, posted in the last 30 days, adding up to 50', { timeout: 30_000 })
   await expect(confirm.getByTestId('hiring-check-matches')).toContainText('About 240 open roles match')
   await expect(confirm.getByTestId('hiring-check-cost')).toContainText('never more')
   expect(await paidCalls()).toEqual([])

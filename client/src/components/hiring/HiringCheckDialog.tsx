@@ -43,6 +43,8 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
     const e = shown?.estimate
     const where = [v.place, v.country].filter(Boolean).join(', ')
     const daily = e?.dailyLimit.remainingUsd ?? null
+    const recent = v.postedWithinDays
+      ? `${where ? ',' : ''} posted in the last ${plural(v.postedWithinDays, 'day')}` : ''
     return (
       <Modal isOpen onClose={() => { if (!busy) onClose() }} panelClassName="max-w-md w-full">
         <div className="p-6 space-y-3" data-testid="hiring-check-confirm">
@@ -54,8 +56,7 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
           ) : (
             <>
               <p className="text-sm text-gray-700">
-                Searches {plural(e.searches, 'role title')} for roles{where ? ` in ${where}` : ''}
-                {v.postedWithinDays ? ` posted in the last ${plural(v.postedWithinDays, 'day')}` : ''}, adding up to
+                Searches {plural(e.searches, 'role title')} for roles{where ? ` in ${where}` : ''}{recent}, adding up to
                 {' '}{plural(e.rolesUpTo, 'role')} to Roles ({p.perSearch} per search at most). Only roles never
                 found before are added; {p.since
                   ? <>the companies with roles new since {checkDay(p.since)} show them in <b>New roles</b>.</>
