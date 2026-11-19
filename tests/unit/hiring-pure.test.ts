@@ -117,6 +117,10 @@ ok('the request: roles as a list or lines, once each; the defaults', () => {
     perSearch: 10 })
   assert.ok(typeof b === 'object')
   assert.deepEqual([b.country, b.place, b.postedWithinDays, b.perSearch], ['US', 'Texas', null, 10])
+  // Digits sent as text read as the number, as MCP's whole-number options take them.
+  const c = parseHiringInput({ roles: ['SDR'], postedWithinDays: ' 14 ', perSearch: '5' })
+  assert.ok(typeof c === 'object')
+  assert.deepEqual([c.postedWithinDays, c.perSearch], [14, 5])
 })
 
 ok('the request: refused plainly when wrong', () => {
@@ -129,6 +133,9 @@ ok('the request: refused plainly when wrong', () => {
   bad({ roles: 'SDR', postedWithinDays: K.HIRING_MAX_POSTED_DAYS + 1 })
   bad({ roles: 'SDR', perSearch: 0 })
   bad({ roles: 'SDR', perSearch: K.ENRICH_LIST_MAX_ITEMS + 1 })
+  bad({ roles: 'SDR', perSearch: '1.5' })
+  bad({ roles: 'SDR', postedWithinDays: '-3' })
+  bad({ roles: 'SDR', perSearch: '' })
   bad({ roles: ['x'.repeat(K.HIRING_MAX_ROLE_CHARS + 1)] })
   bad({ roles: Array.from({ length: K.HIRING_MAX_ROLES + 1 }, (_, i) => `Role ${i}`) })
   bad({ roles: 'SDR', place: 'p'.repeat(K.HIRING_MAX_PLACE_CHARS + 1) })

@@ -3,6 +3,7 @@
 // search adds. The same parse serves the app, /api/v1 and MCP.
 import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
+import { digitsAsNumber } from '../digits-text';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PLACE_CHARS,
   HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLE_CHARS, HIRING_MAX_ROLES,
@@ -53,11 +54,12 @@ export function parseHiringInput(v: unknown): HiringInput | string {
   if (place.length > HIRING_MAX_PLACE_CHARS || holdsRunMarker(place)) {
     return `place is plain text of at most ${HIRING_MAX_PLACE_CHARS} characters, such as "Texas".`;
   }
-  const days = v.postedWithinDays === undefined ? HIRING_DEFAULT_POSTED_DAYS : v.postedWithinDays;
+  // Whole numbers, also as digits ("30"), as MCP's lenientInt takes them.
+  const days = v.postedWithinDays === undefined ? HIRING_DEFAULT_POSTED_DAYS : digitsAsNumber(v.postedWithinDays);
   if (days !== null && !whole(days, 1, HIRING_MAX_POSTED_DAYS)) {
     return `postedWithinDays must be 1 to ${HIRING_MAX_POSTED_DAYS} (or null for any time).`;
   }
-  const perSearch = v.perSearch ?? HIRING_DEFAULT_PER_SEARCH;
+  const perSearch = digitsAsNumber(v.perSearch ?? HIRING_DEFAULT_PER_SEARCH);
   if (!whole(perSearch, 1, ENRICH_LIST_MAX_ITEMS)) return `perSearch must be 1 to ${ENRICH_LIST_MAX_ITEMS}.`;
   return {
     roles, country: typeof c === 'string' && c ? c.toUpperCase() : null, place: place || null,

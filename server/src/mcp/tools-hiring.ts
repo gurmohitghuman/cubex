@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { ENRICH_LIST_MAX_ITEMS, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES } from '../lib/constants';
 import { agentCheckHiring, agentCreateHiring, agentGetHiring } from '../services/hiring-agent';
-import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
 
 // hiring_signals: a ready-made table of the companies hiring for chosen roles
@@ -23,9 +23,10 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
         .describe(`create: role titles, one search each (at most ${HIRING_MAX_ROLES})`),
       country: z.string().optional().describe('create: country code (US); none: any'),
       place: z.string().optional().describe('create: city or region'),
-      posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
+      posted_within_days: lenientInt(1, HIRING_MAX_POSTED_DAYS, `posted_within_days: 1 to ${HIRING_MAX_POSTED_DAYS}`)
+        .nullable().optional()
         .describe('create: posted in the last N days (default 30; null: any)'),
-      per_search: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
+      per_search: lenientInt(1, ENRICH_LIST_MAX_ITEMS, `per_search: 1 to ${ENRICH_LIST_MAX_ITEMS}`).optional()
         .describe('create: most roles per search (default 25)'),
       estimate_only: lenientBoolean().optional().describe('check: default true'),
       time_zone: z.string().optional()
