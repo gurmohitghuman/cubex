@@ -34,7 +34,7 @@ const role = (i: number, runId: string | null) => {
   const k = i % COMPANIES
   const id = uuid()
   insert.run(id, roles, uid, i, JSON.stringify({ [R.title]: TITLES[i % TITLES.length], [R.company]: `Company ${k}`,
-    [R.domain]: `c${k}.example`, [R.posted]: `2026-${String(1 + (i % 11)).padStart(2, '0')}-1${i % 10}`,
+    [R.domain]: `c${k}.com`, [R.posted]: `2026-${String(1 + (i % 11)).padStart(2, '0')}-1${i % 10}`,
     [R.link]: `https://jobs.example/${i}`, [R.location]: 'Austin, TX' }))
   if (runId) list.run(id, uid, roles, runId)
 }
@@ -67,6 +67,7 @@ await ok(`the first pass over ${N.toLocaleString('en-US')} roles: a row per comp
   const m = await measured({ label: '2026-11-11', sinceLabel: null, runId: first })
   assert.equal(m.s.roles, N)
   assert.equal(m.s.companiesNew, COMPANIES)
+  assert.deepEqual(m.s.problems, [], 'every role grouped by its domain')
   assert.ok(m.loopMs < LOOP_LIMIT_MS, `loop held ${m.loopMs.toFixed(0)} ms`)
   assert.ok(m.grewMb < HEAP_MB, `heap grew ${m.grewMb.toFixed(0)} MB`)
   const one = JSON.parse(db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND row_index = 0').pluck()

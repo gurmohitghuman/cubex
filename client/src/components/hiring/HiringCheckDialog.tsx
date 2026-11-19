@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { hiringAPI, type HiringEstimate, type HiringPlan, type HiringView } from '@/utils/api/hiring'
+import { checkDay } from '@/lib/hiring'
 
 // A check's estimate (a pure read on the server, free: only the job index's
 // free count is asked), then the check when the person says so: one search
@@ -57,7 +58,7 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
                 {v.postedWithinDays ? ` posted in the last ${plural(v.postedWithinDays, 'day')}` : ''}, adding up to
                 {' '}{plural(e.rolesUpTo, 'role')} to Roles ({p.perSearch} per search at most). Only roles never
                 found before are added; {p.since
-                  ? <>the companies with roles new since {p.since} show them in <b>New roles</b>.</>
+                  ? <>the companies with roles new since {checkDay(p.since)} show them in <b>New roles</b>.</>
                   : 'this first check finds every company new.'}
               </p>
               {e.matches && (

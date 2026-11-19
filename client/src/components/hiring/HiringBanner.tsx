@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Briefcase } from 'lucide-react'
 import type { SheetData } from '@/utils/api/types'
 import { hiringAPI, type HiringCheck, type HiringView } from '@/utils/api/hiring'
-import { HIRING_CHECK_POLL_MS } from '@/lib/hiring'
+import { HIRING_CHECK_POLL_MS, checkDay } from '@/lib/hiring'
 import { HiringCheckDialog } from './HiringCheckDialog'
 
 // Above the grid of a hiring table's three sheets: what it searches for, its
@@ -18,8 +18,8 @@ function checkWords(c: HiringCheck): string {
   if (c.stage === 'summarizing') return 'Checking: summing up the roles per company…'
   const found = `${plural(c.rolesAdded, 'new role')}, ${plural(c.companiesNew, 'new company', 'new companies')}`
     + (c.since ? `, ${plural(c.companiesHiringMore, 'company', 'companies')} hiring more` : '')
-  if (c.stage === 'done') return `Last check, ${c.label}: ${found}.`
-  return `The last check, ${c.label}, stopped${c.problems[0] ? `: ${c.problems[0]}` : '.'}`
+  if (c.stage === 'done') return `Last check, ${checkDay(c.label)}: ${found}.`
+  return `The last check, ${checkDay(c.label)}, stopped${c.problems[0] ? `: ${c.problems[0]}` : '.'}`
 }
 
 export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged: () => void }> =

@@ -17,7 +17,7 @@ import { state } from './state.mjs'
 const COMPANIES = ['Northwind Labs', 'Bluefin Data', 'Copperleaf Systems', 'Harborview Health', 'Quillmark']
 const TITLES = (t) => [t, `Senior ${t}`, `${t}, Enterprise`]
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-const domainOf = (company) => `${slug(company)}.example`
+const domainOf = (company) => `${slug(company)}.io`
 
 // The i-th role of a search: n new ones (first) are "new-0", "new-1"…
 function role(key, i, isNew) {

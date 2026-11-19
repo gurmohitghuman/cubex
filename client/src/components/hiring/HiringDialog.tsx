@@ -23,7 +23,8 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
   const [days, setDays] = useState<number | null>(HIRING_DEFAULT_POSTED_DAYS)
   const [perSearch, setPerSearch] = useState(String(HIRING_DEFAULT_PER_SEARCH))
   const [busy, setBusy] = useState(false)
-  const titles = [...new Map(linesOf(roles).map(r => [r.toLowerCase(), r])).values()]
+  // Once each, as first written (the server takes them the same way).
+  const titles = linesOf(roles).filter((r, i, all) => all.findIndex(x => x.toLowerCase() === r.toLowerCase()) === i)
   const per = Number(perSearch)
   const problem = titles.length === 0 ? 'Add at least one role title.'
     : titles.length > HIRING_MAX_ROLES ? `Start with at most ${HIRING_MAX_ROLES} role titles.`
