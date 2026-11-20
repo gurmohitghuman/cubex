@@ -1,0 +1,42 @@
+name: Repeat runs (temporary)
+
+# Temporary, for the first pull request of "Every check green": each unit test it fixes runs many times on
+# Linux and on Windows, and the tests that bound the event loop run under a disk load, with their break proofs.
+# It runs on pushes to that branch only, and is removed before the review. The required checks are in ci.yml.
+
+on:
+  push:
+    branches: [test/ci-green-unit]
+  workflow_dispatch:
+
+concurrency:
+  group: repeat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repeat:
+    name: ${{ matrix.group }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        group: [light, moving, pages, follow, undo, clear, load]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Runs
+        shell: bash
+        run: bash .github/ci-temp/repeat.sh ${{ matrix.group }}
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.group }}-${{ matrix.os }}
+          path: repeat-logs/
+          retention-days: 7
