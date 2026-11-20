@@ -65,37 +65,38 @@
    "bodyType": "json",
    "body": {
     "email": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of email)"
     },
     "linkedin_url": {
-     "type": "url",
+     "type": "string",
+     "format": "url",
      "required": false,
      "note": "identity key (part of linkedin_url)"
     },
     "linkedin_handle": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of linkedin_handle)"
     },
     "domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
     },
     "full_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+full_name)"
     },
     "first_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+first_name+last_name)"
     },
     "last_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+first_name+last_name)"
     }
@@ -127,29 +128,29 @@
    ],
    "output": {
     "full_name": {
-     "type": "str",
+     "type": "string",
      "required": true
     },
     "first_name": {
-     "type": "str"
+     "type": "string"
     },
     "last_name": {
-     "type": "str"
+     "type": "string"
     },
     "title": {
-     "type": "str"
+     "type": "string"
     },
     "company": {
-     "type": "str"
+     "type": "string"
     },
     "company_domain": {
-     "type": "str"
+     "type": "string"
     },
     "linkedin_url": {
-     "type": "str"
+     "type": "string"
     },
     "location": {
-     "type": "str"
+     "type": "string"
     }
    },
    "miss": "full_name == null",

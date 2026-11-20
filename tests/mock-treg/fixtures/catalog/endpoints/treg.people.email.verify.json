@@ -52,7 +52,7 @@
    "bodyType": "json",
    "body": {
     "email": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of email)"
     }
@@ -69,16 +69,16 @@
    ],
    "output": {
     "valid": {
-     "type": "bool",
+     "type": "boolean",
      "required": true,
      "note": "the provider says the mailbox accepts mail"
     },
     "status": {
-     "type": "str",
+     "type": "string",
      "note": "the provider's own verdict word (valid | invalid | accept_all | unknown | …)"
     },
     "score": {
-     "type": "int"
+     "type": "integer"
     }
    },
    "miss": "status == null",

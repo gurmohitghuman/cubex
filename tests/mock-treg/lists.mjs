@@ -43,10 +43,15 @@ const ROWS = {
   }),
 }
 
+// A field that holds rows, either way treg's catalog writes it: the old word
+// "list", or an array of objects (as the live catalog has since November 2026).
+export const isRowList = d => d?.type === 'list'
+  || ([d?.type].flat().includes('array') && [d?.items?.type].flat().includes('object'))
+
 // The contract's list field ("people"), or null when the job doesn't return a list.
 export function listField(toolId) {
   const output = fixture(`catalog/endpoints/${toolId}.json`).routing?.contract?.output ?? {}
-  return Object.entries(output).find(([, d]) => d?.type === 'list')?.[0] ?? null
+  return Object.entries(output).find(([, d]) => isRowList(d))?.[0] ?? null
 }
 
 export function listAnswer(toolId, p, body) {

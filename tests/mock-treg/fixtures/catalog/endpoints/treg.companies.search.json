@@ -62,37 +62,37 @@
    "bodyType": "json",
    "body": {
     "q": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of q)"
     },
     "name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of name)"
     },
     "industry": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of industry)"
     },
     "technology": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of technology)"
     },
     "domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain)"
     },
     "country": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter — default None; ISO country code, where the provider supports it"
     },
     "limit": {
-     "type": "int",
+     "type": "integer",
      "required": false,
      "note": "filter — default 10; rows to return — THE price dial: most providers bill per row"
     }
@@ -121,15 +121,18 @@
    ],
    "output": {
     "companies": {
-     "type": "list",
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
      "required": true,
      "note": "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"
     },
     "count": {
-     "type": "int"
+     "type": "integer"
     },
     "next_cursor": {
-     "type": "str"
+     "type": "string"
     }
    },
    "miss": "companies == []",

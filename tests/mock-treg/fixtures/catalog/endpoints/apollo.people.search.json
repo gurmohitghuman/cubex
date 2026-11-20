@@ -46,7 +46,10 @@
   "input": {
    "queryParams": {
     "person_titles[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "job titles, matched loosely (OR across the list)",
      "example": [
@@ -54,12 +57,18 @@
      ]
     },
     "person_seniorities[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"
     },
     "person_locations[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "where the PERSON lives",
      "example": [
@@ -67,12 +76,18 @@
      ]
     },
     "organization_locations[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "where their COMPANY's HQ is"
     },
     "q_organization_domains_list[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "restrict to employees of these company domains; max 1,000",
      "example": [
@@ -80,7 +95,10 @@
      ]
     },
     "organization_num_employees_ranges[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "employee-count bands as 'min,max' strings",
      "example": [
@@ -88,12 +106,18 @@
      ]
     },
     "contact_email_status[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "verified, unverified, likely to engage, unavailable"
     },
     "currently_using_any_of_technology_uids[]": {
-     "type": "array[string]",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "tech-stack filter, e.g. salesforce"
     },

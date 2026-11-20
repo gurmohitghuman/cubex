@@ -10,7 +10,7 @@
 //   lists:  each provider's own rows (lists.mjs), at most `limit` of them.
 //   others: a hit with a value per contract field, a miss for "nobody".
 import { fixture, state } from './state.mjs'
-import { listAnswer, listField } from './lists.mjs'
+import { isRowList, listAnswer, listField } from './lists.mjs'
 import { perplexityAnswer } from './ai-search.mjs'
 
 const PATTERNS = [
@@ -59,8 +59,8 @@ function generic(toolId, body) {
   const contract = fixture(`catalog/endpoints/${toolId}.json`).routing.contract.output
   const output = {}
   for (const [k, def] of Object.entries(contract)) {
-    if (def?.type === 'list') continue
-    output[k] = def?.type === 'integer' || def?.type === 'number' ? 120 : `${k} for ${seed}`
+    if (isRowList(def)) continue
+    output[k] = ['integer', 'number', 'int', 'float'].includes(def?.type) ? 120 : `${k} for ${seed}`
   }
   return { output }
 }
