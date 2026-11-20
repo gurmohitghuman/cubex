@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        group: [light, moving, pages, follow, undo, clear, load]
+        # The first run (all groups) is in the PR body; this one looks at transform-regex-pages.
+        group: [regex]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

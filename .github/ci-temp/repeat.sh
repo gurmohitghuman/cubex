@@ -16,6 +16,7 @@ case $group in
   undo) tests=run-undo-slices; n=10 ;;
   clear) tests=run-clear-big; n=10 ;;
   load) tests=$LIGHT; n=5 ;;
+  regex) tests=transform-regex-pages; n=40 ;;
   *) echo "no group $group"; exit 2 ;;
 esac
 # A quick check of this script: REPEAT_N=1, and NO_LOAD=1 to leave the disk alone.
@@ -42,6 +43,14 @@ for t in $tests; do
   echo "== $t: $pass of $n passed"
   [ "$pass" = "$n" ] || failed=1
 done
+if [ "$group" = regex ]; then
+  # A small commit's time while the checkpoint worker copies a big WAL back, against none running.
+  for i in 1 2 3; do
+    d=$(mktemp -d)
+    DB_PATH=$d/t.db TMPDIR=$d npx tsx tests/unit/temp-commit-in-checkpoint.ts 2>&1 | grep '^round'
+    rm -rf "$d"
+  done
+fi
 if [ "$group" = load ]; then
   # Each break, its test under the load: it must fail.
   for b in token:token-last-used stopbusy:transform-stop-busy walturn:wal-turn regex:transform-regex-worker \
