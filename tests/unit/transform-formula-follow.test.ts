@@ -6,7 +6,8 @@
 // held 200 ms, and every formula ends right. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
 // (170 ms once with 3, no transaction in it); this size keeps the case near a minute. The Windows runner's disk took
 // 7 minutes at it (3 formulas: written in 131 s, followed in 288 s, the loop held 128 ms): there it runs 10,000
-// rows, in slices of the same size.
+// rows, in slices of the same size. Printed with the longest stretch: this thread's waits for the formula engine's
+// answers inside it (lib/formula/host.ts waits for each one synchronously), and GC's pauses.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
@@ -19,11 +20,21 @@ const { startAutorunLoop } = await import('../../server/src/services/autorun-loo
 const { transformColumn } = await import('../../server/src/services/column-transform')
 const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
   await import('../../server/src/lib/wal-checkpointer')
+const { formulaHost } = await import('../../server/src/lib/formula/host')
 startDerivedFollow()
 startAutorunLoop()
 console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+// Each ask of the formula engine: when, how long this thread waited for its answer, and what it asked.
+const asks: Array<{ at: number; ms: number; op: string; rows: number }> = []
+const request = formulaHost.request.bind(formulaHost)
+formulaHost.request = (msg, capMs) => {
+  const at = performance.now()
+  try { return request(msg, capMs) } finally {
+    asks.push({ at, ms: performance.now() - at, op: msg.op, rows: msg.op === 'run' ? msg.rows.length : 0 })
+  }
+}
 
 const N = process.platform === 'win32' ? 10_000 : 50_000
 const LOOP_MS = 200
@@ -41,6 +52,7 @@ for (const formulas of [0, 1, 3]) {
     }
     await walCheckpointerIdle()
     probe.reset()
+    asks.length = 0
     const watch = loopWatch(probe.records)
     await watch.ready
     const t0 = performance.now()
@@ -61,6 +73,11 @@ for (const formulas of [0, 1, 3]) {
       + `(longest ${w.longestTransactionMs.toFixed(0)} ms)`)
     const inside = watched.inside.map(transactionLine).join(' | ')
     console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
+    const { at, ms: span } = watched.ownStretch
+    const waits = asks.filter(a => a.at < at + span && a.at + a.ms > at)
+    const most = asks.reduce((m, a) => Math.max(m, a.ms), 0)
+    console.log(`        waits for the formula engine in it: ${waits.map(a => `${a.op} of ${a.rows} rows `
+      + `${a.ms.toFixed(1)} ms`).join(', ') || 'none'}; of all ${asks.length} asks, the longest ${most.toFixed(1)} ms`)
     assert.equal(queued.get(uid), 0, 'a formula never followed')
     const outs = cells(sid, 'Out')
     assert.deepEqual(outs, Array.from({ length: N }, (_, i) => `P${i}`), 'Out written')
