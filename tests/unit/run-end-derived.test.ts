@@ -3,9 +3,10 @@
 // answer it held before the run: clean and formula columns reading them work
 // those rows out again (saved again while the run went, they read the ⏳ as
 // empty), and a formula reading that formula follows it. Exactly the cleared
-// rows are queued (a row holding a real result isn't). A clear in
-// the API process tells the follow-ups at once; a worker's (a failed run) has
-// no one to tell, so the auto-run sweep works them out. No auto-run that costs
+// rows are told, as a span (lib/derived-spans.ts; none queued), a row holding
+// a real result isn't. A clear in the API process tells the follow-ups as it
+// ends; a worker's (a failed run) has no one to tell, so the auto-run sweep
+// works them out. No auto-run that costs
 // or sends requests hears of it (one reading the answer, one reading each
 // formula). Each way a run ends early is driven through the code that ends it.
 // Last, the follow-ups run by themselves, as in the server, with no tick by hand.
@@ -68,6 +69,10 @@ const rowIdsOf = (sid: string) => db.prepare('SELECT id FROM rows WHERE sheet_id
   .pluck().all(sid) as string[]
 const queued = (entryId: string) => db.prepare('SELECT row_id FROM autorun_pending WHERE autorun_id = ?')
   .pluck().all(entryId).sort() as string[]
+// The rows a clear told the entry by span, by row id.
+const spanned = (entryId: string) => db.prepare(`SELECT r.id FROM derived_span_marks m
+    JOIN derived_spans s ON s.id = m.span_id, json_each(s.rowids) j JOIN rows r ON r.rowid = j.value
+  WHERE m.autorun_id = ?`).pluck().all(entryId).sort() as string[]
 const tick = async (sid: string, column: string) => { await derivedFollowTick(entryFor(sid, uid, column)!) }
 const runOf = (kind: Kind, id: string) => db.prepare(`SELECT * FROM ${TABLE[kind]} WHERE id = ?`).get(id) as any
 
@@ -150,8 +155,8 @@ async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kic
   refilled = true) {
   const [f, low, f2] = ['F', 'Low', 'F2'].map(c => entryFor(sid, uid, c)!.id)
   const ids = rowIdsOf(sid)
-  const seen = { f: queued(f), low: queued(low), f2: queued(f2), paid: paid.map(queued),
-    told: [f, low].map(id => told.has(id)) }
+  const seen = { f: spanned(f), low: spanned(low), f2: spanned(f2), paid: paid.map(queued),
+    told: [f, low].map(id => told.has(id)), queued: [f, low, f2].map(queued) }
   const follow = (id: string) => (by === 'sweep' ? autorunTick(id) : derivedFollowTick(loadEntry(id)!))
   await follow(f); await follow(low)
   const chained = queued(f2)
@@ -160,9 +165,11 @@ async function followsUp(sid: string, paid: string[], firstRow: string, by: 'kic
   assert.deepEqual(cells(sid, 'F'), [`has ${firstRow}`, 'has Old B', 'has Old C'])
   assert.deepEqual(cells(sid, 'Low'), [firstRow.toLowerCase(), 'old b', 'old c'])
   assert.deepEqual(cells(sid, 'F2'), [`HAS ${firstRow.toUpperCase()}`, 'HAS OLD B', 'HAS OLD C'])
-  assert.deepEqual(seen.f, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the formula')
-  assert.deepEqual(seen.low, [ids[1], ids[2]].sort(), 'only the cleared rows are queued for the clean column')
+  assert.deepEqual(seen.f, [ids[1], ids[2]].sort(), 'only the cleared rows are told the formula')
+  assert.deepEqual(seen.low, [ids[1], ids[2]].sort(), 'only the cleared rows are told the clean column')
   assert.deepEqual(seen.f2, [], 'F2 reads F, not the cleared column')
+  assert.deepEqual(seen.queued, [[], [], []], 'the clear queues no row: it tells them by span')
+  assert.equal(db.prepare('SELECT COUNT(*) FROM derived_span_marks').pluck().get(), 0, 'every span worked out')
   assert.deepEqual(chained, refilled ? [ids[1], ids[2]].sort() : [], 'what F wrote (if anything) is queued for F2')
   assert.deepEqual(seen.paid, [[], [], []], 'no paid auto-run was queued')
   assert.deepEqual(seen.told, by === 'kick' ? [true, true] : [false, false],

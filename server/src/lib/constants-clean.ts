@@ -39,6 +39,9 @@ export const DERIVED_QUEUED_SLICE_ROWS = 1_000;
 // random-id rows wrote 1,600 to 2,000 frames, 50 to 76 ms a slice on Windows.
 export const DERIVED_QUEUED_SLICE_FRAMES = 800;
 export const DERIVED_QUEUED_FIRST_ROWS = 250;
+// Span marks dropped a slice when a reader's queue is dropped (lib/autorun-mark.ts): each can take its span with
+// it, a slice of a clear's told rowids (about 20 KB at the clear's slice size).
+export const DERIVED_SPAN_DROP_MARKS = 25;
 // The name, company, email, domain and phone cleaners (lib/clean/) read a
 // value longer than this as not one of those and return '' rather than work
 // through it.

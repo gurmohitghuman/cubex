@@ -11,6 +11,7 @@
 // the steps before it wrote (followProgress). One that doesn't follow is
 // filled again, free, with its own settings.
 import { db } from '../lib/db';
+import { hasSpanWork } from '../lib/derived-spans';
 import { mainColumn, type SetupStep } from '../lib/setups/spec';
 import { cleanColumnFor } from '../lib/clean-columns';
 import { formulaColumnFor } from '../lib/formula-columns';
@@ -52,7 +53,8 @@ export function followProgress(
   if (!derivedFollows(sheetId, userId, kind, column)) return 'stopped';
   const e = entryFor(sheetId, userId, column)!;
   if (rec.fill_status === 'filling' || e.rescan) return 'working';
-  const pending = db.prepare('SELECT 1 FROM autorun_pending WHERE autorun_id = ? LIMIT 1').get(e.id);
+  const pending = db.prepare('SELECT 1 FROM autorun_pending WHERE autorun_id = ? LIMIT 1').get(e.id)
+    || hasSpanWork(e.id);
   const top = db.prepare('SELECT IFNULL(MAX(row_index), -1) FROM rows WHERE sheet_id = ? AND user_id = ?')
     .pluck().get(sheetId, userId) as number;
   return pending || top > e.watermark_row_index ? 'working' : 'done';

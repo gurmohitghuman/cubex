@@ -5,8 +5,9 @@ import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
-import { derivedReaderCount, markDerivedInputs } from './autorun-mark';
-import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS, PLACEHOLDER_CLEAR_QUEUE_ROWS } from './constants';
+import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
+import { kickSpanReaders, tellDerivedSpan } from './derived-spans';
+import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -33,26 +34,24 @@ export { PLACEHOLDER };
 // placeholder-empty.test.ts), so a cell that read as empty before the run
 // (the journal kept nothing, '', a ⏳ or a list job's words: KEPT_EMPTY_SQL)
 // and becomes '' changes nothing it worked out: a run's first try on a new
-// column tells them nothing. Every other cleared row is queued for them in the
-// slice's transaction (a cell put back, or one whose old value the journal
-// didn't keep: a run from before runs could be undone), quiet, so nothing that
-// costs runs (lib/autorun-mark.ts). Queuing tells them at once in the API
-// process (lib/autorun-kick.ts); a run worker's clear (a failed run) waits for
-// the auto-run sweep, as its other writes do.
-// On rows with random ids each queued row writes a page of its own (and its
-// own row one more), so with R columns reading these a slice queues at most
-// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows: it ends before the row past
-// that (at least one row a slice; the numbers are in lib/constants.ts). R is
+// column tells them nothing. Every other cleared row (a cell put back, or one
+// whose old value the journal didn't keep: a run from before runs could be
+// undone) is told to them in the slice's transaction as one span: the slice's
+// told rowids and a mark per reader (lib/derived-spans.ts), quiet, so nothing
+// that costs runs. A slice costs the same with 0 or 20 readers: queuing each
+// told row for each reader wrote a page per row and reader. The readers are
 // counted again in each slice's transaction: nothing holds off a column that
 // starts reading these while the clear goes, and it fills rows ahead of the
-// clear from the ⏳. Otherwise a slice is HEAVY_SLICE_ROWS rows. On the
-// server's thread each slice commits with SQLite's own checkpoint off, its WAL
-// copied back on the checkpoint worker's thread (lib/bulk-slices.ts); on a job
-// thread it is checkpointed after it when columns read these from the start
-// (lib/row-order.ts). Journal lookups cost too: putting K columns back takes
-// one per cell, and telling the columns reading them one more, so a slice also
-// holds at most PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows, or / (1 + 2K) when
-// read.
+// clear from the ⏳. They start on the spans once the clear has ended (it
+// kicks them in the API process: lib/run-placeholders.ts; a run worker's
+// clear, a failed run's, leaves them to the auto-run sweep). A slice is
+// HEAVY_SLICE_ROWS rows. On the server's thread each slice commits with
+// SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
+// thread (lib/bulk-slices.ts); on a job thread it is checkpointed after it
+// when columns read these from the start (lib/row-order.ts). Journal lookups
+// cost too: putting K columns back takes one per cell, and telling the columns
+// reading them one more, so a slice also holds at most
+// PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows, or / (1 + 2K) when read.
 export async function clearProcessingPlaceholders(
   sheetId: string, userId: string, columnNames: string[], afterSlice?: () => void, run?: RunRef,
 ): Promise<void> {
@@ -84,7 +83,7 @@ export async function clearProcessingPlaceholders(
     : { sql: `(json_extract(data, ?) = '${PLACEHOLDER}' AND NOT ${KEPT_EMPTY_SQL})`,
       args: [p, back!.undoId, slots[i]] }));
   const tell = db.prepare('SELECT rowid FROM rows' + sliceSql + told.map(t => t.sql).join(' OR ') +
-    ') ORDER BY rowid LIMIT ?').pluck();
+    ') ORDER BY rowid').pluck();
   const tellArgs = told.flatMap(t => t.args);
   const rowIds = await sheetRowIds(sheetId, userId);
   let readers = derivedReaderCount(sheetId, userId, columnNames);
@@ -96,25 +95,25 @@ export async function clearProcessingPlaceholders(
   await eachRowIdSlice(rowIds, (json, window) => {
     let took = window.length;
     const first = (n: number) => (n === window.length ? json : JSON.stringify(Array.from(window.subarray(0, n))));
-    // The clear and its queuing commit together, the write lock taken up front.
+    // The clear and its span commit together, the write lock taken up front.
     oneTransaction(() => {
-      readers = derivedReaderCount(sheetId, userId, columnNames);
+      const ids = derivedReaderIds(sheetId, userId, columnNames);
+      readers = ids.length;
       let heard: number[] = [];
       if (readers > 0) {
         took = Math.min(took, readRows);
-        const most = Math.max(1, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers)));
-        heard = tell.all(first(took), sheetId, userId, ...tellArgs, most + 1) as number[];
-        // One row too many: the slice ends before it.
-        if (heard.length > most) took = window.indexOf(heard.pop()!);
+        heard = tell.all(first(took), sheetId, userId, ...tellArgs) as number[];
       }
       const cleared = clear.all(...setArgs, first(took), sheetId, userId, ...paths) as number[];
-      if (heard.length > 0) markDerivedInputs(sheetId, userId, columnNames, { rowids: heard });
+      tellDerivedSpan(sheetId, userId, ids, heard, run);
       if (cleared.length > 0) bump.run(sheetId, userId);
     });
     afterSlice?.();
     return took;
   }, { rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0 });
   bump.run(sheetId, userId);
+  // A run's clear kicks its readers once the run lets its columns go (lib/run-placeholders.ts).
+  if (!run) kickSpanReaders(sheetId);
 }
 
 // Seed the placeholder into `columns` of a run's target rows: every row up to

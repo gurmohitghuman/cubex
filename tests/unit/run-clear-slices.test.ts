@@ -1,19 +1,18 @@
-// A run's ⏳ clear (lib/placeholder-cells.ts) queues the rows it clears for
-// each clean, formula and lookup column reading the run's columns, in the
-// slice's own transaction (here every cleared row: no run's journal says a cell
-// read as empty before it; run-clear-told.test.ts has those). With none, its
-// slices are HEAVY_SLICE_ROWS rows. With R of them, a slice queues at most
-// PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + R) rows (at least 1). Either way each commits
-// with SQLite's own checkpoint off, its WAL copied back on the checkpoint
-// worker's thread (lib/bulk-slices.ts): no checkpoint runs on this connection.
-// A column reading other columns, one with auto-run off and an auto-run that
-// costs don't count. A run's clear that puts K columns back from its undo
-// journal (lib/run-undo/clear-back.ts) holds at most
+// A run's ⏳ clear (lib/placeholder-cells.ts) tells the rows it clears to each
+// clean, formula and lookup column reading the run's columns, in the slice's
+// own transaction, as one span a slice with a mark per reader
+// (lib/derived-spans.ts; here every cleared row: no run's journal says a cell
+// read as empty before it; run-clear-told.test.ts has those). Its slices are
+// HEAVY_SLICE_ROWS rows whether 0, 1, 3 or 20 columns read them, and each
+// commits with SQLite's own checkpoint off, its WAL copied back on the
+// checkpoint worker's thread (lib/bulk-slices.ts): no checkpoint runs on this
+// connection. A column reading other columns, one with auto-run off and an
+// auto-run that costs don't count. A run's clear that puts K columns back from
+// its undo journal (lib/run-undo/clear-back.ts) holds at most
 // PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice, or / (1 + 2K) when
-// columns read them (a second journal lookup a cell), and the queue budget
-// still caps it. The real clear runs: each slice's size is read off the sheet
-// after it (how many rows still hold ⏳), and the checkpoints through the
-// database's pragma calls.
+// columns read them (a second journal lookup a cell). The real clear runs:
+// each slice's size is read off the sheet after it (how many rows still hold
+// ⏳), and the checkpoints through the database's pragma calls.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -24,7 +23,7 @@ import formulaRecMod from '../../server/src/lib/formula-columns'
 import cleanMod from '../../server/src/services/clean-column'
 const { clearProcessingPlaceholders, seedProcessingPlaceholders, PLACEHOLDER } =
   cellsMod as typeof import('../../server/src/lib/placeholder-cells')
-const { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_QUEUE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } =
+const { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } =
   constMod as typeof import('../../server/src/lib/constants')
 const { startFormulaColumn, setFormulaColumnAutorun } =
   formulaMod as typeof import('../../server/src/services/formula-column')
@@ -99,14 +98,19 @@ const split = (n: number, size: number) =>
 // What a clear does in slices of `sizes`: each committed with SQLite's own checkpoint off, and no checkpoint on
 // this connection (they run on the worker).
 const sliced = (sizes: number[]) => ({ sizes, events: sizes.map(() => 'slice, auto-checkpoint off') })
-// With R reading columns and every cleared row queued: slices of the queue budget's share.
-const checkpointed = (n: number, readers: number) =>
-  sliced(split(n, Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / (1 + readers))))
+// The sheet's spans, and their marks: one span a slice that told rows, a mark per reader (lib/derived-spans.ts).
+const spans = (sid: string) => db.prepare(`SELECT COUNT(DISTINCT s.id) AS spans, COUNT(m.span_id) AS marks
+  FROM derived_spans s LEFT JOIN derived_span_marks m ON m.span_id = s.id WHERE s.sheet_id = ?`).get(sid)
+// `readers` read the run's columns (0: no span). Nothing is queued.
 const expectClear = async (sid: string, want: { sizes: number[]; events: string[] },
-  opts: Parameters<typeof clear>[1] = {}) => {
+  opts: Parameters<typeof clear>[1] = {}, readers = 0) => {
   const got = await clear(sid, opts)
   assert.deepEqual(got.sizes, want.sizes, 'rows per slice')
   assert.deepEqual(got.events, want.events, 'slices and checkpoints')
+  const told = readers === 0 ? 0 : want.sizes.length
+  assert.deepEqual(spans(sid), { spans: told, marks: told * readers }, 'one span a slice, a mark per reader')
+  assert.equal(db.prepare(`SELECT COUNT(*) FROM autorun_pending WHERE autorun_id IN
+    (SELECT id FROM autorun_columns WHERE sheet_id = ?)`).pluck().get(sid), 0, 'no row queued')
 }
 const N = HEAVY_SLICE_ROWS + 1
 
@@ -123,29 +127,26 @@ await ok('no column reads the run\'s columns: slices of HEAVY_SLICE_ROWS, on the
   await expectClear(sid, sliced(split(N, HEAVY_SLICE_ROWS)))
 })
 
-await ok('one formula reads Answer (another reads that formula): half the queue budget, checkpointed', async () => {
+await ok('one formula reads Answer (another reads that formula): the same slices, one span each', async () => {
   const sid = sheetOf(N)
   await formula(sid, 'F', '{{Answer}} ? "has " + {{Answer}} : "empty"')
   await formula(sid, 'F2', '{{F}} + "!"')
-  await expectClear(sid, checkpointed(N, 1))
+  await expectClear(sid, sliced(split(N, HEAVY_SLICE_ROWS)), {}, 1)
 })
 
-await ok('three read Status or Answer (one reads both, counted once): a quarter, checkpointed', async () => {
+await ok('three read Status or Answer (one reads both, counted once): the same slices, three marks each', async () => {
   const sid = sheetOf(N)
   await formula(sid, 'F', '{{Answer}} ? "has " + {{Answer}} : "empty"')
   await clean(sid, 'Status', 'Low')
   await formula(sid, 'Both', '{{Status}} + {{Answer}}')
   await clean(sid, 'Name', 'Name low')
-  await expectClear(sid, checkpointed(N, 3))
+  await expectClear(sid, sliced(split(N, HEAVY_SLICE_ROWS)), {}, 3)
 })
 
-await ok('twenty read Answer: slices of 95 rows, checkpointed (no floor brings big slices back)', async () => {
-  const n = 95 * 2 + 1
-  const sid = sheetOf(n)
+await ok('twenty read Answer: the same slices, twenty marks each', async () => {
+  const sid = sheetOf(N)
   for (let i = 0; i < 20; i++) await clean(sid, 'Answer', `Low ${i}`)
-  const want = checkpointed(n, 20)
-  assert.deepEqual(want.sizes, [95, 95, 1])
-  await expectClear(sid, want)
+  await expectClear(sid, sliced(split(N, HEAVY_SLICE_ROWS)), {}, 20)
 })
 
 // A run's clear putting K columns back: PLACEHOLDER_CLEAR_BACK_ROWS / (1 + K) rows a slice, (1 + 2K) when read.
@@ -163,17 +164,16 @@ await ok('two columns put back; a column the journal has no slot for doesn\'t co
   assert.deepEqual(cells(r.sid, 'Status').slice(0, 2), ['Status 0', 'Status 1'])
 })
 
-await ok('three formulas read the column put back: the queue budget is smaller, so it holds', async () => {
+await ok('three formulas read the column put back: the journal\'s share when read, three marks a slice', async () => {
   const r = await seededRun(N, ['Answer'])
   for (const k of [1, 2, 3]) await formula(r.sid, `F${k}`, `{{Answer}} + "${k}"`)
-  await expectClear(r.sid, checkpointed(N, 3), r)
+  await expectClear(r.sid, sliced(split(N, backRows(1, true))), r, 3)
 })
 
 await ok('seven columns put back, one formula reading one: the journal\'s share is smaller, checkpointed', async () => {
   const r = await seededRun(N, COLUMNS)
   await formula(r.sid, 'F', '{{C5}} + "!"')
-  assert.ok(backRows(7, true) < PLACEHOLDER_CLEAR_QUEUE_ROWS / 2)
-  await expectClear(r.sid, sliced(split(N, backRows(7, true))), r)
+  await expectClear(r.sid, sliced(split(N, backRows(7, true))), r, 1)
   assert.deepEqual(COLUMNS.map(c => cells(r.sid, c)[N - 1]), COLUMNS.map(c => `${c} ${N - 1}`))
 })
 
