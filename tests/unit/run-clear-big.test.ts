@@ -75,7 +75,7 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
   const inside = watchedLoop.inside.map(transactionLine).join(' | ')
-  console.log(`        in the longest stretch: ${inside || 'no transaction'}`)
+  console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
   return { ms, loopMs: watchedLoop.ownMs, seen: seen.size }
 }
 

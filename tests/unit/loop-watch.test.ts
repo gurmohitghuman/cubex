@@ -1,8 +1,9 @@
 // The loop watch's own check (loop-watch.ts): a hold of the event loop by this thread alone still counts in full
 // against a bound while the idle thread runs on, whether the thread was busy on the CPU (a transaction working 250 ms)
 // or waiting (a write waiting 250 ms for SQLite's write lock, held on another thread); a pause of the whole process
-// (SIGSTOP, then SIGCONT 300 ms later; not on Windows, which has no such signal) is let off, and printed; the idle
-// thread ends once the watch is read.
+// (SIGSTOP, then SIGCONT 300 ms later; not on Windows, which has no such signal) is let off, and printed; after a
+// longer pause, a busy transaction is still the hold named, with its transaction; the idle thread ends once the watch
+// is read.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -37,19 +38,26 @@ async function watched(label: string, hold: () => Promise<void> | void): Promise
   await Promise.race([w.ended, sleep(5_000)])
   return w
 }
-const held = (w: LoopWatched) => assert.ok(w.ownMs >= BOUND_MS && w.idleMs < w.longest.ms - BOUND_MS,
+const held = (w: LoopWatched) => assert.ok(w.ownMs >= BOUND_MS,
   `held ${w.ownMs.toFixed(0)} ms by this thread alone (the idle thread late ${w.idleMs.toFixed(0)} ms): let off`)
-
-await ok(`a transaction busy on the CPU ${HOLD_MS} ms: held by this thread alone, past the bound`, async () => {
-  const w = await watched('busy', () => {
-    db.transaction(() => {
-      add.run(1)
-      for (const end = performance.now() + HOLD_MS; performance.now() < end;) { /* busy */ }
-    }).immediate()
-  })
-  held(w)
+const busy = () => db.transaction(() => {
+  add.run(1)
+  for (const end = performance.now() + HOLD_MS; performance.now() < end;) { /* busy */ }
+}).immediate()
+// The whole process stopped `ms` (SIGSTOP, then SIGCONT).
+const pause = (ms: number) => new Promise<void>((res, rej) => {
+  spawn('sh', ['-c', `kill -STOP ${process.pid}; sleep ${ms / 1000}; kill -CONT ${process.pid}`], { stdio: 'ignore' })
+    .once('exit', code => (code === 0 ? res() : rej(new Error(`the pause exited ${code}`))))
+})
+const busyIn = (w: LoopWatched) => {
   const [r] = w.inside
   assert.ok(r && r.ms >= HOLD_MS && r.cpuMs >= 0.6 * r.ms, `the transaction: ${r ? transactionLine(r) : 'none'}`)
+}
+
+await ok(`a transaction busy on the CPU ${HOLD_MS} ms: held by this thread alone, past the bound`, async () => {
+  const w = await watched('busy', busy)
+  held(w)
+  busyIn(w)
 })
 
 // The lock held on another thread, by its own connection: this thread waits in SQLite's busy handler (busy_timeout,
@@ -87,14 +95,22 @@ await ok('the whole process paused 300 ms: let off, and printed', async () => {
     console.log('      not on Windows: it has no signal that pauses a process')
     return
   }
-  const w = await watched('paused', () => new Promise<void>((res, rej) => {
-    const pid = process.pid
-    spawn('sh', ['-c', `kill -STOP ${pid}; sleep 0.3; kill -CONT ${pid}`], { stdio: 'ignore' })
-      .once('exit', code => (code === 0 ? res() : rej(new Error(`the pause exited ${code}`))))
-  }))
+  const w = await watched('paused', () => pause(300))
   assert.ok(w.longest.ms >= 250, `the loop held only ${w.longest.ms.toFixed(0)} ms`)
   assert.ok(w.ownMs < BOUND_MS && w.idleMs >= w.longest.ms - BOUND_MS,
     `held ${w.ownMs.toFixed(0)} ms by this thread alone (the idle thread late ${w.idleMs.toFixed(0)} ms)`)
+})
+
+await ok(`paused 400 ms, then a transaction busy ${HOLD_MS} ms: that transaction named, past the bound`, async () => {
+  if (process.platform === 'win32') {
+    console.log('      not on Windows: it has no signal that pauses a process')
+    return
+  }
+  const w = await watched('paused, then busy', async () => { await pause(400); await sleep(20); busy() })
+  assert.ok(w.longest.ms >= 350 && w.ownStretch.at > w.longest.at, `the longest stretch ${w.longest.ms.toFixed(0)} `
+    + `ms at ${w.longest.at.toFixed(0)}, the one held alone at ${w.ownStretch.at.toFixed(0)}`)
+  held(w)
+  busyIn(w)
 })
 
 await ok('the idle thread ends once the watch is read', async () => {

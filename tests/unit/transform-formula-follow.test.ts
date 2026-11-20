@@ -60,7 +60,7 @@ for (const formulas of [0, 1, 3]) {
       + `${(ms / 1000).toFixed(1)} s; ${heldText(watched)}, ${w.transactions} transactions `
       + `(longest ${w.longestTransactionMs.toFixed(0)} ms)`)
     const inside = watched.inside.map(transactionLine).join(' | ')
-    console.log(`        in the longest stretch: ${inside || 'no transaction'}`)
+    console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
     assert.equal(queued.get(uid), 0, 'a formula never followed')
     const outs = cells(sid, 'Out')
     assert.deepEqual(outs, Array.from({ length: N }, (_, i) => `P${i}`), 'Out written')

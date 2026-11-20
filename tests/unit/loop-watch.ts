@@ -1,13 +1,13 @@
 // The event loop watched while code under test runs (bulk-wal-kit.ts and the tests that time a job), with a second
 // clock that tells this thread holding the loop from the whole process being paused. The loop is sampled every 5 ms:
-// its longest stretch, and the transactions of `records` inside it. Meanwhile an idle worker thread runs a 5 ms timer
-// and nothing else (no I/O, no database): it runs late only when the process itself couldn't run (the runner's VM
-// paused, or had no CPU for it). A stretch of the loop, less the time the idle thread ran late inside it, is what
-// this thread held alone: a transaction busy on the CPU or waiting on the disk counts in full, the idle thread
-// running on meanwhile. A test's loop bound applies to that (`ownMs`), so a stretch is let off only when the idle
-// thread ran late for nearly all of it (at least the stretch less the bound). That lateness is printed with the
-// longest stretch either way (heldText). The idle thread ends when the watch is read and never keeps the process
-// running; a watch read before the thread had started (`ready`) lets off nothing from before then.
+// its longest stretch, the one this thread held longest, and the transactions of `records` inside that one. Meanwhile
+// an idle worker thread runs a 5 ms timer and nothing else (no I/O, no database): it runs late only when the process
+// itself couldn't run (the runner's VM paused, or had no CPU for it). A stretch of the loop, less the time the idle
+// thread ran late inside it, is what this thread held alone: a transaction busy on the CPU or waiting on the disk
+// counts in full, the idle thread running on meanwhile. A test's loop bound applies to that (`ownMs`), so a stretch is
+// let off only when the idle thread ran late for nearly all of it (at least the stretch less the bound). That lateness
+// is printed with the longest stretch either way (heldText). The idle thread ends when the watch is read and never
+// keeps the process running; a watch read before the thread had started (`ready`) lets off nothing from before then.
 import { performance } from 'node:perf_hooks'
 import { Worker } from 'node:worker_threads'
 import type { TransactionRecord } from './sqlite-write-probe'
@@ -49,13 +49,14 @@ let running = 0
 export const idleThreadsRunning = (): number => running
 
 export interface LoopWatched {
-  // The loop's longest stretch (`at`: performance.now() at its start), and the transactions inside it.
+  // The loop's longest stretch (`at`: performance.now() at its start), and how long the idle thread ran late in it.
   longest: { at: number; ms: number }
-  inside: TransactionRecord[]
-  // How long the idle thread ran late inside that stretch.
   idleMs: number
-  // The longest this thread held the loop alone: any stretch, less the idle thread's lateness inside it.
+  // The longest this thread held the loop alone: a stretch less the idle thread's lateness inside it. That stretch
+  // (it can be another than the longest, after a pause), and the transactions inside it.
   ownMs: number
+  ownStretch: { at: number; ms: number }
+  inside: TransactionRecord[]
   // The idle thread gone.
   ended: Promise<void>
 }
@@ -96,9 +97,10 @@ export function loopWatch(records: () => TransactionRecord[]): (() => LoopWatche
     const lateIn = (s: { at: number; ms: number }) => late.reduce((sum, g) =>
       sum + Math.max(0, Math.min(g.to, s.at + s.ms) - Math.max(g.from, s.at)), 0)
     const longest = stretches.reduce((a, b) => (b.ms > a.ms ? b : a), { at: 0, ms: 0 })
-    const ownMs = stretches.reduce((m, s) => Math.max(m, s.ms - lateIn(s)), 0)
-    const inside = records().filter(r => r.at < longest.at + longest.ms && r.at + r.ms > longest.at)
-    return { longest, inside, idleMs: lateIn(longest), ownMs, ended }
+    const own = stretches.map(s => ({ s, ms: s.ms - lateIn(s) }))
+      .reduce((a, b) => (b.ms > a.ms ? b : a), { s: { at: 0, ms: 0 }, ms: 0 })
+    const inside = records().filter(r => r.at < own.s.at + own.s.ms && r.at + r.ms > own.s.at)
+    return { longest, idleMs: lateIn(longest), ownMs: own.ms, ownStretch: own.s, inside, ended }
   }
   return Object.assign(stop, { ready })
 }

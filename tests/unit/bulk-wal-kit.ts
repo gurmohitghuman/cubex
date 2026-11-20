@@ -119,7 +119,8 @@ export function bulkWalKit() {
       + `${w.mostTransactionFrames}), worker: ${k.checkpoints} checkpoints, ${k.pauses} waits (${k.pausedMs} ms), `
       + `${k.restarts} start-overs; WAL peak ${w.mostWalFrames} frames, ${mb(peakBytes)} MB of ${mb(sizeLimit)} `
       + `(${(100 - (peakBytes / sizeLimit) * 100).toFixed(0)}% left)`)
-    console.log(`        in the longest stretch: ${inside.map(transactionLine).join(' | ') || 'no transaction'}`)
+    const held = inside.map(transactionLine).join(' | ')
+    console.log(`        in the stretch this thread held longest: ${held || 'no transaction'}`)
     if (opts.turns) console.log(`        slices written in a turn another slice was written in: ${sharedTurns}`)
     const startedOver = records.filter(r => r.startedOver).map(transactionLine)
     assert.ok(watched.ownMs < LOOP_LIMIT_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)

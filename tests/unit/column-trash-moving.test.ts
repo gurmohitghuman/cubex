@@ -101,7 +101,7 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
       const watched = watch()
-      const { longest, inside } = watched
+      const { ownStretch, inside } = watched
       const w = takeWalCheckpointerStats()
       const stalled = stall(p0)
       marks.stop()
@@ -112,8 +112,8 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       const first = probe.records()[0]?.at
       assert.equal(out.status, 200, JSON.stringify(out.body))
       console.log(`      answered in ${took} ms; its first transaction ${first ? (first - p0).toFixed(0) : '-'} ms in, `
-        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the ${heldText(watched)}; its `
-        + `longest stretch ${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
+        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the ${heldText(watched)}, `
+        + `${(ownStretch.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
           || 'no transaction'}); worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
       console.log(`        ${await stalled}`)
       assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
