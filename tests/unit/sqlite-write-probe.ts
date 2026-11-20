@@ -5,14 +5,16 @@
 // most frames the WAL held, and the most frames not all copied back a transaction found in the WAL before adding
 // its own (one finding them all copied starts the WAL over: none). A NOOP checkpoint (wal_checkpoint(NOOP): it
 // only reads the WAL's size, copying nothing, lib/wal-checkpointer.ts) is counted apart, as a read.
-// db.transaction, db.pragma, db.prepare and db.exec are wrapped on the connection: the app calls them at run
-// time, so its code is unchanged. Each transaction is also kept as a record: when it began (performance.now(),
-// before its BEGIN, so a wait for the lock counts in it), its time, the WAL's frames (and of
-// them copied) before and after it, whether it started the WAL over (the WAL header's checkpoint count or salt
-// changed, or its frames fell: SQLite then syncs the new header to disk inside that commit, on this connection's
-// thread), whether a checkpoint asked of the worker was still unanswered when it began (`checkpointing`), and
-// whether SQLite's own checkpoint ran inside its commit (`ownCheckpoint`: the commit left the WAL at or past
-// wal_autocheckpoint with it on; with a worker copying the WAL back meanwhile, the main file's mtime can't tell).
+// db.transaction, db.pragma, db.prepare and db.exec are wrapped on the connection: the app calls them at run time, so
+// its code is unchanged. Each transaction is also kept as a record: when it began (performance.now(), before its BEGIN,
+// so a wait for the lock counts in it), its time and its thread's CPU time in it (process.threadCpuUsage: a time well
+// over its CPU time waited, on the disk or for the process to run; on Windows CPU time is counted in clock ticks of
+// about 16 ms), the WAL's frames (and of them copied) before and after it, whether it started the WAL over (the WAL
+// header's checkpoint count or salt changed, or its frames fell: SQLite then syncs the new header to disk inside that
+// commit, on this connection's thread), whether a checkpoint asked of the worker was still unanswered when it began
+// (`checkpointing`), and whether SQLite's own checkpoint ran inside its commit (`ownCheckpoint`: the commit left the
+// WAL at or past wal_autocheckpoint with it on; with a worker copying the WAL back meanwhile, the main file's mtime
+// can't tell).
 // A transaction begun inside another (a savepoint) is part of that one, not a record of its own.
 import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -25,14 +27,15 @@ export interface WriteProbeStats {
 }
 
 export interface TransactionRecord {
-  n: number; at: number; ms: number; before: WalNow; after: WalNow; startedOver: boolean; checkpointing: boolean
-  ownCheckpoint: boolean
+  n: number; at: number; ms: number; cpuMs: number; before: WalNow; after: WalNow; startedOver: boolean
+  checkpointing: boolean; ownCheckpoint: boolean
 }
 interface WalNow { log: number; checkpointed: number }
-// One short line: `#n 12.3 ms, WAL 1500/1500 -> 53/0, started over, checkpoint asked`.
-export const transactionLine = (r: TransactionRecord) => `#${r.n} ${r.ms.toFixed(1)} ms, WAL `
-  + `${r.before.log}/${r.before.checkpointed} -> ${r.after.log}/${r.after.checkpointed}`
-  + `${r.startedOver ? ', started over' : ''}${r.checkpointing ? ', checkpoint asked' : ''}`
+// One short line: `#n 12.3 ms (cpu 11.8 ms), WAL 1500/1500 -> 53/0, started over, checkpoint asked`.
+export const transactionLine = (r: TransactionRecord) => `#${r.n} ${r.ms.toFixed(1)} ms `
+  + `(cpu ${r.cpuMs.toFixed(1)} ms), WAL ${r.before.log}/${r.before.checkpointed} -> `
+  + `${r.after.log}/${r.after.checkpointed}${r.startedOver ? ', started over' : ''}`
+  + `${r.checkpointing ? ', checkpoint asked' : ''}`
 
 const NOOP = /^\s*(PRAGMA\s+)?wal_checkpoint\s*\(\s*noop\s*\)\s*;?\s*$/i
 
@@ -69,9 +72,11 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
     const w0 = wal()
     const h0 = walHeader()
     const asked = checkpointing()
+    const c0 = process.threadCpuUsage()
     const t0 = performance.now()
     try { return f(...a) } finally {
       const ms = performance.now() - t0
+      const c = process.threadCpuUsage(c0)
       s.transactions++
       s.longestTransactionMs = Math.max(s.longestTransactionMs, ms)
       if (mtime() !== before) s.transactionsWritingMainFile++
@@ -81,7 +86,8 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
       const auto = pragma('wal_autocheckpoint', { simple: true }) as number
       const ownCheckpoint = auto > 0 && log1 >= auto
       if (ownCheckpoint) s.ownCheckpoints++
-      records.push({ n: s.transactions, at: t0, ms, before: w0, after: w1, checkpointing: asked, ownCheckpoint,
+      records.push({ n: s.transactions, at: t0, ms, cpuMs: (c.user + c.system) / 1000, before: w0, after: w1,
+        checkpointing: asked, ownCheckpoint,
         startedOver: (h1 !== null && h1 !== h0) || log1 < w0.log })
       s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
       s.mostWalFrames = Math.max(s.mostWalFrames, walFrames())

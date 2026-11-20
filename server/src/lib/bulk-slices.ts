@@ -22,9 +22,9 @@
 //   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
 //   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
 //   job's own) would copy them back inside it. The job alone stays under the room (its pause is fitted to it). A
-//   writer outside the runner (an import meanwhile) that takes the WAL past it copies the WAL back in its own
-//   commit, as with no job, so the WAL stays bounded: with SQLite's own checkpoint off, such a writer kept the
-//   worker from ever copying every frame, and the WAL grew as long as both went on.
+//   writer outside the runner (an import) past it copies the WAL back in its own commit, as with no job (with
+//   SQLite's own checkpoint off the WAL grew while both went on), but copies nothing while the worker copies: the
+//   WAL holds the room and what such writers commit in one copy, on a slow disk past journal_size_limit.
 // - No deadline by default: a background job waits for the worker as long as it takes. A writer with one passes
 //   `until`; past it, walRoom no longer waits and the slice is still written, in turn.
 // - With no worker (it couldn't start, or stopped twice) checkpoints run on this thread, as before:

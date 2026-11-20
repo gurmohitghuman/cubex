@@ -53,7 +53,9 @@ export const WAL_BULK_CHECKPOINT_FRAMES = 6000;
 export const WAL_BULK_PAUSE_FRAMES = 12000;
 // A slice's frames grow with its rows' size: dropping 5,000 undo journal rows of about 1,000 bytes each wrote 5,730,
 // and the pause plus one such slice took the WAL to 67 MB. So a bulk writer pauses sooner when its biggest slice
-// so far would take the WAL past this share of journal_size_limit (lib/bulk-slices.ts).
+// so far would take the WAL past this share of journal_size_limit (lib/bulk-slices.ts). The rest (about 1,600
+// frames at 64 MB) is for other writers' commits while the worker copies the WAL back: their own checkpoint copies
+// nothing then, so a slow copy lets them take the WAL past journal_size_limit.
 export const WAL_BULK_ROOM_SHARE = 0.9;
 // The job queue's database (lib/jobs-db.ts, lib/job-inserts.ts): at start, switching it to WAL waits this long at
 // most for another process holding it, trying again this often; at shutdown, the inserts already asked of its

@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
-import { loopWatch } from './bulk-wal-kit'
+import { heldText, loopWatch } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('transform-formula-follow')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
@@ -42,6 +42,7 @@ for (const formulas of [0, 1, 3]) {
     await walCheckpointerIdle()
     probe.reset()
     const watch = loopWatch(probe.records)
+    await watch.ready
     const t0 = performance.now()
     for (let cursor: string | undefined; ;) {
       const out = await transformColumn(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'Name',
@@ -53,19 +54,20 @@ for (const formulas of [0, 1, 3]) {
     const wrote = performance.now() - t0
     for (const end = Date.now() + 300_000; queued.get(uid) === 1 && Date.now() < end;) await sleep(20)
     const ms = performance.now() - t0
-    const { longest, inside } = watch()
+    const watched = watch()
     const w = probe.read()
     console.log(`      ${formulas} formulas: written in ${(wrote / 1000).toFixed(1)} s, followed by `
-      + `${(ms / 1000).toFixed(1)} s; loop held at most ${longest.ms.toFixed(0)} ms, ${w.transactions} transactions `
+      + `${(ms / 1000).toFixed(1)} s; ${heldText(watched)}, ${w.transactions} transactions `
       + `(longest ${w.longestTransactionMs.toFixed(0)} ms)`)
-    console.log(`        in the longest stretch: ${inside.map(transactionLine).join(' | ') || 'no transaction'}`)
+    const inside = watched.inside.map(transactionLine).join(' | ')
+    console.log(`        in the longest stretch: ${inside || 'no transaction'}`)
     assert.equal(queued.get(uid), 0, 'a formula never followed')
     const outs = cells(sid, 'Out')
     assert.deepEqual(outs, Array.from({ length: N }, (_, i) => `P${i}`), 'Out written')
     for (let k = 0; k < formulas; k++) {
       assert.deepEqual(cells(sid, `F${k}`), outs.map(o => `${o}-${k}`), `F${k} follows`)
     }
-    assert.ok(longest.ms < LOOP_MS, `the event loop was held ${longest.ms.toFixed(0)} ms`)
+    assert.ok(watched.ownMs < LOOP_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
   })
 }
 

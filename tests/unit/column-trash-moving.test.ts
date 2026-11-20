@@ -18,7 +18,7 @@ import sheetsMod from '../../server/src/services/trash-sheets'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import { columnTrashKit } from './column-trash-kit'
-import { loopWatch } from './bulk-wal-kit'
+import { heldText, loopWatch } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { stallWatch } from './stall-watch'
 import { trashSurfaces } from './column-trash-surfaces'
@@ -100,7 +100,8 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       const stall = stallWatch(db, process.env.DB_PATH!)
       const out = await api.rest('DELETE', `/sheets/${sid}/columns/Big`)
       const took = Date.now() - t0
-      const { longest, inside } = watch()
+      const watched = watch()
+      const { longest, inside } = watched
       const w = takeWalCheckpointerStats()
       const stalled = stall(p0)
       marks.stop()
@@ -111,8 +112,8 @@ await ok('a 300,000-row delete answers "moving" within its wait; a restore meanw
       const first = probe.records()[0]?.at
       assert.equal(out.status, 200, JSON.stringify(out.body))
       console.log(`      answered in ${took} ms; its first transaction ${first ? (first - p0).toFixed(0) : '-'} ms in, `
-        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the loop held at most `
-        + `${longest.ms.toFixed(0)} ms, ${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
+        + `its wait ended ${at(WAIT_ENDS)} in, its change log ${at(LOGGED)} in; the ${heldText(watched)}; its `
+        + `longest stretch ${(longest.at - p0).toFixed(0)} ms in (${inside.map(transactionLine).join(' | ')
           || 'no transaction'}); worker: ${w.checkpoints} checkpoints, ${w.restarts} start-overs`)
       console.log(`        ${await stalled}`)
       assert.ok(took >= COLUMN_DELETE_WAIT_MS - 50 && took < COLUMN_DELETE_WAIT_MS + PAST_WAIT_MS,
