@@ -13,6 +13,7 @@ import transformMod from '../../server/src/services/column-transform'
 import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
+import walMod from '../../server/src/lib/wal-checkpointer'
 import { watchWhile } from './loop-watch'
 import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
@@ -21,6 +22,7 @@ const { transformColumn } = transformMod as typeof import('../../server/src/serv
 const { applyCellOp } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { SLOW_PATTERN_FIX } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
 const { TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
+const { walCheckpointerIdle } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 type Params = import('../../server/src/services/column-transform').TransformParams
 type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
@@ -29,8 +31,7 @@ runMigrations()
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 console.warn = () => {}
 
-// Each page's read before its transaction (the rows whose cells go to the worker): counted, and `afterWorkerRead`
-// run after it.
+// Each page's read before its transaction (its rows' cells go to the worker): counted, then afterWorkerRead.
 let workerReads = 0
 let afterWorkerRead: (() => void) | null = null
 const prepare = db.prepare.bind(db)
@@ -85,8 +86,7 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts), and fn's answer. Over the
-// bound, the watch is printed with the transactions in that stretch.
+// The most this thread alone held the event loop while `fn` ran (loop-watch.ts; printed from LOOP_MS), and its answer.
 const LOOP_MS = 100
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
   const { out, watched: w } = await watchWhile(probe.records, fn, LOOP_MS)
@@ -125,6 +125,8 @@ async function main() {
     const first = await extract(id, STALLS)
     console.log(`     the first call wrote its ${TRANSFORM_MAX_ROWS} rows in ${(performance.now() - t).toFixed(0)} ms`)
     assert.ok('ok' in first && first.ok.updated === TRANSFORM_MAX_ROWS && first.ok.next_cursor, JSON.stringify(first))
+    // Its rows copied back first, or on a slow disk the next call waits all its time for that and writes nothing.
+    await walCheckpointerIdle()
     const out = await extract(id, STALLS, { cursor: first.ok.next_cursor })
     assert.ok('stopped' in out, JSON.stringify(out))
     assert.equal(out.stopped.rows_done, TRANSFORM_MAX_ROWS)
@@ -142,8 +144,7 @@ async function main() {
     const id = sheet(cells)
     workerReads = 0
     const { out: answers, lag } = await watched(() => untilEnd(id, '(.*)@'))
-    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop waited at most `
-      + `${lag.toFixed(1)} ms`)
+    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop held at most ${lag.toFixed(1)} ms`)
     assert.ok(answers.every(a => 'ok' in a), JSON.stringify(answers.find(a => !('ok' in a))))
     assert.equal(answers.reduce((n, a) => n + ('ok' in a ? a.ok.updated : 0), 0), cells.length)
     assert.ok(workerReads > answers.length, `${workerReads} pages in ${answers.length} calls`)
