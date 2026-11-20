@@ -3,13 +3,19 @@
 // or waiting (a write waiting 250 ms for SQLite's write lock, held on another thread); a pause of the whole process
 // (SIGSTOP, then SIGCONT 300 ms later; not on Windows, which has no such signal) is let off, and printed; after a
 // longer pause, a busy transaction is still the hold named, with its transaction; the idle thread ends once the watch
-// is read.
+// is read. The disk (loop-watch-disk.ts): a plain commit waiting off the CPU while the disk thread's writes are stuck
+// is let off, and printed; a transaction busy on the CPU, or a wait outside any transaction, is not, the disk stuck
+// or not; a commit that syncs is never let off, and a pause is not let off twice; the disk thread's file is beside
+// the database and gone once the watch is read.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 import { createRequire } from 'node:module'
 import { Worker } from 'node:worker_threads'
 import dbMod from '../../server/src/lib/db'
 import { heldText, idleThreadsRunning, loopWatch, type LoopWatched } from './loop-watch'
+import { diskLetOff } from './loop-watch-disk'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 
@@ -26,12 +32,17 @@ db.exec('CREATE TABLE loop_watch (v INTEGER)')
 const add = db.prepare('INSERT INTO loop_watch (v) VALUES (?)')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-// `hold` watched, the loop then left free a moment so the sampler sees the stretch end; printed.
-async function watched(label: string, hold: () => Promise<void> | void): Promise<LoopWatched> {
+// `hold` watched, the loop then left free a moment so the sampler sees the stretch end; printed. With `stuck`, the
+// disk thread's writes are stuck that long from just before the hold.
+async function watched(label: string, hold: () => Promise<void> | void, stuck = 0): Promise<LoopWatched> {
   probe.reset()
   const watch = loopWatch(probe.records)
   await watch.ready
   await sleep(20)
+  if (stuck > 0) {
+    watch.stallDisk(stuck)
+    await sleep(15)
+  }
   try { await hold() } finally { await sleep(20) }
   const w = watch()
   console.log(`      ${label}: ${heldText(w)}; ${w.inside.map(transactionLine).join(' | ') || 'no transaction'}`)
@@ -111,6 +122,51 @@ await ok(`paused 400 ms, then a transaction busy ${HOLD_MS} ms: that transaction
     + `ms at ${w.longest.at.toFixed(0)}, the one held alone at ${w.ownStretch.at.toFixed(0)}`)
   held(w)
   busyIn(w)
+})
+
+const wait = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+const STUCK_MS = HOLD_MS + 150
+await ok(`a plain commit waiting ${HOLD_MS} ms off the CPU while the disk is stuck: let off, and printed`, async () => {
+  const w = await watched('a commit, the disk stuck', () => db.transaction(() => { add.run(4); wait(HOLD_MS) })
+    .immediate(), STUCK_MS)
+  assert.ok(w.ownMs < BOUND_MS, heldText(w))
+  assert.ok(w.letOffs.some(o => o.letOffMs >= HOLD_MS - 60), heldText(w))
+  assert.match(heldText(w), /let off for the disk: \d+ ms \(CPU \d+ ms, the disk stuck \d+ ms, \d+ ms let off\)/)
+})
+
+await ok('a transaction busy on the CPU, the disk stuck: held by this thread alone, past the bound', async () => {
+  held(await watched('busy, the disk stuck', busy, STUCK_MS))
+})
+
+await ok('a wait outside any transaction (for a worker), the disk stuck: held, past the bound', async () => {
+  const w = await watched('a wait, the disk stuck', () => { wait(HOLD_MS) }, STUCK_MS)
+  held(w)
+  assert.equal(w.inside.length, 0)
+})
+
+await ok('a commit that syncs is never let off; a pause is not let off twice', () => {
+  const r = { n: 1, at: 0, ms: 300, cpuMs: 10, before: { log: 0, checkpointed: 0 }, after: { log: 1, checkpointed: 0 },
+    startedOver: false, checkpointing: false, ownCheckpoint: false }
+  const stretch = { at: 0, ms: 300, cpuMs: 10 }
+  const stuck = [{ from: 0, to: 300 }]
+  assert.equal(diskLetOff(stretch, [], stuck, [r]).letOffMs, 290)
+  for (const flag of ['startedOver', 'checkpointing', 'ownCheckpoint']) {
+    assert.equal(diskLetOff(stretch, [], stuck, [{ ...r, [flag]: true }]).letOffMs, 0, flag)
+  }
+  // Paused 100 ms of it (the idle thread late, let off already): the disk let off only the other 190.
+  assert.equal(diskLetOff(stretch, [{ from: 0, to: 100 }], stuck, [r]).letOffMs, 190)
+  // Stuck for only 50 ms of it: 50 let off.
+  assert.equal(diskLetOff(stretch, [], [{ from: 200, to: 250 }], [r]).letOffMs, 50)
+})
+
+await ok('the disk thread\'s file is beside the database, and gone once the watch is read', async () => {
+  const watch = loopWatch(() => [])
+  await watch.ready
+  await sleep(20)
+  const w = watch()
+  assert.equal(path.dirname(w.diskFile), path.dirname(path.resolve(process.env.DB_PATH!)))
+  await Promise.race([w.ended, sleep(5_000)])
+  assert.equal(fs.existsSync(w.diskFile), false, `${w.diskFile} still there`)
 })
 
 await ok('the idle thread ends once the watch is read', async () => {
