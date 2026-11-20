@@ -15,7 +15,7 @@
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import { Worker } from 'node:worker_threads'
 import { covered, diskLetOff, diskThread, merged, type LetOff, type Span } from './loop-watch-disk'
-import type { TransactionRecord } from './sqlite-write-probe'
+import { transactionLine, type TransactionRecord } from './sqlite-write-probe'
 
 const TICK_MS = 5
 // A tick of the idle thread counts as on time up to DUE_MS after the one before: on Windows timers run in clock ticks
@@ -156,8 +156,9 @@ export const heldText = (w: LoopWatched) => `loop held at most ${n0(w.longest.ms
   + `${n0(w.own.gcMs)} ms); let off for the disk: ${w.letOffs.map(letOffText).join(', ') || 'none'}`
 
 // `fn` run under a watch: its answer, how long it took, and the watch, read once fn ended or threw (so its threads
-// end and the disk thread's file is deleted either way). The watch is printed when a stretch was let off.
-export async function watchWhile<T>(records: () => TransactionRecord[], fn: () => Promise<T>):
+// end and the disk thread's file is deleted either way). The watch is printed when a stretch was let off, or this
+// thread held the loop `printFrom` ms or more: then with the transactions in that stretch.
+export async function watchWhile<T>(records: () => TransactionRecord[], fn: () => Promise<T>, printFrom = Infinity):
   Promise<{ out: T; ms: number; watched: LoopWatched }> {
   const watch = loopWatch(records)
   await watch.ready
@@ -170,6 +171,8 @@ export async function watchWhile<T>(records: () => TransactionRecord[], fn: () =
     return { out, ms, watched }
   } finally {
     watched ??= watch()
-    if (watched.letOffs.length > 0) console.log(`      ${heldText(watched)}`)
+    const over = watched.ownMs >= printFrom
+    if (over || watched.letOffs.length > 0) console.log(`      ${heldText(watched)}`)
+    if (over) console.log(`      in it: ${watched.inside.map(transactionLine).join(' | ') || 'no transaction'}`)
   }
 }

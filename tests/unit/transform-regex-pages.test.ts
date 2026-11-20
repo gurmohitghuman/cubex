@@ -85,9 +85,11 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts), and fn's answer.
+// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts), and fn's answer. Over the
+// bound, the watch is printed with the transactions in that stretch.
+const LOOP_MS = 100
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
-  const { out, watched: w } = await watchWhile(probe.records, fn)
+  const { out, watched: w } = await watchWhile(probe.records, fn, LOOP_MS)
   return { out, lag: w.ownMs }
 }
 
@@ -98,7 +100,7 @@ async function main() {
     assert.deepEqual(out, { fail: 'invalid',
       error: `regex_extract stopped: ${slowWords(rowId(id, 0))}. No cell was written. ${SLOW_PATTERN_FIX}` })
     assert.deepEqual(targets(id), [undefined, undefined, undefined])
-    assert.ok(lag < 100, `the event loop waited ${lag} ms`)
+    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
   })
 
   await check('rows written on a page, then the next page\'s first row stalls: stopped, naming it, with the cursor',
@@ -147,7 +149,7 @@ async function main() {
     assert.ok(workerReads > answers.length, `${workerReads} pages in ${answers.length} calls`)
     assert.equal(applyCellOp('regex_extract', cells[0], { pattern: '(.*)@' }), '')
     assert.deepEqual(targets(id), [...Array(150).fill(''), 'name'])
-    assert.ok(lag < 100, `the event loop waited ${lag} ms`)
+    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
   })
 
   await check('a pattern that works extracts on the worker what the API thread would, over several pages',
