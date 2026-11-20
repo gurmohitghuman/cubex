@@ -5,6 +5,7 @@
 // then, about once in eight passes on Windows, and the next pass doesn't stall there, while a slowdown of the
 // walk holds every pass), memory stays that of a page, not of the sheet, and one matching every row writes every
 // row exactly once over calls of at most TRANSFORM_MAX_ROWS rows, each going on from the call before's next_cursor.
+// Memory is the heap the walk keeps: heapUsed right after a forced full GC, in a pass of its own (keptHeap).
 // Both platforms run them: they caught the checkpoint stall, and the WAL starts over about 34 times a pass. No
 // transaction on the API connection starts the WAL over: SQLite syncs the new WAL header inside that commit, on
 // the event loop (with every WAL sync made 300 ms slow, each such page took 300 ms). The worker starts it over
@@ -23,6 +24,8 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import { performance, PerformanceObserver } from 'node:perf_hooks'
+import v8 from 'node:v8'
+import vm from 'node:vm'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -46,6 +49,9 @@ type Params = import('../../server/src/services/column-transform').TransformPara
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
 console.warn = () => {}
+// A full GC on demand, for the heap check: the flag set at run time, so the test runs as the others do.
+v8.setFlagsFromString('--expose-gc')
+const collect = vm.runInNewContext('gc') as () => void
 
 const ROWS = 300_000
 const FEW = 1_000
@@ -104,7 +110,7 @@ async function main() {
     while (answered === 0) await sleep(5)
     const before = process.memoryUsage()
     // The event loop's longest stretch: the gap between two ticks of a 5 ms timer, up to the end of the calls.
-    let heap = 0, rss = 0, lastTick = performance.now(), loopMax = 0, loopMaxAt = 0, gcMax = 0
+    let rss = 0, lastTick = performance.now(), loopMax = 0, loopMaxAt = 0, gcMax = 0
     // Garbage collection's longest pause, printed: a stretch outside every page is that or the machine.
     const gc = new PerformanceObserver(list => {
       for (const e of list.getEntries()) gcMax = Math.max(gcMax, e.duration)
@@ -114,9 +120,7 @@ async function main() {
       const now = performance.now()
       if (now - lastTick > loopMax) { loopMax = now - lastTick; loopMaxAt = lastTick }
       lastTick = now
-      const m = process.memoryUsage()
-      heap = Math.max(heap, m.heapUsed - before.heapUsed)
-      rss = Math.max(rss, m.rss - before.rss)
+      rss = Math.max(rss, process.memoryUsage().rss - before.rss)
     }
     const sampler = setInterval(tick, 5)
     const t0 = performance.now()
@@ -147,7 +151,7 @@ async function main() {
     // The longest stretch fell in a page when one page's transaction took at least half of it.
     const inPage = records.some(r => r.at < loopMaxAt + loopMax && loopMaxAt < r.at + r.ms && r.ms * 2 >= loopMax)
     const stats = { calls: calls.length, ms: Math.round(ms), answered, slowestMs: Math.round(slowest),
-      loopMaxMs: Math.round(loopMax), heapMb: mb(heap), rssMb: mb(rss), pages: w.transactions,
+      loopMaxMs: Math.round(loopMax), rssMb: mb(rss), pages: w.transactions,
       longestPageMs: Math.round(w.longestTransactionMs), mostPageFrames: w.mostTransactionFrames,
       workerCheckpoints: k.checkpoints - k.onThisThread, onThisThread: k.onThisThread, waits: k.pauses,
       waitedMs: k.pausedMs, workerRestarts: k.restarts, mainCheckpoints: w.checkpoints,
@@ -182,6 +186,30 @@ async function main() {
     }
     assert.fail(`every pass held the server ${BOUND_MS} ms or more: ${JSON.stringify(over)}`)
   }
+  // The most heap the walk keeps, in MB: heapUsed right after a forced full GC, every HEAP_SAMPLE_MS and after
+  // each call, less that before the first call. A pass of its own, as each forced GC holds the loop.
+  const HEAP_SAMPLE_MS = 100, HEAP_MB = 64
+  async function keptHeap(params: Params) {
+    collect()
+    const base = process.memoryUsage().heapUsed
+    let most = 0, gcs = 0
+    const sample = () => { collect(); gcs++; most = Math.max(most, process.memoryUsage().heapUsed - base) }
+    const sampler = setInterval(sample, HEAP_SAMPLE_MS)
+    const t0 = performance.now()
+    try {
+      for (let cursor: string | undefined; ;) {
+        const out = await transformColumn(uid, { ...params, ...(cursor === undefined ? {} : { cursor }) })
+        assert.ok('ok' in out, JSON.stringify(out))
+        sample()
+        cursor = out.ok.next_cursor
+        if (cursor === undefined) break
+      }
+    } finally { clearInterval(sampler) }
+    const mb = Math.round(most / 1048576)
+    console.log(`      ${params.targetColumn}: the walk kept at most ${mb} MB of heap (${gcs} forced GCs, `
+      + `${Math.round(performance.now() - t0)} ms)`)
+    return mb
+  }
   const stored = (column: string, sheet = sid) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
     AND json_extract(data, ?) IS NOT NULL`).pluck().get(sheet, `$."${column}"`) as number
 
@@ -203,8 +231,9 @@ async function main() {
 
   const NONE = `a where matching none of ${ROWS} rows: nothing written, the server answers, memory stays a page's`
   await check(NONE, async () => {
-    await withinBound('Nothing', targetColumn => ({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
-      targetColumn, where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] }), ({ calls, stats, target }) => {
+    const nothing = (targetColumn: string): Params => ({ sheetId: sid, operation: 'upper', sourceColumn: 'Name',
+      targetColumn, where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
+    await withinBound('Nothing', nothing, ({ calls, stats, target }) => {
       assert.ok(stats.answered >= 5, JSON.stringify(stats))
       assert.ok(stats.mostWalFrames < probe.autoCheckpointFrames, `the WAL held ${stats.mostWalFrames} frames: `
         + `SQLite's own checkpoint (at ${probe.autoCheckpointFrames}) ran inside a page's commit`)
@@ -213,14 +242,16 @@ async function main() {
         `${stats.workerCheckpoints + stats.mainCheckpoints} checkpoints after pages that wrote nothing`)
       assert.deepEqual(calls[0].created_column, target)
       assert.equal(stored(target), 0, 'no row stores the new column')
-      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
+    const kept = await keptHeap(nothing('Nothing heap'))
+    assert.ok(kept < HEAP_MB, `the walk kept ${kept} MB of heap`)
   })
 
   const EVERY = `a where matching every one of ${ROWS} rows: each written once, at most ${TRANSFORM_MAX_ROWS} a call`
   await check(EVERY, async () => {
-    await withinBound('Every', targetColumn => ({ sheetId: sid, operation: 'template', template: '{{Name}}!',
-      targetColumn, where: [{ column: 'Name', operator: 'not_empty' }] }), ({ calls, stats, startedOver, target }) => {
+    const every = (targetColumn: string): Params => ({ sheetId: sid, operation: 'template', template: '{{Name}}!',
+      targetColumn, where: [{ column: 'Name', operator: 'not_empty' }] })
+    await withinBound('Every', every, ({ calls, stats, startedOver, target }) => {
       assert.equal(calls.reduce((n, c) => n + c.updated, 0), ROWS)
       assert.ok(calls.every(c => c.updated <= TRANSFORM_MAX_ROWS), JSON.stringify(calls.map(c => c.updated)))
       assert.deepEqual(calls.map(c => c.created_column), [target, ...calls.slice(1).map(() => null)])
@@ -234,8 +265,9 @@ async function main() {
       assert.deepEqual(startedOver.map(transactionLine), [], 'transactions that started the WAL over on this thread')
       assert.ok(stats.waits > 0 && stats.workerRestarts > 0, JSON.stringify(stats))
       assert.ok(stats.workerCheckpoints > 0 && stats.onThisThread === 0, JSON.stringify(stats))
-      assert.ok(stats.heapMb < 64, `heap grew ${stats.heapMb} MB`)
     })
+    const kept = await keptHeap(every('Every heap'))
+    assert.ok(kept < HEAP_MB, `the walk kept ${kept} MB of heap`)
   })
 
   server.close()
