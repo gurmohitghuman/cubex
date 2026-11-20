@@ -24,7 +24,13 @@ const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/l
 export interface Answer { status: number; body: any }
 
 // `scopes` as a token stores them ("read,write,run"): write and run include read, as for a real token.
-export async function trashSurfaces(uid: string, scopes: string) {
+// `reuse: false` sends each request on a connection of its own. A test that holds this thread for seconds while a
+// connection sits idle about a minute needs that: this thread is both the client and the server, so a hold across
+// the end of the client's keep-alive (63 s: the server's 65 s less fetch's 2 s margin) and the server's (66 s:
+// Node adds 1 s) leaves both timers due. The request then goes out on the old connection before either runs, and
+// the server's timer closes it with the request unread, which resets it (ECONNRESET). A browser on its own machine
+// closes the connection on time, and retries a request reset on one it reused.
+export async function trashSurfaces(uid: string, scopes: string, { reuse = true } = {}) {
   const granted = expandScopes(scopes)
   const web = express()
   web.use(cookieParser())
@@ -42,8 +48,8 @@ export async function trashSurfaces(uid: string, scopes: string) {
   const ask = async (url: string, method: string, body: unknown, cookie?: string): Promise<Answer> => {
     let r: Response
     try {
-      r = await fetch(url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
-        body: body === undefined ? undefined : JSON.stringify(body) })
+      r = await fetch(url, { method, headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}),
+        ...(reuse ? {} : { connection: 'close' }) }, body: body === undefined ? undefined : JSON.stringify(body) })
     } catch (err) {
       // "fetch failed" alone doesn't say why: the cause does (ECONNRESET, a timeout, a refused connection).
       const cause = (err as { cause?: { code?: string; message?: string } }).cause

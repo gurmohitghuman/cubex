@@ -31,7 +31,9 @@ const { checkpointAsked, takeWalCheckpointerStats } = walMod as typeof import('.
 const k = columnTrashKit('column-trash-moving')
 const { db, uid, tid, ok, done, idle, sheet, order, cells, item, stored, del, restoreOne, history } = k
 console.error = () => {}
-const api = await trashSurfaces(uid, 'read,write')
+// A connection per request: the MCP case sends none, so the app's delete went out about a minute after the request
+// before it, and a hold across the keep-alive's end reset it (column-trash-surfaces.ts).
+const api = await trashSurfaces(uid, 'read,write', { reuse: false })
 
 const pause = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 // Each statement starting with `sql` prepared from now on sleeps `ms` after each run, inside its slice.
