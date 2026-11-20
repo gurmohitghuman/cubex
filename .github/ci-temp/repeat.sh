@@ -16,7 +16,7 @@ case $group in
   undo) tests=run-undo-slices; n=10 ;;
   clear) tests=run-clear-big; n=10 ;;
   load) tests=$LIGHT; n=5 ;;
-  regex) tests=transform-regex-pages; n=40 ;;
+  regex) tests="transform-regex-pages transform-regex-worker"; n=40 ;;
   *) echo "no group $group"; exit 2 ;;
 esac
 # A quick check of this script: REPEAT_N=1, and NO_LOAD=1 to leave the disk alone.

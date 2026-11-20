@@ -24,7 +24,7 @@ const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data)
 const touch = db.prepare('UPDATE rows SET data = json_set(data, \'$.B\', ?) WHERE sheet_id = ? AND row_index = ?')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const pct = (a: number[], p: number) => [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(a.length * p))]
-const line = (a: number[]) => a.length ? `${a.length} commits, median ${pct(a, 0.5).toFixed(1)} ms, `
+const line = (a: number[]) => a.length ? `${a.length}, median ${pct(a, 0.5).toFixed(1)} ms, `
   + `p99 ${pct(a, 0.99).toFixed(1)} ms, max ${Math.max(...a).toFixed(1)} ms` : 'no commit'
 
 let index = 0
@@ -37,16 +37,25 @@ function grow(rows: number) {
     }).immediate())
   }
 }
-// One small commit every 5 ms while `going()`, each timed; at most `max` of them.
+// One small commit every 5 ms while `going()`, at most `max` of them: each one's wait for the write lock (BEGIN
+// IMMEDIATE), its statement and its COMMIT, timed apart.
 async function commits(going: () => boolean, max = 400) {
-  const ms: number[] = []
-  while (going() && ms.length < max) {
-    const t = performance.now()
-    withoutAutoCheckpoint(() => db.transaction(() => { touch.run(String(t), sid, ms.length % 1000) }).immediate())
-    ms.push(performance.now() - t)
+  const begin: number[] = [], stmt: number[] = [], commit: number[] = []
+  while (going() && begin.length < max) {
+    withoutAutoCheckpoint(() => {
+      const t0 = performance.now()
+      db.exec('BEGIN IMMEDIATE')
+      const t1 = performance.now()
+      touch.run(String(t1), sid, begin.length % 1000)
+      const t2 = performance.now()
+      db.exec('COMMIT')
+      begin.push(t1 - t0)
+      stmt.push(t2 - t1)
+      commit.push(performance.now() - t2)
+    })
     await sleep(5)
   }
-  return ms
+  return { begin, stmt, commit }
 }
 
 for (const round of [1, 2, 3]) {
@@ -58,8 +67,9 @@ for (const round of [1, 2, 3]) {
   await asked
   const checkpointMs = performance.now() - t0
   const quiet = await commits(() => true, 100)
-  console.log(`round ${round} (${process.platform}): the checkpoint took ${checkpointMs.toFixed(0)} ms; during it `
-    + `${line(during)}; with none running ${line(quiet)}`)
+  console.log(`round ${round} (${process.platform}): the checkpoint took ${checkpointMs.toFixed(0)} ms; during it, `
+    + `BEGIN ${line(during.begin)}, UPDATE ${line(during.stmt)}, COMMIT ${line(during.commit)}; with none running, `
+    + `BEGIN ${line(quiet.begin)}, UPDATE ${line(quiet.stmt)}, COMMIT ${line(quiet.commit)}`)
 }
 await closeWalCheckpointer()
 process.exit(0)
