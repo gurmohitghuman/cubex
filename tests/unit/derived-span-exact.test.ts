@@ -6,7 +6,8 @@
 // for the clear's end; a sort between the clear and the follow; rows deleted or sent to the trash after the
 // clear, one restored before the formula's turn; long text in the formula's cells, a span worked out in slices the
 // read cap ends; long answers, slices that end early; a second run on the column before the formula caught up,
-// waited for at its ⏳, so no wrong value shows.
+// waited for at its ⏳, so no wrong value shows; and a ⏳ a person typed, with no run holding the column, not
+// waited for.
 import assert from 'node:assert/strict'
 import { spanKit, fOf } from './span-kit'
 import endMod from '../../server/src/lib/run-placeholders'
@@ -17,6 +18,7 @@ import storeMod from '../../server/src/lib/trash/store'
 import constMod from '../../server/src/lib/constants'
 import followMod from '../../server/src/services/derived-follow'
 import entryMod from '../../server/src/services/autorun-entry'
+import cellsMod from '../../server/src/lib/placeholder-cells'
 const { clearRunPlaceholders } = endMod as typeof import('../../server/src/lib/run-placeholders')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
 const { deleteRowsToTrash } = trashMod as typeof import('../../server/src/services/trash-rows')
@@ -25,6 +27,7 @@ const { setTrashDays, getTrashDays } = storeMod as typeof import('../../server/s
 const { PLACEHOLDER_CLEAR_BACK_ROWS, DERIVED_SLICE_CHARS } = constMod as typeof import('../../server/src/lib/constants')
 const { derivedFollowTick } = followMod as typeof import('../../server/src/services/derived-follow')
 const { loadEntry } = entryMod as typeof import('../../server/src/services/autorun-entry')
+const { PLACEHOLDER } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const k = spanKit('derived-span-exact')
 const { db, uid, ok, done, idle, cells, entry, runOn, scene, clear, write, told, queued, spans, progress, follow } = k
 console.error = () => {}
@@ -172,6 +175,20 @@ await ok('a second run on Answer before F caught up: F waits at its ⏳, no wron
   db.prepare("UPDATE http_runs SET status = 'completed' WHERE id = ?").run(again.id)
   await follow(sid)
   k.right(sid, paid, { loud: [[5, 6], [5, 6]] })
+})
+
+await ok('the ⏳ text typed into Answer, no run holding it: F works that row out (as empty), not waiting there',
+  async () => {
+  const { sid, run, paid } = await scene(10)
+  await clear(sid, run)
+  write(sid, 4, [['Answer', PLACEHOLDER]])
+  await tick(sid, 'F')
+  assert.deepEqual(progress(sid, 'F'), [], 'F went past row 4 and finished its span')
+  await follow(sid)
+  const f = cells(sid, 'Answer').map(a => (a === PLACEHOLDER ? 'empty' : fOf(a)))
+  assert.equal(f[4], 'empty')
+  // Hook hears of the person's edit; F's answer for row 4 was 'empty' already, so F2's doesn't change.
+  k.right(sid, paid, { f, loud: [[4], []] })
 })
 
 done()

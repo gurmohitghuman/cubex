@@ -1,5 +1,5 @@
 // Migration 060 adds derived_spans and derived_span_marks (lib/derived-spans.ts). On a database the previous build
-// made (every migration before 060 applied, as migrate.ts applies them) holding a sheet, its rows, a formula's
+// made (every migration but 060 applied, 061 too, as migrate.ts applies them) holding a sheet, its rows, a formula's
 // auto-run entry and a row queued for it, the upgrade changes none of them and adds the two tables, their indexes
 // and the trigger. Then: a span's rowids and run are kept as written; a mark per reader; a reader's deletion takes
 // its marks (the cascade) and a span goes with its last mark, whether the mark goes by the cascade or by a DELETE;
@@ -16,11 +16,11 @@ const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 console.log = () => {}
 
-// The database as the previous build left it: each migration before 060, as migrate.ts runs one.
+// The database as the previous build (main, with 061) left it: each migration but 060, as migrate.ts runs one.
 const dir = path.resolve('server/src/db/migrations')
 db.exec(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY,
   applied_at TEXT NOT NULL DEFAULT (datetime('now')))`)
-for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.sql') && f < '060').sort()) {
+for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.sql') && !f.startsWith('060_')).sort()) {
   const sql = fs.readFileSync(path.join(dir, file), 'utf8')
   const off = sql.startsWith('-- cube:foreign-keys-off')
   if (off) db.pragma('foreign_keys = OFF')
@@ -48,11 +48,13 @@ for (const u of ['u1', 'u2']) {
 const snapshot = () => ['sheets', 'rows', 'autorun_columns', 'autorun_pending']
   .map(t => db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all())
 const before = snapshot()
+const applied = () => db.prepare('SELECT name FROM _migrations ORDER BY name').pluck().all() as string[]
+const had = applied()
 
 runMigrations()   // the upgrade: 060 only
 
 assert.deepEqual(snapshot(), before, 'sheets, rows, entries and the queue as they were')
-assert.equal(db.prepare("SELECT COUNT(*) FROM _migrations WHERE name LIKE '060%'").pluck().get(), 1)
+assert.deepEqual(applied().filter(n => !had.includes(n)), ['060_derived_spans.sql'], '060 applied, and no other')
 assert.deepEqual(tables(), [
   { type: 'trigger', name: 'derived_span_last_mark', tbl_name: 'derived_span_marks' },
   { type: 'table', name: 'derived_span_marks', tbl_name: 'derived_span_marks' },
