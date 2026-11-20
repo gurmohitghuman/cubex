@@ -81,7 +81,9 @@ db.pragma('temp_store = MEMORY');
 // -wal file grows unbounded — there's a documented 20GB-WAL incident in the
 // wild. journal_size_limit truncates the WAL back down at the next
 // checkpoint after it exceeds the limit; it does NOT cap mid-transaction
-// growth, so a single huge write can still exceed it briefly.
+// growth, so a single huge write can still exceed it briefly. Nor what other
+// writers commit while the WAL checkpoint worker copies the WAL back during a
+// background bulk job (lib/bulk-slices.ts).
 db.pragma(`journal_size_limit = ${DB_WAL_SIZE_LIMIT}`);
 // Trigger an auto-checkpoint after ~2000 WAL pages (~8MB at 4KB pages),
 // up from the SQLite default of 1000. Slightly less checkpoint chatter
