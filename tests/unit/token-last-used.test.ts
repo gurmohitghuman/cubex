@@ -22,6 +22,8 @@ const { authenticateAccessToken } = await import('../../server/src/middleware/ac
 const { noteTokenUse, tokenUsesWaiting, writeTokenUsesNow } = await import('../../server/src/lib/token-last-used')
 const { ACCESS_TOKEN_LAST_USED_RETRY_MS } = await import('../../server/src/lib/constants')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
+const { heldText, loopWatch } = await import('./loop-watch')
+const { sqliteWriteProbe } = await import('./sqlite-write-probe')
 runMigrations()
 console.error = () => {}
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -80,12 +82,9 @@ await ok('another connection holding the write lock: no call or loop held; writt
   const other = new Database(process.env.DB_PATH!)
   other.exec('BEGIN IMMEDIATE')
   other.prepare("UPDATE users SET password_hash = 'y' WHERE id = ?").run(uid)
-  let last = performance.now(), longest = 0
-  const sampler = setInterval(() => {
-    const now = performance.now()
-    longest = Math.max(longest, now - last)
-    last = now
-  }, 5)
+  const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
+  const watch = loopWatch(probe.records)
+  await watch.ready
   const usedAt = Date.now()
   const took = call(t.token)
   await sleep(2000)
@@ -93,12 +92,12 @@ await ok('another connection holding the write lock: no call or loop held; writt
   assert.equal(tokenUsesWaiting(), 1)
   other.exec('COMMIT')
   const after = await until('the write once the lock is free', () => lastUsed(t.id) !== null, 3000)
-  clearInterval(sampler)
+  const watched = watch()
   other.close()
-  console.log(`      the call went on in ${took.toFixed(1)} ms; loop held at most ${longest.toFixed(0)} ms; written `
+  console.log(`      the call went on in ${took.toFixed(1)} ms; ${heldText(watched)}; written `
     + `${after} ms after the lock was let go`)
   assert.ok(took < 50, `the call took ${took.toFixed(0)} ms`)
-  assert.ok(longest < 100, `the event loop was held ${longest.toFixed(0)} ms`)
+  assert.ok(watched.ownMs < 100, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
   assert.ok(after <= ACCESS_TOKEN_LAST_USED_RETRY_MS + 500, `written ${after} ms after the lock was let go`)
   assert.equal(lastUsed(t.id), asStored(usedAt), 'the time of the use, not of the write')
   assert.equal(tokenUsesWaiting(), 0)

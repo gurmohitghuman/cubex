@@ -22,6 +22,7 @@ import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { heldText, loopWatch } from './loop-watch'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -67,16 +68,14 @@ const call = (suffix: string, cursor?: string) => transformColumn(uid, { sheetId
 const once = (suffix: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
   AND json_extract(data, '$.N') = 'r' || row_index || ?`).pluck().get(sid, suffix) as number
 
-// Every call of a pass, from the top to its last next_cursor, the event loop's longest stretch measured.
+// Every call of a pass, from the top to its last next_cursor, the longest this thread alone held the event loop
+// measured (loop-watch.ts), and printed.
 async function pass(suffix: string) {
-  let lastTick = performance.now(), loopMax = 0
-  const sampler = setInterval(() => {
-    const now = performance.now()
-    loopMax = Math.max(loopMax, now - lastTick)
-    lastTick = now
-  }, 5)
+  const watch = loopWatch(probe.records)
+  await watch.ready
   const t0 = performance.now()
   let calls = 0
+  let loopMaxMs = 0
   try {
     for (let cursor: string | undefined; ;) {
       const out = await call(suffix, cursor)
@@ -85,8 +84,12 @@ async function pass(suffix: string) {
       cursor = out.ok.next_cursor
       if (cursor === undefined) break
     }
-  } finally { clearInterval(sampler) }
-  return { calls, ms: Math.round(performance.now() - t0), loopMaxMs: Math.round(loopMax) }
+  } finally {
+    const w = watch()
+    loopMaxMs = Math.round(w.ownMs)
+    console.log(`      ${suffix}: ${heldText(w)}`)
+  }
+  return { calls, ms: Math.round(performance.now() - t0), loopMaxMs }
 }
 // The transactions since the probe's last reset that started the WAL over on the API connection, after printing
 // them with the 5 slowest.
@@ -122,7 +125,7 @@ async function main() {
         mostPageFrames: w.mostTransactionFrames, mostWalFrames: w.mostWalFrames,
         mostBeforeWrite: w.mostWalFramesBeforeWrite }))
       assert.deepEqual(startedOverHere('x'), [], 'transactions that started the WAL over on this thread')
-      assert.ok(run.loopMaxMs < 200, `the event loop was held ${run.loopMaxMs} ms`)
+      assert.ok(run.loopMaxMs < 200, `the event loop was held ${run.loopMaxMs} ms by this thread`)
       assert.equal(w.checkpoints, 0, 'a checkpoint ran on the API connection')
       assert.ok(w.walReads > 0)
       assert.ok(waits > 0 && waitedMs >= 1000, `the walk didn't wait for the worker: ${JSON.stringify({ k, t })}`)

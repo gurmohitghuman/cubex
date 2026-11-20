@@ -6,7 +6,6 @@
 // before it written, with the cursor. The event loop keeps answering throughout, a pattern that works extracts what
 // the API thread would, and a row changed between the worker's read and the page's transaction is read again.
 import assert from 'node:assert/strict'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -14,6 +13,8 @@ import transformMod from '../../server/src/services/column-transform'
 import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
+import { watchWhile } from './loop-watch'
+import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -25,6 +26,7 @@ type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 console.warn = () => {}
 
 // Each page's read before its transaction (the rows whose cells go to the worker): counted, and `afterWorkerRead`
@@ -83,11 +85,10 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The longest the event loop waited past its 10 ms timer while `fn` ran, and fn's answer.
+// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts), and fn's answer.
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
-  const h = monitorEventLoopDelay({ resolution: 10 })
-  h.enable()
-  try { return { out: await fn(), lag: h.max / 1e6 - 10 } } finally { h.disable() }
+  const { out, watched: w } = await watchWhile(probe.records, fn)
+  return { out, lag: w.ownMs }
 }
 
 async function main() {
