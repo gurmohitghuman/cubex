@@ -9,7 +9,9 @@
 // building with shared_rows cleared (null, as a new setting's, while they
 // build), the build rewrites the keys in place, removes nothing and counts
 // shared_rows again, and a new row holding a value whose old key differed is
-// then caught.
+// then caught. Each setting's driver (services/auto-dedupe-checks.ts: it asks the lookup worker to build the keys)
+// is done before 053 runs: one still asking there would build them again on the worker's own connection and end
+// the build 053 started before the test reads it.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +24,7 @@ import storeMod from '../../server/src/lib/auto-dedupe/store'
 import settingMod from '../../server/src/services/auto-dedupe-setting'
 import indexMod from '../../server/src/services/auto-dedupe-index'
 import rowsMod from '../../server/src/services/rows-write'
+import checksMod from '../../server/src/services/auto-dedupe-checks'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { keyPart, rowKey } = dedupeKeyMod as typeof import('../../server/src/lib/dedupe/key')
@@ -30,6 +33,7 @@ const { autoDedupeOf, storedKey } = storeMod as typeof import('../../server/src/
 const { setAutoDedupe, autoDedupeView } = settingMod as typeof import('../../server/src/services/auto-dedupe-setting')
 const { maintainAutoDedupeSheet } = indexMod as typeof import('../../server/src/services/auto-dedupe-index')
 const { appendRows } = rowsMod as typeof import('../../server/src/services/rows-write')
+const { autoDedupeDriving } = checksMod as typeof import('../../server/src/services/auto-dedupe-checks')
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 console.warn = () => {}
 
@@ -90,6 +94,10 @@ async function turnOn(s: string, match: 'company' | 'text') {
   const out = setAutoDedupe(uid, s, { column: 'C', match, keep: 'oldest' })
   assert.ok('ok' in out, JSON.stringify(out))
   assert.equal(await maintainAutoDedupeSheet(s, uid, Date.now() + 10_000), 'ready')
+  for (const end = Date.now() + 10_000; autoDedupeDriving(s) && Date.now() < end;) {
+    await new Promise(r => setTimeout(r, 10))
+  }
+  assert.equal(autoDedupeDriving(s), false, 'the driver turning it on started is done')
 }
 
 const OLD = ['Docsumo 📄', 'Acme', 'n/a', 'n/a', 'Docsumo']
