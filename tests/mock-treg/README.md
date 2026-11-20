@@ -35,7 +35,10 @@ refused (401).
   and a search mentioning a listed word at most that many, 0 for an answer with an empty list: lists.mjs), `badDomains` (a call whose request mentions one answers treg's 400
   `catalog_parameter_invalid`, so its row fails) and `bigRawDomains` (a hit whose request mentions one
   carries a long `raw.sources` list, about 30 KB, so Cubex keeps only part of it), and `aiQuiet` (AI engine ids
-  whose answers cite no sources) and `aiAlsoNames` (`{engine: brand}`: that engine's answer names the brand too). The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
+  whose answers cite no sources) and `aiAlsoNames` (`{engine: brand}`: that engine's answer names the brand too),
+  and for job searches (jobs.mjs) `jobsNew` (`{word: n}`: a search whose title has the word finds n new roles
+  first), `jobsOverfill` (that many roles past the request's `limit`, as a provider answering more than asked) and
+  `jobCounts` (`{word: n}`: the free count for a title with the word; 120 by default). The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
   with made-up brands and generic sites (ai-search.mjs), so specs can check which brands an answer names.
 - `GET /__mock/billing`: every charge, by Idempotency-Key. `GET /__mock/state` also has
   `inFlightCount`, the calls still being answered: a spec that stops a run waits for 0 before
@@ -56,6 +59,9 @@ replaced: people are fictional (Ada Lovelace, Grace Hopper), domains are `.examp
 - `catalog/`: tool details for the Popular jobs and a few single tools, slimmed to the fields Cubex
   reads (raw field names kept), and search rows for common words. The people in treg's examples are
   swapped for fictional ones too: keep real people's data out of this repo.
+  The job search and its two free counts (`treg.companies.jobs.search`, `hirebase.jobs.search.count`,
+  `jobspipe.jobs.search.count`) are from treg's catalog of 2026-11-17; jobs.mjs answers each provider's own job
+  row shape with five made-up companies, one of them giving no domain from the sixth role on.
 - `access/`, `account/`: as treg answered.
 - `calls/`: one live answer each (status, `X-Treg-*` headers, body), with a `note` on what it
   shows: a hit, its free replay, a repeat lookup at 10% (treg's archive), a miss, a capped miss,

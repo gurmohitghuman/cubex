@@ -40,6 +40,7 @@ import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
 import savedKeysV1 from './api-v1-saved-keys';
 import aiVisibilityV1 from './api-v1-ai-visibility';
+import hiringV1 from './api-v1-hiring';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
@@ -70,6 +71,7 @@ router.use(actAs(req => ({
 router.use('/sheets/:id', refuseChangesWhileBusy(V1_SHEET_BUSY_ALLOWED));
 router.use(tablesV1);
 router.use(aiVisibilityV1);
+router.use(hiringV1);
 router.use(tableSheetsV1);
 router.use(sheetsV1);
 router.use(sheetOpsV1);

@@ -21,6 +21,7 @@ import { waterfallColumnSpend } from '../services/waterfall-status';
 import { autoDedupeView } from '../services/auto-dedupe-setting';
 import { isSampleSheet } from '../services/sample-table';
 import { aiVisibilityForSheet, aiVisibilityView } from '../services/ai-visibility-run';
+import { hiringForSheet, hiringView } from '../services/hiring-store';
 
 const aiVisibilityOfSheet = (sheetId: string, userId: string) => {
   const rec = aiVisibilityForSheet(userId, sheetId);
@@ -133,6 +134,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
         sample: isSampleSheet(id, req.userId!),
         // An AI visibility table's questions sheet shows its guide (services/ai-visibility-*.ts).
         aiVisibility: aiVisibilityOfSheet(id, req.userId!),
+        // A hiring table's sheets show its banner, with Check again (services/hiring-*.ts).
+        hiring: (rec => (rec ? hiringView(rec) : null))(hiringForSheet(req.userId!, id)),
       },
     });
   } catch (error) {

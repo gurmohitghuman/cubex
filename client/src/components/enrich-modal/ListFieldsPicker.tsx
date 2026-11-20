@@ -11,6 +11,8 @@ interface Props {
   onDedupe: (path: string | null) => void
   // How many results the counts are out of (null: not from fresh results).
   results: number | null
+  // The column adds only results it never added (keep mode): skipping can't be turned off.
+  keep?: boolean
 }
 
 // The search box shows from this many fields. The list itself never
@@ -20,7 +22,7 @@ const FILTER_FROM = 8
 // The fields the results have, each ticked to become a column of the new rows
 // (with its name), how many results fill it and a sample value; and the
 // optional duplicate check on one of them.
-export const ListFieldsPicker: React.FC<Props> = ({ fields, onChange, dedupePath, onDedupe, results }) => {
+export const ListFieldsPicker: React.FC<Props> = ({ fields, onChange, dedupePath, onDedupe, results, keep }) => {
   const [filter, setFilter] = useState('')
   const set = (path: string, patch: Partial<ListFieldPick>) =>
     onChange(fields.map(f => (f.path === path ? { ...f, ...patch } : f)))
@@ -76,19 +78,20 @@ export const ListFieldsPicker: React.FC<Props> = ({ fields, onChange, dedupePath
       <div className="flex items-center gap-2 text-sm text-gray-700 pt-1">
         <label className="flex items-center gap-2">
           {/* On with no field yet (''): the run waits until one is picked. */}
-          <input type="checkbox" checked={dedupePath !== null} disabled={on.length === 0}
+          <input type="checkbox" checked={keep || dedupePath !== null} disabled={keep || on.length === 0}
             onChange={e => onDedupe(e.target.checked ? '' : null)}
             className="border-gray-300 text-cube-black focus:ring-black" data-testid="enrich-list-dedupe" />
           <span>Skip results already added, matched on</span>
         </label>
-        <Select className="py-1 min-w-0 flex-1" value={dedupePath ?? ''} disabled={dedupePath === null}
+        <Select className="py-1 min-w-0 flex-1" value={dedupePath ?? ''} disabled={!keep && dedupePath === null}
           onChange={onDedupe} label="Field to match on"
           options={[{ value: '', label: 'Pick a field' },
             ...on.map(x => ({ value: x.path, label: x.columnName || x.label }))]} />
       </div>
       <p className="text-xs text-gray-500">
-        A result that doesn&apos;t have a field leaves that cell empty. Skipping matches results added while this
-        is on (the same value in the same sheet).
+        A result that doesn&apos;t have a field leaves that cell empty. {keep
+          ? 'This column adds only results it never added before, known by this field, so skipping stays on.'
+          : 'Skipping matches results added while this is on (the same value in the same sheet).'}
       </p>
     </div>
   )

@@ -14,10 +14,8 @@ import { providerCanAnswer } from './readiness'
 import { providerRows, type ProviderRow } from './providers'
 import type { InputBinding } from './draft'
 
-export const LIST_DEFAULT_ITEMS = 10
-export const LIST_MAX_ITEMS = 100
-// Fields ticked at first: the ones the results fill, up to this many.
-const DEFAULT_ON = 20
+export const LIST_DEFAULT_ITEMS = 10, LIST_MAX_ITEMS = 100
+const DEFAULT_ON = 20   // fields ticked at first: the ones the results fill, up to this many
 
 export type ListDest = { kind: 'new'; name: string } | { kind: 'sheet'; sheetId: string }
 export interface ListFieldPick {
@@ -33,6 +31,10 @@ export interface ListDraft {
   // The same text written into each new row (set by an agent or a template, kept on Edit).
   fixed?: Array<{ to: string; value: string }>
   itemsPath?: string | null        // where the results are, when not where the catalog says
+  // Kept on Edit (a template's): a copy under another name ({from: to}), keep mode, the duplicate check's other paths.
+  copyAs?: Record<string, string>
+  keep?: true
+  dedupeAlso?: { path: string; also: string[] }
 }
 
 // "Results per row": 1 to 100, narrowed by the range treg declares for a
@@ -76,13 +78,18 @@ export function buildListDraft(
 
 export function listRequest(l: ListDraft): EnrichListRequest {
   const on = l.fields?.filter(f => f.enabled) ?? null
+  const dedupePath = on?.some(f => f.path === l.dedupePath) ? l.dedupePath : null
   return {
     dest: l.dest.kind === 'new' ? { newSheetName: l.dest.name.trim() } : { sheetId: l.dest.sheetId },
     provider: l.provider, maxItems: l.maxItems,
     fields: on && on.length ? on.map(f => ({ path: f.path, columnName: f.columnName.trim() })) : null,
-    copy: [...l.copy.map(c => ({ from: c, to: c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f }))],
-    dedupePath: on?.some(f => f.path === l.dedupePath) ? l.dedupePath : null,
+    copy: [
+      ...l.copy.map(c => ({ from: c, to: l.copyAs?.[c] ?? c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f })),
+    ],
+    dedupePath,
     ...(l.itemsPath ? { itemsPath: l.itemsPath } : {}),
+    ...(l.keep ? { keep: true } : {}),
+    ...(l.dedupeAlso && dedupePath === l.dedupeAlso.path ? { dedupeAlso: l.dedupeAlso.also } : {}),
   }
 }
 
@@ -185,7 +192,8 @@ export function fieldsProblem(l: ListDraft, test = false): string | null {
   }
   const dup = names.find((n, i) => names.findIndex(m => nameClash(n, [m])) !== i)
   if (dup) return `Two columns of the new rows would be named ${dup}. Rename the field, or stop copying the column.`
-  // Skip ticked: its field must be one kept (a field unticked since leaves it unpicked).
-  return l.dedupePath !== null && on.length > 0 && !on.some(f => f.path === l.dedupePath)
-    ? 'Pick the field that tells results apart, or untick Skip results already added.' : null
+  // Skip ticked (always, in keep mode): its field must be one kept (a field unticked since leaves it unpicked).
+  if (on.length === 0 || on.some(f => f.path === l.dedupePath) || (l.dedupePath === null && !l.keep)) return null
+  return l.keep ? 'Pick the field that tells results apart: this column adds only results it never added.'
+    : 'Pick the field that tells results apart, or untick Skip results already added.'
 }

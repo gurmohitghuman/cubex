@@ -1,0 +1,27 @@
+{
+ "endpoint": {
+  "id": "hirebase.jobs.search.count",
+  "name": "Count jobs a search would return",
+  "summary": "Count the jobs a hirebase.jobs.search body matches, for free: with limit 0 the total, otherwise what that page would cost.",
+  "provider": "hirebase",
+  "provider_display": "Hirebase",
+  "kind": "utility",
+  "method": "POST",
+  "platform_eligible": true,
+  "status": null,
+  "superseded_by": null,
+  "cost": {
+   "type": "free",
+   "unit": "call",
+   "usd": 0.0,
+   "note": "Free, also once a monthly allowance is spent."
+  },
+  "input": {
+   "bodyType": "json",
+   "body": {}
+  }
+ },
+ "example_response": {
+  "cost": 2326.0
+ }
+}

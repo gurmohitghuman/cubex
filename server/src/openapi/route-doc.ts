@@ -18,6 +18,7 @@ export const TAGS = {
   control: ['Run control', 'Pause, resume, cancel, rerun and undo runs.'],
   enrich: ['Enrichments', 'treg.to enrichments and waterfall columns: paid data, row by row.'],
   visibility: ['AI visibility', "Tables that check which brands AI engines name for buyers' questions."],
+  hiring: ['Hiring signals', 'Tables of the companies hiring for chosen roles, with what is new at each check.'],
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
   versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
@@ -80,6 +81,7 @@ const PARAMS: Record<string, z.ZodType> = {
   'setup-runs.runId': id('The setup run id.'),
   'enrichments.toolId': id('The enrichment tool id, such as treg.people.email.find.'),
   'ai-visibility.id': id("The AI visibility table's id, or its Questions sheet id."),
+  'hiring.id': id("The hiring table's id, or its Companies sheet id."),
   'run-webhooks.id': id('The run webhook id.'),
   'trash.id': z.number().int().min(1).describe('The trash id.'),
 };

@@ -1,5 +1,5 @@
-// What the treg.to, waterfall, AI visibility, balance and usage tools answer (tools-enrich.ts,
-// tools-waterfall.ts, tools-ai-visibility.ts, tools-balances.ts, tools-usage.ts).
+// What the treg.to, waterfall, AI visibility, hiring, balance and usage tools answer (tools-enrich.ts,
+// tools-waterfall.ts, tools-ai-visibility.ts, tools-hiring.ts, tools-balances.ts, tools-usage.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
 import { bool, changed, info, nul, num, opt, str, strs } from './shared';
@@ -58,6 +58,9 @@ export const aiVisibility = open({
   questions_sheet_id: opt(str), sites_sheet_id: opt(nul(str)), low_usd: opt(num), high_usd: opt(num),
   runs: opt(z.array(info('A run the check started'))), next: opt(str), note: opt(str), changed,
 });
+
+// create and get: the table and its last checks; check: the estimate (its default) or the check started.
+export const hiringSignals = open({ id: opt(str), stage: opt(str), high_usd: opt(num), next: opt(str), changed });
 
 export const getBalances = obj({
   treg: info('The treg.to balance in dollars, or why it is unknown'),

@@ -31,8 +31,13 @@ export interface EnrichListConfig {
   // null: not picked yet (a test run): its results wait in the journal.
   fields: ListField[] | null;
   copy: ListCopy[];
-  // Skip a result whose value at this path matches one added before.
-  dedupe: { path: string } | null;
+  // Skip a result whose value at this path matches one added before. also:
+  // paths read in turn when the result has no value at `path` (a job's link,
+  // else its id), the key still made under `path`.
+  dedupe: { path: string; also?: string[] } | null;
+  // Rows added before stay (a rerun adds only results this sheet never saw,
+  // by the dedupe key: enrichment_list_seen, migration 061), never replaced.
+  keep?: true;
 }
 
 // A source row's status cell starts with LIST_MARK while its results are on
@@ -140,8 +145,20 @@ export function itemCells(item: unknown, fields: ListField[]): Record<string, st
 
 // What "already added" compares: the field's path and its trimmed value
 // (null when the result has no value there, so it never counts as a duplicate).
-export function dedupeKey(item: unknown, path: string): string | null {
-  const value = cellText(readPath(item, path)).trim();
-  if (!value) return null;
-  return createHash('sha256').update(`${path}\u0000${value}`).digest('hex').slice(0, 32);
+// With `also`, the first of the paths the result fills, keyed under `path`.
+export function dedupeKey(item: unknown, path: string, also: readonly string[] = []): string | null {
+  return dedupeKeys(item, path, also, 1)[0] ?? null;
+}
+
+// Every key the result has, one per path it fills, in that order (the first is
+// dedupeKey's). Keep mode counts a result seen when any of them was, so one a
+// provider sends by its id at one check and by its link at the next is known.
+export function dedupeKeys(item: unknown, path: string, also: readonly string[] = [], most = Infinity): string[] {
+  const keys: string[] = [];
+  for (const p of [path, ...also]) {
+    if (keys.length >= most) break;
+    const value = cellText(readPath(item, p)).trim();
+    if (value) keys.push(createHash('sha256').update(`${path}\u0000${value}`).digest('hex').slice(0, 32));
+  }
+  return keys;
 }

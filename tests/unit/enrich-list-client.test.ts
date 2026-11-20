@@ -11,6 +11,7 @@ import toolMod from '../../server/src/lib/enrich-tool'
 import { buildSetup } from '../../client/src/components/enrich-modal/setup-defaults'
 import { runRequest } from '../../client/src/components/enrich-modal/run-request'
 import { emptyDraft } from '../../client/src/components/enrich-modal/draft'
+import { applyRecall } from '../../client/src/components/enrich-modal/recall'
 import {
   buildListDraft, destProblem, fieldPicks, fieldsProblem, listProblem, listRequest, mergePicks, perRowRange,
 } from '../../client/src/components/enrich-modal/list-draft'
@@ -100,10 +101,35 @@ check('"skip" ticked with no field (or an unticked one) waits for the field',
   /tells results apart/.test(fieldsProblem({ ...withFields, dedupePath: '' }) ?? '')
   && /tells results apart/.test(fieldsProblem({ ...withFields, dedupePath: '$.home_page_email' }) ?? '')
   && fieldsProblem(withFields) === null)
+check('a column that adds only new results (a hiring search) has no untick to fall back on: it needs the field',
+  /adds only results it never added/.test(fieldsProblem({ ...withFields, dedupePath: null, keep: true }) ?? '')
+  && fieldsProblem({ ...withFields, dedupePath: null }) === null)
 check('results per row cleared (NaN) is caught',
   /1 to 100/.test(listProblem({ ...list, maxItems: NaN }, tool, given, sheets, true) ?? ''))
 check('buildListDraft without inputs picks no provider that cannot search',
   buildListDraft(tool, {}, columns, []).provider === null)
+
+// A hiring table's search, opened with Edit: the role title copied under another name, keep mode and the
+// duplicate check's other paths come back, and go out again with the run; a new duplicate path drops the others.
+const hiringList: any = {
+  dest: { sheetId: 'roles' }, provider: 'hirebase', maxItems: 25, itemsPath: null,
+  fields: [{ path: '$.job_title', columnName: 'Title' }, { path: '$.application_link', columnName: 'Link' }],
+  copy: [{ from: 'Role title', to: 'Search' }, { from: '', to: 'First seen', value: '2026-11-19' }],
+  dedupePath: '$.application_link', dedupeAlso: ['$._id'], keep: true,
+}
+const choices: any = { inputs: {}, providerOrder: [], skipProviders: [], outputs: [], conditions: [], list: hiringList }
+const recalled = applyRecall({ list: buildListDraft(tool, {}, columns, sheets) } as any, choices, 'Roles found').list!
+const resent = listRequest({ ...recalled, fields: recalled.fields!.map(f => ({ ...f, enabled: true })) })
+check('Edit keeps a copy under another name, keep mode and the other duplicate paths',
+  JSON.stringify(resent.copy) === JSON.stringify(hiringList.copy) && resent.keep === true
+  && JSON.stringify(resent.dedupeAlso) === '["$._id"]' && resent.dedupePath === '$.application_link')
+const moved = listRequest({ ...recalled, fields: recalled.fields!.map(f => ({ ...f, enabled: true })),
+  dedupePath: '$.job_title' })
+check('a new duplicate path drops the other paths', moved.dedupeAlso === undefined && moved.keep === true)
+check('a list with none of them sends none', (() => {
+  const plain = listRequest(list)
+  return !('keep' in plain) && !('dedupeAlso' in plain)
+})())
 
 if (failures) { console.error(`\n${failures} failed`); process.exit(1) }
 console.log('\nall list client checks passed')

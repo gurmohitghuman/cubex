@@ -59,7 +59,8 @@ function recallList(config: EnrichRunConfig): ListInput | null {
     dest: { sheetId: l.destSheetId }, provider: l.provider, maxItems: l.maxItems,
     fields: l.fields?.length ? l.fields.map(f => ({ ...f })) : null,
     copy: l.copy.map(c => ({ from: c.from, to: c.to, ...(c.value !== undefined ? { value: c.value } : {}) })),
-    dedupePath: l.dedupe?.path ?? null, ...(l.itemsNamed ? { itemsPath: l.itemsPath } : {}),
+    dedupePath: l.dedupe?.path ?? null, ...(l.dedupe?.also?.length ? { dedupeAlso: [...l.dedupe.also] } : {}),
+    ...(l.keep ? { keep: true } : {}), ...(l.itemsNamed ? { itemsPath: l.itemsPath } : {}),
   };
 }
 

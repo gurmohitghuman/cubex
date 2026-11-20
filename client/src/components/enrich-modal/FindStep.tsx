@@ -1,11 +1,12 @@
-import React, { useEffect, useRef } from 'react'
-import { Loader2, Search, X } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Briefcase, Loader2, Search, X } from 'lucide-react'
 import type { EnrichToolCard } from '@/utils/api'
 import { TregNotice } from '../TregNotice'
 import { TregLogo } from '../TregLogo'
 import { LoadingSpinner } from '../LoadingSpinner'
 import { ToolCard } from './ToolCard'
 import { useToolSearch } from './useToolSearch'
+import { HiringDialog } from '../hiring/HiringDialog'
 
 interface Props {
   query: string
@@ -24,6 +25,25 @@ const Group: React.FC<{ title: string; tools: EnrichToolCard[]; onPick: Props['o
       </div>
     </section>
   )
+
+// Below Popular: a ready-made table of the companies hiring for chosen roles (its own dialog).
+const HiringEntry: React.FC = () => {
+  const [open, setOpen] = useState(false)
+  return (
+    <section>
+      <button type="button" onClick={() => setOpen(true)} data-testid="hiring-popular"
+        className="w-full text-left border border-gray-200 p-3 flex items-start gap-3 hover:bg-gray-50">
+        <Briefcase className="h-4 w-4 mt-0.5 text-gray-900" />
+        <span>
+          <span className="block text-sm font-medium text-gray-900">Find companies hiring</span>
+          <span className="block text-xs text-gray-500">A new table of the companies hiring for the roles you name,
+            and what's new at each check.</span>
+        </span>
+      </button>
+      {open && <HiringDialog isOpen={open} onClose={() => setOpen(false)} />}
+    </section>
+  )
+}
 
 // Step 1: pick what to find. No query lists the Popular jobs; typing searches
 // treg's catalog, waterfalls first (they try providers for you).
@@ -73,9 +93,13 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
       ) : search.tools === null ? (
         <LoadingSpinner size="sm" message="Loading enrichments…" className="py-8" />
       ) : forQuery === '' ? (
-        shown.length
-          ? <Group title="Popular" tools={shown} onPick={onPick} />
-          : <p className="text-sm text-gray-600">No Popular jobs to show right now. Search for what you want to find.</p>
+        <div className="space-y-4">
+          {shown.length
+            ? <Group title="Popular" tools={shown} onPick={onPick} />
+            : <p className="text-sm text-gray-600">
+              No Popular jobs to show right now. Search for what you want to find.</p>}
+          <HiringEntry />
+        </div>
       ) : shown.length === 0 ? (
         <p className="text-sm text-gray-600">
           Nothing found for &quot;{forQuery}&quot;: treg has no tool that matches. Try other words, like &quot;company size&quot;

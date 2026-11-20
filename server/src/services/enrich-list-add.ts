@@ -9,6 +9,8 @@
 // before to the trash (a rerun replaces them; after the append, so their
 // positions are never reused), write the source row's status cell, drop the journal row,
 // and tell open tabs. All of it commits or none: a restart never adds twice.
+// A keep-mode run (lib/enrich-list.ts `keep`) moves nothing to the trash: it
+// adds only results the destination never saw (services/enrich-list-seen.ts).
 import { db } from '../lib/db';
 import { ENRICH_LIST_RECOUNT_SLACK, MAX_COLUMNS_PER_SHEET, MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, countRows } from '../lib/sql-helpers';
@@ -16,12 +18,13 @@ import { nextRowIndex } from '../lib/sheet-busy';
 import { settleRows } from './auto-dedupe-settle';
 import { redactError } from '../lib/redact';
 import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
-import { dedupeKey, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
+import { dedupeKey, dedupeKeys, itemCells, listCell, type EnrichListConfig } from '../lib/enrich-list';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { stopForRoom, writeSourceCell } from './enrich-list-source';
 import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-dest-run';
 import { orderedUuid } from '../lib/ordered-id';
 import { trashReplacedRows } from './trash-replaced';
+import { noteSeen, seenCheck } from './enrich-list-seen';
 
 interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
@@ -68,28 +71,36 @@ function waitForRun(j: Journal, column: string | null, name: string, run: DestRu
   return { wait: 'dest_run' };
 }
 
+// A result already added: a row of the destination has its key, but for those this add replaces.
+function addedCheck(j: Journal, replaced: Set<string>): (key: string) => boolean {
+  const there = db.prepare(`SELECT l.dest_row_id FROM enrichment_list_rows l JOIN rows r ON r.id = l.dest_row_id
+    WHERE l.dest_sheet_id = ? AND l.dedupe_key = ? AND l.user_id = ?`);
+  return key => (there.all(j.dest_sheet_id, key, j.user_id) as Array<{ dest_row_id: string }>)
+    .some(r => !replaced.has(r.dest_row_id));
+}
+
 // Cells of each row to add, skipping results already added (when asked).
-function rowsToAdd(
-  list: EnrichListConfig, payload: Payload, j: Journal, replaced: Set<string>,
-): { rows: Array<{ cells: Record<string, string>; key: string | null }>; skipped: number } {
+// again: keys of the results skipped because the destination had them. In
+// keep mode a result has a key per path it fills: seen when any one was, and
+// `keys` (each row's, and again's) notes them all.
+function rowsToAdd(list: EnrichListConfig, payload: Payload, there: (key: string) => boolean): {
+  rows: Array<{ cells: Record<string, string>; key: string | null; keys: string[] }>; skipped: number; again: string[];
+} {
   const copied: Record<string, string> = {};
   for (const c of list.copy) copied[c.to] = payload.copy[c.id] ?? '';
   const seen = new Set<string>();
-  const there = db.prepare(`SELECT l.dest_row_id FROM enrichment_list_rows l JOIN rows r ON r.id = l.dest_row_id
-    WHERE l.dest_sheet_id = ? AND l.dedupe_key = ? AND l.user_id = ?`);
-  const rows: Array<{ cells: Record<string, string>; key: string | null }> = [];
+  const rows: Array<{ cells: Record<string, string>; key: string | null; keys: string[] }> = [];
+  const again: string[] = [];
   let skipped = 0;
   for (const item of payload.items) {
-    const key = list.dedupe ? dedupeKey(item, list.dedupe.path) : null;
-    if (key) {
-      const found = (there.all(j.dest_sheet_id, key, j.user_id) as Array<{ dest_row_id: string }>)
-        .some(r => !replaced.has(r.dest_row_id));
-      if (seen.has(key) || found) { skipped++; continue; }
-      seen.add(key);
-    }
-    rows.push({ cells: { ...copied, ...itemCells(item, list.fields ?? []) }, key });
+    const keys = !list.dedupe ? [] : list.keep ? dedupeKeys(item, list.dedupe.path, list.dedupe.also)
+      : [dedupeKey(item, list.dedupe.path, list.dedupe.also)].filter((k): k is string => k !== null);
+    if (keys.some(k => seen.has(k))) { skipped++; continue; }
+    if (keys.some(there)) { skipped++; again.push(...keys); continue; }
+    for (const k of keys) seen.add(k);
+    rows.push({ cells: { ...copied, ...itemCells(item, list.fields ?? []) }, key: keys[0] ?? null, keys });
   }
-  return { rows, skipped };
+  return { rows, skipped, again };
 }
 
 // The run a full sheet stops (stopForRoom), once the add's transaction has committed.
@@ -141,12 +152,14 @@ export function addListItemsIn(journalId: string, count: DestCount): { out: AddO
       out = waitForRun(j, column, name, destRunBlocker(j.dest_sheet_id, j.user_id));
       return;
     }
-    const earlier = column ? earlierRows(j, column) : [];
+    const earlier = column && !list.keep ? earlierRows(j, column) : [];
     const live = earlier.filter(e => e.row_index !== null);
     // A pending or running one ends by itself: still being added, tried again next round.
     const blocker = live.length ? destRunBlocker(j.dest_sheet_id, j.user_id) : null;
     if (blocker) { out = blocker.paused ? waitForRun(j, column, name, blocker) : { wait: 'dest_run' }; return; }
-    const { rows, skipped } = rowsToAdd(list, payload, j, new Set(earlier.map(e => e.dest_row_id)));
+    const there = list.keep ? seenCheck(j.dest_sheet_id, j.user_id)
+      : addedCheck(j, new Set(earlier.map(e => e.dest_row_id)));
+    const { rows, skipped, again } = rowsToAdd(list, payload, there);
 
     let have = count.rows;
     const after = (n: number) => n - live.length + rows.length;
@@ -186,6 +199,9 @@ export function addListItemsIn(journalId: string, count: DestCount): { out: AddO
       rids.push(Number(insert.run(id, j.dest_sheet_id, j.user_id, next++, JSON.stringify(r.cells)).lastInsertRowid));
       ids.add(id);
       from.run(id, j.user_id, j.dest_sheet_id, j.source_sheet_id, j.source_row_id, column ?? '', j.run_id, r.key);
+    }
+    if (list.keep) {
+      noteSeen(j.dest_sheet_id, j.user_id, j.run_id, [...rows.flatMap(r => r.keys), ...again]);
     }
     if (earlier.length) {
       const replaced = earlier.map(e => e.dest_row_id);

@@ -1,0 +1,304 @@
+{
+ "endpoint": {
+  "async": null,
+  "capability": "companies.jobs.search",
+  "capability_description": "Search indexed job listings across companies",
+  "cost": {
+   "type": "per_success",
+   "unit": "call",
+   "usd": 1.6e-05,
+   "varies": true,
+   "note": "Not free: $1.6e-05–$0.04 per hit across 7 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (1 of 7 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only"
+  },
+  "id": "treg.companies.jobs.search",
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "domain": {
+     "type": "string",
+     "required": false,
+     "note": "identity; the employer's website domain ('ramp.com')"
+    },
+    "title": {
+     "type": "string",
+     "required": false,
+     "note": "identity; job title words ('data engineer'); with name or domain, that role at that company"
+    },
+    "name": {
+     "type": "string",
+     "required": false,
+     "note": "identity; the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's own board, treg.companies.jobs takes the board itself: the whole board on Greenhouse, Ashby and Workable, up to `limit` (at most 100) on Lever and SmartRecruiters"
+    },
+    "country": {
+     "type": "string",
+     "required": false,
+     "note": "filter; ISO alpha-2 country of the job ('US', 'GB')"
+    },
+    "location": {
+     "type": "string",
+     "required": false,
+     "note": "filter; free-text place of the job, finer than country ('Texas', 'New York, NY', 'Berlin'), passed to providers that take one"
+    },
+    "remote": {
+     "type": "boolean",
+     "required": false,
+     "note": "filter; true: remote jobs only. false or absent: no remote filter"
+    },
+    "posted_within_days": {
+     "type": "integer",
+     "required": false,
+     "min": 1,
+     "max": 365,
+     "note": "filter; posted (or first seen) in the last N days. Absent, TheirStack still asks for the last 30 days: it has no open/closed flag"
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "filter; default 10; rows to return: most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. On treg.companies.jobs, a board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({domain, title} | {name, title} | {title} | {name} | {domain}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "kind": "routed",
+  "method": "POST",
+  "name": "companies.jobs.search: routed: best of 7 providers, own keys first",
+  "observed": {
+   "ok_rate": 0.9951,
+   "hit_rate": null,
+   "samples": 18077,
+   "hit_samples": 0
+  },
+  "platform": "companies",
+  "platform_blocked": null,
+  "platform_eligible": true,
+  "platform_label": "Company data",
+  "provider": "treg",
+  "provider_display": "treg",
+  "routed_children": [
+   "hirebase.jobs.search",
+   "jobspipe.jobs.search",
+   "crustdata.companies.jobs.search",
+   "theirstack.jobs.search",
+   "leadmagic.x.jobs-search-v3",
+   "predictleads.companies.job_openings"
+  ],
+  "status": null,
+  "summary": "Search open job postings by title across companies, or at one company by name or domain: provider-native job rows in `jobs`",
+  "superseded_by": null,
+  "test_request": {
+   "body": {
+    "title": "…"
+   }
+  }
+ },
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "domain",
+     "title"
+    ],
+    [
+     "name",
+     "title"
+    ],
+    [
+     "title"
+    ],
+    [
+     "name"
+    ],
+    [
+     "domain"
+    ]
+   ],
+   "output": {
+    "jobs": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "count": {
+     "type": "integer"
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "jobs == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "hirebase.jobs.search",
+    "accepts": [
+     [
+      "name",
+      "title"
+     ],
+     [
+      "title"
+     ],
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.0015
+    },
+    "hit_rate": 0.6224,
+    "usd_per_hit": 0.0015,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "jobspipe.jobs.search",
+    "accepts": [
+     [
+      "title"
+     ]
+    ],
+    "usd": 0.00392,
+    "cost": {
+     "type": "per_result",
+     "currency": "credit",
+     "usd": 0.00392,
+     "usd_min": 0.00196
+    },
+    "hit_rate": 0.8735,
+    "usd_per_hit": 0.00392,
+    "works": 0.999
+   },
+   {
+    "endpoint_id": "crustdata.companies.jobs.search",
+    "accepts": [
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.009,
+    "cost": {
+     "type": "per_result",
+     "value": 0.03,
+     "currency": "credit",
+     "usd": 0.009
+    },
+    "hit_rate": 0.1743,
+    "usd_per_hit": 0.009,
+    "works": 0.9997
+   },
+   {
+    "endpoint_id": "theirstack.jobs.search",
+    "accepts": [
+     [
+      "domain",
+      "title"
+     ],
+     [
+      "name",
+      "title"
+     ],
+     [
+      "title"
+     ],
+     [
+      "domain"
+     ],
+     [
+      "name"
+     ]
+    ],
+    "usd": 0.02,
+    "cost": {
+     "type": "per_result",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.02
+    },
+    "hit_rate": 0.3729,
+    "usd_per_hit": 0.02,
+    "works": 0.9969
+   },
+   {
+    "endpoint_id": "leadmagic.x.jobs-search-v3",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.025,
+    "cost": {
+     "type": "per_result",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.025
+    },
+    "hit_rate": 0.1878,
+    "usd_per_hit": 0.025,
+    "works": 0.9654
+   },
+   {
+    "endpoint_id": "predictleads.companies.job_openings",
+    "accepts": [
+     [
+      "domain"
+     ]
+    ],
+    "usd": 0.04,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.04
+    },
+    "hit_rate": 0.6792,
+    "usd_per_hit": 0.058892815076560655,
+    "works": 0.9966
+   }
+  ]
+ },
+ "siblings": [
+  {
+   "id": "hirebase.jobs.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "jobspipe.jobs.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "crustdata.companies.jobs.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "theirstack.jobs.search",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "leadmagic.x.jobs-search-v3",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  },
+  {
+   "id": "predictleads.companies.job_openings",
+   "async": null,
+   "status": null,
+   "superseded_by": null
+  }
+ ],
+ "example_response": null
+}

@@ -8,6 +8,7 @@
 // `word` at n rows (0: an answer with an empty list, count 0); "nobody"
 // anywhere in the request finds none (a miss).
 import { fixture, state } from './state.mjs'
+import { jobRows } from './jobs.mjs'
 
 const PEOPLE = ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Katherine Johnson', 'Edsger Dijkstra',
   'Barbara Liskov', 'Donald Knuth', 'Margaret Hamilton', 'Ken Thompson', 'Frances Allen', 'John Backus',
@@ -56,6 +57,11 @@ export function listField(toolId) {
 
 export function listAnswer(toolId, p, body) {
   const field = listField(toolId)
+  if (field === 'jobs') {
+    if (JSON.stringify(body ?? {}).toLowerCase().includes('nobody')) return {}
+    const jobs = jobRows(p.provider, body)
+    return jobs.length ? { output: { jobs, count: jobs.length } } : {}
+  }
   const key = String(body.company_domain ?? body.domain ?? body.q ?? body.name ?? body.title ?? 'x').toLowerCase()
   if (JSON.stringify(body ?? {}).toLowerCase().includes('nobody')) return {}
   const capped = Object.entries(state.listSizes ?? {}).find(([w]) => key.includes(w.toLowerCase()))

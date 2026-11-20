@@ -46,6 +46,7 @@ function recallList(built: ListDraft | null | undefined, r: EnrichRecalledChoice
   // A run that adds rows from a list the catalog doesn't name (itemsPath) is
   // rebuilt from the run alone: the tool reads as one that adds none.
   if (!l || (!built && !l.itemsPath)) return built ?? null
+  const renamed = l.copy.filter(c => c.value === undefined && c.to !== c.from)
   return {
     dest: 'sheetId' in l.dest ? { kind: 'sheet', sheetId: l.dest.sheetId } : { kind: 'new', name: l.dest.newSheetName },
     maxItems: l.maxItems, provider: l.provider, copy: l.copy.filter(c => c.value === undefined).map(c => c.from),
@@ -55,6 +56,9 @@ function recallList(built: ListDraft | null | undefined, r: EnrichRecalledChoice
       path: f.path, label: f.path.replace(/^\$\.?/, ''), enabled: true, columnName: f.columnName,
     })) : null,
     dedupePath: l.dedupePath,
+    ...(renamed.length ? { copyAs: Object.fromEntries(renamed.map(c => [c.from, c.to])) } : {}),
+    ...(l.keep ? { keep: true as const } : {}),
+    ...(l.dedupePath && l.dedupeAlso?.length ? { dedupeAlso: { path: l.dedupePath, also: l.dedupeAlso } } : {}),
   }
 }
 

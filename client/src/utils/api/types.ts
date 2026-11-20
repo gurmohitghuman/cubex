@@ -6,6 +6,7 @@ import type { SheetView } from './views'
 import type { LookupColumnView } from './lookup'
 import type { AutoDedupeView } from './dedupe'
 import type { AiVisibilityView } from './ai-visibility'
+import type { HiringView } from './hiring'
 export interface Table {
   id: string
   name: string
@@ -86,6 +87,8 @@ export interface SheetData {
     sample?: boolean
     // An AI visibility table's questions sheet: it shows its guide above the grid.
     aiVisibility?: AiVisibilityView | null
+    // A hiring table's sheets: they show its banner, with Check again, above the grid.
+    hiring?: HiringView | null
   }
 }
 

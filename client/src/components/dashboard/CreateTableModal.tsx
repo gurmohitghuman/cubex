@@ -3,6 +3,7 @@ import { Loader2, Plus } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
+import { HiringButton } from '@/components/hiring/HiringDialog'
 
 interface CreateTableModalProps {
   isOpen: boolean
@@ -77,6 +78,10 @@ export const CreateTableModal: React.FC<CreateTableModalProps> = ({ isOpen, onCl
         <AiVisibilityButton className="w-full mt-3" />
         <p className="text-xs text-gray-500 mt-2 text-center">
           Ask AI engines your buyers' questions and see whether they name you.
+        </p>
+        <HiringButton className="w-full mt-3" />
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          A table of the companies hiring for the roles you name, and what's new at each check.
         </p>
       </div>
     </Modal>

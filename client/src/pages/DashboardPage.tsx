@@ -15,6 +15,7 @@ import { RenameTableModal } from '@/components/dashboard/RenameTableModal'
 import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
+import { HiringButton } from '@/components/hiring/HiringDialog'
 import { plural } from '@/lib/utils'
 import { SettingsButton } from '@/components/dashboard/SettingsButton'
 
@@ -157,6 +158,7 @@ export const DashboardPage: React.FC = () => {
                 </button>
                 <TrySampleButton />
                 <AiVisibilityButton />
+                <HiringButton />
               </div>
             </div>
           </div>

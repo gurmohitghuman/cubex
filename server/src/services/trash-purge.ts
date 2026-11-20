@@ -113,6 +113,8 @@ async function purgeSheet(sheetId: string, userId: string, itemId: number | null
   await autorunDropPending(sheetId, userId);
   await deleteInSlices(`DELETE FROM enrichment_list_rows WHERE rowid IN (SELECT rowid FROM enrichment_list_rows
     WHERE dest_sheet_id = ? LIMIT ?)`, [sheetId], HEAVY_SLICE_ROWS);
+  await deleteInSlices(`DELETE FROM enrichment_list_seen WHERE (dest_sheet_id, dedupe_key) IN (SELECT dest_sheet_id,
+    dedupe_key FROM enrichment_list_seen WHERE dest_sheet_id = ? LIMIT ?)`, [sheetId], HEAVY_SLICE_ROWS);
   await deleteInSlices(`DELETE FROM webhook_deliveries WHERE rowid IN (SELECT rowid FROM webhook_deliveries
     WHERE source_id IN (SELECT id FROM webhook_sources WHERE sheet_id = ?) LIMIT ?)`, [sheetId], HEAVY_SLICE_ROWS);
   await deleteInSlices(`DELETE FROM lookup_dirty WHERE (sheet_id, rid) IN (SELECT sheet_id, rid FROM lookup_dirty

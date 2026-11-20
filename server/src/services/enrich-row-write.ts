@@ -43,20 +43,24 @@ const NO_DEST = 'Rows not added: the sheet for them was deleted.';
 // answer with no results is journaled only when the row added rows there
 // before or has results on their way (queued behind them, so it replaces
 // those too), and never by a test whose fields aren't picked (its results
-// wait, so it removes nothing either); its status cell (Not found, No rows to
-// add) is kept in the journal row as the words to end with. 'lost': nowhere
-// to add them.
+// wait, so it removes nothing either), nor by a run that keeps its rows (it
+// has nothing to remove); its status cell (Not found, No rows to add) is kept
+// in the journal row as the words to end with. 'lost': nowhere to add them.
 function journal(w: EnrichWrite, cells: Record<string, string>): 'journaled' | 'skipped' | 'lost' {
   const l = w.list!;
   const master = w.run.master_column_name;
   // Read now, not from the run the worker loaded: a deleted sheet nulls it.
   const now = db.prepare(`SELECT dest_sheet_id AS dest,
-      IFNULL(json_array_length(config, '$.enrichment.list.fields'), 0) > 0 AS ready FROM http_runs
-    WHERE id = ? AND user_id = ?`).get(w.run.id, w.run.user_id) as { dest: string | null; ready: number } | undefined;
+      IFNULL(json_array_length(config, '$.enrichment.list.fields'), 0) > 0 AS ready,
+      json_extract(config, '$.enrichment.list.keep') IS 1 AS keep FROM http_runs
+    WHERE id = ? AND user_id = ?`).get(w.run.id, w.run.user_id) as
+    { dest: string | null; ready: number; keep: number } | undefined;
   const dest = now?.dest ?? null;
   const empty = l.items.length === 0;
   const ready = now?.ready === 1;
-  if (empty && (!dest || !l.rowId || !ready || !addedBefore(l.rowId, dest, w.run.user_id))) return 'skipped';
+  if (empty && (!dest || !l.rowId || !ready || now?.keep === 1 || !addedBefore(l.rowId, dest, w.run.user_id))) {
+    return 'skipped';
+  }
   if (!dest || !l.rowId) {
     if (master) cells[master] = failedCell(NO_DEST);
     return 'lost';
