@@ -51,6 +51,7 @@ export function fillTemplate(
 const TRUE = new Set(['true', 'yes', '1', 'y']);
 const FALSE = new Set(['false', 'no', '0', 'n']);
 
+// The old words too (int, float, bool, list, dict): a run set up before keeps its tool's inputs as they were then.
 function typed(input: ToolInput, raw: string): { value: unknown } | { invalid: string } {
   const t = input.type.toLowerCase();
   if (t === 'integer' || t === 'int' || t === 'number' || t === 'float') {
@@ -74,7 +75,8 @@ function typed(input: ToolInput, raw: string): { value: unknown } | { invalid: s
     } else {
       items = raw.split(',').map(s => s.trim()).filter(Boolean);
     }
-    if (t.includes('integer') || t.includes('number')) {
+    // Numbers only when the items are numbers alone: a list that may hold text, or lists, goes as written.
+    if (/^array\[(integer|number)\]$/.test(t)) {
       const nums = items.map(Number);
       if (nums.some(n => !Number.isFinite(n))) return { invalid: `${input.name} must be a list of numbers.` };
       return { value: nums };

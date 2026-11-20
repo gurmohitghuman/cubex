@@ -23,7 +23,7 @@ import bulkMod from '../../server/src/lib/bulk-slices'
 import turnMod from '../../server/src/lib/wal-turn'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/constants'
-import { loopWatch } from './bulk-wal-kit'
+import { heldText, loopWatch } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -68,19 +68,20 @@ async function measured(label: string, work: () => Promise<unknown>) {
   takeWalTurnStats()
   const t0 = performance.now()
   const watch = loopWatch(probe.records)
+  await watch.ready
   await work()
-  const { longest } = watch()
+  const watched = watch()
   const ms = performance.now() - t0
   const records = probe.records()
   const during = records.filter(r => r.checkpointing)
   const top = (l: TransactionRecord[]) => l.reduce((m, r) => Math.max(m, r.ms), 0).toFixed(0)
   const k = w.takeWalCheckpointerStats()
-  console.log(`      ${label}: ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms, `
+  console.log(`      ${label}: ${(ms / 1000).toFixed(1)} s, ${heldText(watched)}, `
     + `${records.length} transactions (longest ${top(records)} ms), ${during.length} begun during a checkpoint `
     + `(longest ${top(during)} ms); worker: ${k.checkpoints} checkpoints, ${k.pauses} waits at the pause, `
     + `${JSON.stringify(takeWalTurnStats())}`)
   for (const r of during.slice(0, 5)) console.log(`        ${transactionLine(r)}`)
-  return { records, during, loopMs: longest.ms, k }
+  return { records, during, loopMs: watched.ownMs, k }
 }
 
 await ok('two bulk writers at once, the WAL emptied first, one ending mid-way: no slice begins while a checkpoint '
@@ -132,16 +133,15 @@ async function sliceAfterHeldCheckpoint(holdMs: number, during?: () => void) {
   let began = 0
   during?.()
   await asBulkWriter(bulk => bulk.slice(() => { began = performance.now() - t0; rewrite.run(51, 60) }))
-  const { longest } = watch()
+  const watched = watch()
   clearInterval(timer)
-  return { began, ticks, loopMs: longest.ms, asked }
+  return { began, ticks, loopMs: watched.ownMs, held: heldText(watched), asked }
 }
 
 await ok('a slice waiting for a checkpoint leaves the event loop free, and begins once it answered', async () => {
   takeWalTurnStats()
   const s = await sliceAfterHeldCheckpoint(800)
-  console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; loop held at most `
-    + `${s.loopMs.toFixed(0)} ms`)
+  console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${s.held}`)
   assert.ok(s.began >= 750, `the slice began ${s.began.toFixed(0)} ms after the checkpoint was asked`)
   assert.ok(s.ticks >= 20 && s.loopMs < 50, `${s.ticks} timers ran, the loop held ${s.loopMs.toFixed(0)} ms`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')

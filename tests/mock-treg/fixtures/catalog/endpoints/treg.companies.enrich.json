@@ -68,32 +68,34 @@
    "bodyType": "json",
    "body": {
     "domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain)"
     },
     "website": {
-     "type": "url",
+     "type": "string",
+     "format": "url",
      "required": false,
      "note": "identity key (part of website)"
     },
     "name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of name)"
     },
     "linkedin_url": {
-     "type": "url",
+     "type": "string",
+     "format": "url",
      "required": false,
      "note": "identity key (part of linkedin_url)"
     },
     "linkedin_handle": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of linkedin_handle)"
     },
     "email": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of email)"
     }
@@ -125,33 +127,33 @@
    ],
    "output": {
     "name": {
-     "type": "str",
+     "type": "string",
      "required": true
     },
     "domain": {
-     "type": "str"
+     "type": "string"
     },
     "website": {
-     "type": "str"
+     "type": "string"
     },
     "description": {
-     "type": "str"
+     "type": "string"
     },
     "industry": {
-     "type": "str"
+     "type": "string"
     },
     "employees": {
-     "type": "str",
+     "type": "string",
      "note": "headcount or a range, as the provider states it"
     },
     "founded": {
-     "type": "int"
+     "type": "integer"
     },
     "location": {
-     "type": "str"
+     "type": "string"
     },
     "linkedin_url": {
-     "type": "str"
+     "type": "string"
     }
    },
    "miss": "name == null",

@@ -47,22 +47,22 @@
    "bodyType": "json",
    "body": {
     "q": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of q)"
     },
     "country": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter — default 'us'; ISO country code; mapped to each provider's location code / gl / region"
     },
     "language": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter — default 'en'"
     },
     "limit": {
-     "type": "int",
+     "type": "integer",
      "required": false,
      "note": "filter — default 10; results to return where the provider bills by depth"
     }
@@ -79,12 +79,15 @@
    ],
    "output": {
     "results": {
-     "type": "list",
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
      "required": true,
      "note": "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"
     },
     "count": {
-     "type": "int"
+     "type": "integer"
     }
    },
    "miss": "results == []",

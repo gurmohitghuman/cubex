@@ -7,8 +7,8 @@
 // set right; with no worker (its file can't load) checkpoints on this thread as before, SQLite's own back on,
 // logged once; a worker stopped mid-job started again; a reader holding the frames doesn't stop the job; past a
 // deadline the slices are still written; big slices bring the pause forward, so the WAL stays within its share of
-// journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next commit; a
-// writer outside the runner committing all through a job doesn't take the WAL past journal_size_limit.
+// journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next commit. A writer
+// outside the runner all through a job: bulk-wal-outside.test.ts.
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
@@ -47,9 +47,6 @@ const roomFor = (limit: number) => Math.floor((WAL_BULK_ROOM_SHARE * limit) / (p
 
 // 20,000 rows with random ids and about 300 bytes each: a slice of 500 rewrites pages all over the table.
 const ROWS = 20_000, SLICE = 500
-// Commits outside the runner in the last case (about twice journal_size_limit's frames), and how long the worker's
-// checkpoints are held meanwhile (longer than those commits take).
-const OUTSIDE_COMMITS = 400, OUTSIDE_DELAY_MS = 3_000
 const uid = uuid(), tid = uuid(), sid = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
@@ -226,48 +223,6 @@ await ok('a reader holding the last frames as the job ends: tried again, the WAL
     await gone
     reader.close()
   }
-})
-
-// A writer outside the runner (an import, say) on the API connection all through a job: 1,000 rows of 300 bytes
-// rewritten a commit (about 80 frames), a turn between. Past the job's room its commits run SQLite's own
-// checkpoint, as with no job, and the WAL starts over. With SQLite's own checkpoint off, the worker never copied
-// every frame (more kept coming), so the WAL never started over: it grew as long as both went on. The worker's
-// checkpoints are held OUTSIDE_DELAY_MS, so those commits come while none runs: a commit's own checkpoint can't
-// run while the worker's does (the next commit tries again), and on a slow disk the WAL passes the room by what
-// writers add in that time. The job goes on, the rows rewritten again from the first, until that writer has made
-// OUTSIDE_COMMITS: counted, not timed. That writer gets 2 commits between two slices and the rest while the job
-// waits for a held checkpoint, so on a slow disk (commits of 60 ms) a job of one pass ended before them.
-await ok('a writer outside the runner all through a job: the WAL stays under journal_size_limit', async () => {
-  db.exec('CREATE TABLE outside_writes (id INTEGER PRIMARY KEY, v TEXT)')
-  const fill = db.prepare('INSERT INTO outside_writes (v) VALUES (?)')
-  db.transaction(() => { for (let i = 0; i < 1_000; i++) fill.run('o'.repeat(300)) }).immediate()
-  const touch = db.prepare('UPDATE outside_writes SET v = ?')
-  await checkpointInBackground()
-  await walCheckpointerIdle()
-  probe.reset()
-  setCheckpointDelayForTests(OUTSIDE_DELAY_MS)
-  let done = false, commits = 0, slices = 0
-  try {
-    const step = () => {
-      const at = (slices++ * SLICE) % ROWS
-      set.run('n', JSON.stringify(rowids.slice(at, at + SLICE)))
-      return slices * SLICE < ROWS || commits < OUTSIDE_COMMITS
-    }
-    const job = runInCheckpointedSlices(step).finally(() => { done = true })
-    while (!done && commits < OUTSIDE_COMMITS) {
-      db.transaction(() => { touch.run(String(commits++).padEnd(300, 'o')) }).immediate()
-      await new Promise(r => setImmediate(r))
-    }
-    await job
-  } finally { setCheckpointDelayForTests(0) }
-  const w = probe.read()
-  const peakBytes = 32 + w.mostWalFrames * (page + 24)
-  console.log(`      outside: ${commits} commits during ${slices} slices of the job, WAL peak ${w.mostWalFrames} `
-    + `frames (${peakBytes} bytes of ${sizeLimit}), ${w.ownCheckpoints} commits ran SQLite's own checkpoint`)
-  assert.equal(count('n'), ROWS)
-  back()
-  assert.ok(commits * 80 > roomFor(sizeLimit), `only ${commits} commits outside the runner`)
-  assert.ok(peakBytes < sizeLimit, `the WAL peaked at ${peakBytes} bytes, past journal_size_limit`)
 })
 
 await closeWalCheckpointer()

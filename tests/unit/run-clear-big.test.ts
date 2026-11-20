@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
-import { loopWatch } from './bulk-wal-kit'
+import { heldText, loopWatch, type LoopWatched } from './loop-watch'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet } = undoKit('run-clear-big')
 const { seedProcessingPlaceholders, PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
@@ -59,17 +59,24 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
   const seen = new Set([version.get(sid)])
   const poll = setInterval(() => seen.add(version.get(sid)), 5)
   const watch = loopWatch(probe.records)
+  await watch.ready
   const t0 = performance.now()
-  await stop()
-  while ((work.get(sid) as number) > 0) await sleep(5)
-  const ms = performance.now() - t0
-  const { longest, inside } = watch()
-  clearInterval(poll)
+  let ms = 0
+  let watchedLoop: LoopWatched
+  try {
+    await stop()
+    while ((work.get(sid) as number) > 0) await sleep(5)
+    ms = performance.now() - t0
+  } finally {
+    clearInterval(poll)
+    watchedLoop = watch()
+  }
   const w = probe.read()
-  console.log(`      ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms, ${w.transactions} `
+  console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
-  console.log(`        in the longest stretch: ${inside.map(transactionLine).join(' | ') || 'no transaction'}`)
-  return { ms, loopMs: longest.ms, seen: seen.size }
+  const inside = watchedLoop.inside.map(transactionLine).join(' | ')
+  console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
+  return { ms, loopMs: watchedLoop.ownMs, seen: seen.size }
 }
 
 await ok(`a first run on a new column, ${READERS} formulas reading it, cancelled at ${N} rows: none told, grids `
