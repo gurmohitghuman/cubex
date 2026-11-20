@@ -64,32 +64,33 @@
    "bodyType": "json",
    "body": {
     "domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+full_name, domain+first_name+last_name)"
     },
     "full_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+full_name)"
     },
     "first_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+first_name+last_name)"
     },
     "last_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of domain+first_name+last_name)"
     },
     "linkedin_url": {
-     "type": "url",
+     "type": "string",
+     "format": "url",
      "required": false,
      "note": "identity key (part of linkedin_url)"
     },
     "linkedin_handle": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of linkedin_handle)"
     }
@@ -118,21 +119,21 @@
    ],
    "output": {
     "email": {
-     "type": "str",
+     "type": "string",
      "required": true
     },
     "confidence": {
-     "type": "float",
+     "type": "number",
      "note": "0..1 — provider scales mapped; the original rides in raw"
     },
     "first_name": {
-     "type": "str"
+     "type": "string"
     },
     "last_name": {
-     "type": "str"
+     "type": "string"
     },
     "verified": {
-     "type": "bool",
+     "type": "boolean",
      "note": "the provider says it checked the mailbox"
     }
    },

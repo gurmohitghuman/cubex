@@ -65,42 +65,45 @@
    "bodyType": "json",
    "body": {
     "q": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of q)"
     },
     "company_domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of company_domain, company_domain+title)"
     },
     "title": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of company_domain+title, title)"
     },
     "full_name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity key (part of full_name)"
     },
     "country": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter — default None; ISO country code, where the provider supports it"
     },
     "location": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter — default None; free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"
     },
     "limit": {
-     "type": "int",
+     "type": "integer",
      "required": false,
      "note": "filter — default 10; rows to return — THE price dial: most providers bill per row"
     },
     "keywords": {
-     "type": "list",
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
      "required": false,
      "note": "filter — default None; skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"
     }
@@ -130,15 +133,18 @@
    ],
    "output": {
     "people": {
-     "type": "list",
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
      "required": true,
      "note": "the provider's own people rows (name, title, profile url, location…) — shapes differ per provider; raw is the same body"
     },
     "count": {
-     "type": "int"
+     "type": "integer"
     },
     "next_cursor": {
-     "type": "str"
+     "type": "string"
     }
    },
    "miss": "people == []",

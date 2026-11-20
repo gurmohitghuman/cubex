@@ -51,6 +51,7 @@ export function fillTemplate(
 const TRUE = new Set(['true', 'yes', '1', 'y']);
 const FALSE = new Set(['false', 'no', '0', 'n']);
 
+// The old words too (int, float, bool, list, dict): a run set up before keeps its tool's inputs as they were then.
 function typed(input: ToolInput, raw: string): { value: unknown } | { invalid: string } {
   const t = input.type.toLowerCase();
   if (t === 'integer' || t === 'int' || t === 'number' || t === 'float') {

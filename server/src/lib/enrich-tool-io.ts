@@ -1,12 +1,15 @@
 // Inputs and outputs of a treg catalog tool, read from its catalog entry (pure).
 // Single tools declare queryParams / body / pathParams; a waterfall
 // (treg.<capability>) declares a JSON body plus its contract's identity sets
-// (which inputs are enough together) and outputs under $.output.
+// (which inputs are enough together) and outputs under $.output. Types are read
+// in one set of words, whichever way treg writes them (lib/catalog-type.ts).
+
+import { isRowList, typeWord } from './catalog-type';
 
 export interface ToolInput {
   name: string;
   in: 'query' | 'body' | 'path';
-  type: string;          // as treg declares it: string, integer, array[string], …
+  type: string;          // string, integer, array[string], … (lib/catalog-type.ts)
   required: boolean;
   note?: string;
   example?: unknown;
@@ -29,7 +32,7 @@ function fieldsOf(section: unknown, where: ToolInput['in'], filterNames?: Set<st
   if (!isObj(section)) return [];
   return Object.entries(section).filter(([, def]) => isObj(def)).map(([name, def]) => {
     const d = def as Json;
-    const input: ToolInput = { name, in: where, type: typeof d.type === 'string' ? d.type : 'string', required: d.required === true };
+    const input: ToolInput = { name, in: where, type: typeWord(d) ?? 'string', required: d.required === true };
     if (typeof d.note === 'string') input.note = d.note;
     if (d.example !== undefined) input.example = d.example;
     if (Array.isArray(d.enum)) input.enum = d.enum;
@@ -81,7 +84,7 @@ export function pathSegment(key: string): string {
 }
 
 // Waterfall outputs come from the contract: every field is $.output.<field>,
-// and a list-typed field means the tool returns rows (people, companies…).
+// and a list of objects means the tool returns rows (people, companies…).
 export function contractOutputs(contract: unknown): { outputs: ToolOutput[]; list: ToolList | null } {
   const outputs: ToolOutput[] = [];
   let list: ToolList | null = null;
@@ -89,8 +92,8 @@ export function contractOutputs(contract: unknown): { outputs: ToolOutput[]; lis
   for (const [field, def] of Object.entries(contract.output)) {
     const d = isObj(def) ? def : {};
     const path = `$.output${pathSegment(field)}`;
-    const type = typeof d.type === 'string' ? d.type : undefined;
-    if (type === 'list' && !list) { list = { field, path }; continue; }
+    const type = typeWord(d);
+    if (isRowList(d) && !list) { list = { field, path }; continue; }
     outputs.push({
       field, path, ...(type ? { type } : {}), ...(typeof d.note === 'string' ? { note: d.note } : {}),
       ...(d.required === true ? { required: true } : {}),
