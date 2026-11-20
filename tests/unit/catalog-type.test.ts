@@ -102,18 +102,31 @@ const single = normalizeTool({ endpoint: { id: 'acme.things.find', kind: 'data',
   bodyType: 'json', body: {
     ids: { type: 'array', items: { type: 'integer' } }, tags: { type: ['array', 'string'] },
     remote: { type: 'boolean' }, size: { type: ['integer', 'string'] },
+    // As icypeas.bulk.results.read's sorts is in the live catalog.
+    sorts: { type: 'array', items: { type: ['boolean', 'number', 'string'] } },
+    grid: { type: 'array', items: { type: 'array', items: { type: 'integer' } } },
   } } } })!
-const sent = (row: Record<string, string>) => {
-  const b = buildRequest(requestToolOf(single), { ids: '{{I}}', tags: '{{T}}', remote: '{{R}}', size: '{{S}}' }, row,
-    { cleanDomains: false, columns: ['I', 'T', 'R', 'S'] })
+const COLUMNS = { ids: 'I', tags: 'T', remote: 'R', size: 'S', sorts: 'X', grid: 'G' }
+const sent = (given: Record<string, string>) => {
+  const row = { I: '1', T: 'a', R: 'no', S: '1', X: '3', G: '[[1]]', ...given }
+  const templates = Object.fromEntries(Object.entries(COLUMNS).map(([k, c]) => [k, `{{${c}}}`]))
+  const columns = Object.values(COLUMNS)
+  const b = buildRequest(requestToolOf(single), templates, row, { cleanDomains: false, columns })
   return b.ok ? JSON.parse(b.body!) : b
 }
+check('a list of text, numbers or booleans reads as one', single.inputs.find(i => i.name === 'sorts')?.type
+  === 'array[string_or_boolean_or_number]')
 check('a list of integers goes as numbers', same(sent({ I: '1, 2', T: 'a', R: 'yes', S: '10' }).ids, [1, 2]))
 check('text or a list: a list when written as one',
   same(sent({ I: '1', T: '["a","b"]', R: 'no', S: '1' }).tags, ['a', 'b']))
 check('text or a list: text otherwise', sent({ I: '1', T: 'a, b', R: 'no', S: '1' }).tags === 'a, b')
 check('a boolean goes as one', sent({ I: '1', T: 'a', R: 'yes', S: '1' }).remote === true)
 check('a number or text goes as written', sent({ I: '1', T: 'a', R: 'no', S: '10-50' }).size === '10-50')
+check('a list that may hold text: text in it goes as written', same(sent({ X: '["Ada", 3, true]' }).sorts,
+  ['Ada', 3, true]))
+check('a list that may hold text: one word goes as a list of it', same(sent({ X: 'Ada' }).sorts, ['Ada']))
+check('a list of lists of integers goes as written', same(sent({ G: '[[1,2],[3]]' }).grid, [[1, 2], [3]])
+  && same(sent({ G: '[[3]]' }).grid, [[3]]))
 
 if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
 console.log('\nall catalog-type checks passed')

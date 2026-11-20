@@ -75,7 +75,8 @@ function typed(input: ToolInput, raw: string): { value: unknown } | { invalid: s
     } else {
       items = raw.split(',').map(s => s.trim()).filter(Boolean);
     }
-    if (t.includes('integer') || t.includes('number')) {
+    // Numbers only when the items are numbers alone: a list that may hold text, or lists, goes as written.
+    if (/^array\[(integer|number)\]$/.test(t)) {
       const nums = items.map(Number);
       if (nums.some(n => !Number.isFinite(n))) return { invalid: `${input.name} must be a list of numbers.` };
       return { value: nums };
