@@ -1,7 +1,10 @@
+// Over 200 lines: the follow's three slice kinds (queued rows, a clear's spans, new rows) share one Step, its checks
+// and its finish.
 // Auto-run on a derived column (an autorun_columns entry of kind 'clean', 'formula' or 'lookup', derived-kind.ts): the
 // column follows its inputs. An enrichment or HTTP API column's auto-run fills a row once; a derived column works a row
 // out again whenever one of its inputs is written (lib/autorun-mark.ts queues every such row, whatever the column's
-// cell holds), and works out the new rows above its watermark. A person's own edit to its cell stays until an input
+// cell holds; a stopped run's ⏳ clear tells its rows as spans, lib/derived-spans.ts), and works out the new rows
+// above its watermark. A person's own edit to its cell stays until an input
 // changes again. It's free and has no side effects, so there are no caps and no "Only run if". Each slice reads and
 // writes in one short transaction (its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts; a slice
 // of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter), so what it writes is the
@@ -13,6 +16,9 @@ import {
   CLEAN_FOLLOW_KICK_MS, CLEAN_FOLLOW_TICK_MS, DERIVED_QUEUED_FIRST_ROWS, HEAVY_SLICE_ROWS, LOOKUP_FOLLOW_RETRY_MS,
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
+import { PLACEHOLDER } from '../lib/run-markers';
+import { getLockedRunColumns } from '../lib/run-locked-columns';
+import { nextSpan, spanWorked } from '../lib/derived-spans';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { asBulkWriter } from '../lib/bulk-slices';
 import { sheetBusyWith } from '../lib/sheet-busy';
@@ -73,6 +79,38 @@ function queuedSlice(s: Step): boolean {
   const more = read.capped || counts.done < live.length;
   s.page = pageAfter(s.page, live.length, counts.done);
   return more;
+}
+
+// The rows a stopped run's ⏳ clear told this column (lib/derived-spans.ts), in storage order, from its oldest
+// span once that clear has ended. A row gone since (deleted, in the trash: a restore queues it again) is passed
+// over. A row where an input this column reads holds ⏳ again, a run going or clearing on that input, is waited
+// at: worked out now, the ⏳ would read as empty, and that run tells the row once its ⏳ goes (a result, or its
+// clear). Rows written are quiet, as an undo's: only clean, formula and lookup columns follow them. True while
+// there may be more. Call inside a transaction (a slice).
+function spanSlice(s: Step): boolean {
+  const e = s.entry;
+  if (!stillCurrent(s)) return false;
+  const span = nextSpan(e.id);
+  if (!span) return false;
+  const want = span.rowids.slice(span.done, span.done + s.page);
+  const sel = derivedSelect(s.rec.column_name, s.inputs);
+  const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql} FROM rows
+    WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`)
+    .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.page, s.inputs.length);
+  const locked = getLockedRunColumns(e.sheet_id, e.user_id, { clearing: true });
+  const held = s.inputs.flatMap((c, k) => (locked.has(c) ? [`in${k}`] : []));
+  const wait = held.length === 0 ? -1 : read.rows.findIndex(r => held.some(k => r[k] === PLACEHOLDER));
+  const rows = wait < 0 ? read.rows : read.rows.slice(0, wait);
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows.map(r => asDerivedRead(r, s.inputs.length)), s.pass);
+  // The mark moves past the rows worked out, and past rows gone up to the next row read (all of `want` when
+  // every row read was worked out and none was left unread).
+  const next = counts.done < rows.length ? rows[counts.done] : wait >= 0 ? read.rows[wait] : null;
+  const at = (r: Record<string, unknown>) => want.indexOf(r.rowid as number);
+  const done = span.done + (next ? at(next) : read.capped ? at(rows[rows.length - 1]) + 1 : want.length);
+  spanWorked(e.id, span, done);
+  finishSlice(s, counts.changed, new Set(counts.changed));
+  s.page = pageAfter(s.page, rows.length, counts.done);
+  return !(wait >= 0 && counts.done === rows.length);
 }
 
 // New rows above the watermark. The watermark and the sheet's row generation
@@ -154,9 +192,10 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
         for (let more = true; more;) {
           await pass.prepare();
           if (!pass.waiting?.()) {
-            // Queued rows first (a person's edit), then new ones, each a slice of its own.
+            // Queued rows first (a person's edit), then a clear's spans, then new ones, each a slice of its own.
             more = await w.slice(() => queuedSlice(s));
             s.queued = queuedRowsAfter(s.queued, s.queuedRead, w.lastFrames());
+            more = more || await w.slice(() => spanSlice(s));
             more = more || await w.slice(() => newSlice(s));
           }
           const failure = pass.failure();

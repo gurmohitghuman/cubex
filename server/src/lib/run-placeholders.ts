@@ -2,6 +2,7 @@ import { db } from './db';
 import { aiRunDataColumn } from './ai-data-column';
 import { jsonPath } from './sql-rows';
 import { clearProcessingPlaceholders } from './placeholder-cells';
+import { kickSpanReaders } from './derived-spans';
 import { dropUnusedJournal } from './run-undo/unused';
 
 // True if a row this run was supposed to process is GENUINELY unfinished: its
@@ -147,6 +148,8 @@ export async function clearRunPlaceholders(kind: RunKind, runId: string): Promis
   // Before the mark goes, so no undo can take a journal that is about to go.
   await dropUnusedJournal({ kind, id: runId }, run.user_id);
   db.prepare(`UPDATE ${table} SET placeholder_work = NULL WHERE id = ? AND placeholder_work = 'clearing'`).run(runId);
+  // The columns reading the run's columns waited for the clear to end before working out the rows it told them.
+  kickSpanReaders(run.sheet_id);
 }
 
 // Finish the clears a restart interrupted (at boot, after the server listens:

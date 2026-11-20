@@ -1,5 +1,5 @@
 // The runs' background bulk writers, each measured (bulk-wal-kit.ts): a run's ⏳ clear with three formulas reading
-// its columns (lib/placeholder-cells.ts, its slices checkpointed), and undo journals dropped
+// its columns (lib/placeholder-cells.ts, its slices checkpointed, a span each for them), and undo journals dropped
 // (services/run-undo-prune.ts: an undone journal's rows, and an emptied sheet's journals). Rows with random ids,
 // each checkpoint on the worker held 300 ms: the event loop is never held 200 ms, no checkpoint's sync runs on the
 // API thread, the WAL stays under journal_size_limit, SQLite's own checkpoint is back on afterwards, and every
@@ -16,7 +16,8 @@ const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpoi
 console.error = () => {}
 const { measure } = bulkWalKit()
 
-const N = 20_000
+// Enough rows for the clear's own writes to reach the WAL's pause (the formulas' spans write little).
+const N = 100_000
 const held = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND instr(data, ?) > 0').pluck()
 
 await ok('a run\'s clear, three formulas reading its column: the WAL copied back on the worker', async () => {
@@ -28,9 +29,9 @@ await ok('a run\'s clear, three formulas reading its column: the WAL copied back
   }
   await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Answer']), { pause: true })
   assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
-  const queued = db.prepare(`SELECT COUNT(*) FROM autorun_pending p JOIN autorun_columns c ON c.id = p.autorun_id
-    WHERE c.sheet_id = ?`).pluck()
-  assert.equal(queued.get(sid), 3 * N, 'every row queued for each formula')
+  const told = db.prepare(`SELECT SUM(json_array_length(s.rowids)) FROM derived_span_marks m
+    JOIN derived_spans s ON s.id = m.span_id WHERE s.sheet_id = ?`).pluck()
+  assert.equal(told.get(sid), 3 * N, 'every row told each formula')
 })
 
 // A journal of `n` rows (about 600 bytes of old values each), kept for a run on `sid` in `state`.

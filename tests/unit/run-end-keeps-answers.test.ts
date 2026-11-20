@@ -7,7 +7,7 @@
 // as before, where nothing goes back: it was empty, the row had no key, it
 // held a ⏳, the row came after the seeding or took a deleted row's rowid, the
 // run kept no journal, or the column has no slot in it. A formula reading the
-// column follows, queued quiet. An undo of the run afterwards takes back the
+// column follows, told by span (quiet). An undo of the run afterwards takes back the
 // rows it answered and finds the others already holding their old values.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
@@ -118,11 +118,12 @@ await ok('a rerun cancelled before any row ran: every earlier answer is back wit
     await cancel('ai', id)
     assert.deepEqual(values(sid, 'Answer'), ['Old A', 42, object])
     const entry = entryFor(sid, uid, 'F')!
-    const queued = db.prepare('SELECT quiet, COUNT(*) AS n FROM autorun_pending WHERE autorun_id = ? GROUP BY quiet')
-      .all(entry.id)
-    assert.deepEqual(queued, [{ quiet: 1, n: 3 }], 'every row queued for the formula, quiet')
-    assert.equal(db.prepare('SELECT COUNT(*) FROM autorun_pending WHERE autorun_id = ?').pluck().get(hook), 0,
-      'nothing queued for an auto-run that sends requests')
+    // Told as one span (lib/derived-spans.ts): the formula works the rows out quiet, and nothing is queued.
+    const told = db.prepare(`SELECT json_array_length(s.rowids) FROM derived_span_marks m
+      JOIN derived_spans s ON s.id = m.span_id WHERE m.autorun_id = ?`).pluck().all(entry.id)
+    assert.deepEqual(told, [3], 'every row told the formula')
+    assert.equal(db.prepare('SELECT COUNT(*) FROM autorun_pending WHERE autorun_id IN (?, ?)').pluck()
+      .get(entry.id, hook), 0, 'nothing queued for the formula, nor for an auto-run that sends requests')
     await derivedFollowTick(entry)
     assert.deepEqual(values(sid, 'F'), worked)
   })

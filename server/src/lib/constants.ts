@@ -110,34 +110,21 @@ export const HEAVY_SLICE_ROWS = 5_000;
 // (lib/db.ts zeroes freed pages: secure_delete). 5,000 such results in one slice wrote 81 to 82 MB of WAL, past
 // journal_size_limit (64 MB), and held the server 235 to 343 ms; 500 wrote about 8.5 MB in under 30 ms.
 export const RESULTS_SLICE_ROWS = 500;
-// A run's ⏳ clear (lib/placeholder-cells.ts) also queues each cleared row once
-// for every clean, formula and lookup column reading the run's columns, in the
-// same transaction, unless its cells read as empty before the run; on rows with
-// random ids each queued row writes a page of its own. With R such columns a
-// slice queues at most this many / (1 + R) rows (1,000 at 1, 500 at 3, still 10
-// on a full sheet of 200 columns), and on a job thread is checkpointed after it
-// (lib/row-order.ts; on the server's thread every slice's WAL is copied back on
-// the checkpoint worker's).
-// Measured at 200,000 rows with 3 formulas on random ids: slices up to 40 ms,
-// checkpoints up to 70 ms, the whole clear 23 to 25 s in the background. Left
-// on, SQLite's checkpoint ran inside 177 of 400 commits (slices up to 144 ms).
-// With none, slices stay HEAVY_SLICE_ROWS rows. A run's first try on a new
-// column queues none: with 20 formulas reading it, 3.1 to 3.5 s (106.8 s).
-export const PLACEHOLDER_CLEAR_QUEUE_ROWS = 2_000;
 // A cancelled or failed run's clear puts each ⏳ cell back to what its undo
 // journal kept (lib/run-undo/clear-back.ts): one journal lookup per cell, about
 // as costly as the rest of that row's clear. With K columns put back a slice
 // holds at most this many / (1 + K) rows (3,500 at 1, 2,333 at 2). When columns
 // read them, a second lookup per cell (did it read as empty before?) makes that
-// / (1 + 2K), and the queue budget above still holds.
+// / (1 + 2K); the rows told them go as one span a slice (lib/derived-spans.ts).
 // Measured at 200,000 rows on random ids, none reading them: slices of 5,000
 // rows went from a median 20 ms to 30 ms with one column put back (up to 201
 // ms with SQLite's own checkpoint inside). Sized so: a median 21 ms, the
 // longest 53 to 90 ms, as the clear that empties cells (56 to 104 ms); the
 // whole clear 1.4 to 1.6 s (1.0 to 1.2 s). Two columns: the longest 56 to 67
 // ms, once 296 ms (58 to 94 ms), 2.1 to 2.5 s (1.2 to 1.3 s). The longest are
-// commits SQLite checkpoints in. With 3 formulas reading the column the queue
-// budget holds slices to 500 rows, as before (up to 41 ms, 22 to 25 s).
+// commits SQLite checkpoints in. With 3 or 20 formulas reading the column (rows
+// in storage order, one run each) the clear took 3.5 and 3.8 s (21 and 134 s
+// when it queued each told row for each formula), its slices up to 50 and 55 ms.
 export const PLACEHOLDER_CLEAR_BACK_ROWS = 7_000;
 // A journaled heavy job (a sort, a CSV import's clean-up) that fails half-way
 // keeps its sheet busy and is retried in the background, waiting this long

@@ -11,7 +11,7 @@
 // above the watermark" mean "rows added since", and auto-run never runs a row
 // the user simply chose not to run.
 import { db } from './db';
-import { HEAVY_SLICE_ROWS } from './constants';
+import { DERIVED_SPAN_DROP_MARKS, HEAVY_SLICE_ROWS } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice } from './row-order';
 import { asBulkWriter, runInCheckpointedSlices } from './bulk-slices';
@@ -117,6 +117,10 @@ export function markDerivedInputs(sheetId: string, userId: string, columns: Iter
   for (const w of derivedReaders(sheetId, userId, written)) queue(w, sheetId, userId, rows, true);
 }
 
+// The entries markDerivedInputs would queue a row for (lib/derived-spans.ts tells them by span instead).
+export const derivedReaderIds = (sheetId: string, userId: string, columns: Iterable<string>): string[] =>
+  derivedReaders(sheetId, userId, new Set(columns)).map(w => w.id);
+
 // How many columns markDerivedInputs queues a row for when `columns` are written
 // in it: a job doing that for every row it writes sizes its slices by it.
 export function derivedReaderCount(sheetId: string, userId: string, columns: Iterable<string>): number {
@@ -188,12 +192,18 @@ function keepByRowid(e: FencedEntry, sheetId: string, userId: string, idsJson: s
 // one go: a sheet's (a CSV replace) or one entry's (turning it on afresh).
 // Call before the transaction that finishes the job; that one drops the rest.
 // The WAL is copied back on the checkpoint worker's thread (lib/bulk-slices.ts).
+// The span marks of a clear's told rows (lib/derived-spans.ts) go the same way,
+// fewer a slice: a mark's span (a slice's rowids) goes with its last mark.
 export async function autorunDropPending(sheetId: string, userId: string, entryId?: string): Promise<void> {
   const one = entryId === undefined ? '' : ' AND id = ?';
+  const entries = `autorun_id IN (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?${one})`;
   const del = db.prepare(`DELETE FROM autorun_pending WHERE rowid IN (SELECT rowid FROM autorun_pending
-    WHERE autorun_id IN (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?${one}) LIMIT ?)`);
+    WHERE ${entries} LIMIT ?)`);
   const params = entryId === undefined ? [sheetId, userId] : [sheetId, userId, entryId];
   await runInCheckpointedSlices(() => del.run(...params, HEAVY_SLICE_ROWS).changes >= HEAVY_SLICE_ROWS);
+  const marks = db.prepare(`DELETE FROM derived_span_marks WHERE rowid IN (SELECT rowid FROM derived_span_marks
+    WHERE ${entries} LIMIT ?)`);
+  await runInCheckpointedSlices(() => marks.run(...params, DERIVED_SPAN_DROP_MARKS).changes >= DERIVED_SPAN_DROP_MARKS);
 }
 
 // A sort, before any row moves (the sheet is busy, so no auto-run starts):
@@ -224,9 +234,11 @@ export function autorunAfterReorder(sheetId: string, userId: string, rowCountSor
 // A CSV replace's last transaction (after row_generation moved): every row is
 // new, unless auto-run was paused for this import (then rows up to
 // `skipThrough` are passed over; a clean or formula column, which costs
-// nothing, still works them out). Queued rows are gone with the old rows.
+// nothing, still works them out). Queued rows and span marks are gone with the old rows.
 export function autorunAfterReplace(sheetId: string, userId: string, skipThrough: number | null): void {
   db.prepare(`DELETE FROM autorun_pending WHERE autorun_id IN
+    (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?)`).run(sheetId, userId);
+  db.prepare(`DELETE FROM derived_span_marks WHERE autorun_id IN
     (SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ?)`).run(sheetId, userId);
   db.prepare(`UPDATE autorun_columns
     SET watermark_row_index = CASE WHEN kind IN ('clean', 'formula', 'lookup') THEN -1 ELSE ? END,

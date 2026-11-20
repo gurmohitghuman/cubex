@@ -1,11 +1,12 @@
 // A run's ⏳ clear (lib/placeholder-cells.ts) tells the columns reading its cells only of the rows where that can
 // change what they worked out: every reader kind reads a ⏳ as empty (readers-read-placeholder-empty.test.ts), so a
 // cell the journal says read as empty before the run (none, '', a ⏳ or a list job's words) and that the clear
-// empties is told to none. A cell put back is, and so is one the journal has no slot for. A run's first try on a
-// new column tells none, and its slices are as big as the journal lookups allow, not the queue's share; when cells
-// put back come thick, a slice ends before the row past the queue's share. The sheet's data_version moves after
-// each slice, so open grids lose the ⏳ as the clear goes. A column started while the clear goes (nothing holds it
-// off) fills rows ahead of it from the ⏳, and hears of the cells put back after it started. The readers end right.
+// empties is told to none. A cell put back is, and so is one the journal has no slot for, as a span of the slice's
+// told rows with a mark per reader (lib/derived-spans.ts), never a queued row. A run's first try on a new column
+// tells none, and its slices are as big as the journal lookups allow; when cells put back come thick, with three
+// readers, they still are, one span each. The sheet's data_version moves after each slice, so open grids lose the
+// ⏳ as the clear goes. A column started while the clear goes (nothing holds it off) fills rows ahead of it from the
+// ⏳, and hears of the cells put back after it started. The readers end right.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -16,7 +17,7 @@ const { startFormulaColumn } = await import('../../server/src/services/formula-c
 const { derivedFollowTick } = await import('../../server/src/services/derived-follow')
 const { entryFor } = await import('../../server/src/services/autorun-entry')
 const { LIST_MARK } = await import('../../server/src/lib/run-markers')
-const { PLACEHOLDER_CLEAR_BACK_ROWS, PLACEHOLDER_CLEAR_QUEUE_ROWS } = await import('../../server/src/lib/constants')
+const { PLACEHOLDER_CLEAR_BACK_ROWS } = await import('../../server/src/lib/constants')
 console.error = () => {}
 
 const formula = async (sid: string, column: string, f: string) => {
@@ -36,6 +37,7 @@ async function seededRun(sid: string, columns: string[]) {
 const held = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND instr(data, ?) > 0').pluck()
 const version = db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck()
 // The clear, watched: rows per slice, and how far data_version moved by the end of each. `then` runs after each.
+// Then the run lets its columns go, as its clear's end does (lib/run-placeholders.ts): the readers wait for that.
 async function clear(sid: string, columns: string[], run: { kind: 'http'; id: string }, then?: () => void) {
   const sizes: number[] = [], moved: number[] = []
   const v0 = version.get(sid) as number
@@ -47,16 +49,22 @@ async function clear(sid: string, columns: string[], run: { kind: 'http'; id: st
     moved.push((version.get(sid) as number) - v0)
     then?.()
   }, run)
+  db.prepare('UPDATE http_runs SET placeholder_work = NULL WHERE id = ?').run(run.id)
   return { sizes, moved }
 }
-// The row indexes queued for a column.
+const entry = (sid: string, column: string) => entryFor(sid, uid, column)!.id
+// The row indexes queued for a column, and those told it by span.
 const queuedRows = (sid: string, column: string) => (db.prepare(`SELECT r.row_index FROM autorun_pending p
   JOIN rows r ON r.id = p.row_id WHERE p.autorun_id = ? ORDER BY r.row_index`).pluck()
-  .all(entryFor(sid, uid, column)!.id) as number[])
+  .all(entry(sid, column)) as number[])
+const toldRows = (sid: string, column: string) => (db.prepare(`SELECT r.row_index FROM derived_span_marks m
+    JOIN derived_spans s ON s.id = m.span_id, json_each(s.rowids) j JOIN rows r ON r.rowid = j.value
+  WHERE m.autorun_id = ? ORDER BY r.row_index`).pluck().all(entry(sid, column)) as number[])
+const marks = (sid: string, column: string) => db.prepare(
+  'SELECT COUNT(*) FROM derived_span_marks WHERE autorun_id = ?').pluck().get(entry(sid, column)) as number
 const follow = async (sid: string, column: string) => {
-  for (let n = 0; queuedRows(sid, column).length > 0 && n < 50; n++) {
-    await derivedFollowTick(entryFor(sid, uid, column)!)
-  }
+  for (let n = 0; marks(sid, column) > 0 && n < 50; n++) await derivedFollowTick(entryFor(sid, uid, column)!)
+  assert.equal(marks(sid, column), 0, `${column} worked out every span`)
 }
 // With readers, each cell put back costs two journal lookups.
 const readSlice = (k: number) => Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / (1 + 2 * k))
@@ -71,7 +79,7 @@ await ok('a run\'s first try on a new column: none told, slices as big as the jo
   assert.deepEqual(sizes, [readSlice(1), readSlice(1), 7], 'rows per slice')
   assert.deepEqual(moved, [1, 2, 3], 'data_version moved after each slice')
   for (let k = 0; k < 3; k++) {
-    assert.deepEqual(queuedRows(sid, `F${k}`), [], `nothing queued for F${k}`)
+    assert.deepEqual([queuedRows(sid, `F${k}`), toldRows(sid, `F${k}`)], [[], []], `nothing told F${k}`)
     assert.deepEqual(new Set(cells(sid, `F${k}`)), new Set([`-${k}`]), `F${k} already right`)
   }
   assert.deepEqual(new Set(cells(sid, 'Answer')), new Set(['']))
@@ -90,16 +98,17 @@ await ok('told: a cell put back and one the journal has no slot for; not: none, 
     db.prepare(`UPDATE rows SET data = json_set(data, '$.Loose', ?) WHERE sheet_id = ? AND row_index IN (6, 7)`)
       .run(PLACEHOLDER, sid)
     await clear(sid, ['Answer', 'Loose'], run)
-    assert.deepEqual(queuedRows(sid, 'F'), [0, 5, 6, 7, 10, 15], 'rows told')
+    assert.deepEqual(toldRows(sid, 'F'), [0, 5, 6, 7, 10, 15], 'rows told')
+    assert.deepEqual(queuedRows(sid, 'F'), [], 'none queued')
     await follow(sid, 'F')
     const want = Array.from({ length: 20 }, (_, i) => (i % 5 === 0 ? `old ${i}` : ''))
     assert.deepEqual(cells(sid, 'Answer'), want)
     assert.deepEqual(cells(sid, 'F'), want.map(a => `${a}!`), 'F ends right')
   })
 
-await ok('cells put back come thick: a slice ends before the row past the queue\'s share', async () => {
-  // Three readers: a slice queues at most a quarter of the budget. Rows past `thin` held earlier answers.
-  const share = Math.floor(PLACEHOLDER_CLEAR_QUEUE_ROWS / 4)
+await ok('cells put back come thick, three readers: slices as big as the journal allows, one span each', async () => {
+  // Rows past `thin` held earlier answers: the first slice tells 100 rows, the others every row.
+  const share = 500
   const thin = readSlice(1) - 100
   const n = readSlice(1) + share + 10
   const sid = sheet(Array.from({ length: n }, (_, i) => ({ Name: `n${i}`,
@@ -107,12 +116,20 @@ await ok('cells put back come thick: a slice ends before the row past the queue\
   for (let k = 0; k < 3; k++) await formula(sid, `F${k}`, `{{Answer}} + "-${k}"`)
   const run = await seededRun(sid, ['Answer'])
   const { sizes, moved } = await clear(sid, ['Answer'], run)
-  // The first slice tells 100 rows; the next ends at the share; the rest after it.
-  assert.deepEqual(sizes, [readSlice(1), share, n - readSlice(1) - share], 'rows per slice')
-  assert.deepEqual(moved, [1, 2, 3])
-  assert.equal(queuedRows(sid, 'F0').length, n - thin, 'every row put back told')
-  await follow(sid, 'F0')
-  assert.deepEqual(cells(sid, 'F0'), Array.from({ length: n }, (_, i) => `${i >= thin ? `old ${i}` : ''}-0`))
+  assert.deepEqual(sizes, [readSlice(1), n - readSlice(1)], 'rows per slice')
+  assert.deepEqual(moved, [1, 2])
+  const spans = db.prepare('SELECT COUNT(*) FROM derived_spans WHERE sheet_id = ?').pluck().get(sid)
+  assert.equal(spans, 2, 'one span a slice that told rows')
+  for (let k = 0; k < 3; k++) {
+    assert.equal(toldRows(sid, `F${k}`).length, n - thin, `every row put back told F${k}`)
+    assert.deepEqual(queuedRows(sid, `F${k}`), [], `none queued for F${k}`)
+  }
+  for (let k = 0; k < 3; k++) {
+    await follow(sid, `F${k}`)
+    assert.deepEqual(cells(sid, `F${k}`), Array.from({ length: n }, (_, i) => `${i >= thin ? `old ${i}` : ''}-${k}`))
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) FROM derived_spans WHERE sheet_id = ?').pluck().get(sid), 0,
+    'a span goes with its last mark')
 })
 
 await ok('a formula started while the clear goes, none reading the cells before: told of the cells put back after',
@@ -130,7 +147,7 @@ await ok('a formula started while the clear goes, none reading the cells before:
     })
     assert.ok(started && 'ok' in await started, 'F started')
     // Unread, a slice holds BACK / 8 rows; once F reads the cells, BACK / 15 (a second lookup per cell), every row
-    // told (under the queue's share of 1,000).
+    // told.
     const [alone, read] = [Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / 8), Math.floor(PLACEHOLDER_CLEAR_BACK_ROWS / 15)]
     const k = sizes.indexOf(read)
     assert.ok(k > 0, `the slices once F read the cells: ${sizes.join(', ')}`)

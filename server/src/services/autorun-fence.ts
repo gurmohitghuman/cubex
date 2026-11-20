@@ -1,6 +1,7 @@
 // What an auto-run tick asks first (autorun-loop.ts, clean-follow.ts): is
 // there anything to look at, and does its watermark still mean what it did.
 import { db } from '../lib/db';
+import { hasSpanWork } from '../lib/derived-spans';
 import type { AutorunEntry } from './autorun-entry';
 
 const topRow = (e: AutorunEntry): number => db.prepare(
@@ -14,7 +15,7 @@ const topRow = (e: AutorunEntry): number => db.prepare(
 export function hasWork(e: AutorunEntry): boolean {
   if (e.rescan) db.prepare('UPDATE autorun_columns SET rescan = 0 WHERE id = ?').run(e.id);
   return !!e.rescan || !!db.prepare('SELECT 1 FROM autorun_pending WHERE autorun_id = ? LIMIT 1').get(e.id)
-    || topRow(e) > e.watermark_row_index;
+    || hasSpanWork(e.id) || topRow(e) > e.watermark_row_index;
 }
 
 // Rows can only be re-meant by a sort or a CSV replace, and both move the
