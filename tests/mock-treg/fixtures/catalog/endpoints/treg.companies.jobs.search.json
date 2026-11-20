@@ -15,44 +15,44 @@
    "bodyType": "json",
    "body": {
     "domain": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity; the employer's website domain ('ramp.com')"
     },
     "title": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity; job title words ('data engineer'); with name or domain, that role at that company"
     },
     "name": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "identity; the employer's whole name as the company writes it ('Ramp'): every job index asked for a name matches the whole name, so 'Ramp' never finds LiveRamp, and a company listed under two names answers for the one sent. For one company's own board, treg.companies.jobs takes the board itself: the whole board on Greenhouse, Ashby and Workable, up to `limit` (at most 100) on Lever and SmartRecruiters"
     },
     "country": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter; ISO alpha-2 country of the job ('US', 'GB')"
     },
     "location": {
-     "type": "str",
+     "type": "string",
      "required": false,
      "note": "filter; free-text place of the job, finer than country ('Texas', 'New York, NY', 'Berlin'), passed to providers that take one"
     },
     "remote": {
-     "type": "bool",
+     "type": "boolean",
      "required": false,
      "note": "filter; true: remote jobs only. false or absent: no remote filter"
     },
     "posted_within_days": {
-     "type": "int",
+     "type": "integer",
      "required": false,
      "min": 1,
      "max": 365,
      "note": "filter; posted (or first seen) in the last N days. Absent, TheirStack still asks for the last 30 days: it has no open/closed flag"
     },
     "limit": {
-     "type": "int",
+     "type": "integer",
      "required": false,
      "note": "filter; default 10; rows to return: most providers bill per row; PredictLeads (by domain) bills one flat price for up to 500 rows. On treg.companies.jobs, a board named by ats: Greenhouse, Ashby and Workable answer the whole board whatever limit is, free; Lever and SmartRecruiters answer up to limit, at most 100"
     }
@@ -114,14 +114,17 @@
    ],
    "output": {
     "jobs": {
-     "type": "list",
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
      "required": true
     },
     "count": {
-     "type": "int"
+     "type": "integer"
     },
     "next_cursor": {
-     "type": "str"
+     "type": "string"
     }
    },
    "miss": "jobs == []",

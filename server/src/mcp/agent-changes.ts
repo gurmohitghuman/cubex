@@ -37,7 +37,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.31',
+    version: 'v0.8.32',
     changes: [
       {
         change: 'added',
