@@ -3,10 +3,11 @@
 // or waiting (a write waiting 250 ms for SQLite's write lock, held on another thread); a pause of the whole process
 // (SIGSTOP, then SIGCONT 300 ms later; not on Windows, which has no such signal) is let off, and printed; after a
 // longer pause, a busy transaction is still the hold named, with its transaction; the idle thread ends once the watch
-// is read. The disk (loop-watch-disk.ts): a plain commit waiting off the CPU while the disk thread's writes are stuck
-// is let off, and printed; a transaction busy on the CPU, or a wait outside any transaction, is not, the disk stuck
-// or not; a commit that syncs is never let off, and a pause is not let off twice; the disk thread's file is beside
-// the database and gone once the watch is read.
+// is read. The disk thread (loop-watch-disk.ts, the watch everywhere but Linux; run here on every platform): a plain
+// commit waiting off the CPU while the disk thread's writes are stuck is let off, and printed; a transaction busy on
+// the CPU, or a wait outside any transaction, is not, the disk stuck or not; a commit that syncs is never let off,
+// and a pause is not let off twice; the disk thread's file is beside the database and gone once the watch is read.
+// Linux's own (where this thread waited, from the kernel) is loop-watch-waits.test.ts.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -14,7 +15,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { Worker } from 'node:worker_threads'
 import dbMod from '../../server/src/lib/db'
-import { heldText, idleThreadsRunning, loopWatch, type LoopWatched } from './loop-watch'
+import { heldText, idleThreadsRunning, loopWatch, type LoopWatched, type WatchOptions } from './loop-watch'
 import { diskLetOff } from './loop-watch-disk'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
@@ -33,10 +34,11 @@ const add = db.prepare('INSERT INTO loop_watch (v) VALUES (?)')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // `hold` watched, the loop then left free a moment so the sampler sees the stretch end; printed. With `stuck`, the
-// disk thread's writes are stuck that long from just before the hold.
+// disk thread's writes are stuck that long from just before the hold (the disk thread runs on Linux too then).
 async function watched(label: string, hold: () => Promise<void> | void, stuck = 0): Promise<LoopWatched> {
   probe.reset()
-  const watch = loopWatch(probe.records)
+  const opts: WatchOptions = stuck > 0 ? { mode: 'disk' } : {}
+  const watch = loopWatch(probe.records, opts)
   await watch.ready
   await sleep(20)
   if (stuck > 0) {
@@ -131,7 +133,7 @@ await ok(`a plain commit waiting ${HOLD_MS} ms off the CPU while the disk is stu
     .immediate(), STUCK_MS)
   assert.ok(w.ownMs < BOUND_MS, heldText(w))
   assert.ok(w.letOffs.some(o => o.letOffMs >= HOLD_MS - 60), heldText(w))
-  assert.match(heldText(w), /let off for the disk: \d+ ms \(CPU \d+ ms, the disk stuck \d+ ms, \d+ ms let off\)/)
+  assert.match(heldText(w), /each 10 ms or more: \d+ ms \(CPU \d+ ms, the disk stuck \d+ ms, \d+ ms let off\)/)
 })
 
 await ok('a transaction busy on the CPU, the disk stuck: held by this thread alone, past the bound', async () => {
@@ -160,7 +162,7 @@ await ok('a commit that syncs is never let off; a pause is not let off twice', (
 })
 
 await ok('the disk thread\'s file is beside the database, and gone once the watch is read', async () => {
-  const watch = loopWatch(() => [])
+  const watch = loopWatch(() => [], { mode: 'disk' })
   await watch.ready
   await sleep(20)
   const w = watch()

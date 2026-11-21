@@ -52,8 +52,8 @@ function timed(pattern: string, cell: string): Promise<number | null> {
   })
 }
 
-// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts; no database here, so nothing is
-// let off for the disk), and fn's answer and time.
+// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts; no transaction is recorded here,
+// so nothing is let off for the disk, only time waiting for a CPU on Linux), and fn's answer and time.
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number; ms: number }> {
   const { out, ms, watched: w } = await watchWhile(() => [], fn)
   return { out, ms, lag: w.ownMs }

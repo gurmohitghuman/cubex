@@ -1,12 +1,12 @@
-// The disk side of the loop watch (loop-watch.ts): a thread that writes to the disk the database is on and records
-// when its writes were stuck, and what a stretch of the loop is let off for it. A plain commit (WAL with
-// synchronous = NORMAL, lib/db.ts) writes its frames with buffered writes and syncs nothing, so a commit that took
-// far longer than its CPU time waited on the OS for those writes. When this thread's own buffered writes to the same
-// disk were stuck at the same time, the disk was slow for everyone, not the code. A stretch is let off the smaller
-// of: the time the disk thread was stuck in it (less the time the whole process was paused, let off already), and
-// the time the plain commits in it spent off the CPU. CPU time, lock and worker waits outside a stuck disk, a commit
-// that syncs (it started the WAL over, ran SQLite's own checkpoint, or began while a checkpoint asked of the worker
-// was pending) and GC always count.
+// The disk side of the loop watch (loop-watch.ts) everywhere but Linux, which asks the kernel (loop-watch-waits.ts):
+// a thread that writes to the disk the database is on and records when its writes were stuck, and what a stretch of
+// the loop is let off for it. A plain commit (WAL with synchronous = NORMAL, lib/db.ts) writes its frames with
+// buffered writes and syncs nothing, so a commit that took far longer than its CPU time waited on the OS for those
+// writes. When this thread's own buffered writes to the same disk were stuck at the same time, the disk was slow for
+// everyone, not the code. A stretch is let off the smaller of: the time the disk thread was stuck in it (less the
+// time the whole process was paused, let off already), and the time the plain commits in it spent off the CPU. CPU
+// time, lock and worker waits outside a stuck disk, a commit that syncs (it started the WAL over, ran SQLite's own
+// checkpoint, or began while a checkpoint asked of the worker was pending) and GC always count.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -116,7 +116,11 @@ export function covered(spans: Span[], from: number, to: number, minus: Span[] =
 // A commit that syncs, or may wait on the checkpoint worker: never let off.
 const syncs = (r: TransactionRecord) => r.startedOver || r.ownCheckpoint || r.checkpointing
 
-export interface LetOff { at: number; ms: number; cpuMs: number; diskMs: number; offCpuMs: number; letOffMs: number }
+// `from` (on Linux, loop-watch-waits.ts): how much of `letOffMs` came from each wait point, and from waiting for a CPU.
+export interface LetOff {
+  at: number; ms: number; cpuMs: number; diskMs: number; offCpuMs: number; letOffMs: number
+  from?: Array<[string, number]>
+}
 
 // What the stretch [at, at + ms) is let off for the disk: `late` and `stuck` merged, in the same clock as `at`.
 export function diskLetOff(stretch: { at: number; ms: number; cpuMs: number }, late: Span[], stuck: Span[],
