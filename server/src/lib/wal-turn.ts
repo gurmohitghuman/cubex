@@ -7,8 +7,10 @@
 // turn awaits that checkpoint's answer (the event loop free), then tries again; a worker that finds a write's
 // skips its start-over, and that write asks for another checkpoint.
 // On Windows (writesWaitForCheckpoints, lib/wal-checkpointer.ts) a write also begins only once a checkpoint running
-// has answered, the event loop free meanwhile (WAL_CHECKPOINT_WAIT_MS at most), unless it is past `until`: there a
-// commit that writes the WAL while the worker's checkpoint runs can wait inside it.
+// has answered, the event loop free meanwhile: there a commit that writes the WAL while the worker's checkpoint runs
+// waits inside it, on the event loop (on the Windows CI runner COMMIT took up to 149 ms then, 19 ms otherwise). Past
+// `until` too, for a write that must be made (a transform call's column add made there held the loop 783 ms): the
+// call answers later, the loop free. Each checkpoint is waited for WAL_CHECKPOINT_WAIT_MS at most, then never again.
 // In its turn, before its transaction, a write reads the WAL (NOOP, on this connection): every frame copied (an
 // empty WAL too: its first write writes and syncs the header), it doesn't write; it asks the worker for a
 // checkpoint, which starts the WAL over, awaits the answer, and checks again. A checkpoint can still copy the last
@@ -35,7 +37,7 @@ const zero = () => ({ writes: 0, turnWaits: 0, checkpointWaits: 0, checkpointWai
 let stats = zero();
 let checking = false;
 let reader: { noop: Database.Statement } | undefined;
-let beforeWrite: (() => void) | null = null;
+let beforeWrite: ((late: boolean) => void) | null = null;
 
 // The WAL as a second connection reads it: one that never reads a table, so it holds no snapshot and never keeps
 // SQLite from starting the WAL over. query_only: it never writes either. If it can't be read, null (logged once).
@@ -77,12 +79,12 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
   for (;;) {
     const late = Date.now() >= until;
     if (late && !anyway) return 'late';
-    // On Windows, a checkpoint running: its answer first (above).
-    const running = late || !writesWaitForCheckpoints() || gaveUpOnRunning() ? null : checkpointAnswer();
+    // On Windows, a checkpoint running: its answer first (above). Past `until`, only its own limit holds.
+    const running = !writesWaitForCheckpoints() || gaveUpOnRunning() ? null : checkpointAnswer();
     if (running) {
       stats.checkpointWaits++;
       const t0 = Date.now();
-      await answerWithin(running, until);
+      await answerWithin(running, late ? Infinity : until);
       stats.checkpointWaitMs += Date.now() - t0;
       continue;
     }
@@ -96,7 +98,7 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
     const ask = !late && checkpointsOnWorker() && worthAsking(last);
     try {
       if (!(ask && allCopied(walState()))) {
-        beforeWrite?.();
+        beforeWrite?.(late);
         checking = ask;
         const out = write();
         stats.writes++;
@@ -123,8 +125,8 @@ export function takeWalTurnStats(): ReturnType<typeof zero> {
   stats = zero();
   return s;
 }
-// Tests only: run between a write's read of the WAL and its transaction.
-export function setBeforeTurnWriteForTests(fn: (() => void) | null): void { beforeWrite = fn; }
+// Tests only: run between a write's read of the WAL and its transaction, told whether it is past `until`.
+export function setBeforeTurnWriteForTests(fn: ((late: boolean) => void) | null): void { beforeWrite = fn; }
 // At shutdown, and in tests: the second connection closes (a later check opens it again).
 export function closeWalTurnReader(): void {
   const r = reader;

@@ -1,5 +1,5 @@
 {
-  "release": "v0.8.17",
+  "release": "v0.8.32",
   "tools": {
     "add_column": {
       "properties": {
@@ -996,6 +996,85 @@
     },
     "get_workspace": {
       "properties": {},
+      "type": "object"
+    },
+    "hiring_signals": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "create",
+            "check",
+            "get"
+          ],
+          "type": "string"
+        },
+        "country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "type": "number"
+        },
+        "per_search": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "place": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "posted_within_days": {
+          "anyOf": [
+            {
+              "maximum": 365,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "time_zone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
       "type": "object"
     },
     "import_csv": {
