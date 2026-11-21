@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { authedApi, seedSheet } from './helpers'
 import { makeToken, bearer } from './api-v1-run-helpers'
+import { waitRunsSetUp } from './helpers-enrich'
 
 // Audit finding #5: renaming/deleting an AI-output column must reconcile
 // ai_runs.column_name, or a NEW plain column reusing the old name gets
@@ -40,7 +41,9 @@ test('renaming an AI-output column reconciles ai_runs so rerun follows the new n
   })
   expect(rerunNew.status(), `rerun-by-new-name failed: ${await rerunNew.text()}`).toBe(200)
 
-  // Rerun by the OLD base name 404s — the stale association is gone.
+  // Rerun by the OLD base name 404s: the stale association is gone. Asked once that rerun has written its cells,
+  // so the answer is about the name, not a sheet busy starting a run (409).
+  await waitRunsSetUp(sheetId)
   const rerunOld = await api.post('/api/ai/rerun', {
     data: { sheetId, baseColumnName: 'ai' },
   })

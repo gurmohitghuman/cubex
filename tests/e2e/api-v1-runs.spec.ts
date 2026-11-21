@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { authedApi, seedSheet } from './helpers'
 import { JSON_URL, makeToken, bearer, httpConfig, waitForTerminal } from './api-v1-run-helpers'
+import { waitRunsSetUp } from './helpers-enrich'
+import { Receiver } from './helpers-receiver'
 
 // /api/v1 Phase 2 — HTTP run lifecycle: start → poll → results → cells,
 // rerun-by-run-id + superseded 409, target_row_ids subsets, and strict
@@ -8,6 +10,9 @@ import { JSON_URL, makeToken, bearer, httpConfig, waitForTerminal } from './api-
 // the secrets gate: api-v1-runs-secrets.spec.ts.
 
 test.describe.configure({ mode: 'serial' })
+const rx = new Receiver()
+test.beforeAll(() => rx.start())
+test.afterAll(() => rx.stop())
 
 test('v1 HTTP run: start → poll → results → cells; rerun by run id; superseded 409', async () => {
   test.setTimeout(120_000)
@@ -102,31 +107,39 @@ test('v1 run control: pause → resume → cancel with strict codes', async () =
   const { sheetId } = await seedSheet(api, 30) // val = v0..v29 → 30 distinct (404ing) URLs, no cache hits
   const v1 = await bearer(await makeToken(api, ['read', 'write', 'run'], 'e2e v1 run'))
 
-  const start = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, {
-    data: { config: httpConfig('https://jsonplaceholder.typicode.com/todos/{{val}}', 'Slow') },
-  })
-  expect(start.status()).toBe(202)
-  const runId = (await start.json()).run_id
+  // The receiver keeps every answer back, so the run is still going at each step below until the run is cancelled.
+  const release = rx.hold()
+  try {
+    const start = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, {
+      data: { config: httpConfig(rx.url('/control/{{val}}'), 'Slow') },
+    })
+    expect(start.status()).toBe(202)
+    const runId = (await start.json()).run_id
 
-  const paused = await v1.post(`/api/v1/http-runs/${runId}/pause`)
-  expect(paused.status()).toBe(200)
-  expect((await paused.json()).status).toBe('paused')
+    // A run still writing its cells is refused a pause ("still starting"): the first control comes after that.
+    await waitRunsSetUp(sheetId)
+    const paused = await v1.post(`/api/v1/http-runs/${runId}/pause`)
+    expect(paused.status(), await paused.text()).toBe(200)
+    expect((await paused.json()).status).toBe('paused')
 
-  const resumed = await v1.post(`/api/v1/http-runs/${runId}/resume`)
-  expect(resumed.status()).toBe(200)
+    const resumed = await v1.post(`/api/v1/http-runs/${runId}/resume`)
+    expect(resumed.status()).toBe(200)
 
-  // Resume of a non-paused run → 409 (strict, unlike the UI's polite 200s).
-  const notPaused = await v1.post(`/api/v1/http-runs/${runId}/resume`)
-  expect(notPaused.status()).toBe(409)
+    // Resume of a non-paused run → 409 (strict, unlike the UI's polite 200s).
+    const notPaused = await v1.post(`/api/v1/http-runs/${runId}/resume`)
+    expect(notPaused.status()).toBe(409)
 
-  const cancelled = await v1.post(`/api/v1/http-runs/${runId}/cancel`)
-  expect(cancelled.status()).toBe(200)
-  expect((await cancelled.json()).status).toBe('cancelled')
+    const cancelled = await v1.post(`/api/v1/http-runs/${runId}/cancel`)
+    expect(cancelled.status()).toBe(200)
+    expect((await cancelled.json()).status).toBe('cancelled')
 
-  // Terminal run: pause/cancel → 409; unknown id → 404.
-  expect((await v1.post(`/api/v1/http-runs/${runId}/pause`)).status()).toBe(409)
-  expect((await v1.post(`/api/v1/http-runs/${runId}/cancel`)).status()).toBe(409)
-  expect((await v1.get('/api/v1/http-runs/no-such-run')).status()).toBe(404)
+    // Terminal run: pause/cancel → 409; unknown id → 404.
+    expect((await v1.post(`/api/v1/http-runs/${runId}/pause`)).status()).toBe(409)
+    expect((await v1.post(`/api/v1/http-runs/${runId}/cancel`)).status()).toBe(409)
+    expect((await v1.get('/api/v1/http-runs/no-such-run')).status()).toBe(404)
+  } finally {
+    release()
+  }
 
   await v1.dispose(); await api.dispose()
 })

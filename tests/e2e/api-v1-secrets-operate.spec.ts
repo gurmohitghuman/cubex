@@ -1,6 +1,8 @@
 import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet } from './helpers'
 import { JSON_URL, makeToken, bearer, httpConfig, waitForTerminal } from './api-v1-run-helpers'
+import { waitRunsSetUp } from './helpers-enrich'
+import { Receiver } from './helpers-receiver'
 
 // Audit finding #1 (secrets-gate bypass): the authoring-time scan freezes runs
 // a no-'secrets' PAT AUTHORS, but a run-scope-only PAT could still OPERATE an
@@ -8,6 +10,13 @@ import { JSON_URL, makeToken, bearer, httpConfig, waitForTerminal } from './api-
 // references a saved key — resume/rerun would make the worker resolve it. The
 // fix gates resume + rerun on the caller's own 'secrets' scope when the run's
 // stored config references a saved key.
+// A run paused here sends its rows to the receiver, which keeps every answer back until the spec lets them go, so
+// the run is still going when the pause comes; and the pause comes once the run has written its cells (a run still
+// writing them is refused a pause, "still starting").
+
+const rx = new Receiver()
+test.beforeAll(() => rx.start())
+test.afterAll(() => rx.stop())
 
 async function mkKey(api: APIRequestContext, name: string) {
   const keys = await (await api.get('/api/settings/api-keys')).json()
@@ -27,25 +36,32 @@ test('run-scope PAT cannot resume or rerun a key-referencing HTTP run it did not
 
   await mkKey(api, 'crm_key')
   // A run whose config references the saved key, authored with 'secrets' → allow_secrets=1.
-  const cfg = httpConfig('https://jsonplaceholder.typicode.com/todos/{{val}}', 'Out', { 'X-Test': 'Bearer /crm_key' })
-  const started = await secrets.post(`/api/v1/sheets/${sheetId}/http-runs`, {
-    data: { config: cfg, master_column_name: 'KeyRun' },
-  })
-  expect(started.status()).toBe(202)
-  const runId = (await started.json()).run_id
+  const cfg = httpConfig(rx.url('/operate/{{val}}'), 'Out', { 'X-Test': 'Bearer /crm_key' })
+  const release = rx.hold()
+  let runId = ''
+  try {
+    const started = await secrets.post(`/api/v1/sheets/${sheetId}/http-runs`, {
+      data: { config: cfg, master_column_name: 'KeyRun' },
+    })
+    expect(started.status()).toBe(202)
+    runId = (await started.json()).run_id
 
-  // Pause it (run scope is enough to pause — pausing resolves no keys).
-  const paused = await runOnly.post(`/api/v1/http-runs/${runId}/pause`)
-  expect(paused.status()).toBe(200)
+    // Pause it (run scope is enough to pause: pausing resolves no keys).
+    await waitRunsSetUp(sheetId)
+    const paused = await runOnly.post(`/api/v1/http-runs/${runId}/pause`)
+    expect(paused.status(), await paused.text()).toBe(200)
 
-  // The run-only token must NOT be able to resume it: resuming would resolve the key.
-  const resume = await runOnly.post(`/api/v1/http-runs/${runId}/resume`)
-  expect(resume.status()).toBe(403)
-  expect((await resume.json()).error).toContain('crm_key')
+    // The run-only token must NOT be able to resume it: resuming would resolve the key.
+    const resume = await runOnly.post(`/api/v1/http-runs/${runId}/resume`)
+    expect(resume.status()).toBe(403)
+    expect((await resume.json()).error).toContain('crm_key')
 
-  // The secrets token still can.
-  const resumeOk = await secrets.post(`/api/v1/http-runs/${runId}/resume`)
-  expect(resumeOk.status()).toBe(200)
+    // The secrets token still can.
+    const resumeOk = await secrets.post(`/api/v1/http-runs/${runId}/resume`)
+    expect(resumeOk.status()).toBe(200)
+  } finally {
+    release()
+  }
   await waitForTerminal(secrets, `/api/v1/http-runs/${runId}`, 90_000)
 
   // Rerun by the run-only token is likewise refused (it clones the permissive config).
@@ -61,6 +77,8 @@ test('run-scope PAT cannot resume or rerun a key-referencing HTTP run it did not
   await waitForTerminal(secrets, `/api/v1/http-runs/${plainId}`, 90_000)
   const plainRerun = await runOnly.post(`/api/v1/http-runs/${plainId}/rerun`, { data: { mode: 'all' } })
   expect(plainRerun.status()).toBe(202)
+  // The next start waits for that rerun to write its cells: until then the sheet is busy starting a run (409).
+  await waitRunsSetUp(sheetId)
 
   // Frozen-clone (TOCTOU): a permissive run referencing a key that
   // DOESN'T exist yet passes the gate (nothing to protect). A run-only rerun of
@@ -94,17 +112,25 @@ test('run-scope resume of a dormant-key run freezes it so a later-created key ne
   const runOnly = await bearer(await makeToken(api, ['read', 'write', 'run'], 'e2e op run'))
 
   // Permissive run referencing a key that DOESN'T exist yet (gate passes).
-  const cfg = httpConfig('https://jsonplaceholder.typicode.com/todos/{{val}}', 'Out', { 'X-Test': 'Bearer /dormant_key' })
-  const started = await secrets.post(`/api/v1/sheets/${sheetId}/http-runs`, {
-    data: { config: cfg, master_column_name: 'DormRun' },
-  })
-  expect(started.status()).toBe(202)
-  const runId = (await started.json()).run_id
+  const cfg = httpConfig(rx.url('/dormant/{{val}}'), 'Out', { 'X-Test': 'Bearer /dormant_key' })
+  const release = rx.hold()
+  let runId = ''
+  try {
+    const started = await secrets.post(`/api/v1/sheets/${sheetId}/http-runs`, {
+      data: { config: cfg, master_column_name: 'DormRun' },
+    })
+    expect(started.status()).toBe(202)
+    runId = (await started.json()).run_id
 
-  // Pause, then resume with the run-only token: allowed (no key exists), but it
-  // must FREEZE the run so a later-created key can never resolve.
-  expect((await runOnly.post(`/api/v1/http-runs/${runId}/pause`)).status()).toBe(200)
-  expect((await runOnly.post(`/api/v1/http-runs/${runId}/resume`)).status()).toBe(200)
+    // Pause, then resume with the run-only token: allowed (no key exists), but it
+    // must FREEZE the run so a later-created key can never resolve.
+    await waitRunsSetUp(sheetId)
+    const paused = await runOnly.post(`/api/v1/http-runs/${runId}/pause`)
+    expect(paused.status(), await paused.text()).toBe(200)
+    expect((await runOnly.post(`/api/v1/http-runs/${runId}/resume`)).status()).toBe(200)
+  } finally {
+    release()
+  }
   await waitForTerminal(runOnly, `/api/v1/http-runs/${runId}`, 90_000)
 
   // Now the key exists. The frozen run sent the token literally on every row,

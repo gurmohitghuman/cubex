@@ -3,6 +3,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, seedSheet, BASE, makeAccessToken, getSheet } from './helpers'
 import { mcpClient, call, callError } from './helpers-mcp'
+import { waitRunsSetUp } from './helpers-enrich'
 
 // A cost ceiling and an AI run's spend limit over MCP, /api/v1 and the app
 // (docs/mcp.md, "Cost ceiling and spend limits"). OpenRouter's public price
@@ -201,9 +202,11 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     expect(resumed.ok(), await resumed.text()).toBeTruthy()
     expect((await aiStatus(client, again.run_id, ['completed', 'failed'])).spend_limit_usd).toBe(5)
 
-    // Resume all with two runs at their limit: each asks for its own, one after the other.
-    const two = [await call(client, 'run_ai_column', { ...base, column_name: 'Two', spend_limit_usd: TINY }),
-      await call(client, 'run_ai_column', { ...base, column_name: 'Three', spend_limit_usd: TINY })]
+    // Resume all with two runs at their limit: each asks for its own, one after the other. The second starts
+    // once the first has written its cells: until then the sheet is busy starting a run.
+    const two = [await call(client, 'run_ai_column', { ...base, column_name: 'Two', spend_limit_usd: TINY })]
+    await waitRunsSetUp(sheetId)
+    two.push(await call(client, 'run_ai_column', { ...base, column_name: 'Three', spend_limit_usd: TINY }))
     for (const r of two) await aiStatus(client, r.run_id, ['paused'])
     await page.reload()
     await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
@@ -260,10 +263,10 @@ test("the AI drawer's Resume on a run at its spend limit asks for a higher one; 
       return run ? `${run.status}/${run.pause_reason}/${run.spend_limit_usd}` : ''
     }, { timeout: 60_000 }).toBe(`paused/spend_limit/${TINY}`)
 
-    // The drawer closed when the run started; opened again it shows the run where it stopped.
-    if (!(await page.getByTestId('run-self-paused').isVisible())) {
-      await page.getByRole('button', { name: 'AI Column', exact: true }).click()
-    }
+    // The drawer closes when the run starts. While it slides out it can already show the paused run, so it is
+    // opened again once it is gone; then it shows the run where it stopped.
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 })
+    await page.getByRole('button', { name: 'AI Column', exact: true }).click()
     const why = page.getByTestId('run-self-paused')
     await expect(why).toContainText('spend limit', { timeout: 30_000 })
     const fullReads: string[] = []
