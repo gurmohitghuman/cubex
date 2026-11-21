@@ -1,0 +1,41 @@
+name: Repeat runs (temporary)
+
+# Temporary, for this branch only, removed before the review: transform-regex-pages 40 times on Windows with this
+# change, and the tests of the wait it changes. The required checks are in ci.yml.
+
+on:
+  push:
+    branches: [fix/wal-turn-late]
+  workflow_dispatch:
+
+concurrency:
+  group: repeat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repeat:
+    name: ${{ matrix.group }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        group: [regex, wal]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Runs
+        shell: bash
+        run: bash .github/ci-temp/repeat.sh ${{ matrix.group }}
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.group }}-${{ matrix.os }}
+          path: repeat-logs/
+          retention-days: 7
