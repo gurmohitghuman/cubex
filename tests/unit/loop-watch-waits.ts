@@ -2,14 +2,14 @@
 // asked directly. A thread of its own reads this thread's wait point (/proc/<pid>/task/<pid>/wchan) every WAIT_TICK_MS
 // and records the time spent in DISK_WAITS, each by name; the sampler reads this thread's time waiting for a CPU
 // (/proc/thread-self/schedstat) each tick, so each stretch of the loop has its own. A stretch is let off:
-// - its time waiting for a CPU (other processes had the CPUs: not the code);
+// - its time waiting for a CPU, wherever it waited (other processes, or this one's other threads, had the CPUs);
 // - the time its plain commits spent in a disk wait point, at most their time off the CPU less the time waiting for
 //   a CPU. A commit's frames are 4,120 bytes, so writing into a WAL page no longer in memory reads it from disk first
 //   (__wait_on_buffer); a slow or busy disk shows in the others.
 // It fails closed: a wait point not named here, one that reads "0" or can't be read at all lets off nothing, nor
 // does a schedstat that can't be read. Never let off: CPU time, futex waits (a lock, the worker, Atomics.wait), GC,
-// and any wait outside a plain commit or in one that syncs (it started the WAL over, ran SQLite's own checkpoint, or
-// began while a checkpoint asked of the worker was pending): a sync the code asks for always counts.
+// and any disk wait outside a plain commit or in one that syncs (it started the WAL over, ran SQLite's own
+// checkpoint, or began while a checkpoint asked of the worker was pending): a sync the code asks for always counts.
 import fs from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { covered, merged, type LetOff, type Span } from './loop-watch-disk'

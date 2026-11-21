@@ -4,11 +4,14 @@
 // is let off for the disk (it fails closed). A commit waiting on a futex (Atomics.wait, as for a worker) is not let
 // off; a write waiting for SQLite's write lock is loop-watch.test.ts's case, run there on Linux too. With more busy
 // processes than CPUs, a transaction busy on the CPU is let off only its time waiting for a CPU, never its CPU time.
-// Linux only: elsewhere the disk thread watches (loop-watch.test.ts).
+// Linux only: elsewhere the disk thread watches (loop-watch.test.ts). The evicted-WAL cases are skipped, saying why,
+// where the database isn't on a disk (a tmpfs /tmp: nothing is read back), and the first also where the kernel names
+// no wait point (each reads "0", as in some containers).
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
 import dbMod from '../../server/src/lib/db'
 import { heldText, loopWatch, type LoopWatched, type WatchOptions } from './loop-watch'
 import { DISK_WAITS } from './loop-watch-waits'
@@ -32,6 +35,19 @@ db.exec('CREATE TABLE loop_watch (v INTEGER); CREATE TABLE loop_watch_wal (b BLO
 const add = db.prepare('INSERT INTO loop_watch (v) VALUES (?)')
 const blob = db.prepare('INSERT INTO loop_watch_wal (b) VALUES (randomblob(3000))')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+// tmpfs and ramfs keep files in memory only.
+const IN_MEMORY = [0x01021994, 0x858458f6]
+const notOnDisk = IN_MEMORY.includes(Number(fs.statfsSync(path.dirname(process.env.DB_PATH)).type))
+  ? 'the database\'s folder is in memory, on tmpfs: nothing is read back from a disk' : ''
+// This process's threads asleep (V8's and libuv's) show where they wait; where names are hidden, each reads "0".
+const named = fs.readdirSync('/proc/self/task').some(t => {
+  try { return !/^0?$/.test(fs.readFileSync(`/proc/self/task/${t}/wchan`, 'utf8').trim()) } catch { return false }
+})
+const unnamed = named ? '' : 'the kernel names no wait point here: each reads "0"'
+async function unless(why: string, label: string, fn: () => Promise<void>) {
+  if (why) console.log(`skip ${label} (${why})`)
+  else await ok(label, fn)
+}
 const blobs = (n: number) => db.transaction(() => { for (let i = 0; i < n; i++) blob.run() }).immediate()
 
 // `hold` watched; `before` runs first, after the probe's reset (which empties the WAL).
@@ -75,15 +91,15 @@ async function evictedCommit(label: string, opts: WatchOptions = {}) {
   return w
 }
 
-await ok('a plain commit writing into WAL pages no longer in memory: its disk waits let off, printed with their wait '
-  + 'points', async () => {
+await unless(notOnDisk || unnamed, 'a plain commit writing into WAL pages no longer in memory: its disk waits let off, '
+  + 'printed with their wait points', async () => {
   const w = await evictedCommit('evicted WAL pages')
   assert.ok(fromDisk(w).length > 0, heldText(w))
   assert.match(heldText(w), new RegExp(`ms let off: [^)]*(${DISK_WAITS.join('|')}) \\d+ ms`))
   cpuCounts(w)
 })
 
-await ok('the same with the wait point unreadable: nothing let off for the disk', async () => {
+await unless(notOnDisk, 'the same with the wait point unreadable: nothing let off for the disk', async () => {
   const w = await evictedCommit('evicted WAL pages, wchan unreadable', { wchan: '/proc/self/task/0/no-wchan' })
   assert.deepEqual(fromDisk(w), [], heldText(w))
 })
