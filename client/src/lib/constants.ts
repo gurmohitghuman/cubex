@@ -225,3 +225,6 @@ export const WAITING_REFRESH_MS = 5_000;
 // one over "Resume all runs" stayed on the very button its "Paused" message called for. Pages without that bar
 // (Settings, Trash) keep toasts 16px from the top, above their tabs and filters.
 export const TOAST_TOP_PX = 64;
+// A drawer or dialog closed while it still opens closes once its open transition has ended (200 ms once started,
+// hooks/useCloseAfterOpen.ts). A close never waits longer than this.
+export const CLOSE_AFTER_OPEN_MAX_MS = 1_000;

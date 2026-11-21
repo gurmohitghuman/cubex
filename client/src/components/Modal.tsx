@@ -1,5 +1,6 @@
 import React, { Fragment, ReactNode } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
+import { useCloseAfterOpen } from '@/hooks/useCloseAfterOpen'
 
 interface ModalProps {
   isOpen: boolean
@@ -18,13 +19,17 @@ interface ModalProps {
 export const Modal: React.FC<ModalProps> = ({
   isOpen, onClose, children, panelClassName, zClassName, initialFocus,
 }) => {
+  // A close asked for while it opens waits for the open to end (hooks/useCloseAfterOpen.ts).
+  const { show, beforeEnter, afterEnter } = useCloseAfterOpen(isOpen)
   return (
-    <Transition.Root show={isOpen} as={Fragment}>
+    <Transition.Root show={show} as={Fragment}>
       <Dialog as="div" className={`relative ${zClassName || 'z-[20000]'}`} onClose={onClose}
         initialFocus={initialFocus}>
         {/* Overlay */}
         <Transition.Child
           as={Fragment}
+          beforeEnter={beforeEnter}
+          afterEnter={afterEnter}
           enter="ease-out duration-200"
           enterFrom="opacity-0"
           enterTo="opacity-100"
@@ -40,6 +45,8 @@ export const Modal: React.FC<ModalProps> = ({
           <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={Fragment}
+              beforeEnter={beforeEnter}
+              afterEnter={afterEnter}
               enter="ease-out duration-200"
               enterFrom="opacity-0 translate-y-1 scale-95"
               enterTo="opacity-100 translate-y-0 scale-100"
