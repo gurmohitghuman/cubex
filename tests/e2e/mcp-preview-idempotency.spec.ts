@@ -30,19 +30,23 @@ test('idempotency_key: same key replays run_id; different args conflict', async 
   const { sheetId } = await seedSheet(api, 2)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e idem'))
   const base = { sheet_id: sheetId, column_name: 'Idem', prompt: 'echo /val', model: 'openai/gpt-4o-mini' }
+  // A key of its own each run: the key belongs to the account, and a second run of this test against the same
+  // server, with a new sheet, would send it with other arguments.
+  const key = `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-  const first = parseResult(await client.callTool({ name: 'run_ai_column', arguments: { ...base, idempotency_key: 'k1' } }))
+  const start = () => client.callTool({ name: 'run_ai_column', arguments: { ...base, idempotency_key: key } })
+  const first = parseResult(await start())
   expect(first.run_id).toBeTruthy()
   expect(first.replayed).toBeFalsy()
 
   // Same key + same args → the ORIGINAL run_id, marked replayed, no new run.
-  const replay = parseResult(await client.callTool({ name: 'run_ai_column', arguments: { ...base, idempotency_key: 'k1' } }))
+  const replay = parseResult(await start())
   expect(replay.run_id).toBe(first.run_id)
   expect(replay.replayed).toBe(true)
 
   // Same key + DIFFERENT args → conflict.
   const conflict: any = await client.callTool({
-    name: 'run_ai_column', arguments: { ...base, prompt: 'different prompt /val', idempotency_key: 'k1' },
+    name: 'run_ai_column', arguments: { ...base, prompt: 'different prompt /val', idempotency_key: key },
   })
   expect(conflict.isError).toBeTruthy()
 

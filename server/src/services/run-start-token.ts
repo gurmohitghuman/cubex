@@ -18,6 +18,7 @@
 //     spend limit (the lower of the two; services/run-start-ceiling.ts).
 // Callers check the token holds 'run' first. HTTP runs: run-start-token-http.ts.
 import { verifySheetOwnership } from '../lib/sql-helpers';
+import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { PREVIEW_MAX_ROWS } from '../lib/constants-ai';
 import { modelProblem } from '../lib/ai-model-check';
@@ -125,6 +126,15 @@ export function firstStart(c: TokenCaller, key: unknown, hash: () => string | nu
   const prior = sent ? readRunLedger(c.userId, key, sent) : null;
   return prior && 'replay' in prior ? prior.replay : null;
 }
+// A start with a key goes past the busy-sheet guards (mcp/tool-helpers.ts, routes/api-v1-shared.ts), so a retry
+// replays while its first start still sets up its rows. Called right after the replay: any other keyed start on a
+// busy sheet is refused here, in the guards' words, before it reads or takes anything (a run-start slot). One
+// without a key was refused by the guards; each start checks the sheet again itself later.
+export function busyRefusal(a: { sheet_id?: unknown; idempotency_key?: unknown }): Fail | null {
+  const keyed = a.idempotency_key !== undefined && typeof a.sheet_id === 'string';
+  const what = keyed ? sheetBusyWith(a.sheet_id as string) : null;
+  return what ? { fail: 'conflict', message: busyMessage(what) } : null;
+}
 export function replayFirst<T extends object = object>(
   c: TokenCaller, key: unknown, hash: () => string | null,
 ): TokenRunResult<T> | null {
@@ -182,6 +192,8 @@ type AiRunAnswer = ServiceAnswer<'run_ai_column'>;
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult<AiRunAnswer>> {
   const first = replayFirst<AiRunAnswer>(c, a.idempotency_key, () => aiSentHash(a));
   if (first) return first;
+  const busy = busyRefusal(a);
+  if (busy) return busy;
   const pre = preamble(c, a);
   if ('fail' in pre) return pre;
   const sheetId = a.sheet_id as string;

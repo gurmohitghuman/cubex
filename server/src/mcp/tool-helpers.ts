@@ -172,7 +172,13 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
 // With an idempotency_key, update_cells reads the ledger first: a replay
 // writes nothing, and one that would write is refused there, in these words
 // (services/rows-write-keyed.ts; the one-row form's patchRowById checks too).
-const KEYED_RUNS_WHILE_SHEET_BUSY = new Set(['update_cells']);
+// A run start with a key replays its first start, so a retry gets its run_id
+// while that start still sets up its rows; any other keyed start on a busy
+// sheet is refused right after the replay, in these words (run-start-token.ts
+// busyRefusal).
+const KEYED_RUNS_WHILE_SHEET_BUSY = new Set([
+  'update_cells', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
+]);
 
 export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {
   if (RUNS_WHILE_SHEET_BUSY.has(name)) return handler;

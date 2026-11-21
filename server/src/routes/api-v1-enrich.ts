@@ -8,6 +8,7 @@ import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth'
 import { TREG_TOOL_ID_PATTERN } from '../lib/constants';
 import { setRateLimitedHeaders } from '../lib/rate-window';
 import { runFailHttpStatus, type RunFail } from '../services/run-shared';
+import { runFailBody } from './api-v1-shared';
 import type { CatalogFailure } from '../services/enrich-catalog';
 import { agentGetTool, agentSearchTools } from '../services/enrich-agent-tools';
 import { tokenStartEnrichmentRun } from '../services/enrich-token-run';
@@ -66,7 +67,7 @@ router.post('/sheets/:id/enrichment-runs', requireScope('run'), handle('start th
       if (r.rate) setRateLimitedHeaders(res, r.rate);
       return res.status(429).json({ error: r.message, retry_after_seconds: r.rate?.retryAfterSec });
     }
-    return fail(res, { fail: r.fail, message: r.message });
+    return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json(runFailBody(r.message));
   }
   return res.status(r.started ? 202 : 200).json(r.ok);
 }));

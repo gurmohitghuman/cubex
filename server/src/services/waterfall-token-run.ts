@@ -25,7 +25,8 @@ import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { dailyLimitOf } from './enrich-agent-shared';
 import { runIfReply } from './run-rule';
 import {
-  bad, firstStart, ledgerReplay, preamble, replayOf, startsRun, startWindow, type TokenCaller, type TokenRunResult,
+  bad, busyRefusal, firstStart, ledgerReplay, preamble, replayOf, startsRun, startWindow, type TokenCaller,
+  type TokenRunResult,
 } from './run-start-token';
 import { agentSetup } from './waterfall-agent-view';
 import { answerDryRun, tokenDryRun, type WaterfallAnswer } from './waterfall-token-dry';
@@ -89,6 +90,8 @@ export async function tokenWaterfall(
   if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
     return dry ? answerDryRun(c, known.run_id, true) : replayOf<WaterfallAnswer>(known);
   }
+  const busy = busyRefusal(a);
+  if (busy) return busy;
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;
   const pre = preamble(c, a as Parameters<typeof preamble>[1]);
   if ('fail' in pre) return pre;

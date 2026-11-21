@@ -22,7 +22,8 @@ import { dailyLimitOf } from './enrich-agent-shared';
 import { appendAutorunNotice, autorunColumnJson, type AutorunNotice } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
 import {
-  bad, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type TokenCaller, type TokenRunResult,
+  bad, busyRefusal, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type TokenCaller,
+  type TokenRunResult,
 } from './run-start-token';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
@@ -65,6 +66,8 @@ export async function tokenStartEnrichmentRun(
   const sent = () => (startsRun(a.estimate_only) ? sentArgsHash('enrichment_run', a) : null);
   const first = replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
   if (first) return first;
+  const busy = busyRefusal(a);
+  if (busy) return busy;
   // Read before the row ids resolve: a sort in between moves the generation,
   // and the start then refuses instead of running other rows.
   const generation = typeof a.sheet_id === 'string' ? generationOf(a.sheet_id, c.userId) : null;

@@ -16,7 +16,8 @@ import { writeRunLedger } from '../lib/run-idempotency';
 import { startHttpRun } from './http-run-start';
 import { estimateHttpRun } from './run-estimate-http';
 import {
-  bad, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller, type TokenRunResult,
+  bad, busyRefusal, ledgerReplay, preamble, replayFirst, startWindow, type Fail, type TokenCaller,
+  type TokenRunResult,
 } from './run-start-token';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { runChanged } from '../mcp/changed';
@@ -64,6 +65,8 @@ export async function tokenStartHttpRun(
     c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)),
   );
   if (first) return first;
+  const busy = busyRefusal(sent);
+  if (busy) return busy;
   let a = sent;
   const pre = preamble(c, a);
   if ('fail' in pre) return pre;
