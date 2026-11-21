@@ -1,6 +1,7 @@
 import React, { Fragment, ReactNode } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { X } from 'lucide-react'
+import { useCloseAfterOpen } from '@/hooks/useCloseAfterOpen'
 
 interface DrawerProps {
   isOpen: boolean
@@ -20,17 +21,19 @@ interface DrawerProps {
 // deferred (YAGNI); add -translate-x-full + left-0 swaps if a left drawer is ever
 // needed. Extracted from WebhookDrawer (the original one-off).
 export const Drawer: React.FC<DrawerProps> = ({ isOpen, onClose, children, panelClassName }) => {
+  // A close asked for while it slides in waits for the slide to end (hooks/useCloseAfterOpen.ts).
+  const { show, beforeEnter, afterEnter } = useCloseAfterOpen(isOpen)
   return (
-    <Transition.Root show={isOpen} as={Fragment}>
+    <Transition.Root show={show} as={Fragment}>
       <Dialog as="div" className="relative z-[20000]" onClose={onClose}>
-        <Transition.Child as={Fragment}
+        <Transition.Child as={Fragment} beforeEnter={beforeEnter} afterEnter={afterEnter}
           enter="ease-out duration-200" enterFrom="opacity-0" enterTo="opacity-100"
           leave="ease-in duration-150" leaveFrom="opacity-100" leaveTo="opacity-0">
           <div className="fixed inset-0 bg-black/30" />
         </Transition.Child>
         <div className="fixed inset-0 overflow-hidden">
           <div className="absolute inset-y-0 right-0 flex max-w-full">
-            <Transition.Child as={Fragment}
+            <Transition.Child as={Fragment} beforeEnter={beforeEnter} afterEnter={afterEnter}
               enter="transform transition ease-out duration-200" enterFrom="translate-x-full" enterTo="translate-x-0"
               leave="transform transition ease-in duration-150" leaveFrom="translate-x-0" leaveTo="translate-x-full">
               <Dialog.Panel className={`w-screen ${panelClassName || 'max-w-md'} bg-white shadow-xl flex flex-col h-full`}>
