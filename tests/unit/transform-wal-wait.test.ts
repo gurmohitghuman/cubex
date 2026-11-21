@@ -5,7 +5,9 @@
 // at once too. With a checkpoint already running that takes 5 s on the worker, the call answers within its budget
 // and one page, not when the checkpoint ends; the next call, made at once, waits for that checkpoint all its time
 // and says so, writing no rows and answering the same cursor; the one after waits for it before its first page,
-// so no page is written past the WAL's bound. Going on with the cursors ends every row exactly once.
+// so no page is written past the WAL's bound. Going on with the cursors ends every row exactly once. That case runs
+// Linux's path on every platform (writesWaitForCheckpoints off): on Windows the call's last writes, past its
+// deadline, wait for that checkpoint first, so it answers once the checkpoint has (wal-turn-late.test.ts).
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
@@ -23,8 +25,10 @@ const { transformColumn, TRANSFORM_WAITED_NOTE } =
   transformMod as typeof import('../../server/src/services/column-transform')
 const { TRANSFORM_MAX_CALL_MS, TRANSFORM_PAGE_ROWS } = apiMod as typeof import('../../server/src/lib/api-v1-constants')
 const { WAL_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
-const { closeWalCheckpointer, setCheckpointDelayForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
-  walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const {
+  closeWalCheckpointer, setCheckpointDelayForTests, setWritesWaitForCheckpointsForTests, takeWalCheckpointerStats,
+  walCheckpointerIdle,
+} = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -70,6 +74,32 @@ async function finish(suffix: string, cursor: string) {
   }
 }
 
+// The second case: a checkpoint already running for 5 s, on Linux's path (above).
+async function checkpointRunning() {
+  probe.reset()
+  takeWalCheckpointerStats()
+  setCheckpointDelayForTests(5000)
+  let first: Awaited<ReturnType<typeof timed>>
+  try { first = await timed('b') } finally { setCheckpointDelayForTests(0) }
+  const page = Math.ceil(probe.read().longestTransactionMs)
+  const waits = takeWalCheckpointerStats().pauses
+  console.log('     ', JSON.stringify({ ms: first.ms, updated: first.updated, longestPageMs: page, waits }))
+  assert.equal(waits, 1, 'it waited for the checkpoint (not stopped by its row cap)')
+  assert.ok(first.ms <= TRANSFORM_MAX_CALL_MS + page + 150, `answered after ${first.ms} ms`)
+  // At once: that checkpoint has about 3 s left, the call 2 s.
+  assert.deepEqual(await call('b', first.cursor),
+    { ok: { updated: 0, created_column: null, next_cursor: first.cursor, note: TRANSFORM_WAITED_NOTE } })
+  // At once again, while that checkpoint still runs with the WAL past its bound.
+  const next = await timed('b', first.cursor)
+  const w = probe.read()
+  console.log('     ', JSON.stringify({ next: [next.ms, next.updated], before: w.mostWalFramesBeforeWrite }))
+  assert.ok(w.mostWalFramesBeforeWrite < WAL_PAUSE_FRAMES, `a page was written with ${w.mostWalFramesBeforeWrite} `
+    + 'frames waiting in the WAL')
+  await walCheckpointerIdle()
+  await finish('b', next.cursor)
+  assert.equal(once('ab'), ROWS)
+}
+
 async function main() {
   await check('a read held open on another connection: the call answers at once with a cursor, and so does each '
     + 'next one after a page; going on ends every row once', async () => {
@@ -94,28 +124,8 @@ async function main() {
   await check('a checkpoint already running for 5 s: the call answers within its budget and one page; the next '
     + 'call waits for it all its time and says so, writing nothing; the one after waits for it before its first '
     + 'page', async () => {
-    probe.reset()
-    takeWalCheckpointerStats()
-    setCheckpointDelayForTests(5000)
-    let first: Awaited<ReturnType<typeof timed>>
-    try { first = await timed('b') } finally { setCheckpointDelayForTests(0) }
-    const page = Math.ceil(probe.read().longestTransactionMs)
-    const waits = takeWalCheckpointerStats().pauses
-    console.log('     ', JSON.stringify({ ms: first.ms, updated: first.updated, longestPageMs: page, waits }))
-    assert.equal(waits, 1, 'it waited for the checkpoint (not stopped by its row cap)')
-    assert.ok(first.ms <= TRANSFORM_MAX_CALL_MS + page + 150, `answered after ${first.ms} ms`)
-    // At once: that checkpoint has about 3 s left, the call 2 s.
-    assert.deepEqual(await call('b', first.cursor),
-      { ok: { updated: 0, created_column: null, next_cursor: first.cursor, note: TRANSFORM_WAITED_NOTE } })
-    // At once again, while that checkpoint still runs with the WAL past its bound.
-    const next = await timed('b', first.cursor)
-    const w = probe.read()
-    console.log('     ', JSON.stringify({ next: [next.ms, next.updated], before: w.mostWalFramesBeforeWrite }))
-    assert.ok(w.mostWalFramesBeforeWrite < WAL_PAUSE_FRAMES, `a page was written with ${w.mostWalFramesBeforeWrite} `
-      + 'frames waiting in the WAL')
-    await walCheckpointerIdle()
-    await finish('b', next.cursor)
-    assert.equal(once('ab'), ROWS)
+    setWritesWaitForCheckpointsForTests(false)
+    try { await checkpointRunning() } finally { setWritesWaitForCheckpointsForTests(null) }
   })
   await closeWalCheckpointer()
 }
