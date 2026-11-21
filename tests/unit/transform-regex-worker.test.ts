@@ -7,10 +7,10 @@
 // event loop keeps answering. The calls through transform_column: transform-regex-pages.test.ts.
 import assert from 'node:assert/strict'
 import { Worker } from 'node:worker_threads'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
 import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
+import { watchWhile } from './loop-watch'
 const { applyCellOp, validateRegexPattern } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { regexPages } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
 const { TRANSFORM_REGEX_PAGE_MS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
@@ -52,15 +52,11 @@ function timed(pattern: string, cell: string): Promise<number | null> {
   })
 }
 
-// The longest the event loop waited past its 10 ms timer while `fn` ran, and fn's answer and time.
+// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts; no transaction is recorded here,
+// so nothing is let off for the disk, only time waiting for a CPU on Linux), and fn's answer and time.
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number; ms: number }> {
-  const h = monitorEventLoopDelay({ resolution: 10 })
-  h.enable()
-  const t = performance.now()
-  try {
-    const out = await fn()
-    return { out, ms: performance.now() - t, lag: h.max / 1e6 - 10 }
-  } finally { h.disable() }
+  const { out, ms, watched: w } = await watchWhile(() => [], fn)
+  return { out, ms, lag: w.ownMs }
 }
 
 async function main() {

@@ -25,6 +25,7 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import sharedMod from '../../server/src/lib/wal-shared'
 import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { heldText, loopWatch, type LoopWatched } from './loop-watch'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -107,22 +108,26 @@ async function main() {
     await fresh(200)
     holdStartOverForTests(1500)
     let releasedAt = Infinity
-    let loopMax = 0
+    let watched: LoopWatched | undefined
     try {
       const asked = checkpointInBackground()
       for (const t0 = Date.now(); !startOverHeldForTests(); await sleep(2)) {
         assert.ok(Date.now() - t0 < 5000, 'the worker never held its write')
       }
+      // The longest this thread alone holds the loop (loop-watch.ts), watched from before the hold's end.
+      const watch = loopWatch(probe.records)
+      await watch.ready
       // Ended from this thread 300 ms on: a page waiting for the lock here would hold the loop past it.
       const release = setTimeout(() => { releasedAt = performance.now(); endStartOverHoldForTests() }, 300)
-      let last = performance.now()
-      const sampler = setInterval(() => { const now = performance.now(); loopMax = Math.max(loopMax, now - last)
-        last = now }, 5)
       const since = performance.now()
       try {
         const out = await call('A')
         assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
-      } finally { clearInterval(sampler); clearTimeout(release) }
+      } finally {
+        watched = watch()
+        clearTimeout(release)
+        console.log(`      held: ${heldText(watched)}`)
+      }
       await asked
       const { records, startedOver, t } = after('held', since)
       assert.ok(records.length > 0)
@@ -130,7 +135,7 @@ async function main() {
       const done = releasedAt === Infinity ? 'its end never ran here before the call answered' : `${ms(releasedAt)} ms`
       assert.ok(records.every(r => r.at >= releasedAt), `a transaction began before the worker was done `
         + `(${done}): ${transactionLine(records[0])} at ${ms(records[0].at)} ms`)
-      assert.ok(loopMax < 150, `the event loop was held ${Math.round(loopMax)} ms`)
+      assert.ok(watched.ownMs < 150, `the event loop was held ${Math.round(watched.ownMs)} ms by this thread`)
       assert.ok(t.turnWaits >= 1, 'the page found the worker\'s turn')
       assert.deepEqual(startedOver, [])
     } finally { holdStartOverForTests(0); endStartOverHoldForTests() }

@@ -20,6 +20,8 @@ import transformMod from '../../server/src/services/column-transform'
 import sortMod from '../../server/src/services/sheet-sort'
 import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
+import { heldText, loopWatch } from './loop-watch'
+import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -30,6 +32,7 @@ runMigrations()
 console.warn = () => {}
 const requireHere = createRequire(import.meta.url)
 const fault = transformPageFault(db)
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -159,22 +162,22 @@ async function main() {
     // The call's one page commits, then the other connection takes the lock and holds it 3 s.
     const holder = await lockHolder(3000)
     const before = dataVersion(late)
-    let lastTick = Date.now(), loopMax = 0
-    const sampler = setInterval(() => {
-      const now = Date.now()
-      loopMax = Math.max(loopMax, now - lastTick)
-      lastTick = now
-    }, 5)
+    const watch = loopWatch(probe.records)
+    await watch.ready
+    let watched: ReturnType<typeof watch> | undefined
     try {
       const out = await lockedAfterFirstPage(holder, late)
       assert.deepEqual(out, { ok: { updated: 100, created_column: null } })
       assert.equal(dataVersion(late), before, 'not yet: the lock is still held')
       await holder.exited
       assert.ok(await movedFrom(late, before), 'data_version moved once the lock was let go')
-    } finally { clearInterval(sampler) }
-    console.log(`      the event loop was held at most ${loopMax} ms (of it, ${holder.lockMs()} ms the test's own wait `
-      + 'for the other connection to take the lock)')
-    assert.ok(loopMax < 200, `the event loop was held ${loopMax} ms`)
+    } finally {
+      // Printed when the case fails too.
+      watched = watch()
+      console.log(`      ${heldText(watched)} (of it, ${holder.lockMs()} ms the test's own wait for the other `
+        + 'connection to take the lock)')
+    }
+    assert.ok(watched.ownMs < 200, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
   })
 }
 

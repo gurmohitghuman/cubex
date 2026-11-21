@@ -1,3 +1,4 @@
+// Over 200 lines: the regex pages' cases share the sheet maker, the read counter, the loop watch and the WAL wait.
 // transform_column's regex_extract, a page's cells at a time on the call's worker (lib/transform-regex-host.ts,
 // services/column-transform-pages.ts). A page that runs out of time ends after the rows worked out, and the next
 // starts at the row that was running, with the whole time again: a pattern slow on long cells is written, over as
@@ -6,7 +7,6 @@
 // before it written, with the cursor. The event loop keeps answering throughout, a pattern that works extracts what
 // the API thread would, and a row changed between the worker's read and the page's transaction is read again.
 import assert from 'node:assert/strict'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -14,21 +14,27 @@ import transformMod from '../../server/src/services/column-transform'
 import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
+import walMod from '../../server/src/lib/wal-checkpointer'
+import walConstMod from '../../server/src/lib/constants-wal'
+import { watchWhile } from './loop-watch'
+import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { applyCellOp } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { SLOW_PATTERN_FIX } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
 const { TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
+const { checkpointInBackground, walState } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { WAL_CHECKPOINT_FRAMES } = walConstMod as typeof import('../../server/src/lib/constants-wal')
 type Params = import('../../server/src/services/column-transform').TransformParams
 type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 console.warn = () => {}
 
-// Each page's read before its transaction (the rows whose cells go to the worker): counted, and `afterWorkerRead`
-// run after it.
+// Each page's read before its transaction (its rows' cells go to the worker): counted, then afterWorkerRead.
 let workerReads = 0
 let afterWorkerRead: (() => void) | null = null
 const prepare = db.prepare.bind(db)
@@ -83,11 +89,22 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The longest the event loop waited past its 10 ms timer while `fn` ran, and fn's answer.
+// The most this thread alone held the event loop while `fn` ran (loop-watch.ts; printed from LOOP_MS), and its answer.
+const LOOP_MS = 100
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
-  const h = monitorEventLoopDelay({ resolution: 10 })
-  h.enable()
-  try { return { out: await fn(), lag: h.max / 1e6 - 10 } } finally { h.disable() }
+  const { out, watched: w } = await watchWhile(probe.records, fn, LOOP_MS)
+  return { out, lag: w.ownMs }
+}
+
+// The WAL copied back or started over (the worker's start-over leaves a frame of its own), the worker asked again
+// as needed, at most a minute. After the sheet's own 10,001 rows (about 1,670 frames, past the pause) or a call's
+// 10,000, a slow disk can otherwise keep the next call waiting for that until its time runs out.
+async function walCopied() {
+  for (const end = Date.now() + 60_000; ; await checkpointInBackground()) {
+    const s = walState()
+    if (s && (s.checkpointed >= s.log || s.log < WAL_CHECKPOINT_FRAMES)) return
+    assert.ok(Date.now() < end, `the WAL wasn't copied back within a minute: ${JSON.stringify(s)}`)
+  }
 }
 
 async function main() {
@@ -97,7 +114,7 @@ async function main() {
     assert.deepEqual(out, { fail: 'invalid',
       error: `regex_extract stopped: ${slowWords(rowId(id, 0))}. No cell was written. ${SLOW_PATTERN_FIX}` })
     assert.deepEqual(targets(id), [undefined, undefined, undefined])
-    assert.ok(lag < 100, `the event loop waited ${lag} ms`)
+    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
   })
 
   await check('rows written on a page, then the next page\'s first row stalls: stopped, naming it, with the cursor',
@@ -118,10 +135,14 @@ async function main() {
   await check('a call that goes on with a cursor and stalls on its first row: stopped, the pass\'s rows named',
     async () => {
     const id = sheet([...Array.from({ length: TRANSFORM_MAX_ROWS }, (_, i) => `b${i}`), STALL_CELL])
+    // From a WAL copied back, the call's 10,000 rows write about 940 frames: under the pause, so it waits for no
+    // checkpoint and its time is its own work.
+    await walCopied()
     const t = performance.now()
     const first = await extract(id, STALLS)
     console.log(`     the first call wrote its ${TRANSFORM_MAX_ROWS} rows in ${(performance.now() - t).toFixed(0)} ms`)
     assert.ok('ok' in first && first.ok.updated === TRANSFORM_MAX_ROWS && first.ok.next_cursor, JSON.stringify(first))
+    await walCopied()
     const out = await extract(id, STALLS, { cursor: first.ok.next_cursor })
     assert.ok('stopped' in out, JSON.stringify(out))
     assert.equal(out.stopped.rows_done, TRANSFORM_MAX_ROWS)
@@ -139,14 +160,13 @@ async function main() {
     const id = sheet(cells)
     workerReads = 0
     const { out: answers, lag } = await watched(() => untilEnd(id, '(.*)@'))
-    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop waited at most `
-      + `${lag.toFixed(1)} ms`)
+    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop held at most ${lag.toFixed(1)} ms`)
     assert.ok(answers.every(a => 'ok' in a), JSON.stringify(answers.find(a => !('ok' in a))))
     assert.equal(answers.reduce((n, a) => n + ('ok' in a ? a.ok.updated : 0), 0), cells.length)
     assert.ok(workerReads > answers.length, `${workerReads} pages in ${answers.length} calls`)
     assert.equal(applyCellOp('regex_extract', cells[0], { pattern: '(.*)@' }), '')
     assert.deepEqual(targets(id), [...Array(150).fill(''), 'name'])
-    assert.ok(lag < 100, `the event loop waited ${lag} ms`)
+    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
   })
 
   await check('a pattern that works extracts on the worker what the API thread would, over several pages',
