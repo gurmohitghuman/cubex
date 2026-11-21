@@ -97,8 +97,8 @@ async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }
 }
 
 // The WAL copied back or started over (the worker's start-over leaves a frame of its own), the worker asked again
-// as needed, at most a minute. After a call's 10,000 rows, a slow disk can otherwise keep the next call waiting all
-// its time for that, so it writes nothing.
+// as needed, at most a minute. After the sheet's own 10,001 rows (about 1,670 frames, past the pause) or a call's
+// 10,000, a slow disk can otherwise keep the next call waiting for that until its time runs out.
 async function walCopied() {
   for (const end = Date.now() + 60_000; ; await checkpointInBackground()) {
     const s = walState()
@@ -135,6 +135,9 @@ async function main() {
   await check('a call that goes on with a cursor and stalls on its first row: stopped, the pass\'s rows named',
     async () => {
     const id = sheet([...Array.from({ length: TRANSFORM_MAX_ROWS }, (_, i) => `b${i}`), STALL_CELL])
+    // From a WAL copied back, the call's 10,000 rows write about 940 frames: under the pause, so it waits for no
+    // checkpoint and its time is its own work.
+    await walCopied()
     const t = performance.now()
     const first = await extract(id, STALLS)
     console.log(`     the first call wrote its ${TRANSFORM_MAX_ROWS} rows in ${(performance.now() - t).toFixed(0)} ms`)
