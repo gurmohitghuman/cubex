@@ -1,8 +1,10 @@
-// The lists a create request sends, kept once each up to their cap (lib/distinct-items.ts): a hiring table's role
-// titles (lib/hiring/input.ts) and an AI visibility table's questions (lib/ai-visibility/input.ts). Duplicates are
-// dropped (case ignored, the first spelling kept), and a list past its cap is refused at its first item past it, so
-// a request listing many items is answered at once. 50,000 items: the scan this replaces took over 40 s on them
-// (it grew with the square of the list), small enough for a revert proof to finish.
+// The lists a request sends, answered at once however long. A create request's lists are kept once each up to
+// their cap (lib/distinct-items.ts): a hiring table's role titles (lib/hiring/input.ts) and an AI visibility table's
+// questions (lib/ai-visibility/input.ts). Duplicates are dropped (case ignored, the first spelling kept), and a list
+// past its cap is refused at its first item past it. A row read's `columns` (lib/row-select/paths.ts, read_rows and
+// REST rows/query) is capped before it is read, and two picks named the same are found with a Set. 50,000 items:
+// the scans these replace took seconds to over 40 s on them (they grew with the square of the list), small enough
+// for a revert proof to finish.
 import assert from 'node:assert/strict'
 
 let failures = 0
@@ -13,7 +15,9 @@ function ok(label: string, fn: () => void) {
 const { DistinctItems } = await import('../../server/src/lib/distinct-items')
 const { parseHiringInput } = await import('../../server/src/lib/hiring/input')
 const { parseAiVisibilityInput } = await import('../../server/src/lib/ai-visibility/input')
+const { parseColumns } = await import('../../server/src/lib/row-select/paths')
 const K = await import('../../server/src/lib/constants')
+const { MAX_COLUMN_PICKS } = await import('../../server/src/lib/constants-query')
 
 const MANY = 50_000
 const FAST_MS = 200
@@ -74,5 +78,29 @@ ok('questions: duplicates dropped, the first spelling kept; the cap counts disti
   assert.equal(parseAiVisibilityInput({ brand: 'Acme', questions: [...all, 'One more?'] }), tooManyQuestions)
 })
 
-if (failures > 0) { console.error(`${failures} create-list-caps assertion(s) failed`); process.exit(1) }
-console.log('All create-list-caps assertions passed.')
+const pick = (i: number) => ({ column: 'Response', path: ['data', i], as: `Value ${i}` })
+const tooManyColumns = `columns takes at most ${MAX_COLUMN_PICKS} items.`
+// The refusal, else how many were taken: an assertion's diff of a 50,000-item answer would fill the memory.
+const refusalOf = (v: ReturnType<typeof parseColumns>) => ('error' in v ? v.error : `${v.names.length} names taken`)
+ok(`a read's columns: ${MANY.toLocaleString('en-US')} picks or names are refused at once`, () => {
+  for (const columns of [Array.from({ length: MANY }, (_, i) => pick(i)), Array.from({ length: MANY }, () => 'A')]) {
+    const { value, ms } = timed(() => parseColumns(columns))
+    assert.equal(refusalOf(value), tooManyColumns)
+    assert.ok(ms < FAST_MS, `${Math.round(ms)} ms`)
+  }
+})
+
+ok(`a read's columns: up to ${MAX_COLUMN_PICKS} taken, at least a sheet's columns; two named the same refused`, () => {
+  assert.ok(MAX_COLUMN_PICKS >= K.MAX_COLUMNS_PER_SHEET)
+  const most = Array.from({ length: MAX_COLUMN_PICKS }, (_, i) => pick(i))
+  const all = parseColumns(most)
+  assert.ok('picks' in all && all.picks!.length === MAX_COLUMN_PICKS, JSON.stringify(all).slice(0, 200))
+  assert.deepEqual(all.names, ['Response'])
+  assert.equal(refusalOf(parseColumns([...most, pick(MAX_COLUMN_PICKS)])), tooManyColumns)
+  assert.deepEqual(parseColumns([pick(1), 'Name', { column: 'Response', path: ['x'], as: 'Value 1' }]),
+    { error: 'Two columns would both be named "Value 1": give one an as.' })
+  assert.deepEqual(parseColumns(['Name', 'Name']), { names: ['Name', 'Name'], picks: null }, 'plain names as before')
+})
+
+if (failures > 0) { console.error(`${failures} request-list-caps assertion(s) failed`); process.exit(1) }
+console.log('All request-list-caps assertions passed.')
