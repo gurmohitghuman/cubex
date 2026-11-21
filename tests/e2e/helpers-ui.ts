@@ -23,6 +23,16 @@ export async function choose(target: Locator, value: string | { label: string })
 // The value a dropdown holds (what toHaveValue read on the browser's).
 export const valueOf = (target: Locator) => target.getAttribute('data-value')
 
+// Headless UI marks an element data-transition from its first render until its slide or fade is done (a drawer
+// sliding in, a dialog fading out). Until then it can still move, and what is placed inside it moves with it:
+// wait for none left before measuring where things are.
+export const noTransition = (page: Page) => expect(page.locator('[data-transition]')).toHaveCount(0)
+
+// The app's fonts come from the web and are swapped in when they arrive. Until then its text is drawn in a
+// fallback font that wraps differently, so what sits below it moves when they do (a Settings row by 40 px).
+// Waits for every font the page has asked for so far.
+export const fontsLoaded = (page: Page) => page.evaluate(async () => { await document.fonts.ready })
+
 // The toolbar's menus fade out when they close (about 150 ms), and a click on a menu's button while one is
 // still fading out opens nothing: wait until none is left before opening the next (after Escape, say).
 const noMenuOpen = (page: Page) => expect(page.getByRole('menu')).toHaveCount(0)

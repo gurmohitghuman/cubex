@@ -1,6 +1,6 @@
 import { test, expect, Page, Locator, APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet, BASE } from './helpers'
-import { openColumnType } from './helpers-ui'
+import { fontsLoaded, noTransition, openColumnType } from './helpers-ui'
 
 // The HTTP API column dialog's key picker: "Save for next time as" takes a
 // name of at most API_KEY_NAME_MAX (200) characters, the longest a saved key
@@ -50,9 +50,13 @@ async function saveKeys(api: APIRequestContext) {
 }
 
 // Visible and wholly inside the outer box (half a pixel for rounding). acrossOnly checks only the
-// horizontal fit: for a row of a list that scrolls, whatever rows other specs left above it.
+// horizontal fit: for a row of a list that scrolls, whatever rows other specs left above it. Measured once
+// the page's fonts are in and nothing slides any more: text moves when its font arrives, and the "/" list
+// is fixed inside the drawer, so it moves while the drawer slides in.
 async function expectInside(inner: Locator, outer: Locator, acrossOnly = false) {
   await expect(inner).toBeVisible()
+  await fontsLoaded(inner.page())
+  await noTransition(inner.page())
   const a = (await inner.boundingBox())!
   const b = (await outer.boundingBox())!
   const across = a.x >= b.x - 0.5 && a.x + a.width <= b.x + b.width + 0.5

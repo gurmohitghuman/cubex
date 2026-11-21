@@ -116,9 +116,10 @@ test('Resume on a run paused by hand with its limit used up asks for a higher on
       return run ? `${run.status}/${run.pause_reason}` : ''
     }, { timeout: 60_000 }).toBe('paused/spend_limit')
     usedUpByHand(runId)
-    if (!(await page.getByRole('dialog').getByRole('button', { name: 'Resume', exact: true }).isVisible())) {
-      await page.getByRole('button', { name: 'AI Column', exact: true }).click()
-    }
+    // The drawer closes when the run starts. While it slides out it can already show the paused run, so it is
+    // opened again once it is gone; then it shows the run where it stopped.
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 })
+    await page.getByRole('button', { name: 'AI Column', exact: true }).click()
     // The drawer's poll picks the hand pause up (no self-pause notice), then Resume asks.
     await expect(page.getByTestId('run-self-paused')).toBeHidden({ timeout: 30_000 })
     await page.getByRole('dialog').getByRole('button', { name: 'Resume', exact: true }).click()

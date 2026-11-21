@@ -113,6 +113,16 @@ export function readDb<T>(fn: (db: any) => T): T {
   try { db.pragma('busy_timeout = 5000'); return fn(db) } finally { db.close() }
 }
 
+// A run start answers at once, then writes its ⏳ cells (placeholder_work, services/run-seed.ts). Until every
+// start on the sheet has (or has cleared them after it failed), the sheet is busy starting a run: another start, a
+// rerun or a pause gets a 409 meanwhile. Waits for that, from the test DB (harness only).
+export async function waitRunsSetUp(sheetId: string, timeoutMs = 30_000) {
+  const count = (db: any, table: string): number => db.prepare(
+    `SELECT COUNT(*) FROM ${table} WHERE sheet_id = ? AND placeholder_work IS NOT NULL`).pluck().get(sheetId)
+  const setting = () => readDb(db => count(db, 'ai_runs') + count(db, 'http_runs'))
+  await expect.poll(setting, { message: 'a run start still writing its cells', timeout: timeoutMs }).toBe(0)
+}
+
 // Cubex's ledger for a run, read straight from the test DB (harness only).
 export const ledger = (runId: string): Array<{
   attempt: string; idempotency_key: string; cost_micro: number | null; http_status: number | null;
