@@ -12,7 +12,7 @@ const { db, uid, ok, done, sheet } = undoKit('bulk-wal-dedupe')
 const { removeDuplicates } = await import('../../server/src/services/dedupe-remove')
 const { setAutoDedupe } = await import('../../server/src/services/auto-dedupe-setting')
 const { maintainAutoDedupeSheet } = await import('../../server/src/services/auto-dedupe-index')
-const { runChecks } = await import('../../server/src/services/auto-dedupe-checks')
+const { runChecks, autoDedupeDriving } = await import('../../server/src/services/auto-dedupe-checks')
 const { autoDedupeOf, queueChecks } = await import('../../server/src/lib/auto-dedupe/store')
 const { pruneWriteKeys } = await import('../../server/src/lib/write-idempotency')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
@@ -40,12 +40,17 @@ await ok('auto-dedupe\'s waiting checks: the WAL copied back on the worker', asy
   const sid = twice()
   assert.ok('ok' in setAutoDedupe(uid, sid, { column: 'Email', match: 'email', keep: 'oldest' }))
   assert.equal(await maintainAutoDedupeSheet(sid, uid, Date.now() + 60_000), 'ready')
+  // Turning it on also started its background driver, which makes the waiting checks once the keys are built:
+  // done first, so the measured run makes every check queued below and writes enough for the WAL to reach the pause.
+  for (const end = Date.now() + 10_000; autoDedupeDriving(sid) && Date.now() < end;) {
+    await new Promise(r => setTimeout(r, 5))
+  }
+  assert.equal(autoDedupeDriving(sid), false, 'the driver turning it on started is done')
   const ids = db.prepare('SELECT rowid FROM rows WHERE sheet_id = ? ORDER BY rowid').pluck().all(sid) as number[]
   queueChecks(autoDedupeOf(sid, uid)!.id, ids[N / 2], ids[N - 1])
-  // Turning it on also started its background driver, which may make some of them: the rows left are asserted.
   await measure('auto-dedupe\'s checks', async () => {
     const r = await runChecks(sid, uid, { ownBusy: false, deadline: Date.now() + 120_000 })
-    assert.ok(!r.left, JSON.stringify(r))
+    assert.ok(!r.left && r.removed === N / 2, JSON.stringify(r))
   }, { pause: true })
   assert.equal(rows(sid), N / 2)
 })
