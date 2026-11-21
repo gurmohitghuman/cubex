@@ -1,3 +1,4 @@
+// Over 200 lines: the regex pages' cases share the sheet maker, the read counter, the loop watch and the WAL wait.
 // transform_column's regex_extract, a page's cells at a time on the call's worker (lib/transform-regex-host.ts,
 // services/column-transform-pages.ts). A page that runs out of time ends after the rows worked out, and the next
 // starts at the row that was running, with the whole time again: a pattern slow on long cells is written, over as
@@ -14,6 +15,7 @@ import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
+import walConstMod from '../../server/src/lib/constants-wal'
 import { watchWhile } from './loop-watch'
 import { sqliteWriteProbe } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
@@ -22,7 +24,8 @@ const { transformColumn } = transformMod as typeof import('../../server/src/serv
 const { applyCellOp } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { SLOW_PATTERN_FIX } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
 const { TRANSFORM_MAX_ROWS, TRANSFORM_PAGE_ROWS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
-const { walCheckpointerIdle } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointInBackground, walState } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { WAL_CHECKPOINT_FRAMES } = walConstMod as typeof import('../../server/src/lib/constants-wal')
 type Params = import('../../server/src/services/column-transform').TransformParams
 type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
@@ -93,6 +96,17 @@ async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }
   return { out, lag: w.ownMs }
 }
 
+// The WAL copied back or started over (the worker's start-over leaves a frame of its own), the worker asked again
+// as needed, at most a minute. After a call's 10,000 rows, a slow disk can otherwise keep the next call waiting all
+// its time for that, so it writes nothing.
+async function walCopied() {
+  for (const end = Date.now() + 60_000; ; await checkpointInBackground()) {
+    const s = walState()
+    if (s && (s.checkpointed >= s.log || s.log < WAL_CHECKPOINT_FRAMES)) return
+    assert.ok(Date.now() < end, `the WAL wasn't copied back within a minute: ${JSON.stringify(s)}`)
+  }
+}
+
 async function main() {
   await check('a first row that stalls: refused, naming the row, and no cell is written', async () => {
     const id = sheet([STALL_CELL, 'b1', 'b2'])
@@ -125,8 +139,7 @@ async function main() {
     const first = await extract(id, STALLS)
     console.log(`     the first call wrote its ${TRANSFORM_MAX_ROWS} rows in ${(performance.now() - t).toFixed(0)} ms`)
     assert.ok('ok' in first && first.ok.updated === TRANSFORM_MAX_ROWS && first.ok.next_cursor, JSON.stringify(first))
-    // Its rows copied back first, or on a slow disk the next call waits all its time for that and writes nothing.
-    await walCheckpointerIdle()
+    await walCopied()
     const out = await extract(id, STALLS, { cursor: first.ok.next_cursor })
     assert.ok('stopped' in out, JSON.stringify(out))
     assert.equal(out.stopped.rows_done, TRANSFORM_MAX_ROWS)
