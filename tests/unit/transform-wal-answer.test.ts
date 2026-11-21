@@ -33,6 +33,7 @@ if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway D
 runMigrations()
 console.warn = () => {}
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
+type WalState = import('../../server/src/lib/wal-checkpointer').WalState
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -71,17 +72,28 @@ async function finish(sheetId: string, cursor: string | undefined) {
   }
 }
 
+const nap = new Int32Array(new SharedArrayBuffer(4))
+// The WAL's size, read again a moment later while walState() is null: SQLite answers -1 when another connection's
+// commit is changing the WAL index just then, here the worker's own write after its copy (wal-checkpoint-worker.ts).
+// Without yielding, so the first case stays synchronous up to the call.
+function walNow(): WalState {
+  for (const until = Date.now() + 1_000; ; Atomics.wait(nap, 0, 0, 1)) {
+    const s = walState()
+    if (s) return s
+    assert.ok(Date.now() < until, 'the WAL index was being changed for a second')
+  }
+}
+
 // Frames into the WAL, each statement its own transaction (not one the probe counts as a page): 500 rows' Notes
 // rewritten at a time until the WAL holds `frames`.
 const notes = db.prepare(`UPDATE rows SET data = json_set(data, '$.Notes', ?) WHERE sheet_id = ? AND row_index >= ?
   AND row_index < ?`)
 let next = 0
 function fill(frames: number): void {
-  for (let n = 0; walState()!.log < frames; n++, next = (next + 500) % ROWS) {
+  for (let n = 0; walNow().log < frames; n++, next = (next + 500) % ROWS) {
     notes.run(`m${n}`.padEnd(200, 'm'), big, next, next + 500)
   }
 }
-const nap = new Int32Array(new SharedArrayBuffer(4))
 
 async function main() {
   await check('a checkpoint that copied before the call read the WAL, its answer still on its way: the call waits '
@@ -95,21 +107,21 @@ async function main() {
     let held = true
     try {
       fill(WAL_PAUSE_FRAMES - 600)
-      const copiedTo = walState()!.log
+      const copiedTo = walNow().log
       // Reads at the WAL's end: the checkpoint can copy every frame, and the WAL can't start over while it reads.
       reader.exec('BEGIN')
       reader.prepare('SELECT count(*) FROM rows').get()
       let answered = false
       void checkpointInBackground().then(() => { answered = true })
       // Synchronous from here to the call's first wait: the worker copies on its own thread, its answer waits.
-      for (const until = Date.now() + 10_000; walState()!.checkpointed < copiedTo;) {
+      for (const until = Date.now() + 10_000; walNow().checkpointed < copiedTo;) {
         assert.ok(Date.now() < until, 'the worker never copied the WAL')
         Atomics.wait(nap, 0, 0, 2)
       }
       fill(WAL_PAUSE_FRAMES)
       reader.exec('COMMIT')
       held = false
-      const s = walState()!
+      const s = walNow()
       console.log('     ', JSON.stringify({ copiedTo, wal: s, answered }))
       assert.ok(!answered && s.checkpointed === copiedTo && s.log >= WAL_PAUSE_FRAMES, JSON.stringify(s))
       const out = await call(big)
