@@ -4,6 +4,11 @@
 
 // treg's routed job search: open roles by title across companies.
 export const HIRING_TOOL_ID = 'treg.companies.jobs.search';
+// The job index a table with More filters searches directly (the routed search takes none of them).
+export const HIRING_DIRECT_TOOL_ID = 'hirebase.jobs.search';
+export const HIRING_DIRECT_PROVIDER = 'hirebase';
+export const isHiringSearchTool = (toolId: string | undefined): boolean =>
+  toolId === HIRING_TOOL_ID || toolId === HIRING_DIRECT_TOOL_ID;
 
 export const HIRING_SHEETS = { companies: 'Companies', roles: 'Roles', searches: 'Searches' } as const;
 
@@ -22,6 +27,12 @@ export type RoleColumn = keyof typeof ROLE_COLUMNS;
 // The Searches sheet: one row per role title; "Roles found" is the list enrichment's status column.
 export const SEARCH_COLUMNS = {
   role: 'Role title', country: 'Country', place: 'Place', days: 'Posted within days', status: 'Roles found',
+} as const;
+// A table with More filters: one column each, before "Roles found" (lib/hiring/filters.ts).
+export const FILTER_COLUMNS = {
+  descriptionWords: 'Description words', leaveOutDescriptionWords: 'Description words left out',
+  leaveOutTitleWords: 'Title words left out', seniority: 'Seniority', employmentTypes: 'Employment type',
+  companies: 'Only these companies',
 } as const;
 
 export const SHEET_WORDS = {
@@ -51,6 +62,20 @@ export const COLUMN_WORDS: Record<'companies' | 'roles' | 'searches', Record<str
     [SEARCH_COLUMNS.place]: 'A city or region, such as Texas. Empty: anywhere in the country.',
     [SEARCH_COLUMNS.days]: 'Only roles posted in the last this many days. Empty: any time.',
   },
+};
+
+// A table with More filters: its Searches columns' words (the job index takes a country's name).
+export const FILTER_COLUMN_WORDS: Record<string, string> = {
+  [SEARCH_COLUMNS.country]: 'A country, such as United States. Empty: any country.',
+  [FILTER_COLUMNS.descriptionWords]: 'Roles that mention these words come first (commas between words). A word '
+    + 'starting with - leaves out roles whose description mentions it.',
+  [FILTER_COLUMNS.leaveOutDescriptionWords]: 'Leave out roles whose description mentions any of these words.',
+  [FILTER_COLUMNS.leaveOutTitleWords]: 'Leave out roles whose title has any of these words.',
+  [FILTER_COLUMNS.seniority]: 'Only roles at these levels: Entry-Level, Junior / Associate, Mid-Level, Senior, '
+    + 'Principal / Staff / Lead, Executive. Empty: any level.',
+  [FILTER_COLUMNS.employmentTypes]: 'Only these: Full Time, Part Time, Contract, Internship. Empty: any.',
+  [FILTER_COLUMNS.companies]: 'Only roles at these companies, by website (commas between them). Empty: any '
+    + 'company.',
 };
 
 // "Hiring: SDR, BDR" (the role titles cut to fit, without what table names can't hold).

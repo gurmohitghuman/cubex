@@ -38,7 +38,9 @@ refused (401).
   whose answers cite no sources) and `aiAlsoNames` (`{engine: brand}`: that engine's answer names the brand too),
   and for job searches (jobs.mjs) `jobsNew` (`{word: n}`: a search whose title has the word finds n new roles
   first), `jobsOverfill` (that many roles past the request's `limit`, as a provider answering more than asked) and
-  `jobCounts` (`{word: n}`: the free count for a title with the word; 120 by default). The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
+  `jobCounts` (`{word: n}`: the free count for a title with the word; 120 by default; a count sent filters
+  answers the share of the search's roles that pass them) and `jobCountRefuses` (fields a count answers 422 for).
+  `hirebase.jobs.search` called directly applies the filters to the same roles and bills each role. The AI engines (cloro's scrapers, treg's Perplexity job) answer from the question
   with made-up brands and generic sites (ai-search.mjs), so specs can check which brands an answer names.
 - `GET /__mock/billing`: every charge, by Idempotency-Key. `GET /__mock/state` also has
   `inFlightCount`, the calls still being answered: a spec that stops a run waits for 0 before

@@ -6,6 +6,7 @@ import {
   AI_VISIBILITY_MAX_BRAND_CHARS, AI_VISIBILITY_MAX_COMPETITORS, AI_VISIBILITY_MAX_QUESTIONS,
 } from '../lib/constants-ai-visibility';
 import { ENGINES } from '../lib/ai-visibility/engines';
+import { EMPLOYMENT_TYPES, SENIORITY_LEVELS } from '../lib/hiring/filters';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
 import {
@@ -25,6 +26,15 @@ const filled = { 201: 'A new column.', 200: 'A changed column, or a preview.' };
 const brand = z.string().max(AI_VISIBILITY_MAX_BRAND_CHARS).describe('Your brand, as answers would name it.');
 const otherBrands = z.array(z.string().max(AI_VISIBILITY_MAX_BRAND_CHARS)).max(AI_VISIBILITY_MAX_COMPETITORS)
   .describe('Competitors to look for in the answers.');
+const words = (what: string) => z.array(z.string()).optional().describe(what);
+const hiringFilterFields = { // lib/hiring/filters.ts
+  description_words: words('Roles that mention these words come first. They rank roles, never leave one out.'),
+  leave_out_description_words: words('Leave out roles whose description mentions any of these words.'),
+  leave_out_title_words: words('Leave out roles whose title has any of these words.'),
+  seniority: z.array(z.enum(SENIORITY_LEVELS)).optional().describe('Only roles at these levels.'),
+  employment_types: z.array(z.enum(EMPLOYMENT_TYPES)).optional().describe('Only these employment types.'),
+  companies: words('Only roles at these companies, by website, such as ramp.com.'),
+};
 
 export const fillRoutes = (): RouteDoc[] => [
   op({
@@ -159,7 +169,8 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/hiring', operationId: 'createHiring', tag: 'hiring', scope: 'write',
     summary: 'Make a table of the companies hiring for chosen roles: Companies, Roles and Searches.',
-    description: 'Nothing is searched yet: a check does that.',
+    description: 'Nothing is searched yet: a check does that. A table made with description_words or any field '
+      + 'after it searches the one job index that takes them.',
     body: z.object({
       roles: z.array(z.string())
         .describe(`The role titles to search for, one search each. At most ${HIRING_MAX_ROLES}.`),
@@ -169,6 +180,7 @@ export const fillRoutes = (): RouteDoc[] => [
         .describe(`Only roles posted in the last N days. Default ${HIRING_DEFAULT_POSTED_DAYS}; null: any time.`),
       per_search: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
         .describe(`Roles each search adds at most. Default ${HIRING_DEFAULT_PER_SEARCH}.`),
+      ...hiringFilterFields,
     }),
     responses: { 201: 'The new table.' },
   }),

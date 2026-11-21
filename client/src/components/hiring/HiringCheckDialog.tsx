@@ -76,6 +76,8 @@ export const HiringCheckDialog: React.FC<{ v: HiringView; onClose: () => void; o
                   {e.matches.counted < e.searches
                     ? ` the first ${plural(e.matches.counted, 'search', 'searches')}` : ''}
                   {' '}(a free count; a role two searches find counts twice).
+                  {e.matches.leftOut.includes('seniority')
+                    && ' It doesn\'t take seniority, so it counts roles at every level and reads higher.'}
                 </p>
               )}
               <p className="text-sm text-gray-900" data-testid="hiring-check-cost">

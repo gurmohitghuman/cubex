@@ -3,10 +3,10 @@
 // declared inputs, and are laid out the way treg expects (resolve.py): query
 // params for GET tools, path params as query params of the same name, a JSON
 // body for JSON tools. Values are encoded, never spliced into JSON text, and
-// enrichments only read columns, never saved API keys.
+// enrichments only read columns, never saved API keys. A list or object input
+// whose template is laid out as JSON is filled item by item (lib/enrich-template.ts).
 import { createHash } from 'node:crypto';
-import { normalizeColumnName } from './prompt';
-import { cellOf } from './row-cell';
+import { fillJsonTemplate, fillTemplate, jsonTemplateOf } from './enrich-template';
 import { cleanDomain, DOMAIN_INPUT_NAMES } from './enrich-input-clean';
 import { setAvailable } from './enrich-accepts';
 import { TREG_TOOL_ID_PATTERN } from './constants';
@@ -25,28 +25,6 @@ export type BuiltRequest =
   | { ok: true; method: string; path: string; query: string; body: string | null; sent: Record<string, unknown> }
   | { ok: false; missing: string }   // required inputs are empty: skip the row, no call
   | { ok: false; invalid: string };  // a value can't be sent as the tool declares it
-
-// [^{}], not [^}]: a long run of "{" would make every match scan to the end.
-const TOKEN_RE = /\{\{([^{}]+)\}\}/g;
-
-// {{Column}} → that column's value in the row. `columns` is the sheet's column
-// registry (column_order): stored rows are sparse, so a column the row lacks is
-// an empty cell, and only a name missing from the registry is unknown. An exact
-// (case-insensitive) name wins over a normalized match.
-export function fillTemplate(
-  template: string, row: Record<string, string>, columns: string[],
-): { value: string } | { unknown: string } {
-  const miss: { name: string | null } = { name: null };
-  const value = template.replace(TOKEN_RE, (_full, inner) => {
-    const name = String(inner).trim();
-    const lower = name.toLowerCase();
-    const norm = normalizeColumnName(name);
-    const col = columns.find(c => c.toLowerCase() === lower) ?? columns.find(c => normalizeColumnName(c) === norm);
-    if (col === undefined) { miss.name ??= name; return ''; }
-    return cellOf(row, col);
-  });
-  return miss.name !== null ? { unknown: miss.name } : { value };
-}
 
 const TRUE = new Set(['true', 'yes', '1', 'y']);
 const FALSE = new Set(['false', 'no', '0', 'n']);
@@ -110,6 +88,24 @@ function checkValue(input: ToolInput, value: unknown): string | null {
   return null;
 }
 
+// A list or object input with a JSON template: its value for the row (undefined:
+// nothing to send), checked as a typed one is. null: not such an input.
+function jsonInput(input: ToolInput, template: string, row: Record<string, string>, columns: string[]):
+  { value: unknown } | { invalid: string } | null {
+  const t = input.type.toLowerCase();
+  const list = (t.startsWith('array') && !/^array\[(integer|number)\]$/.test(t)) || t === 'list'
+    || t === 'string_or_array';
+  const json = list || t === 'object' || t === 'dict' ? jsonTemplateOf(template) : null;
+  if (!json) return null;
+  const filled = fillJsonTemplate(json, row, columns);
+  if ('unknown' in filled) return { invalid: `The column "${filled.unknown}" isn't in this sheet anymore.` };
+  if (filled.value === undefined) return { value: undefined };
+  const value = list && !Array.isArray(filled.value) ? [filled.value] : filled.value;
+  if (!list && Array.isArray(value)) return { invalid: `${input.name} must be a JSON object.` };
+  const bad = checkValue(input, value);
+  return bad ? { invalid: bad } : { value };
+}
+
 // Waterfalls need one complete identity set (counting what treg derives, such
 // as full_name from first_name + last_name); single tools their required inputs.
 export function missingInputs(tool: RequestTool, sent: Set<string>): string | null {
@@ -140,6 +136,12 @@ export function buildRequest(
   for (const input of tool.inputs) {
     const template = inputMap[input.name];
     if (typeof template !== 'string') continue;
+    const json = jsonInput(input, template, row, opts.columns);
+    if (json && 'invalid' in json) return { ok: false, invalid: json.invalid };
+    if (json) {
+      if (json.value !== undefined) sent[input.name] = json.value;
+      continue;
+    }
     const filled = fillTemplate(template, row, opts.columns);
     if ('unknown' in filled) {
       return { ok: false, invalid: `The column "${filled.unknown}" isn't in this sheet anymore.` };

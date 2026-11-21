@@ -4,12 +4,14 @@ import {
   ENRICH_LIST_MAX_ITEMS, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES,
 } from '../lib/constants';
 import { perSearchRefusal, postedDaysRefusal } from '../lib/hiring/input';
+import { EMPLOYMENT_TYPES, SENIORITY_LEVELS } from '../lib/hiring/filters';
 import { agentCheckHiring, agentCreateHiring, agentGetHiring } from '../services/hiring-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
 
 // hiring_signals: a ready-made table of the companies hiring for chosen roles
 // (services/hiring-*.ts), checked again by hand or by an agent.
+const words = () => z.union([z.array(z.string()), z.string()]).optional();
 export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'hiring_signals', {
     description:
@@ -30,6 +32,13 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
         .describe('create: posted within N days (default 30; null: any)'),
       per_search: lenientInt(1, ENRICH_LIST_MAX_ITEMS, perSearchRefusal('per_search')).optional()
         .describe('create: roles per search (default 25)'),
+      // lib/hiring/filters.ts: a table with any of these searches the one job index that takes them.
+      description_words: words().describe('create: roles that mention these come first (ranks, never leaves out)'),
+      leave_out_description_words: words().describe('create: leave out roles whose description mentions one'),
+      leave_out_title_words: words().describe('create: leave out roles whose title has one'),
+      seniority: words().describe(`create: only ${SENIORITY_LEVELS.join(', ')}`),
+      employment_types: words().describe(`create: only ${EMPLOYMENT_TYPES.join(', ')}`),
+      companies: words().describe('create: only these companies (websites)'),
       estimate_only: lenientBoolean().optional().describe('check: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()

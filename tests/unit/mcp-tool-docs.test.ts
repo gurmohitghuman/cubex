@@ -13,9 +13,10 @@ interface Tool {
 
 const { check, done, crash, modern, legacy } = mcpHttpKit('mcp-tool-docs')
 const HINTS = ['readOnlyHint', 'idempotentHint', 'openWorldHint'] as const
-// Well over the size after output schemas were added and the descriptions trimmed (about 234K characters):
+// Well over the size after output schemas were added and the descriptions trimmed (about 234K characters);
+// raised from 260K when hiring_signals took its six More options lists (the list was then 259.9K):
 // a guard against a description or schema growing out of hand, not a target.
-const MAX_LIST_CHARS = 260_000
+const MAX_LIST_CHARS = 270_000
 
 const said = (v: unknown) => typeof v === 'string' && v.trim().length > 0
 

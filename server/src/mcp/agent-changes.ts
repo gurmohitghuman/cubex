@@ -37,6 +37,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.37',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals create takes description_words (roles that mention them come first), and '
+          + 'leave_out_description_words, leave_out_title_words, seniority, employment_types and companies.',
+        details: 'A table made with any of them has a Searches column for each and searches the one job index that '
+          + 'takes them; create answers them. check\'s free count takes them all but seniority: matches.note says '
+          + 'when it reads higher.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.32',
     changes: [
       {

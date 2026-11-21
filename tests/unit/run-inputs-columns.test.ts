@@ -49,6 +49,14 @@ await check('an enrichment input resolves as its run does: exact, any case, or t
   assert.deepEqual(requestRunInputColumns(enrichment({ domain: '{{Website}}' }), 'Status', cols), [null])
 })
 
+await check("an enrichment's JSON template reads every column it names, once each, in order", () => {
+  const cols = ['Role title', 'Left out', 'Country', 'Place', 'Status']
+  const cfg = enrichment({ job_titles: JSON.stringify(['{{Role title}}', '-{{left out}}']),
+    geo_locations: JSON.stringify([{ country: '{{Country}}', city: '{{Place}}' }, { country: '{{Country}}' }]),
+    days_ago: '{{Days}}', note: '[{{Place}} is text]' })
+  assert.deepEqual(requestRunInputColumns(cfg, 'Status', cols), ['Role title', 'Left out', 'Country', 'Place', null])
+})
+
 await check('an enrichment reads a column by a deleted name again once it is back (its run does)', () => {
   const cfg = enrichment({ domain: '{{Website}}' }, ['Website'])
   assert.deepEqual(requestRunInputColumns(cfg, 'Status', ['Website', 'Status']), ['Website'])

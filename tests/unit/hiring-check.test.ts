@@ -64,7 +64,8 @@ await ok('the estimate: free, no run, no check; the count asked only of the free
   high = e.estimate.highUsd
   const counted = (await calls()).every(p => p.endsWith('.jobs.search.count'))
   assert.ok(counted, (await calls()).join())
-  assert.deepEqual(e.estimate.matches, { about: 240, counted: 2, capped: false }, `provider ${t.provider}`)
+  assert.deepEqual(e.estimate.matches, { about: 240, counted: 2, capped: false, leftOut: ['place'] },
+    `provider ${t.provider}`)
   assert.equal(runs(t.searchesSheetId), 0)
   assert.equal(checks(), 0)
 })
@@ -207,7 +208,7 @@ await ok('the free count: asked only with a treg key and a provider that has one
   assert.deepEqual(await calls(), [])
   for (const p of ['hirebase', 'jobspipe']) {
     const n = await countJobs(uid, p, [...terms, { title: 'BDR', country: '', days: null }])
-    assert.deepEqual(n, { about: 240, counted: 2, capped: false }, p)
+    assert.deepEqual(n, { about: 240, counted: 2, capped: false, leftOut: ['place'] }, p)
   }
   assert.deepEqual((await calls()).sort(), ['/call/hirebase.jobs.search.count', '/call/hirebase.jobs.search.count',
     '/call/jobspipe.jobs.search.count', '/call/jobspipe.jobs.search.count'])

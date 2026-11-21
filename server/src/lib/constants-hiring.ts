@@ -7,6 +7,10 @@ export const HIRING_MAX_PLACE_CHARS = 100;
 export const HIRING_DEFAULT_PER_SEARCH = 25;
 export const HIRING_DEFAULT_POSTED_DAYS = 30;
 export const HIRING_MAX_POSTED_DAYS = 365;
+// More filters (lib/hiring/filters.ts): words in each list, a word's length, and companies at most.
+export const HIRING_MAX_FILTER_WORDS = 20;
+export const HIRING_MAX_WORD_CHARS = 60;
+export const HIRING_MAX_COMPANIES = 50;
 // A company's Role titles: the first few kept titles, then "…"; its Links: the newest few.
 export const HIRING_TITLES_SHOWN = 5;
 export const HIRING_LINKS_SHOWN = 3;
