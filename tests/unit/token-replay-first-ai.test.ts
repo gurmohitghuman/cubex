@@ -55,6 +55,9 @@ await ok('an empty webhook_id or an estimate_only the start refuses, sent with a
       idempotency_key: 'ai-shape' }
     const first = await tokenStartAiRun(c, args)
     assert.ok('ok' in first && first.started, JSON.stringify(first))
+    // Its setup over: on a busy sheet a keyed start that is not a replay is refused as busy first
+    // (token-replay-busy-ai.test.ts).
+    await idle(args.sheet_id)
     for (const webhook_id of ['', '  ', 0, false]) {
       assert.deepEqual(await tokenStartAiRun(c, { ...args, webhook_id }),
         { fail: 'bad_request', message: 'webhook_id must be the id of a run webhook.' }, JSON.stringify(webhook_id))

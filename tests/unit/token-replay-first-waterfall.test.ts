@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { tregKit, sleep, type Args, type Result, type Start } from './token-replay-treg-kit'
 
 const k = await tregKit('token-replay-first-waterfall')
-const { db, uid, tid, ok, done, TRIES, runsOn, replays, preUpgradeRow, hook, caller, fresh } = k
+const { db, uid, tid, ok, done, idle, TRIES, runsOn, replays, preUpgradeRow, hook, caller, fresh } = k
 const { deleteRunWebhook } = await import('../../server/src/services/run-hooks')
 const { deleteRowsByIds } = await import('../../server/src/services/rows-write')
 const { trashSheet } = await import('../../server/src/services/trash-sheets')
@@ -58,6 +58,9 @@ await ok('estimate_only "maybe", null, 0 or "FALSE" with a started key gets the 
   const start = by('tok-estimate')
   const args = waterfall(sid, { estimate_only: false, idempotency_key: 'waterfall-estimate' })
   assert.ok('ok' in await start(args))
+  // Its setup over: on a busy sheet a keyed start that is not a replay is refused as busy first
+  // (token-replay-busy-treg.test.ts).
+  await idle(sid)
   for (const estimate_only of ['maybe', null, 0, 'FALSE']) {
     assert.deepEqual(await start({ ...args, estimate_only }),
       { fail: 'bad_request', message: 'estimate_only must be true or false' }, JSON.stringify(estimate_only))
@@ -73,6 +76,8 @@ await ok('a key from before the sent arguments were kept (the parsed hash alone)
     assert.ok('ok' in first && first.started, JSON.stringify(first))
     preUpgradeRow('waterfall-legacy-new', 'waterfall-legacy-old', sentArgsHash('waterfall_run', args, ['action']),
       'waterfall_run')
+    // Such a key replays once the sheet is free: while it is busy, it is refused as busy, as the guards did.
+    await idle(sid)
     const runs = runsOn(sid)
     assert.deepEqual(await start({ ...args, idempotency_key: 'waterfall-legacy-old' }),
       { ok: { ...first.ok, replayed: true }, started: false, changed: first.changed })
@@ -134,6 +139,7 @@ for (const dry of [false, true]) {
       : [by('tok-wf-secrets', true), by('tok-wf-run')]
     const first = await withSecrets({ ...args, idempotency_key: key })
     assert.ok('ok' in first && first.started, JSON.stringify(first))
+    await idle(sid)
     const runs = runsOn(sid)
     for (let i = 0; i < TRIES; i++) {
       assert.deepEqual(await without({ ...args, idempotency_key: key }),

@@ -7,6 +7,7 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { setRateLimitedHeaders } from '../lib/rate-window';
 import { runFailHttpStatus } from '../services/run-shared';
+import { runFailBody } from './api-v1-shared';
 import { tokenWaterfall } from '../services/waterfall-token-run';
 
 const router = express.Router();
@@ -20,7 +21,7 @@ async function answer(res: express.Response, r: Awaited<ReturnType<typeof tokenW
       if (r.rate) setRateLimitedHeaders(res, r.rate);
       return res.status(429).json({ error: r.message, retry_after_seconds: r.rate?.retryAfterSec });
     }
-    return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json({ error: r.message });
+    return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json(runFailBody(r.message));
   }
   return res.status(r.started ? 202 : 200).json(r.ok);
 }

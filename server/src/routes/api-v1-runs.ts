@@ -11,6 +11,7 @@ import { tokenStartAiRun, type TokenCaller, type TokenRunResult } from '../servi
 import { tokenStartHttpRun } from '../services/run-start-token-http';
 import { runFailHttpStatus } from '../services/run-shared';
 import { setRateLimitedHeaders } from '../lib/rate-window';
+import { runFailBody } from './api-v1-shared';
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ function send(res: express.Response, r: TokenRunResult) {
     if (r.fail === 'over_ceiling') {
       return res.status(409).json({ error: r.message, over_ceiling: true, estimate: r.estimate });
     }
-    return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json({ error: r.message });
+    return res.status(runFailHttpStatus({ fail: r.fail, message: r.message })).json(runFailBody(r.message));
   }
   res.status(r.started ? 202 : 200).json(r.ok);
 }
