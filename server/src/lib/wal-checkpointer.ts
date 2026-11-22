@@ -158,7 +158,9 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
 // (12% of the commits). So on Windows and Linux writers don't overlap a checkpoint: walRoom asks only at the pause,
 // and a write in turn (lib/wal-turn.ts) begins only once a running checkpoint has answered. Bulk jobs take about 4
 // to 7% longer for it on the Linux runner. macOS isn't measured and writes on meanwhile. Tests switch it.
-const platformWaits = (): boolean => process.platform === 'win32' || process.platform === 'linux';
+// Experiment only (removed before review): WAL_WAIT=on or off sets the platform's own.
+const platformWaits = (): boolean => (process.env.WAL_WAIT ? process.env.WAL_WAIT === 'on'
+  : process.platform === 'win32' || process.platform === 'linux');
 let waitForCheckpoints = platformWaits();
 export const writesWaitForCheckpoints = (): boolean => waitForCheckpoints;
 // Tests only: on or off; null, the platform's own.
