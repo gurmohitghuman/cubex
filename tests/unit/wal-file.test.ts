@@ -63,10 +63,12 @@ await ok('sized: zeros from the end to journal_size_limit, synced; the data inta
     console.log(`      sized to ${limit / 1048576} MB in ${times.map(t => t.toFixed(0)).join(', ')} ms`)
     assert.deepEqual(W.sizeWalFile(db, dbPath), { done: 'skipped', why: 'big enough' })
     const before = rowsHere()
-    for (let i = 0; i < 50; i++) db.transaction(() => { for (let j = 0; j < 40; j++) add.run('x'.repeat(500)) })()
+    for (let i = 0; i < 50; i++) {
+      db.transaction(() => { for (let j = 0; j < 40; j++) add.run('x'.repeat(500)) }).immediate()
+    }
     // Every frame copied back, then a write: SQLite starts the WAL over and cuts the file only past the limit.
     db.pragma('wal_checkpoint(PASSIVE)')
-    db.transaction(() => { add.run('after') })()
+    db.transaction(() => { add.run('after') }).immediate()
     assert.equal(walSize(), limit, 'the file kept its size when the WAL started over')
     assert.equal(rowsHere(), before + 50 * 40 + 1)
     assert.equal(db.pragma('integrity_check', { simple: true }), 'ok')
@@ -101,7 +103,7 @@ await ok('a write failing part way: the file cut back to the size it had, logged
     assert.equal(walSize(), from)
     assert.match(errors.join(' | '), /^The WAL file couldn't be made 64 MB at start \(ENOSPC/)
     const before = rowsHere()
-    db.transaction(() => { add.run('still written') })()
+    db.transaction(() => { add.run('still written') }).immediate()
     assert.equal(rowsHere(), before + 1)
     assert.equal(db.pragma('integrity_check', { simple: true }), 'ok')
   })
