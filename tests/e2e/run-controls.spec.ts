@@ -1,4 +1,5 @@
 // Over 200 lines: one spec of the run controls, the HTTP, AI and waterfall cases sharing its receiver and token.
+import { randomUUID } from 'node:crypto'
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { authedApi, seedSheet, importCsv, BASE } from './helpers'
 import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
@@ -56,8 +57,10 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
 }) => {
   test.setTimeout(150_000)
   const { tableId, sheetId } = await sheetWith('Name\nAda\nBo\nCy\n')
+  // A GET's answer is kept a while and reused, so the URL has its own `run` value: the test run again on the same
+  // server still calls. Its reruns keep the URL.
   const start = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, { data: {
-    url: rx.url('/echo?n={{Name}}'), master_column_name: 'Call',
+    url: rx.url(`/echo?n={{Name}}&run=${randomUUID()}`), master_column_name: 'Call',
     response_mapping: [{ json_path: '$.ok', column_name: 'OK' }],
   } })
   expect(start.status(), await start.text()).toBe(202)
@@ -115,7 +118,7 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   await dialog.getByRole('button', { name: 'Run' }).click()
   await expect.poll(() => hitsFor('Adah'), { timeout: 20_000 }).toBe(1)
 
-  // A cell's play button: its row's cost on hover, one click runs the row alone.
+  // A cell's play button: icon only, its row's cost in a note on hover, one click runs the row alone.
   await expect.poll(async () => (await statuses(sheetId, 'Call')).join(','), { timeout: 20_000 })
     .toBe('done,done,done')
   await page.reload()
@@ -125,8 +128,11 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   const play = target.getByTestId('run-row')
   await expect(play).toBeVisible()
   await play.hover()
-  await expect(play.getByTestId('run-row-cost')).toHaveText('1 request')
-  await expect(play).toHaveAttribute('title', 'Run this row (1 request)')
+  const note = page.getByTestId('run-row-note')
+  await expect(note).toHaveText('Run this row (1 request)')
+  await expect(note).toHaveCSS('pointer-events', 'none')
+  await expect(play).toHaveAttribute('aria-label', 'Run this row (1 request)')
+  await expect(play).not.toHaveAttribute('title')
   await shot(page, 'run-controls-play')
   // A new run of that row alone (its GET may be answered from Cubex's cache, so not counted at the receiver).
   const runCount = async () => (await (await v1.get(`/api/v1/runs?sheet_id=${sheetId}`)).json()).runs as
@@ -139,12 +145,14 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   // The click ran the row only: no answer panel opened over it (a click on the cell would, 300 ms later).
   await page.waitForTimeout(800)
   await expect(page.getByTestId('answer-panel')).toHaveCount(0)
-  // Clicking the cell's value still opens its answer, even with the button showing its price. The button keeps
-  // showing it when the row ran before the grid saw it running (its GET answered from the cache). Then it covers
-  // the cell's middle, and a click there would run the row again.
+  // A click in the cell's middle opens its answer and runs nothing, right after the note was up: the button stays
+  // icon only at the cell's right edge. (It once grew with its price over the middle, and the click ran the row.)
   await play.hover()
-  await expect(play.getByTestId('run-row-cost')).toHaveText('1 request')
-  await target.getByText('yes', { exact: true }).click()
+  await expect(note).toBeVisible()
+  const [button, box] = [await play.boundingBox(), await target.boundingBox()]
+  expect(button!.x, 'the button keeps clear of the middle').toBeGreaterThan(box!.x + box!.width / 2)
+  await target.click()
+  await expect(note).toHaveCount(0)
   await expect(page.getByTestId('answer-panel')).toBeVisible({ timeout: 5_000 })
   expect((await runCount()).length, 'the click ran the row again').toBe(before + 1)
 })

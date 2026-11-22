@@ -52,18 +52,7 @@ export function confirmMessage(rows: RunRows, e: RunControlEstimate): string {
   return `Run ${WHAT[rows](e.rows)}?${replaced}${priced}${limit}${reused}${e.note ? ` ${e.note}` : ''}`
 }
 
-// A cell's play button, once its row is priced: the cost first and short (a
-// cell is narrow), the whole sentence in its tooltip (rowCostLabel).
-export function rowCostShort(e: RunControlEstimate): string {
-  if (e.rows === 0) return 'Nothing to run'
-  if (e.reusedRows > 0) return '$0'
-  if (e.lowUsd !== null && e.highUsd !== null) {
-    if (e.basis === 'average_max') return `~${money(e.lowUsd)}, max ${money(e.highUsd)}`
-    return e.lowUsd === e.highUsd ? money(e.lowUsd) : `${money(e.lowUsd)} to ${money(e.highUsd)}`
-  }
-  return e.kind === 'http' ? '1 request' : 'Run'
-}
-
+// A cell's play button, once its row is priced: the sentence in the note over it and in its label.
 export function rowCostLabel(e: RunControlEstimate): string {
   if (e.rows === 0) return 'Nothing to run'
   if (e.reusedRows > 0) return 'Run this row ($0, answer found before)'
