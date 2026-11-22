@@ -10,8 +10,8 @@ export interface RunCellApi {
   mainOf: (column: string) => string | null
   // A run is filling that main column now: no play button meanwhile.
   running: (main: string) => boolean
-  // What running the row costs: short for the button, the sentence for its tooltip.
-  rowCost: (main: string, row: number) => Promise<{ short: string; label: string }>
+  // What running the row costs, as a sentence ("Run this row (1 request)") for the button's note and label.
+  rowCost: (main: string, row: number) => Promise<string>
   runRow: (main: string, row: number) => void
 }
 

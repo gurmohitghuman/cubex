@@ -9,7 +9,7 @@ import type { Sheet } from '@/utils/api'
 import {
   runControlsAPI, type RunControlEstimate, type RunControlStarted, type RunRows,
 } from '@/utils/api/run-controls'
-import { rowCostLabel, rowCostShort } from '@/lib/run-controls-copy'
+import { rowCostLabel } from '@/lib/run-controls-copy'
 import { plural } from '@/lib/utils'
 import { useFailedRuns } from './useFailedRuns'
 
@@ -29,7 +29,6 @@ interface Args {
 export interface PendingRunControl {
   column: string; rows: RunRows; estimate: RunControlEstimate | null; error: string | null; starting: boolean
 }
-export interface RowCost { short: string; label: string }
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
 // A row's price is read again after this long (its inputs, or answers found meanwhile, change it).
@@ -65,18 +64,16 @@ export function useColumnRunControls(a: Args) {
   }, [sheetId, dropFailed, refreshFailed, started])
 
   // A cell's play button: what its row costs, read once a while per row, then run it.
-  const costs = useRef(new Map<string, { at: number; cost: Promise<RowCost> }>())
+  const costs = useRef(new Map<string, { at: number; cost: Promise<string> }>())
   useEffect(() => { costs.current.clear() }, [sheetId, a.runsKey])
-  const rowCost = useCallback((column: string, row: number): Promise<RowCost> => {
-    if (!sheetId) return Promise.resolve({ short: 'Run', label: 'Run this row' })
+  const rowCost = useCallback((column: string, row: number): Promise<string> => {
+    if (!sheetId) return Promise.resolve('Run this row')
     const key = JSON.stringify([column, row])
     const held = costs.current.get(key)
     if (held && Date.now() - held.at < ROW_COST_MS) return held.cost
     const cost = runControlsAPI.estimate(sheetId, column, { row })
-      .then(e => ({ short: rowCostShort(e), label: rowCostLabel(e) }))
-      .catch(e => (e?.response?.data?.nothingToRun
-        ? { short: 'Nothing to run', label: 'Nothing to run in this row' }
-        : { short: 'Run', label: 'Run this row' }))
+      .then(rowCostLabel)
+      .catch(e => (e?.response?.data?.nothingToRun ? 'Nothing to run in this row' : 'Run this row'))
     costs.current.set(key, { at: Date.now(), cost })
     return cost
   }, [sheetId])

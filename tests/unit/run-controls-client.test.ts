@@ -3,7 +3,7 @@
 // estimate, a cell's play button and which pauses show their reason. Pure, no DB.
 import assert from 'node:assert/strict'
 import {
-  confirmMessage, costText, failedBadge, rowCostLabel, rowCostShort, runItemLabel, selfPaused,
+  confirmMessage, costText, failedBadge, rowCostLabel, runItemLabel, selfPaused,
 } from '../../client/src/lib/run-controls-copy'
 import type { RunControlEstimate } from '../../client/src/utils/api/run-controls'
 
@@ -50,17 +50,14 @@ check('the confirm says which rows, what they cost, where the run stops', () => 
   assert.equal(confirmMessage('failed', est({ rows: 0 })), 'No rows here failed.')
 })
 
-check('a cell\'s play button', () => {
+check('a cell\'s play button: the sentence in its note and label', () => {
   assert.equal(rowCostLabel(est({ rows: 1 })), 'Run this row, $0.0021 to $0.0063')
+  assert.equal(rowCostLabel(est({ rows: 1, lowUsd: 0.002, highUsd: 0.002 })), 'Run this row, about $0.0020')
+  assert.equal(rowCostLabel(est({ rows: 1, basis: 'average_max', lowUsd: 0.01, highUsd: 0.05 })),
+    'Run this row, about $0.010, at most $0.050')
   assert.equal(rowCostLabel(est({ rows: 1, kind: 'http', lowUsd: null, highUsd: null })), 'Run this row (1 request)')
   assert.equal(rowCostLabel(est({ rows: 1, reusedRows: 1 })), 'Run this row ($0, answer found before)')
   assert.equal(rowCostLabel(est({ rows: 0 })), 'Nothing to run')
-  // On the button itself: the price first and short (a cell is narrow).
-  assert.equal(rowCostShort(est({ rows: 1 })), '$0.0021 to $0.0063')
-  assert.equal(rowCostShort(est({ rows: 1, lowUsd: 0.002, highUsd: 0.002 })), '$0.0020')
-  assert.equal(rowCostShort(est({ rows: 1, basis: 'average_max', lowUsd: 0.01, highUsd: 0.05 })), '~$0.010, max $0.050')
-  assert.equal(rowCostShort(est({ rows: 1, kind: 'http', lowUsd: null, highUsd: null })), '1 request')
-  assert.equal(rowCostShort(est({ rows: 1, reusedRows: 1 })), '$0')
 })
 
 check('a run that paused itself shows why, a refused web fetch engine included', () => {
