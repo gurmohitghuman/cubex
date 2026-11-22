@@ -62,8 +62,7 @@ const searchOptionsJson = (f: HiringFilters | null) => (f
 
 // What the free count leaves out of what the searches send.
 const countNote = (leftOut: JobCount['leftOut']) => `The job index's free count${leftOut.includes('place')
-  ? ', before the place filter' : ''}.${leftOut.includes('seniority')
-  ? ' It doesn\'t take seniority, so it counts roles at every level and reads higher.' : ''}`;
+  ? ', before the place filter' : ''}.`;
 
 const estimateJson = (e: HiringEstimate) => ({
   searches: e.searches, roles_up_to: e.rolesUpTo, low_usd: e.lowUsd, high_usd: e.highUsd, price_known: e.priceKnown,

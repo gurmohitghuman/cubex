@@ -67,8 +67,8 @@ export const COLUMN_WORDS: Record<'companies' | 'roles' | 'searches', Record<str
 // A table with More filters: its Searches columns' words (the job index takes a country's name).
 export const FILTER_COLUMN_WORDS: Record<string, string> = {
   [SEARCH_COLUMNS.country]: 'A country, such as United States. Empty: any country.',
-  [FILTER_COLUMNS.descriptionWords]: 'Roles that mention these words come first (commas between words). A word '
-    + 'starting with - leaves out roles whose description mentions it.',
+  [FILTER_COLUMNS.descriptionWords]: 'Only roles whose description mentions any of these words (commas between '
+    + 'words). A word starting with - leaves out roles whose description mentions it.',
   [FILTER_COLUMNS.leaveOutDescriptionWords]: 'Leave out roles whose description mentions any of these words.',
   [FILTER_COLUMNS.leaveOutTitleWords]: 'Leave out roles whose title has any of these words.',
   [FILTER_COLUMNS.seniority]: 'Only roles at these levels: Entry-Level, Junior / Associate, Mid-Level, Senior, '

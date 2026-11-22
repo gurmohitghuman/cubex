@@ -2,9 +2,9 @@ import React from 'react'
 import { AccordionSection } from '@/components/AccordionSection'
 import { HIRING_EMPLOYMENT_TYPES, HIRING_SENIORITY_LEVELS } from '@/lib/hiring'
 
-// The create dialog's "More options" (server lib/hiring/filters.ts): words
-// that put roles first, words and levels that leave roles out, and chosen
-// companies. A table made with any of them searches the one job index that
+// The create dialog's "More options" (server lib/hiring/filters.ts): words a
+// role's description or title must have or not have, levels, employment types
+// and chosen companies. A table made with any of them searches the one job index that
 // takes them; the server reads the text fields' commas as separate words.
 export interface HiringOptions {
   descriptionWords: string; leaveOutDescriptionWords: string; leaveOutTitleWords: string
@@ -47,8 +47,8 @@ export const HiringMoreOptions: React.FC<{ value: HiringOptions; onChange: (v: H
     return (
       <div data-testid="hiring-more-options">
         <AccordionSection title="More options" summary={n ? `${n} set` : undefined}>
-          {text('descriptionWords', 'Roles that mention these words come first', 'Salesforce, outbound',
-            'Commas between words. Roles without them are still found.')}
+          {text('descriptionWords', 'Only roles whose description mentions any of these words', 'Salesforce, outbound',
+            'Commas between words.')}
           {text('leaveOutDescriptionWords', 'Leave out roles whose description mentions', 'security clearance')}
           {text('leaveOutTitleWords', 'Leave out roles whose title has', 'intern, contract')}
           {boxes('seniority', 'Seniority', HIRING_SENIORITY_LEVELS)}

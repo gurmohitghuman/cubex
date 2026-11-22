@@ -6,8 +6,7 @@
 // call. A routed search's place isn't counted (the counts take places in their
 // own forms), so it's "about". A table with More filters searches the job
 // index itself: its count is sent that search's own body, so it takes every
-// filter the search does, but seniority, which the count doesn't take. Any
-// failure means no count; nothing else changes.
+// filter the search does. Any failure means no count; nothing else changes.
 import { v4 as uuidv4 } from 'uuid';
 import { tregCall } from '../lib/treg-call';
 import { getCatalogEndpoint } from '../lib/treg-catalog';
@@ -75,7 +74,7 @@ async function countOne(token: string, c: (typeof COUNTS)[string], body: Json) {
 // find counts twice); counted: the searches it covers (the first
 // HIRING_COUNT_MAX_SEARCHES); capped: some count stopped at its ceiling;
 // leftOut: what the searches send that the count doesn't take. null: no count.
-export interface JobCount { about: number; counted: number; capped: boolean; leftOut: Array<'place' | 'seniority'> }
+export interface JobCount { about: number; counted: number; capped: boolean; leftOut: Array<'place'> }
 
 async function countAll(userId: string, c: (typeof COUNTS)[string] | undefined, bodies: Json[]):
   Promise<Omit<JobCount, 'leftOut'> | null> {
@@ -97,16 +96,16 @@ export async function countJobs(userId: string, provider: string | null, searche
   return n && { ...n, leftOut: ['place'] };
 }
 
-// A direct search's body, as its count takes it: no seniority (the count would
-// count as if it weren't there), no page or order, and limit 0 (the total only).
+// A direct search's body, as its count takes it: every filter, no page or
+// order, and limit 0 (the total only).
 export function directCountBody(search: Json): Json {
-  const { experience_levels: _levels, limit: _limit, page: _page, sort_by: _by, sort_order: _order, ...rest } = search;
+  const { limit: _limit, page: _page, sort_by: _by, sort_order: _order, ...rest } = search;
   return { ...rest, limit: 0 };
 }
 
-// The searches of a table with More filters (each its request body, in order): their count on the job index.
+// The searches of a table with More filters (each its request body, in order):
+// their count on the job index, which takes every filter they send.
 export async function countDirectJobs(userId: string, searches: Json[]): Promise<JobCount | null> {
   const n = await countAll(userId, COUNTS.hirebase, searches.map(directCountBody));
-  const levels = searches.slice(0, HIRING_COUNT_MAX_SEARCHES).some(b => b.experience_levels !== undefined);
-  return n && { ...n, leftOut: levels ? ['seniority'] : [] };
+  return n && { ...n, leftOut: [] };
 }

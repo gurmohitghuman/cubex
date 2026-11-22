@@ -28,7 +28,7 @@ const otherBrands = z.array(z.string().max(AI_VISIBILITY_MAX_BRAND_CHARS)).max(A
   .describe('Competitors to look for in the answers.');
 const words = (what: string) => z.array(z.string()).optional().describe(what);
 const hiringFilterFields = { // lib/hiring/filters.ts
-  description_words: words('Roles that mention these words come first. They rank roles, never leave one out.'),
+  description_words: words('Only roles whose description mentions any of these words.'),
   leave_out_description_words: words('Leave out roles whose description mentions any of these words.'),
   leave_out_title_words: words('Leave out roles whose title has any of these words.'),
   seniority: z.array(z.enum(SENIORITY_LEVELS)).optional().describe('Only roles at these levels.'),

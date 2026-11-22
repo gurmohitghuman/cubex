@@ -1,10 +1,10 @@
 // The lists a request sends, answered at once however long. A create request's lists are kept once each up to
-// their cap (lib/distinct-items.ts): a hiring table's role titles (lib/hiring/input.ts) and an AI visibility table's
-// questions (lib/ai-visibility/input.ts). Duplicates are dropped (case ignored, the first spelling kept), and a list
-// past its cap is refused at its first item past it. A row read's `columns` (lib/row-select/paths.ts, read_rows and
-// REST rows/query) is capped before it is read, and two picks named the same are found with a Set. 50,000 items:
-// the scans these replace took seconds to over 40 s on them (they grew with the square of the list), small enough
-// for a revert proof to finish.
+// their cap (lib/distinct-items.ts): a hiring table's role titles (lib/hiring/input.ts) and six filter lists
+// (lib/hiring/filters.ts), and an AI visibility table's questions (lib/ai-visibility/input.ts). Duplicates are
+// dropped (case ignored, the first spelling kept), and a list past its cap is refused at its first item past it.
+// A row read's `columns` (lib/row-select/paths.ts, read_rows and REST rows/query) is capped before it is read, and
+// two picks named the same are found with a Set. 50,000 items: the scans these replace took seconds to over 40 s
+// on them (they grew with the square of the list), small enough for a revert proof to finish.
 import assert from 'node:assert/strict'
 
 let failures = 0
@@ -58,6 +58,29 @@ ok('role titles: duplicates dropped, the first spelling kept; the cap counts dis
   const same = parseHiringInput({ roles: Array.from({ length: MANY }, () => 'SDR') })
   assert.ok(typeof same === 'object')
   assert.deepEqual(same.roles, ['SDR'])
+})
+
+ok(`a hiring table's filter lists: ${MANY.toLocaleString('en-US')} distinct items are refused at once`, () => {
+  const words = `takes at most ${K.HIRING_MAX_FILTER_WORDS}`
+  const cases: Array<[string, string[], string]> = [
+    ['descriptionWords', distinct('word'), `descriptionWords ${words} words.`],
+    ['leaveOutDescriptionWords', distinct('word'), `leaveOutDescriptionWords ${words} words.`],
+    ['leaveOutTitleWords', distinct('word'), `leaveOutTitleWords ${words} words.`],
+    ['seniority', distinct('level'), `seniority ${words} items.`],
+    ['employmentTypes', distinct('type'), `employmentTypes ${words} items.`],
+    ['companies', Array.from({ length: MANY }, (_, i) => `c${i}.com`),
+      `companies takes at most ${K.HIRING_MAX_COMPANIES} companies.`],
+  ]
+  for (const [field, items, refusal] of cases) {
+    const { value, ms } = timed(() => parseHiringInput({ roles: ['SDR'], [field]: items }))
+    assert.equal(value, refusal, field)
+    assert.ok(ms < FAST_MS, `${field}: ${Math.round(ms)} ms`)
+  }
+  const kept = parseHiringInput({ roles: ['SDR'], seniority: ['senior', 'Senior', 'SENIOR'],
+    descriptionWords: ['Salesforce', 'salesforce'], companies: ['ramp.com', 'RAMP.com'] })
+  assert.ok(typeof kept === 'object' && kept.filters, String(kept))
+  assert.deepEqual([kept.filters.seniority, kept.filters.descriptionWords, kept.filters.companies],
+    [['Senior'], ['Salesforce'], ['ramp.com']], 'duplicates dropped, case ignored, as before')
 })
 
 const tooManyQuestions = `Start with at most ${K.AI_VISIBILITY_MAX_QUESTIONS} questions (you can add rows later).`

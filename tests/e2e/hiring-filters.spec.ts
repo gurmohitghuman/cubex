@@ -8,7 +8,7 @@ import { call, callError, mcpClient } from './helpers-mcp'
 // A hiring table made with description words, words to leave out, seniority, employment type and chosen companies
 // (lib/hiring/filters.ts, search-input.ts, services/hiring-*.ts) against the mock's job index
 // (tests/mock-treg/jobs.mjs, which applies them to its roles): made with no paid call, a Searches column per
-// filter; the estimate's free count sent the same filters but seniority, and saying so; the check calls the job
+// filter; the estimate's free count sent the same filters, seniority too; the check calls the job
 // index itself once per search row with a title, each with its own cells (an edited one too), never the row with
 // none; only the roles the filters keep go into Roles, each billed once. MCP and /api/v1 take the same lists
 // snake_case and answer them back. In the app, the dialog's More options make such a table.
@@ -37,7 +37,7 @@ async function make(api: APIRequestContext, input: Record<string, unknown>) {
   return (await res.json()).hiring
 }
 
-test('the filters: a column each, the count without seniority, the job index called with each row\'s own',
+test('the filters: a column each, the count with them all, the job index called with each row\'s own',
   async () => {
     test.setTimeout(120_000)
     const api = await authedApi()
@@ -65,12 +65,13 @@ test('the filters: a column each, the count without seniority, the job index cal
 
     const est = (await (await api.post(`/api/hiring/${h.id}/check`, { data: { estimateOnly: true } })).json())
       .estimate
-    // The mock counts the share of its roles each search's filters keep, seniority aside.
+    // The mock counts the share of its roles each search's filters keep, seniority too.
     expect(est).toMatchObject({ searches: 2, rolesUpTo: 50,
-      matches: { about: 60, counted: 2, capped: false, leftOut: ['seniority'] } })
+      matches: { about: 48, counted: 2, capped: false, leftOut: [] } })
     const counted = await sentTo('/call/hirebase.jobs.search.count')
     expect(counted.map(b => [b.job_titles, b.experience_levels, b.limit])).toEqual([
-      [['Engineer Backend', '-Enterprise'], undefined, 0], [['SDR', '-Enterprise'], undefined, 0]])
+      [['Engineer Backend', '-Enterprise'], undefined, 0],
+      [['SDR', '-Enterprise'], ['Senior', 'Mid-Level', 'Entry-Level'], 0]])
     expect(await paidCalls()).toEqual([])
 
     const res = await api.post(`/api/hiring/${h.id}/check`, { data: { timeZone: 'UTC', maxCostUsd: est.highUsd } })
@@ -110,8 +111,7 @@ test('MCP and /api/v1: the same lists snake_case, answered back; a table without
   expect(made).toMatchObject({ searches: 1, seniority: ['Senior'], leave_out_title_words: ['intern'],
     companies: ['ramp.com'], description_words: [], employment_types: [] })
   const est = await call(client, 'hiring_signals', { action: 'check', id: made.id })
-  expect(est.matches.note).toBe('The job index\'s free count. It doesn\'t take seniority, so it counts roles at '
-    + 'every level and reads higher.')
+  expect(est.matches.note).toBe('The job index\'s free count.')
   expect(await callError(client, 'hiring_signals', { action: 'create', roles: ['SDR'], seniority: ['Boss'] }))
     .toMatch(/^seniority takes Entry-Level, Junior \/ Associate/)
   const plain = await call(client, 'hiring_signals', { action: 'create', roles: ['BDR'] })
@@ -132,7 +132,7 @@ test('MCP and /api/v1: the same lists snake_case, answered back; a table without
   await api.dispose()
 })
 
-test('the app: More options make a table with them, its estimate says the count leaves seniority out', async ({
+test('the app: More options make a table with them, its estimate counts with them all', async ({
   page, context,
 }) => {
   test.setTimeout(90_000)
@@ -145,7 +145,7 @@ test('the app: More options make a table with them, its estimate says the count 
   const dialog = page.getByTestId('hiring-dialog')
   await dialog.getByLabel('Role titles').fill('SDR')
   await dialog.getByRole('button', { name: 'More options' }).click()
-  await dialog.getByLabel('Roles that mention these words come first').fill('outbound, Salesforce')
+  await dialog.getByLabel('Only roles whose description mentions any of these words').fill('outbound, Salesforce')
   await dialog.getByLabel('Leave out roles whose title has').fill('intern')
   await dialog.getByRole('group', { name: 'Seniority' }).getByLabel('Senior', { exact: true }).check()
   await dialog.getByLabel('Only roles at these companies').fill('harborview-health.io')
@@ -154,8 +154,10 @@ test('the app: More options make a table with them, its estimate says the count 
   await dialog.getByTestId('hiring-create').click()
 
   const confirm = page.getByTestId('hiring-check-confirm')
-  await expect(confirm.getByTestId('hiring-check-matches')).toContainText(
-    "It doesn't take seniority, so it counts roles at every level and reads higher.", { timeout: 30_000 })
+  // The mock keeps none of its roles for these filters, seniority included.
+  await expect(confirm.getByTestId('hiring-check-matches')).toContainText('About 0 open roles match',
+    { timeout: 30_000 })
+  await expect(confirm.getByTestId('hiring-check-matches')).not.toContainText('seniority')
   await page.screenshot({ path: process.env.HIRING_SHOTS ? `${process.env.HIRING_SHOTS}/confirm.png` : undefined })
   const tables = await (await api.get('/api/tables')).json()
   const sheets = (await (await api.get(`/api/tables/${tables[0].id}`)).json()).sheets as

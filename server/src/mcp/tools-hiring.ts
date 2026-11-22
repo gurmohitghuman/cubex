@@ -33,7 +33,7 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       per_search: lenientInt(1, ENRICH_LIST_MAX_ITEMS, perSearchRefusal('per_search')).optional()
         .describe('create: roles per search (default 25)'),
       // lib/hiring/filters.ts: a table with any of these searches the one job index that takes them.
-      description_words: words().describe('create: roles that mention these come first (ranks, never leaves out)'),
+      description_words: words().describe('create: only roles whose description mentions any of these'),
       leave_out_description_words: words().describe('create: leave out roles whose description mentions one'),
       leave_out_title_words: words().describe('create: leave out roles whose title has one'),
       seniority: words().describe(`create: only ${SENIORITY_LEVELS.join(', ')}`),

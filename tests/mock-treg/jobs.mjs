@@ -16,9 +16,9 @@
 //     an index refusing a field it doesn't take would.
 // hirebase.jobs.search called directly (a hiring table with More options):
 // the same roles, each with a level, a job type and a description, and the
-// filters applied as the index applies them (description words rank, "-"
-// words and the lists leave roles out). A count sent filters counts the share
-// of those roles that pass them.
+// filters applied as the index applies them (description words keep only
+// roles that mention one, "-" words and the lists leave roles out). A count
+// sent filters counts the share of those roles that pass them.
 import { state } from './state.mjs'
 
 const COMPANIES = ['Northwind Labs', 'Bluefin Data', 'Copperleaf Systems', 'Harborview Health', 'Quillmark']
@@ -70,7 +70,7 @@ const listOf = (v) => (Array.isArray(v) ? v.map(String) : [])
 const wanted = (v) => listOf(v).filter(w => !w.startsWith('-'))
 const leftOut = (v) => listOf(v).filter(w => w.startsWith('-')).map(w => lower(w.slice(1)))
 
-// The search's roles with the fields the filters read, those the body's filters keep, ranked by its words.
+// The search's roles with the fields the filters read, and those the body's filters keep.
 function filtered(body) {
   const key = wanted(body.job_titles)[0] ?? 'role'
   const fresh = Object.entries(state.jobsNew ?? {}).find(([w]) => key.toLowerCase().includes(w.toLowerCase()))
@@ -87,8 +87,8 @@ function filtered(body) {
     && !wordsOut.some(w => lower(r.description).includes(w))
     && (!levels.length || levels.includes(r.level)) && (!types.length || types.includes(r.type))
     && (!domains.length || (r.domain && domains.includes(r.domain))))
-  const mentions = (r) => words.some(w => lower(r.description).includes(w))
-  return { all: roles.length, kept: [...kept.filter(mentions), ...kept.filter(r => !mentions(r))] }
+  const mentions = (r) => !words.length || words.some(w => lower(r.description).includes(w))
+  return { all: roles.length, kept: kept.filter(mentions) }
 }
 
 export function jobSearchAnswer(body) {
@@ -105,8 +105,8 @@ export function jobCountAnswer(toolId, body) {
   const title = String(wanted(body.job_titles)[0] ?? body.job_title_or?.[0] ?? '')
   const hit = Object.entries(state.jobCounts ?? {}).find(([w]) => title.toLowerCase().includes(w.toLowerCase()))
   const base = hit ? Number(hit[1]) : 120
-  // With filters, the share of the roles that pass them (the count never takes seniority: it counts all levels).
-  const f = filtered({ ...body, experience_levels: undefined })
+  // With filters, the share of the roles that pass them.
+  const f = filtered(body)
   const n = Math.round(base * f.kept.length / f.all)
   return toolId.startsWith('hirebase.') ? { cost: n }
     : { rows: n, rows_approximate: true, new_jobs_credits: n, max_rows: 10000 }

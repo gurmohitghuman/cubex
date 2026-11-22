@@ -103,10 +103,10 @@ ok('the direct search: the job index itself, each filter from its column, rows w
     ['treg.companies.jobs.search', null, 'hirebase', undefined], 'without filters, as before')
 })
 
-ok("the count's body: the search's own, without seniority, page or order, and limit 0", () => {
+ok("the count's body: the search's own, seniority too, without page or order, and limit 0", () => {
   assert.deepEqual(directCountBody({ job_titles: ['SDR'], experience_levels: ['Senior'], limit: 25, page: 2,
     sort_by: 'date_posted', sort_order: 'asc', job_types: ['Contract'] }),
-  { job_titles: ['SDR'], job_types: ['Contract'], limit: 0 })
+  { job_titles: ['SDR'], experience_levels: ['Senior'], job_types: ['Contract'], limit: 0 })
 })
 
 if (failures > 0) { console.error(`${failures} hiring-filters assertion(s) failed`); process.exit(1) }

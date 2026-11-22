@@ -1,12 +1,13 @@
 // A hiring table's More filters, parsed strictly (pure). Each search sends them
-// to the job index with its title, place and how recent. Description words
-// put the roles that mention them first (they rank roles, they never leave
-// one out); every other filter leaves roles out. Only one job index takes
+// to the job index with its title, place and how recent. Each leaves roles
+// out: description words keep only roles whose description mentions any of
+// them, and the rest as their names say. Only one job index takes
 // them (hirebase), so a table made with any of them searches it directly
 // (services/hiring-create.ts). The same parse serves the app, /api/v1 and MCP.
 import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
 import { cleanDomain } from '../enrich-input-clean';
+import { DistinctItems } from '../distinct-items';
 import { HIRING_MAX_COMPANIES, HIRING_MAX_FILTER_WORDS, HIRING_MAX_WORD_CHARS } from '../constants';
 
 // The job index's own labels, sent as written.
@@ -16,7 +17,7 @@ export const SENIORITY_LEVELS = [
 export const EMPLOYMENT_TYPES = ['Full Time', 'Part Time', 'Contract', 'Internship'] as const;
 
 export interface HiringFilters {
-  descriptionWords: string[];          // roles that mention these come first
+  descriptionWords: string[];          // only roles whose description mentions any of these
   leaveOutDescriptionWords: string[];  // roles whose description mentions one are left out
   leaveOutTitleWords: string[];        // roles whose title has one are left out
   seniority: string[];                 // SENIORITY_LEVELS
@@ -41,24 +42,30 @@ export const FILTER_NAMES: Record<'camel' | 'snake', Record<FilterKey, string>> 
 const text = (v: string): string => stripControlChars(v).replace(/\s+/g, ' ').trim();
 const keyOf = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-// A list, or text with commas or lines: its items, each trimmed, once each (case ignored).
-function itemsOf(v: unknown, name: string): string[] | string {
+// A list, or text with commas or lines: its items, each trimmed, once each
+// (case ignored), at most `max` of them. The cap is checked as items come in
+// (lib/distinct-items.ts), so a long list is refused at its first item past it.
+const TOO_MANY = Symbol('too many');
+function itemsOf(v: unknown, name: string, max: number): string[] | string | typeof TOO_MANY {
   if (v === undefined || v === null) return [];
   const raw = typeof v === 'string' ? [v] : v;
   if (!Array.isArray(raw) || raw.some(x => typeof x !== 'string')) {
     return `${name} must be a list of words, such as ["kubernetes"].`;
   }
-  const out: string[] = [];
-  for (const item of (raw as string[]).flatMap(x => x.split(/[,\r\n]/)).map(text)) {
-    if (item && !out.some(x => x.toLowerCase() === item.toLowerCase())) out.push(item);
+  const out = new DistinctItems(max);
+  for (const x of raw as string[]) {
+    for (const part of x.split(/[,\r\n]/)) {
+      const item = text(part);
+      if (item && !out.add(item)) return TOO_MANY;
+    }
   }
-  return out;
+  return out.items;
 }
 
 function wordsOf(v: unknown, name: string): string[] | string {
-  const items = itemsOf(v, name);
+  const items = itemsOf(v, name, HIRING_MAX_FILTER_WORDS);
+  if (items === TOO_MANY) return `${name} takes at most ${HIRING_MAX_FILTER_WORDS} words.`;
   if (typeof items === 'string') return items;
-  if (items.length > HIRING_MAX_FILTER_WORDS) return `${name} takes at most ${HIRING_MAX_FILTER_WORDS} words.`;
   if (items.some(w => w.length > HIRING_MAX_WORD_CHARS || holdsRunMarker(w))) {
     return `Each word in ${name} is plain text of at most ${HIRING_MAX_WORD_CHARS} characters.`;
   }
@@ -72,7 +79,8 @@ const undashed = (words: string[]) => words.map(w => w.replace(/^[-\s]+/, '')).f
 // level by any word of it: "entry", "staff").
 function labelsOf(v: unknown, name: string, labels: readonly string[], also: Record<string, string>,
   parts = false): string[] | string {
-  const items = itemsOf(v, name);
+  const items = itemsOf(v, name, HIRING_MAX_FILTER_WORDS);
+  if (items === TOO_MANY) return `${name} takes at most ${HIRING_MAX_FILTER_WORDS} items.`;
   if (typeof items === 'string') return items;
   const known = new Map<string, string>(Object.entries(also));
   for (const l of labels) {
@@ -91,7 +99,8 @@ function labelsOf(v: unknown, name: string, labels: readonly string[], also: Rec
 const DOMAIN_RE = /^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 
 function companiesOf(v: unknown, name: string): string[] | string {
-  const items = itemsOf(v, name);
+  const items = itemsOf(v, name, HIRING_MAX_COMPANIES);
+  if (items === TOO_MANY) return `${name} takes at most ${HIRING_MAX_COMPANIES} companies.`;
   if (typeof items === 'string') return items;
   const out: string[] = [];
   for (const item of items) {
@@ -101,7 +110,6 @@ function companiesOf(v: unknown, name: string): string[] | string {
     }
     if (!out.includes(d)) out.push(d);
   }
-  if (out.length > HIRING_MAX_COMPANIES) return `${name} takes at most ${HIRING_MAX_COMPANIES} companies.`;
   return out;
 }
 

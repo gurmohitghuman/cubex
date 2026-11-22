@@ -30,7 +30,7 @@ export interface HiringEstimate {
   searches: number; rolesUpTo: number; priceKnown: boolean; lowUsd: number; highUsd: number
   dailyLimit: { limitUsd: number | null; usedTodayUsd: number; remainingUsd: number | null }
   // The job index's free count of matching roles ("about"), where it has one; leftOut: what it doesn't take.
-  matches: { about: number; counted: number; capped: boolean; leftOut: Array<'place' | 'seniority'> } | null
+  matches: { about: number; counted: number; capped: boolean; leftOut: Array<'place'> } | null
 }
 
 // The day a check stamps on what it finds is the person's own.

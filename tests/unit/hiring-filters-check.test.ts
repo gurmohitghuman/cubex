@@ -2,8 +2,8 @@
 // hiring-count.ts, job-count.ts, hiring-agent.ts) against the repo's mock treg, the job queue only recording (no
 // search runs): its Searches sheet has a column per filter, filled as written, and its search runs the job index
 // itself, reading each filter from its column; a row with no role title isn't searched or counted. The estimate's
-// free count is sent each search's own request (no seniority, limit 0) and says it leaves seniority out; a count
-// refused or not free means no count, never a failed estimate. Each search row's request carries its filters,
+// free count is sent each search's own request (limit 0), seniority too; a count refused or not free means no
+// count, never a failed estimate. Each search row's request carries its filters,
 // edited cells included. A table without them is made as before.
 import assert from 'node:assert/strict'
 import { tregKit } from './token-replay-treg-kit'
@@ -86,7 +86,7 @@ await ok('each search row\'s request carries its filters, from its own cells, ed
 })
 
 const blank = crypto.randomUUID()
-await ok('the estimate: free; the count sent each search\'s own request but seniority, and says so', async () => {
+await ok('the estimate: free; the count sent each search\'s own request, every filter', async () => {
   // A row with no role title: not searched, not counted.
   db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 99, ?)').run(
     blank, t.searchesSheetId, uid, JSON.stringify({ [F.employmentTypes]: 'Contract' }))
@@ -100,14 +100,14 @@ await ok('the estimate: free; the count sent each search\'s own request but seni
   const bodies = await counts()
   assert.equal(bodies.length, 2)
   assert.deepEqual(bodies[0], { job_titles: ['SDR', '-Senior'], keywords: ['Salesforce', '-clearance'],
-    geo_locations: [{ country: 'United States', city: 'Texas' }], job_types: ['Full Time'],
+    geo_locations: [{ country: 'United States', city: 'Texas' }], experience_levels: ['Senior', 'Executive'],
+    job_types: ['Full Time'],
     company_domains: ['northwind-labs.io', 'bluefin-data.io'], days_ago: 14, limit: 0 })
-  // The mock counts the share of its 10 roles each search's filters keep, seniority aside (120 each without them).
-  assert.deepEqual(e.estimate.matches, { about: 36, counted: 2, capped: false, leftOut: ['seniority'] })
+  // The mock counts the share of its 10 roles each search's filters keep (120 each without them).
+  assert.deepEqual(e.estimate.matches, { about: 12, counted: 2, capped: false, leftOut: [] })
   const agent = await agentCheckHiring(uid, 'token', t.id, { estimateOnly: true })
   assert.ok('ok' in agent)
-  assert.equal((agent.ok.matches as { note: string }).note, 'The job index\'s free count. It doesn\'t take '
-    + 'seniority, so it counts roles at every level and reads higher.')
+  assert.equal((agent.ok.matches as { note: string }).note, 'The job index\'s free count.')
 })
 
 await ok('a count refused for a field it doesn\'t take: no count, the estimate as before', async () => {
