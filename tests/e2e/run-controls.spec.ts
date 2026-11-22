@@ -139,9 +139,14 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   // The click ran the row only: no answer panel opened over it (a click on the cell would, 300 ms later).
   await page.waitForTimeout(800)
   await expect(page.getByTestId('answer-panel')).toHaveCount(0)
-  // Clicking the cell itself still opens its answer.
-  await target.click()
+  // Clicking the cell's value still opens its answer, even with the button showing its price. The button keeps
+  // showing it when the row ran before the grid saw it running (its GET answered from the cache). Then it covers
+  // the cell's middle, and a click there would run the row again.
+  await play.hover()
+  await expect(play.getByTestId('run-row-cost')).toHaveText('1 request')
+  await target.getByText('yes', { exact: true }).click()
   await expect(page.getByTestId('answer-panel')).toBeVisible({ timeout: 5_000 })
+  expect((await runCount()).length, 'the click ran the row again').toBe(before + 1)
 })
 
 test('the header\'s "N failed, retry" runs the failed rows again in one click', async ({ page, context }) => {
