@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi } from './helpers'
 import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
 import { call, mcpClient } from './helpers-mcp'
-import { seedCsv } from './helpers-enrich'
+import { seedCsv, waitRunsSetUp } from './helpers-enrich'
 import { Receiver } from './helpers-receiver'
 import { listed, openSheet } from './helpers-paused'
 
@@ -41,15 +42,18 @@ const saying = (runId: string, words: string, timeout = 20_000) =>
   expect.poll(async () => (await summary(runId)).waiting?.message, { timeout }).toBe(words)
 
 // An HTTP API run, one row at a time, its calls on `path` (one per row: the name makes each its own), mapping
-// `$.ok` into `<column> OK` unless given a mapping. A run sent again uses POST: a GET's answer is kept a while
-// and reused, so it wouldn't call again.
+// `$.ok` into `<column> OK` unless given a mapping. A GET's answer is kept a while and reused, so each run's URL
+// has its own `run` value: the spec run again on the same server still calls. A rerun keeps the URL, so a run
+// sent again uses POST. It returns once the start has written its ⏳ cells: until then the sheet refuses another
+// start (409, busy starting a run).
 async function httpRun(sheetId: string, path: string, column: string, reads: string, mapping?: object[]) {
   const res = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, { data: {
-    url: rx.url(`${path}?v={{${reads}}}&n={{Name}}`), master_column_name: column, batch_size: 1,
+    url: rx.url(`${path}?v={{${reads}}}&n={{Name}}&run=${randomUUID()}`), master_column_name: column, batch_size: 1,
     ...(mapping ? { method: 'POST', body: '{}' } : {}),
     response_mapping: mapping ?? [{ json_path: '$.ok', column_name: `${column} OK` }],
   } })
   expect(res.status(), await res.text()).toBe(202)
+  await waitRunsSetUp(sheetId)
   return (await res.json()).run_id as string
 }
 
