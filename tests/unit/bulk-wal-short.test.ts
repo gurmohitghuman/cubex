@@ -43,6 +43,7 @@ await ok('a run started on 10 rows: queued at once, no checkpoint asked of the w
   } finally {
     setCheckpointDelayForTests(0)
   }
+  console.log(`      queued after ${queuedMs.toFixed(0)} ms`)
   assert.ok(queuedMs >= 0 && queuedMs < 1_000, `queued after ${queuedMs.toFixed(0)} ms`)
   assert.equal(takeWalCheckpointerStats().checkpoints, 0, 'checkpoints on the worker')
   assert.equal(autoCheckpointHolders(), 0)

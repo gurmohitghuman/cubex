@@ -84,7 +84,8 @@ type Plan = Omit<TransformWalk, 'sheetId' | 'userId' | 'after' | 'track' | 'unti
 
 export async function transformColumn(userId: string, p: TransformParams): Promise<TransformOutcome> {
   // The pages' frames go back on the worker once the call's last write is made (settle, stopAt): asked sooner,
-  // those writes would wait for that checkpoint on Windows (writesWaitForCheckpoints, lib/wal-checkpointer.ts).
+  // those writes would wait for that checkpoint on Windows and Linux (writesWaitForCheckpoints,
+  // lib/wal-checkpointer.ts).
   let wrote = false;
   const out = await withLiveSheetBusy(p.sheetId, userId, BUSY_WHAT, async (): Promise<TransformOutcome> => {
     const plan = planTransform(userId, p);

@@ -1,17 +1,17 @@
 // Over 200 lines: the cases share one table, its writer and the measuring helper, and read as one story.
-// On Windows no write in turn begins while the checkpoint worker's checkpoint runs (lib/wal-checkpointer.ts,
-// lib/wal-turn.ts): there a commit that writes the WAL meanwhile waited inside it (58 to 110 ms where others took
-// about 31, once over a second) while the WAL file grew, as after a server start. The switch is on here on every
-// platform but where a case says otherwise, so Linux runs the Windows path too. The WAL is emptied first, as after a
-// server start. Two bulk writers at once (lib/bulk-slices.ts), one ending while the other writes, so its last
-// checkpoint comes mid-slice for the other: no slice begins while a checkpoint runs. A transform's pages
-// (services/column-transform-pages.ts): none either. A slice that waits leaves the event loop free (timers run, no
-// stretch over 50 ms). A checkpoint that never answers holds a writer no longer than the wait's limit, once; a
-// worker that stops answers its waiters. One that outlasts the limit: the slice waiting before it begins goes on,
-// but a wait at the pause has no limit, so the WAL stays bounded. A write whose own time runs out while it waits
-// doesn't count as one that gave no answer: the next slice still waits. A transform call on a few rows asks for its
-// closing checkpoint after its last write, so it waits for none. Timing-free but the waits' limit, the worker
-// stopping and those last two (held checkpoints, wide margins); the longest slice and stretch are printed.
+// On Windows and Linux no write in turn begins while the checkpoint worker's checkpoint runs (lib/wal-checkpointer.ts,
+// lib/wal-turn.ts): there a commit that writes the WAL meanwhile waited inside it (on the Windows runner 58 to 110 ms
+// where others took about 31, once over a second, while the WAL file grew, as after a server start; on the Linux one a
+// clear's slice up to 128 ms). The switch is on here on every platform but where a case says otherwise, so macOS runs
+// that path too. The WAL is emptied first, as after a server start. Two bulk writers at once (lib/bulk-slices.ts), one
+// ending while the other writes, so its last checkpoint comes mid-slice for the other: no slice begins while a
+// checkpoint runs. A transform's pages (services/column-transform-pages.ts): none either. A slice that waits leaves the
+// event loop free (timers run, no stretch over 50 ms). A checkpoint that never answers holds a writer no longer than
+// the wait's limit, once; a worker that stops answers its waiters. One that outlasts the limit: the slice waiting
+// before it begins goes on, but a wait at the pause has no limit, so the WAL stays bounded. A write whose own time runs
+// out while it waits doesn't count as one that gave no answer: the next slice still waits. A transform call on a few
+// rows asks for its closing checkpoint after its last write, so it waits for none. Timing-free but the waits' limit,
+// the worker stopping and those last two (held checkpoints, wide margins); the longest slice and stretch are printed.
 // Off (Linux's default) a writer still asks part way and writes on while the worker copies.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
@@ -42,7 +42,7 @@ async function ok(label: string, fn: () => void | Promise<void>) {
   try { await fn(); console.log('ok  ', label) }
   catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
 }
-if (process.platform !== 'win32') w.setWritesWaitForCheckpointsForTests(true)
+w.setWritesWaitForCheckpointsForTests(true)
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, w.checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -232,10 +232,11 @@ await ok('a transform call on a few rows, every checkpoint held 300 ms: it waits
   }
 })
 
-await ok('the platform\'s own: on Windows only; off, a writer asks part way and writes on during the copy',
+await ok('the platform\'s own: on Windows and Linux; off (as on macOS), a writer asks part way and writes on during '
+  + 'the copy',
   async () => {
     w.setWritesWaitForCheckpointsForTests(null)
-    assert.equal(w.writesWaitForCheckpoints(), process.platform === 'win32')
+    assert.equal(w.writesWaitForCheckpoints(), process.platform === 'win32' || process.platform === 'linux')
     w.setWritesWaitForCheckpointsForTests(false)
     // Each checkpoint held 300 ms first, as on a slow disk: the slices after the ask come before its answer.
     w.setCheckpointDelayForTests(300)

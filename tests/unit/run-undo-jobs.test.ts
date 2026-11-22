@@ -28,7 +28,9 @@ await ok('a big undo answers at once (undoing) and finishes in the background, t
   const out = await undoRun(uid, 'http', runId)
   assert.ok('ok' in out)
   assert.equal(out.ok.state, 'undoing')
-  assert.ok(Date.now() - t < 2_000, 'it answered without waiting for the rows')
+  const answeredMs = Date.now() - t
+  console.log(`      answered in ${answeredMs} ms`)
+  assert.ok(answeredMs < 2_000, 'it answered without waiting for the rows')
   await idle(sid)
   const j = journal('http', runId)!
   assert.equal(j.state, 'undone')
