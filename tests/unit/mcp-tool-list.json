@@ -1,5 +1,13 @@
 {
   "release": "v0.8.38",
+  "lines": [
+    {
+      "change": "changed",
+      "tools": [
+        "hiring_signals"
+      ]
+    }
+  ],
   "tools": {
     "add_column": {
       "properties": {

@@ -4,18 +4,21 @@
 // changed, has a line under the next release, and every line under it matches what the tools show.
 // Wording (descriptions, titles) is left out: only what a call must send counts.
 //
-// Where this checkout has the release tags (not CI, which checks out one commit), it also checks that a
-// release out with changes for agents has its list recorded, that what the newest tag shipped of the
-// changes file is unchanged, and it names the next release after the newest tag. To record a release's
-// list, read from that release's own code, so it can be done any time after the tag:
+// The file also keeps what the recorded release's lines named (changes and tools, not wording), and those
+// lines must still name the same. Where this checkout has the release tags (not CI, which checks out one
+// commit), it also checks that a release out with changes for agents has its list recorded, that what the
+// newest tag shipped of the changes file is unchanged, and it names the next release after the newest tag.
+// A release with lines is recorded before it is cut (docs/releasing.md), from this checkout's own code:
 //   MCP_TOOL_LIST_RECORD=vX.Y.Z npm run test:unit -- mcp-tool-list
+// vX.Y.Z is then the newest release the changes file lists, after the newest tag; recording it again is
+// fine until its tag. A release already out is read from its own code instead (kit: recordPlan).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { mcpHttpKit } from './mcp-http-kit'
-import { CHANGES, Recorded, Schemas, byName, changesAt, exact, newer, nextPatch, releaseTags, shippedEdit, toolsAt,
-  versionsIn } from './mcp-tool-list-kit'
+import { CHANGES, Recorded, Schemas, byName, changesAt, exact, linesChanged, newer, nextPatch, recordPlan, releaseTags,
+  shapes, shippedEdit, toolsAt, versionsIn } from './mcp-tool-list-kit'
 import changesMod from '../../server/src/mcp/agent-changes'
 import readMod from '../../server/src/services/version-changes'
 const { AGENT_CHANGES, CHANGES_RECORDED_AFTER } = changesMod as typeof import('../../server/src/mcp/agent-changes')
@@ -76,15 +79,17 @@ async function main() {
   let recorded = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Recorded
 
   if (RECORD) {
-    await check(`record ${RECORD}'s tool list, from its own code`, () => {
-      assert.ok(exact(RECORD) && newer(RECORD, recorded.release), `a release after ${recorded.release}: ${RECORD}`)
-      assert.ok(tags.includes(RECORD), `${RECORD} is not a release tag here (git fetch --tags)`)
-      const edit = shippedEdit(RECORD, text)
+    await check(`record ${RECORD}'s tool list`, () => {
+      const plan = recordPlan(RECORD, recorded.release, AGENT_CHANGES.map(r => r.version), tags)
+      if ('refused' in plan) assert.fail(plan.refused)
+      const edit = shippedEdit(plan.from === 'tag' ? RECORD : tags[0], text)
       if (edit) assert.fail(edit)
-      const tools = toolsAt(RECORD)
-      const lines = linesAfter(recorded.release, RECORD)
-      assert.deepEqual([...missing(recorded, tools, lines, RECORD), ...wrong(recorded, tools, lines)], [])
-      recorded = { release: RECORD, tools }
+      const base: Recorded = plan.baseFrom === 'file' ? recorded : { release: plan.base, tools: toolsAt(plan.base) }
+      const tools = plan.from === 'tag' ? toolsAt(RECORD) : current
+      const lines = linesAfter(base.release, RECORD)
+      assert.deepEqual([...missing(base, tools, lines, RECORD), ...wrong(base, tools, lines)], [])
+      const own = AGENT_CHANGES.find(r => r.version === RECORD)?.changes ?? []
+      recorded = { release: RECORD, lines: shapes(own), tools }
       fs.writeFileSync(FILE, JSON.stringify(recorded, null, 2) + '\n')
     })
   }
@@ -112,6 +117,11 @@ async function main() {
         assert.ok(/^\S.{9,239}\.$/.test(s) && !s.includes('\u2014'), `${where}: one plain sentence or two`)
       }
     }
+  })
+
+  await check(`the lines for ${recorded.release} name what they named when its list was recorded`, () => {
+    const changed = linesChanged(recorded, AGENT_CHANGES)
+    if (changed) assert.fail(changed)
   })
 
   await check(`a release out with changes for agents has its list recorded (${tags.length} tags here)`, () => {
