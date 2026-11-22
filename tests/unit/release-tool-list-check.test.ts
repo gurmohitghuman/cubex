@@ -3,7 +3,8 @@
 // bash with the script's own set -euo pipefail, on a scratch repository holding the full-size list, which is
 // more than a pipe holds (64 KB): refused before the record and with the file gone, allowed after it, five
 // times over (a reader that stopped at the match would cut git show off and fail the pipe), and a release
-// without lines needs no record. The script is for macOS and Linux, so this is skipped on Windows.
+// without lines needs no record, even when the list records an older release. The script is for macOS and
+// Linux, so this is skipped on Windows.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -56,7 +57,9 @@ write('tests/unit/mcp-tool-list.json', recording('v0.8.40'))
 const recorded = commit('v0.8.40 recorded')
 fs.rmSync(path.join(repo, 'tests', 'unit', 'mcp-tool-list.json'))
 const gone = commit('no list')
-git('checkout', '-q', recorded)
+// On the commit before the record, whose list is v0.8.38's: a check that asked every release for a record would
+// refuse it.
+git('checkout', '-q', before)
 write('server/src/mcp/agent-changes.ts', changes('v0.8.38'))
 const noLines = commit('no lines after v0.8.38')
 
