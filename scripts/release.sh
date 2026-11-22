@@ -14,6 +14,8 @@
 # Releases always go to the public repository (CUBEX_REPO), through whichever
 # git remote points at it; never to another remote such as a private mirror.
 # Needs git and an authenticated gh. Written for macOS's stock bash 3.2.
+# Over 200 lines: the three commands and the checks a cut makes share one set of helpers; split, each file
+# would have to source the others.
 set -euo pipefail
 
 CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}"
@@ -126,8 +128,10 @@ cmd_notes() {
   echo "Fill in every TODO, then: scripts/release.sh cut $next $file"
 }
 
-# The changes for agents (server/src/mcp/agent-changes.ts, docs/releasing.md "Changes for agents").
+# The changes for agents (server/src/mcp/agent-changes.ts, docs/releasing.md "Changes for agents"), and the
+# tool list a release with lines is recorded with before it is cut.
 AGENT_CHANGES=server/src/mcp/agent-changes.ts
+TOOL_LIST=tests/unit/mcp-tool-list.json
 
 # The releases the file lists in text $1, newest first, one a line (each written version: 'vX.Y.Z').
 agent_changes_versions() {
@@ -154,9 +158,10 @@ agent_changes_kept() {
 }
 
 # Refuses cutting $2 (vX.Y.Z) at commit $3 after the latest tag $1 (or none) when the changes for agents
-# don't fit: the lines added since $1 must name $2, and what $1 shipped of the file must be unchanged. A
-# release listed now that isn't newer than $1 and that $1 didn't ship counts as a change to it (a release
-# out with no lines gets none afterwards). A tag from before the file shipped nothing to keep.
+# don't fit: the lines added since $1 must name $2, a release with lines must have its tool list recorded
+# at $3, and what $1 shipped of the file must be unchanged. A release listed now that isn't newer than $1
+# and that $1 didn't ship counts as a change to it (a release out with no lines gets none afterwards). A
+# tag from before the file shipped nothing to keep.
 agent_changes_check() {
   local prev="$1" tag="$2" target="$3" now then listed first kept
   now="$(git show "$target:$AGENT_CHANGES" 2>/dev/null)" || now=""
@@ -164,6 +169,11 @@ agent_changes_check() {
   if [ -n "$listed" ] && [ "$listed" != "$tag" ] && { [ -z "$prev" ] || newer "${listed#v}" "${prev#v}"; }; then
     die "$AGENT_CHANGES lists this release's changes for agents under $listed:" \
       "rename it to $tag on main first"
+  fi
+  if [ "$listed" = "$tag" ]; then
+    git show "$target:$TOOL_LIST" 2>/dev/null | grep -qxF "  \"release\": \"$tag\"," \
+      || die "$tag has changes for agents, and $TOOL_LIST on main doesn't record $tag's tool list:" \
+        "record it first in a small pull request (MCP_TOOL_LIST_RECORD=$tag npm run test:unit -- mcp-tool-list)"
   fi
   [ -n "$prev" ] || return 0
   then="$(git show "refs/tags/$prev:$AGENT_CHANGES" 2>/dev/null)" || return 0
