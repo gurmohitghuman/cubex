@@ -18,6 +18,9 @@ export interface HiringView {
 }
 export interface HiringInput {
   roles: string[]; country: string; place: string; postedWithinDays: number | null; perSearch: number
+  // Lists, or text with commas (server lib/hiring/filters.ts): any of them searches the one job index that takes them.
+  descriptionWords?: string; leaveOutDescriptionWords?: string; leaveOutTitleWords?: string
+  seniority?: string[]; employmentTypes?: string[]; companies?: string
 }
 // What a check would do and cost (server services/hiring-check.ts).
 export interface HiringPlan {
@@ -26,8 +29,8 @@ export interface HiringPlan {
 export interface HiringEstimate {
   searches: number; rolesUpTo: number; priceKnown: boolean; lowUsd: number; highUsd: number
   dailyLimit: { limitUsd: number | null; usedTodayUsd: number; remainingUsd: number | null }
-  // The job index's free count of matching roles ("about"), where it has one.
-  matches: { about: number; counted: number; capped: boolean } | null
+  // The job index's free count of matching roles ("about"), where it has one; leftOut: what it doesn't take.
+  matches: { about: number; counted: number; capped: boolean; leftOut: Array<'place'> } | null
 }
 
 // The day a check stamps on what it finds is the person's own.

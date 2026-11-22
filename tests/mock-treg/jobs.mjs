@@ -11,7 +11,14 @@
 //     first (as a newer posting would come first), within the limit;
 //   jobsOverfill: every search answers that many roles more than its limit
 //     (a provider that ignores it), each billed per result;
-//   jobCounts {word: n}: what a count mentioning `word` answers (default 120).
+//   jobCounts {word: n}: what a count mentioning `word` answers (default 120);
+//   jobCountRefuses [field]: a count sent one of these fields answers 422, as
+//     an index refusing a field it doesn't take would.
+// hirebase.jobs.search called directly (a hiring table with More options):
+// the same roles, each with a level, a job type and a description, and the
+// filters applied as the index applies them (description words keep only
+// roles that mention one, "-" words and the lists leave roles out). A count
+// sent filters counts the share of those roles that pass them.
 import { state } from './state.mjs'
 
 const COMPANIES = ['Northwind Labs', 'Bluefin Data', 'Copperleaf Systems', 'Harborview Health', 'Quillmark']
@@ -55,11 +62,52 @@ export function jobRows(provider, body) {
 }
 
 export const isJobCount = (toolId) => toolId === 'hirebase.jobs.search.count' || toolId === 'jobspipe.jobs.search.count'
+export const isJobSearch = (toolId) => toolId === 'hirebase.jobs.search'
+
+const LEVELS = ['Entry-Level', 'Mid-Level', 'Senior', 'Junior / Associate', 'Executive']
+const lower = (v) => String(v).toLowerCase()
+const listOf = (v) => (Array.isArray(v) ? v.map(String) : [])
+const wanted = (v) => listOf(v).filter(w => !w.startsWith('-'))
+const leftOut = (v) => listOf(v).filter(w => w.startsWith('-')).map(w => lower(w.slice(1)))
+
+// The search's roles with the fields the filters read, and those the body's filters keep.
+function filtered(body) {
+  const key = wanted(body.job_titles)[0] ?? 'role'
+  const fresh = Object.entries(state.jobsNew ?? {}).find(([w]) => key.toLowerCase().includes(w.toLowerCase()))
+  const n = fresh ? Number(fresh[1]) : 0
+  const roles = [...Array.from({ length: n }, (_, i) => role(key, i, true)),
+    ...Array.from({ length: 10 }, (_, i) => role(key, i, false))].map((r, i) => ({
+    ...r, level: LEVELS[i % LEVELS.length], type: i % 4 === 3 ? 'Contract' : 'Full Time',
+    description: i % 2 === 0 ? 'Outbound prospecting in Salesforce.' : 'Inbound leads; security clearance needed.',
+  }))
+  const titleOut = leftOut(body.job_titles), wordsOut = leftOut(body.keywords), words = wanted(body.keywords).map(lower)
+  const levels = listOf(body.experience_levels), types = listOf(body.job_types)
+  const domains = listOf(body.company_domains).map(lower)
+  const kept = roles.filter(r => !titleOut.some(w => lower(r.title).includes(w))
+    && !wordsOut.some(w => lower(r.description).includes(w))
+    && (!levels.length || levels.includes(r.level)) && (!types.length || types.includes(r.type))
+    && (!domains.length || (r.domain && domains.includes(r.domain))))
+  const mentions = (r) => !words.length || words.some(w => lower(r.description).includes(w))
+  return { all: roles.length, kept: kept.filter(mentions) }
+}
+
+export function jobSearchAnswer(body) {
+  const { kept } = filtered(body)
+  const jobs = kept.slice(0, Number(body.limit ?? 10) + Math.max(0, Number(state.jobsOverfill ?? 0))).map(r => ({
+    ...SHAPES.hirebase(r), experience_level: r.level, job_type: r.type, description: r.description,
+  }))
+  return { jobs, total_count: kept.length, page: 1, limit: Number(body.limit ?? 10) }
+}
 
 export function jobCountAnswer(toolId, body) {
-  const title = String(body.job_titles?.[0] ?? body.job_title_or?.[0] ?? '')
+  const refused = (state.jobCountRefuses ?? []).find(f => body[f] !== undefined)
+  if (refused) return { refusal: { detail: `${refused} is not a field of this endpoint` } }
+  const title = String(wanted(body.job_titles)[0] ?? body.job_title_or?.[0] ?? '')
   const hit = Object.entries(state.jobCounts ?? {}).find(([w]) => title.toLowerCase().includes(w.toLowerCase()))
-  const n = hit ? Number(hit[1]) : 120
+  const base = hit ? Number(hit[1]) : 120
+  // With filters, the share of the roles that pass them.
+  const f = filtered(body)
+  const n = Math.round(base * f.kept.length / f.all)
   return toolId.startsWith('hirebase.') ? { cost: n }
     : { rows: n, rows_approximate: true, new_jobs_credits: n, max_rows: 10000 }
 }

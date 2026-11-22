@@ -1,11 +1,13 @@
 // What a hiring table is made from, parsed strictly (pure): the role titles
-// (one search each), the country, the place, how recent and how many roles a
-// search adds. The same parse serves the app, /api/v1 and MCP.
+// (one search each), the country, the place, how recent, how many roles a
+// search adds and its More filters (lib/hiring/filters.ts). The same parse
+// serves the app, /api/v1 and MCP.
 import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
 import { digitsAsNumber } from '../digits-text';
 import { usdLimitOf } from '../cost-ceiling';
 import { DistinctItems } from '../distinct-items';
+import { directRoleTitle, parseHiringFilters, type HiringFilters } from './filters';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PLACE_CHARS,
   HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLE_CHARS, HIRING_MAX_ROLES,
@@ -17,6 +19,7 @@ export interface HiringInput {
   place: string | null;
   postedWithinDays: number | null;  // null: any time
   perSearch: number;
+  filters: HiringFilters | null;    // null: none (the routed search)
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -77,8 +80,13 @@ export function parseHiringInput(v: unknown, names: keyof typeof NAMES = 'camel'
   if (days !== null && !whole(days, 1, HIRING_MAX_POSTED_DAYS)) return postedDaysRefusal(n.days);
   const perSearch = digitsAsNumber(v.perSearch ?? HIRING_DEFAULT_PER_SEARCH);
   if (!whole(perSearch, 1, ENRICH_LIST_MAX_ITEMS)) return perSearchRefusal(n.perSearch);
+  const filters = parseHiringFilters(v, names);
+  if (typeof filters === 'string') return filters;
+  // With filters, each title as the job index takes it (one title, not a word to leave out).
+  const titles = filters ? parseRoles(roles.map(directRoleTitle)) : roles;
+  if (typeof titles === 'string') return titles;
   return {
-    roles, country: typeof c === 'string' && c ? c.toUpperCase() : null, place: place || null,
-    postedWithinDays: days as number | null, perSearch: perSearch as number,
+    roles: titles, country: typeof c === 'string' && c ? c.toUpperCase() : null, place: place || null,
+    postedWithinDays: days as number | null, perSearch: perSearch as number, filters,
   };
 }

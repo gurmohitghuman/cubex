@@ -1,9 +1,11 @@
-// Unit test for lib/enrich-request.ts and lib/enrich-input-clean.ts: one row of
+// Unit test for lib/enrich-request.ts, lib/enrich-template.ts and lib/enrich-input-clean.ts: one row of
 // an enrichment becomes a treg request. Pure: no DB, no network.
 import reqMod from '../../server/src/lib/enrich-request'
+import templateMod from '../../server/src/lib/enrich-template'
 import cleanMod from '../../server/src/lib/enrich-input-clean'
-const { buildRequest, fillTemplate, missingInputs, idempotencyKey, requestFingerprint } =
+const { buildRequest, missingInputs, idempotencyKey, requestFingerprint } =
   reqMod as typeof import('../../server/src/lib/enrich-request')
+const { fillTemplate } = templateMod as typeof import('../../server/src/lib/enrich-template')
 const { cleanDomain, asciiNamePart } = cleanMod as typeof import('../../server/src/lib/enrich-input-clean')
 
 let failures = 0

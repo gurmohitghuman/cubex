@@ -11,19 +11,20 @@
 // services/hiring-check-watch.ts). Each stage is journaled (hiring_checks,
 // migration 061): a restart waits for the run as before and then sums up; it
 // never starts a search on its own. One check of a table at a time.
-import { db } from '../lib/db';
 import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { getColumnTypes } from '../lib/column-types';
 import { dayIn } from '../lib/ai-visibility/check';
 import { nowDate } from '../lib/clock';
-import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
 import { micro, moneyUp } from '../lib/cost-ceiling';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
-import { HIRING_TOOL_ID, ROLE_COLUMNS, SEARCH_COLUMNS } from '../lib/hiring/names';
+import {
+  HIRING_DIRECT_PROVIDER, HIRING_DIRECT_TOOL_ID, ROLE_COLUMNS, SEARCH_COLUMNS, isHiringSearchTool,
+} from '../lib/hiring/names';
 import { newestColumnRun } from './enrich-column';
 import { rerunEnrichmentColumn, type RerunEstimate } from './enrich-rerun';
 import { startEnrichmentRun } from './enrich-run-start';
-import { countJobs, type JobCount, type SearchTerms } from './job-count';
+import type { JobCount } from './job-count';
+import { countHiringMatches } from './hiring-count';
 import { watchHiringCheck } from './hiring-check-watch';
 import {
   hiringCheckGoing, hiringCheckView, insertHiringCheck, lastSearchedDay, loadHiringCheck, sheetLive,
@@ -55,7 +56,7 @@ export function searchColumnOf(userId: string, rec: HiringRecord): string | null
   return getSheetColumns(s, userId).find(c => {
     if (types[c] !== 'enrich-status') return false;
     const e = newestColumnRun(s, userId, c)?.config.enrichment;
-    return e?.toolId === HIRING_TOOL_ID && e.list?.destSheetId === rec.roles_sheet_id;
+    return isHiringSearchTool(e?.toolId) && e!.list?.destSheetId === rec.roles_sheet_id;
   }) ?? null;
 }
 
@@ -78,23 +79,12 @@ export function hiringPlan(userId: string, rec: HiringRecord, opts: CheckOpts = 
   const searches = countRows(rec.searches_sheet_id!, userId);
   if (searches === 0) return bad('Searches has no rows: add a role title to search for.');
   const list = run.config.enrichment.list;
+  // A table with More filters searches one job index itself (its run names no provider).
+  const direct = run.config.enrichment.toolId === HIRING_DIRECT_TOOL_ID;
   return {
     label: today(opts.timeZone ?? null), since: lastSearchedDay(userId, rec.id), searches, column,
-    provider: list?.provider ?? null, perSearch: list?.maxItems ?? 0,
+    provider: list?.provider ?? (direct ? HIRING_DIRECT_PROVIDER : null), perSearch: list?.maxItems ?? 0,
   };
-}
-
-// The first searches' terms, for the free count.
-function searchTerms(userId: string, sheetId: string): SearchTerms[] {
-  const rows = db.prepare(`SELECT json_extract(data, ?) AS t, json_extract(data, ?) AS c, json_extract(data, ?) AS d
-    FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index LIMIT ?`).all(
-    `$."${SEARCH_COLUMNS.role}"`, `$."${SEARCH_COLUMNS.country}"`, `$."${SEARCH_COLUMNS.days}"`, sheetId, userId,
-    HIRING_COUNT_MAX_SEARCHES) as Array<{ t: unknown; c: unknown; d: unknown }>;
-  return rows.filter(r => String(r.t ?? '').trim()).map(r => {
-    const days = Number(r.d);
-    return { title: String(r.t).trim(), country: String(r.c ?? '').trim(),
-      days: Number.isSafeInteger(days) && days > 0 ? days : null };
-  });
 }
 
 async function searchEstimate(userId: string, rec: HiringRecord, plan: HiringPlan):
@@ -110,8 +100,9 @@ export async function estimateHiringCheck(userId: string, rec: HiringRecord, opt
   Promise<{ plan: HiringPlan; estimate: HiringEstimate } | RunFail> {
   const plan = hiringPlan(userId, rec, opts);
   if ('fail' in plan) return plan;
+  const config = newestColumnRun(rec.searches_sheet_id!, userId, plan.column)!.config;
   const [est, matches] = await Promise.all([searchEstimate(userId, rec, plan),
-    countJobs(userId, plan.provider, searchTerms(userId, rec.searches_sheet_id!))]);
+    countHiringMatches(userId, rec.searches_sheet_id!, config, plan.provider)]);
   if ('fail' in est) return est;
   return { plan, estimate: hiringEstimate(est, plan, matches) };
 }

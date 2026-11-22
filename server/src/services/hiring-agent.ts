@@ -2,6 +2,8 @@
 // (snake_case), over the same services as the app. A check is paid: it takes
 // the token's run-start slot and stops at its spend cap.
 import { checkMostOf, parseHiringInput } from '../lib/hiring/input';
+import { FILTER_KEYS, FILTER_NAMES, type HiringFilters } from '../lib/hiring/filters';
+import type { JobCount } from './job-count';
 import { timeZoneOf } from '../lib/ai-visibility/check';
 import { createHiringTable } from './hiring-create';
 import { estimateHiringCheck, startHiringCheck, type HiringEstimate, type HiringStartFail } from './hiring-check';
@@ -28,9 +30,11 @@ export const hiringJson = (v: HiringView) => ({
 
 export async function agentCreateHiring(userId: string, body: unknown) {
   const b = isObj(body) ? body : {};
+  // Description words, seniority and the rest, by their snake_case names (lib/hiring/filters.ts).
+  const filters = Object.fromEntries(Object.values(FILTER_NAMES.snake).map(k => [k, b[k]]));
   const input = parseHiringInput({
     roles: b.roles, country: b.country, place: b.place, postedWithinDays: b.posted_within_days,
-    perSearch: b.per_search,
+    perSearch: b.per_search, ...filters,
   }, 'snake');
   if (typeof input === 'string') return bad(input);
   const made = await createHiringTable(userId, input);
@@ -40,7 +44,7 @@ export async function agentCreateHiring(userId: string, body: unknown) {
   return {
     ok: {
       ...hiringJson(hiringView(rec)), table_name: made.ok.tableName, searches: made.ok.searches,
-      per_search: made.ok.perSearch,
+      per_search: made.ok.perSearch, ...searchOptionsJson(input.filters),
       next: 'Nothing was searched yet. hiring_signals action "check" gives the estimate; with estimate_only false '
         + 'and its high_usd as max_cost_usd, it runs every search.',
     },
@@ -52,10 +56,18 @@ export function agentGetHiring(userId: string, id: unknown) {
   return rec ? { ok: hiringJson(hiringView(rec)) } : notFound;
 }
 
+// What a table made with description words, seniority and the rest was made with (none: nothing).
+const searchOptionsJson = (f: HiringFilters | null) => (f
+  ? Object.fromEntries(FILTER_KEYS.map(k => [FILTER_NAMES.snake[k], f[k]])) : {});
+
+// What the free count leaves out of what the searches send.
+const countNote = (leftOut: JobCount['leftOut']) => `The job index's free count${leftOut.includes('place')
+  ? ', before the place filter' : ''}.`;
+
 const estimateJson = (e: HiringEstimate) => ({
   searches: e.searches, roles_up_to: e.rolesUpTo, low_usd: e.lowUsd, high_usd: e.highUsd, price_known: e.priceKnown,
   matches: e.matches ? { about: e.matches.about, searches_counted: e.matches.counted,
-    at_least: e.matches.capped, note: 'The job index\'s free count, before the place filter.' } : null,
+    at_least: e.matches.capped, note: countNote(e.matches.leftOut) } : null,
   ...(e.dailyLimit ? { daily_limit: e.dailyLimit } : {}),
 });
 
