@@ -5,6 +5,7 @@
 import { stripControlAndC1Chars, stripControlChars } from '../csv-safety';
 import { cleanDomain } from '../clean/domain';
 import { holdsRunMarker } from '../enrich-seed';
+import { DistinctItems } from '../distinct-items';
 import { FORMULA_MAX_CHARS } from '../constants-formula';
 import {
   AI_VISIBILITY_MAX_BRAND_CHARS, AI_VISIBILITY_MAX_COMPETITORS, AI_VISIBILITY_MAX_QUESTION_CHARS,
@@ -76,20 +77,18 @@ function parseEngines(v: unknown): EngineId[] | string {
 
 function parseQuestions(v: unknown): string[] | string {
   if (!Array.isArray(v)) return 'questions must be a list of the questions to ask.';
-  const out: string[] = [];
+  // The cap is checked as questions come in (lib/distinct-items.ts): a long list is refused at its first one past it.
+  const out = new DistinctItems(AI_VISIBILITY_MAX_QUESTIONS);
   for (const q of v) {
     const s = typeof q === 'string' ? stripControlChars(q).replace(/\s+/g, ' ').trim() : '';
     if (!s) continue;
     if (s.length > AI_VISIBILITY_MAX_QUESTION_CHARS || holdsRunMarker(s)) {
       return `Each question is plain text of at most ${AI_VISIBILITY_MAX_QUESTION_CHARS} characters.`;
     }
-    if (!out.some(x => x.toLowerCase() === s.toLowerCase())) out.push(s);
+    if (!out.add(s)) return `Start with at most ${AI_VISIBILITY_MAX_QUESTIONS} questions (you can add rows later).`;
   }
-  if (out.length === 0) return 'Add at least one question, as a buyer would ask it.';
-  if (out.length > AI_VISIBILITY_MAX_QUESTIONS) {
-    return `Start with at most ${AI_VISIBILITY_MAX_QUESTIONS} questions (you can add rows later).`;
-  }
-  return out;
+  if (out.items.length === 0) return 'Add at least one question, as a buyer would ask it.';
+  return out.items;
 }
 
 export function parseAiVisibilityInput(v: unknown): AiVisibilityInput | string {

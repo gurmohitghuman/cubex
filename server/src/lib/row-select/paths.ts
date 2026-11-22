@@ -3,7 +3,7 @@
 // a JSON cell, such as an HTTP API answer: path is a list of keys (an object's
 // key, or an array's position from 0), at most MAX_PATH_DEPTH deep. Plain keys,
 // not JSONPath: nothing in a path is evaluated.
-import { MAX_PATH_DEPTH, MAX_PATH_KEY_CHARS } from '../constants-query';
+import { MAX_COLUMN_PICKS, MAX_PATH_DEPTH, MAX_PATH_KEY_CHARS } from '../constants-query';
 
 export type PathKey = string | number;
 export interface ColumnPick { column: string; path?: PathKey[]; as?: string }
@@ -44,6 +44,7 @@ function pickShape(raw: unknown): ColumnPick | string {
 // read then works as it always has); names are the columns read, once each.
 export function parseColumns(raw: unknown): { names: string[]; picks: ColumnPick[] | null } | { error: string } {
   if (!Array.isArray(raw) || raw.length === 0) return { error: 'columns must be a non-empty list.' };
+  if (raw.length > MAX_COLUMN_PICKS) return { error: `columns takes at most ${MAX_COLUMN_PICKS} items.` };
   const picks: ColumnPick[] = [];
   for (const item of raw) {
     const p = pickShape(item);
@@ -51,9 +52,12 @@ export function parseColumns(raw: unknown): { names: string[]; picks: ColumnPick
     picks.push(p);
   }
   if (picks.every(p => !p.path && p.as === undefined)) return { names: picks.map(p => p.column), picks: null };
-  const names = picks.map(pickName);
-  const twice = names.find((n, i) => names.indexOf(n) !== i);
-  if (twice !== undefined) return { error: `Two columns would both be named "${twice}": give one an as.` };
+  // A Set, not a scan of the names so far for each one.
+  const named = new Set<string>();
+  for (const n of picks.map(pickName)) {
+    if (named.has(n)) return { error: `Two columns would both be named "${n}": give one an as.` };
+    named.add(n);
+  }
   return { names: [...new Set(picks.map(p => p.column))], picks };
 }
 
