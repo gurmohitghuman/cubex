@@ -6,11 +6,12 @@
 // Atomics.compareExchange before its transaction and gives it back once that ended. A write that finds the worker's
 // turn awaits that checkpoint's answer (the event loop free), then tries again; a worker that finds a write's
 // skips its start-over, and that write asks for another checkpoint.
-// On Windows (writesWaitForCheckpoints, lib/wal-checkpointer.ts) a write also begins only once a checkpoint running
-// has answered, the event loop free meanwhile: there a commit that writes the WAL while the worker's checkpoint runs
-// waits inside it, on the event loop (on the Windows CI runner COMMIT took up to 149 ms then, 19 ms otherwise). Past
-// `until` too, for a write that must be made (a transform call's column add made there held the loop 783 ms): the
-// call answers later, the loop free. Each checkpoint is waited for WAL_CHECKPOINT_WAIT_MS at most, then never again.
+// On Windows and Linux (writesWaitForCheckpoints, lib/wal-checkpointer.ts) a write also begins only once a checkpoint
+// running has answered, the event loop free meanwhile: there a commit that writes the WAL while the worker's checkpoint
+// runs can wait inside it, on the event loop (on the Windows CI runner COMMIT took up to 149 ms then, 19 ms otherwise;
+// on the Linux one a clear's slice up to 128 ms). Past `until` too, for a write that must be made (a transform call's
+// column add made there held the loop 783 ms): the call answers later, the loop free. Each checkpoint is waited for
+// WAL_CHECKPOINT_WAIT_MS at most, then never again.
 // In its turn, before its transaction, a write reads the WAL (NOOP, on this connection): every frame copied (an
 // empty WAL too: its first write writes and syncs the header), it doesn't write; it asks the worker for a
 // checkpoint, which starts the WAL over, awaits the answer, and checks again. A checkpoint can still copy the last

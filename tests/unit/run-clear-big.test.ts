@@ -13,6 +13,8 @@
 // and 1,039 ms on two runs). No slice overlaps a checkpoint there now (wal-checkpoint-waits.test.ts), but a slice
 // still takes 50 to 80 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
+// On Linux and Windows no commit of a clear begins while the worker's checkpoint runs: writers wait for it
+// (lib/wal-checkpointer.ts). On the Linux runner commits made meanwhile held the loop 103 to 128 ms three times.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -34,6 +36,8 @@ const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const WINDOWS = process.platform === 'win32'
+// Where writers wait for a running checkpoint (writesWaitForCheckpoints, lib/wal-checkpointer.ts).
+const WAITS = WINDOWS || process.platform === 'linux'
 const N = WINDOWS ? 50_000 : 200_000
 const READERS = 20
 const CLEAR_MS = 5_000
@@ -83,10 +87,13 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
     watchedLoop = watch()
   }
   const w = probe.read()
+  const overlapping = probe.records().filter(r => r.checkpointing).length
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
-    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
+    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms, ${overlapping} while a checkpoint ran), `
+    + `${seen.size} data_version values seen`)
   const inside = watchedLoop.inside.map(transactionLine).join(' | ')
   console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
+  if (WAITS) assert.equal(overlapping, 0, 'commits of the clear begun while a checkpoint ran')
   return { ms, loopMs: watchedLoop.ownMs, seen: seen.size }
 }
 
