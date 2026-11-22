@@ -1,21 +1,22 @@
 name: WAL experiment (Linux)
 
-# Temporary (removed before review): the full unit suite on the Linux runner, as CI runs it, with a DISK line before
-# each test file (free disk, data waiting to be written, the test folders kept so far; UNIT_DISK_TRACE) and vmstat
-# every second, to see what the disk is doing when run-clear-big.test.ts runs (its clears print WALX lines).
+# Temporary (removed before review): on the Linux runner, writers waiting for a running checkpoint (as on Windows,
+# WAL_WAIT=on) or writing on meanwhile (off). run-clear-big.test.ts 40 runs each way, alternating within each job
+# (WALX lines: each clear's time, its transactions with a checkpoint in flight and the rest); then a 200,000-row CSV
+# import 5 times each way per job (tests/unit/wal-wait-cost.experiment.ts, IMPX lines).
 
 on:
   pull_request:
 
 jobs:
   experiment:
-    name: WAL experiment (Linux suite ${{ matrix.shard }})
+    name: WAL experiment (Linux ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -23,20 +24,19 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
-      - name: The disk
-        run: |
-          df -h / /tmp
-          findmnt -no SOURCE,FSTYPE,OPTIONS /
-          lsblk -o NAME,SIZE,ROTA,MODEL,SCHED
-          grep -E '^(MemTotal|Dirty|Writeback):' /proc/meminfo
-          sysctl vm.dirty_ratio vm.dirty_background_ratio vm.dirty_expire_centisecs vm.dirty_bytes vm.dirty_background_bytes
-      - name: The unit suite, traced
+      - name: run-clear-big, writers waiting for checkpoints or not
         shell: bash
         run: |
-          vmstat -t -w 1 > vmstat.log &
-          echo $! > vmstat.pid
-          UNIT_DISK_TRACE=1 npm run test:unit > suite.log 2>&1 || true
-          kill "$(cat vmstat.pid)" || true
-          grep -E '^(DISK|WALX|FAIL|\[x\]|\[done\])' suite.log
-          echo "== vmstat"
-          cat vmstat.log
+          for p in 1 2 3 4 5; do
+            if [ $(( (p + ${{ matrix.shard }}) % 2 )) -eq 0 ]; then order="off on"; else order="on off"; fi
+            for mode in $order; do
+              WAL_WAIT=$mode node scripts/unit-tests.mjs run-clear-big > "out-$p-$mode.log" 2>&1 || true
+              grep -E '^(WALX|FAIL)' "out-$p-$mode.log" | sed "s/^/shard ${{ matrix.shard }} run $p $mode: /"
+            done
+          done
+      - name: A 200,000-row CSV import, writers waiting for checkpoints or not
+        shell: bash
+        run: |
+          d=$(mktemp -d)
+          DB_PATH="$d/unit.db" TMPDIR="$d" IMPORT_ROWS=200000 IMPORT_PAIRS=5 \
+            npx tsx tests/unit/wal-wait-cost.experiment.ts 2>&1 | grep -E '^IMPX' | sed "s/^/shard ${{ matrix.shard }}: /"

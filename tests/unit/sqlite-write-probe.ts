@@ -33,6 +33,8 @@ export interface WriteProbeStats {
 export interface TransactionRecord {
   n: number; at: number; ms: number; cpuMs: number; before: WalNow; after: WalNow; startedOver: boolean
   checkpointing: boolean; ownCheckpoint: boolean; grew: boolean
+  // Experiment only (removed before review): a checkpoint in flight when the transaction ended.
+  askedEnd?: boolean
 }
 interface WalNow { log: number; checkpointed: number }
 // One short line: `#n 12.3 ms (cpu 11.8 ms), WAL 1500/1500 -> 53/0, started over, checkpoint asked, grew the -wal`.
@@ -87,7 +89,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
       const ownCheckpoint = auto > 0 && log1 >= auto
       if (ownCheckpoint) s.ownCheckpoints++
       records.push({ n: s.transactions, at: t0, ms, cpuMs: (c.user + c.system) / 1000, before: w0, after: w1,
-        checkpointing: asked, ownCheckpoint, grew: walBytes() > bytes0,
+        checkpointing: asked, askedEnd: checkpointing(), ownCheckpoint, grew: walBytes() > bytes0,
         startedOver: (h1 !== null && h1 !== h0) || log1 < w0.log })
       s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
       s.mostWalFrames = Math.max(s.mostWalFrames, log1)

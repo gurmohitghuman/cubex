@@ -36,6 +36,9 @@ const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 // WAL_EXPERIMENT=grown leaves it growing from empty; WALX lines sum up each clear's transactions.
 const { setWalFileSizingForTests } = await import('../../server/src/lib/wal-file')
 if (process.env.WAL_EXPERIMENT) setWalFileSizingForTests(process.env.WAL_EXPERIMENT === 'sized')
+// WAL_WAIT=on: writers wait for a running checkpoint, as on Windows; off: they write on meanwhile.
+const { setWritesWaitForCheckpointsForTests } = await import('../../server/src/lib/wal-checkpointer')
+if (process.env.WAL_WAIT) setWritesWaitForCheckpointsForTests(process.env.WAL_WAIT === 'on')
 const walSizeNow = () => { try { return statSync(`${process.env.DB_PATH}-wal`).size } catch { return 0 } }
 let clearN = 0
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -108,7 +111,14 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
     const copy = rs.find(r => r.after.checkpointed > 0)
     const firstCopy = ask && copy ? { askFrames: ask.before.log, copyFrames: copy.after.log,
       ms: +(copy.at + copy.ms - ask.at).toFixed(0) } : null
-    console.log('WALX ' + JSON.stringify({ mode: process.env.WAL_EXPERIMENT ?? 'none', clear: ++clearN,
+    // Transactions with a checkpoint in flight at their start or end, and the rest: how long, how long off the CPU.
+    const sum = (xs: typeof rs) => ({ n: xs.length, ms: +xs.reduce((a, r) => a + r.ms, 0).toFixed(0),
+      msMax: +Math.max(0, ...xs.map(r => r.ms)).toFixed(1), off: +xs.reduce((a, r) => a + off(r), 0).toFixed(0),
+      offMax: +Math.max(0, ...xs.map(off)).toFixed(1), off10: xs.filter(r => off(r) >= 10).length })
+    const overlap = sum(rs.filter(r => r.checkpointing || r.askedEnd))
+    const apart = sum(rs.filter(r => !r.checkpointing && !r.askedEnd))
+    console.log('WALX ' + JSON.stringify({ mode: process.env.WAL_WAIT ?? process.env.WAL_EXPERIMENT ?? 'none',
+      clear: ++clearN, clearMs: +ms.toFixed(0), overlap, apart,
       walAtStart, walAtEnd: walSizeNow(), tx: rs.length, grew: rs.filter(r => r.grew).length,
       longest: +w.longestTransactionMs.toFixed(1), loop: +watchedLoop.ownMs.toFixed(1),
       maxOff: top ? +off(top).toFixed(1) : 0, off20: waits.length, off40: waits.filter(x => x.ms - x.cpu >= 40).length,
