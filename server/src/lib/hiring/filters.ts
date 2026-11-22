@@ -42,11 +42,14 @@ export const FILTER_NAMES: Record<'camel' | 'snake', Record<FilterKey, string>> 
 const text = (v: string): string => stripControlChars(v).replace(/\s+/g, ' ').trim();
 const keyOf = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-// A list, or text with commas or lines: its items, each trimmed, once each
-// (case ignored), at most `max` of them. The cap is checked as items come in
+// A list, or text with commas or lines: its items, each trimmed and passed
+// through `keep` (which can refuse one), once each (case ignored), at most `max`
+// of them. The cap counts the kept items and is checked as they come in
 // (lib/distinct-items.ts), so a long list is refused at its first item past it.
 const TOO_MANY = Symbol('too many');
-function itemsOf(v: unknown, name: string, max: number): string[] | string | typeof TOO_MANY {
+type Refused = { refused: string };
+function itemsOf(v: unknown, name: string, max: number, keep: (item: string) => string | Refused = s => s):
+  string[] | string | typeof TOO_MANY {
   if (v === undefined || v === null) return [];
   const raw = typeof v === 'string' ? [v] : v;
   if (!Array.isArray(raw) || raw.some(x => typeof x !== 'string')) {
@@ -56,7 +59,10 @@ function itemsOf(v: unknown, name: string, max: number): string[] | string | typ
   for (const x of raw as string[]) {
     for (const part of x.split(/[,\r\n]/)) {
       const item = text(part);
-      if (item && !out.add(item)) return TOO_MANY;
+      if (!item) continue;
+      const kept = keep(item);
+      if (typeof kept !== 'string') return kept.refused;
+      if (!out.add(kept)) return TOO_MANY;
     }
   }
   return out.items;
@@ -98,19 +104,15 @@ function labelsOf(v: unknown, name: string, labels: readonly string[], also: Rec
 
 const DOMAIN_RE = /^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 
+// Each company by its website, so the cap counts sites: ramp.com and
+// https://www.Ramp.com/ are one company.
 function companiesOf(v: unknown, name: string): string[] | string {
-  const items = itemsOf(v, name, HIRING_MAX_COMPANIES);
-  if (items === TOO_MANY) return `${name} takes at most ${HIRING_MAX_COMPANIES} companies.`;
-  if (typeof items === 'string') return items;
-  const out: string[] = [];
-  for (const item of items) {
+  const items = itemsOf(v, name, HIRING_MAX_COMPANIES, item => {
     const d = cleanDomain(item);
-    if (!DOMAIN_RE.test(d)) {
-      return `Each company in ${name} is its website, such as ramp.com (got "${item.slice(0, 40)}").`;
-    }
-    if (!out.includes(d)) out.push(d);
-  }
-  return out;
+    return DOMAIN_RE.test(d) ? d
+      : { refused: `Each company in ${name} is its website, such as ramp.com (got "${item.slice(0, 40)}").` };
+  });
+  return items === TOO_MANY ? `${name} takes at most ${HIRING_MAX_COMPANIES} companies.` : items;
 }
 
 // The filters sent (null: none, so the table searches as one without them), or why they can't be taken.

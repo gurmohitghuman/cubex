@@ -1,7 +1,8 @@
 // The lists a request sends, answered at once however long. A create request's lists are kept once each up to
 // their cap (lib/distinct-items.ts): a hiring table's role titles (lib/hiring/input.ts) and six filter lists
 // (lib/hiring/filters.ts), and an AI visibility table's questions (lib/ai-visibility/input.ts). Duplicates are
-// dropped (case ignored, the first spelling kept), and a list past its cap is refused at its first item past it.
+// dropped (case ignored, the first spelling kept; companies by their website), and a list past its cap is refused
+// at its first item past it.
 // A row read's `columns` (lib/row-select/paths.ts, read_rows and REST rows/query) is capped before it is read, and
 // two picks named the same are found with a Set. 50,000 items: the scans these replace took seconds to over 40 s
 // on them (they grew with the square of the list), small enough for a revert proof to finish.
@@ -81,6 +82,18 @@ ok(`a hiring table's filter lists: ${MANY.toLocaleString('en-US')} distinct item
   assert.ok(typeof kept === 'object' && kept.filters, String(kept))
   assert.deepEqual([kept.filters.seniority, kept.filters.descriptionWords, kept.filters.companies],
     [['Senior'], ['Salesforce'], ['ramp.com']], 'duplicates dropped, case ignored, as before')
+})
+
+ok('a hiring table\'s companies: the cap counts websites, so two spellings of one site count once', () => {
+  const max = K.HIRING_MAX_COMPANIES
+  const sites = (n: number) => Array.from({ length: n }, (_, i) => `c${i}.com`)
+  const companiesOf = (companies: string[]) => {
+    const h = parseHiringInput({ roles: ['SDR'], companies })
+    return typeof h === 'string' ? h : h.filters?.companies.length
+  }
+  assert.equal(companiesOf(sites(26).flatMap(s => [s, `https://www.${s}/`])), 26, '26 sites written two ways')
+  assert.equal(companiesOf([...sites(max), 'https://c0.com']), max, 'the cap, and one site again')
+  assert.equal(companiesOf(sites(max + 1)), `companies takes at most ${max} companies.`)
 })
 
 const tooManyQuestions = `Start with at most ${K.AI_VISIBILITY_MAX_QUESTIONS} questions (you can add rows later).`
