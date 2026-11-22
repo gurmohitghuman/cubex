@@ -103,11 +103,16 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
     const slow = rs.filter(r => r.ms >= 40).map(r => ({ n: r.n, ms: +r.ms.toFixed(1), cpu: +r.cpuMs.toFixed(1),
       grew: r.grew, ckpt: r.checkpointing, frames: r.before.log, copied: r.before.checkpointed,
       after: `${r.after.log}/${r.after.checkpointed}` }))
+    // When the checkpoint was first asked, and when it first had frames copied: how long its first step took.
+    const ask = rs.find(r => r.checkpointing)
+    const copy = rs.find(r => r.after.checkpointed > 0)
+    const firstCopy = ask && copy ? { askFrames: ask.before.log, copyFrames: copy.after.log,
+      ms: +(copy.at + copy.ms - ask.at).toFixed(0) } : null
     console.log('WALX ' + JSON.stringify({ mode: process.env.WAL_EXPERIMENT ?? 'none', clear: ++clearN,
       walAtStart, walAtEnd: walSizeNow(), tx: rs.length, grew: rs.filter(r => r.grew).length,
       longest: +w.longestTransactionMs.toFixed(1), loop: +watchedLoop.ownMs.toFixed(1),
       maxOff: top ? +off(top).toFixed(1) : 0, off20: waits.length, off40: waits.filter(x => x.ms - x.cpu >= 40).length,
-      waits, slow, ...disk0, dirtyEndMB: memMB('Dirty'), writebackEndMB: memMB('Writeback') }))
+      waits, slow, firstCopy, ...disk0, dirtyEndMB: memMB('Dirty'), writebackEndMB: memMB('Writeback') }))
   }
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
