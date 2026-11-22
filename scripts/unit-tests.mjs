@@ -16,13 +16,14 @@ import { fileURLToPath } from 'node:url';
 
 const PREFIX = 'cubex-unit-';
 const DEFAULT_LIMIT_S = 300;
+const MAX_LIMIT_S = 2_147_483; // Node's longest timer, in whole seconds
 const WINDOWS = process.platform === 'win32';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tsx = createRequire(import.meta.url).resolve('tsx/cli');
 const limitText = process.env.UNIT_FILE_TIMEOUT_S ?? '';
 const LIMIT_S = limitText === '' ? DEFAULT_LIMIT_S : Number(limitText);
-if (!Number.isFinite(LIMIT_S) || LIMIT_S <= 0) {
-  console.error(`UNIT_FILE_TIMEOUT_S must be a number of seconds over 0, not '${limitText}'`);
+if (!Number.isFinite(LIMIT_S) || LIMIT_S <= 0 || LIMIT_S > MAX_LIMIT_S) {
+  console.error(`UNIT_FILE_TIMEOUT_S must be a number of seconds over 0 and up to ${MAX_LIMIT_S}, not '${limitText}'`);
   process.exit(2);
 }
 const names = process.argv.slice(2);
@@ -37,20 +38,38 @@ if (!tests.length) {
 // Not realpath'd: tsx puts a socket in here and macOS caps socket paths near 104 characters.
 const base = path.resolve(os.tmpdir());
 const dir = fs.mkdtempSync(path.join(base, PREFIX));
-// A test and every process it started: on macOS and Linux the test leads its own process group (below), on
-// Windows taskkill follows the process tree. tsx runs each test in a second Node process, so stopping only
-// the first would leave the test itself running.
+// A test and every process it started. tsx runs each test in a second Node process, so stopping only the
+// first would leave the test itself running. On Windows taskkill follows the process tree. On macOS and Linux
+// the tree comes from one look at the process table (ps), parents first; a process started after that look is
+// missed. The test stays in the runner's process group, so a signal to the whole run, even a SIGKILL that
+// ends the runner at once, still reaches the test and what it started.
+const treeOf = pid => {
+  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
+  if (ps.status !== 0) return null;
+  const children = new Map();
+  for (const line of ps.stdout.split('\n')) {
+    const [id, parent] = line.trim().split(/\s+/).map(Number);
+    if (id && parent) children.set(parent, [...(children.get(parent) ?? []), id]);
+  }
+  const tree = [pid];
+  for (let i = 0; i < tree.length; i++) tree.push(...(children.get(tree[i]) ?? []));
+  return tree;
+};
 const stopTree = (child, signal) => {
   if (!child.pid) return;
   if (WINDOWS) {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     return;
   }
-  try { process.kill(-child.pid, signal); } catch { /* it has ended */ }
+  const tree = treeOf(child.pid);
+  if (!tree) console.error(`[!] could not list processes with ps: ${signal} went to process ${child.pid} alone`);
+  for (const pid of tree ?? [child.pid]) {
+    try { process.kill(pid, signal); } catch { /* it has ended */ }
+  }
 };
 
-// Ctrl+C reaches the running test too (passed on to its process group); start no more of them, and still
-// clean up below.
+// A signal to the runner alone is passed on to the running test and every process it started (Ctrl+C reaches
+// them all anyway, as one process group); start no more tests, and still clean up below.
 let interrupted = false;
 let running = null;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
@@ -66,7 +85,7 @@ const run = (file, n) => new Promise(resolve => {
   const db = path.join(fs.mkdtempSync(path.join(dir, `db${n}-`)), 'unit.db');
   const env = { ...process.env, DB_PATH: db, TMPDIR: dir, TEMP: dir, TMP: dir };
   const child = spawn(process.execPath, [tsx, path.join('tests', 'unit', file)],
-    { cwd: root, env, stdio: 'inherit', detached: !WINDOWS });
+    { cwd: root, env, stdio: 'inherit' });
   running = child;
   let late = false;
   const timer = setTimeout(() => { late = true; stopTree(child, 'SIGKILL'); }, LIMIT_S * 1000);
