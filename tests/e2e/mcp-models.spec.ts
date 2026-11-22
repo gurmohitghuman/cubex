@@ -2,6 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
+import { waitRunsSetUp } from './helpers-enrich'
 
 // AI-model tools: list_models discovery (search + page cap so 300+ models
 // never flood agent context) and set_default_model (account + per-sheet, with
@@ -10,6 +11,9 @@ import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'
 // that user; it also clears its own defaults before finishing.
 
 const MODEL = 'openai/gpt-4o-mini'
+// The account default as it was, put back after the test when it stopped before clearing it itself.
+let putBack: (() => Promise<unknown>) | null = null
+test.afterEach(async () => { await putBack?.(); putBack = null })
 
 // Delegates to helpers.makeAccessToken, which mints straight into the test DB.
 async function makeToken(api: APIRequestContext, scopes: string[], name: string): Promise<string> {
@@ -51,10 +55,14 @@ test('MCP models: discover, set defaults (account + sheet), resolve in runs, cle
   expect(parseResult(typo as any).error).toContain('list_models')
 
   // Account default set → visible in list_models → a model-less run resolves it.
+  const before = all.account_default_model ?? null
+  putBack = () => call('set_default_model', { model: before })
   expect((await call('set_default_model', { model: MODEL })).account_default_model).toBe(MODEL)
   expect((await call('list_models', { search: MODEL })).account_default_model).toBe(MODEL)
   const run = await call('run_ai_column', { sheet_id: sheetId, column_name: 'ai', prompt: 'echo /val' })
   expect(run.run_id).toBeTruthy() // started — the default resolved (it then fails: no OpenRouter key)
+  // The start answers at once, then writes its cells: until then a call naming the sheet is refused (busy).
+  await waitRunsSetUp(sheetId)
 
   // Sheet default shows up on get_sheet.
   expect((await call('set_default_model', { model: MODEL, sheet_id: sheetId })).default_ai_model).toBe(MODEL)
@@ -63,6 +71,7 @@ test('MCP models: discover, set defaults (account + sheet), resolve in runs, cle
   // Clear both → model-less runs error again with the actionable message.
   await call('set_default_model', { model: null, sheet_id: sheetId })
   expect((await call('set_default_model', { model: null })).account_default_model).toBeNull()
+  putBack = null
   const noModel = await client.callTool({
     name: 'run_ai_column', arguments: { sheet_id: sheetId, column_name: 'ai2', prompt: 'echo /val' },
   })
