@@ -42,7 +42,7 @@ const dir = fs.mkdtempSync(path.join(base, PREFIX));
 // first would leave the test itself running. On Windows taskkill follows the process tree. On macOS and Linux
 // the tree comes from one look at the process table (ps), parents first; a process started after that look is
 // missed. The test stays in the runner's process group, so a signal to the whole run, even a SIGKILL that
-// ends the runner at once, still reaches the test and what it started.
+// ends the runner at once, still reaches the test and what it started. Says whether it reached the whole tree.
 const treeOf = pid => {
   const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
   if (ps.status !== 0) return null;
@@ -56,16 +56,17 @@ const treeOf = pid => {
   return tree;
 };
 const stopTree = (child, signal) => {
-  if (!child.pid) return;
+  if (!child.pid) return true;
   if (WINDOWS) {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    return;
+    return true;
   }
   const tree = treeOf(child.pid);
   if (!tree) console.error(`[!] could not list processes with ps: ${signal} went to process ${child.pid} alone`);
   for (const pid of tree ?? [child.pid]) {
     try { process.kill(pid, signal); } catch { /* it has ended */ }
   }
+  return tree !== null;
 };
 
 // A signal to the runner alone is passed on to the running test and every process it started (Ctrl+C reaches
@@ -87,11 +88,11 @@ const run = (file, n) => new Promise(resolve => {
   const child = spawn(process.execPath, [tsx, path.join('tests', 'unit', file)],
     { cwd: root, env, stdio: 'inherit' });
   running = child;
-  let late = false;
-  const timer = setTimeout(() => { late = true; stopTree(child, 'SIGKILL'); }, LIMIT_S * 1000);
+  let late = null;
+  const timer = setTimeout(() => { late = stopTree(child, 'SIGKILL') ? 'late' : 'late-part'; }, LIMIT_S * 1000);
   const end = status => { clearTimeout(timer); running = null; resolve(status); };
   child.on('error', err => { console.error(err.message); end(1); });
-  child.on('exit', code => end(late ? 'late' : code ?? 1));
+  child.on('exit', code => end(late ?? code ?? 1));
 });
 
 const started = Date.now();
@@ -100,9 +101,10 @@ try {
   for (const [n, file] of tests.entries()) {
     if (interrupted) break;
     const status = await run(file, n);
-    if (status === 'late') {
+    if (status === 'late' || status === 'late-part') {
       failed.push(`${file} (did not end within ${LIMIT_S} s)`);
-      console.error(`[x] tests/unit/${file} did not end within ${LIMIT_S} s: stopped it and every process it started`);
+      const all = status === 'late' ? ': stopped it and every process it started' : '';
+      console.error(`[x] tests/unit/${file} did not end within ${LIMIT_S} s${all}`);
     } else if (status !== 0) {
       failed.push(file);
       console.error(`[x] tests/unit/${file} failed (exit ${status})`);
