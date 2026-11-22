@@ -15,6 +15,7 @@
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
+import { statSync } from 'node:fs'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
@@ -31,6 +32,12 @@ const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
   await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+// Experiment only (removed before review): WAL_EXPERIMENT=sized makes the -wal file its full size at each reset,
+// WAL_EXPERIMENT=grown leaves it growing from empty; WALX lines sum up each clear's transactions.
+const { setWalFileSizingForTests } = await import('../../server/src/lib/wal-file')
+if (process.env.WAL_EXPERIMENT) setWalFileSizingForTests(process.env.WAL_EXPERIMENT === 'sized')
+const walSizeNow = () => { try { return statSync(`${process.env.DB_PATH}-wal`).size } catch { return 0 } }
+let clearN = 0
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const WINDOWS = process.platform === 'win32'
@@ -67,6 +74,7 @@ async function running(sid: string, column: string): Promise<string> {
 async function watched(sid: string, stop: () => Promise<unknown>) {
   await walCheckpointerIdle()
   probe.reset()
+  const walAtStart = walSizeNow()
   const seen = new Set([version.get(sid)])
   const poll = setInterval(() => seen.add(version.get(sid)), 5)
   const watch = loopWatch(probe.records)
@@ -83,6 +91,18 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
     watchedLoop = watch()
   }
   const w = probe.read()
+  {
+    const rs = probe.records()
+    const off = (r: { ms: number; cpuMs: number }) => r.ms - r.cpuMs
+    const top = [...rs].sort((x, y) => off(y) - off(x))[0]
+    const waits = rs.filter(r => off(r) >= 20).map(r => ({ ms: +r.ms.toFixed(1), cpu: +r.cpuMs.toFixed(1),
+      grew: r.grew, ckpt: r.checkpointing, frames: r.before.log }))
+    console.log('WALX ' + JSON.stringify({ mode: process.env.WAL_EXPERIMENT ?? 'none', clear: ++clearN,
+      walAtStart, walAtEnd: walSizeNow(), tx: rs.length, grew: rs.filter(r => r.grew).length,
+      longest: +w.longestTransactionMs.toFixed(1), loop: +watchedLoop.ownMs.toFixed(1),
+      maxOff: top ? +off(top).toFixed(1) : 0, off20: waits.length, off40: waits.filter(x => x.ms - x.cpu >= 40).length,
+      waits }))
+  }
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
   const inside = watchedLoop.inside.map(transactionLine).join(' | ')
