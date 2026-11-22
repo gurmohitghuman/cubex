@@ -371,7 +371,7 @@ An item of `columns` can take one value out of a cell holding JSON, such as an H
 {"columns": ["Company", {"column": "Response", "path": ["data", "emails", 0], "as": "Email"}]}
 ```
 
-`path` is a list of plain keys, at most 5: an object's key, or a list position from 0. It is not JSONPath. The value comes back as it is in the JSON (text, number, object or list), or `null` when the cell isn't JSON or has no such key. Without `as`, it is named after its path (`Response.data.emails.0`).
+`path` is a list of plain keys, at most 5: an object's key, or a list position from 0. It is not JSONPath. The value comes back as it is in the JSON (text, number, object or list), or `null` when the cell isn't JSON or has no such key. Without `as`, it is named after its path (`Response.data.emails.0`). A read lists at most 1,000 `columns`.
 
 ### Saved views
 

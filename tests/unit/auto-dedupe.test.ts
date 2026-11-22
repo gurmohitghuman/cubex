@@ -190,10 +190,14 @@ async function main() {
 
   const C = sheet('C', Array.from({ length: 50 }, (_, i) => ({ Email: `u${i}@x.com` })))
   await ok('rows arriving while the keys build are checked once they are; auto-run waits for them', async () => {
-    const on = setAutoDedupe(uid, C, { column: 'Email', match: 'email' })
+    // Turning it on hands the build to the lookup worker's thread, which can write 50 rows' keys before this thread's
+    // next statement. Sent in the same transaction, the row arrives while the keys are still to build.
+    const { on, out } = db.transaction(() => {
+      const on = setAutoDedupe(uid, C, { column: 'Email', match: 'email' })
+      return { on, out: 'ok' in on ? append(C, [{ Email: 'u7@x.com' }]) : null }
+    }).immediate()
     assert.ok('ok' in on && on.ok.state === 'building')
-    const out = append(C, [{ Email: 'u7@x.com' }])
-    assert.equal(out.deduped!.waiting, 1)
+    assert.equal(out!.deduped!.waiting, 1)
     assert.equal(autoDedupeChecking(C), true)
     assert.equal(await maintainAutoDedupeSheet(C, uid, Date.now() + 10_000), 'ready')
     // Turning the setting on also started its background driver, which may make this check first on a slow

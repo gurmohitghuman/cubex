@@ -1,6 +1,6 @@
 // Row-query extras (read_rows and REST rows/query: aggregates and nested
 // paths), the grid's search and its value counts. Guards, not quotas.
-import { CELL_MAX_ENRICHMENT } from './constants';
+import { CELL_MAX_ENRICHMENT, MAX_COLUMNS_PER_SHEET } from './constants';
 
 // max_chars_per_cell (lib/row-select/cut-cells.ts): each returned cell's text
 // cut to that many characters. The highest is the longest cell Cubex stores
@@ -44,6 +44,9 @@ export const RUN_ERROR_MS = 50;
 // the characters in one key or in an output name.
 export const MAX_PATH_DEPTH = 5;
 export const MAX_PATH_KEY_CHARS = 200;
+// The `columns` one read lists (names, or values picked out of JSON cells): every column a sheet can hold, with
+// room to pick several values out of a cell. Checked before the list is read, so a longer one is refused at once.
+export const MAX_COLUMN_PICKS = Math.max(1_000, MAX_COLUMNS_PER_SHEET);
 
 // Search (services/sheet-search.ts): the text, and how many matching cells a
 // count goes up to before it says "10,000+".

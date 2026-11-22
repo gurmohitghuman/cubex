@@ -6,6 +6,7 @@ import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
 import { digitsAsNumber } from '../digits-text';
 import { usdLimitOf } from '../cost-ceiling';
+import { DistinctItems } from '../distinct-items';
 import { directRoleTitle, parseHiringFilters, type HiringFilters } from './filters';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PLACE_CHARS,
@@ -27,20 +28,18 @@ const text = (v: unknown): string => (typeof v === 'string' ? stripControlChars(
 function parseRoles(v: unknown): string[] | string {
   const raw = typeof v === 'string' ? v.split(/\r?\n/) : v;
   if (!Array.isArray(raw)) return 'roles must list the role titles to search for, such as "SDR".';
-  const out: string[] = [];
+  // The cap is checked as titles come in (lib/distinct-items.ts): a long list is refused at its 21st title.
+  const out = new DistinctItems(HIRING_MAX_ROLES);
   for (const r of raw) {
     const s = text(r);
     if (!s) continue;
     if (s.length > HIRING_MAX_ROLE_CHARS || holdsRunMarker(s)) {
       return `Each role title is plain text of at most ${HIRING_MAX_ROLE_CHARS} characters.`;
     }
-    if (!out.some(x => x.toLowerCase() === s.toLowerCase())) out.push(s);
+    if (!out.add(s)) return `Start with at most ${HIRING_MAX_ROLES} role titles (you can add rows later).`;
   }
-  if (out.length === 0) return 'Add at least one role title, such as "Sales Development Representative".';
-  if (out.length > HIRING_MAX_ROLES) {
-    return `Start with at most ${HIRING_MAX_ROLES} role titles (you can add rows later).`;
-  }
-  return out;
+  if (out.items.length === 0) return 'Add at least one role title, such as "Sales Development Representative".';
+  return out.items;
 }
 
 const whole = (v: unknown, lo: number, hi: number): boolean =>
