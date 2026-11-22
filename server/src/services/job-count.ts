@@ -3,12 +3,15 @@
 // of treg's job search providers do). Called with the person's own treg key,
 // only while treg's catalog lists the count as free, and with a max cost of 0,
 // so treg charges nothing whatever the catalog says; never recorded as a
-// call. The place isn't counted (the counts take places in their own forms),
-// so it's "about". Any failure means no count; nothing else changes.
+// call. A routed search's place isn't counted (the counts take places in their
+// own forms), so it's "about". A table with More filters searches the job
+// index itself: its count is sent that search's own body, so it takes every
+// filter the search does. Any failure means no count; nothing else changes.
 import { v4 as uuidv4 } from 'uuid';
 import { tregCall } from '../lib/treg-call';
 import { getCatalogEndpoint } from '../lib/treg-catalog';
 import { HIRING_COUNT_MAX_SEARCHES, HIRING_COUNT_TIMEOUT_MS } from '../lib/constants';
+import { countryName } from '../lib/hiring/filters';
 import { getTregToken } from './treg-key';
 
 export interface SearchTerms { title: string; country: string; days: number | null }
@@ -16,13 +19,6 @@ export interface SearchTerms { title: string; country: string; days: number | nu
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
-
-// "US" → "United States" (one index takes country names).
-const countryName = (code: string): string => {
-  try {
-    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase()) ?? code;
-  } catch { return code; }
-};
 
 // Each count's tool, the body it takes for a search, and the number in its answer (capped: at its ceiling).
 const COUNTS: Record<string, {
@@ -64,9 +60,9 @@ async function countIsFree(toolId: string): Promise<boolean> {
   return isObj(cost) && cost.type === 'free' && (cost.usd === undefined || cost.usd === 0);
 }
 
-async function countOne(token: string, c: (typeof COUNTS)[string], s: SearchTerms) {
+async function countOne(token: string, c: (typeof COUNTS)[string], body: Json) {
   const ans = await tregCall(token, {
-    method: 'POST', path: `/call/${encodeURIComponent(c.toolId)}`, query: '', body: JSON.stringify(c.body(s)),
+    method: 'POST', path: `/call/${encodeURIComponent(c.toolId)}`, query: '', body: JSON.stringify(body),
     idempotencyKey: uuidv4(), routed: false, maxCostUsd: 0,
   }, AbortSignal.timeout(HIRING_COUNT_TIMEOUT_MS)).catch(() => null);
   if (!ans || ans.status !== 200 || ans.meta.tregError || !isObj(ans.body)) return null;
@@ -76,19 +72,40 @@ async function countOne(token: string, c: (typeof COUNTS)[string], s: SearchTerm
 
 // about: the roles all counted searches match together (a role two searches
 // find counts twice); counted: the searches it covers (the first
-// HIRING_COUNT_MAX_SEARCHES); capped: some count stopped at its ceiling. null: no count.
-export interface JobCount { about: number; counted: number; capped: boolean }
+// HIRING_COUNT_MAX_SEARCHES); capped: some count stopped at its ceiling;
+// leftOut: what the searches send that the count doesn't take. null: no count.
+export interface JobCount { about: number; counted: number; capped: boolean; leftOut: Array<'place'> }
 
-export async function countJobs(userId: string, provider: string | null, searches: SearchTerms[]):
-  Promise<JobCount | null> {
-  const c = provider ? COUNTS[provider.toLowerCase()] : undefined;
+async function countAll(userId: string, c: (typeof COUNTS)[string] | undefined, bodies: Json[]):
+  Promise<Omit<JobCount, 'leftOut'> | null> {
   const token = getTregToken(userId);
-  if (!c || !token || searches.length === 0) return null;
+  if (!c || !token || bodies.length === 0) return null;
   if (!(await countIsFree(c.toolId))) return null;
-  const first = searches.slice(0, HIRING_COUNT_MAX_SEARCHES);
-  const answers = await Promise.all(first.map(s => countOne(token, c, s)));
+  const first = bodies.slice(0, HIRING_COUNT_MAX_SEARCHES);
+  const answers = await Promise.all(first.map(b => countOne(token, c, b)));
   if (answers.some(a => a === null)) return null;
   return {
     about: answers.reduce((sum, a) => sum + a!.n, 0), counted: first.length, capped: answers.some(a => a!.capped),
   };
+}
+
+export async function countJobs(userId: string, provider: string | null, searches: SearchTerms[]):
+  Promise<JobCount | null> {
+  const c = provider ? COUNTS[provider.toLowerCase()] : undefined;
+  const n = c ? await countAll(userId, c, searches.map(c.body)) : null;
+  return n && { ...n, leftOut: ['place'] };
+}
+
+// A direct search's body, as its count takes it: every filter, no page or
+// order, and limit 0 (the total only).
+export function directCountBody(search: Json): Json {
+  const { limit: _limit, page: _page, sort_by: _by, sort_order: _order, ...rest } = search;
+  return { ...rest, limit: 0 };
+}
+
+// The searches of a table with More filters (each its request body, in order):
+// their count on the job index, which takes every filter they send.
+export async function countDirectJobs(userId: string, searches: Json[]): Promise<JobCount | null> {
+  const n = await countAll(userId, COUNTS.hirebase, searches.map(directCountBody));
+  return n && { ...n, leftOut: [] };
 }

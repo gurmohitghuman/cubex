@@ -5,6 +5,7 @@ import { Briefcase, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { hiringAPI } from '@/utils/api/hiring'
 import { linesOf } from '@/lib/ai-visibility'
+import { HiringMoreOptions, NO_HIRING_OPTIONS } from './HiringMoreOptions'
 import {
   HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PER_SEARCH, HIRING_MAX_ROLES,
   HIRING_POSTED_CHOICES,
@@ -22,6 +23,7 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
   const [place, setPlace] = useState('')
   const [days, setDays] = useState<number | null>(HIRING_DEFAULT_POSTED_DAYS)
   const [perSearch, setPerSearch] = useState(String(HIRING_DEFAULT_PER_SEARCH))
+  const [options, setOptions] = useState(NO_HIRING_OPTIONS)
   const [busy, setBusy] = useState(false)
   // Once each, as first written (the server takes them the same way).
   const titles = linesOf(roles).filter((r, i, all) => all.findIndex(x => x.toLowerCase() === r.toLowerCase()) === i)
@@ -39,7 +41,7 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     try {
       const made = await hiringAPI.create({
         roles: titles, country: country.trim().toUpperCase(), place: place.trim(), postedWithinDays: days,
-        perSearch: per,
+        perSearch: per, ...options,
       })
       onClose()
       // The table opens on its first check's estimate.
@@ -91,6 +93,7 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 onChange={e => setPerSearch(e.target.value)} aria-label="Roles per search" />
             </Field>
           </div>
+          <HiringMoreOptions value={options} onChange={setOptions} />
           <p className="text-xs text-gray-500">
             Nothing is searched yet. The table opens on what its first check costs (treg bills each role found), and
             checks when you say so. Each check adds only roles never found before.

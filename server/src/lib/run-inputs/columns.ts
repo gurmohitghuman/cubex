@@ -11,6 +11,7 @@ import { extractColumnReferences, matchPromptColumn } from '../prompt';
 import { extractTemplateTokenNames, type HTTPAPIConfig } from '../http-request-template';
 import { goneColumnFor, goneColumnsOf, templateTokenIs } from '../template-token-match';
 import { inputTemplates, isEnrichmentConfig } from '../enrich-run-config';
+import { jsonTemplateColumns } from '../enrich-template';
 import { isWaterfallConfig } from '../waterfall/config';
 import { resolveColumn } from '../waterfall/inputs';
 import { aiRunDataColumn, type AiRunDataColumnFields } from '../ai-data-column';
@@ -84,15 +85,17 @@ export function requestRunInputColumns(config: HTTPAPIConfig, master: string, co
   const out = new Inputs([master, ...(config.responseMapping ?? []).map(m => m.columnName)]);
   const gone = goneColumnsOf(config.requestConfig);
   if (isWaterfallConfig(config) || isEnrichmentConfig(config)) {
-    // Inputs mapped to a column ({{Website}}); fixed values aren't cells.
+    // Inputs mapped to a column ({{Website}}), or an enrichment's JSON template's columns
+    // (lib/enrich-template.ts); fixed values aren't cells.
     for (const t of Object.values(inputTemplates(config))) {
       const ref = COLUMN_REF.exec(t);
-      if (!ref) continue;
-      const name = ref[1];
+      const names = ref ? [ref[1]] : isEnrichmentConfig(config) ? jsonTemplateColumns(t) : [];
       // Each resolves the name as its run does: an enrichment's fillTemplate any case or the normalized
       // name (a rename to a name holding "}" writes that form), a waterfall the same unless the column is gone.
-      const col = !isEnrichmentConfig(config) && gone.includes(name) ? null : resolveColumn(name, columns);
-      out.add(col, `{{${name}}}`);
+      for (const name of names) {
+        const col = !isEnrichmentConfig(config) && gone.includes(name) ? null : resolveColumn(name, columns);
+        out.add(col, `{{${name}}}`);
+      }
     }
     return out.list;
   }

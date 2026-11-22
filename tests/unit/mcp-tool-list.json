@@ -1,5 +1,5 @@
 {
-  "release": "v0.8.32",
+  "release": "v0.8.38",
   "tools": {
     "add_column": {
       "properties": {
@@ -1009,6 +1009,19 @@
           ],
           "type": "string"
         },
+        "companies": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "country": {
           "anyOf": [
             {
@@ -1019,11 +1032,63 @@
             }
           ]
         },
+        "description_words": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "employment_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "estimate_only": {
           "type": "boolean"
         },
         "id": {
           "type": "string"
+        },
+        "leave_out_description_words": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "leave_out_title_words": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
         },
         "max_cost_usd": {
           "type": "number"
@@ -1056,6 +1121,19 @@
           ]
         },
         "roles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "seniority": {
           "anyOf": [
             {
               "items": {

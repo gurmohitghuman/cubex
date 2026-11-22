@@ -1,0 +1,267 @@
+{
+ "endpoint": {
+  "id": "hirebase.jobs.search",
+  "name": "Search job postings",
+  "summary": "Search open jobs read from employers' own career pages by title, keyword, place, remote, salary, experience, company, funding or posted date. Each job has its description, posted pay, locations, skills, apply link and a company profile.",
+  "provider": "hirebase",
+  "provider_display": "Hirebase",
+  "kind": "data",
+  "method": "POST",
+  "path": "/jobs/search",
+  "platform_eligible": true,
+  "status": null,
+  "superseded_by": null,
+  "cost": {
+   "type": "per_result",
+   "value": 1,
+   "currency": "credit",
+   "unit": "record",
+   "reserve": {
+    "rows": {
+     "param": "body.limit",
+     "default": {
+      "value": 10,
+      "source": "docs"
+     },
+     "max": 100
+    }
+   },
+   "settle": {
+    "count": {
+     "path": "jobs"
+    }
+   },
+   "note": "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted).",
+   "usd": 0.0015
+  },
+  "input": {
+   "bodyType": "json",
+   "note": "Unknown fields answer 422. A multi-location posting comes back as one row per location.",
+   "body": {
+    "job_titles": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude",
+     "example": [
+      "software engineer"
+     ]
+    },
+    "keywords": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "ranked against description, skills and technologies; prefix - to exclude",
+     "example": [
+      "kubernetes"
+     ]
+    },
+    "geo_locations": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": false,
+     "note": "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area; a place that cannot be found, \"Remote\" included, is not filtered on: use location_types for remote",
+     "example": [
+      {
+       "country": "United States"
+      }
+     ]
+    },
+    "location_types": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "Remote, Hybrid or In-Person",
+     "example": [
+      "Remote"
+     ]
+    },
+    "experience": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "years-of-experience bands, not seniority: Entry, Junior, Mid, Senior or Executive (Executive is 10+ years, mostly senior and staff roles). For the level a job is labelled with, use experience_levels"
+    },
+    "experience_levels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "the job's experience_level label: Entry-Level, Junior / Associate, Mid-Level, Senior, Principal / Staff / Lead or Executive. total_count ignores it and counts as if it were absent",
+     "example": [
+      "Executive"
+     ]
+    },
+    "job_types": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "Full Time, Part Time, Contract or Internship"
+    },
+    "salary": {
+     "type": "object",
+     "required": false,
+     "note": "{min, max} in currency"
+    },
+    "currency": {
+     "type": "string",
+     "required": false,
+     "example": "USD"
+    },
+    "company_name": {
+     "type": "string",
+     "required": false,
+     "note": "one company's name, case ignored; a known variant finds it ('Ford Motor Company' finds Ford), but 'Ramp' never finds LiveRamp or Kramp",
+     "example": "Ramp"
+    },
+    "company_domain": {
+     "type": "string",
+     "required": false,
+     "note": "one company's website, without scheme",
+     "example": "ford.com"
+    },
+    "company_domains": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "several companies' websites, OR'd",
+     "example": [
+      "ford.com",
+      "ramp.com"
+     ]
+    },
+    "company_slug": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "Hirebase company slugs; resolve one with hirebase.companies.search",
+     "example": [
+      "palantir-technologies"
+     ]
+    },
+    "funding_types": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "example": [
+      "Series A"
+     ]
+    },
+    "days_ago": {
+     "type": "integer",
+     "required": false,
+     "example": 7
+    },
+    "ingested_after": {
+     "type": "string",
+     "required": false,
+     "note": "ISO-8601; only jobs Hirebase first saw at or after this time. For polling new jobs, with sort_by first_ingested"
+    },
+    "job_board": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "example": [
+      "greenhouse"
+     ]
+    },
+    "exclude_job_board": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "required": false,
+     "note": "[\"linkedin\"] keeps only jobs read from career pages"
+    },
+    "return_raw_description": {
+     "type": "string",
+     "required": false,
+     "enum": [
+      "true",
+      "false"
+     ],
+     "note": "\"true\" adds description_raw, the full HTML from the job system"
+    },
+    "sort_by": {
+     "type": "string",
+     "required": false,
+     "enum": [
+      "relevance",
+      "date_posted",
+      "first_ingested",
+      "salary",
+      "yoe"
+     ]
+    },
+    "sort_order": {
+     "type": "string",
+     "required": false,
+     "enum": [
+      "desc",
+      "asc"
+     ],
+     "default": "desc"
+    },
+    "page": {
+     "type": "integer",
+     "required": false,
+     "default": 1,
+     "min": 1
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "default": 10,
+     "min": 1,
+     "max": 100,
+     "note": "jobs per page, and the price: each job returned is charged",
+     "example": 1
+    }
+   }
+  }
+ },
+ "example_response": {
+  "jobs": [
+   {
+    "_id": "6af6d7ef68fef158edfe90b0",
+    "job_title": "Custome Success Manager, Enterprise | Lifecycle",
+    "application_link": "https://jobs.ashbyhq.com/ramp/4727e0b5-eafa-41ab-89ce-f6a1d19d3f0e",
+    "location_raw": "New York, NY (HQ); San Francisco, CA",
+    "job_type": "Full Time",
+    "location_type": "Hybrid",
+    "date_posted": "2026-11-13",
+    "company_name": "Ramp",
+    "company_link": "ramp.com",
+    "experience_level": "Senior",
+    "team": "Lifecycle team",
+    "recruiter_agency": false
+   }
+  ],
+  "total_count": 1,
+  "company_count": 1,
+  "page": 1,
+  "limit": 1,
+  "total_pages": 1
+ }
+}
