@@ -1,7 +1,7 @@
 name: WAL experiment
 
-# Temporary (removed before review): WAL commit times on each runner by how the -wal file was prepared
-# (scripts/wal-growth-experiment.mjs).
+# Temporary (removed before review): hiring-summarize-big's first pass, repeated on each runner, with the -wal
+# file grown from empty or preallocated (tests/unit/wal-growth-passes.experiment.ts).
 
 on:
   pull_request:
@@ -23,6 +23,10 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - name: Run the experiment
+        shell: bash
         env:
-          WAL_ROUNDS: '60'
-        run: node scripts/wal-growth-experiment.mjs
+          WAL_PASSES: '40'
+        run: |
+          d=$(mktemp -d)
+          DB_PATH="$d/unit.db" TMPDIR="$d" TEMP="$d" TMP="$d" npx tsx tests/unit/wal-growth-passes.experiment.ts \
+            | grep -v 'Migration applied'
