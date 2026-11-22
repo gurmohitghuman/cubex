@@ -15,7 +15,7 @@
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
@@ -75,6 +75,9 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
   await walCheckpointerIdle()
   probe.reset()
   const walAtStart = walSizeNow()
+  const meminfo = () => { try { return readFileSync('/proc/meminfo', 'utf8') } catch { return '' } }
+  const memMB = (k: string) => Math.round(Number(new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(meminfo())?.[1] ?? 0) / 1024)
+  const disk0 = { t: +(Date.now() / 1000).toFixed(1), dirtyMB: memMB('Dirty'), writebackMB: memMB('Writeback') }
   const seen = new Set([version.get(sid)])
   const poll = setInterval(() => seen.add(version.get(sid)), 5)
   const watch = loopWatch(probe.records)
@@ -97,11 +100,14 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
     const top = [...rs].sort((x, y) => off(y) - off(x))[0]
     const waits = rs.filter(r => off(r) >= 20).map(r => ({ ms: +r.ms.toFixed(1), cpu: +r.cpuMs.toFixed(1),
       grew: r.grew, ckpt: r.checkpointing, frames: r.before.log }))
+    const slow = rs.filter(r => r.ms >= 40).map(r => ({ n: r.n, ms: +r.ms.toFixed(1), cpu: +r.cpuMs.toFixed(1),
+      grew: r.grew, ckpt: r.checkpointing, frames: r.before.log, copied: r.before.checkpointed,
+      after: `${r.after.log}/${r.after.checkpointed}` }))
     console.log('WALX ' + JSON.stringify({ mode: process.env.WAL_EXPERIMENT ?? 'none', clear: ++clearN,
       walAtStart, walAtEnd: walSizeNow(), tx: rs.length, grew: rs.filter(r => r.grew).length,
       longest: +w.longestTransactionMs.toFixed(1), loop: +watchedLoop.ownMs.toFixed(1),
       maxOff: top ? +off(top).toFixed(1) : 0, off20: waits.length, off40: waits.filter(x => x.ms - x.cpu >= 40).length,
-      waits }))
+      waits, slow, ...disk0, dirtyEndMB: memMB('Dirty'), writebackEndMB: memMB('Writeback') }))
   }
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)

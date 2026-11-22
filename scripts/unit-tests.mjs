@@ -39,11 +39,31 @@ const run = (file, n) => new Promise(resolve => {
   child.on('exit', code => resolve(code ?? 1));
 });
 
+// Experiment only (removed before review): with UNIT_DISK_TRACE set, a DISK line before each test file: free disk,
+// data waiting to be written (Dirty) and being written (Writeback), and the size of the test folders kept so far.
+const sizeOf = p => {
+  let t = 0;
+  for (const e of fs.readdirSync(p, { withFileTypes: true })) {
+    const q = path.join(p, e.name);
+    try { t += e.isDirectory() ? sizeOf(q) : fs.statSync(q).size; } catch { /* gone meanwhile */ }
+  }
+  return t;
+};
+const mb = bytes => Math.round(bytes / 1048576);
+function diskLine(n, file) {
+  const mi = Object.fromEntries(fs.readFileSync('/proc/meminfo', 'utf8').split('\n').filter(Boolean)
+    .map(l => { const [k, v] = l.split(':'); return [k, parseInt(v, 10) * 1024]; }));
+  const st = fs.statfsSync(dir);
+  return `DISK ${n} ${file} t=${(Date.now() / 1000).toFixed(1)} freeMB=${mb(Number(st.bavail) * Number(st.bsize))} `
+    + `dirtyMB=${mb(mi.Dirty)} writebackMB=${mb(mi.Writeback)} keptMB=${mb(sizeOf(dir))}`;
+}
+
 const started = Date.now();
 const failed = [];
 try {
   for (const [n, file] of tests.entries()) {
     if (interrupted) break;
+    if (process.env.UNIT_DISK_TRACE) console.log(diskLine(n, file));
     const status = await run(file, n);
     if (status !== 0) {
       failed.push(file);
