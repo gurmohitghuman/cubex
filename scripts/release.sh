@@ -170,8 +170,10 @@ agent_changes_check() {
     die "$AGENT_CHANGES lists this release's changes for agents under $listed:" \
       "rename it to $tag on main first"
   fi
+  # grep reads the whole list (no -q): stopping at the match would cut git show off, and under pipefail
+  # that fails the pipe even when the line is there.
   if [ "$listed" = "$tag" ]; then
-    git show "$target:$TOOL_LIST" 2>/dev/null | grep -qxF "  \"release\": \"$tag\"," \
+    git show "$target:$TOOL_LIST" 2>/dev/null | grep -xF "  \"release\": \"$tag\"," > /dev/null \
       || die "$tag has changes for agents, and $TOOL_LIST on main doesn't record $tag's tool list:" \
         "record it first in a small pull request (MCP_TOOL_LIST_RECORD=$tag npm run test:unit -- mcp-tool-list)"
   fi
@@ -217,6 +219,9 @@ cmd_abandon() {
   gh release delete "$tag" --repo "$CUBEX_REPO" --yes
   echo "Deleted the $tag draft. No tag was made; fix main and cut $tag again."
 }
+
+# Sourced (tests/unit/release-tool-list-check.test.ts): the functions above only.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 REMOTE="$(public_remote)"
 case "${1:-}" in

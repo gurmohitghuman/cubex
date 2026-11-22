@@ -4,7 +4,8 @@
 // and a call to a removed or renamed tool says what replaced it.
 //
 // A change to a tool's name or input schema needs a line here, under the release it will ship in (the next
-// one after the latest tag; rename it if that release gets another number). tests/unit/mcp-tool-list.test.ts
+// one after the latest tag, or the next patch after it once its tool list is recorded, just before its cut;
+// rename it if that release gets another number). tests/unit/mcp-tool-list.test.ts
 // compares the tools with the list recorded for the last release with lines (tests/unit/mcp-tool-list.json)
 // and fails on a change without a line. A change agents should know about that the schema doesn't show (a
 // new field in an answer, a new refusal) gets a line too. Write each line for an agent: what it calls now,
