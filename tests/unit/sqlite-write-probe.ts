@@ -12,13 +12,17 @@
 // about 16 ms), the WAL's frames (and of them copied) before and after it, whether it started the WAL over (the WAL
 // header's checkpoint count or salt changed, or its frames fell: SQLite then syncs the new header to disk inside that
 // commit, on this connection's thread), whether a checkpoint asked of the worker was still unanswered when it began
-// (`checkpointing`), and whether SQLite's own checkpoint ran inside its commit (`ownCheckpoint`: the commit left the
+// (`checkpointing`), whether SQLite's own checkpoint ran inside its commit (`ownCheckpoint`: the commit left the
 // WAL at or past wal_autocheckpoint with it on; with a worker copying the WAL back meanwhile, the main file's mtime
-// can't tell).
+// can't tell), and whether it grew the -wal file (`grew`: on Windows such a commit can wait on the OS, which is why
+// the server makes the file its full size at start, lib/wal-file.ts). The WAL's frames are SQLite's count, not the
+// file's size: a file made its full size holds zeros past them.
 // A transaction begun inside another (a savepoint) is part of that one, not a record of its own.
 import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import type Database from 'better-sqlite3'
+import walFileMod from '../../server/src/lib/wal-file'
+const { sizeWalFile } = walFileMod as typeof import('../../server/src/lib/wal-file')
 
 export interface WriteProbeStats {
   transactions: number; longestTransactionMs: number; transactionsWritingMainFile: number
@@ -28,26 +32,21 @@ export interface WriteProbeStats {
 
 export interface TransactionRecord {
   n: number; at: number; ms: number; cpuMs: number; before: WalNow; after: WalNow; startedOver: boolean
-  checkpointing: boolean; ownCheckpoint: boolean
+  checkpointing: boolean; ownCheckpoint: boolean; grew: boolean
 }
 interface WalNow { log: number; checkpointed: number }
-// One short line: `#n 12.3 ms (cpu 11.8 ms), WAL 1500/1500 -> 53/0, started over, checkpoint asked`.
+// One short line: `#n 12.3 ms (cpu 11.8 ms), WAL 1500/1500 -> 53/0, started over, checkpoint asked, grew the -wal`.
 export const transactionLine = (r: TransactionRecord) => `#${r.n} ${r.ms.toFixed(1)} ms `
   + `(cpu ${r.cpuMs.toFixed(1)} ms), WAL ${r.before.log}/${r.before.checkpointed} -> `
   + `${r.after.log}/${r.after.checkpointed}${r.startedOver ? ', started over' : ''}`
-  + `${r.checkpointing ? ', checkpoint asked' : ''}`
+  + `${r.checkpointing ? ', checkpoint asked' : ''}${r.grew ? ', grew the -wal' : ''}`
 
 const NOOP = /^\s*(PRAGMA\s+)?wal_checkpoint\s*\(\s*noop\s*\)\s*;?\s*$/i
 
 // `checkpointing`: whether a checkpoint asked of the worker has yet to answer (lib/wal-checkpointer.ts).
 export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpointing: () => boolean = () => false) {
-  const pageSize = db.pragma('page_size', { simple: true }) as number
   const mtime = () => fs.statSync(dbPath, { bigint: true }).mtimeNs
-  // Frames in the -wal file: its 32-byte header, then each frame a 24-byte header and a page.
-  const walFrames = () => {
-    try { return Math.max(0, Math.round((fs.statSync(`${dbPath}-wal`).size - 32) / (pageSize + 24))) }
-    catch { return 0 }
-  }
+  const walBytes = () => { try { return fs.statSync(`${dbPath}-wal`).size } catch { return 0 } }
   const zero = (): WriteProbeStats => ({ transactions: 0, longestTransactionMs: 0, transactionsWritingMainFile: 0,
     mostTransactionFrames: 0, checkpoints: 0, longestCheckpointMs: 0, mostCheckpointFrames: 0, walReads: 0,
     mostWalFrames: 0, mostWalFramesBeforeWrite: 0, ownCheckpoints: 0 })
@@ -69,6 +68,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
   const timed = (f: (...a: unknown[]) => unknown) => (...a: unknown[]) => {
     if (db.inTransaction) return f(...a)
     const before = mtime()
+    const bytes0 = walBytes()
     const w0 = wal()
     const h0 = walHeader()
     const asked = checkpointing()
@@ -87,10 +87,10 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
       const ownCheckpoint = auto > 0 && log1 >= auto
       if (ownCheckpoint) s.ownCheckpoints++
       records.push({ n: s.transactions, at: t0, ms, cpuMs: (c.user + c.system) / 1000, before: w0, after: w1,
-        checkpointing: asked, ownCheckpoint,
+        checkpointing: asked, ownCheckpoint, grew: walBytes() > bytes0,
         startedOver: (h1 !== null && h1 !== h0) || log1 < w0.log })
       s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
-      s.mostWalFrames = Math.max(s.mostWalFrames, walFrames())
+      s.mostWalFrames = Math.max(s.mostWalFrames, log1)
       if (log1 > w0.log && w0.checkpointed < w0.log) {
         s.mostWalFramesBeforeWrite = Math.max(s.mostWalFramesBeforeWrite, w0.log)
       }
@@ -124,10 +124,12 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
     autoCheckpointFrames: db.pragma('wal_autocheckpoint', { simple: true }) as number,
     // A new window: the WAL emptied (not counted), the numbers zeroed. TRUNCATE leaves the -wal file empty, so the
     // next commit writes a header (and syncs it): one write here, not counted, rewriting user_version with its own
-    // value, begins the WAL again, as it always is once a server has written.
+    // value, begins the WAL again, as it always is once a server has written. Then the file is made its full size
+    // where a server does that at start (lib/wal-file.ts: Windows, or a test that switches it on).
     reset() {
       pragma('wal_checkpoint(TRUNCATE)')
       pragma(`user_version = ${Number(pragma('user_version', { simple: true }))}`)
+      sizeWalFile(db, dbPath)
       s = zero()
       records = []
     },

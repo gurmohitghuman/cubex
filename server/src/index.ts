@@ -78,9 +78,15 @@ import setupRunsRoutes from './routes/setup-runs';
 import trashRoutes from './routes/trash';
 import { RUN_CLEANUP_STALE_MINUTES, RUN_CLEANUP_SWEEP_MS, RUN_STALL_SWEEP_MS } from './lib/constants';
 import { prepareUploadDir } from './lib/uploads';
+import { db } from './lib/db';
+import { DB_PATH } from './lib/db-path';
+import { sizeWalFile } from './lib/wal-file';
 
 // Run database migrations on boot before anything else.
 runMigrations();
+// On Windows the -wal file is made its full size now, before any other thread or process opens the database and
+// before the server serves, so no commit has to grow it (lib/wal-file.ts).
+sizeWalFile(db, DB_PATH);
 
 // Load (or, on first boot, generate) the encryption key now: a malformed
 // APP_ENCRYPTION_KEY fails here instead of on the first saved API key, and the
