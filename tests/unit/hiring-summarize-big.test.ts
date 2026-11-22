@@ -5,7 +5,9 @@
 // heap after each full collection (the peak sampled between collections also counts garbage V8 hasn't collected
 // yet, and swung from 70 to 270 MB between runs of one pass). A second pass writes no cell; a check whose run
 // added roles at 10 companies writes only those companies' cells. Each pass prints its time, the loop's longest
-// stretch, the longest transaction, the full collections and the heap after them, and the sampled peak.
+// stretch, the longest transaction, the full collections and the heap after them, and the sampled peak. Where the
+// server makes the -wal file its full size at start (Windows, lib/wal-file.ts; the probe's reset does the same), no
+// commit grows it: on the Windows runner one that did waited 233 ms off the CPU here.
 import assert from 'node:assert/strict'
 import { constants, performance, PerformanceObserver } from 'node:perf_hooks'
 import v8 from 'node:v8'
@@ -18,6 +20,7 @@ const { db, uid, ok, done, sheet } = undoKit('hiring-summarize-big')
 const { summarizeHiring } = await import('../../server/src/services/hiring-summarize')
 const { COMPANY_COLUMNS: C, ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
 const { checkpointAsked, walCheckpointerIdle } = await import('../../server/src/lib/wal-checkpointer')
+const { walFileSizing } = await import('../../server/src/lib/wal-file')
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 
 const N = process.platform === 'win32' ? 200_000 : 1_000_000
@@ -74,13 +77,16 @@ async function measured(check: { label: string; sinceLabel: string | null; runId
   await new Promise(resolve => setImmediate(resolve))
   gcs.disconnect()
   const w = probe.read()
+  const grew = probe.records().filter(r => r.grew).length
   const peakMb = (peak - base) / 1e6
   // With no full collection meanwhile, the sampled peak is all it took.
   const grewMb = (fulls > 0 ? held - base : peak - base) / 1e6
   console.log(`      ${(ms / 1000).toFixed(1)} s, loop held at most ${longest.ms.toFixed(0)} ms, ${w.transactions} `
     + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${s.cellsWritten} cells written; held at `
-    + `most ${grewMb.toFixed(0)} MB over ${fulls} full collections (sampled peak ${peakMb.toFixed(0)} MB)`)
+    + `most ${grewMb.toFixed(0)} MB over ${fulls} full collections (sampled peak ${peakMb.toFixed(0)} MB); `
+    + `${grew} grew the -wal file (${walFileSizing() ? 'made its full size first' : 'grown from empty'})`)
   console.log(`        in the longest stretch: ${inside.map(transactionLine).join(' | ') || 'no transaction'}`)
+  if (walFileSizing()) assert.equal(grew, 0, 'transactions that grew the -wal file')
   return { s, loopMs: longest.ms, grewMb }
 }
 

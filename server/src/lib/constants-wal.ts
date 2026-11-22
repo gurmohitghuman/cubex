@@ -40,6 +40,9 @@ export const WAL_CHECKPOINT_WAIT_MS = 30_000;
 export const DB_AUTO_CHECKPOINT_FRAMES = 2000;
 // journal_size_limit (lib/db.ts): the WAL file is cut back to this size when it starts over.
 export const DB_WAL_SIZE_LIMIT = 64 * 1024 * 1024;
+// Sizing the WAL file at start (lib/wal-file.ts): skipped unless the disk has this much free beyond what it
+// writes, so a nearly full disk isn't filled with zeros.
+export const WAL_FILE_FREE_MARGIN = 256 * 1024 * 1024;
 
 // Background bulk writers (lib/bulk-slices.ts: an undo, moves in and out of the trash, emptying it, a clear,
 // dedupe): as WAL_CHECKPOINT_FRAMES and WAL_PAUSE_FRAMES, much higher. On a slow disk such a job's whole time is
