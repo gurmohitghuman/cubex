@@ -32,6 +32,7 @@ await ok('a drain round with nothing to add takes no write lock', async () => {
     const t0 = performance.now()
     await drainListItems()
     const ms = performance.now() - t0
+    console.log(`      the round took ${ms.toFixed(0)} ms`)
     assert.ok(ms < 1_000, `the round waited ${ms.toFixed(0)} ms for another connection's write`)
   } finally {
     other.exec('ROLLBACK')

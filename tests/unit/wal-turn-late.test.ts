@@ -1,14 +1,15 @@
-// A write in turn past its deadline (lib/wal-turn.ts), on Windows (writesWaitForCheckpoints, lib/wal-checkpointer.ts):
-// there a commit that writes the WAL while the checkpoint worker's checkpoint runs waits inside it, on the event
-// loop (on the Windows CI runner COMMIT took up to 149 ms during a checkpoint and 19 ms otherwise). So a write that
-// must be made (`anyway`) begins only once a running checkpoint has answered, past `until` too: it waits, the loop
-// free, at most the wait's limit for that checkpoint (logged once, never waited for again). The switch is on here on
-// every platform but where a case says otherwise, so Linux runs the Windows path. Each write in turn is named by
-// what it writes. A transform_column call that starts while a checkpoint runs past its whole time makes three past
-// its deadline: the column add (on the runner, the one-frame transaction that held transform-regex-pages' loop 783
-// and 634 ms), data_version and the pass record. One that runs out of time waiting at its pause makes two:
-// data_version and its stop (the pass record already written). None begins while the checkpoint runs, and the call
-// answers once it has answered. Switched off (Linux's own), a write past its deadline writes at once.
+// A write in turn past its deadline (lib/wal-turn.ts), on Windows and Linux (writesWaitForCheckpoints,
+// lib/wal-checkpointer.ts): there a commit that writes the WAL while the checkpoint worker's checkpoint runs waits
+// inside it, on the event loop (on the Windows CI runner COMMIT took up to 149 ms during a checkpoint and 19 ms
+// otherwise; on the Linux one a clear's slice up to 128 ms). So a write that must be made (`anyway`) begins only once a
+// running checkpoint has answered, past `until` too: it waits, the loop free, at most the wait's limit for that
+// checkpoint (logged once, never waited for again). The switch is on here on every platform but where a case says
+// otherwise, so macOS runs that path too. Each write in turn is named by what it writes. A transform_column call that
+// starts while a checkpoint runs past its whole time makes three past its deadline: the column add (on the runner, the
+// one-frame transaction that held transform-regex-pages' loop 783 and 634 ms), data_version and the pass record. One
+// that runs out of time waiting at its pause makes two: data_version and its stop (the pass record already written).
+// None begins while the checkpoint runs, and the call answers once it has answered. Switched off (macOS's own), a write
+// past its deadline writes at once.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -182,7 +183,7 @@ await ok('a transform call that runs out of time waiting at its pause: data_vers
   }
 })
 
-await ok('switched off (Linux\'s own), a write past its deadline writes at once, while the checkpoint runs',
+await ok('switched off (macOS\'s own), a write past its deadline writes at once, while the checkpoint runs',
   async () => {
     w.setWritesWaitForCheckpointsForTests(false)
     const { asked } = await heldCheckpoint(800)

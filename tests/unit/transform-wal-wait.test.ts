@@ -6,8 +6,8 @@
 // and one page, not when the checkpoint ends; the next call, made at once, waits for that checkpoint all its time
 // and says so, writing no rows and answering the same cursor; the one after waits for it before its first page,
 // so no page is written past the WAL's bound. Going on with the cursors ends every row exactly once. That case runs
-// Linux's path on every platform (writesWaitForCheckpoints off): on Windows the call's last writes, past its
-// deadline, wait for that checkpoint first, so it answers once the checkpoint has (wal-turn-late.test.ts).
+// with writesWaitForCheckpoints off, as on macOS: on Windows and Linux the call's last writes, past its deadline,
+// wait for that checkpoint first, so it answers once the checkpoint has (wal-turn-late.test.ts).
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'

@@ -150,16 +150,20 @@ export function byDeadline<T>(p: Promise<T>, until: number): Promise<T | 'late'>
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-// On Windows a commit on this thread that writes the WAL while the worker's checkpoint runs can wait inside it: on
-// the Windows CI runner such a bulk slice took 58 to 110 ms (others about 31), once over a second, the extra time in
-// its commit, and only while the WAL file grew (as after a server start). There writers don't overlap a checkpoint:
-// walRoom asks only at the pause, and a write in turn (lib/wal-turn.ts) begins only once a running checkpoint has
-// answered. Linux writes on meanwhile, a sync there holding no other connection's writes. Tests switch it.
-let waitForCheckpoints = process.platform === 'win32';
+// A commit on this thread that writes the WAL while the worker's checkpoint runs can wait inside it, on the event
+// loop. On the Windows CI runner such a bulk slice took 58 to 110 ms (others about 31), once over a second, the extra
+// time in its commit, and only while the WAL file grew (as after a server start). On the Linux CI runner
+// run-clear-big.test.ts held the loop 103 to 128 ms three times, each a commit off the CPU most of that time while a
+// checkpoint ran; there, over 240 clears and 80 imports, every commit 10 ms or more off the CPU came while one ran
+// (12% of the commits). So on Windows and Linux writers don't overlap a checkpoint: walRoom asks only at the pause,
+// and a write in turn (lib/wal-turn.ts) begins only once a running checkpoint has answered. Bulk jobs take about 4
+// to 7% longer for it on the Linux runner. macOS isn't measured and writes on meanwhile. Tests switch it.
+const platformWaits = (): boolean => process.platform === 'win32' || process.platform === 'linux';
+let waitForCheckpoints = platformWaits();
 export const writesWaitForCheckpoints = (): boolean => waitForCheckpoints;
 // Tests only: on or off; null, the platform's own.
 export function setWritesWaitForCheckpointsForTests(on: boolean | null): void {
-  waitForCheckpoints = on ?? process.platform === 'win32';
+  waitForCheckpoints = on ?? platformWaits();
 }
 
 // A checkpoint's answer for a write waiting before it begins (lib/wal-turn.ts); 'late' once `until` comes; 'stuck'
