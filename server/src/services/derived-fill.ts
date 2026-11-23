@@ -16,10 +16,10 @@
 // until the fill is done (lib/field-fill-columns.ts); its end wakes the fills
 // waiting for one on its sheet.
 import { db } from '../lib/db';
-import { HEAVY_SLICE_ROWS } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { sheetRowIds } from '../lib/row-order';
 import { asBulkWriter } from '../lib/bulk-slices';
+import { sliceClock } from '../lib/slice-clock';
 import { stayBusyToFinish, whenSheetFree } from '../lib/sheet-busy';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import { redactSecrets } from '../lib/redact';
@@ -27,7 +27,9 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import type { DerivedKind, DerivedRecord, DerivedWait } from './derived-kind';
 import { parkFill } from './derived-fill-parked';
 import { fillEnded, waitThenGoOn } from './derived-fill-wait';
-import { asDerivedRead, derivedSelect, pageAfter, readDerivedRows, writeDerivedCells } from './derived-write';
+import {
+  asDerivedRead, derivedSelect, FIRST_TIMED_PAGE, pageByTime, readDerivedRows, writeDerivedCells,
+} from './derived-write';
 
 const FILL_ATTEMPTS = 5;
 
@@ -56,7 +58,7 @@ async function work<R extends DerivedRecord>(
     // free right after (a caller told "done" can start the next thing there).
     let ended = null as { status: 'done' | 'failed'; error: string | null } | null;
     const out = await asBulkWriter(async (w): Promise<DerivedWait | typeof TRASHED | null> => {
-      let page = HEAVY_SLICE_ROWS;
+      let page = FIRST_TIMED_PAGE;
       for (let at = 0; at < rowIds.length;) {
         await pass.prepare();
         const waitBefore = pass.waiting?.();
@@ -64,6 +66,7 @@ async function work<R extends DerivedRecord>(
         let stopped = false, trashed = false;
         let next = at;
         await w.slice(() => {
+          const began = sliceClock();
           if (!verifySheetOwnership(job.sheet_id, job.user_id)) { trashed = true; return; }
           // Edited, or started again meanwhile (an agent's second call): this fill is over.
           const now = kind.load(job.id);
@@ -76,7 +79,7 @@ async function work<R extends DerivedRecord>(
           const read = readDerivedRows(stmt.iterate(...sel.params, ids, job.sheet_id, job.user_id), page,
             inputs.length);
           const rows = read.rows.map(r => asDerivedRead(r, inputs.length));
-          const counts = writeDerivedCells(job.user_id, cellPath, rows, pass);
+          const counts = writeDerivedCells(job.user_id, cellPath, rows, pass, { began });
           // A column another column's auto-run reads queues these rows for it.
           markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { rowids: counts.changed });
           // The slice may end early (time, a pass to prepare, the read cut short):
@@ -86,7 +89,7 @@ async function work<R extends DerivedRecord>(
           else if (read.capped && rows.length > 0) next = rowIds.indexOf(rows[rows.length - 1].rowid, at) + 1;
           else next = end;
           if (next > at) kind.advance(job, rowIds[next - 1], counts);
-          page = pageAfter(page, rows.length, counts.done);
+          page = pageByTime(counts.done, sliceClock() - began);
         });
         if (trashed) return TRASHED;
         if (stopped) return null;

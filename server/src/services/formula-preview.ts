@@ -4,7 +4,7 @@
 // runs the formula in the sandbox exactly as the fill would.
 import { db } from '../lib/db';
 import {
-  DERIVED_SLICE_MS, FORMULA_PREVIEW_CELL_CHARS, FORMULA_PREVIEW_ROWS, FORMULA_PREVIEW_SCAN_ROWS,
+  FORMULA_PREVIEW_CELL_CHARS, FORMULA_PREVIEW_MS, FORMULA_PREVIEW_ROWS, FORMULA_PREVIEW_SCAN_ROWS,
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { checkFormulaInput, type FormulaColumnInput } from './formula-column';
@@ -59,7 +59,7 @@ export async function previewFormulaColumn(
       const rest = picked.slice(samples.length);
       const shown = (values: unknown[]) => Object.fromEntries(
         inputs.map((c, n) => [c, cut(inputText(values[n]), FORMULA_PREVIEW_CELL_CHARS)]));
-      pass.compute(rest.map(p => p.values), DERIVED_SLICE_MS).forEach((out, k) => samples.push({
+      pass.compute(rest.map(p => p.values), FORMULA_PREVIEW_MS).forEach((out, k) => samples.push({
         row: rest[k].row, inputs: shown(rest[k].values),
         result: cut(out.value, FORMULA_PREVIEW_CELL_CHARS), error: out.flag ?? null,
       }));

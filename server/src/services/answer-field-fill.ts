@@ -15,11 +15,14 @@
 // works out its cells, writes them and moves the job's cursor in one short
 // transaction, its WAL copied back on the checkpoint worker's thread
 // (lib/bulk-slices.ts); a restart goes on from the cursor
-// (resumeFieldJobs at boot). Writes are idempotent; a slice that fails is
+// (resumeFieldJobs at boot). A slice stops once it has taken BULK_SLICE_MS
+// (lib/slice-clock.ts), and the next reads as many answers as fit that at its
+// pace. Writes are idempotent; a slice that fails is
 // retried a few times, then the job ends as failed and frees the sheet.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
-import { HEAVY_SLICE_ROWS } from '../lib/constants';
+import { BULK_SLICE_MS, HEAVY_SLICE_ROWS } from '../lib/constants';
+import { sliceClock } from '../lib/slice-clock';
 import { jsonPath } from '../lib/sql-helpers';
 import { yieldToRequests } from '../lib/slices';
 import { asBulkWriter, runInCheckpointedSlices } from '../lib/bulk-slices';
@@ -28,6 +31,7 @@ import { fillEnded } from './derived-fill-wait';
 import { enrichmentFieldCell, httpFieldCell, type StoredResult } from '../lib/answer-field';
 import { statusColumnRuns, type ColumnRunRef } from './answer-runs';
 import { markAutorunInputs } from '../lib/autorun-mark';
+import { FIRST_TIMED_PAGE, pageByTime } from './derived-write';
 import { FIELD_FILLING as FILLING } from '../lib/field-fill-columns';
 
 export { FILL_PLACEHOLDER, fillingColumns } from '../lib/field-fill-columns';
@@ -93,9 +97,10 @@ async function link(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
     updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'running'`).run(job.id, job.user_id);
 }
 
-const readSlice = (runId: string, userId: string, after: number) => db.prepare(`SELECT row_index, status, undone,
-    response_data FROM http_results WHERE run_id = ? AND row_index > ? AND +user_id = ? ORDER BY row_index LIMIT ?`)
-  .all(runId, after, userId, HEAVY_SLICE_ROWS) as Array<StoredResult & { row_index: number; undone: number }>;
+const readSlice = (runId: string, userId: string, after: number, most: number) => db.prepare(`SELECT row_index,
+    status, undone, response_data FROM http_results WHERE run_id = ? AND row_index > ? AND +user_id = ?
+    ORDER BY row_index LIMIT ?`)
+  .all(runId, after, userId, most) as Array<StoredResult & { row_index: number; undone: number }>;
 
 const answered = (r: { status: string; undone: number }) =>
   (r.status === 'completed' || r.status === 'failed') && r.undone === 0;
@@ -130,22 +135,32 @@ async function fill(job: FieldJob, runs: ColumnRunRef[]): Promise<void> {
   let pos = job.run_pos;
   let after = job.row_cursor;
   let cell = pos < runs.length ? cellRule(runs[pos].id, job.user_id, job.json_path) : null;
+  // How many answers the next slice reads: as many as fit BULK_SLICE_MS at the last one's pace (pageByTime).
+  let page = FIRST_TIMED_PAGE;
   await runInCheckpointedSlices(() => {
     if (pos >= runs.length || !cell) return false;
-    const results = readSlice(runs[pos].id, job.user_id, after);
-    const cells: Array<[number, string]> = [];
+    const began = sliceClock();
+    const most = page;
+    const results = readSlice(runs[pos].id, job.user_id, after, most);
+    const written: number[] = [];
+    let worked = 0;
     for (const r of results) {
+      // Its time is up: the rest go in the next slice.
+      if (worked > 0 && sliceClock() - began >= BULK_SLICE_MS) break;
+      worked++;
       if (!answered(r) || taken.has(r.row_index)) continue;
       taken.add(r.row_index);
       const value = cell(r);
-      if (value !== null) cells.push([r.row_index, value]);
+      if (value === null) continue;
+      write.run(cellPath, value, job.sheet_id, job.user_id, r.row_index);
+      written.push(r.row_index);
     }
-    const done = results.length < HEAVY_SLICE_ROWS;
+    const done = worked === results.length && results.length < most;
     const nextPos = done ? pos + 1 : pos;
-    const nextAfter = done ? -1 : results[results.length - 1].row_index;
-    for (const [rowIndex, value] of cells) write.run(cellPath, value, job.sheet_id, job.user_id, rowIndex);
+    const nextAfter = done ? -1 : results[worked - 1].row_index;
+    page = pageByTime(worked, sliceClock() - began);
     // A column another column's auto-run reads queues these rows for it.
-    markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { indexes: cells.map(c => c[0]) });
+    markAutorunInputs(job.sheet_id, job.user_id, [job.column_name], { indexes: written });
     move.run(nextPos, nextAfter, job.id, job.user_id);
     pos = nextPos;
     after = nextAfter;

@@ -17,15 +17,12 @@ export const CLEAN_PREVIEW_SCAN_ROWS = 2_000;
 // CLEAN_FOLLOW_TICK_MS goes on after that pause, so other auto-runs get a turn.
 export const CLEAN_FOLLOW_KICK_MS = 300;
 export const CLEAN_FOLLOW_TICK_MS = 250;
-// A slice of a clean or formula column's fill or follow (services/derived-*.ts)
-// holds the write lock while its rows are worked out: it ends after this long
-// (or HEAVY_SLICE_ROWS rows) and lets others write. A cleaner takes
-// microseconds a row; a formula up to FORMULA_ROW_MS.
-export const DERIVED_SLICE_MS = 100;
-// A slice also stops reading rows once their cells (the column and its inputs)
-// add up to this many characters: a JSON input can hold a whole API response
-// (up to 200,000 characters) in every row. The next slice then reads about
-// twice as many rows as the last one worked out, never more than HEAVY_SLICE_ROWS.
+// A slice of a clean, formula or lookup column's fill or follow (services/derived-*.ts) holds the write lock while
+// its rows are worked out and written: it ends after BULK_SLICE_MS (lib/constants.ts; working the rows out gets half
+// of it) or HEAVY_SLICE_ROWS rows. A cleaner takes microseconds a row; a formula up to FORMULA_ROW_MS. A slice also
+// stops reading rows once their cells (the column and its inputs) add up to this many characters: a JSON input can
+// hold a whole API response (up to 200,000 characters) in every row. The next slice then reads fewer
+// (services/derived-write.ts: pageAfter, pageByTime), never more than HEAVY_SLICE_ROWS.
 export const DERIVED_SLICE_CHARS = 8_000_000;
 // A follow's slice of queued rows (an input was written in them) reads them by
 // row id: on rows with random ids each is on a page of its own. 5,000 of them
