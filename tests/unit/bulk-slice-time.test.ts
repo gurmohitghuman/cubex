@@ -1,3 +1,4 @@
+// Over 200 lines: a case for each writer's time check, at both clock speeds, sharing one clock and one slice count.
 // A CSV import's flush (services/csv-import.ts), a clean column's fill and follow (services/derived-write.ts) and
 // a column added from an answer (services/answer-field-fill.ts) each stop a slice once it has taken BULK_SLICE_MS
 // (lib/slice-clock.ts), so a slow machine or a busy CPU gets smaller slices, not longer ones. Each case gives the
@@ -142,12 +143,26 @@ await ok('a clean column following its source at 1 ms a read: slices of at most 
   assert.ok(got.slices.every(k => k >= 1 && k <= BULK_SLICE_MS), `rows a slice: ${got.slices.join(', ')}`)
 })
 
+// The rows the follow's new-row slices read (derived-follow.ts newSlice prepares its statement at run time, so
+// db.prepare is wrapped here). Each slice reads about what fits its time at the last one's pace, so the case below
+// reads well under twice its 1,000 rows (a slice reading twice what the last one did read 4,600).
+let newRowsRead = 0
+const realPrepare = db.prepare
+db.prepare = ((sql: string) => {
+  const st = realPrepare.call(db, sql)
+  if (!sql.includes('row_index > ? ORDER BY row_index LIMIT ?')) return st
+  const iterate = st.iterate.bind(st)
+  return Object.assign(st, { iterate: (...a: unknown[]) => (function* () {
+    for (const r of iterate(...a)) { newRowsRead++; yield r }
+  })() })
+}) as typeof db.prepare
 await ok('a clean column following 1,000 new rows at 1 ms a read: slices of at most BULK_SLICE_MS rows', async () => {
   const { sid } = await cleaned(10, 0)
   const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
   db.transaction(() => upTo(1_000).forEach(i => ins.run(uuid(), sid, uid, 10 + i,
     JSON.stringify({ Name: `  n${10 + i}  ` })))).immediate()
   const entry = () => entryFor(sid, uid, 'Name (clean)')!
+  newRowsRead = 0
   const got = await sliced(sid, 1, async () => {
     for (const end = Date.now() + 60_000; entry().watermark_row_index < 1_009 && Date.now() < end;) {
       await cleanFollowTick(entry())
@@ -157,6 +172,7 @@ await ok('a clean column following 1,000 new rows at 1 ms a read: slices of at m
   assert.deepEqual(got.rows, upTo(1_000).map(i => 10 + i), 'every new row once and in order')
   assert.ok(got.slices.length >= 1_000 / BULK_SLICE_MS, `${got.slices.length} slices: ${got.slices.join(', ')}`)
   assert.ok(got.slices.every(k => k >= 1 && k <= BULK_SLICE_MS), `rows a slice: ${got.slices.join(', ')}`)
+  assert.ok(newRowsRead >= 1_000 && newRowsRead <= 2_000, `${newRowsRead} rows read for 1,000 new rows`)
 })
 
 async function answered(n: number, ms: number) {
@@ -184,6 +200,7 @@ await ok('a column added from an answer at 50 ms a read: one row a slice', async
 })
 
 db.transaction = realTransaction
+db.prepare = realPrepare
 await closeWalCheckpointer()
 if (failures) { console.log(`${failures} bulk-slice-time assertion(s) failed`); process.exit(1) }
 console.log('All bulk-slice-time assertions passed.')

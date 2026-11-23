@@ -3,7 +3,10 @@
 // id, at the copy's row matching where the original had reached (the source's rows sit at 0, 3, 6… and the copy
 // renumbers them 0, 1, 2…, in several slices). The copy's call without cursor is refused naming the copy's own
 // cursor; the original's cursor is refused there, and the copy's on the source; going on in each ends every row
-// once. A copy leaving that column out gets no pass.
+// once. A copy leaving that column out gets no pass. A call's own limit (about 2 seconds of work, the wait for the
+// WAL included) can stop it early on a slow machine: the checks go on with its next_cursor as a caller would, and
+// take a pass stopped there after its first page as unfinished at 250 rows, as it is (transform_passes holds its
+// cursor whatever stopped it).
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -56,6 +59,38 @@ async function refused(p: Params, answer: object) {
   assert.deepEqual(await transformColumn(uid, p), answer)
   assert.equal(cells(p.sheetId), before, 'nothing written')
 }
+// The pass into T left unfinished after its first page: 250 rows written, its cursor at the source's row 747 (the
+// 250th). A fault planted in the call's second page stops it there, or the call's limit does first on a slow
+// machine; a call that only waited for the WAL wrote nothing and goes on. Answers the pass's cursor.
+async function unfinishedAt250(sheetId: string): Promise<string> {
+  let p = call(sheetId)
+  fault.arm(251)
+  try {
+    for (let calls = 0; calls < 20; calls++) {
+      const out = await transformColumn(uid, p)
+      if ('stopped' in out) {
+        assert.equal(out.stopped.rows_done, 250, JSON.stringify(out))
+        return out.stopped.next_cursor
+      }
+      if (!('ok' in out) || !out.ok.next_cursor || ![0, 250].includes(out.ok.updated)) assert.fail(JSON.stringify(out))
+      if (out.ok.updated === 250) return out.ok.next_cursor
+      p = { ...p, cursor: out.ok.next_cursor }
+    }
+    assert.fail('no call wrote a row')
+  } finally { fault.disarm() }
+}
+// Calls with `p`, going on with each next_cursor until the pass ends; answers the rows written over all the calls.
+async function toTheEnd(p: Params): Promise<number> {
+  let updated = 0
+  for (let calls = 0; calls < 50; calls++) {
+    const out = await transformColumn(uid, p)
+    if (!('ok' in out) || out.ok.created_column !== null) assert.fail(JSON.stringify(out))
+    updated += out.ok.updated
+    if (!out.ok.next_cursor) return updated
+    p = { ...p, cursor: out.ok.next_cursor }
+  }
+  assert.fail('the pass never ended')
+}
 async function copied(columns: string[]): Promise<string> {
   const out = await copySheetValues(uid, src, { columns })
   assert.ok('ok' in out && out.ok.rowsCopied === ROWS, JSON.stringify(out).slice(0, 300))
@@ -63,14 +98,8 @@ async function copied(columns: string[]): Promise<string> {
 }
 
 async function main() {
-  // Stopped on its second page: 250 rows written, its cursor at the source's row 747 (the 250th).
-  fault.arm(251)
-  let kept = ''
-  try {
-    const out = await transformColumn(uid, call(src))
-    assert.ok('stopped' in out && out.stopped.rows_done === 250, JSON.stringify(out))
-    kept = out.stopped.next_cursor
-  } finally { fault.disarm() }
+  const kept = await unfinishedAt250(src)
+  assert.match(kept, /^\d+:747:/, 'at the source\'s 250th row')
 
   await check('the copy gets a pass of its own: refused without cursor naming the copy\'s cursor, the original\'s '
     + 'refused there and the copy\'s on the source, and each goes on to end every row once', async () => {
@@ -85,8 +114,7 @@ async function main() {
     await refused({ ...call(copy), cursor: kept }, unfinished('T', 250, mine))
     await refused({ ...call(src), cursor: mine }, unfinished('T', 250, kept))
     for (const [id, cursor] of [[copy, mine], [src, kept]]) {
-      assert.deepEqual(await transformColumn(uid, { ...call(id), cursor }),
-        { ok: { updated: ROWS - 250, created_column: null } })
+      assert.equal(await toTheEnd({ ...call(id), cursor }), ROWS - 250)
       assert.equal(ending(id, 't*-x'), ROWS)
       assert.equal(ending(id, '*-x-x'), 0)
       assert.deepEqual(passIds(id), [])
@@ -95,8 +123,7 @@ async function main() {
 
   await check('a copy leaving that column out gets no pass', async () => {
     db.prepare('UPDATE rows SET data = json_set(data, \'$.T\', \'t\' || (row_index / 3)) WHERE sheet_id = ?').run(src)
-    fault.arm(251)
-    try { assert.ok('stopped' in await transformColumn(uid, call(src))) } finally { fault.disarm() }
+    await unfinishedAt250(src)
     const copy = await copied(['S'])
     assert.deepEqual(passIds(copy), [])
     assert.equal(passIds(src).length, 1)
