@@ -142,7 +142,7 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   await expect.poll(async () => (await runCount()).length, { timeout: 20_000 }).toBe(before + 1)
   const rowRun = await waitForTerminal(v1, `/api/v1/http-runs/${(await runCount())[0].id}`)
   expect(rowRun.total_rows).toBe(1)
-  // The click ran the row only: no answer panel opened over it (a click on the cell would, 300 ms later).
+  // The click ran the row only: no answer panel opened over it (a click on the cell opens it at once).
   await page.waitForTimeout(800)
   await expect(page.getByTestId('answer-panel')).toHaveCount(0)
   // A click in the cell's middle opens its answer and runs nothing, right after the note was up: the button stays

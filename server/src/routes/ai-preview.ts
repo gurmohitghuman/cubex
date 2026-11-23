@@ -27,8 +27,8 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Preview calls OpenRouter for up to AI_PREVIEW_CONCURRENCY×N rows per request.
-// Without a per-route limiter (only the global 1000/15min backstop), a logged-in
-// user could fire ~20k LLM calls in a window. Reuse the same per-user budget as
+// Without a per-route limiter (no other limiter covers the app's own routes), a
+// logged-in user could fire LLM calls without bound. Reuse the same per-user budget as
 // /ai/run and /http/preview so preview can't be hammered for uncontrolled cost.
 router.post('/preview', async (req: AuthRequest, res) => {
   // Per-user CONCURRENT-batch cap (Bug B). The rate limiter bounds start RATE;
