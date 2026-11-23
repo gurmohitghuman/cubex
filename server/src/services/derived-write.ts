@@ -77,9 +77,10 @@ export function readDerivedRows(
 export const pageAfter = (page: number, read: number, done: number): number =>
   (done < read ? Math.max(64, done * 2) : Math.min(HEAVY_SLICE_ROWS, Math.max(page, 64) * 2));
 
-// A fill's slices, timed (BULK_SLICE_MS), read FIRST_TIMED_PAGE rows first, then as many as fit the time at the
-// pace of the last slice (`done` rows got through in `ms`), from FIRST_TIMED_PAGE to HEAVY_SLICE_ROWS: rows read
-// and worked out but not reached in time are done again in the next slice.
+// A fill's slices, and a follow's of spans and new rows, timed (BULK_SLICE_MS), read FIRST_TIMED_PAGE rows first,
+// then as many as fit the time at the pace of the last slice (`done` rows got through in `ms`), from
+// FIRST_TIMED_PAGE to HEAVY_SLICE_ROWS: rows read and worked out but not reached in time are done again in the next
+// slice.
 export const FIRST_TIMED_PAGE = 64;
 export const pageByTime = (done: number, ms: number): number =>
   Math.max(FIRST_TIMED_PAGE, Math.min(HEAVY_SLICE_ROWS, Math.floor((done * BULK_SLICE_MS) / Math.max(ms, 1))));

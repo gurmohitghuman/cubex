@@ -7,7 +7,8 @@
 // above its watermark. A person's own edit to its cell stays until an input
 // changes again. It's free and has no side effects, so there are no caps and no "Only run if". Each slice reads and
 // writes in one short transaction (its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts; a slice
-// of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter), so what it writes is the
+// of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter; a slice of a span or of new
+// rows by the time the last one took, pageByTime), so what it writes is the
 // row's inputs as they are then, and nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply). A pass
 // that has to wait (a lookup whose other sheet is sorting) ends the tick, and the entry comes back after
 // LOOKUP_FOLLOW_RETRY_MS.
@@ -30,13 +31,16 @@ import { generationMoved, hasWork } from './autorun-fence';
 import type { DerivedKind, DerivedPass, DerivedRecord } from './derived-kind';
 import { derivedKindOf } from './derived-kinds';
 import {
-  asDerivedRead, derivedSelect, pageAfter, queuedRowsAfter, readDerivedRows, writeDerivedCells,
+  asDerivedRead, derivedSelect, FIRST_TIMED_PAGE, pageAfter, pageByTime, queuedRowsAfter, readDerivedRows,
+  writeDerivedCells,
 } from './derived-write';
 
-// page: how many rows the next slice reads (derived-write.ts pageAfter); queued: queued rows at most (queuedRowsAfter).
+// How many rows the next slice of each kind reads: queued rows (page, derived-write.ts pageAfter, and queued at most,
+// queuedRowsAfter), a span's rows (spanPage) and new rows (newPage, both pageByTime). Each kind sizes its own, so a
+// slice of one kind that found nothing leaves the others' as they are.
 interface Step {
   kind: DerivedKind; entry: AutorunEntry; rec: DerivedRecord; pass: DerivedPass; inputs: string[]; page: number;
-  queued: number; queuedRead: number;
+  queued: number; queuedRead: number; spanPage: number; newPage: number;
 }
 
 // Inside each slice's transaction: the sheet is free and out of the trash, and the column set up as
@@ -79,7 +83,7 @@ function queuedSlice(s: Step): boolean {
     .run(e.id, JSON.stringify(leave));
   finishSlice(s, counts.changed, new Set(live.filter(r => r.quiet === 1).map(r => r.rowid as number)));
   const more = read.capped || counts.done < live.length;
-  s.page = pageAfter(s.page, live.length, counts.done);
+  if (live.length > 0) s.page = pageAfter(s.page, live.length, counts.done);
   return more;
 }
 
@@ -95,11 +99,11 @@ function spanSlice(s: Step): boolean {
   if (!stillCurrent(s)) return false;
   const span = nextSpan(e.id);
   if (!span) return false;
-  const want = span.rowids.slice(span.done, span.done + s.page);
+  const want = span.rowids.slice(span.done, span.done + s.spanPage);
   const sel = derivedSelect(s.rec.column_name, s.inputs);
   const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql} FROM rows
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`)
-    .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.page, s.inputs.length);
+    .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.spanPage, s.inputs.length);
   const locked = getLockedRunColumns(e.sheet_id, e.user_id, { clearing: true });
   const held = s.inputs.flatMap((c, k) => (locked.has(c) ? [`in${k}`] : []));
   const wait = held.length === 0 ? -1 : read.rows.findIndex(r => held.some(k => r[k] === PLACEHOLDER));
@@ -113,7 +117,7 @@ function spanSlice(s: Step): boolean {
   const done = span.done + (next ? at(next) : read.capped ? at(rows[rows.length - 1]) + 1 : want.length);
   spanWorked(e.id, span, done);
   finishSlice(s, counts.changed, new Set(counts.changed));
-  s.page = pageAfter(s.page, rows.length, counts.done);
+  s.spanPage = pageByTime(counts.done, sliceClock() - began);
   return !(wait >= 0 && counts.done === rows.length);
 }
 
@@ -132,7 +136,7 @@ function newSlice(s: Step): boolean {
   const sel = derivedSelect(s.rec.column_name, s.inputs);
   const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
     FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?`)
-    .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.page), s.page, s.inputs.length);
+    .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.newPage), s.newPage, s.inputs.length);
   const rows = read.rows.map(r => asDerivedRead(r, s.inputs.length));
   if (rows.length === 0) return false;
   // A new row whose inputs are empty keeps a cell it arrived with.
@@ -142,7 +146,7 @@ function newSlice(s: Step): boolean {
   }
   finishSlice(s, counts.changed);
   const more = read.capped || counts.done < rows.length;
-  s.page = pageAfter(s.page, rows.length, counts.done);
+  s.newPage = pageByTime(counts.done, sliceClock() - began);
   return more;
 }
 
@@ -174,6 +178,8 @@ function ready(kind: DerivedKind, e: AutorunEntry, rec: DerivedRecord | undefine
 
 const ticking = new Set<string>();
 const again = new Set<string>();
+// An entry's new-row page as its last tick left it, while it has more new rows: the next tick goes on at its pace.
+const newPages = new Map<string, number>();
 
 export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
   const kind = derivedKindOf(e.kind);
@@ -191,7 +197,9 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
     if ('error' in pass) { pauseEntry(e.id, 'setup', pass.error); return; }
     try {
       const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS,
-        queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0 };
+        queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0, spanPage: FIRST_TIMED_PAGE,
+        newPage: newPages.get(e.id) ?? FIRST_TIMED_PAGE };
+      newPages.delete(e.id);
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
       await asBulkWriter(async w => {
         for (let more = true; more;) {
@@ -210,7 +218,11 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
             return;
           }
           if (pass.waiting?.()) { kickDerivedFollow(e.id, LOOKUP_FOLLOW_RETRY_MS); return; }
-          if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) { again.add(e.id); return; }
+          if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) {
+            newPages.set(e.id, s.newPage);
+            again.add(e.id);
+            return;
+          }
         }
       });
     } finally {

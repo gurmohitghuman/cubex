@@ -142,6 +142,23 @@ await ok('a clean column following its source at 1 ms a read: slices of at most 
   assert.ok(got.slices.every(k => k >= 1 && k <= BULK_SLICE_MS), `rows a slice: ${got.slices.join(', ')}`)
 })
 
+await ok('a clean column following 1,000 new rows at 1 ms a read: slices of at most BULK_SLICE_MS rows', async () => {
+  const { sid } = await cleaned(10, 0)
+  const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+  db.transaction(() => upTo(1_000).forEach(i => ins.run(uuid(), sid, uid, 10 + i,
+    JSON.stringify({ Name: `  n${10 + i}  ` })))).immediate()
+  const entry = () => entryFor(sid, uid, 'Name (clean)')!
+  const got = await sliced(sid, 1, async () => {
+    for (const end = Date.now() + 60_000; entry().watermark_row_index < 1_009 && Date.now() < end;) {
+      await cleanFollowTick(entry())
+    }
+  })
+  assert.deepEqual(cells(sid, 'Name (clean)'), upTo(1_010).map(i => `n${i}`))
+  assert.deepEqual(got.rows, upTo(1_000).map(i => 10 + i), 'every new row once and in order')
+  assert.ok(got.slices.length >= 1_000 / BULK_SLICE_MS, `${got.slices.length} slices: ${got.slices.join(', ')}`)
+  assert.ok(got.slices.every(k => k >= 1 && k <= BULK_SLICE_MS), `rows a slice: ${got.slices.join(', ')}`)
+})
+
 async function answered(n: number, ms: number) {
   const sid = sheet(upTo(n).map(i => ({ Name: `n${i}` })), ['Name', 'Email'])
   const run = uuid()
