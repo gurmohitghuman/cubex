@@ -42,6 +42,8 @@ export const FORMULA_APP_WAIT_MS = 3_000;
 export const FORMULA_PREVIEW_ROWS = 8;
 export const FORMULA_PREVIEW_SCAN_ROWS = 2_000;
 export const FORMULA_PREVIEW_CELL_CHARS = 300;
+// The preview's rows are worked out this long a try at most (it writes nothing).
+export const FORMULA_PREVIEW_MS = 100;
 // The plain words a formula is written from (by AI, services/formula-ai.ts),
 // kept with the column.
 export const FORMULA_WORDS_MAX_CHARS = 1_000;

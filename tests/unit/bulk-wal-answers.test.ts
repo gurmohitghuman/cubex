@@ -1,13 +1,14 @@
-// The stored answers' background bulk writers, each measured (bulk-wal-kit.ts): "Add as column" linking the new
-// column to a thousand runs and filling it from their answers (services/answer-field-fill.ts), the older answers
-// at rows enriched again pruned (answer-prune.ts) and "Prune details older than 90 days" walking past three
-// thousand recent runs to the old one (answer-prune-age.ts). Each checkpoint on the worker held 300 ms: the event
+// The stored answers' background bulk writers, each measured (bulk-wal-kit.ts): "Add as column" linking the new column
+// to a thousand runs and filling it from their answers (services/answer-field-fill.ts, each transaction printed), the
+// older answers at rows enriched again pruned (answer-prune.ts) and "Prune details older than 90 days" walking past
+// three thousand recent runs to the old one (answer-prune-age.ts). Each checkpoint on the worker held 300 ms: the event
 // loop is never held 200 ms, no checkpoint's sync runs on the API thread, the WAL stays under journal_size_limit,
 // SQLite's own checkpoint is back on afterwards, and every cell and answer ends where it should.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { bulkWalKit } from './bulk-wal-kit'
+import { transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db, uid, ok, done, sheet, cells } = undoKit('bulk-wal-answers')
 const { runFieldJob } = await import('../../server/src/services/answer-field-fill')
 const { pruneSupersededAnswers } = await import('../../server/src/services/answer-prune')
@@ -15,6 +16,10 @@ const { startAgePrune, agePruneRunning } = await import('../../server/src/servic
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const { measure } = bulkWalKit()
+// Each transaction of a measured job printed: a slice is one (lib/bulk-slices.ts).
+const printed = (m: { records: TransactionRecord[] }) => {
+  for (const r of m.records) console.log(`        ${transactionLine(r)}`)
+}
 
 const N = 20_000
 const config = JSON.stringify({ responseMapping: [], enrichment: { kind: 'waterfall', email: null } })
@@ -48,7 +53,7 @@ await ok('"Add as column" linked to a thousand runs and filled: the WAL copied b
   const job = uuid()
   db.prepare(`INSERT INTO enrichment_field_jobs (id, user_id, sheet_id, status_column, column_name, json_path)
     VALUES (?,?,?, 'Email', 'Title', '$.output.title')`).run(job, uid, sid)
-  await measure('the column linked and filled', () => runFieldJob(job), { pastAuto: true })
+  printed(await measure('the column linked and filled', () => runFieldJob(job), { pastAuto: true }))
   assert.equal(db.prepare('SELECT status FROM enrichment_field_jobs WHERE id = ?').pluck().get(job), 'done')
   assert.equal(count(`SELECT COUNT(*) FROM http_column_associations WHERE extracted_column_name = 'Title'
     AND sheet_id = ?`, sid), empty.length + 2, 'linked to every run')

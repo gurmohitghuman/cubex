@@ -105,6 +105,10 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// A slice of a CSV import, a clean, formula or lookup column's fill or follow, or a column added from an answer also
+// stops once it has taken this long (one row at least; lib/slice-clock.ts). Sized by rows alone, a slice of 5,000
+// took a median 90 to 96 ms on Windows CI (63 to 72 on Linux), so a slow moment on the runner could pass 200 ms.
+export const BULK_SLICE_MS = 40;
 // Stored AI/HTTP results written per slice (a sheet's results deleted, a sort moving them with their rows). An
 // answer keeps up to ENRICH_STORED_RAW_MAX_BYTES (16 KB) raw, and deleting or moving one writes every page it spans
 // (lib/db.ts zeroes freed pages: secure_delete). 5,000 such results in one slice wrote 81 to 82 MB of WAL, past

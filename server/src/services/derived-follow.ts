@@ -21,6 +21,7 @@ import { getLockedRunColumns } from '../lib/run-locked-columns';
 import { nextSpan, spanWorked } from '../lib/derived-spans';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { asBulkWriter } from '../lib/bulk-slices';
+import { sliceClock } from '../lib/slice-clock';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import { onFollowQueued } from '../lib/autorun-kick';
@@ -53,6 +54,7 @@ const cellPathOf = (s: Step) => jsonPath(s.rec.column_name);
 
 // Rows an input was written in. True while there are more. Call inside a transaction (a slice).
 function queuedSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   s.queuedRead = 0;
   if (!stillCurrent(s)) return false;
@@ -70,7 +72,7 @@ function queuedSlice(s: Step): boolean {
   // rest are written in storage order, and leave it once worked out.
   const live = rows.filter(r => r.sheet === e.sheet_id).sort((a, b) => (a.rowid as number) - (b.rowid as number));
   const reads = live.map(r => asDerivedRead(r, s.inputs.length));
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass);
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass, { began });
   const worked = new Set(live.slice(0, counts.done).map(r => r.id));
   const leave = rows.filter(r => r.sheet !== e.sheet_id || worked.has(r.id)).map(r => r.id);
   db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
@@ -88,6 +90,7 @@ function queuedSlice(s: Step): boolean {
 // clear). Rows written are quiet, as an undo's: only clean, formula and lookup columns follow them. True while
 // there may be more. Call inside a transaction (a slice).
 function spanSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   if (!stillCurrent(s)) return false;
   const span = nextSpan(e.id);
@@ -101,7 +104,8 @@ function spanSlice(s: Step): boolean {
   const held = s.inputs.flatMap((c, k) => (locked.has(c) ? [`in${k}`] : []));
   const wait = held.length === 0 ? -1 : read.rows.findIndex(r => held.some(k => r[k] === PLACEHOLDER));
   const rows = wait < 0 ? read.rows : read.rows.slice(0, wait);
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows.map(r => asDerivedRead(r, s.inputs.length)), s.pass);
+  const reads = rows.map(r => asDerivedRead(r, s.inputs.length));
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass, { began });
   // The mark moves past the rows worked out, and past rows gone up to the next row read (all of `want` when
   // every row read was worked out and none was left unread).
   const next = counts.done < rows.length ? rows[counts.done] : wait >= 0 ? read.rows[wait] : null;
@@ -117,6 +121,7 @@ function spanSlice(s: Step): boolean {
 // are read inside the slice's transaction, so a delete, sort or import that
 // moved the fence since the tick began is never passed over. Call inside a transaction (a slice).
 function newSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   if (!stillCurrent(s)) return false;
   const fence = db.prepare(`SELECT watermark_row_index AS w, row_generation_seen AS g FROM autorun_columns
@@ -131,7 +136,7 @@ function newSlice(s: Step): boolean {
   const rows = read.rows.map(r => asDerivedRead(r, s.inputs.length));
   if (rows.length === 0) return false;
   // A new row whose inputs are empty keeps a cell it arrived with.
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true });
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true, began });
   if (counts.done > 0) {
     db.prepare('UPDATE autorun_columns SET watermark_row_index = ? WHERE id = ?').run(rows[counts.done - 1].i, e.id);
   }

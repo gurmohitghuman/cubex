@@ -1,14 +1,15 @@
 // A CSV import's bulk writers, each measured (bulk-wal-kit.ts): its rows added in flushes (services/csv-import.ts),
-// a sheet's stored results deleted (lib/import-undo.ts: a replace, a sheet purged; answers of 16 KB each, which
-// went 5,000 to a slice before, about 80 MB of WAL in one commit), an import cut short taken out again, and a
-// replace end to end (the old rows to the trash, their results deleted, the new rows in). Rows with random ids,
-// each checkpoint on the worker held 300 ms: the event loop is never held 200 ms, no checkpoint's sync runs on the
-// API thread, the WAL stays under journal_size_limit, SQLite's own checkpoint is back on afterwards, and the rows
-// and results end where they should.
+// each transaction of the import and the replace printed, a sheet's stored results deleted (lib/import-undo.ts: a
+// replace, a sheet purged; answers of 16 KB each, which went 5,000 to a slice before, about 80 MB of WAL in one
+// commit), an import cut short taken out again, and a replace end to end (the old rows to the trash, their results
+// deleted, the new rows in). Rows with random ids, each checkpoint on the worker held 300 ms: the event loop is never
+// held 200 ms, no checkpoint's sync runs on the API thread, the WAL stays under journal_size_limit, SQLite's own
+// checkpoint is back on afterwards, and the rows and results end where they should.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { bulkWalKit } from './bulk-wal-kit'
+import { transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db, uid, ok, done, sheet, cells } = undoKit('bulk-wal-import')
 const { importCsv } = await import('../../server/src/services/csv-import')
 const { scanCsvText } = await import('../../server/src/lib/csv-import-parse')
@@ -17,6 +18,10 @@ const { ENRICH_STORED_RAW_MAX_BYTES } = await import('../../server/src/lib/const
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const { measure } = bulkWalKit()
+// Each transaction of a measured job printed: a slice is one (lib/bulk-slices.ts).
+const printed = (m: { records: TransactionRecord[] }) => {
+  for (const r of m.records) console.log(`        ${transactionLine(r)}`)
+}
 
 const N = 20_000
 const rowsOf = (sid: string) => db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ?').pluck().get(sid) as number
@@ -40,10 +45,10 @@ const stored = (sid: string) => db.prepare(`SELECT COUNT(*) FROM http_results WH
 await ok('rows added in flushes: the WAL copied back on the worker', async () => {
   const sid = sheet([{ Name: 'first' }], ['Name'])
   const scanned = await scanCsvText(csvOf(N, 'new'))
-  await measure('the import', async () => {
+  printed(await measure('the import', async () => {
     const out = await importCsv(sid, uid, scanned, false)
     assert.ok('ok' in out, JSON.stringify(out))
-  }, { pastAuto: true })
+  }, { pastAuto: true }))
   assert.equal(rowsOf(sid), N + 1)
   assert.deepEqual([cells(sid, 'Name')[1], cells(sid, 'Name')[N]], ['new0', `new${N - 1}`])
 })
@@ -75,10 +80,10 @@ await ok('a replace end to end (old rows to the trash, their results deleted): t
     const sid = old()
     results(sid, 2_000)
     const scanned = await scanCsvText(csvOf(N, 'new'))
-    await measure('the replace', async () => {
+    printed(await measure('the replace', async () => {
       const out = await importCsv(sid, uid, scanned, true)
       assert.ok('ok' in out, JSON.stringify(out))
-    }, { pause: true })
+    }, { pause: true }))
     assert.equal(rowsOf(sid), N)
     assert.deepEqual([cells(sid, 'Name')[0], cells(sid, 'Name')[N - 1]], ['new0', `new${N - 1}`])
     assert.equal(stored(sid), 0)
