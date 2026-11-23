@@ -2,16 +2,7 @@ import React from 'react'
 import toast from 'react-hot-toast'
 import { useSheetChangePoll, ChangeBaseline, type ActiveRunRef } from './useSheetChangePoll'
 import { shouldLoudReloadAfterBarrier } from './liveUpdateDecision'
-
-// Minimum gap between silent reloads of the same sheet. A "silent reload" is
-// NOT one request — loadSheetData fans out to ~6 (sheet data + AI results +
-// run lists + reconnect, see useSheetLoad sideLoads), so budget on that.
-// With the change-poll's 3s cycle floor (useSheetChangePoll), worst-case tab
-// traffic under a write storm is ~20 polls + 4×6 reload requests ≈ 44/min —
-// leaving a third of the global IP limiter's ~66/min average budget for
-// autosaves and normal use (8s here penciled out to 978/1000 per
-// 15min window, i.e. no headroom at all).
-const SILENT_RELOAD_MIN_GAP_MS = 15_000
+import { ReloadPacer } from './reloadPacer'
 
 // Decides HOW an open tab reacts to the change-poll (useSheetChangePoll):
 //
@@ -76,22 +67,16 @@ export function useLiveSheetUpdates(args: {
     ? { dataVersion: sheet.data_version ?? 0, rowGeneration: sheet.row_generation ?? 0 }
     : null
 
-  // Silent reloads are COALESCED per sheet (leading + trailing edge, min
-  // SILENT_RELOAD_MIN_GAP_MS apart). A sustained external writer (API/MCP
-  // agent at its 120/min budget) resolves the change-poll on almost every
-  // cycle; reloading per event stacked overlapping full-sheet GETs and burned
-  // the tab's global-IP-limiter budget (observed 429 lockout of the owner's
-  // own UI). One trailing reload converges on the final state — data_version
-  // is cumulative, so skipped intermediates are never missed. The first
-  // change after quiet fires immediately (single-edit latency unchanged).
+  // Silent reloads are paced per sheet by what they cost (reloadPacer.ts): the
+  // first change after quiet reloads at once, then one reload at a time with a
+  // rest after each that grows with its own time (1 to 15 s). A sustained
+  // external writer (an API or MCP agent) resolves the change poll every cycle;
+  // reloading per event stacked overlapping full-sheet reads. data_version is
+  // cumulative, so the reload after a rest shows every write made during it.
   const silentReloadRef = React.useRef(silentReload)
   silentReloadRef.current = silentReload
-  const lastSilentReloadAtRef = React.useRef<Map<string, number>>(new Map())
-  const pendingSilentReloadRef = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  React.useEffect(() => () => {
-    for (const t of pendingSilentReloadRef.current.values()) clearTimeout(t)
-    pendingSilentReloadRef.current.clear()
-  }, [])
+  const barrierActiveRef = React.useRef(isStructuralBarrierActive)
+  barrierActiveRef.current = isStructuralBarrierActive
   // Silent reloads are DEFERRED while a structural barrier runs for that sheet
   // (barrier state owned by useSheetLoad — see isStructuralBarrierActive).
   // A data-only change landing mid-barrier would otherwise dispatch a silent
@@ -102,23 +87,28 @@ export function useLiveSheetUpdates(args: {
   // P1-2). Deferred, it re-schedules after the barrier resolves so the
   // data-only change is still converged.
   const deferredSilentReloadRef = React.useRef<Set<string>>(new Set())
+  const pacerRef = React.useRef<ReloadPacer | null>(null)
+  React.useEffect(() => {
+    const pacer = new ReloadPacer(id => {
+      // A reload that waited out a rest can outlive navigation; reloading a sheet
+      // the tab no longer shows is wasted (switching back loud-loads fresh anyway).
+      if (currentSheetIdRef.current !== id) return
+      // A barrier went up during the rest: the change waits for its end.
+      if (barrierActiveRef.current(id)) { deferredSilentReloadRef.current.add(id); return }
+      return silentReloadRef.current(id)
+    })
+    pacerRef.current = pacer
+    return () => {
+      pacer.stop()
+      if (pacerRef.current === pacer) pacerRef.current = null
+    }
+  }, [currentSheetIdRef])
   const scheduleSilentReload = (id: string) => {
     if (isStructuralBarrierActive(id)) {
       deferredSilentReloadRef.current.add(id)
       return
     }
-    if (pendingSilentReloadRef.current.has(id)) return // queued reload already covers this change
-    const fire = () => {
-      pendingSilentReloadRef.current.delete(id)
-      // A trailing timer can outlive navigation; reloading a sheet the tab no
-      // longer shows is wasted budget (switching back loud-loads fresh anyway).
-      if (currentSheetIdRef.current !== id) return
-      lastSilentReloadAtRef.current.set(id, Date.now())
-      void silentReloadRef.current(id)
-    }
-    const wait = (lastSilentReloadAtRef.current.get(id) ?? 0) + SILENT_RELOAD_MIN_GAP_MS - Date.now()
-    if (wait <= 0) fire()
-    else pendingSilentReloadRef.current.set(id, setTimeout(fire, wait))
+    pacerRef.current?.request(id)
   }
   useSheetChangePoll(sheet?.id ?? null, baseline, (id, change) => {
     if (change.activeRuns && currentSheetIdRef.current === id) onActiveRuns?.(id, change.activeRuns)
@@ -129,12 +119,7 @@ export function useLiveSheetUpdates(args: {
       // The cancelled timer represented an un-converged data-only change, so
       // mark it deferred — every exit below (including the early return) drains
       // the flag, or the tab could sit stale until the next external write.
-      const pending = pendingSilentReloadRef.current.get(id)
-      if (pending !== undefined) {
-        clearTimeout(pending)
-        pendingSilentReloadRef.current.delete(id)
-        deferredSilentReloadRef.current.add(id)
-      }
+      if (pacerRef.current?.cancel(id)) deferredSilentReloadRef.current.add(id)
       void (async () => {
         // Raise the barrier BEFORE the first await — both this hook's
         // scheduler (defers) and useSheetLoad's commit gate (discards silent
@@ -177,7 +162,7 @@ export function useLiveSheetUpdates(args: {
           endStructuralBarrier(id)
           // Last barrier down: a data-only change arrived mid-barrier and was
           // deferred — converge it now (cheap if the loud reload above already
-          // fetched it: the reload is paced by the gap and fenced at commit).
+          // fetched it: the reload is paced (reloadPacer.ts) and fenced at commit).
           if (!isStructuralBarrierActive(id) && deferredSilentReloadRef.current.delete(id)) {
             scheduleSilentReload(id)
           }

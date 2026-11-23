@@ -78,7 +78,6 @@ export interface TerminalStatusCtx {
   reconnectAttemptsRef: React.MutableRefObject<Map<string, number>>
   terminalRunsRef: React.MutableRefObject<Set<string>>
   runSheetRef: React.MutableRefObject<Map<string, string>>
-  pendingTimersRef: React.MutableRefObject<Set<ReturnType<typeof setTimeout>>>
   currentSheetIdRef: React.MutableRefObject<string | null>
   setActiveAIRuns: React.Dispatch<React.SetStateAction<Set<string>>>
   fetchActiveHTTPRuns: (sheetId: string) => unknown
@@ -88,10 +87,9 @@ export interface TerminalStatusCtx {
 
 // Handle a terminal ('completed'/'failed'/'cancelled') run-status SSE event:
 // tear the stream down, clear per-run bookkeeping, refresh the active sheet's
-// run-list metadata, and schedule a one-shot reload of the run's OWN sheet (only
-// if it's still active at fire time). The returned timer is registered in
-// pendingTimersRef so unmount cleanup can cancel it. Why each close/terminal
-// step is load-bearing is documented at the call site in useSheetSSE.
+// run-list metadata, and reload the run's OWN sheet at once (only if it's the
+// active one). Why each close/terminal step is load-bearing is documented at the
+// call site in useSheetSSE.
 export const handleTerminalStatus = (
   data: any, runId: string, currentSheetId: string, runSheetId: string | undefined,
   ctx: TerminalStatusCtx,
@@ -109,15 +107,13 @@ export const handleTerminalStatus = (
   ctx.setActiveAIRuns(prev => { const next = new Set(prev); next.delete(runId); return next })
   // Run-list metadata (header pill / column badges) for the active sheet.
   ctx.fetchActiveHTTPRuns(currentSheetId); ctx.fetchActiveAIRuns(currentSheetId)
-  // Reload only the run's OWN sheet, and only if it's still the active one at
-  // fire time, so a background-sheet run completing can't discard the active
-  // sheet's in-flight load. runSheetId falls back for a legacy pre-binding stream.
+  // Reload only the run's OWN sheet, and only if it's the active one, so a
+  // background-sheet run completing can't discard the active sheet's in-flight
+  // load. At once: the server sends the end only after the run's last result,
+  // and a write after it (a derived column's fill) comes through the change
+  // poll. runSheetId falls back for a legacy pre-binding stream.
   const reloadTarget = runSheetId ?? currentSheetId
-  const timer = setTimeout(() => {
-    ctx.pendingTimersRef.current.delete(timer)
-    if (ctx.currentSheetIdRef.current === reloadTarget) ctx.reloadSheet(reloadTarget)
-  }, 1000)
-  ctx.pendingTimersRef.current.add(timer)
+  if (ctx.currentSheetIdRef.current === reloadTarget) void ctx.reloadSheet(reloadTarget)
 }
 
 const ACTIVE = new Set(['running', 'paused', 'pending'])

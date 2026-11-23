@@ -26,8 +26,8 @@ router.use(authenticateToken);
 // Hold the request open up to this long, then return the current version even if
 // unchanged (a heartbeat). Well under the 65s keep-alive so proxies/Node don't
 // kill it mid-flight. The client immediately re-polls — this is NOT a per-tick
-// refetch of sheet data (which would trip the global limiter); it's one cheap
-// integer read per poll cycle.
+// refetch of sheet data; it's one cheap integer read per poll cycle (the client
+// asks at most once a second, useSheetChangePoll.ts).
 const MAX_HOLD_MS = 25_000;
 const CHECK_INTERVAL_MS = 1_000;
 
