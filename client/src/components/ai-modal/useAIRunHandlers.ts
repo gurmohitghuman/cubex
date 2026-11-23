@@ -11,8 +11,8 @@ import { outputColumnsBody, type OutputColumnDraft } from '@/lib/output-columns'
 interface Args {
   // Whether the run drawer is open. The progress poll runs ONLY while open —
   // once closed, the sheet page's SSE keeps the grid live, so a closed-drawer
-  // 1Hz poll was pure waste that ate ~90% of the global rate-limit budget for
-  // a long run (and rate-limited autosave → dropped edits). Reopen re-arms via
+  // 1Hz poll was pure waste: a read a second for the whole of a long run, with
+  // nothing on screen to feed. Reopen re-arms via
   // useDrawerLifecycle's self-heal.
   isOpen: boolean
   sheetId: string
@@ -62,7 +62,7 @@ export const useAIRunHandlers = (a: Args) => {
 
   // Poll for run updates when polling is active AND the drawer is open. A
   // closed drawer has no progress UI to feed, and the sheet page's SSE already
-  // keeps the grid current, so polling on would only burn rate-limit budget.
+  // keeps the grid current, so polling on would only load the server.
   useEffect(() => {
     if (!isPolling || !currentRun?.id || !a.isOpen) return
     const interval = setInterval(async () => {

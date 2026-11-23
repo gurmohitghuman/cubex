@@ -6,11 +6,12 @@ export interface ChangeBaseline { dataVersion: number; rowGeneration: number }
 // such as an auto-run, streams as soon as it shows up).
 export type ActiveRunRef = { id: string; kind: 'ai' | 'http' }
 
-// Minimum time per poll cycle, even when every response reports a change.
-// Caps the loop at ~20 req/min under a sustained external write burst — well
-// inside the global IP limiter's ~66/min average budget, shared with the
-// silent reloads the changes trigger (paced separately in useLiveSheetUpdates).
-const MIN_CYCLE_MS = 3000
+// Minimum time per poll cycle, even when every response reports a change: the
+// server checks a held poll once a second (routes/sheets-changes.ts), so a change
+// waits at most about a second to be seen, and a sustained external write burst
+// costs at most one poll a second (a version read and a run-list read). The
+// silent reloads the changes trigger are paced by their own cost (reloadPacer.ts).
+const MIN_CYCLE_MS = 1000
 
 // Live-update for out-of-band writers (webhook appends + every /api/v1
 // mutation): long-poll the sheet's data_version + row_generation via
@@ -81,18 +82,16 @@ export function useSheetChangePoll(
           sinceRg = res.rowGeneration
           // Pacing: a fast unchanged response means the server didn't hold us
           // (over its concurrent-hold cap and degrading gracefully). Sleep
-          // instead of hot-looping into the rate limiter.
+          // instead of hot-looping.
           const elapsed = Date.now() - started
           if (!res.changed && elapsed < 3000) {
             await new Promise(r => setTimeout(r, 4000))
           } else if (elapsed < MIN_CYCLE_MS) {
             // CHANGED responses resolve the long-poll almost instantly while an
-            // external writer (API/MCP agent) is bumping data_version every
-            // second — without a floor this loop cycles ~1/s and, with the
-            // reload each cycle triggers, burns the tab's global-IP-limiter
-            // budget (observed: a 120/min PAT writer 429'd the owner's own UI).
-            // data_version is cumulative, so sleeping loses nothing: the next
-            // poll sees every write that landed in between.
+            // external writer (API/MCP agent) is bumping data_version many
+            // times a second; without a floor this loop would ask as fast as
+            // the server answers. data_version is cumulative, so sleeping loses
+            // nothing: the next poll sees every write that landed in between.
             await new Promise(r => setTimeout(r, MIN_CYCLE_MS - elapsed))
           }
         } catch (err: any) {
