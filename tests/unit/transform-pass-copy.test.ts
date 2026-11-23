@@ -30,7 +30,7 @@ async function check(label: string, fn: () => void | Promise<void>) {
 }
 
 const ROWS = 650
-// 40,000 characters a row: a copy's slice (8,000,000 characters of data) takes 200 rows.
+// 40,000 characters a row: a copy's slice (8,000,000 characters of data) takes 200 rows at most.
 const FILLER = 'f'.repeat(40_000)
 const uid = uuid(), tid = uuid(), src = uuid()
 db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')

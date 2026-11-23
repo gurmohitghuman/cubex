@@ -3,8 +3,11 @@
 // row order and adds them to the new sheet, cursor and all, in one short
 // transaction, its WAL copied back on the checkpoint worker's thread
 // (lib/bulk-slices.ts), so a restart goes on from the last slice and
-// never adds a row twice (resumeSheetCopies at boot). The new rows get
-// time-ordered ids (lib/ordered-id.ts), which keep each slice's commit small.
+// never adds a row twice (resumeSheetCopies at boot). A slice stops adding rows
+// once it has taken SHEET_COPY_SLICE_MS, and the next reads about twice what it
+// added (pageAfter), so a slow machine gets smaller slices, not longer ones.
+// The new rows get time-ordered ids (lib/ordered-id.ts), which keep each
+// slice's commit small.
 // The copy runs with the new sheet busy and the source held for reading
 // (lib/sheet-busy.ts): the source can't be sorted, have rows moved or columns
 // renamed under the cursor, while edits and new rows go on. Only the rows it
@@ -16,8 +19,10 @@
 // waiting longer each time; after SHEET_COPY_ATTEMPTS failures in a row the
 // copy stops with the rows it has, and says so.
 import { db } from '../lib/db';
+import { performance } from 'perf_hooks';
 import {
   HEAVY_JOB_RETRY_MAX_MS, HEAVY_JOB_RETRY_MS, HEAVY_SLICE_ROWS, SHEET_COPY_ATTEMPTS, SHEET_COPY_SLICE_CHARS,
+  SHEET_COPY_SLICE_MS,
 } from '../lib/constants';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { stayBusyToFinish, whenSheetFree, withSheetRead } from '../lib/sheet-busy';
@@ -25,6 +30,7 @@ import { copiedCells } from '../lib/sheet-copy';
 import { orderedUuid } from '../lib/ordered-id';
 import { countOf, rewriteSheetChange } from '../lib/change-log';
 import { copiedPassMapper } from './column-transform-pass-moves';
+import { pageAfter } from './derived-write';
 
 // What the two sheets are busy with, as their busy message says.
 export const COPYING_INTO = 'filling with copied values';
@@ -76,8 +82,16 @@ export function copyFirstRow(sheetId: string): void {
   copySlicer(loadJob(sheetId)!)(1);
 }
 
+// The clock a slice's time is read from (tests only set another: setCopyClockForTests).
+let clock = () => performance.now();
+// Tests only: `now` as the copy's clock, or performance.now again with null.
+export function setCopyClockForTests(now: (() => number) | null): void {
+  clock = now ?? (() => performance.now());
+}
+
 // One slice of the copy: up to `most` rows of the source after the cursor (or SHEET_COPY_SLICE_CHARS of their
-// data) added to the new sheet, the cursor with them. True while more are left. Call inside a transaction.
+// data, and only as many as go in within SHEET_COPY_SLICE_MS) added to the new sheet, the cursor with them. True
+// while more are left. Call inside a transaction.
 function copySlicer(job: SheetCopyJob): (most: number) => boolean {
   const sheetId = job.sheet_id;
   const columns = JSON.parse(job.columns) as string[];
@@ -86,9 +100,12 @@ function copySlicer(job: SheetCopyJob): (most: number) => boolean {
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
   const advance = db.prepare('UPDATE sheet_copy_jobs SET after_row = ?, copied = ? WHERE sheet_id = ?');
   const passes = copiedPassMapper(job.source_sheet_id, sheetId, job.user_id);
+  // How many rows the next slice reads: about twice what the last one added (pageAfter).
+  let page = Infinity;
   return (most: number): boolean => {
+    const began = clock();
     const at = loadJob(sheetId)!;
-    const left = Math.min(most, job.row_count - at.copied);
+    const left = Math.min(most, page, job.row_count - at.copied);
     if (left <= 0) return false;
     const rows: Array<{ i: number; data: string }> = [];
     let chars = 0;
@@ -103,12 +120,15 @@ function copySlicer(job: SheetCopyJob): (most: number) => boolean {
     let next = at.copied;
     const placed: Array<{ from: number; to: number }> = [];
     for (const row of rows) {
+      // Its time is up: the rest go in the next slice.
+      if (placed.length > 0 && clock() - began >= SHEET_COPY_SLICE_MS) break;
       const cells = copiedCells(parseRow(row.data), columns);
       placed.push({ from: row.i, to: next });
       insert.run(orderedUuid(), sheetId, job.user_id, next++, JSON.stringify(cells));
     }
+    page = pageAfter(left, rows.length, placed.length);
     passes(placed);
-    advance.run(rows[rows.length - 1].i, next, sheetId);
+    advance.run(placed[placed.length - 1].from, next, sheetId);
     return true;
   };
 }
