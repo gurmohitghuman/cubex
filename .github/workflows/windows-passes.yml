@@ -6,6 +6,9 @@ run-name: Windows unit tests, 3 passes at once, on ${{ inputs.ref }}
 # or with: gh workflow run windows-passes.yml -f ref=<commit, branch or refs/pull/<n>/head>
 
 on:
+  # For now only: runs the passes on this branch's pushes, before the workflow is on main.
+  push:
+    branches: [fix/ci-unit-shards]
   workflow_dispatch:
     inputs:
       ref:
