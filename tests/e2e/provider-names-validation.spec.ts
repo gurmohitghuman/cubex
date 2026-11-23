@@ -1,3 +1,4 @@
+// Over 200 lines: every surface that takes provider names (app routes, /api/v1, MCP, setups, templates), one sheet.
 import { test, expect, APIRequestContext } from '@playwright/test'
 import Database from 'better-sqlite3'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -37,7 +38,10 @@ async function mcpError(name: string, args: Record<string, unknown>): Promise<st
   const r = await mcp.callTool({ name, arguments: args }) as { isError?: boolean; content?: Array<{ text?: string }> }
   expect(r.isError, JSON.stringify(r)).toBeTruthy()
   const text = r.content?.map(c => c.text ?? '').join(' ') ?? ''
-  try { const parsed = JSON.parse(text); if (typeof parsed?.error === 'string') return parsed.error } catch { /* raw */ }
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed?.error === 'string') return parsed.error
+  } catch { /* raw */ }
   return text
 }
 

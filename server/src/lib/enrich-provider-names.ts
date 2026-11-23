@@ -39,8 +39,16 @@ export function checkProviderList(opts: {
 }): CheckedProviders {
   const { where, field, given, tools, allowed } = opts;
   if (given.length === 0) return { error: null, ignored: [] };
-  // A waterfall whose routing plan the catalog didn't list has no known list to check against.
-  if (tools.some(t => t.kind === 'waterfall' && t.providers === null)) return { error: null, ignored: [] };
+  // A waterfall whose routing plan the catalog didn't list: no name can be checked, and a run couldn't apply one
+  // (routing drops every name the plan doesn't have), so a skip would keep nothing out. Refused, saved names too.
+  const unlisted = tools.find(t => t.kind === 'waterfall' && t.providers === null);
+  if (unlisted) {
+    return {
+      error: lead(where, `the providers of ${unlisted.id} aren't listed in treg's catalog right now, so ${field} `
+        + `can't be applied. Try again, or leave ${field} out.`),
+      ignored: [],
+    };
+  }
   const known = knownProviderNames(...tools);
   const knownSet = new Set(known);
   const allowedSet = new Set([...(allowed ?? [])].map(s => s.toLowerCase()));

@@ -97,9 +97,8 @@ test('an email check\'s providers in the drawer: kept when untouched, one switch
     const verify = 'treg.people.email.verify'
     const api = await authedApi()
     await freshTreg(api)
-    const { sheetId, stepOf } = await seed(page, api,
-      { choices: { kind: 'formula', formula: GUESS }, check: { kind: 'verify', accept: 'safest', providerOrder: ['trykitt'] } },
-      { check: CHECK })
+    const { sheetId, stepOf } = await seed(page, api, { choices: { kind: 'formula', formula: GUESS },
+      check: { kind: 'verify', accept: 'safest', providerOrder: ['trykitt'] } }, { check: CHECK })
     expect(await asked(verify)).toEqual(['trykitt'])           // the check's order: Kitt AI first, and it answers
 
     // Untouched: the run sends the check as it was, a name the list doesn't show included, and the estimate notes it.

@@ -1,3 +1,4 @@
+// Over 200 lines: the email check's provider picks and their name checks share one stand-in treg and its fixtures.
 // Which providers treg's email verify asks, picked as a find step picks them, against the repo's mock treg (its
 // captured catalog): a waterfall step's verify check takes providerOrder and skipProviders (REST) or
 // provider_order and skip_providers (MCP and /api/v1), refuses a bad shape in a find step's words, and is built
@@ -94,7 +95,7 @@ await ok('MCP and /api/v1: provider_order and skip_providers on a verify check; 
   assert.ok('ok' in formula, JSON.stringify(formula))
 })
 
-await ok('build: the check asks in its order and never a skipped provider; unknown names refused unless saved', async () => {
+await ok('build: the check asks in order, never a skipped provider; unknown names refused unless saved', async () => {
   const plain = await verify()
   assert.deepEqual(plain.prefer, [])
   assert.deepEqual(plain.exclude, [])

@@ -1,3 +1,4 @@
+// Over 200 lines: one stand-in treg for the name check on find steps, verify checks, templates, enrichments, setups.
 // Misspelled provider names in providerOrder/skipProviders (and provider_order/skip_providers)
 // are refused with the providers treg's catalog knows, across waterfall find steps, verify checks,
 // templates, enrichments and saved setups; a saved waterfall or enrichment with an old provider
@@ -50,6 +51,7 @@ async function ok(label: string, fn: () => void | Promise<void>) {
 
 const FIND = 'treg.people.email.find'
 const SINGLE = 'hunter.people.email.find'
+const VERIFY = 'treg.people.email.verify'
 const baseCtx = {
   userId: 'u-prov', sheetId: 's-prov', columns: ['Name', 'Website'],
   sample: [{ Name: 'Maya Chen', Website: 'stripe.com' }], rowsUpperBound: 5,
@@ -78,8 +80,18 @@ await ok('pure: checkProviderList dedupes, checks case-insensitively, refuses si
   assert.equal(badMany.error, 'Unknown providers "foo", "bar" in providerOrder. Known providers: hunter, tomba.')
   const single = checkProviderList({ where: 'Step 1', field: 'skipProviders', given: ['hunter'], tools: [singleTool] })
   assert.ok(single.error?.includes('uses hunter only') && !single.error.includes('\u2014'), String(single.error))
-  assert.deepEqual(checkProviderList({ field: 'skipProviders', given: ['anything'], tools: [noPlanTool] }),
-    { error: null, ignored: [] })
+  // A tool whose providers the catalog doesn't list right now: a list is refused (a run couldn't apply it).
+  assert.equal(checkProviderList({ field: 'skipProviders', given: ['anything'], tools: [noPlanTool] }).error,
+    `The providers of ${FIND} aren't listed in treg's catalog right now, so skipProviders can't be applied. `
+    + 'Try again, or leave skipProviders out.')
+  assert.equal(checkStepProviders({ order: [], skip: [], orderTools: [noPlanTool] }).error, null, 'no list: no refusal')
+  // Verified work email: the finder listed, the email checker not. A misspelled finder skip is refused too.
+  const verifyNoPlan = { id: VERIFY, kind: 'waterfall', provider: 'treg', providers: null } as unknown as EnrichTool
+  const both = checkStepProviders({
+    where: 'Step 1', order: [], skip: ['prospeoo'], orderTools: [wfTool], skipTools: [wfTool, verifyNoPlan],
+  })
+  assert.equal(both.error, `Step 1: the providers of ${VERIFY} aren't listed in treg's catalog right now, so `
+    + "skipProviders can't be applied. Try again, or leave skipProviders out.")
   const saved = checkStepProviders({
     where: 'Step 1', order: ['Hunter', 'oldOne', 'OLDONE'], skip: ['oldSkip'],
     orderTools: [wfTool], saved: { order: ['oldone'], skip: ['oldskip'] },
