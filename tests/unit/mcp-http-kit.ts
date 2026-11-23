@@ -37,11 +37,15 @@ export function mcpHttpKit(name: string) {
     try { await fn(); console.log('ok  ', label) }
     catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).stack) }
   }
+  // A passing run ends on its own, not through process.exit: an exit while V8 still compiles on its background
+  // threads can wait forever for them (nodejs/node#54918); an ordinary end lets V8 release them first. Nothing
+  // may be left running after done(), or the file waits for the runner's time limit. A failing run still stops
+  // at once: it is red either way.
   const done = () => {
     finished = true
     if (failures) { console.error(`${failures} ${name} check(s) failed`); process.exit(1) }
     console.log(`All ${name} assertions passed.`)
-    process.exit(0)
+    process.exitCode = 0
   }
   const crash = (e: unknown) => { finished = true; console.error(e); process.exit(1) }
 

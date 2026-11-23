@@ -69,6 +69,41 @@ const stopTree = (child, signal) => {
   return tree !== null;
 };
 
+// Linux, for the log: what each process of a late test is doing before it is stopped. Each thread's name, state,
+// the kernel function it waits in, its system call, and its CPU time over one second, which tells busy work from
+// waiting. Reading a thread's system call is allowed to an ancestor of the process only: the runner is one.
+const SYSCALLS = {
+  x64: { 0: 'read', 7: 'poll', 35: 'nanosleep', 61: 'wait4', 202: 'futex', 232: 'epoll_wait', 281: 'epoll_pwait' },
+  arm64: { 22: 'epoll_pwait', 63: 'read', 73: 'ppoll', 98: 'futex', 101: 'nanosleep', 260: 'wait4' },
+}[process.arch] ?? {};
+const readProc = file => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return '?'; } };
+const threadsOf = pid => {
+  let tids = [];
+  try { tids = fs.readdirSync(`/proc/${pid}/task`); } catch { /* it has ended */ }
+  return tids.map(tid => {
+    const at = `/proc/${pid}/task/${tid}`;
+    const stat = readProc(`${at}/stat`);
+    const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return { tid, at, state: f[0], cpu: Number(f[11]) + Number(f[12]) };
+  });
+};
+const printThreads = async pids => {
+  const before = new Map(pids.flatMap(threadsOf).map(t => [t.at, t.cpu]));
+  await new Promise(res => setTimeout(res, 1000));
+  for (const pid of pids) {
+    const cmd = readProc(`/proc/${pid}/cmdline`).replace(/\0/g, ' ').trim();
+    console.error(`[threads] process ${pid}: ${cmd.length > 120 ? `...${cmd.slice(-120)}` : cmd}`);
+    const alike = new Map(); // threads doing the same thing share a line
+    for (const t of threadsOf(pid)) {
+      const call = readProc(`${t.at}/syscall`).split(' ')[0];
+      const line = `${readProc(`${t.at}/comm`)}: ${t.state}, in ${readProc(`${t.at}/wchan`)}, syscall `
+        + `${SYSCALLS[call] ?? call}, CPU +${t.cpu - (before.get(t.at) ?? t.cpu)} ticks in 1 s`;
+      alike.set(line, (alike.get(line) ?? 0) + 1);
+    }
+    for (const [line, n] of alike) console.error(`  ${n > 1 ? `${n} threads, ` : ''}${line}`);
+  }
+};
+
 // A signal to the runner alone is passed on to the running test and every process it started (Ctrl+C reaches
 // them all anyway, as one process group); start no more tests, and still clean up below.
 let interrupted = false;
@@ -89,8 +124,13 @@ const run = (file, n) => new Promise(resolve => {
     { cwd: root, env, stdio: 'inherit' });
   running = child;
   let late = null;
-  const timer = setTimeout(() => { late = stopTree(child, 'SIGKILL') ? 'late' : 'late-part'; }, LIMIT_S * 1000);
-  const end = status => { clearTimeout(timer); running = null; resolve(status); };
+  let ended = false;
+  const timer = setTimeout(async () => {
+    late = 'late';
+    if (process.platform === 'linux') await printThreads(treeOf(child.pid) ?? [child.pid]);
+    if (!ended) late = stopTree(child, 'SIGKILL') ? 'late' : 'late-part';
+  }, LIMIT_S * 1000);
+  const end = status => { ended = true; clearTimeout(timer); running = null; resolve(status); };
   child.on('error', err => { console.error(err.message); end(1); });
   child.on('exit', code => end(late ?? code ?? 1));
 });

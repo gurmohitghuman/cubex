@@ -1,11 +1,11 @@
-// scripts/unit-tests.mjs's time limit on each test file: a file that never ends fails by name, it and every
-// process it started are stopped, the run goes on to the next file and exits 1; a run within the limit is as
-// before, and a limit that isn't a number of seconds over 0 and up to Node's longest timer is refused. On macOS
-// and Linux, a SIGKILL to the run's process group, or a SIGINT to the runner alone, still stops the running
-// file and every process it started. The runner runs on a scratch copy of the repository's layout (its own
-// tests/unit with two files), finding tsx in this checkout's node_modules through NODE_PATH: a link to
-// node_modules inside a temp folder would be removed along with it. The limit here is 10 s, so a slow Windows
-// runner still starts the file well within it.
+// scripts/unit-tests.mjs's time limit on each test file: a file that never ends fails by name (on Linux, after
+// what each of its processes' threads were doing), it and every process it started are stopped, the run goes on
+// to the next file and exits 1; a run within the limit is as before, and a limit that isn't a number of seconds
+// over 0 and up to Node's longest timer is refused. On macOS and Linux, a SIGKILL to the run's process group, or
+// a SIGINT to the runner alone, still stops the running file and every process it started. The runner runs on a
+// scratch copy of the repository's layout (its own tests/unit with two files), finding tsx in this checkout's
+// node_modules through NODE_PATH: a link to node_modules inside a temp folder would be removed along with it.
+// The limit here is 10 s, so a slow Windows runner still starts the file well within it.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -95,6 +95,11 @@ await test('a file that never ends fails by name, and the run goes on and exits 
   assert.match(r.out, /b: all checks passed/)
   assert.match(r.err, /\[done\] 1 of 2 unit tests failed \(\d+s\):\n {2}a-never-ends\.test\.ts \(did not end within 10/)
   assert.ok(r.secs < 60, `took ${r.secs} s`)
+  if (process.platform === 'linux') {
+    assert.match(r.err, /\[threads\] process \d+: .*a-never-ends\.test\.ts\n/)
+    assert.match(r.err, /^ {2}(\d+ threads, )?[^:\n]+: [A-Za-z], in \S+, syscall \S+, CPU \+\d+ ticks in 1 s$/m)
+    assert.ok(r.err.indexOf('[threads]') < r.err.indexOf('[x] tests/unit/a-never-ends'), 'threads after the [x] line')
+  }
 })
 
 await test('it and every process it started were stopped', async () => {
