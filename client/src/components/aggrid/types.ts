@@ -147,5 +147,7 @@ export interface GridSearchApi {
   column: (name: string) => boolean
 }
 
-// A grid click: the row number the grid shows, and the click count (2 on a double click).
-export interface CellClickInfo { displayRow: number; clicks: number }
+// A grid click: the row number the grid shows, the click count (2 on a double click), and edit, which starts
+// editing the cell as a double click does (for a double click whose second click landed on a panel the first
+// one opened).
+export interface CellClickInfo { displayRow: number; clicks: number; edit?: () => void }

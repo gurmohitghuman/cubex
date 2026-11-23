@@ -71,7 +71,10 @@ export const useGridHandlers = (args: UseGridHandlersArgs) => {
       const displayRow = typeof event.rowIndex === 'number'
         ? windowStart + event.rowIndex + 1 : event.data.__rowIndex + 1
       const clicks = (event.event as MouseEvent | null)?.detail ?? 1
-      onCellClick(event.data.__rowIndex, event.colDef.field, event.value, { displayRow, clicks })
+      const { api, rowIndex, column } = event
+      const edit = typeof rowIndex === 'number'
+        ? () => api.startEditingCell({ rowIndex, colKey: column.getColId() }) : undefined
+      onCellClick(event.data.__rowIndex, event.colDef.field, event.value, { displayRow, clicks, edit })
     }
   }, [onCellClick, windowStart])
 

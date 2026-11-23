@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { Copy, DatabaseZap, Globe, Loader2, RotateCcw } from 'lucide-react'
-import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
+import { DrawerBody, DrawerHeader } from '@/components/Drawer'
+import { SidePanel } from '@/components/SidePanel'
 import { JsonTree } from '@/components/json-mapping/JsonTree'
 import type { AnswerView } from '@/utils/api'
 import { AnswerSteps, Section } from './AnswerSteps'
@@ -22,6 +23,7 @@ interface Props {
   added: string | null
   diagText: string | null
   onClose: () => void
+  onDoubleClickThrough: () => void
   onAddField: (jsonPath: string, name: string) => void
   onRerun: () => void
   onCopy: () => void
@@ -57,7 +59,7 @@ function listHint(dest: string | null, statusCell: string): string {
 // A cell's answer (its details): who found it and what it cost, the
 // row's result, each step, and the whole answer as text, where any value can
 // become a column or have its path copied. HTTP API columns get the result and
-// the full response.
+// the full response. A side panel: the grid stays usable beside it.
 export const AnswerPanel: React.FC<Props> = (p) => {
   const v = p.view
   const mapped = useMemo(() => new Map((v?.mapping ?? []).map(m => [m.jsonPath, m.columnName])), [v])
@@ -73,13 +75,16 @@ export const AnswerPanel: React.FC<Props> = (p) => {
   useEffect(() => {
     if (p.diagText) diagRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [p.diagText])
+  const title = p.target ? `Row ${p.target.displayRow} · ${p.target.column}` : ''
   const headline = v ? foundLine(v) ?? (v.status === 'completed' ? statusLine(v) : null) : null
   return (
-    <Drawer isOpen={!!p.target} onClose={p.onClose} panelClassName="max-w-lg">
+    <SidePanel isOpen={!!p.target} onClose={p.onClose} onDoubleClickThrough={p.onDoubleClickThrough}
+      label={title} openKey={p.target ? `${p.target.sheetId}:${p.target.column}:${p.target.row}` : undefined}
+      panelClassName="max-w-lg">
       <div className="flex flex-col h-full" data-testid="answer-panel">
         <DrawerHeader
           icon={v?.kind === 'http' ? <Globe className="h-5 w-5" /> : <DatabaseZap className="h-5 w-5" />}
-          title={p.target ? `Row ${p.target.displayRow} · ${p.target.column}` : ''}
+          title={title}
           description={v ? (v.enrichment ? v.enrichment.toolName : 'HTTP API column') : undefined}
           onClose={p.onClose}
         />
@@ -172,6 +177,6 @@ export const AnswerPanel: React.FC<Props> = (p) => {
           </div>
         </div>
       </div>
-    </Drawer>
+    </SidePanel>
   )
 }
