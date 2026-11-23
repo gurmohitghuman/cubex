@@ -17,7 +17,9 @@ const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'unit-runner-'))
 const pidsFile = path.join(repo, 'pids.json')
 fs.mkdirSync(path.join(repo, 'scripts'))
 fs.mkdirSync(path.join(repo, 'tests', 'unit'), { recursive: true })
-fs.copyFileSync(path.join('scripts', 'unit-tests.mjs'), path.join(repo, 'scripts', 'unit-tests.mjs'))
+for (const f of ['unit-tests.mjs', 'unit-shards.mjs']) {
+  fs.copyFileSync(path.join('scripts', f), path.join(repo, 'scripts', f))
+}
 fs.writeFileSync(path.join(repo, 'package.json'), '{ "type": "module" }\n')
 // Its checks pass, then neither it nor the process it started ever ends. The ids of tsx's process, the
 // test's and the one it started go to a file.

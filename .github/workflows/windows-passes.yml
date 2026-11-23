@@ -1,0 +1,28 @@
+name: Windows passes
+run-name: Windows unit tests, 3 passes at once, on ${{ inputs.ref }}
+
+# The merge rule's 3 Windows passes, for a change to timing or to the unit tests: the Windows unit tests (checks.yml
+# without the typecheck and build) 3 times at once, each pass on runners of its own. Start it from the Actions tab,
+# or with: gh workflow run windows-passes.yml -f ref=<commit, branch or refs/pull/<n>/head>
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, branch or refs/pull/<n>/head to test
+        type: string
+        required: true
+
+jobs:
+  pass:
+    name: Pass ${{ matrix.pass }}
+    strategy:
+      # Each pass reports, so one failing never stops the others.
+      fail-fast: false
+      matrix:
+        pass: [1, 2, 3]
+    uses: ./.github/workflows/checks.yml
+    with:
+      os: windows-latest
+      ref: ${{ inputs.ref }}
+      build: false
