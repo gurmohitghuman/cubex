@@ -71,16 +71,28 @@ test('beside the grid: focus in and back, another cell switches it, a double cli
   await expect(side).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(editor).toHaveCount(0)
-  // ...and on one the panel covers once open: its second click lands on the panel, which passes it on.
+  // ...and on one the panel covers once open: its second click lands on the panel, which passes it on. The two
+  // presses go apart, with the panel on screen between them, as a person's do (a dblclick() sends both at once,
+  // before the panel opens, so both would land on the cell).
   await page.setViewportSize({ width: 1000, height: 900 })
   await cellOf(page, title, 4).scrollIntoViewIfNeeded()
   const under = (await cellOf(page, title, 4).boundingBox())!
   expect(under.x, 'the cell is under the panel').toBeGreaterThan(1000 - 512)
-  await cellOf(page, title, 4).dblclick()
+  const at = { x: under.x + under.width / 2, y: under.y + under.height / 2 }
+  await page.mouse.click(at.x, at.y)
+  await expect(side).toBeVisible()
+  expect(await page.evaluate(p => !!document.elementFromPoint(p.x, p.y)?.closest('[data-testid=side-panel]'), at),
+    'the second press lands on the panel').toBe(true)
+  await page.mouse.down({ clickCount: 2 })
+  await page.mouse.up({ clickCount: 2 })
   await expect(editor).toBeVisible()
   await expect(side).toHaveCount(0)
+  // Focus is in the editor: typing goes there.
+  await page.keyboard.type('typed')
+  await expect(editor.locator('textarea')).toHaveValue(/typed$/)
   await page.keyboard.press('Escape')
   await expect(editor).toHaveCount(0)
+  await expect(cellOf(page, title, 4)).not.toContainText('typed')
   // A double click on the panel later is the panel's own: it stays, and nothing edits.
   await cellOf(page, title, 4).click()
   await expect(answer).toContainText('Row 5 · Title')
