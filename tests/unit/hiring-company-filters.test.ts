@@ -13,6 +13,7 @@ function ok(label: string, fn: () => void) {
 const { parseCompanyFilters, companyKeep, keptOff, hasCompanyFilters, minRolesRefusal } =
   await import('../../server/src/lib/hiring/company-filters')
 const { parseHiringInput } = await import('../../server/src/lib/hiring/input')
+const { websitesOf } = await import('../../server/src/lib/hiring/filters')
 const { addRole, companyCells, newAcc } = await import('../../server/src/lib/hiring/summary')
 const { COMPANY_COLUMNS: C } = await import('../../server/src/lib/hiring/names')
 const K = await import('../../server/src/lib/constants')
@@ -42,9 +43,27 @@ ok('refusals name the field as the asker sent it, word for word', () => {
   assert.equal(parseCompanyFilters({ leaveOutCompanies: ['ramp'] }, 'camel', []),
     'Each company in leaveOutCompanies is its website, such as ramp.com (got "ramp").')
   assert.equal(parseCompanyFilters({ leave_out_companies: 7 }, 'snake', []),
-    'leave_out_companies must be a list of words, such as ["kubernetes"].')
+    'leave_out_companies must be a list of websites, such as ["ramp.com"].')
+  assert.equal(websitesOf({ site: 'ramp.com' }, 'companies'),
+    'companies must be a list of websites, such as ["ramp.com"].')
   assert.equal(parseCompanyFilters({ leave_out_companies: ['ramp.com'] }, 'snake', ['ford.com', 'ramp.com']),
     'ramp.com is in both companies and leave_out_companies: take it out of one.')
+})
+
+ok('left out and only these compared as the summary keys a company; a website no company can have refused', () => {
+  // Searching only Ramp and keeping it off Companies would pay for every role and list none.
+  assert.equal(parseCompanyFilters({ leave_out_companies: ['careers.ramp.com'] }, 'snake', ['ford.com', 'ramp.com']),
+    'careers.ramp.com in leave_out_companies is the same company as ramp.com in companies: take it out of one.')
+  assert.equal(parseCompanyFilters({ leaveOutCompanies: 'ramp.com' }, 'camel', ['jobs.ramp.com']),
+    'ramp.com in leaveOutCompanies is the same company as jobs.ramp.com in companies: take it out of one.')
+  assert.deepEqual(parseCompanyFilters({ leave_out_companies: ['careers.ramp.com'] }, 'snake', ['ford.com']),
+    { minRoles: 1, leaveOutCompanies: ['careers.ramp.com'] })
+  for (const d of ['acme.local', 'intranet.corp', 'shop.invalidtld']) {
+    assert.equal(parseCompanyFilters({ leave_out_companies: ['ford.com', d] }, 'snake', []),
+      `leave_out_companies can't match ${d} to a company: give the company's website, such as ramp.com.`)
+  }
+  assert.equal(parseCompanyFilters({ leaveOutCompanies: ['acme.local'] }, 'camel', []),
+    "leaveOutCompanies can't match acme.local to a company: give the company's website, such as ramp.com.")
 })
 
 ok(`at most ${K.HIRING_MAX_LEFT_OUT} websites left out, counted once each, refused at the first past it`, () => {

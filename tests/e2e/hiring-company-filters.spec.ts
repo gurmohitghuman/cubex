@@ -138,6 +138,16 @@ test('/api/v1 and MCP: taken, answered back, refused word for word; a table with
   const bad = await api.post('/api/v1/hiring', { headers: writer, data: { roles: ['AE'], min_roles: 101 } })
   expect(bad.status()).toBe(400)
   expect((await bad.json()).error).toBe('min_roles must be a whole number from 1 to 100.')
+  // Compared by domain: searching only Ramp while keeping it off Companies would pay for roles it never lists.
+  const same = await api.post('/api/v1/hiring', { headers: writer,
+    data: { roles: ['AE'], companies: ['ramp.com'], leave_out_companies: ['careers.ramp.com'] } })
+  expect(same.status()).toBe(400)
+  expect((await same.json()).error).toBe('careers.ramp.com in leave_out_companies is the same company as ramp.com '
+    + 'in companies: take it out of one.')
+  const never = await api.post('/api/v1/hiring', { headers: writer,
+    data: { roles: ['AE'], leave_out_companies: ['acme.local'] } })
+  expect((await never.json()).error).toBe("leave_out_companies can't match acme.local to a company: give the "
+    + "company's website, such as ramp.com.")
   const many = await api.post('/api/v1/hiring', { headers: writer,
     data: { roles: ['AE'], leave_out_companies: Array.from({ length: 201 }, (_, i) => `site${i}.com`) } })
   expect((await many.json()).error).toBe('leave_out_companies takes at most 200 companies.')

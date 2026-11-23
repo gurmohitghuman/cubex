@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.42',
+    version: 'v0.8.43',
     changes: [
       {
         change: 'changed',
@@ -47,7 +47,8 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         summary: 'hiring_signals create takes min_roles (companies with fewer matching roles get no Companies row) '
           + 'and leave_out_companies (websites that get none). Their roles are still searched and paid for.',
         details: 'create and get answer them, and each check\'s companies_kept_off, only for a table made with '
-          + 'them. The search, its free count and its estimate stay the same.',
+          + 'them. Refused: a company in both companies and leave_out_companies (careers.ramp.com is ramp.com), or '
+          + 'a left-out website no company can have.',
       },
     ],
   },

@@ -48,13 +48,11 @@ const keyOf = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 // (lib/distinct-items.ts), so a long list is refused at its first item past it.
 const TOO_MANY = Symbol('too many');
 type Refused = { refused: string };
-function itemsOf(v: unknown, name: string, max: number, keep: (item: string) => string | Refused = s => s):
-  string[] | string | typeof TOO_MANY {
+function itemsOf(v: unknown, name: string, max: number, keep: (item: string) => string | Refused = s => s,
+  what = 'words, such as ["kubernetes"]'): string[] | string | typeof TOO_MANY {
   if (v === undefined || v === null) return [];
   const raw = typeof v === 'string' ? [v] : v;
-  if (!Array.isArray(raw) || raw.some(x => typeof x !== 'string')) {
-    return `${name} must be a list of words, such as ["kubernetes"].`;
-  }
+  if (!Array.isArray(raw) || raw.some(x => typeof x !== 'string')) return `${name} must be a list of ${what}.`;
   const out = new DistinctItems(max);
   for (const x of raw as string[]) {
     for (const part of x.split(/[,\r\n]/)) {
@@ -112,7 +110,7 @@ export function websitesOf(v: unknown, name: string, max = HIRING_MAX_COMPANIES)
     const d = cleanDomain(item);
     return DOMAIN_RE.test(d) ? d
       : { refused: `Each company in ${name} is its website, such as ramp.com (got "${item.slice(0, 40)}").` };
-  });
+  }, 'websites, such as ["ramp.com"]');
   return items === TOO_MANY ? `${name} takes at most ${max} companies.` : items;
 }
 

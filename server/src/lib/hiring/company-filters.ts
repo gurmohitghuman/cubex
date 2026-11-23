@@ -37,9 +37,18 @@ export function parseCompanyFilters(v: Record<string, unknown>, names: 'camel' |
   }
   const left = websitesOf(v[n.leaveOutCompanies], n.leaveOutCompanies, HIRING_MAX_LEFT_OUT);
   if (typeof left === 'string') return left;
-  const both = left.find(d => onlyThese.includes(d));
-  if (both) {
-    return `${both} is in both ${FILTER_NAMES[names].companies} and ${n.leaveOutCompanies}: take it out of one.`;
+  // Compared as the summary keys a company: careers.ramp.com left out is ramp.com, the only company searched.
+  const only = new Map(onlyThese.map(d => [companyKey(d, '')?.key, d]));
+  for (const d of left) {
+    const key = companyKey(d, '');
+    if (!key || key.byName) {
+      return `${n.leaveOutCompanies} can't match ${d} to a company: give the company's website, such as ramp.com.`;
+    }
+    const o = only.get(key.key);
+    if (o === undefined) continue;
+    const companies = FILTER_NAMES[names].companies;
+    return o === d ? `${d} is in both ${companies} and ${n.leaveOutCompanies}: take it out of one.`
+      : `${d} in ${n.leaveOutCompanies} is the same company as ${o} in ${companies}: take it out of one.`;
   }
   return { minRoles: min, leaveOutCompanies: left };
 }
