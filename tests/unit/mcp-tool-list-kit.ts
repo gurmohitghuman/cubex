@@ -98,8 +98,9 @@ export function toolsAt(tag: string): Schemas {
     fs.symlinkSync(path.resolve('node_modules'), path.join(tree, 'node_modules'), 'junction')
     fs.writeFileSync(path.join(tree, 'tests', 'unit', 'zz-tool-list-dump.test.ts'), DUMP)
     try {
+      // UNIT_SHARD emptied: a share of CI's would leave the one file to another share, and nothing would run here.
       execFileSync(process.execPath, [path.join('scripts', 'unit-tests.mjs'), 'zz-tool-list-dump'],
-        { cwd: tree, env: { ...process.env, TOOL_LIST_TO: out }, stdio: ['ignore', 'pipe', 'pipe'] })
+        { cwd: tree, env: { ...process.env, TOOL_LIST_TO: out, UNIT_SHARD: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (e) {
       throw new Error(`reading ${tag}'s tools failed: ${String((e as { stdout?: Buffer }).stdout ?? '').slice(-2000)}`)
     }

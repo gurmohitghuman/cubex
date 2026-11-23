@@ -53,7 +53,10 @@ fs.writeFileSync(path.join(repo, 'tests', 'unit', 'c-ends-late.test.ts'), [
 
 // The scratch runner over its files whose names contain `names`; never held past two minutes itself.
 const runner = path.join(repo, 'scripts', 'unit-tests.mjs')
-const runEnv = { ...process.env, NODE_PATH: path.resolve('node_modules'), PIDS_FILE: pidsFile }
+// Without UNIT_SHARD: inside one of CI's shares it is set, and the scratch runner would take only its share of the
+// three files.
+const runEnv: NodeJS.ProcessEnv = { ...process.env, NODE_PATH: path.resolve('node_modules'), PIDS_FILE: pidsFile }
+delete runEnv.UNIT_SHARD
 const run = (env: Record<string, string>, ...names: string[]) => {
   const started = Date.now()
   const r = spawnSync(process.execPath, [runner, ...names], {
