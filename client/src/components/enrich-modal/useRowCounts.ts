@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { enrichAPI, type EnrichRowCounts } from '@/utils/api'
+import { useTypedReads } from '@/hooks/useTypedReads'
 import type { Condition, RowsMode, RowsStatus } from './draft'
-
-// Typing a condition's value re-counts once it settles.
-const CONDITIONS_SETTLE_MS = 400
 
 // Rows by status in an enrichment column a run already made, for the chosen
 // scope: what "Rows not enriched yet (1,199)" and the Test step's "the other
 // rows" count. With "Only run if" (conditions, a rule), only the rows passing
 // them (also for a new column: total). Re-read when the scope, the column or the
 // conditions change, and when `key` does (a run on the column ended). null
-// while counting, or with neither a column nor conditions.
+// while counting, or with neither a column nor conditions. A count of the
+// whole sheet that the server finishes even when dropped: paced by its own
+// time, one at a time (lib/typedReads.ts); with conditions or a rule, which
+// are typed, it waits for a pause in the typing, else it counts at once.
 export function useRowCounts(
   sheetId: string, column: string | null, mode: RowsMode, selectedRows: number[], active: boolean, key = '',
   conditions: Condition[] = [], runIf = '',
@@ -19,18 +20,16 @@ export function useRowCounts(
   const selection = mode === 'selected' ? selectedRows.join(',') : ''
   const where = JSON.stringify(conditions.map(c => ({ column: c.column, op: c.op, value: c.value })))
   const rule = runIf.trim()
+  const ask = useTypedReads<EnrichRowCounts>(a => { if (a.ok) setCounts(a.value) }, { paced: true })
   useEffect(() => {
-    if (!active || (!column && conditions.length === 0 && !rule)) { setCounts(null); return }
-    let alive = true
     setCounts(null)
-    const timer = setTimeout(() => {
-      const rows = mode === 'selected' ? selectedRows : undefined
-      enrichAPI.rowCounts(sheetId, column, mode, rows, JSON.parse(where), rule)
-        .then(c => { if (alive) setCounts(c) })
-        .catch(() => {})
-    }, conditions.length || rule ? CONDITIONS_SETTLE_MS : 0)
-    return () => { alive = false; clearTimeout(timer) }
-  }, [sheetId, column, mode, selection, active, key, where, rule]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!active || (!column && conditions.length === 0 && !rule)) { ask('', null); return }
+    const rows = mode === 'selected' ? selectedRows : undefined
+    ask(JSON.stringify([sheetId, column, mode, selection, key, where, rule]),
+      () => enrichAPI.rowCounts(sheetId, column, mode, rows, JSON.parse(where), rule),
+      conditions.length || rule ? undefined : 0)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetId, column, mode, selection, active, key, where, rule, ask])
   return counts
 }
 

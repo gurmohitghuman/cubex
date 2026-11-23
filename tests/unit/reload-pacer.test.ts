@@ -3,42 +3,15 @@
 // each, and every change shown by a reload that starts after it. A fake clock: no DB, no network, no waiting.
 import assert from 'node:assert/strict'
 import {
-  ReloadPacer, reloadRest, RELOAD_REST_MAX_MS, RELOAD_REST_MIN_MS, RELOAD_WAIT_MAX_MS, type PacerClock,
+  ReloadPacer, reloadRest, RELOAD_REST_MAX_MS, RELOAD_REST_MIN_MS, RELOAD_WAIT_MAX_MS,
 } from '../../client/src/hooks/sheet/reloadPacer'
+import { FakeClock } from './fake-clock'
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
   try { await fn(); console.log(`  ok  ${label}`) } catch (e) {
     failures++
     console.error(`  FAIL ${label}\n${(e as Error).message}`)
-  }
-}
-
-const settle = () => new Promise<void>(r => setImmediate(r))
-
-// A clock whose time moves only when the test moves it, running its timers in order.
-class FakeClock implements PacerClock {
-  t = 0
-  private timers: Array<{ at: number; fn: () => void; id: number }> = []
-  private nextId = 1
-  now = () => this.t
-  setTimeout = (fn: () => void, ms: number) => {
-    this.timers.push({ at: this.t + ms, fn, id: this.nextId })
-    return this.nextId++
-  }
-  clearTimeout = (id: unknown) => { this.timers = this.timers.filter(x => x.id !== id) }
-  async advanceTo(at: number) {
-    for (;;) {
-      await settle()
-      this.timers.sort((a, b) => a.at - b.at || a.id - b.id)
-      const next = this.timers[0]
-      if (!next || next.at > at) break
-      this.timers.shift()
-      this.t = next.at
-      next.fn()
-    }
-    this.t = at
-    await settle()
   }
 }
 

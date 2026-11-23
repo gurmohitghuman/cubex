@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { enrichAPI, settingsAPI, type EnrichReuseCount, type EnrichRunRequest } from '@/utils/api'
-
-// Slower than the estimate: the count reads the rows the run takes.
-const REUSE_DEBOUNCE_MS = 600
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 // What decides which rows reuse: the lookup and the rows, not the names, the
 // outputs or the limits, so typing a column name doesn't count again (a new
@@ -15,22 +13,19 @@ function lookupKey(r: EnrichRunRequest): string {
 // How many rows of the run the draft would start reuse an answer an earlier
 // run found, at no cost (the server checks them as the run would). null while
 // unknown, for a run set to call every row again, and when the count failed:
-// the estimate then prices every row, which is never too low.
+// the estimate then prices every row, which is never too low. It reads the
+// rows the run takes: paced by its own time, one at a time (lib/typedReads.ts).
 export function useReuseCount(sheetId: string, request: EnrichRunRequest | null): EnrichReuseCount | null {
   const [count, setCount] = useState<EnrichReuseCount | null>(null)
   const key = request && !request.fresh ? lookupKey(request) : ''
+  // A failed count leaves null: priced as if every row calls.
+  const ask = useTypedReads<EnrichReuseCount>(a => { if (a.ok) setCount(a.value) }, { paced: true })
 
   useEffect(() => {
     setCount(null)
-    if (!key || !request) return
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => {
-      enrichAPI.reuseCount(sheetId, request, ctrl.signal)
-        .then(next => { if (!ctrl.signal.aborted) setCount(next) })
-        .catch(() => { /* priced as if every row calls */ })
-    }, REUSE_DEBOUNCE_MS)
-    return () => { clearTimeout(timer); ctrl.abort() }
-  }, [sheetId, key]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!key || !request) { ask('', null); return }
+    ask(`${sheetId}\n${key}`, signal => enrichAPI.reuseCount(sheetId, request, signal))
+  }, [sheetId, key, ask]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return count
 }
