@@ -1,5 +1,6 @@
 // More background bulk writers, each measured (bulk-wal-kit.ts): a sheet's values copied into a new sheet
-// (services/sheet-copy-job.ts), auto-run's queue dropped and rows kept by id past an import or a restore
+// (services/sheet-copy-job.ts, small rows and rows of about 1,500 characters, each slice printed), auto-run's
+// queue dropped and rows kept by id past an import or a restore
 // (lib/autorun-mark.ts), and a duplicate removal's plan saved (lib/dedupe/journal.ts). Rows with random ids, each
 // checkpoint on the worker held 300 ms: the event loop is never held 200 ms, no checkpoint's sync runs on the API
 // thread, the WAL stays under journal_size_limit, SQLite's own checkpoint is back on afterwards, and every row,
@@ -8,6 +9,7 @@ import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { bulkWalKit } from './bulk-wal-kit'
+import { transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, sheet, cells } = undoKit('bulk-wal-jobs')
 const { copySheetValues } = await import('../../server/src/services/sheet-copy')
 const { autorunDropPending, autorunSkipImport, autorunSkipRestore } = await import('../../server/src/lib/autorun-mark')
@@ -30,14 +32,22 @@ const entries = (sid: string, k: number, fence: number, tag = 'S') => Array.from
 const queued = db.prepare('SELECT COUNT(*) FROM autorun_pending WHERE autorun_id = ?').pluck()
 const fenceOf = db.prepare('SELECT watermark_row_index FROM autorun_columns WHERE id = ?').pluck()
 
-await ok('a sheet\'s values copied: the WAL copied back on the worker', async () => {
-  const sid = big()
+// A copy of `sid` measured, each of its transactions printed (a slice is one): its `n` rows all in, in order.
+async function copyMeasured(label: string, sid: string, n: number) {
   let out: Awaited<ReturnType<typeof copySheetValues>> | null = null
-  await measure('the copy', async () => { out = await copySheetValues(uid, sid, { name: 'Copy' }) }, { pastAuto: true })
-  assert.ok(out && 'ok' in out && out.ok.rowsCopied === N, JSON.stringify(out))
+  const m = await measure(label, async () => { out = await copySheetValues(uid, sid, { name: label }) },
+    { pastAuto: true })
+  for (const r of m.records) console.log(`        ${transactionLine(r)}`)
+  assert.ok(out && 'ok' in out && out.ok.rowsCopied === n, JSON.stringify(out))
   const copy = (out as { ok: { sheet: { id: string } } }).ok.sheet.id
-  assert.deepEqual([cells(copy, 'Name')[0], cells(copy, 'Name')[N - 1]], ['n0', `n${N - 1}`])
-})
+  assert.deepEqual([cells(copy, 'Name')[0], cells(copy, 'Name')[n - 1]], ['n0', `n${n - 1}`])
+}
+
+await ok('a sheet\'s values copied: the WAL copied back on the worker', () => copyMeasured('the copy', big(), N))
+
+await ok('a sheet\'s wide values copied (about 1,500 characters a row): the WAL copied back on the worker', () =>
+  copyMeasured('the wide copy', sheet(Array.from({ length: 6_000 }, (_, i) => ({ Name: `n${i}`,
+    P: `${i}:${'p'.repeat(1_500)}` })), ['Name', 'Status', 'P']), 6_000))
 
 await ok('auto-run\'s queue dropped: the WAL copied back on the worker', async () => {
   const sid = big()
