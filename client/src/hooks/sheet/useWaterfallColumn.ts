@@ -1,14 +1,13 @@
 // A waterfall column on the grid: its menu's actions (each run first reads
 // its estimate for the confirm, then starts through the waterfall's rerun;
-// Edit and View open the drawer) and a click on its cells, which opens the
-// row's trace after a moment (a double click edits instead).
-import React, { useEffect, useRef, useState } from 'react'
+// Edit and View open the drawer). A click on its cells opens the row's trace
+// (useTracePanel).
+import React, { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { httpAPI, type HTTPRun, type Sheet } from '@/utils/api'
-import { waterfallAPI, type RowsStatus, type WaterfallEstimate, type WaterfallTrace } from '@/utils/api/waterfall'
+import { waterfallAPI, type RowsStatus, type WaterfallEstimate } from '@/utils/api/waterfall'
 import type { EnrichMenuAction } from '@/components/aggrid/types'
 import type { WaterfallOpenTarget } from '@/components/waterfall/WaterfallDrawer'
-import type { TraceTarget } from '@/components/waterfall/TracePanel'
 
 interface Args {
   activeSheet: Sheet | null
@@ -32,7 +31,6 @@ const STATUS: Record<WaterfallRerunAction, RowsStatus> = {
   stale: 'empty_or_out_of_date', failed: 'failed', selected: 'any', all: 'any',
 }
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
-const OPEN_AFTER_MS = 300
 
 export function useWaterfallColumn(a: Args) {
   const [pending, setPending] = useState<PendingWaterfallRun | null>(null)
@@ -88,46 +86,7 @@ export function useWaterfallColumn(a: Args) {
     }
   }
 
-  // The trace panel.
-  const [target, setTarget] = useState<TraceTarget | null>(null)
-  const [trace, setTrace] = useState<WaterfallTrace | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const traceSeq = useRef(0)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cancelPendingTrace = () => { if (timer.current) clearTimeout(timer.current); timer.current = null }
-  const openTrace = (t: Omit<TraceTarget, 'sheetId' | 'rowGeneration'>) => {
-    const sheet = a.activeSheet
-    if (!sheet) return
-    const id = ++traceSeq.current
-    setTarget({ ...t, sheetId: sheet.id, rowGeneration: a.rowGenerationRef?.current.get(sheet.id) })
-    setTrace(null); setError(null); setLoading(true)
-    waterfallAPI.trace(sheet.id, t.column, t.row)
-      .then(v => { if (traceSeq.current === id) setTrace(v) })
-      .catch(e => { if (traceSeq.current === id) setError(errorOf(e, "Couldn't load this row's trace.")) })
-      .finally(() => { if (traceSeq.current === id) setLoading(false) })
-  }
-  const traceClicked = (t: Omit<TraceTarget, 'sheetId' | 'rowGeneration'>, clicks: number) => {
-    cancelPendingTrace()
-    if (clicks > 1) return
-    timer.current = setTimeout(() => { timer.current = null; openTrace(t) }, OPEN_AFTER_MS)
-  }
-  const closeTrace = () => { traceSeq.current++; setTarget(null); setTrace(null) }
-  const sheetId = a.activeSheet?.id
-  // eslint-disable-next-line
-  useEffect(() => { cancelPendingTrace(); if (target && target.sheetId !== sheetId) closeTrace() }, [sheetId])
-  useEffect(() => cancelPendingTrace, [])
-  const rerunRow = () => {
-    if (!trace || !target) return
-    const { row, rowGeneration } = target
-    closeTrace()
-    // A row run again asks every step afresh, not its own earlier answer.
-    onWaterfallAction('selected', trace.resultColumn, [row], rowGeneration, true)
-  }
-
   return {
     onWaterfallAction, pending, confirm, cancel: () => { seq.current++; setPending(null) },
-    traceClicked, cancelPendingTrace,
-    tracePanel: { target, trace, loading, error, onClose: closeTrace, onRerun: rerunRow },
   }
 }

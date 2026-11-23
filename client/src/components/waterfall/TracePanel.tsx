@@ -1,6 +1,7 @@
 import React from 'react'
 import { Layers, Loader2, RotateCcw } from 'lucide-react'
-import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
+import { DrawerBody, DrawerHeader } from '@/components/Drawer'
+import { SidePanel } from '@/components/SidePanel'
 import type { WaterfallTrace } from '@/utils/api/waterfall'
 import { formatCost } from '@/components/ai-modal/format'
 import { FROM_TEXT, KIND_LABEL, OUTCOME_TEXT, checkText } from './step-copy'
@@ -15,6 +16,7 @@ interface Props {
   loading: boolean
   error: string | null
   onClose: () => void
+  onDoubleClickThrough: () => void
   onRerun: () => void
 }
 
@@ -23,9 +25,13 @@ const money = (v: number) => (v === 0 ? '$0' : formatCost(v))
 // A waterfall cell's story: the value it ended with, the step that answered,
 // and every step in order with what it did for this row (answered, found
 // nothing, skipped for missing inputs, failed, or not reached), what it cost
-// and where a free answer came from.
-export const TracePanel: React.FC<Props> = ({ target, trace: t, loading, error, onClose, onRerun }) => (
-  <Drawer isOpen={!!target} onClose={onClose} panelClassName="max-w-md">
+// and where a free answer came from. A side panel: the grid stays usable beside it.
+export const TracePanel: React.FC<Props> = ({
+  target, trace: t, loading, error, onClose, onDoubleClickThrough, onRerun,
+}) => (
+  <SidePanel isOpen={!!target} onClose={onClose} onDoubleClickThrough={onDoubleClickThrough}
+    label={target ? `Row ${target.displayRow.toLocaleString()} · ${target.column}` : ''}
+    openKey={target ? `${target.sheetId}:${target.column}:${target.row}` : undefined}>
     <DrawerHeader icon={<div className="bg-cube-black p-1.5"><Layers className="h-4 w-4 text-white" /></div>}
       title={target ? `Row ${target.displayRow.toLocaleString()}` : ''}
       description={`Waterfall: ${t?.resultColumn ?? target?.column ?? ''}`} onClose={onClose} />
@@ -73,5 +79,5 @@ export const TracePanel: React.FC<Props> = ({ target, trace: t, loading, error, 
         )}
       </div>
     </DrawerBody>
-  </Drawer>
+  </SidePanel>
 )
