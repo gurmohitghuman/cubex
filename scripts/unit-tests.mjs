@@ -172,6 +172,8 @@ const failed = [];
 try {
   for (const [n, file] of tests.entries()) {
     if (interrupted) break;
+    // Each file's start and the run's time so far: a log that ends early names the file it was in.
+    console.log(`[${n + 1}/${tests.length}] tests/unit/${file}, ${Math.round((Date.now() - started) / 1000)} s in`);
     const status = await run(file, n);
     if (status === 'late' || status === 'late-part') {
       failed.push(`${file} (did not end within ${LIMIT_S} s)`);

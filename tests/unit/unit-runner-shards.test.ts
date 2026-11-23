@@ -1,11 +1,11 @@
 // CI splits the unit tests over 3 runners per platform (.github/workflows/checks.yml), each running
-// scripts/unit-tests.mjs with UNIT_SHARD=k/n. Every test file must run on exactly one of them: none twice, none on
-// no runner at all, which would pass CI without ever running. Checked here: the share each file goes to
+// scripts/unit-tests.mjs with UNIT_SHARD=k/n. Every test file must run on exactly one of them: none twice, none on no
+// runner at all, which would pass CI without ever running. Checked here: the share each file goes to
 // (scripts/unit-shards.mjs) for lists of 0 to 12 files and 1 to 5 shares, and for this checkout's own tests; a
-// UNIT_SHARD that isn't k/n is refused; the runner runs only its share's files, and a share with none passes; and
-// the workflow's list of shards is 1 to the n it passes to UNIT_SHARD, with each platform's result under the name
-// main's required check uses. The runner runs on a scratch copy of the repository's layout, finding tsx in this
-// checkout's node_modules through NODE_PATH, as unit-runner-limit.test.ts does.
+// UNIT_SHARD that isn't k/n is refused; the runner runs only its share's files, printing each one's start, and a share
+// with none passes; and the workflow's list of shards is 1 to the n it passes to UNIT_SHARD, with each platform's
+// result under the name main's required check uses. The runner runs on a scratch copy of the repository's layout,
+// finding tsx in this checkout's node_modules through NODE_PATH, as unit-runner-limit.test.ts does.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -85,6 +85,8 @@ await test('the runner runs only its share of the files, and the shares together
   assert.equal(whole.status, 0, whole.err)
   assert.deepEqual(whole.ran, scratch)
   assert.match(whole.out, /^\[done\] all 5 unit tests passed/m)
+  const starts = [...whole.out.matchAll(/^\[(\d)\/5\] tests\/unit\/(\w)\.test\.ts, \d+ s in$/gm)].map(m => m[1] + m[2])
+  assert.deepEqual(starts, ['1a', '2b', '3c', '4d', '5e'], 'each file\'s start, numbered')
   assert.doesNotMatch(whole.out, /shard/)
 })
 
