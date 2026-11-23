@@ -3,7 +3,7 @@
 // each, and every change shown by a reload that starts after it. A fake clock: no DB, no network, no waiting.
 import assert from 'node:assert/strict'
 import {
-  ReloadPacer, reloadRest, RELOAD_REST_MAX_MS, RELOAD_REST_MIN_MS, type PacerClock,
+  ReloadPacer, reloadRest, RELOAD_REST_MAX_MS, RELOAD_REST_MIN_MS, RELOAD_WAIT_MAX_MS, type PacerClock,
 } from '../../client/src/hooks/sheet/reloadPacer'
 
 let failures = 0
@@ -69,10 +69,8 @@ async function main() {
     const { clock, runs, pacer } = sheet(() => 80)
     clock.t = 50_000
     pacer.request('s')
-    assert.equal(runs.length, 1)
-    assert.equal(runs[0].start, 50_000)
     pacer.request('other')
-    assert.equal(runs.length, 2)
+    assert.deepEqual(runs.map(r => r.start), [50_000, 50_000])
   })
 
   await check('changes during a reload: one more reload after it, after its rest, showing them all', async () => {
@@ -81,10 +79,8 @@ async function main() {
     await clock.advanceTo(100)
     for (let n = 0; n < 3; n++) pacer.request('s')
     await clock.advanceTo(10_000)
-    assert.equal(runs.length, 2)
-    assert.equal(runs[0].end, 300)
     // 4 x 300 ms after the first one ended.
-    assert.equal(runs[1].start, 300 + 1_200)
+    assert.deepEqual(runs.map(r => r.start), [0, 300 + 1_200])
   })
 
   await check('a change during the rest waits for its end; more changes then add nothing', async () => {
@@ -95,8 +91,7 @@ async function main() {
     await clock.advanceTo(600)
     pacer.request('s')
     await clock.advanceTo(5_000)
-    assert.equal(runs.length, 2)
-    assert.equal(runs[1].start, 50 + 1_000)
+    assert.deepEqual(runs.map(r => r.start), [0, 50 + 1_000])
   })
 
   // A writer changing the sheet twice a second for 2 minutes, at three reload costs.
@@ -109,9 +104,7 @@ async function main() {
       }
       await clock.advanceTo(200_000)
       assert.equal(overlapping(runs), false)
-      for (let i = 1; i < runs.length; i++) {
-        assert.ok(runs[i].start - runs[i - 1].start >= 1_000, 'at most one reload a second')
-      }
+      for (let i = 1; i < runs.length; i++) assert.ok(runs[i].start - runs[i - 1].start >= 1_000, 'one a second')
       // Each reload and the rest after it, up to the last reload's start.
       const busy = runs.slice(0, -1).reduce((ms, r) => ms + (r.end! - r.start), 0)
       const span = runs[runs.length - 1].start - runs[0].start
@@ -175,6 +168,17 @@ async function main() {
     await clock.advanceTo(10_000)
     assert.equal(runs.length, 2)
     assert.equal(runs[1].start, 100 + 1_000)
+  })
+
+  await check('a reload that never ends holds the pace 5 minutes at most', async () => {
+    const { clock, runs, pacer } = sheet(n => (n === 1 ? Infinity : 100))
+    pacer.request('s')
+    await clock.advanceTo(1_000)
+    pacer.request('s')
+    await clock.advanceTo(RELOAD_WAIT_MAX_MS - 1)
+    assert.equal(runs.length, 1)
+    await clock.advanceTo(RELOAD_WAIT_MAX_MS + RELOAD_REST_MAX_MS + 1_000)
+    assert.deepEqual(runs.map(r => r.start), [0, RELOAD_WAIT_MAX_MS + RELOAD_REST_MAX_MS])
   })
 
   await check('stopped: no reload, not even one waiting', async () => {

@@ -2,7 +2,7 @@
 // Extracted from useSheetSSE so the hook file stays under the 200-line cap.
 
 import toast from 'react-hot-toast'
-import { AIRun, HTTPRun } from '@/utils/api'
+import { aiAPI, httpAPI, AIRun, HTTPRun } from '@/utils/api'
 import { SSEResultBuffer, deriveAICellValue } from './sseResultBuffer'
 
 // Enqueue an SSE 'result' delta (AI single-column OR HTTP extractedFields) into the
@@ -125,35 +125,24 @@ interface ReconnectArgs {
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => unknown
 }
 
+// Read through the app's client, as every read of a reload is: a read that never answers is given up after the
+// client's time limit (30 s), so the reload ends and the next one can run (reloadPacer.ts waits for each to end).
+// A read given up never answers late.
 export const reconnectActiveRuns = async ({
   sheetId, setActiveAIRuns, setActiveHTTPRuns, setupSSEConnection,
 }: ReconnectArgs) => {
   try {
-    const aiResponse = await fetch(`/api/ai/runs?sheetId=${sheetId}`, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (aiResponse.ok) {
-      const aiRuns = await aiResponse.json()
-      const active = aiRuns.filter((run: any) => ACTIVE.has(run.status))
-      setActiveAIRuns(active)
-      for (const run of active) setupSSEConnection(run.id, 'ai')
-    }
+    const active = (await aiAPI.getRuns(sheetId)).filter(run => ACTIVE.has(run.status))
+    setActiveAIRuns(active)
+    for (const run of active) setupSSEConnection(run.id, 'ai')
   } catch (error) {
     console.error('Error fetching AI runs for reconnection:', error)
   }
 
   try {
-    const httpResponse = await fetch(`/api/http/runs?sheetId=${sheetId}`, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (httpResponse.ok) {
-      const httpRuns = await httpResponse.json()
-      const active = httpRuns.filter((run: any) => ACTIVE.has(run.status))
-      setActiveHTTPRuns(active)
-      for (const run of active) setupSSEConnection(run.id, 'http')
-    }
+    const active = (await httpAPI.getRuns(sheetId)).filter(run => ACTIVE.has(run.status))
+    setActiveHTTPRuns(active)
+    for (const run of active) setupSSEConnection(run.id, 'http')
   } catch (error) {
     console.error('Error fetching HTTP runs for reconnection:', error)
   }

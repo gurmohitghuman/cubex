@@ -45,7 +45,8 @@ async function shouts(n: number): Promise<string[]> {
 async function openGrid(page: Page) {
   await page.context().addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
-  await expect(page.locator('.ag-center-cols-container .ag-row[row-index="9"]')).toContainText('NAME 10',
+  // Row 10's Id: the tests before may have written its Name.
+  await expect(page.locator('.ag-center-cols-container .ag-row[row-index="9"]')).toContainText('10',
     { timeout: 30_000 })
 }
 
@@ -120,4 +121,31 @@ test('a writer once a second for 30 s: the tab\'s reloads never overlap, at most
   expect(reads.length).toBeLessThanOrEqual(Math.ceil((Date.now() - started) / 1_000) + 1)
   for (let i = 1; i < reads.length; i++) expect(reads[i].start - reads[i - 1].start).toBeGreaterThanOrEqual(900)
   expect(last.grid - last.api).toBeLessThan(SHOWN_WITHIN_MS)
+})
+
+// A read in a reload that never answers: the client gives it up after its time limit (30 s), the reload ends, and
+// the next writes show. Held here: a reload's second read of the HTTP runs (its reconnect to running runs).
+test('a reload read that never answers holds the writes after it 30 s and a rest, no longer', async ({ page }) => {
+  test.setTimeout(150_000)
+  await openGrid(page)
+  let seen = 0
+  let release: () => void = () => {}
+  const released = new Promise<void>(r => { release = r })
+  await page.route(/\/api\/http\/runs\?/, async route => {
+    if (++seen === 2) { await released; await route.abort().catch(() => {}); return }
+    await route.continue()
+  })
+  try {
+    const first = await writeAndTime(page, 0, 'before the held read')
+    await expect.poll(() => seen, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
+    const heldAt = Date.now()
+    const next = await writeAndTime(page, 1, 'after the held read')
+    console.log(`[live-derived] held read: the write before it shown ${first.grid - first.api} ms after the API `
+      + `had it; the next ${Math.round((next.grid - heldAt) / 1000)} s after the read was held`)
+    // The client's 30 s limit, then a rest of at most 15 s.
+    expect(next.grid - heldAt).toBeLessThan(50_000)
+  } finally {
+    release()
+    await page.unroute(/\/api\/http\/runs\?/)
+  }
 })

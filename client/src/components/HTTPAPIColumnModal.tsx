@@ -66,7 +66,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
   // Poll for run updates while a run is live AND the drawer is open. Stops on a
   // terminal status. Once closed, the sheet page's SSE keeps the grid current,
   // so polling on would only load the server for nothing shown. 'paused' is
-  // NOT terminal — polling continues.
+  // NOT terminal: polling continues.
   useEffect(() => {
     if (!h.currentRun?.id || !isOpen) return
     const interval = setInterval(async () => {

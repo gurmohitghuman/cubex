@@ -13,6 +13,11 @@
 export const RELOAD_REST_FACTOR = 4
 export const RELOAD_REST_MIN_MS = 1_000
 export const RELOAD_REST_MAX_MS = 15_000
+// The longest the pace waits for one reload to end. Every read in a reload is given up after the client's time
+// limit (30 s), so a reload ends well before this; it is here so that a read without one can never stop the pace
+// while the page is open. A reload still running past it may yet end and show its rows: an older reload's rows
+// never overwrite a newer one's (useSheetLoad orders background reloads' commits).
+export const RELOAD_WAIT_MAX_MS = 5 * 60_000
 
 export const reloadRest = (tookMs: number): number =>
   Math.min(RELOAD_REST_MAX_MS, Math.max(RELOAD_REST_MIN_MS, RELOAD_REST_FACTOR * tookMs))
@@ -87,11 +92,17 @@ export class ReloadPacer {
   private async fire(sheetId: string, p: Pace): Promise<void> {
     p.busy = true
     const started = this.clock.now()
+    let giveUp: unknown = null
     try {
-      await this.reload(sheetId)
+      // A reload that ends after the pace gave up on it changes nothing here.
+      await Promise.race([
+        this.reload(sheetId),
+        new Promise<void>(resolve => { giveUp = this.clock.setTimeout(resolve, RELOAD_WAIT_MAX_MS) }),
+      ])
     } catch {
       // The reload shows its own failure; the pace goes on.
     } finally {
+      this.clock.clearTimeout(giveUp)
       p.busy = false
       p.endedAt = this.clock.now()
       p.rest = reloadRest(p.endedAt - started)
