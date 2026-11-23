@@ -1,3 +1,4 @@
+// Over 200 lines: one entry per release with changes for agents, newest first; shipped ones stay as they were.
 // What changed for agents, release by release: tools added, changed, removed or renamed, and changes to the
 // server's answers. Agents read it three ways (services/version-changes.ts): the server instructions name
 // the running release and what changed in it, get_version with since lists every release after a version,
@@ -37,6 +38,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
+  {
+    version: 'v0.8.43',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals create takes min_roles (companies with fewer matching roles get no Companies row) '
+          + 'and leave_out_companies (websites that get none). Their roles are still searched and paid for.',
+        details: 'create and get answer them, and each check\'s companies_kept_off, only for a table made with '
+          + 'them. Refused: a company in both companies and leave_out_companies (careers.ramp.com is ramp.com), or '
+          + 'a left-out website no company can have.',
+      },
+    ],
+  },
   {
     version: 'v0.8.38',
     changes: [

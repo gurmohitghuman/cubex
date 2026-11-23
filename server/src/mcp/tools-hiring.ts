@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
-  ENRICH_LIST_MAX_ITEMS, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES,
+  ENRICH_LIST_MAX_ITEMS, HIRING_MAX_MIN_ROLES, HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLES,
 } from '../lib/constants';
 import { perSearchRefusal, postedDaysRefusal } from '../lib/hiring/input';
 import { EMPLOYMENT_TYPES, SENIORITY_LEVELS } from '../lib/hiring/filters';
+import { minRolesRefusal } from '../lib/hiring/company-filters';
 import { agentCheckHiring, agentCreateHiring, agentGetHiring } from '../services/hiring-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
@@ -39,6 +40,12 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       seniority: words().describe(`create: only ${SENIORITY_LEVELS.join(', ')}`),
       employment_types: words().describe(`create: only ${EMPLOYMENT_TYPES.join(', ')}`),
       companies: words().describe('create: only these companies (websites)'),
+      // lib/hiring/company-filters.ts: which companies get a Companies row; the search stays the same.
+      min_roles: lenientInt(1, HIRING_MAX_MIN_ROLES, minRolesRefusal('min_roles')).optional()
+        .describe('create: companies with fewer matching roles get no Companies row (default 1). Their roles are '
+          + 'still searched and paid for.'),
+      leave_out_companies: words().describe('create: these companies (websites) get no Companies row. Their roles '
+        + 'are still searched and paid for.'),
       estimate_only: lenientBoolean().optional().describe('check: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()

@@ -3,11 +3,12 @@
 // the token's run-start slot and stops at its spend cap.
 import { checkMostOf, parseHiringInput } from '../lib/hiring/input';
 import { FILTER_KEYS, FILTER_NAMES, type HiringFilters } from '../lib/hiring/filters';
+import { COMPANY_FILTER_NAMES, hasCompanyFilters } from '../lib/hiring/company-filters';
 import type { JobCount } from './job-count';
 import { timeZoneOf } from '../lib/ai-visibility/check';
 import { createHiringTable } from './hiring-create';
 import { estimateHiringCheck, startHiringCheck, type HiringEstimate, type HiringStartFail } from './hiring-check';
-import { hiringFor, hiringView, type HiringCheckView, type HiringView } from './hiring-store';
+import { companyFiltersOf, hiringFor, hiringView, type HiringCheckView, type HiringView } from './hiring-store';
 import { spendCapRefusal } from './token-spend';
 import { startRefusalMessage, takeRunStart, type RunFail } from './run-shared';
 
@@ -16,22 +17,32 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const notFound: RunFail = { fail: 'not_found', message: 'Hiring table not found' };
 
-export const hiringCheckJson = (c: HiringCheckView) => ({
+// filtered: the table has filters on Companies, so a check says how many companies they kept off.
+export const hiringCheckJson = (c: HiringCheckView, filtered: boolean) => ({
   id: c.id, day: c.label, new_since: c.since, stage: c.stage, checked_at: c.checkedAt, run_id: c.runId,
   searches: c.searches, roles_added: c.rolesAdded, companies_new: c.companiesNew,
-  companies_hiring_more: c.companiesHiringMore, problems: c.problems,
+  companies_hiring_more: c.companiesHiringMore, ...(filtered ? { companies_kept_off: c.companiesKeptOff } : {}),
+  problems: c.problems,
 });
 
-export const hiringJson = (v: HiringView) => ({
-  id: v.id, table_id: v.tableId, companies_sheet_id: v.companiesSheetId, roles_sheet_id: v.rolesSheetId,
-  searches_sheet_id: v.searchesSheetId, roles: v.roles, country: v.country, place: v.place,
-  posted_within_days: v.postedWithinDays, created_at: v.createdAt, checks: v.checks.map(hiringCheckJson),
-});
+// Its filters on Companies only when it has any, so a table without them answers as before.
+export const hiringJson = (v: HiringView) => {
+  const filtered = hasCompanyFilters(v);
+  return {
+    id: v.id, table_id: v.tableId, companies_sheet_id: v.companiesSheetId, roles_sheet_id: v.rolesSheetId,
+    searches_sheet_id: v.searchesSheetId, roles: v.roles, country: v.country, place: v.place,
+    posted_within_days: v.postedWithinDays,
+    ...(filtered ? { min_roles: v.minRoles, leave_out_companies: v.leaveOutCompanies } : {}),
+    created_at: v.createdAt, checks: v.checks.map(c => hiringCheckJson(c, filtered)),
+  };
+};
 
 export async function agentCreateHiring(userId: string, body: unknown) {
   const b = isObj(body) ? body : {};
-  // Description words, seniority and the rest, by their snake_case names (lib/hiring/filters.ts).
-  const filters = Object.fromEntries(Object.values(FILTER_NAMES.snake).map(k => [k, b[k]]));
+  // Description words, seniority and the rest, and the filters on Companies, by their snake_case names
+  // (lib/hiring/filters.ts, company-filters.ts).
+  const names = [...Object.values(FILTER_NAMES.snake), ...Object.values(COMPANY_FILTER_NAMES.snake)];
+  const filters = Object.fromEntries(names.map(k => [k, b[k]]));
   const input = parseHiringInput({
     roles: b.roles, country: b.country, place: b.place, postedWithinDays: b.posted_within_days,
     perSearch: b.per_search, ...filters,
@@ -111,7 +122,7 @@ export async function agentCheckHiring(userId: string, tokenId: string, id: unkn
   return {
     sheetId: rec.searches_sheet_id,
     ok: {
-      ...hiringCheckJson(out.ok),
+      ...hiringCheckJson(out.ok, hasCompanyFilters(companyFiltersOf(rec))),
       next: 'The search is an enrichment run: follow it with get_run_status (run type enrichment), then '
         + 'hiring_signals action "get" shows the check done. Read Companies with read_rows (New roles > 0).',
     },

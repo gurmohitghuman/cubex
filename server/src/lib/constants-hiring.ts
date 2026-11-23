@@ -11,6 +11,10 @@ export const HIRING_MAX_POSTED_DAYS = 365;
 export const HIRING_MAX_FILTER_WORDS = 20;
 export const HIRING_MAX_WORD_CHARS = 60;
 export const HIRING_MAX_COMPANIES = 50;
+// Filters on Companies (lib/hiring/company-filters.ts): the most "at least N matching roles" takes, and websites
+// left out at most.
+export const HIRING_MAX_MIN_ROLES = 100;
+export const HIRING_MAX_LEFT_OUT = 200;
 // A company's Role titles: the first few kept titles, then "…"; its Links: the newest few.
 export const HIRING_TITLES_SHOWN = 5;
 export const HIRING_LINKS_SHOWN = 3;

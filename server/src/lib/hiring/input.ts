@@ -1,13 +1,15 @@
 // What a hiring table is made from, parsed strictly (pure): the role titles
 // (one search each), the country, the place, how recent, how many roles a
-// search adds and its More filters (lib/hiring/filters.ts). The same parse
-// serves the app, /api/v1 and MCP.
+// search adds, its More filters (lib/hiring/filters.ts) and its filters on
+// Companies (lib/hiring/company-filters.ts). The same parse serves the app,
+// /api/v1 and MCP.
 import { stripControlChars } from '../csv-safety';
 import { holdsRunMarker } from '../enrich-seed';
 import { digitsAsNumber } from '../digits-text';
 import { usdLimitOf } from '../cost-ceiling';
 import { DistinctItems } from '../distinct-items';
 import { directRoleTitle, parseHiringFilters, type HiringFilters } from './filters';
+import { parseCompanyFilters, type CompanyFilters } from './company-filters';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PLACE_CHARS,
   HIRING_MAX_POSTED_DAYS, HIRING_MAX_ROLE_CHARS, HIRING_MAX_ROLES,
@@ -20,6 +22,7 @@ export interface HiringInput {
   postedWithinDays: number | null;  // null: any time
   perSearch: number;
   filters: HiringFilters | null;    // null: none (the routed search)
+  companyFilters: CompanyFilters;   // which companies get a row on Companies (no change to the search)
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -85,8 +88,10 @@ export function parseHiringInput(v: unknown, names: keyof typeof NAMES = 'camel'
   // With filters, each title as the job index takes it (one title, not a word to leave out).
   const titles = filters ? parseRoles(roles.map(directRoleTitle)) : roles;
   if (typeof titles === 'string') return titles;
+  const companyFilters = parseCompanyFilters(v, names, filters?.companies ?? []);
+  if (typeof companyFilters === 'string') return companyFilters;
   return {
     roles: titles, country: typeof c === 'string' && c ? c.toUpperCase() : null, place: place || null,
-    postedWithinDays: days as number | null, perSearch: perSearch as number, filters,
+    postedWithinDays: days as number | null, perSearch: perSearch as number, filters, companyFilters,
   };
 }
