@@ -7,6 +7,7 @@
 // an enrichment column's start uses (lib/enrich-estimate.ts), so a step spends
 // what its estimate said.
 import { defaultMaxCostPerRow, noProviderCanRun, type ProviderPick } from '../lib/enrich-estimate';
+import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
 import { providerNamesOf, requestToolOf, routeFor } from '../lib/enrich-run-config';
@@ -20,7 +21,7 @@ import type { RunFail } from './run-shared';
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
 export interface EnrichStepBuild {
-  choices: EnrichmentChoices; built: BuiltEnrichment; tool: EnrichTool; pick: ProviderPick;
+  choices: EnrichmentChoices; built: BuiltEnrichment; tool: EnrichTool; pick: ProviderPick; ignored: string[];
 }
 
 // The tool's inputs mapped to the waterfall's: as the step says, else by the
@@ -45,6 +46,7 @@ function mapInputs(
 
 export async function buildEnrichmentStep(
   where: string, choices: EnrichmentChoices, resultType: ResultType, inputKeys: string[], mappedKeys: Set<string>,
+  saved?: SavedProviderNames,
 ): Promise<{ ok: EnrichStepBuild } | RunFail> {
   const found = await getTool(choices.toolId);
   if (!('ok' in found)) {
@@ -63,6 +65,10 @@ export async function buildEnrichmentStep(
     .map(([name]) => name);
   const missing = missingInputs(requestToolOf(tool), new Set(given));
   if (missing) return bad(`${where}: map a column to an input the tool needs (${missing}).`);
+  const providers = checkStepProviders({
+    where, order: choices.providerOrder, skip: choices.skipProviders, orderTools: [tool], saved,
+  });
+  if (providers.error) return bad(providers.error);
   const pick: ProviderPick = {
     skip: choices.skipProviders, given, order: choices.providerOrder, stopAtFirst: choices.stopAtFirst,
   };
@@ -82,7 +88,7 @@ export async function buildEnrichmentStep(
   const capUsd = priceKnown ? choices.maxCostUsd ?? defaultMaxCostPerRow(tool, pick) : null;
   return {
     ok: {
-      tool, pick,
+      tool, pick, ignored: providers.ignored,
       choices: { ...choices, inputs },
       built: {
         kind: 'enrichment', toolName: toolTitle(tool), toolKind: tool.kind, toolSnapshot: requestToolOf(tool),

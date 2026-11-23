@@ -26,7 +26,10 @@ import { actorTokenId } from '../lib/actor';
 // destSheetId: where a list job's rows go (a new sheet is made by the start).
 // rowsInScope: the most rows the run can take (seeding skips rows missing an input).
 export type EnrichStartOutcome = {
-  ok: { runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null; rowsInScope: number };
+  ok: {
+    runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null; rowsInScope: number;
+    notes?: string[];
+  };
 } | RunFail;
 
 const ROLLBACK = new Error('rollback');
@@ -111,6 +114,11 @@ export async function startEnrichmentRun(
       kind: 'enrichment', column: statusColumn, runId, rows: upperBound, again: input.continueColumn,
       runIf: input.runIf,
     });
-    return { ok: { runId, statusColumn, outputColumns: outputNames, destSheetId, rowsInScope: upperBound } };
+    return {
+      ok: {
+        runId, statusColumn, outputColumns: outputNames, destSheetId, rowsInScope: upperBound,
+        ...(prepared.ok.ignoredProviders.length ? { notes: prepared.ok.ignoredProviders } : {}),
+      },
+    };
   });
 }

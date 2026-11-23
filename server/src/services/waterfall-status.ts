@@ -22,6 +22,7 @@ export interface WaterfallRunStatus {
   spent: { treg_usd: number; ai_usd: number; total_usd: number }; run_limit_usd: number | null;
   max_per_row_usd: number;             // every on step's cap: the most one row can cost
   steps: WaterfallStepStatus[];
+  notes?: string[];
   created_at: string; updated_at: string;
 }
 
@@ -59,6 +60,7 @@ export function waterfallStatusOf(r: RunRow, userId: string): WaterfallRunStatus
         cost_usd: round6(t?.cost_usd ?? 0),
       };
     }),
+    ...(w.ignoredProviders?.length ? { notes: w.ignoredProviders } : {}),
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
