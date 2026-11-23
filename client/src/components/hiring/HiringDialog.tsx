@@ -7,7 +7,7 @@ import { hiringAPI } from '@/utils/api/hiring'
 import { linesOf } from '@/lib/ai-visibility'
 import { HiringMoreOptions, NO_HIRING_OPTIONS } from './HiringMoreOptions'
 import {
-  HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_PER_SEARCH, HIRING_MAX_ROLES,
+  HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_MIN_ROLES, HIRING_MAX_PER_SEARCH, HIRING_MAX_ROLES,
   HIRING_POSTED_CHOICES,
 } from '@/lib/hiring'
 
@@ -28,11 +28,14 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
   // Once each, as first written (the server takes them the same way).
   const titles = linesOf(roles).filter((r, i, all) => all.findIndex(x => x.toLowerCase() === r.toLowerCase()) === i)
   const per = Number(perSearch)
+  const minRoles = options.minRoles.trim() === '' ? 1 : Number(options.minRoles)
   const problem = titles.length === 0 ? 'Add at least one role title.'
     : titles.length > HIRING_MAX_ROLES ? `Start with at most ${HIRING_MAX_ROLES} role titles.`
     : country.trim() && !/^[A-Za-z]{2}$/.test(country.trim()) ? 'The country is two letters, such as US or GB.'
     : !Number.isInteger(per) || per < 1 || per > HIRING_MAX_PER_SEARCH
-      ? `Roles per search: 1 to ${HIRING_MAX_PER_SEARCH}.` : null
+      ? `Roles per search: 1 to ${HIRING_MAX_PER_SEARCH}.`
+    : !Number.isInteger(minRoles) || minRoles < 1 || minRoles > HIRING_MAX_MIN_ROLES
+      ? `Companies with at least N matching roles: 1 to ${HIRING_MAX_MIN_ROLES}.` : null
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,7 +44,7 @@ export const HiringDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     try {
       const made = await hiringAPI.create({
         roles: titles, country: country.trim().toUpperCase(), place: place.trim(), postedWithinDays: days,
-        perSearch: per, ...options,
+        perSearch: per, ...options, minRoles,
       })
       onClose()
       // The table opens on its first check's estimate.

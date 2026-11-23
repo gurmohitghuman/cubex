@@ -8,11 +8,15 @@ const noServerToast = { skipServerErrorToast: true } as const
 export interface HiringCheck {
   id: string; label: string; since: string | null; stage: 'searching' | 'summarizing' | 'done' | 'stopped'
   checkedAt: string; runId: string | null; searches: number; rolesAdded: number; companiesNew: number
-  companiesHiringMore: number; problems: string[]
+  companiesHiringMore: number
+  // Companies the table's filters on Companies kept off (no row).
+  companiesKeptOff: number; problems: string[]
 }
 export interface HiringView {
   id: string; tableId: string; companiesSheetId: string; rolesSheetId: string | null; searchesSheetId: string | null
   roles: string[]; country: string | null; place: string | null; postedWithinDays: number | null; createdAt: string
+  // Its filters on Companies (1 and none: every company gets a row).
+  minRoles: number; leaveOutCompanies: string[]
   // The latest checks, newest first.
   checks: HiringCheck[]
 }
@@ -21,6 +25,8 @@ export interface HiringInput {
   // Lists, or text with commas (server lib/hiring/filters.ts): any of them searches the one job index that takes them.
   descriptionWords?: string; leaveOutDescriptionWords?: string; leaveOutTitleWords?: string
   seniority?: string[]; employmentTypes?: string[]; companies?: string
+  // Which companies get a row on Companies (server lib/hiring/company-filters.ts); the search stays the same.
+  minRoles?: number; leaveOutCompanies?: string
 }
 // What a check would do and cost (server services/hiring-check.ts).
 export interface HiringPlan {

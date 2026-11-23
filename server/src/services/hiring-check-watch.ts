@@ -5,8 +5,9 @@
 // watched again; nothing here ever starts a search.
 import { db } from '../lib/db';
 import { HIRING_CHECK_POLL_MS } from '../lib/constants';
+import { companyKeep } from '../lib/hiring/company-filters';
 import { summarizeHiring } from './hiring-summarize';
-import { loadHiringCheck, sheetLive, updateHiringCheck, type HiringRecord } from './hiring-store';
+import { companyFiltersOf, loadHiringCheck, sheetLive, updateHiringCheck, type HiringRecord } from './hiring-store';
 
 // The search's state: still going, or over (with what to say about it).
 export function searchState(userId: string, runId: string): { going: true } | { going: false; added: number;
@@ -67,7 +68,7 @@ async function summarizeCheck(userId: string, id: string): Promise<void> {
     return;
   }
   const done = await summarizeHiring(userId, { roles: rec.roles_sheet_id!, companies: rec.companies_sheet_id },
-    { label: c.label, sinceLabel: c.since_label, runId: c.run_id });
+    { label: c.label, sinceLabel: c.since_label, runId: c.run_id, keep: companyKeep(companyFiltersOf(rec)) });
   if ('gone' in done) {
     updateHiringCheck(userId, id, { stage: 'stopped', problems: ['Roles or Companies went to the trash while '
       + 'Companies was summed up: nothing more was written.'] });
@@ -77,7 +78,7 @@ async function summarizeCheck(userId: string, id: string): Promise<void> {
   const stopped = !c.run_id || (searched && !searched.going && searched.problems.length > 0);
   updateHiringCheck(userId, id, {
     stage: stopped ? 'stopped' : 'done', companiesNew: done.companiesNew, companiesHiringMore: done.companiesHiringMore,
-    problems: done.problems,
+    companiesKeptOff: done.companiesKeptOff, problems: done.problems,
   });
 }
 

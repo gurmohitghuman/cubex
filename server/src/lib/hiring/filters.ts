@@ -105,14 +105,15 @@ function labelsOf(v: unknown, name: string, labels: readonly string[], also: Rec
 const DOMAIN_RE = /^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 
 // Each company by its website, so the cap counts sites: ramp.com and
-// https://www.Ramp.com/ are one company.
-function companiesOf(v: unknown, name: string): string[] | string {
-  const items = itemsOf(v, name, HIRING_MAX_COMPANIES, item => {
+// https://www.Ramp.com/ are one company. Also the companies left out of
+// Companies (lib/hiring/company-filters.ts), with their own most.
+export function websitesOf(v: unknown, name: string, max = HIRING_MAX_COMPANIES): string[] | string {
+  const items = itemsOf(v, name, max, item => {
     const d = cleanDomain(item);
     return DOMAIN_RE.test(d) ? d
       : { refused: `Each company in ${name} is its website, such as ramp.com (got "${item.slice(0, 40)}").` };
   });
-  return items === TOO_MANY ? `${name} takes at most ${HIRING_MAX_COMPANIES} companies.` : items;
+  return items === TOO_MANY ? `${name} takes at most ${max} companies.` : items;
 }
 
 // The filters sent (null: none, so the table searches as one without them), or why they can't be taken.
@@ -130,7 +131,7 @@ export function parseHiringFilters(v: Record<string, unknown>, names: 'camel' | 
   const employmentTypes = labelsOf(v[n.employmentTypes], n.employmentTypes, EMPLOYMENT_TYPES,
     { intern: 'Internship', contractor: 'Contract' });
   if (typeof employmentTypes === 'string') return employmentTypes;
-  const companies = companiesOf(v[n.companies], n.companies);
+  const companies = websitesOf(v[n.companies], n.companies);
   if (typeof companies === 'string') return companies;
   // A description word written "-word" leaves roles out, as the job index reads it.
   const f: HiringFilters = {
