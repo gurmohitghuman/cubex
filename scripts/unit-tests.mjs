@@ -71,12 +71,17 @@ const stopTree = (child, signal) => {
 
 // Linux, for the log: what each process of a late test is doing before it is stopped. Each thread's name, state,
 // the kernel function it waits in, its system call, and its CPU time over one second, which tells busy work from
-// waiting. Reading a thread's system call is allowed to an ancestor of the process only: the runner is one.
+// waiting. Reading a thread's system call is allowed to an ancestor of the process only: the runner is one. A
+// process is known by its id and start time, so an id given to a new process meanwhile is never taken for it.
 const SYSCALLS = {
   x64: { 0: 'read', 7: 'poll', 35: 'nanosleep', 61: 'wait4', 202: 'futex', 232: 'epoll_wait', 281: 'epoll_pwait' },
   arm64: { 22: 'epoll_pwait', 63: 'read', 73: 'ppoll', 98: 'futex', 101: 'nanosleep', 260: 'wait4' },
 }[process.arch] ?? {};
 const readProc = file => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return '?'; } };
+const startOf = pid => {
+  const stat = readProc(`/proc/${pid}/stat`);
+  return stat === '?' ? undefined : stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+};
 const threadsOf = pid => {
   let tids = [];
   try { tids = fs.readdirSync(`/proc/${pid}/task`); } catch { /* it has ended */ }
@@ -87,10 +92,11 @@ const threadsOf = pid => {
     return { tid, at, state: f[0], cpu: Number(f[11]) + Number(f[12]) };
   });
 };
-const printThreads = async pids => {
-  const before = new Map(pids.flatMap(threadsOf).map(t => [t.at, t.cpu]));
+const printThreads = async listed => {
+  const before = new Map(listed.flatMap(([pid]) => threadsOf(pid)).map(t => [t.at, t.cpu]));
   await new Promise(res => setTimeout(res, 1000));
-  for (const pid of pids) {
+  for (const [pid, at] of listed) {
+    if (!at || startOf(pid) !== at) { console.error(`[threads] process ${pid}: ended`); continue; }
     const cmd = readProc(`/proc/${pid}/cmdline`).replace(/\0/g, ' ').trim();
     console.error(`[threads] process ${pid}: ${cmd.length > 120 ? `...${cmd.slice(-120)}` : cmd}`);
     const alike = new Map(); // threads doing the same thing share a line
@@ -102,6 +108,21 @@ const printThreads = async pids => {
     }
     for (const [line, n] of alike) console.error(`  ${n > 1 ? `${n} threads, ` : ''}${line}`);
   }
+};
+
+// A test past its limit is stopped with every process it started; on Linux after the print above. If the test
+// ends by itself during the print, what it started is no longer under it, so each process listed before the print
+// is stopped too, while it is still the same process. Says whether it reached the whole tree.
+const stopLate = async (child, hasEnded) => {
+  if (process.platform !== 'linux') return stopTree(child, 'SIGKILL');
+  const tree = treeOf(child.pid);
+  const listed = (tree ?? [child.pid]).map(pid => [pid, startOf(pid)]);
+  await printThreads(listed);
+  const all = hasEnded() ? tree !== null : stopTree(child, 'SIGKILL');
+  for (const [pid, at] of listed) {
+    if (at && startOf(pid) === at) try { process.kill(pid, 'SIGKILL'); } catch { /* it has ended */ }
+  }
+  return all;
 };
 
 // A signal to the runner alone is passed on to the running test and every process it started (Ctrl+C reaches
@@ -124,15 +145,17 @@ const run = (file, n) => new Promise(resolve => {
     { cwd: root, env, stdio: 'inherit' });
   running = child;
   let late = null;
+  let stopping = null;
   let ended = false;
-  const timer = setTimeout(async () => {
-    late = 'late';
-    if (process.platform === 'linux') await printThreads(treeOf(child.pid) ?? [child.pid]);
-    if (!ended) late = stopTree(child, 'SIGKILL') ? 'late' : 'late-part';
+  const timer = setTimeout(() => {
+    stopping = stopLate(child, () => ended).then(all => { late = all ? 'late' : 'late-part'; });
   }, LIMIT_S * 1000);
-  const end = status => { ended = true; clearTimeout(timer); running = null; resolve(status); };
+  // A late test's print and stop finish before its result, and before the next test starts.
+  const end = async status => {
+    ended = true; clearTimeout(timer); running = null; await stopping; resolve(late ?? status);
+  };
   child.on('error', err => { console.error(err.message); end(1); });
-  child.on('exit', code => end(late ?? code ?? 1));
+  child.on('exit', code => end(code ?? 1));
 });
 
 const started = Date.now();

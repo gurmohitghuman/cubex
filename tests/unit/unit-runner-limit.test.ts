@@ -1,11 +1,12 @@
 // scripts/unit-tests.mjs's time limit on each test file: a file that never ends fails by name (on Linux, after
 // what each of its processes' threads were doing), it and every process it started are stopped, the run goes on
-// to the next file and exits 1; a run within the limit is as before, and a limit that isn't a number of seconds
-// over 0 and up to Node's longest timer is refused. On macOS and Linux, a SIGKILL to the run's process group, or
-// a SIGINT to the runner alone, still stops the running file and every process it started. The runner runs on a
-// scratch copy of the repository's layout (its own tests/unit with two files), finding tsx in this checkout's
-// node_modules through NODE_PATH: a link to node_modules inside a temp folder would be removed along with it.
-// The limit here is 10 s, so a slow Windows runner still starts the file well within it.
+// to the next file and exits 1; so is a file that ends by itself while those threads are printed. A run within
+// the limit is as before, and a limit that isn't a number of seconds over 0 and up to Node's longest timer is
+// refused. On macOS and Linux, a SIGKILL to the run's process group, or a SIGINT to the runner alone, still stops
+// the running file and every process it started. The runner runs on a scratch copy of the repository's layout
+// (its own tests/unit with three files), finding tsx in this checkout's node_modules through NODE_PATH: a link to
+// node_modules inside a temp folder would be removed along with it. The limit here is 10 s, so a slow Windows
+// runner still starts the file well within it.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -29,6 +30,24 @@ fs.writeFileSync(path.join(repo, 'tests', 'unit', 'a-never-ends.test.ts'), [
   'setInterval(() => {}, 1000)',
 ].join('\n'))
 fs.writeFileSync(path.join(repo, 'tests', 'unit', 'b-ends.test.ts'), "console.log('b: all checks passed')\n")
+// Like a-never-ends, but it ends by itself 10.4 s after tsx's process started: on Linux, while the runner prints
+// its threads (from 10 s, for 1 s). The process it started never ends.
+fs.writeFileSync(path.join(repo, 'tests', 'unit', 'c-ends-late.test.ts'), [
+  "import { spawn } from 'node:child_process'",
+  "import fs from 'node:fs'",
+  "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+  'child.unref()',
+  'fs.writeFileSync(process.env.PIDS_FILE!, JSON.stringify([process.ppid, process.pid, child.pid]))',
+  "console.log('c: all checks passed')",
+  "// ms since tsx's process started; on Linux from its start time and the uptime, both in 1/100 s",
+  'const since = () => {',
+  "  if (process.platform !== 'linux') return performance.now()",
+  "  const stat = fs.readFileSync(`/proc/${process.ppid}/stat`, 'utf8')",
+  "  const ticks = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19])",
+  "  return Number(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]) * 1000 - ticks * 10",
+  '}',
+  "setTimeout(() => console.log('c: ended by itself'), 10_400 - since())",
+].join('\n'))
 
 // The scratch runner over its files whose names contain `names`; never held past two minutes itself.
 const runner = path.join(repo, 'scripts', 'unit-tests.mjs')
@@ -87,7 +106,7 @@ async function test(name: string, fn: () => Promise<void> | void): Promise<void>
 }
 
 await test('a file that never ends fails by name, and the run goes on and exits 1', () => {
-  const r = run({ UNIT_FILE_TIMEOUT_S: '10' })
+  const r = run({ UNIT_FILE_TIMEOUT_S: '10' }, 'a-never-ends', 'b-ends')
   assert.equal(r.error, undefined, `the run itself never ended: ${r.err}`)
   assert.equal(r.status, 1, r.err)
   assert.match(r.out, /a: all checks passed/)
@@ -106,6 +125,20 @@ await test('it and every process it started were stopped', async () => {
   const pids = JSON.parse(fs.readFileSync(pidsFile, 'utf8')) as number[]
   assert.equal(pids.length, 3)
   assert.deepEqual(await leftOver(pids), [], 'still running')
+})
+
+await test('a file that ends by itself just past its limit is stopped with every process it started', async () => {
+  const r = run({ UNIT_FILE_TIMEOUT_S: '10' }, 'c-ends-late')
+  const pids = JSON.parse(fs.readFileSync(pidsFile, 'utf8')) as number[]
+  const left = await leftOver(pids)
+  assert.equal(r.status, 1, r.err)
+  assert.match(r.err, /\[x\] tests\/unit\/c-ends-late\.test\.ts did not end within 10 s: stopped it and every process/)
+  assert.deepEqual(left, [], 'still running')
+  if (process.platform === 'linux') { // it ended during the print, and the print came first
+    assert.match(r.out, /c: ended by itself/)
+    assert.match(r.err, /\[threads\] process \d+: ended\n/)
+    assert.ok(r.err.indexOf('[threads]') < r.err.indexOf('[x] tests/unit/c-ends-late'), 'threads after the [x] line')
+  }
 })
 
 // Windows has no process groups or signals of this kind: taskkill stops a tree there, as checked above.
