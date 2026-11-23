@@ -92,6 +92,8 @@ export const FIRST_ROWS_MAX = 1000;
 // rows" takes, and the highest per-row limit an estimate or run accepts.
 export const ENRICH_TEST_ROWS = 5;
 export const ENRICH_MAX_ROW_CAP_USD = 1000;
+export const ENRICH_PROVIDER_RATE_RETRIES = 5;
+export const ENRICH_PROVIDER_RATE_RETRIES_MAX = 10;
 // How often the drawer's Test and Run steps read a run's lean status while it
 // runs (GET /api/enrich/runs/:id); the grid itself follows the run over SSE.
 export const ENRICH_RUN_POLL_MS = 1500;

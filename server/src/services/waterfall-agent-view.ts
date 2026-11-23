@@ -49,6 +49,7 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
     }),
     answered_by_column: s.columns.answeredBy, step_columns: s.columns.steps,
     hide_step_columns: i.hideStepColumns, run_if: i.runIf, fresh: i.fresh,
+    ...(typeof i.rateLimitRetries === 'number' ? { rate_limit_retries: i.rateLimitRetries } : {}),
     active_run_id: s.activeRunId, auto_run: s.autoRun,
     ...(!o.secrets && i.steps.some(st => st.choices.kind === 'http') ? { masked: MASK_NOTE } : {}),
   };

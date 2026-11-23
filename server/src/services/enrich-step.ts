@@ -35,6 +35,7 @@ export interface RunCtx {
   cooldown: Cooldown;                     // providers its waterfalls leave out for now (enrich-providers.ts)
   providerNames?: Record<string, string>; // treg's provider ids -> the names the run shows
   reuseDays?: number;                     // found answers this young are reused (0: call every row)
+  rateLimitRetries?: number;              // provider 429 retries per row (absent: ENRICH_PROVIDER_RATE_RETRIES)
 }
 
 export type StepResult =
@@ -52,7 +53,7 @@ export interface StepCall {
   parts: KeyParts; request: Omit<TregCallRequest, 'idempotencyKey'>;
   // 429 retries left, shared by a row's steps (a verified email's finds and
   // checks) so a rate-limited row waits minutes, not one budget per step.
-  rateRetries?: { left: number };
+  rateRetries?: { left: number; used?: number };
   // Shared only with calls of the same step: a waterfall's steps may ask the
   // same tool with other caps, so one step never gets another's answer or refusal.
   sameKey?: string;
@@ -95,7 +96,7 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
   let attempt = s.attempt;
   let key = keyOf(attempt);
   let rowCost = 0, saturated = 0, providerTries = 0, waitedMs = 0, renewed = false, unanswered = 0, hops = 0;
-  const rate = s.rateRetries ?? { left: ENRICH_PROVIDER_RATE_RETRIES };
+  const rate = s.rateRetries ?? { left: ctx.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES };
   let busy = 0, cool = true;
   const triesCounted = new Set<string>();   // call ids whose providers noteProviderTries counted
   const cutOff = new Set<string>();         // call ids whose answer came back cut off (not counted)
@@ -222,7 +223,10 @@ async function callOnce(ctx: RunCtx, s: StepCall): Promise<StepResult> {
         } else if (verdict.counts === 'provider') {
           providerTries++;
         } else if (verdict.counts === 'rate_limit') {
-          await sleep(rateLimitWaitMs(ENRICH_PROVIDER_RATE_RETRIES - rate.left--, verdict.afterMs), ctx.signal);
+          const tries = rate.used ?? 0;
+          rate.used = tries + 1;
+          rate.left--;
+          await sleep(rateLimitWaitMs(tries, verdict.afterMs), ctx.signal);
           continue;
         } else if (verdict.counts === 'busy') {
           // Asked again under the same key, which can never be billed twice; a

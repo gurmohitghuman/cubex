@@ -7,7 +7,9 @@ import {
   WATERFALL_LABEL_MAX_CHARS, WATERFALL_MAX_INPUTS,
 } from '../constants';
 import { strayKey } from '../enrich-agent-args';
-import { concurrencyOf, CONCURRENCY_ERROR, MAX_SELECTED_ROWS } from '../enrich-run-input';
+import {
+  concurrencyOf, CONCURRENCY_ERROR, MAX_SELECTED_ROWS, RATE_LIMIT_RETRIES_ERROR, rateLimitRetriesOf,
+} from '../enrich-run-input';
 import { PHONE_FORMATS } from '../clean/cleaners';
 import { isPhoneCountry } from '../clean/phone';
 import { parseRuleField } from '../run-condition';
@@ -38,6 +40,7 @@ export interface WaterfallRunInput {
   runIf: string | null;
   spendLimitUsd: number | null;
   concurrency: number | null;
+  rateLimitRetries?: number | null;
   fresh: boolean;
   noReuse: boolean;
   rowGeneration: number | null;
@@ -47,7 +50,8 @@ export interface WaterfallRunInput {
 }
 
 const TOP = ['columnName', 'continueColumn', 'resultType', 'phone', 'inputs', 'steps', 'answeredBy',
-  'hideStepColumns', 'rows', 'runIf', 'spendLimitUsd', 'concurrency', 'fresh', 'noReuse', 'rowGeneration', 'dry'];
+  'hideStepColumns', 'rows', 'runIf', 'spendLimitUsd', 'concurrency', 'rateLimitRetries', 'fresh', 'noReuse',
+  'rowGeneration', 'dry'];
 const MODES = new Set(['all', 'filter', 'selected']);
 const STATUSES = new Set<string>(ENRICH_ROWS_STATUSES);
 
@@ -176,6 +180,8 @@ export function parseWaterfallInput(body: unknown): { ok: WaterfallRunInput } | 
   }
   const concurrency = concurrencyOf(body.concurrency);
   if (concurrency === undefined) return bad(CONCURRENCY_ERROR);
+  const rateLimitRetries = rateLimitRetriesOf(body.rateLimitRetries);
+  if (rateLimitRetries === undefined) return bad(RATE_LIMIT_RETRIES_ERROR);
   for (const k of ['continueColumn', 'answeredBy', 'hideStepColumns', 'fresh', 'noReuse'] as const) {
     if (body[k] !== undefined && typeof body[k] !== 'boolean') return bad(`${k} is true or false.`);
   }
@@ -191,7 +197,8 @@ export function parseWaterfallInput(body: unknown): { ok: WaterfallRunInput } | 
       columnName: body.columnName.trim(), continueColumn: body.continueColumn === true, resultType: body.resultType,
       phone: phone.ok, inputs: inputs.ok, steps: steps.ok, answeredBy: body.answeredBy !== false,
       hideStepColumns: body.hideStepColumns !== false, rows: rows.ok, runIf: runIf.ok,
-      spendLimitUsd: (limit as number | null | undefined) ?? null, concurrency, fresh: body.fresh === true,
+      spendLimitUsd: (limit as number | null | undefined) ?? null, concurrency, rateLimitRetries,
+      fresh: body.fresh === true,
       noReuse: body.noReuse === true, rowGeneration: (gen as number | null | undefined) ?? null, dry: dry.ok,
     },
   };

@@ -5,7 +5,8 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
-  ENRICH_DEFAULT_CONCURRENCY, ENRICH_LIST_MAX_ITEMS, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY,
+  ENRICH_DEFAULT_CONCURRENCY, ENRICH_LIST_MAX_ITEMS, ENRICH_PROVIDER_RATE_RETRIES, ENRICH_PROVIDER_RATE_RETRIES_MAX,
+  ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY,
 } from '../lib/constants';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { GUESS_PATTERNS } from '../lib/enrich-email-guess';
@@ -34,7 +35,8 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'and prices the rest. max_cost_per_row_usd caps each row and spend_limit_usd the run (it pauses there). '
   + `${DAILY_LIMIT_NOTE} `
   + 'Speed: concurrency is the lever (a waterfall row can take seconds). A row whose providers all answered 429 '
-  + 'waits and asks again for free, up to 5 times over a few minutes, then fails; lower concurrency for a '
+  + `waits and asks again for free (rate_limit_retries, 0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
+  + `${ENRICH_PROVIDER_RATE_RETRIES}), then fails; lower concurrency for a `
   + 'provider that keeps answering 429 (ContactOut\'s free email check on treg\'s own key takes about 20 calls '
   + 'a minute for all of treg). Each running row holds max_cost_per_row_usd against the daily and run '
   + 'limits, so those also cap how many run at once. '
@@ -126,6 +128,9 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once (1-${HTTP_MAX_CONCURRENCY}, default ${ENRICH_DEFAULT_CONCURRENCY}). `
           + 'Reruns and auto-run keep it'),
+      rate_limit_retries: z.number().int().min(0).max(ENRICH_PROVIDER_RATE_RETRIES_MAX).optional()
+        .describe(`Retries on provider 429s (0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
+          + `${ENRICH_PROVIDER_RATE_RETRIES}). Reruns keep it`),
       rows: z.enum(['any', 'not_enriched', 'no_result', 'failed', 'out_of_date', 'empty_or_out_of_date']).optional()
         .describe('Which rows. out_of_date: a result whose input cells changed since. All but any and not_enriched '
           + 'need add_to_column. Default: any (not_enriched with add_to_column)'),

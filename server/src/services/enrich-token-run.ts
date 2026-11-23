@@ -85,7 +85,9 @@ export async function tokenStartEnrichmentRun(
   const body = agentRunBody(a, found.ok, pre.targetRowIndexes ?? null, pre.targetRowIndexes ? generation : null);
   if ('error' in body && typeof body.error === 'string') return bad(body.error);
   const parsed = parseEnrichRunInput(body);
-  if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
+  if ('error' in parsed) {
+    return bad(parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries'));
+  }
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
@@ -95,9 +97,13 @@ export async function tokenStartEnrichmentRun(
     const est = await agentEnrichEstimate(c.userId, sheetId, parsed.ok);
     return 'fail' in est ? est : { ok: est.ok, started: false };
   }
-  // runIf only when set, so a retry that spans the release still replays.
-  const { rowGeneration: _gen, rows, runIf, ...others } = parsed.ok;
-  const rest = runIf ? { ...others, runIf } : others;
+  // runIf and rateLimitRetries only when set, so a retry that spans the release still replays.
+  const { rowGeneration: _gen, rows, runIf, rateLimitRetries, ...others } = parsed.ok;
+  const rest = {
+    ...others,
+    ...(runIf ? { runIf } : {}),
+    ...(typeof rateLimitRetries === 'number' ? { rateLimitRetries } : {}),
+  };
   // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
   const hash = [sent(), runRequestHash('enrichment_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },

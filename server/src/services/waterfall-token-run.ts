@@ -103,7 +103,9 @@ export async function tokenWaterfall(
     { rowIndexes: pre.targetRowIndexes ?? null, generation: pre.targetRowIndexes ? generation : null });
   if ('error' in body) return bad(body.error);
   const parsed = parseWaterfallInput(body.ok);
-  if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
+  if ('error' in parsed) {
+    return bad(parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries'));
+  }
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
   if (parsed.ok.dry) return tokenDryRun(c, sheetId, parsed.ok, a, sent());
@@ -117,7 +119,9 @@ export async function tokenWaterfall(
       started: false,
     };
   }
-  const { rowGeneration: _gen, rows, ...rest } = parsed.ok;
+  // rateLimitRetries only when set, so a retry that spans the release still replays.
+  const { rowGeneration: _gen, rows, rateLimitRetries, ...others } = parsed.ok;
+  const rest = typeof rateLimitRetries === 'number' ? { ...others, rateLimitRetries } : others;
   // Known by its arguments as sent, and as parsed (a key written before both were kept holds that one alone).
   const hash = [sent(), runRequestHash('waterfall_run', {
     sheet_id: sheetId, input: { ...rest, rows: { ...rows, rowIndexes: null } },

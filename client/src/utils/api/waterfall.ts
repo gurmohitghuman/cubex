@@ -52,6 +52,7 @@ export interface WaterfallRunInput {
   runIf: string | null
   spendLimitUsd: number | null
   concurrency: number | null
+  rateLimitRetries?: number | null
   fresh: boolean
   noReuse?: boolean
   rowGeneration: number | null

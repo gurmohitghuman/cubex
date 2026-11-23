@@ -178,6 +178,7 @@ export async function buildEnrichmentConfig(
       },
     } : {}),
     cleanDomains: input.cleanDomains, fresh: input.fresh, ...(input.noReuse ? { noReuse: true } : {}),
+    ...(typeof input.rateLimitRetries === 'number' ? { rateLimitRetries: input.rateLimitRetries } : {}),
     maxCostPerRowUsd: cap, spendLimitUsd: spendLimit,
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test, where: input.conditions },
     email: verify && input.email ? {

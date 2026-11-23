@@ -42,7 +42,8 @@ export function recallInput(config: WaterfallRunConfig, column: string): Waterfa
     inputs: w.inputs.map(i => ({ key: i.key, label: i.label, source: sources[i.key] ?? null })),
     steps, answeredBy: cols.answeredBy !== null, hideStepColumns: w.hideStepColumns,
     rows: { mode: 'all', status: 'not_enriched', test: null, rowIndexes: null },
-    runIf: config.runIf ?? null, spendLimitUsd: null, concurrency: config.batchSize ?? null, fresh: w.fresh,
+    runIf: config.runIf ?? null, spendLimitUsd: null, concurrency: config.batchSize ?? null,
+    rateLimitRetries: w.rateLimitRetries ?? null, fresh: w.fresh,
     noReuse: false, rowGeneration: null, dry: null,
   };
 }

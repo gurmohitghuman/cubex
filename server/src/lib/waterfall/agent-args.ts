@@ -21,8 +21,8 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 
 export const AGENT_TOP = ['sheet_id', 'column_name', 'add_to_column', 'result_type', 'phone', 'inputs', 'steps',
   'answered_by_column', 'hide_step_columns', 'rows', 'test', 'use_sheet_filter', 'target_row_ids', 'run_if',
-  'spend_limit_usd', 'concurrency', 'fresh', 'estimate_only', 'idempotency_key', 'webhook_id', 'auto_run',
-  'action', 'dry_run', 'test_step', 'template'];
+  'spend_limit_usd', 'concurrency', 'rate_limit_retries', 'fresh', 'estimate_only', 'idempotency_key', 'webhook_id',
+  'auto_run', 'action', 'dry_run', 'test_step', 'template'];
 const STEP_KEYS: Record<string, string[]> = {
   enrichment: ['tool_id', 'inputs', 'value_path', 'provider_order', 'skip_providers', 'stop_at_first',
     'max_cost_usd'],
@@ -213,7 +213,9 @@ export function agentWaterfallBody(
         mode: target.rowIndexes ? 'selected' : filter ? 'filter' : 'all', status, test,
         ...(target.rowIndexes ? { rowIndexes: target.rowIndexes } : {}),
       },
-      spendLimitUsd: a.spend_limit_usd, concurrency: a.concurrency, fresh: a.fresh,
+      spendLimitUsd: a.spend_limit_usd, concurrency: a.concurrency,
+      rateLimitRetries: a.rate_limit_retries !== undefined ? a.rate_limit_retries : recalled?.rateLimitRetries,
+      fresh: a.fresh,
       rowGeneration: target.generation, ...(dry.ok ? { dry: dry.ok } : {}),
     },
   };

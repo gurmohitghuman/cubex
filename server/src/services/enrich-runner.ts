@@ -17,7 +17,7 @@ import { db } from '../lib/db';
 import { runRows, countRunRows, type RunRow } from '../lib/run-rows';
 import { limitReached, rowsThatFit, UNCAPPED_BILLED_NOTE } from '../lib/enrich-estimate';
 import type { PauseReason } from '../lib/enrich-errors';
-import { enrichConcurrency, type EnrichRunConfig } from '../lib/enrich-run-config';
+import { enrichConcurrency, enrichRateLimitRetries, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { redactError, redactSecrets } from '../lib/redact';
 import { getDailyLimitMicro, getTregToken, spentTodayMicro } from './treg-key';
@@ -121,6 +121,7 @@ export async function processEnrichmentRun(
     providerNames: config.enrichment.providerNames,
     // "Always call again" (and "Rerun this row") call every row, never reusing an earlier answer.
     reuseDays: config.enrichment.fresh || config.enrichment.noReuse ? 0 : getReuseDays(run.user_id),
+    rateLimitRetries: enrichRateLimitRetries(config.enrichment.rateLimitRetries),
   };
   const concurrency = enrichConcurrency(config);
   clearCooldowns(run.id, run.user_id);

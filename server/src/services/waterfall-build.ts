@@ -198,6 +198,7 @@ export async function buildWaterfall(
     maxCostPerRowUsd: maxCost, tregCapPerRowUsd: tregCap, spendLimitUsd: spendLimit,
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test },
     fresh: input.fresh, ...(input.noReuse ? { noReuse: true } : {}),
+    ...(typeof input.rateLimitRetries === 'number' ? { rateLimitRetries: input.rateLimitRetries } : {}),
   };
   return { ok: { block, inputMap: mapped.map, tools, ai } };
 }
