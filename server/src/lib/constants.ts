@@ -139,6 +139,10 @@ export const HEAVY_JOB_RETRY_MAX_MS = 60_000;
 // this much row data read, and a slice failing this many times in a row ends the copy.
 export const SHEET_COPY_SLICE_CHARS = 8_000_000;
 export const SHEET_COPY_ATTEMPTS = 5;
+// A copy's slice also stops adding rows once it has taken this long (one row at least). 5,000 rows of about 230
+// characters took about 100 ms a slice on Windows CI (60 to 80 on Linux), so a slow moment on the runner held the
+// server 286 ms. A slower machine or a busy CPU now makes a slice smaller instead of longer.
+export const SHEET_COPY_SLICE_MS = 40;
 // A run's leftover ⏳ clear (lib/run-placeholders.ts) that failed leaves the run
 // marked 'clearing', which holds off sorts and renames. Every interval, clears
 // marked longer ago than the stale age are run again (a million-row clear
