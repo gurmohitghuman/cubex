@@ -9,6 +9,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import opsMod from '../../server/src/lib/transform-ops'
 import constMod from '../../server/src/lib/constants'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -56,7 +57,7 @@ function sheet(rows: Array<Record<string, string>>): string {
 // The values the call bound, and its answer.
 async function written(p: Params): Promise<unknown[]> {
   bound.length = 0
-  const out = await transformColumn(uid, p)
+  const out = await toTheEnd(uid, p)
   assert.ok('ok' in out, JSON.stringify(out).slice(0, 300))
   return [...bound]
 }

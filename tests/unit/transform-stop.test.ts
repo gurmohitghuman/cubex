@@ -20,6 +20,7 @@ import transformMod from '../../server/src/services/column-transform'
 import mcpMod from '../../server/src/mcp/build-server'
 import { transformPageFault } from './transform-page-fault'
 import { unfinished } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -127,7 +128,7 @@ async function main() {
 
   await check('going on with the cursor applies the operation to every row exactly once; the record goes',
     async () => {
-      const out = await transformColumn(uid, { ...again, cursor })
+      const out = await toTheEnd(uid, { ...again, cursor })
       assert.deepEqual(out, { ok: { updated: ROWS - 250, created_column: null } })
       assert.equal(suffixed('t*-x'), ROWS)
       assert.equal(suffixed('*-x-x'), 0)
@@ -148,7 +149,7 @@ async function main() {
     assert.deepEqual(JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck()
       .get(fresh) as string), ['T', 'Up'])
     assert.ok(dataVersion(fresh) > before, 'data_version moved for the column added')
-    assert.deepEqual(await transformColumn(uid, { sheetId: fresh, operation: 'upper', sourceColumn: 'T',
+    assert.deepEqual(await toTheEnd(uid, { sheetId: fresh, operation: 'upper', sourceColumn: 'T',
       targetColumn: 'Up' }), { ok: { updated: 300, created_column: null } })
   })
 

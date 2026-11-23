@@ -11,6 +11,7 @@ import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import sortMod from '../../server/src/services/sheet-sort'
 import { moved, notOpen } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -79,7 +80,7 @@ async function main() {
     + 'then refused as no longer open', async () => {
     const sid = sheet()
     const cursor = await stoppedEmpty(late(sid))
-    assert.deepEqual(await transformColumn(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'S',
+    assert.deepEqual(await toTheEnd(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'S',
       targetColumn: 'T' }), { ok: { updated: ROWS, created_column: null } })
     assert.equal(count(sid, "json_extract(data, '$.T') = upper(json_extract(data, '$.S'))"), ROWS)
     const before = cells(sid)

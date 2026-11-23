@@ -13,7 +13,8 @@
 // the page goes on. Each case reads the WAL itself, per transaction (sqlite-write-probe.ts), never a disk's speed,
 // save the bounds on the loop and on a transaction's wait for the lock. On every platform a write here doesn't wait
 // for a checkpoint running first (the Windows path, lib/wal-checkpointer.ts): these are the turns themselves, met
-// when that wait gave up or the write is late; wal-checkpoint-waits.test.ts covers the wait.
+// when that wait gave up or the write is late; wal-checkpoint-waits.test.ts covers the wait. A call that only
+// waited for the worker's disk syncs all its time goes on with next_cursor, as a caller would (toTheEnd).
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
@@ -28,7 +29,8 @@ import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
+const { TRANSFORM_WAITED_NOTE, transformColumn } =
+  transformMod as typeof import('../../server/src/services/column-transform')
 const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setWritesWaitForCheckpointsForTests,
   takeWalCheckpointerStats, walCheckpointerIdle, walState } =
   walMod as typeof import('../../server/src/lib/wal-checkpointer')
@@ -78,8 +80,30 @@ const fill = db.transaction((count: number) => {
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
 const other = () => new Database(process.env.DB_PATH!)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-const call = (target: string) =>
-  transformColumn(uid, { sheetId: sid, operation: 'template', template: '{{N}}!', targetColumn: target })
+const call = (target: string, cursor?: string) => transformColumn(uid, { sheetId: sid, operation: 'template',
+  template: '{{N}}!', targetColumn: target, ...(cursor ? { cursor } : {}) })
+// The pass into `target` to its end, going on with next_cursor as a caller would; answers the rows written. A call's
+// limit (about 2 seconds) counts its wait for the worker's checkpoint and start-over, two disk syncs: on a disk
+// whose syncs stall (a Windows runner's took 88 ms where it takes 5 to 13), that wait can take the call's whole
+// time, and the call answers having only waited (no row written, its note saying so). That is the only early end
+// these cases take: what they check is which connection starts the WAL over, never a disk's speed. Its ask is
+// still with the worker then: its answer is awaited, so the case's numbers count it.
+async function toTheEnd(target: string): Promise<number> {
+  let updated = 0
+  let cursor: string | undefined
+  for (let calls = 0; calls < 10; calls++) {
+    const out = await call(target, cursor)
+    assert.ok('ok' in out, JSON.stringify(out))
+    updated += out.ok.updated
+    if (!out.ok.next_cursor) {
+      if (cursor) await walCheckpointerIdle()
+      return updated
+    }
+    assert.ok(out.ok.updated === 0 && out.ok.note === TRANSFORM_WAITED_NOTE, JSON.stringify(out))
+    cursor = out.ok.next_cursor
+  }
+  assert.fail(`the pass into ${target} never ended`)
+}
 
 // A fresh window: the WAL holds `rows` rows' frames, none copied; the numbers zeroed.
 async function fresh(rows: number) {
@@ -121,8 +145,7 @@ async function main() {
       const release = setTimeout(() => { releasedAt = performance.now(); endStartOverHoldForTests() }, 300)
       const since = performance.now()
       try {
-        const out = await call('A')
-        assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+        assert.equal(await toTheEnd('A'), ROWS)
       } finally {
         watched = watch()
         clearTimeout(release)
@@ -159,8 +182,7 @@ async function main() {
     })
     const since = performance.now()
     try {
-      const out = await call('G')
-      assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+      assert.equal(await toTheEnd('G'), ROWS)
     } finally { setBeforeTurnWriteForTests(null); holdStartOverForTests(0); endStartOverHoldForTests() }
     await asked
     const { records, startedOver, k, t } = after('worker between read and BEGIN', since)
@@ -178,8 +200,7 @@ async function main() {
     assert.ok(allCopied(), `the WAL: ${JSON.stringify(walState())}`)
     takeWalCheckpointerStats()
     const since = performance.now()
-    const out = await call('B')
-    assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+    assert.equal(await toTheEnd('B'), ROWS)
     const { startedOver, k, t } = after('lock held', since)
     assert.deepEqual(startedOver, [], 'transactions that started the WAL over on this thread')
     assert.ok(t.asks >= 1 && k.restarts === 1, JSON.stringify({ ...t, restarts: k.restarts }))
@@ -195,8 +216,7 @@ async function main() {
     assert.equal(skipped?.startOver, 'turn')
     takeWalCheckpointerStats()
     const since = performance.now()
-    const out = await call('C')
-    assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+    assert.equal(await toTheEnd('C'), ROWS)
     const { startedOver, k, t } = after('turn held', since)
     assert.deepEqual(startedOver, [], 'transactions that started the WAL over on this thread')
     assert.ok(t.asks >= 1 && k.restarts === 1, JSON.stringify({ ...t, restarts: k.restarts }))
@@ -209,8 +229,7 @@ async function main() {
     setBeforeTurnWriteForTests(() => { setBeforeTurnWriteForTests(null); conn.pragma('wal_checkpoint(PASSIVE)') })
     const since = performance.now()
     try {
-      const out = await call('D')
-      assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+      assert.equal(await toTheEnd('D'), ROWS)
     } finally { setBeforeTurnWriteForTests(null); conn.close() }
     const { startedOver, k, t } = after('copied before BEGIN', since)
     assert.deepEqual(startedOver, [], 'transactions that started the WAL over on this thread')
@@ -223,8 +242,7 @@ async function main() {
     db.pragma('wal_checkpoint(TRUNCATE)')
     assert.deepEqual(walState(), { log: 0, checkpointed: 0 })
     const since = performance.now()
-    const out = await call('E')
-    assert.ok('ok' in out && out.ok.updated === ROWS, JSON.stringify(out))
+    assert.equal(await toTheEnd('E'), ROWS)
     const { startedOver, k, t } = after('empty WAL', since)
     assert.deepEqual(startedOver, [], 'transactions that began the WAL on this thread')
     assert.ok(t.asks >= 1 && k.restarts === 1, JSON.stringify({ ...t, restarts: k.restarts }))

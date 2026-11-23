@@ -14,6 +14,7 @@ import copyMod from '../../server/src/services/sheet-copy'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved, unfinished } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
 const { appendRows, deleteRowsByIds } = writeMod as typeof import('../../server/src/services/rows-write')
@@ -77,7 +78,7 @@ async function main() {
       const [now] = passes(sid)
       assert.ok(now && now.pass_id !== before.pass_id && now.moved_at === null, JSON.stringify(now))
       await refused({ ...call(sid), cursor: old }, unfinished('T', 250, cursor))
-      assert.deepEqual(await transformColumn(uid, { ...call(sid), cursor }),
+      assert.deepEqual(await toTheEnd(uid, { ...call(sid), cursor }),
         { ok: { updated: ROWS - 250, created_column: null } })
       assert.equal(ending(sid, 't*-x'), ROWS)
       assert.equal(ending(sid, '*-x-x'), 250, 'the rows the first pass did get it again, as the refusal said')

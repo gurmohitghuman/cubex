@@ -26,6 +26,7 @@ import trashMod from '../../server/src/services/trash-sheets'
 import purgeMod from '../../server/src/services/trash-purge'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -190,7 +191,7 @@ async function main() {
     await stopped(id)
     ok(await importCsv(id, uid, await scanCsvText('S\na\n'), true))
     assert.equal(records(id), 0, 'gone with its column, in the replace')
-    assert.deepEqual(await transformColumn(uid, { sheetId: id, operation: 'upper', sourceColumn: 'S',
+    assert.deepEqual(await toTheEnd(uid, { sheetId: id, operation: 'upper', sourceColumn: 'S',
       targetColumn: 'T' }), { ok: { updated: 1, created_column: 'T' } })
     assert.equal(records(id), 0)
   })

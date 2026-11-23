@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
+import { toTheEnd } from './transform-to-end'
 const { db, uid, ok, done, idle, sheet, run } = undoKit('rows-updated-at')
 const { patchRowById, appendRows } = await import('../../server/src/services/rows-write')
 const { batchUpdateRows } = await import('../../server/src/services/rows-batch-update')
@@ -165,8 +166,8 @@ await ok('transform_column', async () => {
   const sid = sheet([{ A: 'x' }, { A: 'y' }], ['A'])
   past(sid)
   const now = clock()
-  const out = await transformColumn(uid, { sheetId: sid, sourceColumn: 'A', targetColumn: 'B', operation: 'upper' })
-  assert.ok('ok' in out, JSON.stringify(out))
+  const out = await toTheEnd(uid, { sheetId: sid, sourceColumn: 'A', targetColumn: 'B', operation: 'upper' })
+  assert.ok('ok' in out && out.ok.updated === 2, JSON.stringify(out))
   assert.deepEqual(changed(sid, now), [0, 1])
 })
 

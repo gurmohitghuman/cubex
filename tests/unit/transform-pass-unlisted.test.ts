@@ -20,6 +20,7 @@ import trashMod from '../../server/src/services/trash-rows'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { addSheetColumn } = addMod as typeof import('../../server/src/services/column-add')
@@ -129,7 +130,7 @@ async function main() {
       transferX(source, id)
       assert.deepEqual(passes(id), [])
       assert.ok('ok' in addSheetColumn(id, uid, SEED))
-      assert.deepEqual(await transformColumn(uid, { sheetId: id, operation: 'template', template: '{{X}}-y',
+      assert.deepEqual(await toTheEnd(uid, { sheetId: id, operation: 'template', template: '{{X}}-y',
         targetColumn: SEED }), { ok: { updated: ROWS, created_column: null } })
       assert.deepEqual(passes(id), [])
     })
