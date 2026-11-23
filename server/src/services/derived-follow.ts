@@ -179,9 +179,12 @@ function ready(kind: DerivedKind, e: AutorunEntry, rec: DerivedRecord | undefine
 const ticking = new Set<string>();
 const again = new Set<string>();
 // An entry's new-row page as its last tick left it, while it has more new rows: the next tick goes on at its pace.
+// Each tick takes it out first, so one that stops early drops it.
 const newPages = new Map<string, number>();
 
 export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
+  const carried = newPages.get(e.id);
+  newPages.delete(e.id);
   const kind = derivedKindOf(e.kind);
   // Paused by the person, or stopped ('setup', 'too_slow') until the column is saved again or auto-run
   // turned on again (a missing input lifts in ready()). Busy, or in the trash: the sweep catches it up.
@@ -198,8 +201,7 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
     try {
       const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS,
         queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0, spanPage: FIRST_TIMED_PAGE,
-        newPage: newPages.get(e.id) ?? FIRST_TIMED_PAGE };
-      newPages.delete(e.id);
+        newPage: carried ?? FIRST_TIMED_PAGE };
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
       await asBulkWriter(async w => {
         for (let more = true; more;) {
@@ -245,7 +247,7 @@ export function kickDerivedFollow(entryId: string, ms = CLEAN_FOLLOW_KICK_MS): v
     const e = loadEntry(entryId);
     if (e?.enabled && derivedKindOf(e.kind)) {
       derivedFollowTick(e).catch(err => console.error(`Auto-run on column "${e.status_column}" failed:`, err));
-    }
+    } else newPages.delete(entryId);
   }, ms).unref?.();
 }
 
