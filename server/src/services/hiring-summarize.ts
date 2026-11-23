@@ -18,6 +18,7 @@ import { writeCompanies, type CompaniesTarget, type SummaryCheck, type Written }
 export type { SummaryCheck } from './hiring-summarize-write';
 export interface SummaryDone {
   roles: number; newRoles: number; companiesNew: number; companiesHiringMore: number;
+  companiesKeptOff: number;   // by the table's filters on Companies (no row)
   cellsWritten: number; problems: string[];
 }
 export interface SummaryOpts { maxCompanies?: number }   // tests: a smaller most, to see the batches
@@ -73,7 +74,7 @@ async function summarize(
     sheetId: sheets.companies, userId, check, listed, batch,
     columns: SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => listed.has(c)),
   });
-  const total: Written = { cells: 0, added: 0, more: 0, notAdded: 0 };
+  const total: Written = { cells: 0, added: 0, more: 0, notAdded: 0, keptOff: 0 };
   const sum = (w: Written) => { for (const k of Object.keys(total) as Array<keyof Written>) total[k] += w[k]; };
   const first = await readRoles(userId, sheets.roles, check.runId, { batch: null, cap });
   if ('gone' in first) return GONE;
@@ -112,6 +113,6 @@ async function summarize(
   const gone = SUMMARY.map(k => COMPANY_COLUMNS[k]).filter(c => !listed.has(c));
   return {
     roles: read.roles, newRoles: read.newRoles, companiesNew: total.added, companiesHiringMore: total.more,
-    cellsWritten: total.cells, problems: problemsOf(read, gone, total.notAdded),
+    companiesKeptOff: total.keptOff, cellsWritten: total.cells, problems: problemsOf(read, gone, total.notAdded),
   };
 }

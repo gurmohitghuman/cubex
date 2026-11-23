@@ -4,6 +4,7 @@
 // row per role title, a column per More filter when it has any, and "Roles
 // found": a list enrichment set up and not run that adds the roles each search
 // finds to Roles, keeping those added before: lib/hiring/search-input.ts).
+// Its filters on Companies go on the record (lib/hiring/company-filters.ts).
 // Nothing that costs money runs: a check takes the person's click or an
 // agent's call (services/hiring-check.ts). The search's config is checked
 // against treg's catalog first, then the table, sheets, rows, column and
@@ -115,7 +116,8 @@ function makeTable(userId: string, input: HiringInput, built: { input: EnrichRun
     const { id: tableId, name: tableName, sheetId: companies } = made.ok;
     logSheetChange(companies, userId, 'hiring_created',
       `Made the hiring table for ${input.roles.join(', ')}: ${input.roles.length} searches`,
-      { detail: { roles: input.roles, country: input.country, place: input.place, filters: input.filters } });
+      { detail: { roles: input.roles, country: input.country, place: input.place, filters: input.filters,
+        companyFilters: input.companyFilters } });
     db.prepare('UPDATE sheets SET name = ? WHERE id = ? AND user_id = ?')
       .run(HIRING_SHEETS.companies, companies, userId);
     appendColumnsToOrder(companies, userId, Object.values(COMPANY_COLUMNS));
@@ -128,10 +130,12 @@ function makeTable(userId: string, input: HiringInput, built: { input: EnrichRun
     if ('fail' in rows) throw new Error(`The searches didn't go in: ${rows.fail}`);
     writeSearch(userId, searches, roles, built);
     const id = uuidv4();
+    const { minRoles, leaveOutCompanies } = input.companyFilters;
     db.prepare(`INSERT INTO hiring_signals (id, user_id, table_id, companies_sheet_id, roles_sheet_id,
-        searches_sheet_id, roles, country, place, posted_within_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        searches_sheet_id, roles, country, place, posted_within_days, min_roles, leave_out_companies)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, userId, tableId, companies, roles, searches, JSON.stringify(input.roles), input.country, input.place,
-        input.postedWithinDays);
+        input.postedWithinDays, minRoles, JSON.stringify(leaveOutCompanies));
     return { id, tableId, tableName, companiesSheetId: companies, rolesSheetId: roles, searchesSheetId: searches };
   }).immediate();
 }

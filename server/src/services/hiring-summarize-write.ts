@@ -2,11 +2,14 @@
 // Companies row, a slice at a time in a bulk writer, gets the cells its
 // company's roles give it, written only where they differ (a company with
 // nothing new this time has its "New" cells cleared, one with no roles left
-// shows 0); then a company with no row gets one, First seen this check's day.
-// Rows are matched by the company key (lib/hiring/company-key.ts) of their
-// Domain and Company cells, so a row the person edited is still found. Given
-// a batch, only the rows of its companies. Each slice first checks the sheet
-// is out of the trash: one put there meanwhile gets nothing more ('gone').
+// shows 0); then a company with no row gets one, First seen this check's day,
+// unless the table's filters on Companies keep it off (too few roles, or its
+// website left out: lib/hiring/company-filters.ts). A row already there is
+// kept up to date whatever the filters. Rows are matched by the company key
+// (lib/hiring/company-key.ts) of their Domain and Company cells, so a row the
+// person edited is still found. Given a batch, only the rows of its companies.
+// Each slice first checks the sheet is out of the trash: one put there
+// meanwhile gets nothing more ('gone').
 import { db } from '../lib/db';
 import { countRows, jsonPath, verifySheetOwnership } from '../lib/sql-helpers';
 import type { BulkWriter } from '../lib/bulk-slices';
@@ -14,6 +17,7 @@ import { sheetBusyWith, nextRowIndex } from '../lib/sheet-busy';
 import { markAutorunEdits } from '../lib/autorun-mark';
 import { HIRING_SUMMARY_WRITE_ROWS, MAX_ROWS_PER_SHEET, SAMPLE_STEP_POLL_MS } from '../lib/constants';
 import { companyKey, keyBatch } from '../lib/hiring/company-key';
+import { keptOff, type CompanyKeep } from '../lib/hiring/company-filters';
 import { COMPANY_COLUMNS } from '../lib/hiring/names';
 import { companyCells, newCompanyRow, type CompanyAcc } from '../lib/hiring/summary';
 import { orderedUuid } from '../lib/ordered-id';
@@ -21,15 +25,19 @@ import { bumpDataVersion } from './data-plane-shared';
 import { settleEdits, settleRows } from './auto-dedupe-settle';
 import { pacer } from './hiring-roles-read';
 
-export interface SummaryCheck { label: string; sinceLabel: string | null; runId: string | null }
+export interface SummaryCheck {
+  label: string; sinceLabel: string | null; runId: string | null;
+  keep?: CompanyKeep | null;                  // the table's filters on Companies (null: none)
+}
 export interface CompaniesTarget {
   sheetId: string; userId: string; check: SummaryCheck;
   columns: string[];                          // the summary's columns the sheet has
   listed: Set<string>;                        // every column it has (a new row fills only those)
   batch: { index: number; of: number } | null;
 }
-// What one write did: cells changed, companies added, companies seen before with new roles, companies not added.
-export interface Written { cells: number; added: number; more: number; notAdded: number }
+// What one write did: cells changed, companies added, companies seen before with new roles, companies not added
+// (Companies full), companies the filters kept off.
+export interface Written { cells: number; added: number; more: number; notAdded: number; keptOff: number }
 
 async function whenFree(sheetId: string): Promise<void> {
   while (sheetBusyWith(sheetId)) await new Promise(resolve => setTimeout(resolve, SAMPLE_STEP_POLL_MS));
@@ -108,7 +116,7 @@ function appendSlice(t: CompaniesTarget, rows: Array<Record<string, string>>): '
 export async function writeCompanies(
   w: BulkWriter, t: CompaniesTarget, companies: Map<string, CompanyAcc>,
 ): Promise<Written | 'gone'> {
-  const tally: Written = { cells: 0, added: 0, more: 0, notAdded: 0 };
+  const tally: Written = { cells: 0, added: 0, more: 0, notAdded: 0, keptOff: 0 };
   const matched = new Set<string>();
   for (let after = -1; ;) {
     await whenFree(t.sheetId);
@@ -125,17 +133,26 @@ export async function writeCompanies(
       await pace();
     }
   }
-  // Companies with no row yet, a slice at a time, in the order Roles first had them.
-  const unmatched = companies.size - matched.size;
-  const room = unmatched === 0 ? 0
-    : Math.max(0, Math.min(unmatched, MAX_ROWS_PER_SHEET - countRows(t.sheetId, t.userId)));
-  tally.notAdded = unmatched - room;
+  // Companies with no row yet, a slice at a time, in the order Roles first had them, but those the filters keep off.
+  const keep = t.check.keep ?? null;
+  const skip = (key: string, acc: CompanyAcc) => matched.has(key) || (keep !== null && keptOff(keep, acc));
+  let wanted = companies.size - matched.size;
+  if (keep) {
+    for (const [key, acc] of companies) {
+      if (!matched.has(key) && keptOff(keep, acc)) tally.keptOff++;
+      await pace();
+    }
+    wanted -= tally.keptOff;
+  }
+  const room = wanted === 0 ? 0
+    : Math.max(0, Math.min(wanted, MAX_ROWS_PER_SHEET - countRows(t.sheetId, t.userId)));
+  tally.notAdded = wanted - room;
   const rest = companies.entries();
   while (tally.added < room) {
     const batch: Array<Record<string, string>> = [];
     while (batch.length < Math.min(HIRING_SUMMARY_WRITE_ROWS, room - tally.added)) {
       const [key, acc] = rest.next().value as [string, CompanyAcc];
-      if (matched.has(key)) { await pace(); continue; }
+      if (skip(key, acc)) { await pace(); continue; }
       batch.push(Object.fromEntries(Object.entries(newCompanyRow(acc, t.check)).filter(([c]) => t.listed.has(c))));
     }
     for (;;) {

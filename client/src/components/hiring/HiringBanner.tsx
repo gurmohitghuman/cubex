@@ -9,15 +9,18 @@ import { HiringCheckDialog } from './HiringCheckDialog'
 // Above the grid of a hiring table's three sheets: what it searches for, its
 // sheets, Check now / Check again (the estimate first), and the last check:
 // still going (looked at every few seconds until it ends), done (what it
-// found) or stopped (why). A new table opens on its first check's estimate.
+// found, and how many companies its filters on Companies kept off) or stopped
+// (why). A new table opens on its first check's estimate.
 const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? w : ws}`
 const going = (c: HiringCheck | undefined) => c?.stage === 'searching' || c?.stage === 'summarizing'
 
-function checkWords(c: HiringCheck): string {
+function checkWords(c: HiringCheck, filtered: boolean): string {
   if (c.stage === 'searching') return `Checking: searching ${plural(c.searches, 'role title')}…`
   if (c.stage === 'summarizing') return 'Checking: summing up the roles per company…'
   const found = `${plural(c.rolesAdded, 'new role')}, ${plural(c.companiesNew, 'new company', 'new companies')}`
     + (c.since ? `, ${plural(c.companiesHiringMore, 'company', 'companies')} hiring more` : '')
+    + (filtered && c.companiesKeptOff
+      ? `; ${plural(c.companiesKeptOff, 'more company', 'more companies')} kept off by your filters` : '')
   if (c.stage === 'done') return `Last check, ${checkDay(c.label)}: ${found}.`
   return `The last check, ${checkDay(c.label)}, stopped${c.problems[0] ? `: ${c.problems[0]}` : '.'}`
 }
@@ -49,6 +52,9 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
 
     const sheets = [['Companies', v.companiesSheetId], ['Roles', v.rolesSheetId], ['Searches', v.searchesSheetId]]
     const where = [v.place, v.country].filter(Boolean).join(', ')
+    const filtered = v.minRoles > 1 || v.leaveOutCompanies.length > 0
+    const kept = (v.minRoles > 1 ? `, at least ${v.minRoles} roles a company` : '')
+      + (v.leaveOutCompanies.length ? `, ${plural(v.leaveOutCompanies.length, 'company', 'companies')} left out` : '')
     return (
       <div className="mx-4 mt-3 mb-1 border border-gray-200 bg-white rounded-lg px-4 py-3" data-testid="hiring-banner">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -56,6 +62,7 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
           <span className="text-sm font-semibold text-gray-900">Companies hiring: {v.roles.join(', ')}</span>
           <span className="text-xs text-gray-500">
             {where || 'any country'}{v.postedWithinDays ? `, posted in the last ${v.postedWithinDays} days` : ''}
+            {kept}
           </span>
           <span className="flex items-center gap-1 text-xs">
             {sheets.map(([name, id]) => id && (
@@ -71,7 +78,8 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
         </div>
         <div className={`text-xs mt-2 ${last?.stage === 'stopped' ? 'text-red-600' : 'text-gray-600'}`}
           data-testid="hiring-last-check">
-          {last ? checkWords(last) : 'Not checked yet: Check now shows what a check costs before it searches.'}
+          {last ? checkWords(last, filtered)
+            : 'Not checked yet: Check now shows what a check costs before it searches.'}
           {last?.stage === 'done' && last.since && last.companiesHiringMore + last.companiesNew > 0
             && ' Filter New roles above 0 for the companies with new roles.'}
         </div>
