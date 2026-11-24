@@ -2,17 +2,20 @@
 // API thread can stop one that runs too long by wall clock. QuickJS's own
 // deadline can't: it isn't checked inside a long built-in call (an indexOf or a
 // split over a huge string). The API thread asks synchronously (host.ts); each
-// answer goes over the port, then READY wakes it. A run works out rows until
-// its time budget (always at least one), noting each row in PROGRESS first, so
-// the API thread knows which row hung when it has to stop the worker.
+// answer goes over the port, then its request's number in READY wakes it. A
+// run works out rows until its time budget (always at least one), noting each
+// row in PROGRESS first, so the API thread knows which row hung when it has to
+// stop the worker.
 import { parentPort, workerData, type MessagePort } from 'worker_threads';
 import type { QuickJSWASMModule } from 'quickjs-emscripten-core';
 import type { FormulaOutcome } from './cells';
 import { CompileFault, QjsSandbox, loadQuickJS } from './qjs';
 import { CLOSING, PROGRESS, READY, type Ask, type Reply, type Request } from './protocol';
 
-const { port, shared } = workerData as { port: MessagePort; shared: SharedArrayBuffer };
+const { port, shared, wakePauseMs } =
+  workerData as { port: MessagePort; shared: SharedArrayBuffer; wakePauseMs?: number };
 const flags = new Int32Array(shared);
+const pause = new Int32Array(new SharedArrayBuffer(4));
 const sandboxes = new Map<number, QjsSandbox>();
 
 // fault: the WASM instance broke; the worker answers, then stops.
@@ -52,7 +55,9 @@ loadQuickJS().then(mod => {
     const { reply, fault } = handle(mod, msg);
     if (fault) Atomics.store(flags, CLOSING, 1);
     port.postMessage(reply);
-    Atomics.store(flags, READY, 1);
+    Atomics.store(flags, READY, msg.seq);
+    // Tests only (host.ts): a pause before the wake, as a busy machine can make.
+    if (wakePauseMs) Atomics.wait(pause, 0, 0, wakePauseMs);
     Atomics.notify(flags, READY);
     if (fault) process.exit(0);
   });

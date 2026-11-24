@@ -6,12 +6,25 @@
 // stops itself too when its WASM instance breaks (it sets CLOSING first).
 // Waiting blocks the API thread, as working the rows out on it would, but
 // never longer than the cap.
+// Each request has a number, and the worker writes the number it answered into
+// READY. A request waits for its own: the worker wakes the API thread just
+// after writing it, and on a busy machine it can be paused in between, long
+// enough for the API thread to read that answer and send the next request. The
+// late wake then lands in the next request's wait, before its answer exists;
+// with one flag for every request, that request was taken for unanswered, the
+// worker stopped and the formula closed (an empty answer, run 45342985136).
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort, type WorkerOptions } from 'worker_threads';
 import { extname, join } from 'path';
+import { performance } from 'perf_hooks';
 import { FORMULA_WORKER_HEAP_MB } from '../constants-formula';
 import { CLOSING, PROGRESS, READY, SLOTS, type Ask, type Dispose, type Reply } from './protocol';
 
 export type Answer = Reply | { timedOut: number } | { gone: true };
+
+// Tests only: a pause in each worker started from now on, between writing its answer's number and waking this
+// thread, as a busy machine can make (worker.ts).
+let wakePauseMs = 0;
+export function setFormulaWakePauseForTests(ms: number): void { wakePauseMs = ms; }
 
 // The worker's file next to this one: worker.ts under tsx, worker.js once built.
 const workerFile = (): string => join(__dirname, `worker${extname(__filename)}`);
@@ -49,7 +62,7 @@ class FormulaHost {
     const flags = new Int32Array(new SharedArrayBuffer(SLOTS * 4));
     const { port1, port2 } = new MessageChannel();
     const worker = newWorker({
-      workerData: { port: port2, shared: flags.buffer }, transferList: [port2],
+      workerData: { port: port2, shared: flags.buffer, wakePauseMs }, transferList: [port2],
       resourceLimits: { maxOldGenerationSizeMb: FORMULA_WORKER_HEAP_MB },
     });
     return new Promise((resolve, reject) => {
@@ -78,14 +91,20 @@ class FormulaHost {
       this.stop();
       return { gone: true };
     }
-    Atomics.store(flags, READY, 0);
     Atomics.store(flags, PROGRESS, -1);
-    const seq = ++this.seq;
+    // Never 0 (READY before any answer), and within an Int32.
+    const seq = this.seq = this.seq >= 0x7fffffff ? 1 : this.seq + 1;
     port.postMessage({ ...msg, seq });
-    if (Atomics.wait(flags, READY, 0, capMs) === 'timed-out') {
-      const at = Atomics.load(flags, PROGRESS);
-      this.stop();
-      return { timedOut: at };
+    const until = performance.now() + capMs;
+    for (let ready = Atomics.load(flags, READY); ready !== seq; ready = Atomics.load(flags, READY)) {
+      const left = until - performance.now();
+      if (left <= 0) {
+        const at = Atomics.load(flags, PROGRESS);
+        this.stop();
+        return { timedOut: at };
+      }
+      // Woken by an earlier request's late wake, or READY changed meanwhile: look again.
+      Atomics.wait(flags, READY, ready, left);
     }
     for (;;) {
       const m = receiveMessageOnPort(port);
