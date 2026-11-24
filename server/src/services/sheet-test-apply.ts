@@ -1,3 +1,4 @@
+// Over 200 lines: the apply's one transaction and the words for what it did, read together.
 // Applying a test (migration 070): the copy's setup becomes the sheet's, as a setup version's restore writes one
 // (setup-version-plan.ts and -apply.ts): the sheet's setup is kept first as a version ("Before applying a test"),
 // columns added in the test are added (empty), columns set up differently there take the test's setup, and the
@@ -84,15 +85,23 @@ function refill(t: TestRecord, fills: Map<string, Fill>): Array<[DerivedName, st
 function words(plan: RestorePlan, kept: Record<string, number>, refilled: number, dry: boolean): string {
   const n = (a: PlannedColumn['action']) => plan.columns.filter(c => c.action === a).length;
   const rows = Object.values(kept).reduce((a, b) => a + b, 0);
-  const parts = [n('restore') && `${countOf(n('restore'), 'column')} set up as in the test`,
+  const free = (k: number) => `${countOf(k, 'formula, clean or lookup column')}`;
+  const parts = dry ? [
+    n('restore') && `set up ${countOf(n('restore'), 'column')} as in the test`,
+    n('add_back') && `add ${countOf(n('add_back'), 'column')}`,
+    rows && `keep the results of ${countOf(rows, 'sample row')}`,
+    refilled && `fill ${free(refilled)} again on every row (free)`,
+  ] : [
+    n('restore') && `${countOf(n('restore'), 'column')} set up as in the test`,
     n('add_back') && `${countOf(n('add_back'), 'column')} added`,
     rows && `the results of ${countOf(rows, 'sample row')} kept`,
-    refilled && `${countOf(refilled, 'clean, formula or lookup column')} worked out again`,
-  ].filter((p): p is string => !!p);
-  if (!parts.length) return dry ? 'Nothing to apply: the copy is set up as the sheet is. Applying closes the test.'
+    refilled && `${free(refilled)} filling again (free)`,
+  ];
+  const said = parts.filter((p): p is string => !!p);
+  if (!said.length) return dry ? 'Nothing to apply: the copy is set up as the sheet is. Applying closes the test.'
     : 'Nothing changed: the copy was set up as the sheet is. The test is closed.';
-  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  return dry ? `Applying would leave ${list}.`
+  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
+  return dry ? `Applying will ${list}.`
     : `Applied: ${list}. The setup before is saved as a version. Nothing ran on the other rows.`;
 }
 
