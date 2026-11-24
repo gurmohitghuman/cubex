@@ -26,7 +26,7 @@ import { keysProblem } from './waterfall-run-start';
 import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
 import { actorTokenId } from '../lib/actor';
 
-export interface DryRunStarted { runId: string; rowIndexes: number[] }
+export interface DryRunStarted { runId: string; rowIndexes: number[]; notes?: string[] }
 
 const SCAN_PAGE = 500;
 const SCAN_MAX = 5_000;            // rows read looking for ones the run would take
@@ -119,5 +119,10 @@ export async function startWaterfallDryRun(
     .run(runId, sheetId, userId, JSON.stringify(config), picked.rows.length, JSON.stringify(picked.rows),
       keys.allowSecrets, actorTokenId());
   await enqueueHTTPRerun(runId, picked.rows);
-  return { ok: { runId, rowIndexes: picked.rows } };
+  return {
+    ok: {
+      runId, rowIndexes: picked.rows,
+      ...(p.built.ignoredProviders.length ? { notes: p.built.ignoredProviders } : {}),
+    },
+  };
 }

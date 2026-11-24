@@ -24,7 +24,9 @@ import { sheetCandidates } from './setup-steps';
 import { estimateSetup, type SetupEstimate } from './setup-estimate';
 import { insertSetupRun, getSetupRun, type SetupRunView } from './setup-run-store';
 import { advanceSetupRun } from './setup-runner';
-import { keyProblem, liveSetupClash, withModels, type ApplyFail } from './setup-apply-checks';
+import {
+  enrichmentProvidersProblem, keyProblem, liveSetupClash, withModels, type ApplyFail,
+} from './setup-apply-checks';
 import { webhookIdProblem } from './run-hooks-attach';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { actorSpendRefusal } from './token-spend';
@@ -77,6 +79,8 @@ export async function applySetup(
   // Models are picked by the setup's own column names, before any rename.
   const spec = await withModels(plan.ok.spec, setup.spec, input.models ?? {}, modes, existing, sheetId, userId);
   if ('fail' in spec) return spec;
+  const providerProblem = await enrichmentProvidersProblem(spec, modes);
+  if (providerProblem) return providerProblem;
   const problem = keyProblem(userId, spec, columns, caller.hasSecretsScope) ?? liveSetupClash(userId, sheetId, makes);
   if (problem) return problem;
 

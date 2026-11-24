@@ -213,6 +213,7 @@ async function rerunWaterfall(req: TokenAuthRequest, res: express.Response, b: R
   if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
   res.status(202).json({
     run_id: out.ok.runId, run_type: 'waterfall', rows_in_scope: out.ok.rowsInScope,
+    ...(out.ok.notes?.length ? { notes: out.ok.notes } : {}),
     ...hooked(req, b, 'http_runs', out.ok.runId),
   });
 }
@@ -244,6 +245,7 @@ async function rerunEnrichment(req: TokenAuthRequest, res: express.Response, b: 
   res.status(202).json({
     run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
     ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
+    ...(out.ok.notes?.length ? { notes: out.ok.notes } : {}),
     ...hooked(req, b, 'http_runs', out.ok.runId),
   });
 }

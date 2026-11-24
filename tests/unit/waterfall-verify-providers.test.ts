@@ -1,3 +1,4 @@
+// Over 200 lines: the email check's provider picks and their name checks share one stand-in treg and its fixtures.
 // Which providers treg's email verify asks, picked as a find step picks them, against the repo's mock treg (its
 // captured catalog): a waterfall step's verify check takes providerOrder and skipProviders (REST) or
 // provider_order and skip_providers (MCP and /api/v1), refuses a bad shape in a find step's words, and is built
@@ -94,14 +95,35 @@ await ok('MCP and /api/v1: provider_order and skip_providers on a verify check; 
   assert.ok('ok' in formula, JSON.stringify(formula))
 })
 
-await ok('build: the check asks in its order and never a skipped provider; an unknown name does nothing', async () => {
+await ok('build: the check asks in order, never a skipped provider; unknown names refused unless saved', async () => {
   const plain = await verify()
   assert.deepEqual(plain.prefer, [])
   assert.deepEqual(plain.exclude, [])
-  const picked = await verify({ providerOrder: ['Dropleads', 'hunter', 'nosuchverifier'],
-    skipProviders: ['trykitt', 'MillionVerifier', 'nosuchverifier'] })
+  const picked = await verify({ providerOrder: ['Dropleads', 'hunter'],
+    skipProviders: ['trykitt', 'MillionVerifier'] })
   assert.deepEqual(picked.prefer, ['dropleads', 'hunter'])
   assert.deepEqual(picked.exclude, ['millionverifier', 'trykitt'])
+  // Unknown names are refused with the list of known verifiers.
+  const badOrder = await buildCheck('Step 2',
+    { kind: 'verify', accept: 'safest', providerOrder: ['dropleads', 'nosuchverifier'] }, 'email', ['email'])
+  assert.ok('fail' in badOrder && badOrder.fail === 'bad_request'
+    && badOrder.message.includes('"nosuchverifier"') && badOrder.message.includes('dropleads'),
+    JSON.stringify(badOrder))
+  const badSkip = await buildCheck('Step 2',
+    { kind: 'verify', accept: 'safest', skipProviders: ['trykitt', 'nosuchverifier'] }, 'email', ['email'])
+  assert.ok('fail' in badSkip && badSkip.fail === 'bad_request'
+    && badSkip.message.includes('"nosuchverifier"') && badSkip.message.includes('trykitt'),
+    JSON.stringify(badSkip))
+  // A saved check with an old name keeps working and says which name it ignored.
+  const saved = await buildCheck('Step 2', { kind: 'verify', accept: 'safest',
+    providerOrder: ['Dropleads', 'hunter', 'nosuchverifier'],
+    skipProviders: ['trykitt', 'MillionVerifier', 'oldverifier'] }, 'email', ['email'],
+    { order: ['nosuchverifier'], skip: ['oldverifier'] })
+  assert.ok('ok' in saved && saved.ok, JSON.stringify(saved))
+  assert.deepEqual((saved.ok.built as BuiltVerify).prefer, ['dropleads', 'hunter'])
+  assert.deepEqual((saved.ok.built as BuiltVerify).exclude, ['millionverifier', 'trykitt'])
+  assert.ok(saved.ignored.some(n => n.includes('"nosuchverifier"'))
+    && saved.ignored.some(n => n.includes('"oldverifier"')), JSON.stringify(saved.ignored))
   // A skipped provider is never preferred, whatever the order says.
   assert.deepEqual((await verify({ providerOrder: ['trykitt', 'tomba'], skipProviders: ['trykitt'] })).prefer,
     ['tomba'])

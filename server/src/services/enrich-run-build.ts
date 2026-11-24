@@ -1,3 +1,4 @@
+// Over 200 lines: validates every enrichment run choice against treg's live catalog and builds the frozen config.
 // Turns a run-start request into the run's stored config, checked against the
 // tool as treg's catalog describes it right now (catalog drift: a retired tool
 // or an output the tool no longer has is refused here, so cells never quietly
@@ -8,6 +9,7 @@ import { toolTitle } from '../lib/enrich-tool-label';
 import {
   defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, verifyPick, type ProviderPick,
 } from '../lib/enrich-estimate';
+import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
 import {
@@ -75,8 +77,8 @@ function inputTemplatesFor(
 }
 
 export async function buildEnrichmentConfig(
-  input: EnrichRunInput, columns: string[], rowsUpperBound: number,
-): Promise<{ ok: EnrichRunConfig } | RunFail> {
+  input: EnrichRunInput, columns: string[], rowsUpperBound: number, saved?: SavedProviderNames,
+): Promise<{ ok: EnrichRunConfig; ignored?: string[] } | RunFail> {
   const found = await getTool(input.toolId);
   if (!('ok' in found)) {
     const gone = found.fail === 'not_found' || found.fail === 'hidden';
@@ -97,10 +99,15 @@ export async function buildEnrichmentConfig(
     const v = await getTool(ENRICH_VERIFY_TOOL_ID);
     if (!('ok' in v)) return bad(`Can't load the email checker: ${v.message}`);
     verify = v.ok;
+  }
+  const providers = checkStepProviders({
+    order: input.providerOrder, skip: input.skipProviders,
+    orderTools: [tool], skipTools: verify ? [tool, verify] : [tool], saved,
+  });
+  if (providers.error) return bad(providers.error);
+  if (verify && noProviderCanRun(verify, verifyPick(input.skipProviders))) {
     // The run's skips keep those providers out of its checks too; its order is for the finds.
-    if (noProviderCanRun(verify, verifyPick(input.skipProviders))) {
-      return bad('No provider can verify the email with these switches. Switch providers on.');
-    }
+    return bad('No provider can verify the email with these switches. Switch providers on.');
   }
   const filled = inputTemplatesFor(input, tool, columns);
   if ('fail' in filled) return filled;
@@ -195,5 +202,8 @@ export async function buildEnrichmentConfig(
   };
   // batchSize: the rows the run keeps out at once (lib/enrich-run-config.ts enrichConcurrency).
   const batch = input.concurrency === null ? {} : { batchSize: input.concurrency };
-  return { ok: { requestConfig, responseMapping: mapping, previewSize: 5, ...batch, enrichment } };
+  return {
+    ok: { requestConfig, responseMapping: mapping, previewSize: 5, ...batch, enrichment },
+    ...(providers.ignored.length ? { ignored: providers.ignored } : {}),
+  };
 }
