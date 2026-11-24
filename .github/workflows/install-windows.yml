@@ -78,12 +78,14 @@ jobs:
       # The commit under test, from the repository it lives in (a fork's, for a fork's pull request).
       CUBEX_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       CUBEX_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
-      npm_config_cache: ${{ runner.temp }}\npm-cache
     steps:
       - name: Note the user PATH, the folder, the service mode to expect, and whether this commit runs here
         id: before
         run: |
           "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          # npm's download cache, saved and restored below (a job's env can't name the runner's temp folder).
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "npm_config_cache=$env:RUNNER_TEMP\npm-cache`n",
+            (New-Object Text.UTF8Encoding $false))
           $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
           $path = $key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
           [IO.File]::WriteAllText("$env:RUNNER_TEMP\user-path.txt", $path)
@@ -262,7 +264,6 @@ jobs:
       # Where Cubex runs as a plain background process, the installer refuses an elevated window unless this is set
       # (the install job checks that refusal); a runner's window may be elevated.
       CUBEX_ALLOW_ELEVATED: '1'
-      npm_config_cache: ${{ runner.temp }}\npm-cache
       # What the steps that call Cubex's API share. Each step is a new PowerShell, so each loads it first:
       # . ([scriptblock]::Create($env:TEST_API))
       TEST_API: |
@@ -336,8 +337,9 @@ jobs:
             $lockFile)
           $lockHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "lock-hash=$lockHash`n")
-          [IO.File]::AppendAllText($env:GITHUB_ENV,
-            "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`nNODE_MAJOR=$major`n")
+          # npm's download cache too, saved and restored below (a job's env can't name the runner's temp folder).
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`n" +
+            "NODE_MAJOR=$major`nnpm_config_cache=$env:RUNNER_TEMP\npm-cache`n")
 
       - name: Cache npm download cache
         uses: actions/cache@v5

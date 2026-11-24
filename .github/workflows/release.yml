@@ -68,17 +68,18 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      npm_config_cache: ${{ runner.temp }}/npm-cache
     steps:
       - name: Check out the release commit
         uses: actions/checkout@v5
         with:
           ref: ${{ needs.resolve.outputs.sha }}
 
-      - name: Hash package-lock.json
+      # npm's download cache, saved and restored below (a job's env can't name the runner's temp folder).
+      - name: Hash package-lock.json, and point npm's cache at the runner's temp folder
         id: lock
-        run: echo "lock-hash=$(sha256sum package-lock.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "lock-hash=$(sha256sum package-lock.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
 
       - name: Cache npm download cache
         uses: actions/cache@v5

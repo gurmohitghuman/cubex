@@ -64,7 +64,6 @@ jobs:
       RELEASE_REPO: gurmohitghuman/cubex
       TEST_PORT: '3002'
       TEST_PASSWORD: update-check-password
-      npm_config_cache: ${{ runner.temp }}/npm-cache
       # What the steps that call Cubex's API share. Each step is a new bash, so each loads it first: eval "$TEST_API"
       TEST_API: |
         shopt -s inherit_errexit
@@ -149,8 +148,9 @@ jobs:
           lock_hash="$(curl -fsSL "https://raw.githubusercontent.com/$TEST_REPO/$TEST_REF/package-lock.json" \
             | sha256sum | cut -d' ' -f1)"
           echo "lock-hash=$lock_hash" >> "$GITHUB_OUTPUT"
+          # npm's download cache too, saved and restored below (a job's env can't name the runner's temp folder).
           printf '%s\n' "RELEASE_TAG=$tag" "NODE_MAJOR=$major" "CUBEX_HOME=$RUNNER_TEMP/cubex/home" \
-            "CUBEX_BIN_DIR=$RUNNER_TEMP/cubex/bin" >> "$GITHUB_ENV"
+            "CUBEX_BIN_DIR=$RUNNER_TEMP/cubex/bin" "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
 
       - name: Cache npm download cache
         uses: actions/cache@v5
