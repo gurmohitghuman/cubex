@@ -153,12 +153,16 @@ test('the dedupe check reads a clicked choice at once; a newer click aborts the 
     await new Promise(res => setTimeout(res, 600))
     await route.fulfill({ response }).catch(() => { /* aborted by a newer choice */ })
   })
-  const clicked = Date.now()
+  // Timed from the press itself: check() first waits for the radio to stop moving while the dialog fades in.
+  await page.evaluate(() => document.addEventListener('pointerdown', () => {
+    (window as unknown as { clicked: number }).clicked = Date.now()
+  }, { capture: true, once: true }))
   await dialog.getByLabel('Last row').check()
+  const clicked = await page.evaluate(() => (window as unknown as { clicked: number }).clicked)
   await dialog.getByLabel('First row').check()
   await dialog.getByLabel('Last row').check()
   await expect(samples).toContainText('Row 6 stays', { timeout: 15_000 })
   expect(sent.length).toBe(3)
-  expect(sent[0] - clicked, 'the first click reads at once (was 400 ms later)').toBeLessThan(300)
+  expect(sent[0] - clicked, 'the first click reads at once (was 400 ms later)').toBeLessThan(150)
   expect(dropped, 'the two older checks were aborted').toBe(2)
 })
