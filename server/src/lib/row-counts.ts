@@ -6,11 +6,15 @@
 // - A sheet whose marker moved shows its last count, marked as updating, and is counted again: in slices of
 //   ROW_COUNT_SLICE_ROWS rows on the server's thread, letting other work run between them, one sheet at a time.
 //   Rows changed during a count make it count again (up to ROW_COUNT_TRIES in all).
+// - A heavy operation (lib/sheet-busy.ts: a sort, an import, a column delete) moves rows in slices between requests
+//   and moves the marker only when it ends, so a count that overlaps one proves nothing, as for lib/column-repair.ts:
+//   the sheet stays queued, shown as updating, and is counted once it is free, using none of its tries.
 // - The last count is also kept in sheets.counted_rows (migration 063), written when a count lands and only if it
 //   changed, never by a row write, and without waiting for the write lock (lib/write-when-free.ts). After a restart
 //   nothing in memory holds, so each sheet shows that count as updating, and is counted again when asked for.
 import { db } from './db';
 import { rowsChangedOf } from './rows-changed';
+import { busyEpoch, onSheetFree, sheetBusyWith } from './sheet-busy';
 import { writeWhenFree } from './write-when-free';
 import { ROW_COUNT_SLICE_ROWS, ROW_COUNT_TRIES, ROW_COUNT_WRITE_RETRY_MS } from './constants-row-counts';
 
@@ -63,28 +67,38 @@ async function countRows(sheetId: string, userId: string): Promise<number> {
   }
 }
 
-async function count(q: Queued): Promise<void> {
-  for (let tries = 1; ; tries++) {
+// 'busy': a heavy operation runs on the sheet, or ran during the count and still does; it is counted once free.
+async function count(q: Queued): Promise<'counted' | 'busy'> {
+  for (let tries = 1; ;) {
+    if (sheetBusyWith(q.sheetId) !== null) return 'busy';
+    const epoch = busyEpoch(q.sheetId);
     const marker = markerNow(q.sheetId, q.userId);
-    if (marker === null) { known.delete(q.sheetId); return; }
+    if (marker === null) { known.delete(q.sheetId); return 'counted'; }
     const rows = await countRows(q.sheetId, q.userId);
-    if (markerNow(q.sheetId, q.userId) !== marker && tries < ROW_COUNT_TRIES) continue;
+    // One came and went during the count: the sheet is free now, so it is counted again at once.
+    if (sheetBusyWith(q.sheetId) !== null || busyEpoch(q.sheetId) !== epoch) continue;
+    if (markerNow(q.sheetId, q.userId) !== marker && tries < ROW_COUNT_TRIES) { tries++; continue; }
     // With its marker from before: one that moved meanwhile leaves the sheet to be counted again when asked.
     known.set(q.sheetId, { rows, marker });
     if (rows !== q.stored) stored.note(q.sheetId, { userId: q.userId, rows });
-    return;
+    return 'counted';
   }
 }
+
+const start = () => { if (!running && queue.length > 0) setImmediate(() => void run()); };
 
 async function run(): Promise<void> {
   if (running) return;
   running = true;
   try {
     for (let q = queue.shift(); q; q = queue.shift()) {
-      try { await count(q); }
+      let busy = false;
+      try { busy = (await count(q)) === 'busy'; }
       catch (err) { console.error('Counting a sheet\'s rows failed:', err); }
       finally {
-        counting.delete(q.sheetId);
+        // Still queued, out of the line: the other sheets are counted meanwhile.
+        if (busy) onSheetFree(q.sheetId, () => { queue.push(q); start(); });
+        else counting.delete(q.sheetId);
         for (const w of [...waiters]) w();
       }
     }
@@ -115,7 +129,7 @@ export function rowCounts(userId: string, sheets: CountedSheet[], first = false)
   }
   queue.unshift(...ahead);
   // On the next turn: the request that asked answers first.
-  if (!running && queue.length > 0) setImmediate(() => void run());
+  start();
   return out;
 }
 

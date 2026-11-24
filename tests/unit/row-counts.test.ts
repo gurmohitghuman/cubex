@@ -8,6 +8,8 @@
 //     count is exact, including the ways that move neither data_version nor row_generation;
 //   - rows removed during a count make it count again; rows that keep changing end it after ROW_COUNT_TRIES, and it
 //     is made again when next asked;
+//   - a sort during a count (a real one, its slices between the count's): the sheet stays updating until it is free,
+//     then its count is exact, using none of its tries; a sheet held busy waits out of the line, the others counted;
 //   - after a restart the last kept count shows as updating, then the new one;
 //   - the kept count waits for another connection's write lock, written once it is let go;
 //   - GET /v1/tables and list_tables wait for a count up to ROW_COUNT_API_WAIT_MS, then answer the last count with
@@ -38,6 +40,8 @@ const { ROW_COUNT_API_WAIT_MS, ROW_COUNT_SLICE_ROWS, ROW_COUNT_TRIES } =
   await import('../../server/src/lib/constants-row-counts')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 const { rowsChanged } = await import('../../server/src/lib/rows-changed')
+const { physicalSortSheet } = await import('../../server/src/services/sheet-sort')
+const { sheetBusyWith, withSheetBusy } = await import('../../server/src/lib/sheet-busy')
 const { rowCounts, rowCountsNow, countsMade, forgetRowCounts, setRowCountSlices, rowCountWritesWaiting } = counts
 runMigrations()
 console.warn = () => {}
@@ -156,6 +160,65 @@ await ok(`rows that keep changing: the count ends after ${ROW_COUNT_TRIES} tries
   setRowCountSlices(ROW_COUNT_SLICE_ROWS, null)
   assert.equal(ask(s).updating, true, 'counted again when next asked: its rows changed during the count')
   assert.deepEqual(await made(s), { rows: real(s), updating: false })
+})
+
+await ok('a sort during a count: the sheet stays updating until it is free, then its count is exact', async () => {
+  // The sort moves every row up, then down, in slices between the count's (it starts after the count's first slice,
+  // which goes on once rows move, and lets the sort run between its slices): a count made meanwhile is wrong (18,000
+  // or 18,001 of 20,001 without the check).
+  const s = newSheet(20_001)
+  let sorting: Promise<unknown> | undefined
+  const moved = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND row_index > 20000').pluck()
+  setRowCountSlices(1_000, async () => {
+    if (!sorting) {
+      sorting = physicalSortSheet(s, uid, 'Name', 'desc')
+      await until('rows moving', () => (moved.get(s) as number) > 0)
+    }
+    await sleep(2)
+  })
+  assert.equal(ask(s).updating, true)
+  await until('the sort started', () => sorting !== undefined)
+  let sorted = false
+  void sorting!.then(() => { sorted = true })
+  const shown: string[] = []
+  while (!sorted) {
+    const c = rowCountsNow(mine(s)).get(s)!
+    if (!c.updating) shown.push(`${c.rows}`)
+    await new Promise(r => setImmediate(r))
+  }
+  assert.ok('ok' in (await sorting as object), 'the sort done')
+  assert.deepEqual(shown, [], 'counts shown as made while the sort ran')
+  assert.deepEqual(await made(s), { rows: 20_001, updating: false })
+  await until('the count kept', () => rowCountWritesWaiting() === 0)
+  assert.equal(kept(s), 20_001)
+
+  // A sort that starts and ends within one count (the slice hook waits for it): the sheet is free at the end, but the
+  // count overlapped it, so it is made again at once, using none of its tries. Its rows also change during each
+  // count after it, so the count ends after ROW_COUNT_TRIES more: 5 slices before the last in each.
+  const t = newSheet(5_001)
+  let hooks = 0
+  setRowCountSlices(1_000, async () => {
+    if (hooks++ > 0) rowsChanged(t)
+    else assert.ok('ok' in await physicalSortSheet(t, uid, 'Name', 'desc'), 'the sort done')
+  })
+  ask(t)
+  assert.deepEqual(await made(t), { rows: 5_001, updating: false })
+  assert.equal(hooks, 5 * (ROW_COUNT_TRIES + 1), 'the count the sort overlapped, then its tries')
+})
+
+await ok('a sheet held busy stays updating, out of the line: the others are counted meanwhile', async () => {
+  const a = newSheet(5)
+  const b = newSheet(7)
+  let letGo!: () => void
+  const held = withSheetBusy(a, 'testing', () => new Promise<void>(r => { letGo = r }))
+  assert.equal(sheetBusyWith(a), 'testing')
+  rowCounts(uid, [...mine(a), ...mine(b)])
+  await countsMade([b], Date.now() + 5_000)
+  assert.deepEqual(rowCountsNow(mine(b)).get(b), { rows: 7, updating: false })
+  assert.equal(rowCountsNow(mine(a)).get(a)!.updating, true, 'a count made while its sheet was busy')
+  letGo()
+  await held
+  assert.deepEqual(await made(a), { rows: 5, updating: false })
 })
 
 await ok('after a restart, the last kept count shows as updating, then the new one', async () => {

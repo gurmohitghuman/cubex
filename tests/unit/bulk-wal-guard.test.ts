@@ -53,6 +53,8 @@ const YIELDS: Entry[] = [
   { file: 'server/src/lib/trash/lookups.ts', count: 1, why: 'once, after the restore\'s commit: kicks follows' },
   { file: 'server/src/services/trash-restore-column-finish.ts', count: 1, why: 'once, after the request: fills' },
   { file: 'server/src/services/trash-restore-sheet.ts', count: 1, why: 'once, after the request: fills' },
+  { file: 'server/src/lib/sheet-busy.ts', count: 2,
+    why: 'no loop: once a sheet is free, what waited for it (a row count) goes on, a turn later' },
   { file: 'server/src/lib/column-repair.ts', count: 2, why: READS },
   { file: 'server/src/lib/csv-write.ts', count: 1, why: READS },
   { file: 'server/src/lib/row-counts.ts', count: 2,

@@ -59,7 +59,7 @@ export function acquireRunWait(userId: string, seconds: number): RunWaitSlot {
 
 // The home's wait for its row counts: released by calling what it answers, or refused (null) when the account
 // holds MAX_COUNT_WAITS_PER_USER already or the server is full.
-const MAX_COUNT_WAITS_PER_USER = 4;
+export const MAX_COUNT_WAITS_PER_USER = 4;
 const countWaitsByUser = new Map<string, number>();
 export function acquireCountWait(userId: string): (() => void) | null {
   const open = countWaitsByUser.get(userId) ?? 0;
@@ -76,3 +76,6 @@ export function acquireCountWait(userId: string): (() => void) | null {
     if (globalHolds > 0) globalHolds--;
   };
 }
+
+// Tests only: the account's open count waits.
+export const countWaitsOf = (userId: string): number => countWaitsByUser.get(userId) ?? 0;

@@ -15,7 +15,7 @@ import { acquireCountWait } from '../lib/long-poll-holds';
 const router = express.Router();
 router.use(authenticateToken);
 
-// GET / — the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
+// GET /: the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
 // table whose rows changed since they were last counted answers that count with row_count_updating, and the home
 // then waits for the new one (GET /row-counts).
 router.get('/', (req: AuthRequest, res) => {
@@ -43,17 +43,21 @@ router.get('/', (req: AuthRequest, res) => {
   }
 });
 
-// GET /row-counts — every table's rows once the counts the home showed as updating are made (held up to
+// GET /row-counts: every table's rows once the counts the home showed as updating are made (held up to
 // ROW_COUNT_HOLD_MS; one still being counted then answers row_count_updating and the home asks again). 429 when the
-// account already holds MAX_COUNT_WAITS_PER_USER of these: the home keeps the counts it shows.
+// account already holds MAX_COUNT_WAITS_PER_USER of these: the home keeps its counts marked as updating. A page that
+// leaves lets go of its slot at once (the response closes), as the sheet's change poll does.
 router.get('/row-counts', async (req: AuthRequest, res) => {
   const release = acquireCountWait(req.userId!);
-  if (!release) return res.status(429).json({ error: 'Too many waits for row counts' });
+  if (!release) {
+    return res.status(429).json({ error: 'Too many home pages are open. Close one, then reload this page.' });
+  }
+  res.on('close', release);
   try {
     res.json({ tables: await homeCountsWhenMade(req.userId!) });
   } catch (error) {
     console.error('Get row counts error:', error);
-    res.status(500).json({ error: 'Failed to fetch row counts' });
+    res.status(500).json({ error: 'Couldn\'t count the rows. Reload the page to try again.' });
   } finally {
     release();
   }

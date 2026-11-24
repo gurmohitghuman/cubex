@@ -7,6 +7,12 @@
         "run_enrichment",
         "waterfall_column"
       ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "list_tables"
+      ]
     }
   ],
   "tools": {
