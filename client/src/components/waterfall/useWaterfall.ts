@@ -15,7 +15,9 @@ export function useWaterfallEstimate(sheetId: string, input: WaterfallRunInput |
   const [error, setError] = useState<string | null>(null)
   const [nothingToRun, setNothingToRun] = useState(false)
   const [loading, setLoading] = useState(false)
-  const body = input ? JSON.stringify(input) : null
+  // The estimate doesn't depend on the retry count: undefined drops it from the JSON, so moving the
+  // slider leaves the body as it was and asks for no new estimate.
+  const body = input ? JSON.stringify({ ...input, rateLimitRetries: undefined }) : null
   const ask = useTypedReads<WaterfallEstimate>(a => {
     setEstimate(a.ok ? a.value : null)
     setError(a.ok ? null : errorOf(a.error, "Couldn't estimate it."))

@@ -1,0 +1,107 @@
+name: Checks
+
+# One platform's checks, called by ci.yml (Linux and Windows) and windows-passes.yml: the typecheck and build in one
+# job, and the unit tests split over 3 runners (scripts/unit-shards.mjs), so the run takes about as long as its
+# slowest third. Each runner still runs its files one at a time, as the one runner did before, so a test that
+# times itself never shares a machine with another test.
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: The runner, ubuntu-latest or windows-latest
+        type: string
+        required: true
+      ref:
+        description: Commit to test (the caller's commit when empty)
+        type: string
+        default: ''
+      build:
+        description: Typecheck and build too, not only the unit tests
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Typecheck + Build
+    if: ${{ inputs.build }}
+    runs-on: ${{ inputs.os }}
+    # About 1.5 minutes on Linux and 3 on Windows (November 2026); a slow runner takes about twice as long.
+    timeout-minutes: 15
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          # Pin a major. Passwords hash with Node's own crypto.argon2, which
+          # arrived in Node 24.7; the installers and the Docker image run
+          # Node 24 too. Its npm 11 is also what generates the lockfile.
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is stricter than `npm install`: it requires a
+        # package-lock.json, fails if the lock is out of sync, and never
+        # mutates package.json. The right thing for CI.
+        run: npm ci
+
+      - name: Typecheck (server + client)
+        # Hits both tsconfig.json files in one command.
+        run: npm run typecheck
+
+      - name: Build (server + client)
+        # Catches the cases typecheck misses: SQL migrations missing from
+        # the copy step, broken Vite plugin config, missing dist outputs.
+        run: npm run build
+
+      - name: Verify build outputs exist
+        # Belt and braces: confirm the artifacts that production needs
+        # actually got produced. If the build "succeeds" but produces no
+        # dist/, the deploy will fail mysteriously. Bash on Windows too (Git Bash).
+        shell: bash
+        run: |
+          set -e
+          test -f server/dist/index.js
+          test -f server/dist/package.json
+          test -d server/dist/db/migrations
+          test -f client/dist/index.html
+          ls server/dist/db/migrations/*.sql | wc -l | xargs -I{} test {} -gt 0
+          echo "✓ all build outputs present"
+
+  unit:
+    name: Unit tests ${{ matrix.shard }}/3
+    runs-on: ${{ inputs.os }}
+    # A third of the unit tests: about 8 minutes on Linux and 11 on Windows. On one runner all of them took 1,329 and
+    # 1,860 seconds (main at 5cd4ab3, November 2026), and some Windows runners are about 1.8 times slower.
+    timeout-minutes: ${{ inputs.os == 'windows-latest' && 30 || 20 }}
+    strategy:
+      # Every third reports, so a failure in one never hides another.
+      fail-fast: false
+      matrix:
+        # 1 to n, with the n of UNIT_SHARD below: tests/unit/unit-runner-shards.test.ts checks they match.
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
+        # No server, no network; each test gets its own temp DB_PATH (scripts/unit-tests.mjs).
+        env:
+          UNIT_SHARD: ${{ matrix.shard }}/3
+        run: npm run test:unit

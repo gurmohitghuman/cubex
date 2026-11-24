@@ -34,6 +34,7 @@ export interface EnrichRunRequest {
   runIf?: string
   maxCostPerRowUsd: number | null
   spendLimitUsd: number | null
+  rateLimitRetries?: number | null
   fresh: boolean
   // The sheet's row_generation when rows were selected (a sort since: 409).
   rowGeneration?: number
@@ -136,6 +137,7 @@ export interface EnrichRecalledChoices {
   // The column's "Only run if" as one rule (older condition lists come back as one).
   runIf: string | null
   maxCostPerRowUsd: number | null
+  rateLimitRetries?: number | null
   fresh: boolean
   list?: EnrichListRequest | null
 }

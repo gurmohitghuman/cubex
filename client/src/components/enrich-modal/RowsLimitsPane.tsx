@@ -1,6 +1,9 @@
 import React from 'react'
 import { formatCost } from '@/components/ai-modal/format'
-import { ENRICH_MAX_ROW_CAP_USD } from '@/lib/constants'
+import {
+  ENRICH_MAX_ROW_CAP_USD, ENRICH_PROVIDER_RATE_RETRIES, ENRICH_PROVIDER_RATE_RETRIES_MAX,
+} from '@/lib/constants'
+import { plural } from '@/lib/utils'
 import type { EnrichRowCounts } from '@/utils/api'
 import { effectiveMode, type EnrichDraft, type RowCounts, type RowsMode, type RowsStatus } from './draft'
 import { RunIfField } from '@/components/run-if/RunIfField'
@@ -122,6 +125,23 @@ export const RowsLimitsPane: React.FC<Props> = (p) => {
           </p>
         </div>
       </>)}
+
+      <div className="space-y-1">
+        <label className="block text-sm text-gray-700" htmlFor="enrich-rate-limit-retries">
+          Retries on rate limits:{' '}
+          {(draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES) === 0
+            ? 'off'
+            : `up to ${plural(draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES, 'time')}`}
+        </label>
+        <input id="enrich-rate-limit-retries" type="range" min={0} max={ENRICH_PROVIDER_RATE_RETRIES_MAX} step={1}
+          className="w-full" data-testid="enrich-rate-limit-retries"
+          value={draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES}
+          onChange={e => update({ rateLimitRetries: Number(e.target.value) })} />
+        <p className="text-xs text-gray-500">
+          When a provider answers 429, Cubex waits and asks again for free (0 to {ENRICH_PROVIDER_RATE_RETRIES_MAX},
+          {' '}default {ENRICH_PROVIDER_RATE_RETRIES}).
+        </p>
+      </div>
 
       <label className="flex items-start gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={draft.fresh} onChange={e => update({ fresh: e.target.checked })}

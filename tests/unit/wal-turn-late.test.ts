@@ -1,3 +1,4 @@
+// Over 200 lines: its cases share the held checkpoint, the log of writes in turn and the timed watch.
 // A write in turn past its deadline (lib/wal-turn.ts), on Windows and Linux (writesWaitForCheckpoints,
 // lib/wal-checkpointer.ts): there a commit that writes the WAL while the checkpoint worker's checkpoint runs waits
 // inside it, on the event loop (on the Windows CI runner COMMIT took up to 149 ms during a checkpoint and 19 ms
@@ -10,6 +11,8 @@
 // that runs out of time waiting at its pause makes two: data_version and its stop (the pass record already written).
 // None begins while the checkpoint runs, and the call answers once it has answered. Switched off (macOS's own), a write
 // past its deadline writes at once.
+// Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations: no timed
+// write grows it (on the Windows runner a commit that did could wait on the OS, off the CPU).
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -19,6 +22,7 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import turnMod from '../../server/src/lib/wal-turn'
 import transformMod from '../../server/src/services/column-transform'
 import { heldText, loopWatch } from './loop-watch'
+import { sizeWalLikeAServer, walGrowth } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
@@ -28,6 +32,7 @@ const { transformColumn } = transformMod as typeof import('../../server/src/serv
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
+const walSized = sizeWalLikeAServer(db, process.env.DB_PATH!)
 const logged: string[] = []
 console.error = (...a: unknown[]) => { logged.push(a.map(String).join(' ')) }
 let failures = 0
@@ -77,16 +82,19 @@ async function heldCheckpoint(holdMs: number): Promise<{ asked: Promise<unknown>
   w.setCheckpointDelayForTests(0)
   return { asked }
 }
-// `fn` timed, with the event loop watched and 5 ms timers counted meanwhile.
+// `fn` timed, with the event loop watched and 5 ms timers counted meanwhile; none of its writes grew the -wal file.
 async function timed<T>(fn: () => Promise<T>) {
   const watch = loopWatch(() => [])
   await watch.ready
   let ticks = 0
   const timer = setInterval(() => { ticks++ }, 5)
+  const grown = walGrowth(process.env.DB_PATH!, walSized)
   const t0 = performance.now()
   try {
     const out = await fn()
-    return { out, ms: performance.now() - t0, ticks, watched: watch() }
+    const r = { out, ms: performance.now() - t0, ticks, watched: watch() }
+    assert.equal(grown([]), '', 'writes that grew the -wal file')
+    return r
   } finally { clearInterval(timer) }
 }
 // A write already past its deadline that must be made: when it began after the call.

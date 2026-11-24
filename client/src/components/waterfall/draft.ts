@@ -33,6 +33,7 @@ export interface WaterfallDraft {
   rowsStatus: RowsStatus
   runIf: string
   spendLimitUsd: number | null
+  rateLimitRetries: number | null
   fresh: boolean
 }
 
@@ -91,7 +92,7 @@ export function newDraft(type: ResultType, columns: string[]): WaterfallDraft {
       return { ...i, source: col ? { column: col } : null }
     }),
     steps: [], answeredBy: true, hideStepColumns: true, rowsMode: 'all', rowsStatus: 'any', runIf: '',
-    spendLimitUsd: null, fresh: false,
+    spendLimitUsd: null, rateLimitRetries: null, fresh: false,
   }
 }
 
@@ -144,7 +145,7 @@ export function fromSetup(s: WaterfallSetup): WaterfallDraft {
       ...(st.id && s.sheetNames && st.id in s.sheetNames ? { sheetName: s.sheetNames[st.id] } : {}),
     })),
     answeredBy: i.answeredBy, hideStepColumns: i.hideStepColumns, rowsMode: 'all', rowsStatus: 'not_enriched',
-    runIf: i.runIf ?? '', spendLimitUsd: null, fresh: i.fresh,
+    runIf: i.runIf ?? '', spendLimitUsd: null, rateLimitRetries: i.rateLimitRetries ?? null, fresh: i.fresh,
   }
 }
 
@@ -175,7 +176,8 @@ export function toInput(d: WaterfallDraft, run: RunChoice): WaterfallRunInput {
       status: d.continueColumn ? d.rowsStatus : 'any', test: run.test,
       rowIndexes: selected ? run.rowIndexes : null,
     },
-    runIf: d.runIf.trim() || null, spendLimitUsd: d.spendLimitUsd, concurrency: null, fresh: d.fresh,
+    runIf: d.runIf.trim() || null, spendLimitUsd: d.spendLimitUsd, concurrency: null,
+    ...(d.rateLimitRetries !== null ? { rateLimitRetries: d.rateLimitRetries } : {}), fresh: d.fresh,
     rowGeneration: selected ? run.rowGeneration : null,
     ...(run.dry ? { dry: { rowIds: null, only: run.dry.only } } : {}),
   }

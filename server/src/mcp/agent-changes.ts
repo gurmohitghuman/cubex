@@ -39,6 +39,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.44',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['run_enrichment', 'waterfall_column'],
+        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
+          + 'step retries for free when providers answer 429.',
+        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
+          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
+          + 'wait longer for tight provider limits.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.43',
     changes: [
       {

@@ -68,6 +68,7 @@ function enrichmentRows(f: HttpFill, ctx: HttpContext): Row[] {
     ['Stop at first match', e.route ? yesNo(e.route.stopAtFirst) : null],
     ['Max cost per row', usd(e.maxCostPerRowUsd)],
     ['Clean domains', yesNo(e.cleanDomains)], ['Always call again', yesNo(e.fresh)],
+    ['Rate limit retries', text(e.rateLimitRetries)],
     ['Conditions', conditionWords(Array.isArray(e.rows?.where) ? e.rows.where : [])],
     ['Fields from answers', list(e.answerFields).join(', ') || null],
     ['Adds rows to', f.destSheetId ? ctx.sheetName(f.destSheetId) ?? 'a sheet deleted since' : null],
@@ -81,7 +82,7 @@ function waterfallRows(f: HttpFill): Row[] {
     ['Inputs', inputWords(f.config.requestConfig?.body)],
     ['Steps', steps.map(s => s?.label ?? s?.choices?.kind ?? 'step').join(', ') || null],
     ['Step settings', `${steps.length} step${steps.length === 1 ? '' : 's'}`, JSON.stringify(w)],
-    ['Always call again', yesNo(w.fresh)],
+    ['Always call again', yesNo(w.fresh)], ['Rate limit retries', text(w.rateLimitRetries)],
   ];
 }
 

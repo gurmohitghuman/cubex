@@ -18,6 +18,7 @@ import placeholdersMod from '../../server/src/lib/run-placeholders'
 import promptMod from '../../server/src/lib/prompt-ref-validate'
 import transformMod from '../../server/src/services/column-transform'
 import transferMod from '../../server/src/services/rows-transfer'
+import { toTheEnd } from './transform-to-end'
 const { seedProcessingPlaceholders, PLACEHOLDER } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { clearRunPlaceholders } = placeholdersMod as typeof import('../../server/src/lib/run-placeholders')
 const { unknownPromptRefsError } = promptMod as typeof import('../../server/src/lib/prompt-ref-validate')
@@ -66,8 +67,8 @@ const STATES = ['a running run', 'a stopped run still clearing']
 await ok('transform_column from or into a column a stopped run is still putting back: refused as for a running run',
   async () => {
     const { sid, run, stop } = await scene()
-    const from = () => transformColumn(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'Answer',
-      targetColumn: 'Loud' })
+    const loud = { sheetId: sid, operation: 'upper', sourceColumn: 'Answer', targetColumn: 'Loud' } as const
+    const from = () => transformColumn(uid, loud)
     const into = () => transformColumn(uid, { sheetId: sid, operation: 'upper', sourceColumn: 'Name',
       targetColumn: 'Answer' })
     const words: string[] = []
@@ -81,7 +82,7 @@ await ok('transform_column from or into a column a stopped run is still putting 
     assert.deepEqual(cells(sid, 'Loud'), ['', ''], 'nothing copied')
     assert.deepEqual(words, [GOING('Answer'), GOING('Answer'), BACK('Answer'), BACK('Answer')])
     await clearRunPlaceholders('http', run)
-    assert.deepEqual(await from(), { ok: { updated: 2, created_column: 'Loud' } })
+    assert.deepEqual(await toTheEnd(uid, loud), { ok: { updated: 2, created_column: 'Loud' } })
     assert.deepEqual(cells(sid, 'Loud'), ['OLD A', 'OLD B'])
   })
 
@@ -89,8 +90,9 @@ await ok('a template transform naming a column a run holds, going or putting its
   + 'written; after the clear it copies the answers put back', async () => {
   const { sid, run, stop } = await scene()
   // The name as the template's own substitution reads it, spaces trimmed.
-  const copy = () => transformColumn(uid, { sheetId: sid, operation: 'template',
-    template: 'Was: {{ Answer }} ({{Name}})', targetColumn: 'Copy' })
+  const was = { sheetId: sid, operation: 'template', template: 'Was: {{ Answer }} ({{Name}})',
+    targetColumn: 'Copy' } as const
+  const copy = () => transformColumn(uid, was)
   const words: string[] = []
   for (const state of STATES) {
     if (state !== STATES[0]) stop()
@@ -101,7 +103,7 @@ await ok('a template transform naming a column a run holds, going or putting its
   }
   assert.deepEqual(words, [GOING('Answer'), BACK('Answer')])
   await clearRunPlaceholders('http', run)
-  assert.deepEqual(await copy(), { ok: { updated: 2, created_column: 'Copy' } })
+  assert.deepEqual(await toTheEnd(uid, was), { ok: { updated: 2, created_column: 'Copy' } })
   assert.deepEqual(cells(sid, 'Copy'), ['Was: Old A (ada)', 'Was: Old B (bob)'])
 })
 

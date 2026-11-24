@@ -22,7 +22,7 @@ import fs from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import type Database from 'better-sqlite3'
 import walFileMod from '../../server/src/lib/wal-file'
-const { sizeWalFile } = walFileMod as typeof import('../../server/src/lib/wal-file')
+const { sizeWalFile, walFileSizing } = walFileMod as typeof import('../../server/src/lib/wal-file')
 
 export interface WriteProbeStats {
   transactions: number; longestTransactionMs: number; transactionsWritingMainFile: number
@@ -138,5 +138,30 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
     records(): TransactionRecord[] { return [...records] },
     // The `count` slowest, slowest first.
     slowest(count: number): TransactionRecord[] { return [...records].sort((x, y) => y.ms - x.ms).slice(0, count) },
+  }
+}
+
+// Where a server makes the -wal file its full size at start (lib/wal-file.ts: Windows), a test that bounds the loop
+// or a write does too, after its migrations, as index.ts does. Otherwise its commits grow the file, and on the
+// Windows runner such a commit can wait on the OS off the CPU (token-last-used's write once held the loop 103 ms with
+// no CPU time). True when the file is that size now.
+export function sizeWalLikeAServer(db: Database.Database, dbPath: string): boolean {
+  const r = sizeWalFile(db, dbPath)
+  const sized = r.done === 'sized' || (r.done === 'skipped' && r.why === 'big enough')
+  if (walFileSizing() && !sized) console.log(`      the -wal file wasn't made its full size (${JSON.stringify(r)})`)
+  return sized
+}
+
+// Made its full size, no write may grow the -wal file. A window from now: its check answers the transactions of
+// `records` begun in it that grew the file, or how much the file grew in it (a write outside a transaction, or on
+// another connection); '' when none did, or when the file wasn't made its full size.
+export function walGrowth(dbPath: string, sized: boolean): (records: TransactionRecord[]) => string {
+  const bytes = () => { try { return fs.statSync(`${dbPath}-wal`).size } catch { return 0 } }
+  const from = bytes(), t0 = performance.now()
+  return records => {
+    if (!sized) return ''
+    const grew = records.filter(r => r.at >= t0 && r.grew).map(transactionLine)
+    const now = bytes()
+    return grew.length > 0 ? grew.join(' | ') : now > from ? `the -wal file grew from ${from} to ${now} bytes` : ''
   }
 }
