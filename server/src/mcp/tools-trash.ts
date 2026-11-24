@@ -70,23 +70,20 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
 
   registerTool(server, 'restore_from_trash', {
     description:
-      'Put deleted things back from the trash (list_trash shows them). trash_ids restores whole items, tables '
-      + 'first, then sheets, then columns and batches of rows, the newest deletion first; trash_id with seqs '
-      + `restores only those rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). A sheet or table comes back as `
-      + 'it was (rows, columns, runs, views, webhook), renamed "<name> (restored)" if the name was taken. Rows go '
-      + 'back to their old places when the sheet was not sorted, replaced or deduplicated since and the places are '
-      + 'free, otherwise to the end in their old order; columns they need are added again (columns_added), and a '
-      + 'sheet without room refuses the restore. Rows moved out with transfer_rows stay in their new sheet too. '
-      + 'Auto-run does not run restored rows. A column comes back at its old place with its description and '
-      + 'setup and auto-run off, renamed "<name> (restored)" if its name was taken (name, renamed): its cells go '
-      + 'on the rows that still exist and are empty there (cells_kept counts rows holding a value now, '
-      + 'cells_skipped rows that are gone; both stay in the item to restore later). An '
-      + 'AI or HTTP API column can then be rerun with control_run and setup.run_id; a clean, formula or lookup '
-      + 'column works its rows out again. references_dropped lists what other columns, views and settings said '
-      + 'about it that did not come back, each with redo (the tool to set it up again). A column whose request '
-      + 'reads saved API keys needs the secrets scope. A refused item is in results with its error; the others '
-      + 'still go. Refused while a run is active on the sheet. A big batch answers state "restoring" and finishes '
-      + 'in the background. Costs nothing.',
+      'Put deleted things back from the trash (list_trash shows them). Costs nothing. trash_ids restores whole '
+      + 'items (tables, then sheets, then columns and row batches, newest deletion first); trash_id with seqs '
+      + `restores only those rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). A sheet or table comes back whole `
+      + '(rows, columns, runs, views, webhook), renamed "<name> (restored)" if the name was taken. Rows go back to '
+      + 'their old places when the sheet was not sorted, replaced or deduplicated since, else to the end in order; '
+      + 'columns they need are added again (columns_added); a sheet without room refuses. Rows moved out with '
+      + 'transfer_rows stay in their new sheet too. Auto-run does not run restored rows. A column comes back at its '
+      + 'old place with its setup and auto-run off (renamed if its name was taken); its cells go only on rows that '
+      + 'still exist and are empty there (cells_kept, cells_skipped: both stay in the item). Rerun an AI or HTTP '
+      + 'API column with control_run and setup.run_id; a clean, formula or lookup column works its rows out again. '
+      + 'references_dropped lists what did not come back, each with redo (the tool to set it up again). A column '
+      + 'whose request reads saved API keys needs the secrets scope. A refused item is in results with its error; '
+      + 'the others still go. Refused while a run is active on the sheet. A big batch answers state "restoring" '
+      + 'and finishes in the background.',
     inputSchema: {
       trash_ids: z.array(lenientInt(1, Number.MAX_SAFE_INTEGER)).min(1).max(TRASH_IDS_MAX).optional()
         .describe(`Whole items to restore, by trash_id (1-${TRASH_IDS_MAX})`),

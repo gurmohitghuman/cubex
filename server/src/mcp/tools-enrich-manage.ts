@@ -93,21 +93,14 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
 
   registerTool(server, 'set_auto_run', {
     description:
-      'Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. With auto-run on, the '
-      + 'column repeats its newest run on new rows and on rows whose inputs get filled (by an import, another column, '
-      + 'a webhook or an edit), at most once a row; rows already in the sheet when it is turned on are left alone. '
-      + 'A clean column (clean_column) follows its source instead: turning it on cleans every row again, then each '
-      + 'new row and each row whose source changes; it is free and takes no run_if or caps. A formula column '
-      + '(formula_column) follows every column its formula reads the same way; turning it on again also lifts a '
-      + 'pause (a formula that ran too slow). '
-      + 'enabled:true|false with column (and run_if: only rows passing a rule, kept as is when omitted, and by '
-      + 'default the column\'s own rule on a first turn-on, "" to clear; daily_cap_usd for an enrichment, '
-      + `default $${AUTORUN_DEFAULT_DAILY_CAP_USD}, never above the daily limit; daily_row_cap for an HTTP API `
-      + `column, default ${AUTORUN_HTTP_DEFAULT_DAILY_ROWS}). `
-      + 'paused:true|false pauses or resumes one column, or every auto-run on the sheet without column. '
+      'Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. When on, the column '
+      + 'repeats its newest run on new rows and on rows whose inputs get filled, once a row; rows already there '
+      + 'are left alone. Clean and formula columns follow their source columns instead, free and without run_if or '
+      + 'caps (turning a formula column on again lifts a pause). '
+      + 'An enrichment\'s daily_cap_usd is never above the daily limit. '
       + 'An enrichment auto-run SPENDS the treg balance on every new row; with a webhook on the sheet, anyone with '
-      + 'its URL can add rows that spend. An HTTP API auto-run SENDS REAL REQUESTS (it can add leads to a sequencer '
-      + `or send messages), once per row. ${DAILY_LIMIT_NOTE} Returns every auto-run on the sheet.`
+      + 'its URL can add rows that spend. An HTTP API auto-run SENDS REAL REQUESTS (leads to a sequencer, messages), '
+      + `once per row. ${DAILY_LIMIT_NOTE} Returns every auto-run on the sheet.`
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
