@@ -27,11 +27,13 @@ assert.equal(dockerVersion(tagged, none), 'v0.8.43 aaaaaaa')
 assert.deepEqual(runningFrom(dockerVersion(tagged, none)), { build: 'v0.8.43 aaaaaaa', version: 'v0.8.43' })
 console.log('ok   a loose release tag on the commit: that release, read back as it')
 
-const packed = repo({ HEAD: `${B}\n`, 'packed-refs': `# pack-refs\n${C} refs/tags/v0.8.9\n^${B}\n${B} refs/tags/v0.8.10\n${B} refs/tags/nightly\n` })
+const packed = repo({ HEAD: `${B}\n`,
+  'packed-refs': `# pack-refs\n${C} refs/tags/v0.8.9\n^${B}\n${B} refs/tags/v0.8.10\n${B} refs/tags/nightly\n` })
 assert.equal(dockerVersion(packed, none), 'v0.8.10 bbbbbbb')
 console.log('ok   packed, annotated and lightweight tags on a detached HEAD: the newest release')
 
-const branch = repo({ HEAD: 'ref: refs/heads/main\n', packed: '', 'packed-refs': `${C} refs/heads/main\n${T} refs/tags/v0.8.1\n` })
+const branch = repo({ HEAD: 'ref: refs/heads/main\n',
+  'packed-refs': `${C} refs/heads/main\n${T} refs/tags/v0.8.1\n` })
 assert.equal(dockerVersion(branch, none), 'main ccccccc')
 console.log('ok   a commit no release names: main and its commit')
 
