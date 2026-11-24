@@ -2,7 +2,8 @@ import fs from 'fs';
 import { Readable } from 'stream';
 import csv from 'csv-parser';
 import { sanitizeColumnName } from './sql-helpers';
-import { stripFormulaGuard } from './csv-safety';
+import { stripControlAndC1Chars, stripFormulaGuard } from './csv-safety';
+import { stripInvisibleNameChars } from './name-safety';
 
 // Parsing half of CSV import (the validation + cap checks live in
 // csv-import-validate.ts). ZERO mutation — nothing here touches the sheet.
@@ -15,6 +16,14 @@ import { stripFormulaGuard } from './csv-safety';
 // any extra keys a long row carries) and the row count.
 export interface CsvSummary { headers: string[]; columns: string[]; rowCount: number }
 export interface ScannedCsv { summary: CsvSummary; rows: () => AsyncIterable<Record<string, unknown>> }
+
+// A header as a refusal quotes it: the message goes into the API answer and the server log (which `cubex logs`
+// prints), so no control character (ESC, C1, a line break, a direction control) gets there, and a long one is cut.
+const SHOWN_HEADER_CHARS = 80;
+function shownHeader(raw: string): string {
+  const clean = stripInvisibleNameChars(stripControlAndC1Chars(String(raw))).replace(/\s+/g, ' ').trim();
+  return clean.length > SHOWN_HEADER_CHARS ? `${clean.slice(0, SHOWN_HEADER_CHARS)}…` : clean;
+}
 
 // Thrown when two raw CSV headers collapse to the same sanitized name. The route
 // catches this and returns it as a clean 400 (not a 500). Distinct class so we
@@ -38,7 +47,8 @@ class KeySanitizer {
     const sanitizedToRaw = new Map<string, string>();
     for (const raw of rawHeaders) {
       if (seenRaw.has(raw)) {
-        throw new CsvHeaderCollisionError(`The CSV has two columns named "${raw}". Rename one in the CSV and re-upload.`);
+        throw new CsvHeaderCollisionError(
+          `The CSV has two columns named "${shownHeader(raw)}". Rename one in the CSV and re-upload.`);
       }
       seenRaw.add(raw);
       const k = this.key(raw);
@@ -74,7 +84,8 @@ class KeySanitizer {
 }
 
 const collision = (a: string, b: string, k: string) => new CsvHeaderCollisionError(
-  `CSV columns "${a}" and "${b}" resolve to the same name "${k}". Rename one in the CSV and re-upload.`,
+  `CSV columns "${shownHeader(a)}" and "${shownHeader(b)}" resolve to the same name "${shownHeader(k)}". Rename `
+  + 'one in the CSV and re-upload.',
 );
 
 // Excel in many locales saves "CSV" with semicolons (the comma being the decimal
