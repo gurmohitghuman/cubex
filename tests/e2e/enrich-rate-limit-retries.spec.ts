@@ -62,7 +62,8 @@ test('Enrichment and Waterfall drawers: the retries slider sends and recalls its
   // 2. Waterfall drawer: seed a starter waterfall, set slider to 8, run, verify stored & recalled.
   await openColumnType(page, 'Waterfall')
   const wfDrawer = page.getByTestId('waterfall-drawer')
-  await wfDrawer.getByRole('button', { name: /Work email/i }).first().click()
+  // The template, not the blank Work email type: templates load after the drawer opens.
+  await wfDrawer.getByTestId('waterfall-template-work_email').click()
   const wfSlider = wfDrawer.getByTestId('waterfall-rate-limit-retries')
   await expect(wfSlider).toHaveValue('5')
   await wfSlider.fill('8')
