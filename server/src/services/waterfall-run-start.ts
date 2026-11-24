@@ -30,7 +30,7 @@ import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 
 export interface WaterfallStarted {
-  runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number;
+  runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number; notes?: string[];
 }
 export type WaterfallStartOutcome = { ok: WaterfallStarted } | RunFail;
 
@@ -137,6 +137,11 @@ export async function startWaterfallRun(
     logRunStarted(sheetId, userId, {
       kind: 'waterfall', column: p.resultColumn, runId, rows: p.upperBound, again: input.continueColumn,
     });
-    return { ok: { runId, resultColumn: p.resultColumn, outputColumns: outputNames, rowsInScope: p.upperBound } };
+    return {
+      ok: {
+        runId, resultColumn: p.resultColumn, outputColumns: outputNames, rowsInScope: p.upperBound,
+        ...(p.built.ignoredProviders.length ? { notes: p.built.ignoredProviders } : {}),
+      },
+    };
   });
 }

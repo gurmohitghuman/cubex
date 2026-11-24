@@ -41,6 +41,7 @@ export async function prepareWaterfallAutorun(
   const columns = getSheetColumns(e.sheet_id, e.user_id, false);
   const built = await buildWaterfall(input, {
     userId: e.user_id, sheetId: e.sheet_id, columns, sample: sampleRows(e.sheet_id, e.user_id), rowsUpperBound: rows,
+    prior: newest,
   });
   if ('fail' in built) {
     const retired = /Pick another tool/.test(built.message);

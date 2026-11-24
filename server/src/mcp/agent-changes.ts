@@ -50,6 +50,16 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'them. Refused: a company in both companies and leave_out_companies (careers.ramp.com is ramp.com), or '
           + 'a left-out website no company can have.',
       },
+      {
+        change: 'changed',
+        tools: ['waterfall_column', 'run_enrichment', 'apply_setup', 'control_run'],
+        summary: 'A provider name in provider_order or skip_providers that treg\'s catalog doesn\'t list for the '
+          + 'tool is refused, with the names it knows. It used to be dropped without a word, so a misspelled skip '
+          + 'kept nothing out.',
+        details: 'A name saved on a column before treg dropped that provider is ignored, not refused, and named in '
+          + 'the answer\'s notes. A list for a tool whose providers the catalog doesn\'t list right now is '
+          + 'refused: try again, or leave the list out.',
+      },
     ],
   },
   {

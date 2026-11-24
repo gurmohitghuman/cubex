@@ -3,6 +3,7 @@
 // summary's spend, limit and per-step counts, and a result row's answering
 // step, cost and trace. Bounded: the run's few tally rows, a page of results.
 import { db } from '../lib/db';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import { waterfallConfigOf } from '../lib/waterfall/config';
 import { waterfallStatusOf } from './waterfall-status';
 import { storedTrace } from './waterfall-trace';
@@ -18,6 +19,7 @@ export function waterfallSummaryPart(
     waterfall: {
       result_type: s.result_type, dry: s.dry, answered_by_column: s.answered_by_column, spent: s.spent,
       run_limit_usd: s.run_limit_usd, pause_reason: s.pause_reason, steps: s.steps,
+      ...(s.notes?.length ? { notes: s.notes.map(snakeProviderField) } : {}),
     },
   };
 }

@@ -11,6 +11,7 @@ import { db } from '../lib/db';
 import { TREG_TOOL_ID_PATTERN } from '../lib/constants';
 import { MAX_SELECTED_ROWS, parseEnrichRunInput } from '../lib/enrich-run-input';
 import { agentRunBody, flagOf, unknownArgument, type AgentRunArgs } from '../lib/enrich-agent-input';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import { runRequestHash, sentArgsHash, writeRunLedger } from '../lib/run-idempotency';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { getTool } from './enrich-catalog';
@@ -85,7 +86,7 @@ export async function tokenStartEnrichmentRun(
   const body = agentRunBody(a, found.ok, pre.targetRowIndexes ?? null, pre.targetRowIndexes ? generation : null);
   if ('error' in body && typeof body.error === 'string') return bad(body.error);
   const parsed = parseEnrichRunInput(body);
-  if ('error' in parsed) return bad(parsed.error.replace(/^runIf/, 'run_if'));
+  if ('error' in parsed) return bad(snakeProviderField(parsed.error.replace(/^runIf/, 'run_if')));
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
@@ -93,7 +94,10 @@ export async function tokenStartEnrichmentRun(
 
   if (parseBooleanOption(a.estimate_only) === true) {
     const est = await agentEnrichEstimate(c.userId, sheetId, parsed.ok);
-    return 'fail' in est ? est : { ok: est.ok, started: false };
+    if ('fail' in est) {
+      return est.fail === 'bad_request' ? { ...est, message: snakeProviderField(est.message) } : est;
+    }
+    return { ok: est.ok, started: false };
   }
   // runIf only when set, so a retry that spans the release still replays.
   const { rowGeneration: _gen, rows, runIf, ...others } = parsed.ok;
@@ -109,7 +113,9 @@ export async function tokenStartEnrichmentRun(
   const limited = startWindow(c);
   if (limited) return limited;
   const out = await startEnrichmentRun(c.userId, sheetId, parsed.ok);
-  if ('fail' in out) return out;
+  if ('fail' in out) {
+    return out.fail === 'bad_request' ? { ...out, message: snakeProviderField(out.message) } : out;
+  }
   const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
   if (hook) attachRunWebhook('http_runs', out.ok.runId, c.userId, hook);
   const run = db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
@@ -141,6 +147,7 @@ export async function tokenStartEnrichmentRun(
       : Promise.resolve<{ auto_run?: AutorunNotice[] }>({}),
     appendAutorunNotice(c.userId, sheetId, runRows, [out.ok.statusColumn, ...out.ok.outputColumns]),
   ]);
+  const notes = out.ok.notes?.map(snakeProviderField) ?? [];
   const payload = {
     run_id: out.ok.runId, run_type: 'enrichment', status_column: out.ok.statusColumn,
     output_columns: out.ok.outputColumns, destination_sheet_id: out.ok.destSheetId,
@@ -150,6 +157,7 @@ export async function tokenStartEnrichmentRun(
     ...(destNotice.auto_run ? { destination_auto_run: destNotice.auto_run } : {}),
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}),
     ...(hook ? { webhook_id: hook } : {}),
+    ...(notes.length ? { notes } : {}),
   };
   // A list job adds its results as rows of another sheet.
   const changed = runChanged(c.userId, sheetId, [out.ok.statusColumn, ...out.ok.outputColumns], out.ok.rowsInScope,

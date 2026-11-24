@@ -124,6 +124,8 @@ export interface WaterfallBlock {
   fresh: boolean;                  // "always call again": no reuse, no dry run answers
   noReuse?: boolean;               // this run only ("Rerun this row")
   dry?: WaterfallDry;              // a dry run: writes nothing to the sheet
+  // Old saved provider names no longer in treg's catalog that this run ignored.
+  ignoredProviders?: string[];
 }
 
 export type WaterfallRunConfig = HTTPAPIConfig & { waterfall: WaterfallBlock };
