@@ -4,6 +4,7 @@
 import express from 'express';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { isBusyMessage, type BusyAllowed } from '../lib/sheet-busy';
+import { TEST_PATHS } from '../lib/sheet-test-hold';
 import { TxnFail, txnFailMessage } from '../services/data-plane-shared';
 
 export { parseCellMap } from '../services/data-plane-shared';
@@ -43,6 +44,7 @@ export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
   '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
   /^\/setup-versions\/[^/]+\/restore$/,
+  ...TEST_PATHS,
   req => req.path === '/rows/update' && rawIdempotencyKey(req) !== undefined,
   req => KEYED_RUN_STARTS.has(req.path) && rawIdempotencyKey(req) !== undefined,
 ];

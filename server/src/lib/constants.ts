@@ -97,6 +97,10 @@ export const MIN_API_KEY_VALUE_LENGTH = 10;
 // server keeps answering. Raise it via env if you need more.
 export const MAX_COLUMNS_PER_SHEET = envInt('MAX_COLUMNS_PER_SHEET', 200);
 export const MAX_ROWS_PER_SHEET = envInt('MAX_ROWS_PER_SHEET', 1_000_000);
+// Trying column changes on sample rows (services/sheet-test*.ts): a test starts with this many rows from the top
+// (or the rows chosen), takes this many more at a time, and holds at most SHEET_TEST_MAX_ROWS.
+export const SHEET_TEST_ROWS = 10;
+export const SHEET_TEST_MAX_ROWS = 50;
 
 // lib/column-repair.ts reads a sheet's rows in slices of this many between
 // requests (about 25 ms each), so its full-sheet key scan never blocks one.
@@ -238,6 +242,10 @@ export const WEBHOOK_RAW_KEEP_BYTES = 10 * 1024 * 1024; // ~10 MB
 // still works for the recent window; a metadata row is ~a few hundred bytes, so
 // 5000 rows ≈ a couple MB/source worst case.
 export const WEBHOOK_DELIVERY_KEEP_COUNT = 5000;
+// Deliveries kept for a sheet while it is tested on a copy (lib/webhook-hold.ts), added when the test ends: at most
+// this many, or this many bytes of payloads; past either, a delivery is refused (409) so the sender tries it again.
+export const WEBHOOK_HELD_MAX_COUNT = 10_000;
+export const WEBHOOK_HELD_MAX_BYTES = 100 * 1024 * 1024;
 // :token URL-segment format (base64url of 32 random bytes -> 43 chars). A cheap
 // regex pre-check rejects malformed tokens with a generic 404 before any DB work.
 export const WEBHOOK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;

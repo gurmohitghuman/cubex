@@ -26,7 +26,9 @@ import searchRoutes from './sheets-search';
 import descriptionRoutes from './sheets-descriptions';
 import historyRoutes from './sheets-history';
 import setupVersionRoutes from './sheets-setup-versions';
+import sheetTestRoutes from './sheets-test';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
+import { TEST_PATHS } from '../lib/sheet-test-hold';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
 // which keeps each file small.
@@ -51,6 +53,8 @@ router.use('/:id', refuseChangesWhileBusy([
   /^\/setups\/[^/]+\/apply$/,
   // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
   /^\/setup-versions\/[^/]+\/restore$/,
+  // A test of the sheet's column changes: each checks the sheet itself (services/sheet-test-*.ts).
+  ...TEST_PATHS,
 ]));
 router.use(readRoutes);
 router.use(dataRoutes);
@@ -79,5 +83,6 @@ router.use(searchRoutes);
 router.use(descriptionRoutes);
 router.use(historyRoutes);
 router.use(setupVersionRoutes);
+router.use(sheetTestRoutes);
 
 export default router;

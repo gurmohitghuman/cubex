@@ -2,6 +2,7 @@
 // tools-import.ts).
 import { z } from 'zod';
 import { keyed, obj, open } from '../output-schema';
+import { sheetTest } from './columns';
 import {
   autoDedupe, autoRunNotice, bool, cells, changed, info, nul, num, opt, str, strs, trash, versions,
 } from './shared';
@@ -67,6 +68,7 @@ export const getSheet = obj({
   lookup_columns: z.array(info('A lookup column\'s setup')),
   views: z.array(view), column_details: z.array(columnDetail),
   auto_dedupe: nul(info('The set_auto_dedupe setting')),
+  test: opt(nul(sheetTest)).describe('A test of column changes open on it, or null'),
   limits: obj({ max_rows: num, rows_remaining: num, max_columns: num, columns_remaining: num }),
 });
 

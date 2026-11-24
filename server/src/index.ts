@@ -54,6 +54,7 @@ import { resumeDerivedFills } from './services/derived-fill';
 import { DERIVED_KINDS } from './services/derived-kinds';
 import { resumeRunRewrites } from './services/run-config-rewrite';
 import { resumeSheetCopies } from './services/sheet-copy-job';
+import { resumeSheetTests } from './services/sheet-test-end';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
 import aiVisibilityRoutes from './routes/ai-visibility';
@@ -241,6 +242,8 @@ createAccountFromEnv().then((result) => {
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
   // duplicate removals, 036's restores from the trash, 041's run undos, 047's
   // sheet copies). Each marks its sheet busy synchronously, before the first request.
+  // A sheet being tested on a copy is read-only again; a test that was ending finishes (migration 070).
+  resumeSheetTests();
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();

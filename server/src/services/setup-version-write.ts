@@ -21,7 +21,8 @@ import { runInsertExtras } from '../lib/web-fetch-options';
 // meanwhile are still worked out); one turned on starts above the rows there.
 const KEEP = { keepFence: true };
 
-const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
+// A run record that ran nothing has no usage (also a test's results put back: services/sheet-test-results.ts).
+export const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
 
 export function writeAiSetup(sheetId: string, userId: string, column: string, f: AiFill): string {
   const id = uuidv4();

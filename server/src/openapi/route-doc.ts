@@ -20,7 +20,7 @@ export const TAGS = {
   visibility: ['AI visibility', "Tables that check which brands AI engines name for buyers' questions."],
   hiring: ['Hiring signals', 'Tables of the companies hiring for chosen roles, with what is new at each check.'],
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
-  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
+  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored, or tried on sample rows."],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
   trash: ['Trash and history', "Deleted rows, sheets, tables and columns, putting them back, and a sheet's history."],
 } as const;

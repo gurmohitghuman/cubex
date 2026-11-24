@@ -14,6 +14,7 @@ import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
 import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerCellSchema } from './query-schema';
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
+import { testOfSheet, testView } from '../services/sheet-test-store';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -49,7 +50,8 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped, and kept_changing '
         + 'why rows it looked up may hold older values), active_runs and '
         + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
-        + 'export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
+        + 'export_csv), auto_dedupe (set_auto_dedupe\'s setting, or null) and test (a test of its column changes, '
+        + 'manage_sheet\'s test: the sheet takes no changes until it is applied or discarded; work in test_sheet_id).',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
@@ -71,8 +73,10 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       // Report REMAINING budget, not just the ceilings: "you can add 47 more
       // rows" needs no arithmetic, and the caps live in one place server-side
       // so an agent never has to hardcode them.
+      const test = testOfSheet(sheet_id, ctx.userId);
       return ok({
         ...meta,
+        test: test ? testView(test) : null,
         limits: {
           max_rows: MAX_ROWS_PER_SHEET,
           rows_remaining: Math.max(0, MAX_ROWS_PER_SHEET - meta.row_count),

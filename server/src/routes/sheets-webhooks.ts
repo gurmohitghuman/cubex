@@ -33,6 +33,10 @@ router.post('/:id/webhook', (req: AuthRequest, res) => {
   if (getSourceForSheet(id, req.userId!)) {
     return res.status(409).json({ error: 'This sheet already has a webhook.' });
   }
+  // A test's copy takes no rows from outside: the sheet it tests keeps its webhook's events meanwhile.
+  if (db.prepare('SELECT test_of FROM sheets WHERE id = ?').pluck().get(id)) {
+    return res.status(409).json({ error: 'A test copy can\'t have a webhook. Apply or discard the test first.' });
+  }
   const name = typeof req.body?.name === 'string' && req.body.name.trim()
     ? req.body.name.trim().slice(0, 100) : 'Webhook';
   // Adding the marker column counts toward the column cap.

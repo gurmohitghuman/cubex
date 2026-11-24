@@ -8,6 +8,7 @@ import type { McpServer, ServerContext } from '@modelcontextprotocol/server';
 import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { TEST_ACTIONS } from '../lib/sheet-test-hold';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 import { TOOL_OUTPUTS, type ToolAnswer, type ToolName } from './tool-outputs';
 import { checkErrorOutput, toolOutput } from './output-schema';
@@ -185,6 +186,9 @@ export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHa
   return async (args, mcp): Promise<ToolResult> => {
     const input = (args ?? {}) as Record<string, unknown>;
     if (KEYED_RUNS_WHILE_SHEET_BUSY.has(name) && typeof input.idempotency_key === 'string') return handler(args, mcp);
+    // A test's own actions: a sheet being tested is busy until they end it, and each checks the sheet itself.
+    const testAction = name === 'manage_sheet' && (TEST_ACTIONS as readonly unknown[]).includes(input.action);
+    if (testAction) return handler(args, mcp);
     for (const key of ['sheet_id', 'source_sheet_id', 'destination_sheet_id']) {
       const what = typeof input[key] === 'string' ? sheetBusyWith(input[key] as string) : null;
       if (what) return err(busyMessage(what));

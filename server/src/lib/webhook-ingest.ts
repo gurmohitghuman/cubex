@@ -12,6 +12,7 @@ import { appendColumnsToOrder, getSheetColumns } from './sheet-columns';
 import { orderedUuid } from './ordered-id';
 import { isRepeat, rememberKey } from './webhook-idempotency';
 import { rowsChanged } from './rows-changed';
+import { deliveryWaits, holdDelivery } from './webhook-hold';
 
 // The append transaction for one inbound webhook delivery. This is the only
 // place an UNAUTHENTICATED request mutates your data, so every step is
@@ -37,8 +38,9 @@ export interface WebhookMappingRow {
 export type IngestResult =
   // duplicate: auto-dedupe didn't keep its row (another row has its key; services/auto-dedupe-settle.ts).
   // repeat: a delivery with an Idempotency-Key already seen with this body: nothing added.
+  // held: kept to be added when the sheet's test ends (lib/webhook-hold.ts); no row yet.
   // replaced: older rows auto-dedupe (keeping the newest) took out for this one.
-  | { ok: true; rowIndex: number; status: 'stored' | 'partial' | 'duplicate' | 'repeat'; replaced: number }
+  | { ok: true; rowIndex: number; status: 'stored' | 'partial' | 'duplicate' | 'repeat' | 'held'; replaced: number }
   | { ok: false; code: 404 | 409; reason: string };
 
 export interface IngestOptions {
@@ -52,6 +54,9 @@ export interface IngestOptions {
   // the webhook still has it. An arrival without it is refused, so no caller
   // can skip the check.
   tokenHash?: string;
+  // A delivery that waited while its sheet was tested (lib/webhook-hold.ts), added now: its log entry gets the
+  // row. It arrived (key and counters) when it was kept, while its URL worked.
+  heldId?: string;
 }
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
@@ -164,13 +169,20 @@ export function appendWebhookDelivery(
     }
     // An arrival lands only while its URL still works: a request can still be
     // sending its body when the owner rotates, turns off or deletes the webhook.
-    if (!opts.replayOf && !urlStillWorks(source.id, opts.tokenHash)) {
+    if (!opts.replayOf && !opts.heldId && !urlStillWorks(source.id, opts.tokenHash)) {
       result = { ok: false, code: 404, reason: 'Not found' };
       return;
     }
     const key = opts.idempotencyKey ?? null;
     if (key && isRepeat(source.id, source.user_id, key, payloadSha)) {
       result = { ok: true, rowIndex: -1, status: 'repeat', replaced: 0 };
+      return;
+    }
+    // Its sheet is being tested on a copy, or others wait for that: it waits too, in order.
+    if (!opts.replayOf && !opts.heldId && deliveryWaits(source.sheet_id)) {
+      const kept = holdDelivery(source, rawPayloadText, payloadSha, payloadBytes, key);
+      result = 'full' in kept ? { ok: false, code: 409, reason: kept.full }
+        : { ok: true, rowIndex: -1, status: 'held', replaced: 0 };
       return;
     }
     // Row cap inside the txn so a burst can't push a sheet past its row limit.
@@ -201,8 +213,11 @@ export function appendWebhookDelivery(
     const unlisted = Object.keys(data).filter(k => !listed.has(k));
     if (unlisted.length > 0) appendColumnsToOrder(source.sheet_id, source.user_id, unlisted);
 
-    const deliveryId = uuidv4();
-    db.prepare(
+    const deliveryId = opts.heldId ?? uuidv4();
+    if (opts.heldId) {
+      db.prepare('UPDATE webhook_deliveries SET row_id = ?, status = ?, error_message = ? WHERE id = ?')
+        .run(rowId, partial ? 'partial' : 'stored', errorMessage, opts.heldId);
+    } else db.prepare(
       `INSERT INTO webhook_deliveries (id, source_id, user_id, sheet_id, row_id, payload, payload_sha256,
          payload_bytes, status, error_message, replay_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
@@ -226,7 +241,7 @@ export function appendWebhookDelivery(
     // Counters + first-event masking: nulling token_ciphertext on the first
     // delivery makes the secret hash-only (unrecoverable) from now on. A replay
     // isn't an arrival: neither changes.
-    if (!opts.replayOf) db.prepare(
+    if (!opts.replayOf && !opts.heldId) db.prepare(
       `UPDATE webhook_sources
           SET total_received = total_received + 1,
               last_received_at = datetime('now'),

@@ -56,6 +56,10 @@ A sender that didn't get an answer (a timeout, a `5xx`) sends the event again. I
 
 Senders often send the same event twice. Turn on [auto-dedupe](../README.md#auto-dedupe) (the Webhook panel links to it) to keep one row per email, domain or other key: a delivery whose key is already in the sheet shows as **not kept** in the panel's deliveries, and its row waits in the trash.
 
+### While a sheet is being tested
+
+While you try column changes on sample rows (Data menu, **Test changes on sample rows**), the sheet doesn't change, so its webhook keeps each event and adds them all, in the order they came, once you apply or discard the test. The sender gets the same `202` as always. A sheet keeps up to 10,000 such events (100 MB); past that, events are refused with `409` until the test ends, so the sender tries them again later.
+
 ### Adding a delivery again
 
 Fixed a mapping after some events came in? Open a row's raw event (its **Webhook** cell) and click **Add again**: the event is read again with the mappings as they are now and added as a new row, like a new event: the old row stays, unless [auto-dedupe](../README.md#auto-dedupe) keeps the newest row with a key, which sends the old one to the trash. The message and History say what happened. This works while the raw event is still kept (the newest 1,000 deliveries).
