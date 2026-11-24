@@ -25,6 +25,7 @@ import addMod from '../../server/src/services/column-add'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
 import { notOpen, otherArgs, otherColumn, targetRenamed, unfinished } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -158,7 +159,7 @@ async function main() {
       await refused({ ...call(sid, 'T2'), template: '{{T}}-x', cursor }, targetRenamed('T', 'T2'))
       await refused({ ...call(sid, 'T2'), template: '{{ T }}-x', cursor }, targetRenamed('T', 'T2'))
       await refused({ ...call(sid, 'T2'), template: '{{T}}-y', cursor }, otherArgs('T2'))
-      assert.deepEqual(await transformColumn(uid, { ...call(sid, 'T2'), cursor }),
+      assert.deepEqual(await toTheEnd(uid, { ...call(sid, 'T2'), cursor }),
         { ok: { updated: ROWS - 250, created_column: null } })
       assert.equal(ending(sid, 'T2', 't*-x'), ROWS)
       assert.equal(ending(sid, 'T2', '*-x-x'), 0)

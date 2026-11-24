@@ -22,6 +22,7 @@ import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
 import { heldText, loopWatch } from './loop-watch'
 import { sqliteWriteProbe } from './sqlite-write-probe'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -135,7 +136,7 @@ async function main() {
     assert.ok(await movedFrom(busy, before), 'data_version moved')
     assert.equal(suffixed(busy, 't*-x'), 250)
     assert.ok('unfinished' in await transformColumn(uid, again(busy)))
-    assert.deepEqual(await transformColumn(uid, { ...again(busy), cursor }),
+    assert.deepEqual(await toTheEnd(uid, { ...again(busy), cursor }),
       { ok: { updated: ROWS - 250, created_column: null } })
     assert.equal(suffixed(busy, 't*-x'), ROWS)
     assert.equal(suffixed(busy, '*-x-x'), 0)
@@ -152,7 +153,7 @@ async function main() {
     assert.deepEqual(await transformColumn(uid, { ...again(sorted), cursor: out.stopped.next_cursor }),
       moved('T', 250))
     assert.equal(suffixed(sorted, 't*-x'), 250, 'nothing written')
-    assert.deepEqual(await transformColumn(uid, { ...again(sorted), restart: true }),
+    assert.deepEqual(await toTheEnd(uid, { ...again(sorted), restart: true }),
       { ok: { updated: ROWS, created_column: null } })
     assert.equal(records(sorted), 0)
   })
