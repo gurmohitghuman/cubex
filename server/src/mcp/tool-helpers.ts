@@ -76,11 +76,11 @@ export const errWith = (message: string, extra: Record<string, unknown>): ErrRes
   return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: true };
 };
 
-// Scope gate: null when allowed, an isError result naming the missing scope
-// otherwise (so the agent can tell the user which token setting to change).
 // Where an address handed to this caller points (routes/mcp.ts sets it from the request: lib/file-links.ts).
 export const mcpLinkBase = (ctx: McpAuthCtx): string => ctx.linkBase ?? `http://localhost:${process.env.PORT || 3002}`;
 
+// Scope gate: null when allowed, an isError result naming the missing scope
+// otherwise (so the agent can tell the user which token setting to change).
 export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ErrResult | null {
   if (ctx.scopes.has(scope)) return null;
   return err(`This action requires the '${scope}' scope on your Cubex access token.`);
