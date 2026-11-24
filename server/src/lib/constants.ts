@@ -35,7 +35,7 @@ export * from './constants-wal';
 export * from './constants-version';
 // Undoing a run, same split.
 export * from './constants-undo';
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // Centralized regexes used by multiple routes
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -181,7 +181,7 @@ export const SIDEQUEST_IDLE_THREAD_MS = 60_000;
 // How often the Sidequest worker looks for a job to start while it has none or
 // is full (its default, 100 ms, kept it busy all day). A new run starts within
 // about this long; one waiting for a free slot, within about twice it.
-export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
+export const SIDEQUEST_POLL_MS = envMs('SIDEQUEST_POLL_MS', 1000);
 
 // Incoming webhooks (POST /api/webhooks/:token). The app's only unauthenticated
 // write surface — every number here is a guard. See docs/webhooks.md.
@@ -192,7 +192,7 @@ export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
 export const WEBHOOK_MAX_BODY_BYTES = 512 * 1024;
 // The body must arrive this long after the headers (a deadline: a trickle doesn't extend it), else 408. 512 KB
 // in 30 s needs only ~17 KB/s. Tighter than every request's own deadline (lib/request-deadline.ts).
-export const WEBHOOK_BODY_TIMEOUT_MS = envInt('WEBHOOK_BODY_TIMEOUT_MS', 30_000);
+export const WEBHOOK_BODY_TIMEOUT_MS = envMs('WEBHOOK_BODY_TIMEOUT_MS', 30_000);
 // Per-token ingestion rate limit (token-bucket keyed on the webhook source),
 // ~10 records/sec, burst 20, so a misbehaving sender can't flood a sheet.
 // Excess -> 429.
