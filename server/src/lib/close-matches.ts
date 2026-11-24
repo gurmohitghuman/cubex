@@ -37,17 +37,26 @@ const keyOf = (s: string) => s.slice(0, 1000).toLowerCase().replace(/[^\p{L}\p{N
 
 // How far a key is from what was given: 0 the same; 1 a key holding what was given (at least 3 characters:
 // "lea" in "Leads", a cut id); 2 plus the edits, when they are few for the length (1 for up to 7 characters,
-// up to 3 for longer); 6 a key inside what was given, after every typo: for "Emial Address", "Email Address"
-// (a typo of the whole) comes before "Address" (a part of it). Infinity: not close.
+// up to 3 for longer); under 5 a key sharing a long start with what was given (SHARED_START: for "Company
+// summary (Data)", "Company summary (Output)"), the longer the start the closer; 6 a key inside what was given,
+// after every typo: for "Emial Address", "Email Address" (a typo of the whole) comes before "Address" (a part
+// of it). Infinity: not close.
+const SHARED_START = { least: 8, share: 0.6 };
+const sharedStart = (a: string, b: string): number => {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
+};
 function farness(given: string, key: string): number {
   if (!given || !key) return Infinity;
   if (given === key) return 0;
   const [short, long] = given.length <= key.length ? [given, key] : [key, given];
   if (short.length >= 3 && long.includes(short)) return (short === given ? 1 : 6) + (long.length - short.length) / 1000;
   const allowed = Math.min(3, Math.max(1, Math.floor(long.length / 8)));
-  if (long.length - short.length > allowed) return Infinity;
-  const edits = editDistance(given, key, allowed);
-  return edits <= allowed ? 2 + edits : Infinity;
+  const edits = long.length - short.length > allowed ? Infinity : editDistance(given, key, allowed);
+  if (edits <= allowed) return 2 + edits;
+  const start = sharedStart(given, key);
+  return start >= SHARED_START.least && start >= SHARED_START.share * short.length ? 5 - start / 1000 : Infinity;
 }
 
 // The items whose keys come closest to given, closest first, at most limit of them. When a key is the same
