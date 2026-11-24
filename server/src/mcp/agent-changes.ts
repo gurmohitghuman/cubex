@@ -39,6 +39,19 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['read_rows', 'control_run'],
+        summary: 'Out of date now checks each row against the columns its own run read: a new setup that reads other '
+          + 'columns no longer marks the rows made before it out of date.',
+        details: 'read_rows where out_of_date, include_status and control_run\'s out_of_date modes agree. A row made '
+          + '16 or more such setups ago never reads out of date.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
