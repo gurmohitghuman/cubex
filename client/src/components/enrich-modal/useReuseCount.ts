@@ -8,7 +8,10 @@ const REUSE_DEBOUNCE_MS = 600
 // outputs or the limits, so typing a column name doesn't count again (a new
 // column's name only matters while it's valid: the draft asks only then).
 function lookupKey(r: EnrichRunRequest): string {
-  const { columnName, outputs: _outputs, maxCostPerRowUsd: _cap, spendLimitUsd: _limit, ...rest } = r
+  const {
+    columnName, outputs: _outputs, maxCostPerRowUsd: _cap, spendLimitUsd: _limit,
+    rateLimitRetries: _retries, ...rest
+  } = r
   return JSON.stringify({ ...rest, column: r.continueColumn ? columnName : null })
 }
 

@@ -4,7 +4,7 @@
 // Over 200 lines: one strict parser for a request that spends money; split, its checks would scatter.
 import {
   TREG_TOOL_ID_PATTERN, ENRICH_ESTIMATE_MAX_LIST, ENRICH_MAX_ROW_CAP_USD, ENRICH_DAILY_LIMIT_MAX_USD,
-  MAX_COLUMNS_PER_SHEET, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY,
+  MAX_COLUMNS_PER_SHEET, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY, ENRICH_PROVIDER_RATE_RETRIES_MAX,
 } from './constants';
 import { GUESS_PATTERNS } from './enrich-email-guess';
 import type { EmailStrategy } from './enrich-email-status';
@@ -41,6 +41,8 @@ export interface EnrichRunInput {
   spendCeilingUsd?: number | null;
   // Rows at once (1..HTTP_MAX_CONCURRENCY); null: ENRICH_DEFAULT_CONCURRENCY.
   concurrency: number | null;
+  // Retries per row on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX); null/absent: ENRICH_PROVIDER_RATE_RETRIES.
+  rateLimitRetries?: number | null;
   fresh: boolean;
   // This run calls every row, reusing no earlier found answer (the answer
   // panel's "Rerun this row"). Never repeated by later reruns or auto-run.
@@ -73,6 +75,10 @@ const usd = (v: unknown, max: number): number | null | undefined => (v === undef
 export const CONCURRENCY_ERROR = `concurrency must be a whole number from 1 to ${HTTP_MAX_CONCURRENCY}.`;
 export const concurrencyOf = (v: unknown): number | null | undefined => (v === undefined || v === null ? null
   : typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= HTTP_MAX_CONCURRENCY ? v : undefined);
+export const RATE_LIMIT_RETRIES_ERROR =
+  `rateLimitRetries must be a whole number from 0 to ${ENRICH_PROVIDER_RATE_RETRIES_MAX}.`;
+export const rateLimitRetriesOf = (v: unknown): number | null | undefined => (v === undefined || v === null ? null
+  : typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ENRICH_PROVIDER_RATE_RETRIES_MAX ? v : undefined);
 
 function parseInputs(v: unknown): Record<string, InputBinding> | string {
   if (!isObj(v)) return 'inputs must map input names to a column or a fixed value.';
@@ -192,6 +198,8 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
   if (limit === undefined) return { error: 'The run limit must be more than $0.' };
   const concurrency = concurrencyOf(b.concurrency);
   if (concurrency === undefined) return { error: CONCURRENCY_ERROR };
+  const rateLimitRetries = rateLimitRetriesOf(b.rateLimitRetries);
+  if (rateLimitRetries === undefined) return { error: RATE_LIMIT_RETRIES_ERROR };
   const email = b.preset === 'verified_email' ? parseEmail(b.email) : null;
   if (email === 'bad') return { error: 'Check the email settings.' };
   const list = parseListInput(b.list);
@@ -202,7 +210,7 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
       columnName: columnName.trim(), continueColumn, inputs,
       cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip,
       stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions, runIf: runIf.ok,
-      maxCostPerRowUsd: cap, spendLimitUsd: limit, concurrency, fresh: b.fresh === true,
+      maxCostPerRowUsd: cap, spendLimitUsd: limit, concurrency, rateLimitRetries, fresh: b.fresh === true,
       rowGeneration: generationOf(b), list,
     },
   };

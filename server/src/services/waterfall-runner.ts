@@ -13,7 +13,7 @@
 import { db } from '../lib/db';
 import { runRows, countRunRows, type RunRow } from '../lib/run-rows';
 import { limitReached, rowsThatFit } from '../lib/enrich-estimate';
-import { enrichConcurrency } from '../lib/enrich-run-config';
+import { enrichConcurrency, enrichRateLimitRetries } from '../lib/enrich-run-config';
 import { redactError, redactSecrets } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
 import {
@@ -138,6 +138,7 @@ export async function processWaterfallRun(
     halt: null, onHalt: () => wake.abort(), unreachableStreak: 0, sameLookup: new Map(), cooldown: new Map(),
     providerNames: providerNamesFrom(steps),
     reuseDays: w.fresh || w.noReuse ? 0 : getReuseDays(run.user_id),
+    rateLimitRetries: enrichRateLimitRetries(w.rateLimitRetries),
   };
   const halted = () => !!enrich.halt || own.halt !== null;
   const stopped = () => halted() || enrich.stopped();

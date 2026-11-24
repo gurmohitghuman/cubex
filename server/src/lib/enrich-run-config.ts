@@ -10,7 +10,9 @@ import type { EmailStrategy } from './enrich-email-status';
 import type { EnrichTool } from './enrich-tool';
 import type { HTTPAPIConfig } from './http-request-template';
 import type { EnrichListConfig } from './enrich-list';
-import { ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY } from './constants';
+import {
+  ENRICH_DEFAULT_CONCURRENCY, ENRICH_PROVIDER_RATE_RETRIES, ENRICH_PROVIDER_RATE_RETRIES_MAX, HTTP_MAX_CONCURRENCY,
+} from './constants';
 
 // Which rows a run takes: a scope (every row, the saved filter's rows, the
 // selected rows) narrowed, on a column a run already made, by the status cell:
@@ -56,6 +58,9 @@ export interface EnrichmentBlock {
   // This run alone calls every row, reusing no earlier found answer
   // (services/enrich-reuse.ts); reruns and auto-run don't repeat it.
   noReuse?: boolean;
+  // Retries on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX), for each row's call (a verified email
+  // row's finds and checks share one count); absent: ENRICH_PROVIDER_RATE_RETRIES.
+  rateLimitRetries?: number;
   // The per-row cap sent as X-Treg-Route-Max-Cost (the email loop's budget for
   // all its calls); null for a tool with no known price, which the provider bills.
   maxCostPerRowUsd: number | null;
@@ -76,6 +81,12 @@ export type EnrichRunConfig = HTTPAPIConfig & { enrichment: EnrichmentBlock };
 // the default, never above the HTTP fan-out cap.
 export function enrichConcurrency(config: { batchSize?: number }): number {
   return Math.max(1, Math.min(config.batchSize ?? ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY));
+}
+
+// Retries a call gets when providers answer 429: the run's own (0..ENRICH_PROVIDER_RATE_RETRIES_MAX), else the default.
+export function enrichRateLimitRetries(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return ENRICH_PROVIDER_RATE_RETRIES;
+  return Math.max(0, Math.min(value, ENRICH_PROVIDER_RATE_RETRIES_MAX));
 }
 
 export function isEnrichmentConfig(config: unknown): config is EnrichRunConfig {

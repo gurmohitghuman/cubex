@@ -34,7 +34,8 @@ export async function verifiedEmailRow(
   const tried = new Set(e.route.exclude);
   const steps: Json[] = [];
   const left = () => (budget === null ? null : (budget - spent) / 1e6);
-  const rateRetries = { left: ENRICH_PROVIDER_RATE_RETRIES };   // shared by the row's finds and checks
+  // One count of 429 retries for the row's finds and checks together.
+  const rateRetries = { left: ctx.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES };
 
   const call = async (
     attempt: string, toolId: string, built: Built, routed: boolean, exclude: string[], prefer: string[],

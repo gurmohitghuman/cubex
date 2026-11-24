@@ -1,5 +1,7 @@
 import React from 'react'
 import { Select } from '@/components/ui/Select'
+import { ENRICH_PROVIDER_RATE_RETRIES, ENRICH_PROVIDER_RATE_RETRIES_MAX } from '@/lib/constants'
+import { plural } from '@/lib/utils'
 import type { RowsStatus } from '@/utils/api/waterfall'
 import { RunIfField } from '@/components/run-if/RunIfField'
 import type { WaterfallDraft } from './draft'
@@ -56,6 +58,22 @@ export const OptionsSection: React.FC<Props> = ({ sheetId, draft, update, select
         aria-label="Run limit" placeholder="Rows × most"
         onChange={e => update({ spendLimitUsd: e.target.value ? Number(e.target.value) : null })} />
     </label>
+    <div className="space-y-1">
+      <label className="meta-label block" htmlFor="waterfall-rate-limit-retries">
+        Retries on rate limits:{' '}
+        {(draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES) === 0
+          ? 'off'
+          : `up to ${plural(draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES, 'time')}`}
+      </label>
+      <input id="waterfall-rate-limit-retries" type="range" min={0} max={ENRICH_PROVIDER_RATE_RETRIES_MAX} step={1}
+        className="w-full" data-testid="waterfall-rate-limit-retries"
+        value={draft.rateLimitRetries ?? ENRICH_PROVIDER_RATE_RETRIES}
+        onChange={e => update({ rateLimitRetries: Number(e.target.value) })} />
+      <p className="text-xs text-gray-500">
+        When an enrichment provider answers 429, Cubex waits and asks again for free (0 to{' '}
+        {ENRICH_PROVIDER_RATE_RETRIES_MAX}, default {ENRICH_PROVIDER_RATE_RETRIES}). Each step counts its own.
+      </p>
+    </div>
     <label className="flex items-start gap-2 text-sm text-gray-700">
       <input type="checkbox" className="mt-0.5" checked={draft.fresh}
         onChange={e => update({ fresh: e.target.checked })} />

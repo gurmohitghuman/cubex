@@ -66,6 +66,7 @@ export function runRequest(d: EnrichDraft, c: RunChoice): EnrichRunRequest | nul
     ...(d.runIf.trim() ? { runIf: d.runIf } : {}),
     maxCostPerRowUsd: d.maxCostPerRowUsd,
     spendLimitUsd: c.spendLimitUsd !== undefined ? c.spendLimitUsd : d.spendLimitUsd,
+    ...(d.rateLimitRetries !== null ? { rateLimitRetries: d.rateLimitRetries } : {}),
     fresh: d.fresh,
     ...(c.mode === 'selected' && c.rowGeneration !== undefined ? { rowGeneration: c.rowGeneration } : {}),
   }
