@@ -11,9 +11,9 @@ import { sampleAnswer } from '../services/sample-answer';
 
 const router = express.Router();
 
-router.get('/tables', requireScope('read'), (req: TokenAuthRequest, res) => {
+router.get('/tables', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
-    res.json({ tables: listTablesWithSheets(req.userId!) });
+    res.json({ tables: await listTablesWithSheets(req.userId!) });
   } catch (error) {
     console.error('GET /v1/tables error:', error);
     res.status(500).json({ error: 'Failed to list tables' });

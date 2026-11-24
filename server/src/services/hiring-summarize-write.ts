@@ -24,6 +24,7 @@ import { orderedUuid } from '../lib/ordered-id';
 import { bumpDataVersion } from './data-plane-shared';
 import { settleEdits, settleRows } from './auto-dedupe-settle';
 import { pacer } from './hiring-roles-read';
+import { rowsChanged } from '../lib/rows-changed';
 
 export interface SummaryCheck {
   label: string; sinceLabel: string | null; runId: string | null;
@@ -107,6 +108,7 @@ function appendSlice(t: CompaniesTarget, rows: Array<Record<string, string>>): '
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
   const rids = rows.map(cells => Number(insert.run(orderedUuid(), t.sheetId, t.userId, next++,
     JSON.stringify(cells)).lastInsertRowid));
+  rowsChanged(t.sheetId);
   settleRows(t.sheetId, t.userId, rids, 'arrived');
   bumpDataVersion(t.sheetId, t.userId);
   return 'done';

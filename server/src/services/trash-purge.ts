@@ -22,6 +22,7 @@ import { lookupsLoseSheet } from '../lib/trash/lookups';
 import type { TrashItem } from '../lib/trash/store';
 import { pruneChangeLog } from './sheet-history';
 import { dropSheetUndos, pruneRunUndos } from './run-undo-prune';
+import { rowsChanged } from '../lib/rows-changed';
 
 let sweeping = false;
 let again = false;
@@ -108,6 +109,7 @@ async function purgeSheet(sheetId: string, userId: string, itemId: number | null
   }
   await deleteInSlices(`DELETE FROM rows WHERE rowid IN (SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ?
     LIMIT ?)`, [sheetId, userId], TRASH_SLICE_ROWS);
+  rowsChanged(sheetId);
   await purgeSheetResults(sheetId, userId);
   await dropSheetUndos(sheetId);
   await autorunDropPending(sheetId, userId);
