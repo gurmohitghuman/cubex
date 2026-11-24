@@ -23,18 +23,21 @@ const KEEP = { keepFence: true };
 
 const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
 
-export function writeAiSetup(sheetId: string, userId: string, column: string, f: AiFill): string {
+// setupOnly 2: set up by a template (a social research table's AI steps), never run; 1: restored.
+export function writeAiSetup(
+  sheetId: string, userId: string, column: string, f: AiFill, setupOnly: 1 | 2 = 1,
+): string {
   const id = uuidv4();
   const structured = !!f.outputColumns?.length;
   db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,
       use_openrouter_web_search, use_web_fetch, max_chars, concurrency, status, total_rows, processed_rows,
       output_columns, status_column, data_column, web_search_engine, web_search_mode, web_search_max_per_row,
       web_search_engine_used, run_if, setup_only, prompt_hash, web_fetch_max_content_tokens, web_fetch_max_pages)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 5), 'completed', 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 5), 'completed', 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, sheetId, userId, column, f.prompt, f.systemPrompt, f.model, f.temperature, f.webSearch ? 1 : 0,
       f.webFetch ? 1 : 0, f.maxChars, f.concurrency, structured ? JSON.stringify(f.outputColumns) : null,
       structured ? column : null, f.dataColumn, f.searchEngine, f.searchMode, f.maxSearchesPerRow,
-      f.searchEngineUsed ?? null, f.runIf,
+      f.searchEngineUsed ?? null, f.runIf, setupOnly,
       ...runInsertExtras({ prompt: f.prompt, systemPrompt: f.systemPrompt, outputs: f.outputColumns?.length ?? 0 },
         f.webFetch, f.fetchLimits));
   forgetUsage(id);

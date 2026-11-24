@@ -1,0 +1,446 @@
+{
+ "endpoint": {
+  "id": "treg.x.search.posts",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "x.search.posts \u2014 routed: best of 3 providers, own keys first",
+  "summary": "Search X (Twitter) posts by keyword \u2014 provider-native rows in `posts`",
+  "method": "POST",
+  "path": "/x.search.posts",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "search",
+  "call_template": "treg call treg.x.search.posts",
+  "cost": {
+   "type": "per_success",
+   "value": 0.00075,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.00075\u2013$0.01476 per hit across 3 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (2 of 3 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.00075
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.posts == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "q": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({q}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.x.search.posts",
+   "justoneapi.x.twitter-search-v1",
+   "tikhub.x.twitter-web-fetch-search-timeline"
+  ],
+  "capability": "x.search.posts",
+  "capability_description": "Search posts by keyword",
+  "platform": "x",
+  "platform_label": "X (Twitter)",
+  "observed": null,
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.x.search.posts",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "X / Twitter Search",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.00075,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.00075
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "limit",
+    "query",
+    "queryType"
+   ],
+   "observed": {
+    "samples": 3190414,
+    "decided": 3153139,
+    "ok_rate": 0.9752,
+    "p50_ms": 1727,
+    "p95_ms": 3422,
+    "last_ok_days": 0,
+    "hit_rate": 0.6021,
+    "hit_samples": 3074509
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.63,
+     "partly": 0.25,
+     "not_useful": 0.11
+    }
+   }
+  },
+  {
+   "id": "crawl4ai.x.search.posts",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Search posts on X (Twitter)",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.65,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.00065
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "limit",
+    "mode",
+    "query"
+   ],
+   "observed": null,
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "justoneapi.x.twitter-search-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search X (Twitter) by keyword \u2014 top, latest, media, people",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "searchType",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 47543,
+    "decided": 24843,
+    "ok_rate": 0.9999,
+    "p50_ms": 2625,
+    "p95_ms": 4428,
+    "last_ok_days": 0,
+    "hit_rate": 0.1136,
+    "hit_samples": 24818
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.13,
+     "partly": 0.0,
+     "not_useful": 0.87
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-search-timeline",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search X (Twitter) posts by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "search_type",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 374016,
+    "decided": 302498,
+    "ok_rate": 0.9876,
+    "p50_ms": 2161,
+    "p95_ms": 3789,
+    "last_ok_days": 0,
+    "hit_rate": 0.7515,
+    "hit_samples": 298738
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.54,
+     "partly": 0.29,
+     "not_useful": 0.17
+    }
+   }
+  },
+  {
+   "id": "x.x.search-posts-all",
+   "provider": "x",
+   "provider_display": "X (Twitter)",
+   "name": "Search the full tweet archive by keyword query",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "post",
+    "usd": 0.005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "query",
+    "start_time",
+    "end_time",
+    "since_id",
+    "until_id",
+    "max_results",
+    "next_token",
+    "pagination_token",
+    "sort_order"
+   ],
+   "observed": null
+  },
+  {
+   "id": "x.x.search-posts-recent",
+   "provider": "x",
+   "provider_display": "X (Twitter)",
+   "name": "Search tweets from the last 7 days by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "post",
+    "usd": 0.005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "query",
+    "max_results",
+    "next_token",
+    "pagination_token",
+    "start_time",
+    "end_time",
+    "since_id",
+    "until_id",
+    "sort_order"
+   ],
+   "observed": null,
+   "reviews": {
+    "teams": 0
+   }
+  }
+ ],
+ "observed_pending": true,
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.x.post.comments",
+   "capability": "x.post.comments",
+   "does": "List a post's comments"
+  },
+  {
+   "endpoint_id": "treg.x.user.posts",
+   "capability": "x.user.posts",
+   "does": "List a user's recent posts"
+  },
+  {
+   "endpoint_id": "treg.x.user.profile",
+   "capability": "x.user.profile",
+   "does": "Get a user's public profile"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "q"
+    ]
+   ],
+   "output": {
+    "posts": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "posts == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "anyapi.x.search.posts",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.00075,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.00075
+    },
+    "hit_rate": 0.6021,
+    "usd_per_hit": 0.001245640259093174,
+    "works": 0.9752
+   },
+   {
+    "endpoint_id": "tikhub.x.twitter-web-fetch-search-timeline",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.7515,
+    "usd_per_hit": 0.0013306719893546241,
+    "works": 0.9876
+   },
+   {
+    "endpoint_id": "justoneapi.x.twitter-search-v1",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.1136,
+    "usd_per_hit": 0.01476,
+    "works": 0.9999
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "crawl4ai.x.search.posts",
+    "usd": 0.00065,
+    "cost": {
+     "type": "per_success",
+     "value": 0.65,
+     "currency": "credit",
+     "usd": 0.00065
+    }
+   },
+   {
+    "endpoint_id": "x.x.search-posts-all",
+    "usd": 0.005,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.005
+    }
+   },
+   {
+    "endpoint_id": "x.x.search-posts-recent",
+    "usd": 0.005,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.005
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.x.search.posts",
+ "example_response": null,
+ "hints": []
+}

@@ -291,3 +291,14 @@ export const BUILD_ID_RECHECK_MS = 5000;
 // the app's SAMPLE_CREATE_TIMEOUT_MS.
 export const SAMPLE_STEP_WAIT_MS = 20_000;
 export const SAMPLE_STEP_POLL_MS = 20;
+
+// Social research tables (lib/social/, services/social-*.ts). Guards, not quotas.
+export const SOCIAL_MAX_SEARCHES = 10;
+export const SOCIAL_MAX_SEARCH_CHARS = 100;
+// Posts kept per search per platform (a search answers its first page: about 20 to 30).
+export const SOCIAL_POSTS_PER_SEARCH = 30;
+export const SOCIAL_MAX_POSTS_PER_SEARCH = 50;
+export const SOCIAL_MAX_DAYS = 365;
+// Find posts starts each platform's search on one Searches sheet: each start holds it while it sets up its rows
+// (a few rows: milliseconds), so the next waits for it, at most this long.
+export const SOCIAL_START_WAIT_MS = envInt('SOCIAL_START_WAIT_MS', 15_000);

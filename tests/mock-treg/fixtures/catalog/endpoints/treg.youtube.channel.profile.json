@@ -1,0 +1,481 @@
+{
+ "endpoint": {
+  "id": "treg.youtube.channel.profile",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "youtube.channel.profile \u2014 routed: best of 4 providers, own keys first",
+  "summary": "A YouTube channel's public profile by channel id \u2014 treg picks the provider and names the one that served",
+  "method": "POST",
+  "path": "/youtube.channel.profile",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "channel",
+  "call_template": "treg call treg.youtube.channel.profile",
+  "cost": {
+   "type": "per_success",
+   "value": 0.0009,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.0009\u2013$0.00188 per hit across 4 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (3 of 4 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.0009
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.name == null"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "channel_id": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({channel_id}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "crawl4ai.youtube.channel.profile",
+   "scrapecreators.youtube.channel.profile",
+   "tikhub.x.youtube-web-get-channel-info",
+   "tikhub.x.youtube-web-v2-get-channel-description"
+  ],
+  "capability": "youtube.channel.profile",
+  "capability_description": "A channel's profile & lifetime stats",
+  "platform": "youtube",
+  "platform_label": "YouTube",
+  "observed": {
+   "samples": 67492,
+   "decided": 67382,
+   "ok_rate": 0.9999,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "brightdata.x.youtube-channels",
+   "provider": "brightdata",
+   "provider_display": "Bright Data",
+   "name": "YouTube channel profile by URL",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "record",
+    "reserve": {
+     "entities": {}
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-30",
+   "params": [
+    "dataset_id",
+    "format",
+    "input"
+   ],
+   "observed": {
+    "samples": 16,
+    "decided": 16,
+    "ok_rate": 1.0,
+    "p50_ms": 8392,
+    "p95_ms": 60381,
+    "last_ok_days": 4,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "crawl4ai.youtube.channel.profile",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "One YouTube channel's facts",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.9,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0009
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "channel"
+   ],
+   "observed": {
+    "samples": 171760,
+    "decided": 171613,
+    "ok_rate": 1.0,
+    "p50_ms": 747,
+    "p95_ms": 4357,
+    "last_ok_days": 0,
+    "hit_rate": 0.9549,
+    "hit_samples": 171596
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.92,
+     "partly": 0.0,
+     "not_useful": 0.08
+    }
+   }
+  },
+  {
+   "id": "scrapecreators.youtube.channel.profile",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "YouTube channel profile by id or username \u2014 subscribers",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "channelId",
+    "handle",
+    "url"
+   ],
+   "observed": {
+    "samples": 53757,
+    "decided": 51525,
+    "ok_rate": 0.9996,
+    "p50_ms": 1142,
+    "p95_ms": 3121,
+    "last_ok_days": 0,
+    "hit_rate": 0.9989,
+    "hit_samples": 51414
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 0.87,
+     "partly": 0.12,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.youtube-web-get-channel-info",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "YouTube channel profile by channel id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "channel_id"
+   ],
+   "observed": {
+    "samples": 24788,
+    "decided": 21793,
+    "ok_rate": 0.999,
+    "p50_ms": 2186,
+    "p95_ms": 6491,
+    "last_ok_days": 0,
+    "hit_rate": 0.9586,
+    "hit_samples": 21771
+   }
+  },
+  {
+   "id": "tikhub.x.youtube-web-v2-get-channel-description",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "YouTube channel description by channel id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "channel_id",
+    "continuation_token",
+    "language_code",
+    "country_code",
+    "need_format"
+   ],
+   "observed": {
+    "samples": 2347,
+    "decided": 1896,
+    "ok_rate": 0.9995,
+    "p50_ms": 1674,
+    "p95_ms": 5765,
+    "last_ok_days": 0,
+    "hit_rate": 0.7599,
+    "hit_samples": 1895
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "youtube.youtube.channel.profile",
+   "provider": "youtube",
+   "provider_display": "YouTube",
+   "name": "Your YouTube channel profile \u2014 subscribers, views",
+   "scope": "own_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "part",
+    "mine",
+    "id",
+    "forHandle"
+   ],
+   "observed": {
+    "samples": 11052,
+    "decided": 1980,
+    "ok_rate": 0.9995,
+    "p50_ms": 150,
+    "p95_ms": 451,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.youtube.channel.videos",
+   "capability": "youtube.channel.videos",
+   "does": "List a channel's videos"
+  },
+  {
+   "endpoint_id": "treg.youtube.search.videos",
+   "capability": "youtube.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.comments",
+   "capability": "youtube.video.comments",
+   "does": "List a video's comments"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.detail",
+   "capability": "youtube.video.detail",
+   "does": "Get a video's metadata & stats"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "channel_id"
+    ]
+   ],
+   "output": {
+    "name": {
+     "type": "string",
+     "required": true
+    },
+    "channel_id": {
+     "type": "string"
+    },
+    "handle": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "subscribers": {
+     "type": "string",
+     "note": "count or the provider's display string"
+    },
+    "videos_count": {
+     "type": "string"
+    },
+    "country": {
+     "type": "string"
+    }
+   },
+   "miss": "name == null",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "crawl4ai.youtube.channel.profile",
+    "accepts": [
+     [
+      "channel_id"
+     ]
+    ],
+    "usd": 0.0009,
+    "cost": {
+     "type": "per_success",
+     "value": 0.9,
+     "currency": "credit",
+     "usd": 0.0009
+    },
+    "hit_rate": 0.9549,
+    "usd_per_hit": 0.0009,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "tikhub.x.youtube-web-get-channel-info",
+    "accepts": [
+     [
+      "channel_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9586,
+    "usd_per_hit": 0.001043187982474442,
+    "works": 0.999
+   },
+   {
+    "endpoint_id": "tikhub.x.youtube-web-v2-get-channel-description",
+    "accepts": [
+     [
+      "channel_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.7599,
+    "usd_per_hit": 0.0013159626266614028,
+    "works": 0.9995
+   },
+   {
+    "endpoint_id": "scrapecreators.youtube.channel.profile",
+    "accepts": [
+     [
+      "channel_id"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.9989,
+    "usd_per_hit": 0.0018820702773050355,
+    "works": 0.9996
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "brightdata.x.youtube-channels",
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.0015
+    }
+   },
+   {
+    "endpoint_id": "youtube.youtube.channel.profile",
+    "usd": 0.0,
+    "cost": {
+     "type": "free",
+     "usd": 0.0
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.youtube.channel.profile",
+ "example_response": null,
+ "hints": []
+}

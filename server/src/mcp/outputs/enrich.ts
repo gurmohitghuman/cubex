@@ -61,6 +61,7 @@ export const aiVisibility = open({
 
 // create and get: the table and its last checks; check: the estimate (its default) or the check started.
 export const hiringSignals = open({ id: opt(str), stage: opt(str), high_usd: opt(num), next: opt(str), changed });
+export const socialResearch = open({ id: opt(str), high_usd: opt(num), next: opt(str), changed });
 
 export const getBalances = obj({
   treg: info('The treg.to balance in dollars, or why it is unknown'),
