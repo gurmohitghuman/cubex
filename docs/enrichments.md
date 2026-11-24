@@ -112,7 +112,7 @@ The status column says what each account added (`✅ 10 rows added`, with `, 2 a
 
 ### Companies hiring for a role
 
-**Find companies hiring** (on the dashboard, in **New Table**, or below Popular in the enrichment drawer) makes a ready-made table: a Searches sheet with a row per role title, and an enrichment column on it that adds the roles each search finds to a Roles sheet. That column keeps the rows from before: running it again adds only roles the sheet never had (a role you deleted from it isn't added again), and nothing goes to the trash. Each check then sums the roles up per company on the Companies sheet, with what's new since the check before. See [Find companies hiring](../README.md#find-companies-hiring).
+**Find companies hiring** (on the dashboard, in **New Table**, or below Popular in the enrichment drawer) makes a ready-made table: a Searches sheet with a row per role title, and an enrichment column on it that adds the roles each search finds to a Roles sheet. That column keeps the rows from before: running it again adds only roles the sheet never had (a role you deleted from it isn't added again), and nothing goes to the trash. Each check then sums the roles up per company on the Companies sheet, with what's new since the check before. A table made with "Companies with at least N matching roles" or companies to leave out gives a row only to the companies they keep; the other companies' roles are still searched and paid for, and stay in Roles. See [Find companies hiring](../README.md#find-companies-hiring).
 
 ### From a webhook to Smartlead, hands off
 
@@ -225,6 +225,8 @@ Next to any value in the full answer, **Add as column** adds a new column filled
 **Rerun this row** calls treg again for that row, and it costs again. **Copy diagnostics** copies the run, the row and each treg call id with its status and cost. treg's call ids are what treg's Activity page and treg's support use to look a call up.
 
 HTTP API columns have the same panel (minus cost and providers): click a filled cell of the column to see the response it stored, and **Add as column** works there too.
+
+The panel opens beside the grid as soon as you click, and the grid stays in use: click another cell to see its answer, double click a cell to edit it, and press Escape or × to close the panel. A waterfall cell's steps open the same way.
 
 The tree shows big answers a part at a time, so even a reply of several MB opens at once: a list or an object shows 100 entries, with **Previous** and **Next** for the rest, and its count (`5,000 items`, `12 fields`) next to its bracket. Long text shows its start, and **show more** adds more. Characters you couldn't otherwise see, or that would turn the text around them right to left, show the way JSON writes them (`\n`, `\u202E`). Click a key or a value to copy its JSONPath (like `$.results[3].email`), to use in an HTTP API column's fields or a webhook mapping. A key that isn't a plain word is written in brackets (`$["@odata.nextLink"]`, `$.data["first name"]`), with any character you couldn't see written the way JSON escapes it, and Cubex reads it back as exactly that key. Typing a path by hand, write a quote in a key as `\"` and a backslash as `\\`. On a plain-HTTP install, where the browser can't copy, the path shows in a box to copy by hand.
 

@@ -17,7 +17,7 @@ const bad = (error: string): { error: string } => ({ error });
 export const PROVIDER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
 // A find step's or a verify's providerOrder or skipProviders: provider names.
-// A name the tool doesn't have asks or skips nobody (lib/enrich-run-config.ts routeFor).
+// Known names are checked against the catalog when the step is built.
 export function providerList(v: unknown, name: string): Parsed<string[]> {
   if (v === undefined || v === null) return { ok: [] };
   if (!Array.isArray(v) || v.length > ENRICH_ESTIMATE_MAX_LIST

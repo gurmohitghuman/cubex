@@ -15,6 +15,7 @@ import writeMod from '../../server/src/services/rows-write'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved, unfinished } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { addSheetColumn } = addMod as typeof import('../../server/src/services/column-add')
@@ -47,7 +48,7 @@ async function goesOn(p: Params, t: string, cursor: string) {
   const before = cells(p.sheetId)
   assert.deepEqual(await transformColumn(uid, p), unfinished(t, 250, cursor))
   assert.equal(cells(p.sheetId), before, 'nothing written')
-  assert.deepEqual(await transformColumn(uid, { ...p, cursor }), { ok: { updated: ROWS - 250, created_column: null } })
+  assert.deepEqual(await toTheEnd(uid, { ...p, cursor }), { ok: { updated: ROWS - 250, created_column: null } })
   assert.equal(ending(p.sheetId, t, 't*-x'), ROWS)
   assert.equal(ending(p.sheetId, t, '*-x-x'), 0)
   assert.equal(records(p.sheetId), 0)
@@ -105,7 +106,7 @@ async function main() {
     const cursor = await stopped(call(sid))
     const item = (await del(sid, 'T'))!
     assert.ok('ok' in addSheetColumn(sid, uid, 'T'))
-    assert.deepEqual(await transformColumn(uid, call(sid)), { ok: { updated: ROWS, created_column: null } })
+    assert.deepEqual(await toTheEnd(uid, call(sid)), { ok: { updated: ROWS, created_column: null } })
     assert.equal(ending(sid, 'T', '-x'), ROWS, 'every row of the new T, from the top')
     assert.equal((await restored(item)).name, 'T (restored)')
     await goesOn(call(sid, 'T (restored)'), 'T (restored)', cursor)

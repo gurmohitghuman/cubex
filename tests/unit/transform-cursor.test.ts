@@ -25,6 +25,7 @@ import mcpMod from '../../server/src/mcp/build-server'
 import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import appReadMod from '../../server/src/routes/sheets-read'
 import { malformed, moved } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn, TRANSFORM_STOPPED_NOTE } =
@@ -158,7 +159,7 @@ async function main() {
   })
 
   await check('a new column no row got a value in: listed over the app, REST and MCP, read as empty', async () => {
-    const out = await transformColumn(uid, { sheetId: small, operation: 'upper', sourceColumn: 'Name',
+    const out = await toTheEnd(uid, { sheetId: small, operation: 'upper', sourceColumn: 'Name',
       targetColumn: 'Blank', where: [{ column: 'Name', operator: 'eq', value: 'nobody' }] })
     assert.deepEqual(out, { ok: { updated: 0, created_column: 'Blank' } })
     assert.equal(db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.Blank')

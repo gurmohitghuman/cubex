@@ -3,10 +3,9 @@ import toast from 'react-hot-toast'
 import { enrichAPI, type AnswerView, type Sheet } from '@/utils/api'
 import type { AnswerTarget } from '@/components/answer-panel/AnswerPanel'
 import { diagnostics } from '@/components/answer-panel/answer-copy'
+import type { CellClickInfo } from '@/components/aggrid/types'
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
-// A click opens the panel after this long, so a double click edits the cell instead.
-const OPEN_AFTER_MS = 300
 
 type CellTarget = Omit<AnswerTarget, 'sheetId' | 'rowGeneration'>
 
@@ -33,7 +32,8 @@ export function useAnswerPanel(a: Args) {
   const [diagText, setDiagText] = useState<string | null>(null)
   // The panel on screen: anything for an earlier click (a read, an add) is dropped.
   const seq = useRef(0)
-  const pendingOpen = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Starts editing the cell the panel opened on (CellClickInfo.edit).
+  const editCell = useRef<(() => void) | undefined>(undefined)
 
   const load = (t: AnswerTarget) => {
     const id = seq.current
@@ -53,28 +53,24 @@ export function useAnswerPanel(a: Args) {
     load(full)
   }
 
-  const cancelPending = () => {
-    if (pendingOpen.current) clearTimeout(pendingOpen.current)
-    pendingOpen.current = null
-  }
-  // A grid click: open after a moment, unless it turns out to be a double
-  // click. A click elsewhere meanwhile (cancelPending) drops it too.
-  const clicked = (t: CellTarget, clicks: number) => {
-    cancelPending()
-    if (clicks > 1) return
-    pendingOpen.current = setTimeout(() => { pendingOpen.current = null; open(t) }, OPEN_AFTER_MS)
-  }
-
   const close = () => { seq.current++; setTarget(null); setView(null); setLoading(false); setAdding(false) }
+
+  // A grid click opens the panel at once, with no wait. A double click edits the cell, as the grid's own double
+  // click does: its second click closes the panel the first one opened. When that second click lands on the panel
+  // (the cell was under it), the panel passes it on (doubleClickThrough).
+  const clicked = (t: CellTarget, info: Pick<CellClickInfo, 'clicks' | 'edit'>) => {
+    if (info.clicks > 1) { close(); return }
+    editCell.current = info.edit
+    open(t)
+  }
+  const doubleClickThrough = () => { const edit = editCell.current; close(); edit?.() }
 
   // A panel never outlives its sheet: its row and actions belong to it.
   const sheetId = a.activeSheet?.id
   useEffect(() => {
-    cancelPending()
     if (target && target.sheetId !== sheetId) close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetId])
-  useEffect(() => cancelPending, [])
 
   const addField = async (jsonPath: string, name: string) => {
     const t = target
@@ -117,10 +113,10 @@ export function useAnswerPanel(a: Args) {
   }
 
   return {
-    clicked, cancelPending,
+    clicked, close,
     panel: {
       target, view, loading, error, adding, addError, added, diagText,
-      onClose: close, onAddField: addField, onRerun: rerun, onCopy: copy,
+      onClose: close, onDoubleClickThrough: doubleClickThrough, onAddField: addField, onRerun: rerun, onCopy: copy,
     },
   }
 }

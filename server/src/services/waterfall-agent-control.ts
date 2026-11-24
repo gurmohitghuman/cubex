@@ -4,6 +4,7 @@
 // setup (services/waterfall-rerun.ts), and a resume can raise its run limit.
 import { db } from '../lib/db';
 import { ENRICH_DAILY_LIMIT_MAX_USD } from '../lib/constants';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import type { EnrichRowsStatus } from '../lib/enrich-run-config';
 import { waterfallConfigOf } from '../lib/waterfall/config';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
@@ -31,7 +32,7 @@ const limitProblem = (limit: number | null | undefined): string | null => {
 export async function rerunWaterfallRunById(
   userId: string, runId: string,
   opts: { rowIds?: string[]; mode?: string; spendLimitUsd?: number | null; hasSecretsScope: boolean },
-): Promise<{ ok: { runId: string; rowsInScope: number } } | RunFail> {
+): Promise<{ ok: { runId: string; rowsInScope: number; notes?: string[] } } | RunFail> {
   const bad = limitProblem(opts.spendLimitUsd);
   if (bad) return { fail: 'bad_request', message: bad };
   const run = db.prepare('SELECT sheet_id, master_column_name FROM http_runs WHERE id = ? AND user_id = ?')
@@ -69,7 +70,13 @@ export async function rerunWaterfallRunById(
   }, { estimateOnly: false, hasSecretsScope: opts.hasSecretsScope });
   if ('fail' in out) return out;
   if (!('started' in out.ok)) return { fail: 'bad_request', message: 'Nothing was started.' };
-  return { ok: { runId: out.ok.started.runId, rowsInScope: out.ok.started.rowsInScope } };
+  const notes = out.ok.started.notes?.map(snakeProviderField);
+  return {
+    ok: {
+      runId: out.ok.started.runId, rowsInScope: out.ok.started.rowsInScope,
+      ...(notes?.length ? { notes } : {}),
+    },
+  };
 }
 
 // Resume, optionally with a higher run limit (a run its limit paused), written

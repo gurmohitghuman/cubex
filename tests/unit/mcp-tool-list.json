@@ -1,10 +1,19 @@
 {
-  "release": "v0.8.38",
+  "release": "v0.8.43",
   "lines": [
     {
       "change": "changed",
       "tools": [
         "hiring_signals"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "waterfall_column",
+        "run_enrichment",
+        "apply_setup",
+        "control_run"
       ]
     }
   ],
@@ -1072,6 +1081,19 @@
         "id": {
           "type": "string"
         },
+        "leave_out_companies": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "leave_out_description_words": {
           "anyOf": [
             {
@@ -1100,6 +1122,11 @@
         },
         "max_cost_usd": {
           "type": "number"
+        },
+        "min_roles": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
         },
         "per_search": {
           "maximum": 100,

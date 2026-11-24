@@ -1,3 +1,4 @@
+// Over 200 lines: one entry per release with changes for agents, newest first; shipped ones stay as they were.
 // What changed for agents, release by release: tools added, changed, removed or renamed, and changes to the
 // server's answers. Agents read it three ways (services/version-changes.ts): the server instructions name
 // the running release and what changed in it, get_version with since lists every release after a version,
@@ -37,6 +38,30 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
+  {
+    version: 'v0.8.43',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals create takes min_roles (companies with fewer matching roles get no Companies row) '
+          + 'and leave_out_companies (websites that get none). Their roles are still searched and paid for.',
+        details: 'create and get answer them, and each check\'s companies_kept_off, only for a table made with '
+          + 'them. Refused: a company in both companies and leave_out_companies (careers.ramp.com is ramp.com), or '
+          + 'a left-out website no company can have.',
+      },
+      {
+        change: 'changed',
+        tools: ['waterfall_column', 'run_enrichment', 'apply_setup', 'control_run'],
+        summary: 'A provider name in provider_order or skip_providers that treg\'s catalog doesn\'t list for the '
+          + 'tool is refused, with the names it knows. It used to be dropped without a word, so a misspelled skip '
+          + 'kept nothing out.',
+        details: 'A name saved on a column before treg dropped that provider is ignored, not refused, and named in '
+          + 'the answer\'s notes. A list for a tool whose providers the catalog doesn\'t list right now is '
+          + 'refused: try again, or leave the list out.',
+      },
+    ],
+  },
   {
     version: 'v0.8.38',
     changes: [

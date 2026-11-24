@@ -2,7 +2,7 @@
 // Extracted from useSheetSSE so the hook file stays under the 200-line cap.
 
 import toast from 'react-hot-toast'
-import { AIRun, HTTPRun } from '@/utils/api'
+import { aiAPI, httpAPI, AIRun, HTTPRun } from '@/utils/api'
 import { SSEResultBuffer, deriveAICellValue } from './sseResultBuffer'
 
 // Enqueue an SSE 'result' delta (AI single-column OR HTTP extractedFields) into the
@@ -78,7 +78,6 @@ export interface TerminalStatusCtx {
   reconnectAttemptsRef: React.MutableRefObject<Map<string, number>>
   terminalRunsRef: React.MutableRefObject<Set<string>>
   runSheetRef: React.MutableRefObject<Map<string, string>>
-  pendingTimersRef: React.MutableRefObject<Set<ReturnType<typeof setTimeout>>>
   currentSheetIdRef: React.MutableRefObject<string | null>
   setActiveAIRuns: React.Dispatch<React.SetStateAction<Set<string>>>
   fetchActiveHTTPRuns: (sheetId: string) => unknown
@@ -88,10 +87,9 @@ export interface TerminalStatusCtx {
 
 // Handle a terminal ('completed'/'failed'/'cancelled') run-status SSE event:
 // tear the stream down, clear per-run bookkeeping, refresh the active sheet's
-// run-list metadata, and schedule a one-shot reload of the run's OWN sheet (only
-// if it's still active at fire time). The returned timer is registered in
-// pendingTimersRef so unmount cleanup can cancel it. Why each close/terminal
-// step is load-bearing is documented at the call site in useSheetSSE.
+// run-list metadata, and reload the run's OWN sheet at once (only if it's the
+// active one). Why each close/terminal step is load-bearing is documented at the
+// call site in useSheetSSE.
 export const handleTerminalStatus = (
   data: any, runId: string, currentSheetId: string, runSheetId: string | undefined,
   ctx: TerminalStatusCtx,
@@ -109,15 +107,13 @@ export const handleTerminalStatus = (
   ctx.setActiveAIRuns(prev => { const next = new Set(prev); next.delete(runId); return next })
   // Run-list metadata (header pill / column badges) for the active sheet.
   ctx.fetchActiveHTTPRuns(currentSheetId); ctx.fetchActiveAIRuns(currentSheetId)
-  // Reload only the run's OWN sheet, and only if it's still the active one at
-  // fire time, so a background-sheet run completing can't discard the active
-  // sheet's in-flight load. runSheetId falls back for a legacy pre-binding stream.
+  // Reload only the run's OWN sheet, and only if it's the active one, so a
+  // background-sheet run completing can't discard the active sheet's in-flight
+  // load. At once: the server sends the end only after the run's last result,
+  // and a write after it (a derived column's fill) comes through the change
+  // poll. runSheetId falls back for a legacy pre-binding stream.
   const reloadTarget = runSheetId ?? currentSheetId
-  const timer = setTimeout(() => {
-    ctx.pendingTimersRef.current.delete(timer)
-    if (ctx.currentSheetIdRef.current === reloadTarget) ctx.reloadSheet(reloadTarget)
-  }, 1000)
-  ctx.pendingTimersRef.current.add(timer)
+  if (ctx.currentSheetIdRef.current === reloadTarget) void ctx.reloadSheet(reloadTarget)
 }
 
 const ACTIVE = new Set(['running', 'paused', 'pending'])
@@ -129,35 +125,24 @@ interface ReconnectArgs {
   setupSSEConnection: (runId: string, type?: 'ai' | 'http') => unknown
 }
 
+// Read through the app's client, as every read of a reload is: a read that never answers is given up after the
+// client's time limit (30 s), so the reload ends and the next one can run (reloadPacer.ts waits for each to end).
+// A read given up never answers late.
 export const reconnectActiveRuns = async ({
   sheetId, setActiveAIRuns, setActiveHTTPRuns, setupSSEConnection,
 }: ReconnectArgs) => {
   try {
-    const aiResponse = await fetch(`/api/ai/runs?sheetId=${sheetId}`, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (aiResponse.ok) {
-      const aiRuns = await aiResponse.json()
-      const active = aiRuns.filter((run: any) => ACTIVE.has(run.status))
-      setActiveAIRuns(active)
-      for (const run of active) setupSSEConnection(run.id, 'ai')
-    }
+    const active = (await aiAPI.getRuns(sheetId)).filter(run => ACTIVE.has(run.status))
+    setActiveAIRuns(active)
+    for (const run of active) setupSSEConnection(run.id, 'ai')
   } catch (error) {
     console.error('Error fetching AI runs for reconnection:', error)
   }
 
   try {
-    const httpResponse = await fetch(`/api/http/runs?sheetId=${sheetId}`, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    if (httpResponse.ok) {
-      const httpRuns = await httpResponse.json()
-      const active = httpRuns.filter((run: any) => ACTIVE.has(run.status))
-      setActiveHTTPRuns(active)
-      for (const run of active) setupSSEConnection(run.id, 'http')
-    }
+    const active = (await httpAPI.getRuns(sheetId)).filter(run => ACTIVE.has(run.status))
+    setActiveHTTPRuns(active)
+    for (const run of active) setupSSEConnection(run.id, 'http')
   } catch (error) {
     console.error('Error fetching HTTP runs for reconnection:', error)
   }

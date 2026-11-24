@@ -7,7 +7,8 @@
 // above its watermark. A person's own edit to its cell stays until an input
 // changes again. It's free and has no side effects, so there are no caps and no "Only run if". Each slice reads and
 // writes in one short transaction (its WAL copied back on the checkpoint worker's thread: lib/bulk-slices.ts; a slice
-// of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter), so what it writes is the
+// of queued rows sized by the pages the last one wrote, derived-write.ts queuedRowsAfter; a slice of a span or of new
+// rows by the time the last one took, pageByTime), so what it writes is the
 // row's inputs as they are then, and nothing holds the sheet between slices (lib/sheet-yield.ts doesn't apply). A pass
 // that has to wait (a lookup whose other sheet is sorting) ends the tick, and the entry comes back after
 // LOOKUP_FOLLOW_RETRY_MS.
@@ -21,6 +22,7 @@ import { getLockedRunColumns } from '../lib/run-locked-columns';
 import { nextSpan, spanWorked } from '../lib/derived-spans';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { asBulkWriter } from '../lib/bulk-slices';
+import { sliceClock } from '../lib/slice-clock';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import { onFollowQueued } from '../lib/autorun-kick';
@@ -29,13 +31,16 @@ import { generationMoved, hasWork } from './autorun-fence';
 import type { DerivedKind, DerivedPass, DerivedRecord } from './derived-kind';
 import { derivedKindOf } from './derived-kinds';
 import {
-  asDerivedRead, derivedSelect, pageAfter, queuedRowsAfter, readDerivedRows, writeDerivedCells,
+  asDerivedRead, derivedSelect, FIRST_TIMED_PAGE, pageAfter, pageByTime, queuedRowsAfter, readDerivedRows,
+  writeDerivedCells,
 } from './derived-write';
 
-// page: how many rows the next slice reads (derived-write.ts pageAfter); queued: queued rows at most (queuedRowsAfter).
+// How many rows the next slice of each kind reads: queued rows (page, derived-write.ts pageAfter, and queued at most,
+// queuedRowsAfter), a span's rows (spanPage) and new rows (newPage, both pageByTime). Each kind sizes its own, so a
+// slice of one kind that found nothing leaves the others' as they are.
 interface Step {
   kind: DerivedKind; entry: AutorunEntry; rec: DerivedRecord; pass: DerivedPass; inputs: string[]; page: number;
-  queued: number; queuedRead: number;
+  queued: number; queuedRead: number; spanPage: number; newPage: number;
 }
 
 // Inside each slice's transaction: the sheet is free and out of the trash, and the column set up as
@@ -53,6 +58,7 @@ const cellPathOf = (s: Step) => jsonPath(s.rec.column_name);
 
 // Rows an input was written in. True while there are more. Call inside a transaction (a slice).
 function queuedSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   s.queuedRead = 0;
   if (!stillCurrent(s)) return false;
@@ -70,14 +76,14 @@ function queuedSlice(s: Step): boolean {
   // rest are written in storage order, and leave it once worked out.
   const live = rows.filter(r => r.sheet === e.sheet_id).sort((a, b) => (a.rowid as number) - (b.rowid as number));
   const reads = live.map(r => asDerivedRead(r, s.inputs.length));
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass);
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass, { began });
   const worked = new Set(live.slice(0, counts.done).map(r => r.id));
   const leave = rows.filter(r => r.sheet !== e.sheet_id || worked.has(r.id)).map(r => r.id);
   db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ? AND row_id IN (SELECT value FROM json_each(?))')
     .run(e.id, JSON.stringify(leave));
   finishSlice(s, counts.changed, new Set(live.filter(r => r.quiet === 1).map(r => r.rowid as number)));
   const more = read.capped || counts.done < live.length;
-  s.page = pageAfter(s.page, live.length, counts.done);
+  if (live.length > 0) s.page = pageAfter(s.page, live.length, counts.done);
   return more;
 }
 
@@ -88,20 +94,22 @@ function queuedSlice(s: Step): boolean {
 // clear). Rows written are quiet, as an undo's: only clean, formula and lookup columns follow them. True while
 // there may be more. Call inside a transaction (a slice).
 function spanSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   if (!stillCurrent(s)) return false;
   const span = nextSpan(e.id);
   if (!span) return false;
-  const want = span.rowids.slice(span.done, span.done + s.page);
+  const want = span.rowids.slice(span.done, span.done + s.spanPage);
   const sel = derivedSelect(s.rec.column_name, s.inputs);
   const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql} FROM rows
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`)
-    .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.page, s.inputs.length);
+    .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.spanPage, s.inputs.length);
   const locked = getLockedRunColumns(e.sheet_id, e.user_id, { clearing: true });
   const held = s.inputs.flatMap((c, k) => (locked.has(c) ? [`in${k}`] : []));
   const wait = held.length === 0 ? -1 : read.rows.findIndex(r => held.some(k => r[k] === PLACEHOLDER));
   const rows = wait < 0 ? read.rows : read.rows.slice(0, wait);
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows.map(r => asDerivedRead(r, s.inputs.length)), s.pass);
+  const reads = rows.map(r => asDerivedRead(r, s.inputs.length));
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), reads, s.pass, { began });
   // The mark moves past the rows worked out, and past rows gone up to the next row read (all of `want` when
   // every row read was worked out and none was left unread).
   const next = counts.done < rows.length ? rows[counts.done] : wait >= 0 ? read.rows[wait] : null;
@@ -109,7 +117,7 @@ function spanSlice(s: Step): boolean {
   const done = span.done + (next ? at(next) : read.capped ? at(rows[rows.length - 1]) + 1 : want.length);
   spanWorked(e.id, span, done);
   finishSlice(s, counts.changed, new Set(counts.changed));
-  s.page = pageAfter(s.page, rows.length, counts.done);
+  s.spanPage = pageByTime(counts.done, sliceClock() - began);
   return !(wait >= 0 && counts.done === rows.length);
 }
 
@@ -117,6 +125,7 @@ function spanSlice(s: Step): boolean {
 // are read inside the slice's transaction, so a delete, sort or import that
 // moved the fence since the tick began is never passed over. Call inside a transaction (a slice).
 function newSlice(s: Step): boolean {
+  const began = sliceClock();
   const e = s.entry;
   if (!stillCurrent(s)) return false;
   const fence = db.prepare(`SELECT watermark_row_index AS w, row_generation_seen AS g FROM autorun_columns
@@ -127,17 +136,17 @@ function newSlice(s: Step): boolean {
   const sel = derivedSelect(s.rec.column_name, s.inputs);
   const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql}
     FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ? ORDER BY row_index LIMIT ?`)
-    .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.page), s.page, s.inputs.length);
+    .iterate(...sel.params, e.sheet_id, e.user_id, fence.w, s.newPage), s.newPage, s.inputs.length);
   const rows = read.rows.map(r => asDerivedRead(r, s.inputs.length));
   if (rows.length === 0) return false;
   // A new row whose inputs are empty keeps a cell it arrived with.
-  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true });
+  const counts = writeDerivedCells(e.user_id, cellPathOf(s), rows, s.pass, { keepWhenEmpty: true, began });
   if (counts.done > 0) {
     db.prepare('UPDATE autorun_columns SET watermark_row_index = ? WHERE id = ?').run(rows[counts.done - 1].i, e.id);
   }
   finishSlice(s, counts.changed);
   const more = read.capped || counts.done < rows.length;
-  s.page = pageAfter(s.page, rows.length, counts.done);
+  s.newPage = pageByTime(counts.done, sliceClock() - began);
   return more;
 }
 
@@ -169,8 +178,13 @@ function ready(kind: DerivedKind, e: AutorunEntry, rec: DerivedRecord | undefine
 
 const ticking = new Set<string>();
 const again = new Set<string>();
+// An entry's new-row page as its last tick left it, while it has more new rows: the next tick goes on at its pace.
+// Each tick takes it out first, so one that stops early drops it.
+const newPages = new Map<string, number>();
 
 export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
+  const carried = newPages.get(e.id);
+  newPages.delete(e.id);
   const kind = derivedKindOf(e.kind);
   // Paused by the person, or stopped ('setup', 'too_slow') until the column is saved again or auto-run
   // turned on again (a missing input lifts in ready()). Busy, or in the trash: the sweep catches it up.
@@ -186,7 +200,8 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
     if ('error' in pass) { pauseEntry(e.id, 'setup', pass.error); return; }
     try {
       const s: Step = { kind, entry: e, rec, pass, inputs: kind.inputs(rec), page: HEAVY_SLICE_ROWS,
-        queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0 };
+        queued: DERIVED_QUEUED_FIRST_ROWS, queuedRead: 0, spanPage: FIRST_TIMED_PAGE,
+        newPage: carried ?? FIRST_TIMED_PAGE };
       const until = Date.now() + CLEAN_FOLLOW_TICK_MS;
       await asBulkWriter(async w => {
         for (let more = true; more;) {
@@ -205,7 +220,11 @@ export async function derivedFollowTick(e: AutorunEntry): Promise<void> {
             return;
           }
           if (pass.waiting?.()) { kickDerivedFollow(e.id, LOOKUP_FOLLOW_RETRY_MS); return; }
-          if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) { again.add(e.id); return; }
+          if (more && (Date.now() >= until || sheetBusyWith(e.sheet_id))) {
+            newPages.set(e.id, s.newPage);
+            again.add(e.id);
+            return;
+          }
         }
       });
     } finally {
@@ -228,7 +247,7 @@ export function kickDerivedFollow(entryId: string, ms = CLEAN_FOLLOW_KICK_MS): v
     const e = loadEntry(entryId);
     if (e?.enabled && derivedKindOf(e.kind)) {
       derivedFollowTick(e).catch(err => console.error(`Auto-run on column "${e.status_column}" failed:`, err));
-    }
+    } else newPages.delete(entryId);
   }, ms).unref?.();
 }
 

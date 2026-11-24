@@ -6,6 +6,7 @@
 // formula worker, lib/formula/). A formula step compiles here too.
 import { ENRICH_VERIFY_TOOL_ID } from '../lib/constants';
 import { defaultMaxCostPerRow, noProviderCanRun, type ProviderPick } from '../lib/enrich-estimate';
+import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { providerNamesOf, requestToolOf, routeFor } from '../lib/enrich-run-config';
 import { compileFormula, FormulaError, type CompiledFormula } from '../lib/formula/refs';
 import type { CheckChoices, StepCheck } from '../lib/waterfall/config';
@@ -27,15 +28,16 @@ export function compileStepFormula(where: string, text: string, names: string[])
 
 export async function buildCheck(
   where: string, check: CheckChoices | null, resultType: ResultType, inputKeys: string[],
-): Promise<{ ok: StepCheck | null } | RunFail> {
-  if (!check) return { ok: null };
+  saved?: SavedProviderNames,
+): Promise<{ ok: StepCheck | null; ignored: string[] } | RunFail> {
+  if (!check) return { ok: null, ignored: [] };
   if (check.kind === 'formula') {
     if (inputKeys.includes('value')) {
       return bad(`${where}: an input named "value" can't be used with a formula check (it names the answer).`);
     }
     const compiled = compileStepFormula(`${where}, its check`, check.formula, ['value', ...inputKeys]);
     if ('fail' in compiled) return compiled;
-    return { ok: { choices: check, built: { kind: 'formula', compiled: compiled.ok } } };
+    return { ok: { choices: check, built: { kind: 'formula', compiled: compiled.ok } }, ignored: [] };
   }
   if (resultType !== 'email') return bad(`${where}: an email check needs the result type Work email.`);
   const found = await getTool(ENRICH_VERIFY_TOOL_ID);
@@ -44,8 +46,13 @@ export async function buildCheck(
     return gone ? bad(`${where}: treg's email verify isn't available.`) : { fail: 'upstream', message: found.message };
   }
   const tool = found.ok;
-  // Its providers as a find step's: in the step's order, none it skips (a name the tool doesn't have does nothing).
+  // Its providers as a find step's: unknown names are refused unless already saved on this check.
   const order = check.providerOrder ?? [], skip = check.skipProviders ?? [];
+  const providers = checkStepProviders({
+    where, order, skip, orderTools: [tool], saved,
+    orderField: 'check.providerOrder', skipField: 'check.skipProviders',
+  });
+  if (providers.error) return bad(providers.error);
   const pick: ProviderPick = { skip, order, given: ['email'] };
   if (noProviderCanRun(tool, pick)) return bad(`${where}: no provider can verify the email with these switches. `
     + 'Switch providers on.');
@@ -59,5 +66,6 @@ export async function buildCheck(
         providerNames: providerNamesOf(tool), capUsd: priceKnown ? defaultMaxCostPerRow(tool, pick) : null,
       },
     },
+    ignored: providers.ignored,
   };
 }

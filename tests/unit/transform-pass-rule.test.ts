@@ -17,6 +17,7 @@ import deleteMod from '../../server/src/services/column-delete'
 import addMod from '../../server/src/services/column-add'
 import { transformPageFault } from './transform-page-fault'
 import { unfinished } from './transform-pass-words'
+import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -92,7 +93,7 @@ async function main() {
     + 'going on with it ends every row exactly once', async () => {
     assert.deepEqual(await renameSheetColumn(sid, uid, 'T', 'T2'), { ok: true, newName: 'T2' })
     await refused(call(sid, 'T2'), 'T2', 250, cursor, 'the new name')
-    assert.deepEqual(await transformColumn(uid, { ...call(sid, 'T2'), cursor }),
+    assert.deepEqual(await toTheEnd(uid, { ...call(sid, 'T2'), cursor }),
       { ok: { updated: ROWS - 250, created_column: null } })
     assert.equal(ending(sid, 'T2', 't*-x'), ROWS)
     assert.equal(ending(sid, 'T2', '*-x-x'), 0)
@@ -118,7 +119,7 @@ async function main() {
     assert.ok('ok' in out && out.trashId !== null, JSON.stringify(out))
     assert.deepEqual([live(redo), records(redo)], [0, 1], 'it went to the trash with the column')
     assert.ok('ok' in addSheetColumn(redo, uid, 'U'))
-    assert.deepEqual(await transformColumn(uid, p), { ok: { updated: ROWS, created_column: null } })
+    assert.deepEqual(await toTheEnd(uid, p), { ok: { updated: ROWS, created_column: null } })
     assert.equal(ending(redo, 'U', 'S*'), ROWS)
     assert.deepEqual([live(redo), records(redo)], [0, 1])
   })

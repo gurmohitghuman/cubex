@@ -169,6 +169,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         return ok({
           run_id: out.ok.runId, run_type: 'enrichment', rows_in_scope: out.ok.rowsInScope,
           ...(out.ok.destinationAutoRun ? { destination_auto_run: out.ok.destinationAutoRun } : {}),
+          ...(out.ok.notes?.length ? { notes: out.ok.notes } : {}),
           ...hooked('http_runs', out.ok.runId),
           changed: changedOf(ctx.userId, [runTouch('http', out.ok.runId, ctx.userId, out.ok.rowsInScope)]),
         });
@@ -182,6 +183,7 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         if ('fail' in out) return err(out.message);
         return ok({
           run_id: out.ok.runId, run_type: 'waterfall', rows_in_scope: out.ok.rowsInScope,
+          ...(out.ok.notes?.length ? { notes: out.ok.notes } : {}),
           ...hooked('http_runs', out.ok.runId),
           changed: changedOf(ctx.userId, [runTouch('http', out.ok.runId, ctx.userId, out.ok.rowsInScope)]),
         });

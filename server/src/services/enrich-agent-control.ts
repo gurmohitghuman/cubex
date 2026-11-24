@@ -5,6 +5,7 @@
 // can raise its run limit (services/enrich-run-status.ts).
 import { db } from '../lib/db';
 import { ENRICH_DAILY_LIMIT_MAX_USD } from '../lib/constants';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import type { EnrichRowsStatus } from '../lib/enrich-run-config';
 import { CONCURRENCY_ERROR, concurrencyOf } from '../lib/enrich-run-input';
 import { enrichConfigOf } from './run-status-enrich';
@@ -25,7 +26,7 @@ export const ENRICH_RERUN_MODES: Record<string, EnrichRowsStatus> = {
 export async function rerunEnrichmentRunById(
   userId: string, runId: string,
   opts: { rowIds?: string[]; mode?: string; spendLimitUsd?: number | null; concurrency?: number },
-): Promise<{ ok: { runId: string; rowsInScope: number; destinationAutoRun?: unknown[] } } | RunFail> {
+): Promise<{ ok: { runId: string; rowsInScope: number; destinationAutoRun?: unknown[]; notes?: string[] } } | RunFail> {
   const limit = opts.spendLimitUsd;
   if (limit !== undefined && limit !== null
     && (!Number.isFinite(limit) || limit <= 0 || limit > ENRICH_DAILY_LIMIT_MAX_USD)) {
@@ -75,10 +76,12 @@ export async function rerunEnrichmentRunById(
   const list = config?.enrichment.list;
   const notice = out.ok.destSheetId && list
     ? await appendAutorunNotice(userId, out.ok.destSheetId, out.ok.rowsInScope * list.maxItems) : {};
+  const notes = out.ok.notes?.map(snakeProviderField);
   return {
     ok: {
       runId: out.ok.runId, rowsInScope: out.ok.rowsInScope,
       ...(notice.auto_run ? { destinationAutoRun: notice.auto_run } : {}),
+      ...(notes?.length ? { notes } : {}),
     },
   };
 }

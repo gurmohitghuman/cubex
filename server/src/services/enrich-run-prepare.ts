@@ -8,6 +8,7 @@ import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { findColumnNameCollision, columnCollisionMessage } from '../lib/column-names';
 import { validateHttpRunColumns } from '../lib/http-run-validate';
 import { isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
+import { recallChoices } from '../lib/enrich-run-recall';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { sheetRowSpan } from './run-seed';
 import { buildEnrichmentConfig } from './enrich-run-build';
@@ -38,6 +39,8 @@ export interface PreparedStart {
   rule: CheckedRule | null;
   // An out_of_date status's check, read before the run starts (lib/enrich-seed.ts SeedPlan.stale).
   stale: CompiledFilter | null;
+  // Old saved provider names no longer in treg's catalog that this run ignored.
+  ignoredProviders: string[];
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -52,10 +55,13 @@ export function seedPlanFor(input: EnrichRunInput, p: PreparedStart): SeedPlan {
 }
 
 // The enrichment that owns `name` as its status column, if any.
-function enrichmentColumnOwner(sheetId: string, userId: string, name: string): boolean {
-  const runs = db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-    ORDER BY created_at DESC, rowid DESC LIMIT 1`).all(sheetId, userId, name) as Array<{ config: string | null }>;
-  return runs.some(r => { try { return isEnrichmentConfig(JSON.parse(r.config ?? 'null')); } catch { return false; } });
+function newestEnrichmentConfig(sheetId: string, userId: string, name: string): EnrichRunConfig | null {
+  const row = db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(sheetId, userId, name) as { config: string | null } | undefined;
+  try {
+    const parsed = JSON.parse(row?.config ?? 'null');
+    return isEnrichmentConfig(parsed) ? parsed : null;
+  } catch { return null; }
 }
 
 export function activeRunOn(sheetId: string, userId: string, name: string): boolean {
@@ -72,8 +78,9 @@ const ownOutputs = (sheetId: string, userId: string, statusColumn: string): Set<
 // no run active on it, and new output names may only clash with its own.
 function continueProblem(
   sheetId: string, userId: string, statusColumn: string, outputNames: string[], columns: string[],
-): RunFail | null {
-  if (!enrichmentColumnOwner(sheetId, userId, statusColumn)) {
+): { prior: EnrichRunConfig } | RunFail {
+  const prior = newestEnrichmentConfig(sheetId, userId, statusColumn);
+  if (!prior) {
     return bad(`"${statusColumn}" isn't an enrichment column.`);
   }
   if (activeRunOn(sheetId, userId, statusColumn)) {
@@ -90,7 +97,7 @@ function continueProblem(
     const clash = findColumnNameCollision(name, others);
     if (clash) return bad(columnCollisionMessage(name, clash));
   }
-  return null;
+  return { prior };
 }
 
 const NOTHING_TO_RUN: Record<string, string> = {
@@ -134,9 +141,11 @@ export async function prepareEnrichmentStart(
   if (!v.ok) return bad(v.error!);
   const statusColumn = v.sanitizedMaster!;
   const outputNames = v.sanitizedMappingColumns!;
+  let prior: EnrichRunConfig | null = null;
   if (input.continueColumn) {
-    const problem = continueProblem(sheetId, userId, statusColumn, outputNames, columns);
-    if (problem) return problem;
+    const cont = continueProblem(sheetId, userId, statusColumn, outputNames, columns);
+    if ('fail' in cont) return cont;
+    prior = cont.prior;
   }
   if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
   const rule = startRunRule(sheetId, userId, input.runIf, { conditions: input.conditions.map(c => c.column) });
@@ -159,7 +168,10 @@ export async function prepareEnrichmentStart(
   const upperBound = Math.min(input.rows.test ?? inScope, inScope);
 
   const named = { ...input, outputs: input.outputs.map((o, i) => ({ ...o, columnName: outputNames[i] })) };
-  const built = await buildEnrichmentConfig(named, columns, upperBound);
+  const priorChoices = prior && prior.enrichment.toolId === named.toolId ? recallChoices(prior, statusColumn) : null;
+  const saved = priorChoices
+    ? { order: priorChoices.providerOrder, skip: priorChoices.skipProviders } : undefined;
+  const built = await buildEnrichmentConfig(named, columns, upperBound, saved);
   if ('fail' in built) return built;
   // An input another run holds would be sent (and billed) as its ⏳ (lib/http-held-inputs.ts).
   const held = heldRequestInput(sheetId, userId, built.ok, statusColumn);
@@ -175,7 +187,7 @@ export async function prepareEnrichmentStart(
   return {
     ok: {
       statusColumn, outputNames, config: built.ok, listPlan: listPlan.ok, columns, span, upperBound, rule: rule.ok,
-      stale,
+      stale, ignoredProviders: built.ignored ?? [],
     },
   };
 }

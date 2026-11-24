@@ -1,7 +1,8 @@
 // CSV import commit phase, one implementation for the UI route, /api/v1 and the
 // MCP tool. PARSE FIRST, MUTATE LATER: callers scan the CSV (lib/csv-import-parse)
 // and validation here is zero-mutation. The rows then go in HEAVY_SLICE_ROWS at a
-// time, one short transaction each, with the server answering other requests in
+// time (fewer once a flush has taken BULK_SLICE_MS: the rest wait for the next),
+// one short transaction each, with the server answering other requests in
 // between (lib/slices.ts): a million-row file neither freezes the server nor sits
 // in memory. The sheet is busy meanwhile (lib/sheet-busy.ts): other changes to it
 // are refused, and webhook rows that arrive land after the imported ones.
@@ -17,7 +18,8 @@ import { purgeSheetResults, replaceColumnOrder, undoOrKeepTrying, type ImportJob
 import { trashRowRange } from './trash-batch';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
-import { CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
+import { BULK_SLICE_MS, CELL_MAX_BASIC, HEAVY_SLICE_ROWS } from '../lib/constants';
+import { sliceClock } from '../lib/slice-clock';
 import { validateCsvImport } from '../lib/csv-import-validate';
 import type { ScannedCsv } from '../lib/csv-import-parse';
 import { nextRowIndex, sheetGone, withLiveSheetBusy } from '../lib/sheet-busy';
@@ -157,10 +159,15 @@ export async function importCsv(
       let firstRid: number | null = null;
       let lastRid: number | null = null;
       let dedupeQueued = false;
+      // Adds the batch's rows until its time is up (one row at least); the rest stay for the next flush.
       const flush = (): void => {
+        const began = sliceClock();
+        let added = 0;
         for (const row of batch) {
           // The journal reserved exactly rowCount rows; never write past them.
-          if (next >= job.end_row) break;
+          if (next >= job.end_row) { added = batch.length; break; }
+          if (added > 0 && sliceClock() - began >= BULK_SLICE_MS) break;
+          added++;
           const data: Record<string, string> = {};
           const id = orderedUuid();
           for (const [k, v] of Object.entries(row)) {
@@ -172,7 +179,7 @@ export async function importCsv(
           lastRid = Number(insertRow.run(id, sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
           firstRid ??= lastRid;
         }
-        batch = [];
+        batch = batch.slice(added);
       };
       // Each flush one slice of a bulk writer: its WAL copied back on the checkpoint worker's thread
       // (lib/bulk-slices.ts), never inside its commit, which syncs the disk while requests wait.
@@ -181,7 +188,7 @@ export async function importCsv(
           batch.push(row);
           if (batch.length >= HEAVY_SLICE_ROWS) await w.slice(flush);
         }
-        await w.slice(flush);
+        do { await w.slice(flush); } while (batch.length > 0);
       });
       if (!replace && opts.skipAutorun) await autorunSkipImport(sheetId, userId, startingRow, next - 1);
       if (replace) await autorunDropPending(sheetId, userId);

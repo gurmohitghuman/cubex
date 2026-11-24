@@ -106,6 +106,7 @@ export async function estimateWaterfall(
   if (on.some(s => s.built.kind === 'http')) {
     notes.push('HTTP API steps call your own API: whatever it charges is billed there, not counted here.');
   }
+  notes.push(...p.built.ignoredProviders);
   // A step switched off reaches no row, but its own cost still shows (its Test runs it).
   const steps: StepEstimateView[] = w.steps.map(s => {
     const e = byId.get(s.id) ?? { ...finalCost(w, s, stepCost(w, s, p.built), history), reach: null };

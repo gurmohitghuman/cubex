@@ -2,8 +2,9 @@
 // the Roles sheet holds them (oldest first), into what Companies shows: how
 // many, the first few titles, the newest posting day, links to the newest
 // roles, and what's new since the check before. Bounded per company whatever
-// its number of roles.
-import { HIRING_LINKS_SHOWN, HIRING_NEW_TITLES_SHOWN, HIRING_TITLES_SHOWN } from '../constants';
+// its number of roles, and each cell within the cell-size rule.
+import { clampCellChars } from '../csv-safety';
+import { CELL_MAX_ENRICHMENT, HIRING_LINKS_SHOWN, HIRING_NEW_TITLES_SHOWN, HIRING_TITLES_SHOWN } from '../constants';
 import { COMPANY_COLUMNS } from './names';
 
 export interface RoleSeen { title: string; company: string; posted: string; link: string; isNew: boolean }
@@ -80,6 +81,9 @@ export function newSinceText(acc: CompanyAcc, sinceLabel: string, label: string)
   return `New since ${shortDay(sinceLabel, label.slice(0, 4))}: ${n}${titles ? ` (${titles})` : ''}`;
 }
 
+// A cell that joins a few Roles cells (each within the rule) is capped again as a whole, as every written cell is.
+const capped = (s: string): string => clampCellChars(s, CELL_MAX_ENRICHMENT);
+
 // The cells a check writes on a company's row. sinceLabel null: the table's
 // first check, where nothing is "new" (every company is). acc null: the
 // company has no roles left in Roles.
@@ -90,10 +94,10 @@ export function companyCells(
   const fresh = check.sinceLabel !== null && a.newCount > 0;
   return {
     [COMPANY_COLUMNS.openRoles]: String(a.count),
-    [COMPANY_COLUMNS.titles]: shownList(a.titles, HIRING_TITLES_SHOWN),
+    [COMPANY_COLUMNS.titles]: capped(shownList(a.titles, HIRING_TITLES_SHOWN)),
     [COMPANY_COLUMNS.newest]: a.newest,
-    [COMPANY_COLUMNS.links]: [...a.links].reverse().join('\n'),
-    [COMPANY_COLUMNS.newSince]: fresh ? newSinceText(a, check.sinceLabel!, check.label) : '',
+    [COMPANY_COLUMNS.links]: capped([...a.links].reverse().join('\n')),
+    [COMPANY_COLUMNS.newSince]: fresh ? capped(newSinceText(a, check.sinceLabel!, check.label)) : '',
     [COMPANY_COLUMNS.newRoles]: fresh ? String(a.newCount) : '',
   };
 }

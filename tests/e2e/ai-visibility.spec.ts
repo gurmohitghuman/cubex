@@ -177,7 +177,8 @@ test('the app: make the table from the dashboard, ask from its guide', async ({ 
 
   const sheetId = new URL(page.url()).pathname.split('/').pop()!
   await until(() => rowsOf(api, sheetId), r => r.length === 2 && r.every(x => x['Named by'] === '2 of 4'), 'answers')
-  await expect(page.locator('.ag-cell').filter({ hasText: '2 of 4' }).first()).toBeVisible({ timeout: 15_000 })
+  // A derived cell reaches the open grid within seconds of the API having it (reloadPacer.ts).
+  await expect(page.locator('.ag-cell').filter({ hasText: '2 of 4' }).first()).toBeVisible({ timeout: 5_000 })
   await page.screenshot({ path: process.env.AIV_SHOTS ? `${process.env.AIV_SHOTS}/answers.png` : undefined })
   await api.dispose()
 })
