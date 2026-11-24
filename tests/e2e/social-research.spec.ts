@@ -43,8 +43,9 @@ test('social_research: create, find posts, find again, run a step', async () => 
   expect(await column(api, tiktok, 'Search')).toEqual(['morning routine', 'morning routine', 'morning routine'])
   await expect.poll(() => column(api, tiktok, 'Posted'), { timeout: 15_000 })
     .toEqual([1795000000, 1794740800, 1794481600].map(s => new Date(s * 1000).toISOString().slice(0, 10)))
+  // A list run's rows are added just after it ends (the drain), so they're waited for.
+  await expect.poll(async () => (await column(api, youtube, 'Video id')).length, { timeout: 15_000 }).toBeGreaterThan(0)
   const ytPosts = await column(api, youtube, 'Video id')
-  expect(ytPosts.length).toBeGreaterThan(0)
   await expect.poll(async () => (await column(api, youtube, 'Post'))[0], { timeout: 15_000 })
     .toBe(`https://www.youtube.com/watch?v=${ytPosts[0]}`)
   const day = (back: number) =>

@@ -26,6 +26,12 @@ export const socialOfTable = (userId: string, tableId: string): SocialRecord | u
   db.prepare('SELECT * FROM social_research WHERE table_id = ? AND user_id = ? ORDER BY created_at LIMIT 1')
     .get(tableId, userId) as SocialRecord | undefined;
 
+// The record a sheet belongs to (its Searches, a Posts sheet or Comments), for the app's guide above the grid.
+export const socialForSheet = (userId: string, sheetId: string): SocialRecord | undefined =>
+  db.prepare(`SELECT * FROM social_research WHERE user_id = ? AND (searches_sheet_id = ? OR comments_sheet_id = ?
+    OR EXISTS (SELECT 1 FROM json_each(posts_sheets) WHERE value = ?)) ORDER BY created_at LIMIT 1`)
+    .get(userId, sheetId, sheetId, sheetId) as SocialRecord | undefined;
+
 export function sheetLive(userId: string, sheetId: string | null): boolean {
   return !!sheetId && !!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
     .get(sheetId, userId);

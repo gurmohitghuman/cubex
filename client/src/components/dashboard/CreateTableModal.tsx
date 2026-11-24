@@ -4,6 +4,7 @@ import { Modal } from '@/components/Modal'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
 import { HiringButton } from '@/components/hiring/HiringDialog'
+import { SocialButton } from '@/components/social/SocialDialog'
 
 interface CreateTableModalProps {
   isOpen: boolean
@@ -82,6 +83,10 @@ export const CreateTableModal: React.FC<CreateTableModalProps> = ({ isOpen, onCl
         <HiringButton className="w-full mt-3" />
         <p className="text-xs text-gray-500 mt-2 text-center">
           A table of the companies hiring for the roles you name, and what's new at each check.
+        </p>
+        <SocialButton className="w-full mt-3" />
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          The posts on a topic that did well, why they work, and who made them.
         </p>
       </div>
     </Modal>
