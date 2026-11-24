@@ -35,7 +35,7 @@ export interface RunCtx {
   cooldown: Cooldown;                     // providers its waterfalls leave out for now (enrich-providers.ts)
   providerNames?: Record<string, string>; // treg's provider ids -> the names the run shows
   reuseDays?: number;                     // found answers this young are reused (0: call every row)
-  rateLimitRetries?: number;              // provider 429 retries per row (absent: ENRICH_PROVIDER_RATE_RETRIES)
+  rateLimitRetries?: number;              // 429 retries per call unless the call shares a count (absent: the default)
 }
 
 export type StepResult =

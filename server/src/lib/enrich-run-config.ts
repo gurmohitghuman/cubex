@@ -58,7 +58,8 @@ export interface EnrichmentBlock {
   // This run alone calls every row, reusing no earlier found answer
   // (services/enrich-reuse.ts); reruns and auto-run don't repeat it.
   noReuse?: boolean;
-  // Retries per row on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX); absent: ENRICH_PROVIDER_RATE_RETRIES.
+  // Retries on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX), for each row's call (a verified email
+  // row's finds and checks share one count); absent: ENRICH_PROVIDER_RATE_RETRIES.
   rateLimitRetries?: number;
   // The per-row cap sent as X-Treg-Route-Max-Cost (the email loop's budget for
   // all its calls); null for a tool with no known price, which the provider bills.
@@ -82,7 +83,7 @@ export function enrichConcurrency(config: { batchSize?: number }): number {
   return Math.max(1, Math.min(config.batchSize ?? ENRICH_DEFAULT_CONCURRENCY, HTTP_MAX_CONCURRENCY));
 }
 
-// Retries a row gets when providers answer 429: its own (0..ENRICH_PROVIDER_RATE_RETRIES_MAX), else the default.
+// Retries a call gets when providers answer 429: the run's own (0..ENRICH_PROVIDER_RATE_RETRIES_MAX), else the default.
 export function enrichRateLimitRetries(value: number | null | undefined): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) return ENRICH_PROVIDER_RATE_RETRIES;
   return Math.max(0, Math.min(value, ENRICH_PROVIDER_RATE_RETRIES_MAX));

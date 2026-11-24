@@ -1,3 +1,4 @@
+// Over 200 lines: one strict parser for the whole start request, so no key gets past unchecked.
 // The start request of a waterfall column (the app's drawer; MCP and /api/v1
 // convert their snake_case arguments to it), parsed strictly (pure): it can
 // spend money, so a key Cubex doesn't know is refused at every level, never

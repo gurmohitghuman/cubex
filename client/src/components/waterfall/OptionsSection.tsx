@@ -71,7 +71,7 @@ export const OptionsSection: React.FC<Props> = ({ sheetId, draft, update, select
         onChange={e => update({ rateLimitRetries: Number(e.target.value) })} />
       <p className="text-xs text-gray-500">
         When an enrichment provider answers 429, Cubex waits and asks again for free (0 to{' '}
-        {ENRICH_PROVIDER_RATE_RETRIES_MAX}, default {ENRICH_PROVIDER_RATE_RETRIES}).
+        {ENRICH_PROVIDER_RATE_RETRIES_MAX}, default {ENRICH_PROVIDER_RATE_RETRIES}). Each step counts its own.
       </p>
     </div>
     <label className="flex items-start gap-2 text-sm text-gray-700">

@@ -123,7 +123,8 @@ export interface WaterfallBlock {
   rows: { mode: EnrichRowsMode; status: EnrichRowsStatus; test: number | null };
   fresh: boolean;                  // "always call again": no reuse, no dry run answers
   noReuse?: boolean;               // this run only ("Rerun this row")
-  // Retries per row on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX); absent: ENRICH_PROVIDER_RATE_RETRIES.
+  // Retries on provider 429s per step: each enrichment step and check counts its own
+  // (0..ENRICH_PROVIDER_RATE_RETRIES_MAX); absent: ENRICH_PROVIDER_RATE_RETRIES.
   rateLimitRetries?: number;
   dry?: WaterfallDry;              // a dry run: writes nothing to the sheet
   // Old saved provider names no longer in treg's catalog that this run ignored.

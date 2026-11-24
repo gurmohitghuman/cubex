@@ -1,3 +1,4 @@
+// Over 200 lines: one option's two ways in (the drawers, then REST and MCP), each checked from start to recall.
 import { test, expect } from '@playwright/test'
 import { authedApi, BASE, makeAccessToken } from './helpers'
 import { callEveryRow, freshTreg, readDb, seedLeadRows, waitRun } from './helpers-enrich'
@@ -16,7 +17,7 @@ const LEADS = [
 const configOf = (runId: string) =>
   readDb(db => JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(runId) as string))
 
-test('Enrichment and Waterfall drawers: rate-limit retries slider sends and recalls its value', async ({ page, context }) => {
+test('Enrichment and Waterfall drawers: the retries slider sends and recalls its value', async ({ page, context }) => {
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1600, height: 1000 })
   const api = await authedApi()
@@ -36,8 +37,9 @@ test('Enrichment and Waterfall drawers: rate-limit retries slider sends and reca
   await expect(enrichSlider).toHaveValue('5')
   await enrichSlider.fill('2')
   await expect(enrichDrawer).toContainText('Retries on rate limits: up to 2 times')
-  const enrichStartReq = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/enrich/sheets/${sheetId}/runs`))
-  const enrichStartRes = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(`/enrich/sheets/${sheetId}/runs`))
+  const enrichRuns = `/enrich/sheets/${sheetId}/runs`
+  const enrichStartReq = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(enrichRuns))
+  const enrichStartRes = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(enrichRuns))
   await enrichDrawer.getByTestId('enrich-run-all').click()
   await page.getByRole('dialog').filter({ hasText: 'Run the enrichment' }).getByRole('button', { name: 'Run' }).click()
   expect((await enrichStartReq).postDataJSON().rateLimitRetries).toBe(2)
@@ -46,7 +48,8 @@ test('Enrichment and Waterfall drawers: rate-limit retries slider sends and reca
   expect(configOf(enrichRunId).enrichment.rateLimitRetries).toBe(2)
   await enrichDrawer.getByTestId('enrich-view-results').click()
 
-  await page.locator('.ag-header-cell').filter({ hasText: 'Verified work email' }).first().locator('.ag-header-cell-text').first().click()
+  await page.locator('.ag-header-cell').filter({ hasText: 'Verified work email' }).first()
+    .locator('.ag-header-cell-text').first().click()
   await page.getByText('Edit enrichment').click()
   await expect(enrichDrawer.getByText('Rows and limits', { exact: true })).toBeVisible({ timeout: 15_000 })
   if (!(await enrichDrawer.getByTestId('enrich-rate-limit-retries').isVisible())) {
@@ -65,8 +68,9 @@ test('Enrichment and Waterfall drawers: rate-limit retries slider sends and reca
   await wfSlider.fill('8')
   await expect(wfDrawer).toContainText('Retries on rate limits: up to 8 times')
   await expect(wfDrawer.getByTestId('waterfall-estimate')).toContainText('a row on average', { timeout: 15_000 })
-  const wfStartReq = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/waterfall/sheets/${sheetId}/runs`))
-  const wfStartRes = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(`/waterfall/sheets/${sheetId}/runs`))
+  const wfRuns = `/waterfall/sheets/${sheetId}/runs`
+  const wfStartReq = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(wfRuns))
+  const wfStartRes = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith(wfRuns))
   await wfDrawer.getByRole('button', { name: 'Run', exact: true }).click()
   await page.getByRole('button', { name: 'Run', exact: true }).last().click()
   expect((await wfStartReq).postDataJSON().rateLimitRetries).toBe(8)
@@ -80,12 +84,13 @@ test('Enrichment and Waterfall drawers: rate-limit retries slider sends and reca
   await page.keyboard.press('Escape')
   await expect(wfDrawer).toBeHidden({ timeout: 5_000 })
 
-  const wfSetup = await (await api.get(`/api/waterfall/sheets/${sheetId}/column-setup?column=${encodeURIComponent(wfCol)}`)).json()
+  const wfSetup = await (await api.get(
+    `/api/waterfall/sheets/${sheetId}/column-setup?column=${encodeURIComponent(wfCol)}`)).json()
   expect(wfSetup.input.rateLimitRetries).toBe(8)
   await api.dispose()
 })
 
-test('REST /api/v1 and MCP: rate_limit_retries is validated (0-10), stored and kept on reruns and describe', async () => {
+test('REST and MCP: rate_limit_retries is checked (0-10), stored and kept on reruns and describe', async () => {
   test.setTimeout(120_000)
   const api = await authedApi()
   await freshTreg(api)
@@ -154,7 +159,8 @@ test('REST /api/v1 and MCP: rate_limit_retries is validated (0-10), stored and k
     { timeout: 30_000 }).toBe('completed')
   expect(configOf(wfRunId).waterfall.rateLimitRetries).toBe(7)
 
-  const gotWf = await api.get(`/api/v1/sheets/${sheetId}/waterfall-columns/${encodeURIComponent('REST WF')}`, { headers: auth })
+  const gotWf = await api.get(
+    `/api/v1/sheets/${sheetId}/waterfall-columns/${encodeURIComponent('REST WF')}`, { headers: auth })
   expect(gotWf.status()).toBe(200)
   expect((await gotWf.json()).rate_limit_retries).toBe(7)
 

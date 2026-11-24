@@ -36,8 +36,9 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + `${DAILY_LIMIT_NOTE} `
   + 'Speed: concurrency is the lever (a waterfall row can take seconds). A row whose providers all answered 429 '
   + `waits and asks again for free (rate_limit_retries, 0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
-  + `${ENRICH_PROVIDER_RATE_RETRIES}), then fails; lower concurrency for a `
-  + 'provider that keeps answering 429 (ContactOut\'s free email check on treg\'s own key takes about 20 calls '
+  + `${ENRICH_PROVIDER_RATE_RETRIES}; a verified_email row's finds and checks share the count), then fails; `
+  + 'lower concurrency for a provider that keeps answering 429 '
+  + '(ContactOut\'s free email check on treg\'s own key takes about 20 calls '
   + 'a minute for all of treg). Each running row holds max_cost_per_row_usd against the daily and run '
   + 'limits, so those also cap how many run at once. '
   + 'Waterfall tools ask providers in turn until one finds it. preset verified_email (the email finder only) '
@@ -129,8 +130,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         .describe(`Rows at once (1-${HTTP_MAX_CONCURRENCY}, default ${ENRICH_DEFAULT_CONCURRENCY}). `
           + 'Reruns and auto-run keep it'),
       rate_limit_retries: z.number().int().min(0).max(ENRICH_PROVIDER_RATE_RETRIES_MAX).optional()
-        .describe(`Retries on provider 429s (0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
-          + `${ENRICH_PROVIDER_RATE_RETRIES}). Reruns keep it`),
+        .describe(`Retries on provider 429s for each row (0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
+          + `${ENRICH_PROVIDER_RATE_RETRIES}; a verified_email row's finds and checks share them). Reruns keep it`),
       rows: z.enum(['any', 'not_enriched', 'no_result', 'failed', 'out_of_date', 'empty_or_out_of_date']).optional()
         .describe('Which rows. out_of_date: a result whose input cells changed since. All but any and not_enriched '
           + 'need add_to_column. Default: any (not_enriched with add_to_column)'),

@@ -155,8 +155,8 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once, 1-${HTTP_MAX_CONCURRENCY} (default ${ENRICH_DEFAULT_CONCURRENCY})`),
       rate_limit_retries: z.number().int().min(0).max(ENRICH_PROVIDER_RATE_RETRIES_MAX).optional()
-        .describe(`Retries on provider 429s, 0-${ENRICH_PROVIDER_RATE_RETRIES_MAX} (default `
-          + `${ENRICH_PROVIDER_RATE_RETRIES})`),
+        .describe(`Retries on provider 429s per step: each enrichment step and check counts its own, `
+          + `0-${ENRICH_PROVIDER_RATE_RETRIES_MAX} (default ${ENRICH_PROVIDER_RATE_RETRIES})`),
       fresh: lenientBoolean().optional().describe('true: call every step again instead of reusing answers'),
       estimate_only: lenientBoolean().optional().describe('Default TRUE: price it, create nothing'),
       dry_run: lenientBoolean().optional()
