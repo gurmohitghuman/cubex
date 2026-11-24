@@ -1,6 +1,6 @@
 // Enrichment (treg.to) constants, split out of constants.ts (200-line guardrail).
 // Import via './constants', which re-exports this module.
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // treg's API. An operator may point Cubex at a self-hosted treg, and the e2e
 // harness at a mock; it never comes from user input, so (like OpenRouter's
@@ -77,7 +77,7 @@ export const ENRICH_LIST_FIELD_SAMPLE = 20;
 export const ENRICH_LIST_DRAIN_ATTEMPTS = 5;
 // Waits before retrying a call with the same key: treg busy or a key still in
 // flight, treg unreachable, a provider's own rate limit.
-export const ENRICH_RETRY_MS = envInt('ENRICH_RETRY_MS', 5_000);
+export const ENRICH_RETRY_MS = envMs('ENRICH_RETRY_MS', 5_000);
 export const ENRICH_UNREACHABLE_RETRY_MS = 10_000;
 // The first "no answer" of a call (often a reused connection the far end had
 // just closed) is retried sooner.
@@ -87,8 +87,8 @@ export const ENRICH_FIRST_RETRY_MS = 1_000;
 // (or the provider's Retry-After) up to the most, half of it random so the
 // run's rows don't all ask at once. A free provider on treg's own key can be
 // shared by all of treg (ContactOut's verify: about 20 calls a minute).
-export const ENRICH_PROVIDER_RATE_RETRY_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MS', 15_000);
-export const ENRICH_PROVIDER_RATE_RETRY_MAX_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MAX_MS', 120_000);
+export const ENRICH_PROVIDER_RATE_RETRY_MS = envMs('ENRICH_PROVIDER_RATE_RETRY_MS', 15_000);
+export const ENRICH_PROVIDER_RATE_RETRY_MAX_MS = envMs('ENRICH_PROVIDER_RATE_RETRY_MAX_MS', 120_000);
 export const ENRICH_PROVIDER_RATE_RETRIES = 5;
 export const ENRICH_PROVIDER_RATE_RETRIES_MAX = 10;
 // A provider's 5xx (or no answer from it) is asked again this many times.
@@ -101,7 +101,7 @@ export const ENRICH_DAILY_LIMIT_MAX_USD = 100_000;
 
 // Background loops in the API process. Auto-run looks for rows to fill every
 // AUTORUN_SWEEP_MS (tests shorten it) and takes at most AUTORUN_MAX_ROWS a run.
-export const AUTORUN_SWEEP_MS = envInt('AUTORUN_SWEEP_MS', 15_000);
+export const AUTORUN_SWEEP_MS = envMs('AUTORUN_SWEEP_MS', 15_000);
 export const AUTORUN_MAX_ROWS = 500;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
@@ -115,13 +115,13 @@ export const AUTORUN_NOTICE_PRICE_MS = 3_000;
 export const AGENT_ANSWER_MAX_CHARS = 32 * 1024;
 // A sort, row delete or column change refused because auto-run was busy holds
 // new auto-runs on that sheet this long, so the user's retry goes through.
-export const AUTORUN_USER_YIELD_MS = envInt('AUTORUN_USER_YIELD_MS', 2 * 60 * 1000);
+export const AUTORUN_USER_YIELD_MS = envMs('AUTORUN_USER_YIELD_MS', 2 * 60 * 1000);
 // Stops treg may clear on its own (unreachable, balance, its own caps) are retried this long after.
-export const AUTORUN_RETRY_MS = envInt('AUTORUN_RETRY_MS', 5 * 60 * 1000);
+export const AUTORUN_RETRY_MS = envMs('AUTORUN_RETRY_MS', 5 * 60 * 1000);
 // Rows read per page while looking for rows to fill.
 export const AUTORUN_SCAN_PAGE = 2_000;
 // List results waiting in the journal are added as rows this often.
-export const ENRICH_LIST_DRAIN_MS = envInt('ENRICH_LIST_DRAIN_MS', 5_000);
+export const ENRICH_LIST_DRAIN_MS = envMs('ENRICH_LIST_DRAIN_MS', 5_000);
 // Journal rows read per destination per drain round (each is added in its own transaction).
 export const ENRICH_LIST_DRAIN_BATCH = 200;
 // A drain round counts a destination's rows once and carries the number on;
@@ -130,7 +130,7 @@ export const ENRICH_LIST_RECOUNT_SLACK = 10_000;
 
 // Stored answers (services/answer-prune.ts): ended runs that enriched rows
 // again are looked for this often; results are read and pruned this many at a time.
-export const ANSWER_PRUNE_SWEEP_MS = envInt('ANSWER_PRUNE_SWEEP_MS', 30_000);
+export const ANSWER_PRUNE_SWEEP_MS = envMs('ANSWER_PRUNE_SWEEP_MS', 30_000);
 export const ANSWER_PRUNE_SLICE = 500;
 // Settings' "Prune details older than 90 days", and how old the stored
 // answers' size may get before opening Settings counts it again.
@@ -141,7 +141,7 @@ export const STORED_ANSWERS_RECOUNT_MS = 60 * 60 * 1000;
 // would reuse one before it answers with what it counted so far.
 export const ENRICH_REUSE_DAYS_DEFAULT = 30;
 export const ENRICH_REUSE_DAYS_MAX = 365;
-export const ENRICH_REUSE_COUNT_MS = envInt('ENRICH_REUSE_COUNT_MS', 1_500);
+export const ENRICH_REUSE_COUNT_MS = envMs('ENRICH_REUSE_COUNT_MS', 1_500);
 
 // The checker the "Verified work email" preset runs on each found address.
 export const ENRICH_VERIFY_TOOL_ID = 'treg.people.email.verify';
@@ -176,7 +176,7 @@ export const ENRICH_FEATURED: FeaturedJob[] = [
 // out of that run's waterfalls for the cool-down, then asked again
 // (services/enrich-providers.ts). Its rows go to the next provider meanwhile.
 export const ENRICH_COOLDOWN_AFTER_429S = envInt('ENRICH_COOLDOWN_AFTER_429S', 3);
-export const ENRICH_PROVIDER_COOLDOWN_MS = envInt('ENRICH_PROVIDER_COOLDOWN_MS', 5 * 60 * 1000);
+export const ENRICH_PROVIDER_COOLDOWN_MS = envMs('ENRICH_PROVIDER_COOLDOWN_MS', 5 * 60 * 1000);
 // treg's own "shared key busy" 429 (share_busy) says when to retry: never sooner
 // than this, never later than the other.
 export const ENRICH_SHARE_BUSY_MIN_MS = 1_000;
