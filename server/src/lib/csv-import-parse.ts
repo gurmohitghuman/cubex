@@ -57,10 +57,12 @@ class KeySanitizer {
 
   // Two distinct raw keys can sanitize to the SAME name (`Name` + `Name\`); a
   // blind rebuild would overwrite one column's cell with the other's. Reject.
-  row(raw: Record<string, unknown>): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  // A null-prototype row, so a column named "__proto__" is an own key like any other (as parseCellMap's rows are).
+  row(raw: Record<string, unknown>, names: Map<string, string>): Record<string, unknown> {
+    const out: Record<string, unknown> = Object.create(null);
     const sanitizedToRaw = new Map<string, string>();
-    for (const [rawKey, v] of Object.entries(raw)) {
+    for (const [stood, v] of Object.entries(raw)) {
+      const rawKey = names.get(stood) ?? stood;
       const k = this.key(rawKey);
       const prevRaw = sanitizedToRaw.get(k);
       if (prevRaw !== undefined && prevRaw !== rawKey) throw collision(prevRaw, rawKey, k);
@@ -100,14 +102,31 @@ function fileHead(filePath: string): string {
   } finally { fs.closeSync(fd); }
 }
 
+// csv-parser drops the columns it can't use as plain object keys (it gives null for "__proto__", "constructor" and
+// "prototype", so the file failed to import). They go through it under a name of their own (a NUL and the column's
+// place: a NUL can't survive in a column name, sanitizeColumnName strips it) and are named back here.
+const OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 // Sanitized rows, one at a time. The sanitizer comes from the header line.
-async function* sanitizedRows(source: Readable, separator: string, onHeaders: (s: KeySanitizer) => void): AsyncGenerator<Record<string, unknown>> {
+async function* sanitizedRows(
+  source: Readable, separator: string, onHeaders: (s: KeySanitizer) => void,
+): AsyncGenerator<Record<string, unknown>> {
   let sanitizer: KeySanitizer | null = null;
-  const parser = source.pipe(csv({ separator }));
+  const names = new Map<string, string>();
+  const mapHeaders = ({ header, index }: { header: string; index: number }) => {
+    if (!OBJECT_KEYS.has(header)) return header;
+    const stood = `\u0000${index}`;
+    names.set(stood, header);
+    return stood;
+  };
+  const parser = source.pipe(csv({ separator, mapHeaders }));
   parser.on('headers', (h: string[]) => {
-    try { sanitizer = new KeySanitizer(h); onHeaders(sanitizer); } catch (err) { parser.destroy(err as Error); }
+    try {
+      sanitizer = new KeySanitizer(h.map(x => names.get(x) ?? x));
+      onHeaders(sanitizer);
+    } catch (err) { parser.destroy(err as Error); }
   });
-  for await (const raw of parser) yield sanitizer!.row(raw as Record<string, unknown>);
+  for await (const raw of parser) yield sanitizer!.row(raw as Record<string, unknown>, names);
   if (!sanitizer) onHeaders(new KeySanitizer([])); // an empty file has no header line
 }
 
