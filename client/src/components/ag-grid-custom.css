@@ -369,5 +369,7 @@
 }
 .ag-theme-alpine .ag-cell:hover .cube-run-row,
 .ag-theme-alpine .ag-cell-focus .cube-run-row,
+.ag-theme-alpine .ag-cell:focus .cube-run-row,
+.ag-theme-alpine .ag-cell:focus-within .cube-run-row,
 .ag-theme-alpine .cube-run-row:focus-visible { display: inline-flex; }
 .ag-theme-alpine .cube-run-row:hover { background: #f3f4f6; }
