@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { authedApi, seedSheet, BASE } from './helpers'
 
+// Over 200 lines: what a modal menu gave and each menu still does, on the sheet and the dashboard, read together.
 // Menus are not modal (client components/ui/menu-shield.tsx) and keep what a modal menu gave: a click or a tap
 // outside closes the menu and does nothing else (the grid under it doesn't select a cell, another column's menu
 // doesn't open, a button doesn't act), the wheel doesn't scroll the grid behind it, Escape closes it, and focus goes
@@ -177,8 +178,72 @@ test('two toolbar menus in a row: the second opens on the first click', async ({
   await expect(page.getByTestId('sheet-history')).toBeVisible()
 })
 
+// The dashboard's rows open their table on a click or on Enter, and each holds a ⋯ menu.
+const DASH_ROW = 'div[role=button][tabindex="0"]:has(button[aria-label="Table actions"])'
+const dashActions = (page: Page) => page.locator('button[aria-label="Table actions"]').first()
+
+// The keys of a row's ⋯ button and menu reach the row through React too: only the row's own Enter opens the table.
+test('the dashboard: Enter on a row\'s ⋯ opens its menu, Enter on an entry acts, the row\'s Enter opens it', async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/dashboard`)
+  const actions = dashActions(page)
+  await expect(actions).toBeVisible({ timeout: 15_000 })
+  await actions.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator(MENU)).toBeVisible()
+  await expect.poll(() => focusedText(page)).toMatch(/^Rename/)
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Rename Table' })).toBeVisible()
+  await expect(page).toHaveURL(/\/dashboard$/)
+
+  await page.goto(`${BASE}/dashboard`)
+  await page.locator(DASH_ROW).first().focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/table\//)
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  // A menu inside something a click opens: a dashboard row opens its table. The shield's events must not reach
+  // the menu's React parents (a finger's tap ends with its click on the shield, under the open menu).
+  test('a dashboard row\'s ⋯: a tap opens its menu and nothing else; a tap outside closes it and stays', async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/dashboard`)
+    const actions = dashActions(page)
+    await expect(actions).toBeVisible({ timeout: 15_000 })
+    const below = async () => {
+      const box = await page.locator(DASH_ROW).last().boundingBox()
+      await page.touchscreen.tap(195, Math.min(box!.y + box!.height + 120, 820))
+    }
+    await actions.tap()
+    await expect(page.locator(MENU)).toBeVisible()
+    await page.waitForTimeout(300)
+    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page.locator(MENU)).toBeVisible()
+
+    await below()
+    await noMenu(page)
+    await page.waitForTimeout(300)
+    await expect(page).toHaveURL(/\/dashboard$/)
+
+    // Opened from the keyboard, then a tap outside.
+    await actions.focus()
+    await page.keyboard.press(' ')
+    await expect(page.locator(MENU)).toBeVisible()
+    await below()
+    await noMenu(page)
+    await page.waitForTimeout(300)
+    await expect(page).toHaveURL(/\/dashboard$/)
+
+    // Its entries can be reached: Rename opens its dialog, on the dashboard still.
+    await actions.tap()
+    await page.getByRole('menuitem', { name: 'Rename' }).tap()
+    await expect(page.getByRole('heading', { name: 'Rename Table' })).toBeVisible()
+    await expect(page).toHaveURL(/\/dashboard$/)
+  })
 
   test('a tap outside a menu closes it and does nothing else', async ({ page }) => {
     await page.getByTestId('data-menu').tap()

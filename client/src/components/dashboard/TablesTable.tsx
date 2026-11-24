@@ -40,14 +40,16 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
       </div>
 
       {/* Rows — the whole row is the click target (opens the table). The ⋯ menu
-          stops propagation so opening the menu doesn't also open the table. */}
+          stops propagation so opening the menu doesn't also open the table. Enter
+          opens it only from the row itself: the keys of its ⋯ button and its menu
+          reach the row through React too. */}
       {tables.map((table) => (
         <div
           key={table.id}
           role="button"
           tabIndex={0}
           onClick={() => navigate(`/table/${table.id}`)}
-          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/table/${table.id}`) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) navigate(`/table/${table.id}`) }}
           className={`group grid ${COLS} items-center gap-x-4 px-4 h-14 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus:bg-gray-50`}
         >
           {/* Name */}
