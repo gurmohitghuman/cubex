@@ -9,7 +9,9 @@
 // writing nothing, until restart: true starts over. When the data_version
 // write itself meets the lock (held for seconds), it never waits on the event
 // loop: it is tried again on a timer and moves once the lock is let go, with no
-// other call, the loop never held 200 ms meanwhile.
+// other call, the loop never held 200 ms meanwhile. Where a server makes the -wal file its full size at start
+// (Windows), so does this, after the migrations: no write in that case grows it (on the Windows runner a commit that
+// did could wait on the OS, off the CPU). A hold of 50 ms or more prints the transactions in it.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { Worker } from 'node:worker_threads'
@@ -21,7 +23,7 @@ import sortMod from '../../server/src/services/sheet-sort'
 import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
 import { heldText, loopWatch } from './loop-watch'
-import { sqliteWriteProbe } from './sqlite-write-probe'
+import { sizeWalLikeAServer, sqliteWriteProbe, transactionLine, walGrowth } from './sqlite-write-probe'
 import { toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -30,6 +32,7 @@ const { physicalSortSheet } = sortMod as typeof import('../../server/src/service
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
+const walSized = sizeWalLikeAServer(db, process.env.DB_PATH!)
 console.warn = () => {}
 const requireHere = createRequire(import.meta.url)
 const fault = transformPageFault(db)
@@ -163,6 +166,7 @@ async function main() {
     // The call's one page commits, then the other connection takes the lock and holds it 3 s.
     const holder = await lockHolder(3000)
     const before = dataVersion(late)
+    const grown = walGrowth(process.env.DB_PATH!, walSized)
     const watch = loopWatch(probe.records)
     await watch.ready
     let watched: ReturnType<typeof watch> | undefined
@@ -177,7 +181,9 @@ async function main() {
       watched = watch()
       console.log(`      ${heldText(watched)} (of it, ${holder.lockMs()} ms the test's own wait for the other `
         + 'connection to take the lock)')
+      if (watched.ownMs >= 50) console.log(`      in it: ${watched.inside.map(transactionLine).join(' | ') || 'none'}`)
     }
+    assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
     assert.ok(watched.ownMs < 200, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
   })
 }

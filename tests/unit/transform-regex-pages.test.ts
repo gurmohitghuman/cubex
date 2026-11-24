@@ -6,6 +6,8 @@
 // call, naming the row: refused, writing no cell, when no row of the pass is written; otherwise `stopped`, the rows
 // before it written, with the cursor. The event loop keeps answering throughout, a pattern that works extracts what
 // the API thread would, and a row changed between the worker's read and the page's transaction is read again.
+// Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations: no write
+// in a watched call grows it (on the Windows runner a commit that did could wait on the OS, off the CPU).
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -17,7 +19,7 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import walConstMod from '../../server/src/lib/constants-wal'
 import { watchWhile } from './loop-watch'
-import { sqliteWriteProbe } from './sqlite-write-probe'
+import { sizeWalLikeAServer, sqliteWriteProbe, walGrowth } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -31,6 +33,7 @@ type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
+const walSized = sizeWalLikeAServer(db, process.env.DB_PATH!)
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
 console.warn = () => {}
 
@@ -89,10 +92,14 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The most this thread alone held the event loop while `fn` ran (loop-watch.ts; printed from LOOP_MS), and its answer.
+// The most this thread alone held the event loop while `fn` ran (loop-watch.ts; printed, with the transactions in
+// it, from PRINT_MS), and its answer; none of its writes grew the -wal file.
 const LOOP_MS = 100
+const PRINT_MS = 50
 async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
-  const { out, watched: w } = await watchWhile(probe.records, fn, LOOP_MS)
+  const grown = walGrowth(process.env.DB_PATH!, walSized)
+  const { out, watched: w } = await watchWhile(probe.records, fn, PRINT_MS)
+  assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
   return { out, lag: w.ownMs }
 }
 
