@@ -50,6 +50,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
           + 'wait longer for tight provider limits.',
       },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
+          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
+          + 'row_count_updating: true.',
+        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
+          + 'the new count. GET /api/v1/tables answers the same.',
+      },
     ],
   },
   {
