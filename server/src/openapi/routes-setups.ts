@@ -83,6 +83,39 @@ export const setupRoutes = (): RouteDoc[] => [
     responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
   }),
   op({
+    method: 'get', path: '/run-schedules', operationId: 'listRunSchedules', tag: 'setups', scope: 'read',
+    summary: "Scheduled reruns: yours, a sheet's (with its table's) or a table's, soonest first.",
+    query: z.object({
+      sheet_id: z.string().optional().describe("A sheet's schedules, and its table's."),
+      table_id: z.string().optional().describe("A table's schedules, and its sheets'."),
+    }),
+  }),
+  op({
+    method: 'get', path: '/run-schedules/{id}', operationId: 'getRunSchedule', tag: 'setups', scope: 'read',
+    summary: 'One schedule: its settings, next firing and last firing.',
+  }),
+  op({
+    method: 'post', path: '/run-schedules', operationId: 'createRunSchedule', tag: 'setups', scope: 'run',
+    summary: "Rerun a sheet's (or a table's) run columns on a schedule.",
+    description: 'Each firing is a column run as this token. A firing missed while Cubex was stopped runs once.',
+    body: toolBody('manage_run_schedule', { omit: ['action', 'schedule_id'] }),
+    responses: { 201: 'The schedule.' },
+  }),
+  op({
+    method: 'patch', path: '/run-schedules/{id}', operationId: 'changeRunSchedule', tag: 'setups', scope: 'run',
+    summary: 'Change a schedule, or pause or resume it (paused).',
+    body: toolBody('manage_run_schedule', { omit: ['action', 'schedule_id', 'sheet_id', 'table_id'],
+      extend: { paused: z.boolean().optional().describe('true pauses it; false resumes it from now.') } }),
+  }),
+  op({
+    method: 'delete', path: '/run-schedules/{id}', operationId: 'deleteRunSchedule', tag: 'setups', scope: 'run',
+    summary: 'Delete a schedule. Runs it started stay.',
+  }),
+  op({
+    method: 'post', path: '/run-schedules/{id}/fire', operationId: 'fireRunSchedule', tag: 'setups', scope: 'run',
+    summary: 'Fire a schedule once now; its next time stays as it was.',
+  }),
+  op({
     method: 'get', path: '/sheets/{id}/setup-runs', operationId: 'listSetupRuns', tag: 'setups', scope: 'read',
     summary: 'The setups being used on a sheet, newest first.',
     query: z.object({ setup_id: z.string().optional().describe("Only this setup's runs.") }),

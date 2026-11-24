@@ -40,6 +40,11 @@ export const applySetup = obj({
 export const runColumns = obj({
   setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,
 });
+// Scheduled reruns (tools-run-schedules.ts): the schedules (list), one schedule, or what was deleted.
+export const manageRunSchedule = obj({
+  schedules: opt(z.array(info('A schedule'))), schedule: opt(info('The schedule: its settings, next_at, last firing')),
+  deleted: opt(str),
+});
 // No setup_run_id: setup_runs. With one: that setup run.
 export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });
 export const controlSetupRun = obj({ ...setupRun.shape, changed });

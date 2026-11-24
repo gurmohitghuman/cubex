@@ -112,6 +112,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // An estimate changes nothing.
   run_columns: write('Run chosen columns on chosen rows', true, false, true),
   get_setup_run: read('Get a setup run'),
+  manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
   // Saves a version, renames one, or deletes one for good; the sheet itself never changes.
