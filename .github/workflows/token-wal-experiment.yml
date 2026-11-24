@@ -1,0 +1,32 @@
+name: Token WAL experiment
+
+# Temporary (removed before review): token-last-used's lock case, repeated on each runner, with the -wal file growing
+# or made its full size first (tests/unit/token-wal.experiment.ts).
+
+on:
+  pull_request:
+
+jobs:
+  experiment:
+    name: Token WAL experiment (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run the experiment
+        shell: bash
+        env:
+          TOKEN_WAL_ROUNDS: '300'
+        run: |
+          d=$(mktemp -d)
+          DB_PATH="$d/unit.db" TMPDIR="$d" TEMP="$d" TMP="$d" npx tsx tests/unit/token-wal.experiment.ts \
+            | grep -v 'Migration applied'
