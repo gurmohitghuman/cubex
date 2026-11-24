@@ -19,6 +19,7 @@ import { tokenStartAiRun, type TokenAiRunArgs } from '../services/run-start-toke
 import { tokenStartHttpRun, type TokenHttpRunArgs } from '../services/run-start-token-http';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt, SHEET_ID } from './tool-helpers';
 import { runIfSchema } from './run-if-schema';
+import { saveOnlySchema } from './save-only-schema';
 import { capToolNote } from '../lib/token-spend';
 import { AI_SPEND_LIMIT_NOTE } from '../lib/ai-spend-limit';
 
@@ -108,6 +109,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           + 'from what it read. Read through Exa, as with max_content_tokens.'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids (from read_rows) to run; omit for all rows'),
         run_if: runIfSchema,
+        save_only: saveOnlySchema('On an existing AI column it replaces the setup. Not with output_columns.'),
         estimate_only: lenientBoolean().optional().describe('Price it and start nothing (no AI calls, no '
           + 'columns): rows_to_process, model, estimated_cost_usd and per_row_usd {low, high}, web_fees_usd, '
           + 'web_search (engine: what the run sends; runs_on: what runs the searches; mode: the one billed), '
@@ -200,6 +202,8 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         status_code_column: z.string().optional().describe('New column to hold the HTTP status code of each row'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids to run; omit for all rows'),
         run_if: runIfSchema,
+        save_only: saveOnlySchema('The only way to change an existing HTTP API column\'s setup: save it, then '
+          + 'rerun the column with control_run.'),
         estimate_only: lenientBoolean().optional().describe('Dry run: return { rows_to_process, ... } and start nothing. HTTP enrichment has no AI cost (runs against your own API).'),
         idempotency_key: idempotencyKeySchema.describe('Stable retry key: retrying with the same key + same args returns the original run_id instead of starting a second run.'),
         webhook_id: webhookIdSchema,

@@ -52,6 +52,8 @@ export interface EnrichRunInput {
   rowGeneration: number | null;
   // A list job: where its results go as rows (null: outputs fill this sheet).
   list: ListInput | null;
+  // Save the setup as the column's and run nothing (services/column-setup-save.ts); not for a list job.
+  saveOnly?: boolean;
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -211,7 +213,7 @@ export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { e
       cleanDomains: b.cleanDomains !== false, providerOrder: order, skipProviders: skip,
       stopAtFirst: b.stopAtFirst === true, email, outputs, rows, conditions, runIf: runIf.ok,
       maxCostPerRowUsd: cap, spendLimitUsd: limit, concurrency, rateLimitRetries, fresh: b.fresh === true,
-      rowGeneration: generationOf(b), list,
+      rowGeneration: generationOf(b), list, saveOnly: b.saveOnly === true,
     },
   };
 }

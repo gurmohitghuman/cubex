@@ -26,6 +26,7 @@ import { asRunStart, seedThenEnqueue, sheetRowSpan } from './run-seed';
 import { startRunRule, ruleSeed } from './run-rule';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
+import { httpColumnExists, plainHttpColumn, saveHttpColumnSetup } from './http-setup-change';
 
 export interface HttpRunStartParams {
   sheetId: string;
@@ -36,11 +37,14 @@ export interface HttpRunStartParams {
   // Run-level saved-key policy. true for UI (cookie) starts; PAT starts pass
   // whether the token holds the 'secrets' scope. Frozen onto the run row.
   allowSecrets: boolean;
+  // Save the setup as the column's and run nothing (services/http-setup-change.ts). Not with targetRowIndexes.
+  saveOnly?: boolean;
 }
 
 export type HttpRunStartOutcome =
   | { ok: {
       runId: string; masterColumn: string; mappedColumns: string[]; targetCount: number; runIf: string | null;
+      saved?: true; // saveOnly: nothing ran; runId is the setup's record
     } }
   | RunFail;
 
@@ -82,7 +86,10 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   // placeholders go in by range), or exactly the caller's rows, all of which
   // must exist, so deleted rows never resurrect.
   const span = sheetRowSpan(p.sheetId, userId);
-  if (span.count === 0) return { fail: 'bad_request', message: 'No data available to process' };
+  if (span.count === 0 && !p.saveOnly) return { fail: 'bad_request', message: 'No data available to process' };
+  if (p.saveOnly && p.targetRowIndexes !== undefined) {
+    return { fail: 'bad_request', message: 'A setup saved without running takes no rows.' };
+  }
   let targets: number[] | null = null;
   if (p.targetRowIndexes !== undefined) {
     targets = Array.from(new Set(p.targetRowIndexes)).sort((a, b) => a - b);
@@ -100,14 +107,20 @@ export async function startHttpRun(userId: string, p: HttpRunStartParams): Promi
   // ONE shared validator: sanitizes the master + mapping names, then rejects
   // case-insensitive mapping dups, master↔mapping collisions, and
   // case-insensitive conflicts with existing columns (Bug 5).
-  const validation = validateHttpRunColumns(
-    p.sheetId, userId, config.responseMapping, proposedMaster, true,
-  );
+  // A plain HTTP API column already there takes a new setup saved without running: its own columns may be
+  // named again (services/http-setup-change.ts). A start that runs is refused, saying so.
+  const existing = p.masterColumnName ? plainHttpColumn(p.sheetId, userId, p.masterColumnName) : null;
+  if (existing && !p.saveOnly) return { fail: 'bad_request', message: httpColumnExists(existing.master) };
+  const validation = validateHttpRunColumns(p.sheetId, userId, config.responseMapping,
+    existing?.master ?? proposedMaster, existing ? { except: existing.own } : true);
   if (!validation.ok) return { fail: 'bad_request', message: validation.error! };
 
   // Use the SANITIZED names everywhere downstream.
   config.responseMapping.forEach((m, i) => { m.columnName = validation.sanitizedMappingColumns![i]; });
   const finalMasterColumnName = validation.sanitizedMaster!;
+  if (p.saveOnly) {
+    return saveHttpColumnSetup(userId, p, config, finalMasterColumnName, !!existing, rule.ok?.rule ?? null);
+  }
   // A column the request reads that a run is still filling, or a stopped one is still putting back, would be
   // sent as "⏳ Processing..." (lib/http-held-inputs.ts).
   const held = heldRequestInput(p.sheetId, userId, config, finalMasterColumnName);

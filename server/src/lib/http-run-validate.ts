@@ -32,8 +32,9 @@ export function validateHttpRunColumns(
   responseMapping: ResponseMapping[] | undefined,
   master: string | undefined,
   // Skip the "already exists on the sheet" check for columns the run legitimately
-  // reuses (preview never creates columns; a rerun targets existing columns).
-  checkExisting: boolean,
+  // reuses (preview never creates columns; a rerun targets existing columns), or
+  // for these columns only (a new setup for a column keeps its own columns).
+  checkExisting: boolean | { except: readonly string[] },
 ): HttpColumnValidation {
   const mappings = Array.isArray(responseMapping) ? responseMapping : [];
 
@@ -100,7 +101,8 @@ export function validateHttpRunColumns(
   // getSheetColumns reads column_order (authoritative), so this catches an
   // existing-but-empty column the old json_extract data-probe would miss.
   if (checkExisting) {
-    const existing = getSheetColumns(sheetId, userId);
+    const own = checkExisting === true ? [] : checkExisting.except;
+    const existing = getSheetColumns(sheetId, userId).filter(c => !own.includes(c));
     const toCreate = sanitizedMaster
       ? [sanitizedMaster, ...sanitizedMappingColumns]
       : sanitizedMappingColumns;

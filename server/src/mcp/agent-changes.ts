@@ -43,6 +43,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'changed',
+        tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column'],
+        summary: 'save_only: true stores a column\'s new setup and runs nothing (no rows, no cost). It answers '
+          + 'saved: true and run_id, the setup\'s record: control_run rerun with it runs the column so.',
+        details: 'A new column is made empty. An existing HTTP API column takes a new setup only this way. Refused '
+          + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
+      },
+      {
+        change: 'changed',
         tools: ['read_rows', 'control_run'],
         summary: 'Out of date now checks each row against the columns its own run read: a new setup that reads other '
           + 'columns no longer marks the rows made before it out of date.',

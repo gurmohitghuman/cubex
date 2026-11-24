@@ -30,10 +30,11 @@ import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { runChanged } from '../mcp/changed';
+import { saveEnrichmentOverToken, saveOnlyOf } from './setup-save-token';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
-  auto_run?: unknown; webhook_id?: unknown;
+  auto_run?: unknown; webhook_id?: unknown; save_only?: unknown;
 }
 
 type AutoRun = { enabled: boolean; dailyCapUsd: number | null } | null;
@@ -64,8 +65,11 @@ export async function tokenStartEnrichmentRun(
   if (Array.isArray(a.target_row_ids) && a.target_row_ids.length > MAX_SELECTED_ROWS) {
     return bad(`target_row_ids takes at most ${MAX_SELECTED_ROWS.toLocaleString('en-US')} rows a run.`);
   }
+  // Read first: with save_only no key replays a run (services/setup-save-token.ts).
+  const save = saveOnlyOf(a as unknown as Record<string, unknown>);
+  if (typeof save === 'object') return bad(save.error);
   const sent = () => (startsRun(a.estimate_only) ? sentArgsHash('enrichment_run', a) : null);
-  const first = replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
+  const first = save ? null : replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
   if (first) return first;
   const busy = busyRefusal(a);
   if (busy) return busy;
@@ -102,6 +106,7 @@ export async function tokenStartEnrichmentRun(
     }
     return { ok: est.ok, started: false };
   }
+  if (save) return saveEnrichmentOverToken(c, sheetId, { ...parsed.ok, saveOnly: true });
   // runIf and rateLimitRetries only when set, so a retry that spans the release still replays.
   const { rowGeneration: _gen, rows, runIf, rateLimitRetries, ...others } = parsed.ok;
   const rest = {

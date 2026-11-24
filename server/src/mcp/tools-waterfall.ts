@@ -15,6 +15,7 @@ import { TEMPLATE_IDS } from '../lib/waterfall/templates';
 import { tokenWaterfall } from '../services/waterfall-token-run';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
+import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
 
@@ -151,6 +152,7 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       use_sheet_filter: lenientBoolean().optional().describe('Only the rows the sheet\'s filter shows'),
       target_row_ids: z.array(z.string()).min(1).max(MAX_SELECTED_ROWS).optional().describe('Only these rows'),
       run_if: runIfSchema,
+      save_only: saveOnlySchema('With add_to_column: true it replaces an existing column\'s setup.'),
       spend_limit_usd: money().optional().describe('The run\'s cap in dollars (default rows x the most a row costs)'),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once, 1-${HTTP_MAX_CONCURRENCY} (default ${ENRICH_DEFAULT_CONCURRENCY})`),

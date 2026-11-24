@@ -17,7 +17,7 @@ export type ChangeAction =
   | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored' | 'sheet_copied'
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
   | 'rows_moved_in' | 'rows_moved_out' | 'sample_created' | 'ai_visibility_created' | 'hiring_created'
-  | 'setup_version_saved' | 'setup_version_restored';
+  | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved';
 
 export interface ChangeExtra { column?: string | null; detail?: Record<string, unknown> }
 
@@ -64,9 +64,11 @@ export interface RunLog {
   kind: 'ai' | 'http' | 'enrichment' | 'waterfall'; column: string; runId: string; rows: number | null;
   again?: boolean; model?: string | null; runIf?: string | null;
 }
+const runKindWords = (kind: RunLog['kind']): string => (kind === 'ai' ? 'the AI column'
+  : kind === 'http' ? 'the HTTP API column' : kind === 'waterfall' ? 'the waterfall' : 'the enrichment');
+
 export function logRunStarted(sheetId: string, userId: string, r: RunLog): void {
-  const what = r.kind === 'ai' ? 'the AI column' : r.kind === 'http' ? 'the HTTP API column'
-    : r.kind === 'waterfall' ? 'the waterfall' : 'the enrichment';
+  const what = runKindWords(r.kind);
   const rows = r.rows === null ? '' : ` on ${countOf(r.rows, 'row')}`;
   logSheetChange(sheetId, userId, 'run_started',
     `${r.again ? 'Ran again' : 'Ran'} ${what} "${r.column}"${rows}${r.model ? ` with ${r.model}` : ''}`,
@@ -104,4 +106,13 @@ export function logAutorunPaused(sheetId: string, userId: string, paused: boolea
   logSheetChange(sheetId, userId, 'auto_run',
     `${paused ? 'Paused' : 'Resumed'} auto-run ${column === undefined ? 'of every column' : `of "${column}"`}`,
     { column: column ?? null, detail: { paused } });
+}
+
+// Someone saved a column's setup without running it (services/column-setup-save.ts): its next run uses it.
+export function logSetupSaved(
+  sheetId: string, userId: string, r: { kind: RunLog['kind']; column: string; setupId: string; runIf?: string | null },
+): void {
+  logSheetChange(sheetId, userId, 'setup_saved',
+    `Saved a new setup for ${runKindWords(r.kind)} "${r.column}" without running it`,
+    { column: r.column, detail: { setup_id: r.setupId, kind: r.kind, run_if: r.runIf ?? null } });
 }

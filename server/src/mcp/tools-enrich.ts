@@ -14,6 +14,7 @@ import { agentSearchTools, agentGetTool } from '../services/enrich-agent-tools';
 import { tokenStartEnrichmentRun, type TokenEnrichArgs } from '../services/enrich-token-run';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
+import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, SHEET_ID, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { capToolNote } from '../lib/token-spend';
 
@@ -145,6 +146,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         value: z.string().optional().describe('What it compares with (not for empty, not_empty)'),
       }).strict()).max(20).optional().describe('Older form of run_if: only rows matching all of these'),
       run_if: runIfSchema,
+      save_only: saveOnlySchema('With add_to_column: true it replaces an existing column\'s setup. '
+        + 'Not for a list job.'),
       list: z.object({
         destination_sheet_id: z.string().optional().describe('A sheet in the same table to add the rows to'),
         new_sheet_name: z.string().max(200).optional().describe('Or a new sheet to make for them'),
