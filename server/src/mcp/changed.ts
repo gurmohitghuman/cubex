@@ -17,6 +17,7 @@ export const WITHOUT_CHANGED: Record<string, string> = {
   set_default_model: 'a model setting, no sheet data',
   manage_view: 'a saved view: filters and hidden columns, no data',
   manage_run_webhook: 'a webhook setting',
+  call_setup: 'runs on its own hidden working table, never a sheet the user has',
   save_setup: 'the setup library',
   delete_setup: 'the setup library',
   manage_setup_version: 'the setup library',

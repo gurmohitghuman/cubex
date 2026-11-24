@@ -23,7 +23,7 @@ router.get('/', (req: AuthRequest, res) => {
     // Explicit client columns (no user_id) — this row is spread into the response
     // below, so `SELECT *` would leak the internal user_id.
     const tables = db.prepare(
-      `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
+      `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
        ORDER BY created_at DESC`,
     ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
     const sheets = liveSheets(req.userId!);

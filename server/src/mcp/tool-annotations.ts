@@ -109,6 +109,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
   apply_setup: write('Use a setup on a sheet', true, false, true),
   get_setup_run: read('Get a setup run'),
+  call_setup: write('Call a setup on items', false, false, true),
+  get_setup_call: read('Get a setup call'),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
   // Saves a version, renames one, or deletes one for good; the sheet itself never changes.

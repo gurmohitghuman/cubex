@@ -39,6 +39,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'added',
+        tools: ['call_setup', 'get_setup_call'],
+        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
+          + 'answers each item\'s outputs once it finishes.',
+        details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
+          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
+          + 'are kept 24 hours.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {

@@ -1,0 +1,119 @@
+// A saved setup called on items without a sheet (services/setup-call.ts), on a migrated throwaway DB, with a free
+// chain of two clean columns: the items checked (count, unknown inputs, cell types); an estimate starts nothing
+// and leaves no working table; a call runs on a hidden working table that no list or count shows, finishes with
+// each item's outputs in the order sent, and its id is the setup run's; the sweep removes the working table once
+// the results have been kept long enough (and an orphan one), and the call is then not found.
+import { v4 as uuid } from 'uuid'
+import dbMod from '../../server/src/lib/db'
+import migMod from '../../server/src/db/migrate'
+import libMod from '../../server/src/services/setup-library'
+import callMod from '../../server/src/services/setup-call'
+import readMod from '../../server/src/services/workspace-read'
+import overviewMod from '../../server/src/services/workspace-overview'
+import trashMod from '../../server/src/services/trash-read'
+import type { SetupSpec } from '../../server/src/lib/setups/spec'
+const { db } = dbMod as typeof import('../../server/src/lib/db')
+const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
+const { insertSetup } = libMod as typeof import('../../server/src/services/setup-library')
+const { callSetup, getSetupCall, sweepSetupCalls } = callMod as typeof import('../../server/src/services/setup-call')
+const { listTablesWithSheets } = readMod as typeof import('../../server/src/services/workspace-read')
+const { workspaceOverview } = overviewMod as typeof import('../../server/src/services/workspace-overview')
+const { listTrash } = trashMod as typeof import('../../server/src/services/trash-read')
+const { setupSweep } = await import('../../server/src/services/setup-sweep')
+
+if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
+runMigrations()
+
+let failures = 0
+function check(label: string, cond: boolean, detail?: unknown) {
+  if (cond) console.log('ok  ', label)
+  else { failures++; console.log('FAIL', label, detail === undefined ? '' : JSON.stringify(detail)) }
+}
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+const uid = uuid()
+db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
+const spec: SetupSpec = { v: 1, inputs: ['Name'], keys: [], steps: [
+  { kind: 'clean', name: 'Trimmed', source: 'Name', cleaner: 'trim', options: {}, autoRun: false },
+  { kind: 'clean', name: 'Lower', source: 'Trimmed', cleaner: 'lowercase', options: {}, autoRun: false },
+] }
+const setup = insertSetup(uid, 'Trim then lower', null, spec)
+if (!('ok' in setup)) throw new Error(JSON.stringify(setup))
+const setupId = setup.ok.id
+const caller = { hasSecretsScope: true }
+const hiddenTables = () => db.prepare('SELECT COUNT(*) FROM tables WHERE hidden = 1 AND trash_id IS NULL')
+  .pluck().get() as number
+
+// The items.
+for (const [label, items, says] of [
+  ['no items', [], 'items must be an array of 1 to 100'],
+  ['101 items', Array.from({ length: 101 }, () => ({ Name: 'x' })), 'items must be an array of 1 to 100'],
+  ['not an array', { Name: 'x' }, 'items must be an array'],
+  ['an input the setup lacks', [{ Name: 'a' }, { Nmae: 'b' }], 'Item 1 has "Nmae", which isn\'t an input'],
+  ['an object as a value', [{ Name: { a: 1 } }], 'Item 0: Value for column "Name" must be a string'],
+] as Array<[string, unknown, string]>) {
+  const out = await callSetup(uid, setupId, items, { estimateOnly: false }, caller)
+  check(`refused: ${label}`, 'fail' in out && out.fail === 'bad_request' && out.message.includes(says), out)
+}
+const missing = await callSetup(uid, uuid(), [{ Name: 'x' }], { estimateOnly: false }, caller)
+check('a setup that isn\'t there: not found', 'fail' in missing && missing.fail === 'not_found', missing)
+check('nothing refused left a working table', hiddenTables() === 0, hiddenTables())
+
+// An estimate: priced, nothing started, no working table left.
+const est = await callSetup(uid, setupId, [{ Name: ' A ' }, { Name: 'B' }], { estimateOnly: true }, caller)
+check('an estimate prices the items and makes the setup\'s columns',
+  'ok' in est && 'estimate' in est.ok && est.ok.items === 2 && est.ok.makes.join() === 'Trimmed,Lower', est)
+check('an estimate leaves no working table', hiddenTables() === 0, hiddenTables())
+
+// A call.
+const items = [{ Name: '  Ada LOVELACE ' }, {}, { Name: 'Grace' }, { Name: 42 }]
+const started = await callSetup(uid, setupId, items, { estimateOnly: false }, caller)
+if (!('ok' in started) || !('setup_call' in started.ok)) throw new Error(JSON.stringify(started))
+const call = started.ok.setup_call
+check('a call starts: running, 4 items, no results yet', call.items === 4 && call.results === undefined
+  && ['running', 'done'].includes(call.status), call)
+check('its id is the setup run\'s', !!db.prepare('SELECT 1 FROM setup_runs WHERE id = ?').get(call.id))
+check('its working table is hidden', hiddenTables() === 1, hiddenTables())
+check('no list shows the working table', (await listTablesWithSheets(uid)).length === 0
+  && workspaceOverview(uid).table_count === 0 && workspaceOverview(uid).active_setup_runs.length === 0)
+check('another user can\'t read it', getSetupCall(uuid(), call.id) === null)
+
+let view = getSetupCall(uid, call.id)!
+for (let i = 0; i < 200 && view.status === 'running'; i++) {
+  await setupSweep()
+  await sleep(50)
+  view = getSetupCall(uid, call.id)!
+}
+check('the call finishes done', view.status === 'done', view)
+check('each item\'s outputs, in the order sent', JSON.stringify(view.results) === JSON.stringify([
+  { item: 0, outputs: { Trimmed: 'Ada LOVELACE', Lower: 'ada lovelace' } },
+  { item: 1, outputs: { Trimmed: null, Lower: null } },
+  { item: 2, outputs: { Trimmed: 'Grace', Lower: 'grace' } },
+  { item: 3, outputs: { Trimmed: '42', Lower: '42' } },
+]), view.results)
+check('kept until 24 hours after it finished', view.keep_until !== null
+  && Math.abs(Date.parse(view.keep_until) - Date.now() - 24 * 3_600_000) < 120_000, view.keep_until)
+check('auto-run is never turned on in a working table',
+  (db.prepare('SELECT COUNT(*) FROM autorun_columns WHERE enabled = 1').pluck().get() as number) === 0)
+
+// The sweep: nothing yet; once the keep time has passed, the working table goes and the call is not found.
+check('the sweep keeps a fresh call', sweepSetupCalls() === 0 && hiddenTables() === 1)
+db.prepare("UPDATE setup_runs SET updated_at = datetime('now', '-25 hours') WHERE id = ?").run(call.id)
+check('the sweep removes it after the keep time', sweepSetupCalls() === 1 && hiddenTables() === 0)
+check('the trash never lists it', listTrash(uid).items.length === 0 && listTrash(uid).total_bytes === 0,
+  listTrash(uid))
+for (let i = 0; i < 100 && db.prepare('SELECT 1 FROM setup_calls WHERE id = ?').get(call.id); i++) await sleep(50)
+check('purged: the call is not found', getSetupCall(uid, call.id) === null
+  && !db.prepare('SELECT 1 FROM tables WHERE hidden = 1').get())
+
+// An orphan working table (a restart between the table and the run) goes after an hour.
+const orphan = uuid()
+db.prepare(`INSERT INTO tables (id, user_id, name, hidden, created_at)
+  VALUES (?, ?, ?, 1, datetime('now', '-2 hours'))`)
+  .run(orphan, uid, 'Setup call orphan')
+check('the sweep removes an orphan working table', sweepSetupCalls() === 1
+  && !db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
+
+if (failures > 0) { console.error(`${failures} setup-call check(s) failed`); process.exit(1) }
+console.log('setup-call: all assertions passed')
+process.exit(0)

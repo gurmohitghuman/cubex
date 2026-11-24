@@ -44,6 +44,8 @@ export interface ApplyInput extends ApplyChoices {
   // then each AI and enrichment step's limit as it starts (setup-ceiling.ts).
   maxCostUsd?: number | null;
   allowUnpriced?: boolean;
+  // A setup call on a hidden working table (setup-call.ts): auto-run is never turned on there.
+  call?: boolean;
 }
 // makes: every column its steps make or carry on; carries_on: the main columns
 // of the steps that carry a column of the sheet on.
@@ -116,7 +118,7 @@ export async function applySetup(
   const id = insertSetupRun({
     userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices, ...kept },
     targetRowIds: rowIds,
-    allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null, webhookId: input.webhookId ?? null,
+    allowSecrets: caller.hasSecretsScope, autoRun: rowIds === null && !input.call, webhookId: input.webhookId ?? null,
   });
   logSheetChange(sheetId, userId, 'setup_used',
     `Used the setup "${setup.name}"${rowIds ? ` on the first ${countOf(rowIds.length, 'row')}` : ''}`,
