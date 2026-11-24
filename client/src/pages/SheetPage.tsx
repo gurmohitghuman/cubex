@@ -20,6 +20,8 @@ import { DescriptionDialog } from '@/components/sheet/DescriptionDialog'
 import { useDescriptions } from '@/hooks/sheet/useDescriptions'
 import { useSheetOps } from '@/hooks/sheet/useSheetOps'
 import { SheetModals } from '@/components/sheet/SheetModals'
+import { SourcesDialog, type SourcesDialogHandle } from '@/components/sheet/SourcesDialog'
+import type { SourcesCell } from '@/components/ScrapedDataModal'
 import { SheetWebhookOverlays } from '@/components/webhook/SheetWebhookOverlays'
 import { useLiveSheetUpdates } from '@/hooks/sheet/useLiveSheetUpdates'
 import { useExternalSheetSync } from '@/hooks/sheet/useExternalSheetSync'
@@ -190,9 +192,11 @@ export const SheetPage: React.FC = () => {
   // Search in the sheet: the box above the grid, "/" on the grid.
   const search = useSheetSearch({ sheetData, viewId: views.active?.id ?? null, grid, loadWindowAt })
 
+  // A "(Data)" cell's sources: the dialog keeps its own state, so opening it leaves the page and the grid alone.
+  const sources = useRef<SourcesDialogHandle>(null)
+  const openSources = useCallback((cell: SourcesCell) => sources.current?.open(cell), [])
   const view = useSheetView({
-    activeSheet, sheetData, emptyFilter,
-    setScrapedDataModal: modals.setScrapedDataModal,
+    activeSheet, sheetData, emptyFilter, openSources,
     reloadSheet: () => loadSheetDataRef.current(activeSheet?.id ?? ''),
     waitForSaves: cellOps.waitForSaves,
     clearSelection: () => cellOps.setSelectedRowIndices([]),
@@ -342,6 +346,7 @@ export const SheetPage: React.FC = () => {
         onReorderSheets={sheetOps.reorderSheets}
         onAddRows={cellOps.handleAddRows}
       />
+      <SourcesDialog ref={sources} />
       <DescriptionDialog target={descriptions.target} initial={descriptions.initial} onClose={descriptions.close}
         onSave={descriptions.save} />
       <DeleteSheetConfirm sheet={confirmDeleteSheet}

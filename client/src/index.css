@@ -263,25 +263,6 @@
   background: #a1a1a1;
 }
 
-/* Animation classes */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideIn {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
-}
-
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out;
-}
-
 /* A side panel (components/SidePanel.tsx) is on screen in its first frame: it slides only its last quarter in. */
 @keyframes cubeSidePanelIn {
   from { transform: translateX(25%); }

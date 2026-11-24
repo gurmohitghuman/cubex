@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { sheetsAPI, Sheet } from '@/utils/api'
 
@@ -11,11 +11,14 @@ export const useExport = (
   waitForSaves: (timeoutMs?: number) => Promise<boolean>,
 ) => {
   const [isExporting, setIsExporting] = useState(false)
+  // One export at a time, until its file is handed to the browser: a click meanwhile (a double click) does
+  // nothing. A ref, so a second click before the button repaints is caught too.
+  const busy = useRef(false)
 
-  // Debounced — prevents multiple rapid clicks from queueing CSV downloads.
   // scope 'view': the rows and visible columns of the view showing (viewName names the file).
   const handleExportCSV = useCallback(async (scope: 'view' | 'sheet' = 'sheet', viewName = '') => {
-    if (!activeSheet || isExporting) return
+    if (!activeSheet || busy.current) return
+    busy.current = true
     setIsExporting(true)
 
     try {
@@ -49,9 +52,10 @@ export const useExport = (
       try { message = body instanceof Blob ? JSON.parse(await body.text()).error ?? '' : '' } catch { /* none */ }
       toast.error(message || 'Failed to export CSV')
     } finally {
-      setTimeout(() => setIsExporting(false), 1000)
+      busy.current = false
+      setIsExporting(false)
     }
-  }, [activeSheet, isExporting, waitForSaves])
+  }, [activeSheet, waitForSaves])
 
   return { isExporting, handleExportCSV }
 }

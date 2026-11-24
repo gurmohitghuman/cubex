@@ -82,7 +82,7 @@ export const RunStep: React.FC<Props> = ({ run, onViewResults, secondaryLabel, o
           </div>
           <div className="w-full bg-gray-300 h-1.5" role="progressbar" aria-label="Rows done"
             aria-valuemin={0} aria-valuemax={s.totalRows} aria-valuenow={s.processedRows}>
-            <div className="bg-cube-black h-1.5 transition-all duration-300" style={{ width: `${pct}%` }} />
+            <div className="bg-cube-black h-1.5 transition-all duration-150" style={{ width: `${pct}%` }} />
           </div>
         </div>
         <p className="text-xs text-gray-700" data-testid="enrich-run-spent">

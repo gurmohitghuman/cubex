@@ -9,7 +9,7 @@ import { seedCsv } from './helpers-enrich'
 // description set over REST reaching an open grid; the column menu's and the
 // tab menu's Edit description. SHOTS=<dir> saves screenshots.
 const SHOTS = process.env.SHOTS
-// After the dialog's fade-in (200 ms) and the menu's fade-out.
+// After the dialog's fade-in (150 ms) and the menu's fade-out.
 const shot = async (page: Page, name: string) => {
   if (!SHOTS) return
   await page.waitForTimeout(400)

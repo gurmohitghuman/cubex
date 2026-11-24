@@ -28,7 +28,7 @@ export const RunStep: React.FC<Props> = ({ currentRun, runResults, spend }) => (
               <span>{currentRun.processed_rows} of {currentRun.total_rows}</span>
             </div>
             <div className="w-full bg-gray-200 h-1.5">
-              <div className="bg-cube-black h-1.5 transition-all duration-300"
+              <div className="bg-cube-black h-1.5 transition-all duration-150"
                 style={{ width: `${currentRun.total_rows > 0 ? (currentRun.processed_rows / currentRun.total_rows) * 100 : 0}%` }} />
             </div>
           </div>
