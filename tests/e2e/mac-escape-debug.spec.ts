@@ -44,6 +44,34 @@ async function instrument(page: Page) {
         if (k.key === 'Escape') log(`${type} bubble@window defaultPrevented ${k.defaultPrevented}`)
       })
     }
+    // Radix keeps its layers (menus, popovers) in a Set of elements: every element added to or deleted from a Set.
+    const sizes = new WeakMap<Set<unknown>, number>()
+    let ids = 0
+    const setId = new WeakMap<Set<unknown>, number>()
+    const idOf = (s: Set<unknown>) => { if (!setId.has(s)) setId.set(s, ++ids); return setId.get(s) }
+    const add = Set.prototype.add, del = Set.prototype.delete
+    Set.prototype.add = function (this: Set<unknown>, v: unknown) {
+      const out = add.call(this, v)
+      if (v instanceof Element) log(`set#${idOf(this)}.add ${desc(v)} size ${this.size} connected ${v.isConnected}`)
+      return out
+    }
+    Set.prototype.delete = function (this: Set<unknown>, v: unknown) {
+      const out = del.call(this, v)
+      if (v instanceof Element) log(`set#${idOf(this)}.delete ${desc(v)} -> ${out} size ${this.size}`)
+      return out
+    }
+    void sizes
+    document.addEventListener('dismissableLayer.update', () => log('dismissableLayer.update'))
+    new MutationObserver(list => {
+      for (const m of list) {
+        for (const n of m.addedNodes) if (n instanceof Element && n.querySelector?.('[role=menu]')) log(`menu added`)
+        for (const n of m.removedNodes) if (n instanceof Element && n.querySelector?.('[role=menu]')) log(`menu removed`)
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true })
+    let moves = 0
+    window.addEventListener('pointermove', () => { moves++ }, true)
+    window.addEventListener('keydown', e => { if ((e as KeyboardEvent).key === 'Escape') log(`pointermoves so far ${moves}`) },
+      true)
     document.addEventListener('focusin', e => log(`focusin ${desc(e.target)}`), true)
     document.addEventListener('focusout', e => log(`focusout ${desc(e.target)} -> ${desc((e as FocusEvent).relatedTarget)}`),
       true)
@@ -92,6 +120,10 @@ test('mac escape debug: Escape on the Data menu after a drawer closed with Escap
     await page.getByTestId('data-menu').click()
     await expect(page.getByRole('menuitem', { name: /^Import CSV/ })).toBeVisible()
     await expect(page.getByRole('menu')).toBeFocused()
+    if (round === 2) {
+      await page.evaluate(() => document.dispatchEvent(new CustomEvent('dismissableLayer.update')))
+      await page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))))
+    }
     await page.keyboard.press('Escape')
     const closed = await expect(page.getByRole('menu')).toHaveCount(0, { timeout: 2_000 }).then(() => true, () => false)
     await dump(page, `round ${round}: menu Escape (keyboard.press): closed=${closed}`)
