@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trashAPI, type TrashEntry, type TrashHow, type TrashKind } from '@/utils/api'
+import { TYPING_WAIT_MS } from '@/lib/constants'
 
 // What a link can narrow the list to: one sheet's batches and how they went
 // (the auto-dedupe dialog's "See them in the trash").
@@ -8,6 +9,8 @@ export interface TrashScope { sheetId?: string; how?: TrashHow }
 // The Trash page's list: newest first, searched as you type (q), narrowed by
 // kind (and a scope), a page at a time ("Load more"). While something is being
 // restored or deleted for good, it looks again every few seconds to show it moving on.
+// A page of the list is a light read, so a newer search aborts the older one
+// rather than waiting for it (lib/typedReads.ts waits, for heavier reads).
 export function useTrash(scope: TrashScope = {}) {
   const [q, setQ] = useState('')
   const [kind, setKind] = useState<TrashKind | ''>('')
@@ -42,7 +45,7 @@ export function useTrash(scope: TrashScope = {}) {
         })
         .catch(e => { if (!ctl.signal.aborted) setError(e?.response?.data?.error || "Couldn't read the trash") })
         .finally(() => { if (n === ask.current) setLoading(false) })
-    }, q ? 250 : 0)
+    }, q ? TYPING_WAIT_MS : 0)
     return () => { clearTimeout(wait); ctl.abort() }
   }, [q, kind, tick, sheetId, how])
 

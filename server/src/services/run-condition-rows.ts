@@ -18,9 +18,10 @@ export interface RuleScan {
   firstRows: Array<{ rowIndex: number; values: Record<string, string>; passes: boolean }>;
 }
 
+// stop: the asker has gone (a newer rule in the box): no more pages, and what is returned is never read.
 export async function scanRule(args: {
   sheetId: string; userId: string; tree: RuleNode; columns: string[];
-  targets?: number[] | null; keepPassing?: number; keepFirst?: number;
+  targets?: number[] | null; keepPassing?: number; keepFirst?: number; stop?: () => boolean;
 }): Promise<RuleScan> {
   const { sheetId, userId, tree, columns } = args;
   const keepPassing = args.keepPassing ?? 0, keepFirst = args.keepFirst ?? 0;
@@ -47,6 +48,7 @@ export async function scanRule(args: {
     if (rows.length < PAGE_ROWS) return out;
     after = rows[rows.length - 1][0] as number;
     await yieldToRequests();
+    if (args.stop?.()) return out;
   }
 }
 

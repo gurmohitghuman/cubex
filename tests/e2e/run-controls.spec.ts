@@ -147,6 +147,8 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   await expect(page.getByTestId('answer-panel')).toHaveCount(0)
   // A click in the cell's middle opens its answer and runs nothing, right after the note was up: the button stays
   // icon only at the cell's right edge. (It once grew with its price over the middle, and the click ran the row.)
+  // Hovered afresh: the run's answers redraw the cell, and a button drawn under a still pointer gets no mouseenter.
+  await page.mouse.move(0, 0)
   await play.hover()
   await expect(note).toBeVisible()
   const [button, box] = [await play.boundingBox(), await target.boundingBox()]

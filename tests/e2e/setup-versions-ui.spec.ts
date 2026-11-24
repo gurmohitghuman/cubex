@@ -29,11 +29,12 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await page.locator('[aria-label^="Sheet options for"]').first().click()
   await page.getByTestId('sheet-setup-versions').click()
   const dialog = page.getByTestId('setup-versions-dialog')
-  await expect(dialog).toContainText('Cell values are never saved or changed.')
-  // Focus is in the name box already: typing names the version.
-  await expect(page.getByTestId('setup-versions-empty')).toBeVisible()
-  await expect(page.getByTestId('setup-version-name')).toBeFocused()
+  await expect(dialog).toBeVisible()
+  // Focus is in the name box from the first frame: typing at once names the version.
   await page.keyboard.type('Before the cleanup')
+  await expect(page.getByTestId('setup-version-name')).toHaveValue('Before the cleanup')
+  await expect(dialog).toContainText('Cell values are never saved or changed.')
+  await expect(page.getByTestId('setup-versions-empty')).toBeVisible()
   await page.getByTestId('setup-version-save').click()
   await expect(page.getByTestId('setup-version-row')).toHaveCount(1)
   await expect(page.getByTestId('setup-version-row')).toContainText('3 columns, 1 fills itself')

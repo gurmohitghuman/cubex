@@ -1,5 +1,5 @@
 // Over 200 lines: one tab strip (tabs, inline rename, drag reorder, each tab's menu) sharing one state.
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Plus, ChevronUp } from 'lucide-react'
 import { Sheet } from '@/utils/api'
 import { AddRowButton } from '@/components/AddRowButton'
@@ -40,6 +40,10 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
   onSetupVersions, onReorderSheets, onAddRows,
 }) => {
   const [renaming, setRenaming] = useState<RenameState>(null)
+  // A sheet's menu, closing after a pick: the dialog or rename box the pick opened has focus. The menu focuses
+  // itself when the pointer leaves an entry, as it does when that dialog appears under the pointer: not while closing.
+  const closing = useRef(false)
+  const keepFocus = (e: React.PointerEvent) => { if (closing.current) e.preventDefault() }
   const drag = useSheetTabDrag({ orderedIds: sheets.map(s => s.id), onReorder: onReorderSheets })
   // Insertion caret: a 2px bar at the gap the drop would insert into.
   const caret = (side: 'left' | 'right') => (
@@ -139,7 +143,9 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                   </span>
                 )}
               </button>
-              <DropdownMenu>
+              {/* Not modal: an entry opens its dialog or rename box at once, and a modal menu, still closing, would
+                  pull the focus back from it. */}
+              <DropdownMenu modal={false} onOpenChange={open => { closing.current = !open }}>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
@@ -157,22 +163,26 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
                     starts under the tab and extends right (not spilling far past it). */}
                 <DropdownMenuContent className="w-56" align="start" alignOffset={-72} side="top" sideOffset={6}
                   onCloseAutoFocus={e => e.preventDefault()}>
-                  <DropdownMenuItem onClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}>
+                  <DropdownMenuItem onPointerLeave={keepFocus}
+                    onClick={() => setRenaming({ sheetId: sheet.id, value: sheet.name })}>
                     Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onCopySheet(sheet)} data-testid="copy-sheet-values">
+                  <DropdownMenuItem onPointerLeave={keepFocus} onClick={() => onCopySheet(sheet)}
+                    data-testid="copy-sheet-values">
                     Copy values to a new sheet
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onDescribeSheet(sheet)} data-testid="describe-sheet">
+                  <DropdownMenuItem onPointerLeave={keepFocus} onClick={() => onDescribeSheet(sheet)}
+                    data-testid="describe-sheet">
                     Edit description…
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onSetupVersions(sheet)} data-testid="sheet-setup-versions">
+                  <DropdownMenuItem onPointerLeave={keepFocus} onClick={() => onSetupVersions(sheet)}
+                    data-testid="sheet-setup-versions">
                     Setup versions…
                   </DropdownMenuItem>
                   {sheets.length > 1 && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      <DropdownMenuItem onPointerLeave={keepFocus}
                         className="text-red-600 focus:text-red-700"
                         onClick={() => onDeleteSheet(sheet)}
                       >Delete</DropdownMenuItem>

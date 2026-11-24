@@ -27,14 +27,14 @@ export const Drawer: React.FC<DrawerProps> = ({ isOpen, onClose, children, panel
     <Transition.Root show={show} as={Fragment}>
       <Dialog as="div" className="relative z-[20000]" onClose={onClose}>
         <Transition.Child as={Fragment} beforeEnter={beforeEnter} afterEnter={afterEnter}
-          enter="ease-out duration-200" enterFrom="opacity-0" enterTo="opacity-100"
+          enter="ease-out duration-150" enterFrom="opacity-0" enterTo="opacity-100"
           leave="ease-in duration-150" leaveFrom="opacity-100" leaveTo="opacity-0">
           <div className="fixed inset-0 bg-black/30" />
         </Transition.Child>
         <div className="fixed inset-0 overflow-hidden">
           <div className="absolute inset-y-0 right-0 flex max-w-full">
             <Transition.Child as={Fragment} beforeEnter={beforeEnter} afterEnter={afterEnter}
-              enter="transform transition ease-out duration-200" enterFrom="translate-x-full" enterTo="translate-x-0"
+              enter="transform transition ease-out duration-150" enterFrom="translate-x-full" enterTo="translate-x-0"
               leave="transform transition ease-in duration-150" leaveFrom="translate-x-0" leaveTo="translate-x-full">
               <Dialog.Panel className={`w-screen ${panelClassName || 'max-w-md'} bg-white shadow-xl flex flex-col h-full`}>
                 {children}

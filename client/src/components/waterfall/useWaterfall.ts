@@ -1,14 +1,15 @@
-// The Waterfall drawer's server reads: the estimate of the draft (debounced,
-// the older answer dropped) and the run it started (polled while open).
+// The Waterfall drawer's server reads: the estimate of the draft (read as it
+// changes, the older answer dropped) and the run it started (polled while open).
 import { useEffect, useRef, useState } from 'react'
 import {
   waterfallAPI, type WaterfallEstimate, type WaterfallRunInput, type WaterfallRunStatus,
 } from '@/utils/api/waterfall'
 import { ENRICH_RUN_POLL_MS } from '@/lib/constants'
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
-const ESTIMATE_DELAY_MS = 400
 
+// One read at a time, an older answer never shown (lib/typedReads.ts).
 export function useWaterfallEstimate(sheetId: string, input: WaterfallRunInput | null, active: boolean) {
   const [estimate, setEstimate] = useState<WaterfallEstimate | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -17,23 +18,17 @@ export function useWaterfallEstimate(sheetId: string, input: WaterfallRunInput |
   // The estimate doesn't depend on the retry count: undefined drops it from the JSON, so moving the
   // slider leaves the body as it was and asks for no new estimate.
   const body = input ? JSON.stringify({ ...input, rateLimitRetries: undefined }) : null
+  const ask = useTypedReads<WaterfallEstimate>(a => {
+    setEstimate(a.ok ? a.value : null)
+    setError(a.ok ? null : errorOf(a.error, "Couldn't estimate it."))
+    setNothingToRun(!a.ok && !!(a.error as any)?.response?.data?.nothingToRun)
+    setLoading(false)
+  })
   useEffect(() => {
-    if (!active || !body) { setLoading(false); return }
-    const ctl = new AbortController()
+    if (!active || !body) { setLoading(false); ask('', null); return }
     setLoading(true)
-    const t = setTimeout(() => {
-      waterfallAPI.estimate(sheetId, JSON.parse(body), ctl.signal)
-        .then(e => { setEstimate(e); setError(null); setNothingToRun(false) })
-        .catch(e => {
-          if (ctl.signal.aborted) return
-          setEstimate(null)
-          setError(errorOf(e, "Couldn't estimate it."))
-          setNothingToRun(!!e?.response?.data?.nothingToRun)
-        })
-        .finally(() => { if (!ctl.signal.aborted) setLoading(false) })
-    }, ESTIMATE_DELAY_MS)
-    return () => { clearTimeout(t); ctl.abort() }
-  }, [sheetId, body, active])
+    ask(`${sheetId}\n${body}`, signal => waterfallAPI.estimate(sheetId, JSON.parse(body), signal))
+  }, [sheetId, body, active, ask])
   return { estimate, error, nothingToRun, loading }
 }
 

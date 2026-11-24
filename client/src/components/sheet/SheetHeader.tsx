@@ -99,7 +99,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               to="/dashboard"
               className={
                 'p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded ' +
-                'transition-colors duration-200'
+                'transition-colors duration-150'
               }
             >
               <ArrowLeft className="h-4 w-4" />

@@ -1,7 +1,7 @@
 // Over 200 lines: one search state (typing, steps, counts, jumps); its guards read together.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { searchAPI, type SearchMatch, type SheetData } from '@/utils/api'
-import { SEARCH_DEBOUNCE_MS, SEARCH_JUMP_LEAD_ROWS, SEARCH_JUMP_ROWS } from '@/lib/constants'
+import { SEARCH_JUMP_LEAD_ROWS, SEARCH_JUMP_ROWS, SEARCH_RETRY_MS, TYPING_WAIT_MS } from '@/lib/constants'
 import type { useGridHandles } from './useGridHandles'
 
 // Search in the sheet (the box in the bar above the grid; "/" or Cmd/Ctrl+F
@@ -11,7 +11,9 @@ import type { useGridHandles } from './useGridHandles'
 // (routes/sheets-search.ts): the grid holds only a window of rows, so a match
 // outside it loads a window around it. "3 of 1,240" comes from a count that
 // stops at 10,000 ("10,000+"), asked once per text (again only if the user
-// moved before it answered).
+// moved before it answered). Typing searches TYPING_WAIT_MS after the last
+// key; a newer key aborts the older find, which the server stops between its
+// slices (routes/sheets-search.ts), so finds never stack up.
 export interface SearchStatus {
   phase: 'idle' | 'searching' | 'none' | 'found' | 'error'
   ordinal: number | null
@@ -70,7 +72,7 @@ export function useSheetSearch(args: {
       if (!id || !same(current.current?.match, match)) return
       if (gridSearch()?.show({ rowIndex: match.row, column: match.column })) return
       if (await loadWindowAt(id, Math.max(0, match.position - SEARCH_JUMP_LEAD_ROWS), SEARCH_JUMP_ROWS)) return
-      await new Promise(resolve => setTimeout(resolve, SEARCH_DEBOUNCE_MS))
+      await new Promise(resolve => setTimeout(resolve, SEARCH_RETRY_MS))
     }
   }, [gridSearch, loadWindowAt])
 
@@ -142,7 +144,7 @@ export function useSheetSearch(args: {
     forget()
     if (!text.trim()) { setStatus(IDLE); return }
     setStatus(s => ({ ...s, phase: 'searching' }))
-    timer.current = setTimeout(() => { timer.current = null; void run('type') }, SEARCH_DEBOUNCE_MS)
+    timer.current = setTimeout(() => { timer.current = null; void run('type') }, TYPING_WAIT_MS)
   }, [forget, run])
 
   // Enter right after typing searches at once instead of waiting for the pause.

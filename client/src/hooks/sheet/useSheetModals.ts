@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import type { SourcesCell } from '@/components/ScrapedDataModal'
 import type { EnrichOpenRequest, EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import type { CleanOpenTarget } from '@/components/clean/useCleanForm'
 import type { FormulaOpenTarget } from '@/components/formula/useFormulaForm'
@@ -60,8 +59,6 @@ export const useSheetModals = () => {
   // Setup versions: open on this sheet (the tab menu can open another tab's).
   const [versionsFor, setVersionsFor] = useState<string | null>(null)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
-  const [scrapedDataModal, setScrapedDataModal] =
-    useState<{ isOpen: boolean; cell: SourcesCell | null }>({ isOpen: false, cell: null })
 
   return {
     showImportModal, setShowImportModal,
@@ -82,6 +79,5 @@ export const useSheetModals = () => {
     showUseSetup, setShowUseSetup,
     versionsFor, openVersions: setVersionsFor, closeVersions: () => setVersionsFor(null),
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
-    scrapedDataModal, setScrapedDataModal,
   }
 }

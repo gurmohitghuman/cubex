@@ -5,6 +5,7 @@ import {
 } from '@/utils/api'
 import { Select } from '../ui/Select'
 import { MAX_SEARCHES_PER_ROW } from '@/lib/constants'
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 // Under "Web search": which engine the searches run on, its mode, and a limit
 // on searches per row, with what that costs. The server works out the plan
@@ -34,19 +35,19 @@ export const WebSearchOptions: React.FC<Props> = ({ model, value, onChange, onBl
   // From a change until its plan arrives, the note still describes the old choice.
   const [pending, setPending] = useState(false)
 
+  // The plan for the choices, read at once (they are picked, not typed): one read at a time, an older answer never
+  // shown (lib/typedReads.ts), so stepping through the menus makes at most two reads.
+  const ask = useTypedReads<SearchPlanResponse>(a => {
+    if (a.ok) { setInfo(a.value); setUnreachable(false); onBlocked(a.value.error) }
+    else { setInfo(null); setUnreachable(true); onBlocked(null) }
+    setPending(false)
+  }, { waitMs: 0 })
   useEffect(() => {
-    if (!model) { setInfo(null); onBlocked(null); return }
-    let live = true
+    if (!model) { setInfo(null); setPending(false); onBlocked(null); ask('', null); return }
     setPending(true)
-    // Debounced, so stepping through the menus doesn't send a request each time.
-    const timer = setTimeout(() => {
-      aiAPI.searchPlan({ model, engine: value.engine, mode: value.mode, cap: value.maxPerRow })
-        .then(r => { if (live) { setInfo(r); setUnreachable(false); onBlocked(r.error) } })
-        .catch(() => { if (live) { setInfo(null); setUnreachable(true); onBlocked(null) } })
-        .finally(() => { if (live) setPending(false) })
-    }, 200)
-    return () => { live = false; clearTimeout(timer) }
-  }, [model, value.engine, value.mode, value.maxPerRow]) // eslint-disable-line react-hooks/exhaustive-deps
+    const plan = { model, engine: value.engine, mode: value.mode, cap: value.maxPerRow }
+    ask(JSON.stringify(plan), () => aiAPI.searchPlan(plan))
+  }, [model, value.engine, value.mode, value.maxPerRow, ask]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const engine = value.engine
   const prices = hasModes(engine) ? info?.prices[engine] : undefined

@@ -4,8 +4,10 @@ import toast from 'react-hot-toast'
 import { ArchiveRestore, Download, Loader2, Rows, Search } from 'lucide-react'
 import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
 import { plural } from '@/lib/utils'
-import { trashAPI, type TrashEntry, type TrashRow } from '@/utils/api'
+import { trashAPI, type TrashEntry, type TrashRow, type TrashRowsPage } from '@/utils/api'
 import { restoredText, titleOf } from './trash-copy'
+import { useTypedReads } from '@/hooks/useTypedReads'
+import { readError } from '@/lib/typedReads'
 
 interface Props {
   entry: TrashEntry | null
@@ -31,26 +33,37 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
   const columns = entry?.columns ?? []
   const whole = entry?.kind === 'column'
 
-  const load = async (after?: number) => {
+  // The next page, below the rows shown.
+  const load = async (after: number) => {
     if (!entry) return
     setLoading(true)
     try {
       const page = await trashAPI.rows(entry.id, {
         after, column: column || undefined, contains: text.trim() || undefined,
       })
-      setRows(prev => (after === undefined ? page.rows : [...prev, ...page.rows]))
+      setRows(prev => [...prev, ...page.rows])
       setNext(page.next_after)
     } catch (e: any) {
       toast.error(e?.response?.data?.error || "Couldn't read the rows")
     } finally { setLoading(false) }
   }
 
+  // The first page, for the search as it is typed (a column picked, no text, or rows restored: at once): one read
+  // at a time, an older answer never shown (lib/typedReads.ts).
+  const [version, setVersion] = useState(0)
+  const ask = useTypedReads<TrashRowsPage>(a => {
+    if (a.ok) { setRows(a.value.rows); setNext(a.value.next_after) }
+    else toast.error(readError(a.error, "Couldn't read the rows"))
+    setLoading(false)
+  })
   useEffect(() => {
     setRows([]); setPicked(new Set()); setNext(null)
-    const t = setTimeout(() => void load(), text ? 300 : 0)
-    return () => clearTimeout(t)
+    if (!entry) { ask('', null); return }
+    const id = entry.id, find = { column: column || undefined, contains: text.trim() || undefined }
+    setLoading(true)
+    ask(JSON.stringify([id, find, version]), signal => trashAPI.rows(id, find, signal), text ? undefined : 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.id, column, text])
+  }, [entry?.id, column, text, version, ask])
 
   const toggle = (seq: number) => setPicked(prev => {
     const s = new Set(prev)
@@ -65,7 +78,7 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
       toast.success(restoredText({ trash_id: entry.id, restored: got }, entry), { duration: 6000 })
       onRestored()
       setPicked(new Set())
-      await load()
+      setVersion(v => v + 1)
     } catch (e: any) {
       toast.error(e?.response?.data?.error || "Couldn't restore the rows")
     } finally { setRestoring(false) }
@@ -141,7 +154,7 @@ export const TrashRowsDrawer: React.FC<Props> = ({ entry, onClose, onRestored, o
         )}
         {(next !== null || loading) && (
           <button type="button" className="btn-secondary flex items-center gap-1" disabled={loading}
-            onClick={() => void load(next ?? undefined)} data-testid="trash-rows-more">
+            onClick={() => { if (next !== null) void load(next) }} data-testid="trash-rows-more">
             {loading && <Loader2 className="h-3 w-3 animate-spin" />}
             <span>{text ? 'Search further' : 'Load more'}</span>
           </button>

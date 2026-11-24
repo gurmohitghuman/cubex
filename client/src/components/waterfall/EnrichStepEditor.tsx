@@ -6,6 +6,7 @@ import type { EnrichmentChoices, ResultType } from '@/utils/api/waterfall'
 import type { DraftInput } from './draft'
 import { asStepTool, defaultPath, toolLine } from './step-copy'
 import { StepProviders } from './StepProviders'
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 interface Props {
   choices: EnrichmentChoices
@@ -28,17 +29,18 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
   const [error, setError] = useState<string | null>(null)
   const picking = !choices.toolId
 
+  // As the search is typed (the empty one at once): one read at a time, an older answer never shown.
+  const ask = useTypedReads<EnrichToolCard[]>(a => {
+    if (a.ok) setCards(a.value)
+    else setError(errorOf(a.error, "Couldn't search treg's tools."))
+  })
   useEffect(() => {
-    if (!picking) return
-    const ctl = new AbortController()
-    const t = setTimeout(() => {
-      enrichAPI.tools(query.trim(), ctl.signal)
-        // A job that adds rows can't be a step; a preset card is its plain tool here.
-        .then(r => setCards(r.tools.filter(c => !c.addsRows).map(asStepTool)))
-        .catch(e => { if (!ctl.signal.aborted) setError(errorOf(e, "Couldn't search treg's tools.")) })
-    }, 250)
-    return () => { clearTimeout(t); ctl.abort() }
-  }, [query, picking])
+    if (!picking) { ask('', null); return }
+    const q = query.trim()
+    // A job that adds rows can't be a step; a preset card is its plain tool here.
+    ask(q, signal => enrichAPI.tools(q, signal).then(r => r.tools.filter(c => !c.addsRows).map(asStepTool)),
+      q ? undefined : 0)
+  }, [query, picking, ask])
 
   useEffect(() => {
     if (picking) { setTool(null); return }

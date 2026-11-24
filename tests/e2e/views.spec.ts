@@ -171,6 +171,8 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   expect(exported[0]).toBe('"val","Industry","Notes","Fit (Output)"')
   expect(exported).toHaveLength(4)
   await expect(page.getByTestId('data-menu')).not.toHaveAttribute('aria-busy', 'true') // that export is done
+  // The menu has finished closing: a click on its button while it still fades out only closes it.
+  await expect(page.getByRole('menu')).toHaveCount(0)
   await page.getByTestId('data-menu').click()
   const whole = page.waitForEvent('download')
   await page.getByRole('menuitem', { name: /^Export whole sheet/ }).click()
