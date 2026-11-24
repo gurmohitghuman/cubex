@@ -7,6 +7,9 @@
 //     ACCESS_TOKEN_LAST_USED_RETRY_MS, still at the time of the use;
 //   - a write never moves last_used_at back, and one for a token deleted meanwhile changes nothing;
 //   - at shutdown, a use still waiting is written at once.
+// Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations: no write
+// in the lock case grows it (on the Windows runner the write that did once waited on the OS, holding the loop 103 ms
+// with no CPU time). A hold of 50 ms or more prints the transactions in it.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -23,8 +26,9 @@ const { noteTokenUse, tokenUsesWaiting, writeTokenUsesNow } = await import('../.
 const { ACCESS_TOKEN_LAST_USED_RETRY_MS } = await import('../../server/src/lib/constants')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 const { heldText, loopWatch } = await import('./loop-watch')
-const { sqliteWriteProbe } = await import('./sqlite-write-probe')
+const { sizeWalLikeAServer, sqliteWriteProbe, transactionLine, walGrowth } = await import('./sqlite-write-probe')
 runMigrations()
+const walSized = sizeWalLikeAServer(db, process.env.DB_PATH!)
 console.error = () => {}
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 let failures = 0
@@ -83,6 +87,7 @@ await ok('another connection holding the write lock: no call or loop held; writt
   other.exec('BEGIN IMMEDIATE')
   other.prepare("UPDATE users SET password_hash = 'y' WHERE id = ?").run(uid)
   const probe = sqliteWriteProbe(db, process.env.DB_PATH!)
+  const grown = walGrowth(process.env.DB_PATH!, walSized)
   const watch = loopWatch(probe.records)
   await watch.ready
   const usedAt = Date.now()
@@ -96,6 +101,8 @@ await ok('another connection holding the write lock: no call or loop held; writt
   other.close()
   console.log(`      the call went on in ${took.toFixed(1)} ms; ${heldText(watched)}; written `
     + `${after} ms after the lock was let go`)
+  if (watched.ownMs >= 50) console.log(`      in it: ${watched.inside.map(transactionLine).join(' | ') || 'none'}`)
+  assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
   assert.ok(took < 50, `the call took ${took.toFixed(0)} ms`)
   assert.ok(watched.ownMs < 100, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
   assert.ok(after <= ACCESS_TOKEN_LAST_USED_RETRY_MS + 500, `written ${after} ms after the lock was let go`)
