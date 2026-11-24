@@ -51,7 +51,7 @@ await ok('a deleted sheet is hidden, inert and frees its name; the last sheet st
   assert.ok('ok' in out, JSON.stringify(out))
   assert.equal(verifySheetOwnership(a, uid), null)
   assert.ok(!(listSheets(tid, uid) as Array<{ id: string }>).some(s => s.id === a))
-  assert.ok(!listTablesWithSheets(uid)[0].sheets.some(s => s.id === a))
+  assert.ok(!(await listTablesWithSheets(uid))[0].sheets.some(s => s.id === a))
   assert.equal(sheetNameTaken(tid, uid, nameOf(a)), false, 'its name is free')
   assert.equal(rowsOf(a).length, 4, 'its rows stay where they are')
   assert.equal(db.prepare('SELECT status FROM http_runs WHERE id = ?').pluck().get(run), 'cancelled')
@@ -110,7 +110,7 @@ await ok('rows of a deleted sheet wait for the sheet; a table goes and comes bac
   const gone = trashTable(uid, t2)
   assert.ok('ok' in gone)
   assert.equal(verifySheetOwnership(s1, uid), null)
-  assert.ok(!listTablesWithSheets(uid).some(t => t.id === t2))
+  assert.ok(!(await listTablesWithSheets(uid)).some(t => t.id === t2))
   const blocked = await restoreRows(uid, batch)
   assert.ok('fail' in blocked && /Restore the sheet first/.test(blocked.message))
   const entries = listTrash(uid).items

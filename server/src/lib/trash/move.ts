@@ -6,6 +6,7 @@
 // the cells, which hold what the runs wrote.
 import { db } from '../db';
 import { purgeResultsForRows } from '../sql-helpers';
+import { rowsChanged } from '../rows-changed';
 
 // The rows, by SQLite rowid, stable id or position in the sheet.
 export type RowPick = { rowids: number[] } | { ids: string[] } | { indexes: number[] };
@@ -50,6 +51,7 @@ export function removeRows(
       .run(added.n, added.bytes, added.top, added.top, after + added.n, itemId);
   }
   db.prepare(`DELETE FROM rows WHERE ${where}`).run(list, sheetId, userId);
+  rowsChanged(sheetId);
   if (purgeResults) purgeResultsForRows(sheetId, userId, indexes);
   return { count: indexes.length, indexes };
 }
