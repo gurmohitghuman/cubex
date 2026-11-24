@@ -1,8 +1,11 @@
+// Over 200 lines: one fake clock and one box helper drive every rule of the scheduler.
 // A box's reads as a person types or clicks (client/src/lib/typedReads.ts): a read TYPING_WAIT_MS after the last
-// change, one read of the box at a time, the newest text read once the one on its way ends, an older answer never
-// shown, and a heavy read paced by its own time. A fake clock: no DB, no network, no waiting.
+// key and at once after a click (lib/typingWait.ts), one read of the box at a time, the newest text read once the
+// one on its way ends, an older answer never shown, and a heavy read the server stops aborted by newer text. A fake
+// clock: no DB, no network, no waiting.
 import assert from 'node:assert/strict'
 import { TypedReads, type ReadAnswer, type TypedReadOptions } from '../../client/src/lib/typedReads'
+import { noteAction, typingWait } from '../../client/src/lib/typingWait'
 import { TYPING_WAIT_MS } from '../../client/src/lib/constants'
 import { FakeClock } from './fake-clock'
 
@@ -134,32 +137,52 @@ async function main() {
     assert.deepEqual(b.shown.map(a => (a.ok ? a.value : 'error')), ['error', 'answer for good'])
   })
 
-  await check('paced: the next read starts no sooner than the last one\'s own time after it ended', async () => {
-    const b = box(() => 2_000, { paced: true })
+  await check('cancels: a change aborts the read on its way; the newest text is read after its own wait', async () => {
+    const b = box(() => 2_000, { cancels: true })
     b.type('a')
     await b.clock.advanceTo(TYPING_WAIT_MS + 1)
     b.type('ab')
     await b.clock.advanceTo(30_000)
-    assert.deepEqual(b.runs.map(r => [r.key, r.start]), [['a', TYPING_WAIT_MS], ['ab', TYPING_WAIT_MS + 4_000]])
-    const p = box(() => 2_000)
-    p.type('a')
-    await p.clock.advanceTo(TYPING_WAIT_MS + 1)
-    p.type('ab')
-    await p.clock.advanceTo(30_000)
-    assert.equal(p.runs[1].start, TYPING_WAIT_MS + 2_000, 'not paced: as soon as the first ended')
+    const second = TYPING_WAIT_MS + 1 + TYPING_WAIT_MS
+    assert.deepEqual(b.runs.map(r => [r.key, r.start]), [['a', TYPING_WAIT_MS], ['ab', second]])
+    assert.ok(b.runs[0].aborted && !b.runs[1].aborted)
+    assert.deepEqual(b.shown.map(a => a.key), ['ab'], 'the aborted read answers nothing')
   })
 
-  await check('paced, a typist on a slow whole-sheet read: the server is busy at most half the time', async () => {
-    for (const cost of [300, 1_500, 5_000]) {
-      const b = box(() => cost, { paced: true })
-      await typeOut(b, 'status is not empty and company contains acme', 230)
-      await b.clock.advanceTo(120_000)
-      const first = b.runs[0].start, last = b.runs.at(-1)!.end!
-      const busy = b.runs.reduce((s, r) => s + (r.end! - r.start), 0)
-      assert.ok(!overlapping(b.runs), `${cost} ms overlapped`)
-      assert.ok(busy <= (last - first) / 2 + cost, `${cost} ms: busy ${busy} of ${last - first}`)
-      assert.equal(b.shown.at(-1)?.key, 'status is not empty and company contains acme')
-    }
+  await check('cancels, a typist 230 ms a key on a slow whole-sheet read: the final text is read a pause after its key',
+    async () => {
+      const text = 'status is not empty and company contains acme'
+      for (const cost of [300, 1_500, 5_000]) {
+        const b = box(() => cost, { cancels: true })
+        await typeOut(b, text, 230)
+        await b.clock.advanceTo(120_000)
+        const last = b.runs.at(-1)!
+        assert.equal(last.key, text)
+        assert.equal(last.start, (text.length - 1) * 230 + TYPING_WAIT_MS, `${cost} ms`)
+        assert.ok(b.runs.slice(0, -1).every(r => r.aborted) && !last.aborted, `${cost} ms: each older read aborted`)
+        // One read on its way at a time: each starts after the one before was aborted.
+        assert.ok(b.runs.every((r, i) => i === 0 || r.start >= b.runs[i - 1].start + TYPING_WAIT_MS), `${cost} ms`)
+        assert.deepEqual(b.shown.map(a => a.key), [text], `${cost} ms`)
+      }
+    })
+
+  await check('cancels: emptying the box aborts the read on its way', async () => {
+    const b = box(() => 1_000, { cancels: true })
+    b.type('acme')
+    await b.clock.advanceTo(TYPING_WAIT_MS + 10)
+    b.reads.ask('', null)
+    await b.clock.advanceTo(10_000)
+    assert.ok(b.runs.length === 1 && b.runs[0].aborted)
+    assert.deepEqual(b.shown, [])
+  })
+
+  await check('the wait for a change: the rest of TYPING_WAIT_MS after a key typed, none after a click', () => {
+    noteAction(true, 1_000)
+    assert.equal(typingWait(1_000), TYPING_WAIT_MS)
+    assert.equal(typingWait(1_150), TYPING_WAIT_MS - 150)
+    assert.equal(typingWait(1_000 + TYPING_WAIT_MS + 5), 0, 'an answer arriving after the pause reads at once')
+    noteAction(false, 1_050)
+    assert.equal(typingWait(1_050), 0, 'a click right after typing reads at once')
   })
 
   await check('a choice made by clicking (waitMs 0) reads at once; a burst of clicks makes at most two reads',

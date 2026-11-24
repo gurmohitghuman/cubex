@@ -9,9 +9,9 @@ import type { Condition, RowsMode, RowsStatus } from './draft'
 // them (also for a new column: total). Re-read when the scope, the column or the
 // conditions change, and when `key` does (a run on the column ended). null
 // while counting, or with neither a column nor conditions. A count of the
-// whole sheet that the server finishes even when dropped: paced by its own
-// time, one at a time (lib/typedReads.ts); with conditions or a rule, which
-// are typed, it waits for a pause in the typing, else it counts at once.
+// whole sheet: a newer scope aborts the count on its way and the server stops
+// it (lib/typedReads.ts). A typed condition or rule waits for a pause in the
+// typing; a pick counts at once (lib/typingWait.ts).
 export function useRowCounts(
   sheetId: string, column: string | null, mode: RowsMode, selectedRows: number[], active: boolean, key = '',
   conditions: Condition[] = [], runIf = '',
@@ -20,14 +20,13 @@ export function useRowCounts(
   const selection = mode === 'selected' ? selectedRows.join(',') : ''
   const where = JSON.stringify(conditions.map(c => ({ column: c.column, op: c.op, value: c.value })))
   const rule = runIf.trim()
-  const ask = useTypedReads<EnrichRowCounts>(a => { if (a.ok) setCounts(a.value) }, { paced: true })
+  const ask = useTypedReads<EnrichRowCounts>(a => { if (a.ok) setCounts(a.value) }, { cancels: true })
   useEffect(() => {
     setCounts(null)
     if (!active || (!column && conditions.length === 0 && !rule)) { ask('', null); return }
     const rows = mode === 'selected' ? selectedRows : undefined
     ask(JSON.stringify([sheetId, column, mode, selection, key, where, rule]),
-      () => enrichAPI.rowCounts(sheetId, column, mode, rows, JSON.parse(where), rule),
-      conditions.length || rule ? undefined : 0)
+      signal => enrichAPI.rowCounts(sheetId, column, mode, rows, JSON.parse(where), rule, signal))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetId, column, mode, selection, active, key, where, rule, ask])
   return counts

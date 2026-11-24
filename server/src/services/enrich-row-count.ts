@@ -43,16 +43,17 @@ const generation = (sheetId: string, userId: string) => db.prepare(
 
 // A sort moving rows mid-count (rows parked high) could count some twice; a
 // count whose sheet's row_generation moved meanwhile is read again, once.
+// stop: the asker has gone (the drawer's scope changed): no more slices, and what is returned is never read.
 export async function enrichRowCounts(
-  sheetId: string, userId: string, column: string | null, scope: CountScope,
+  sheetId: string, userId: string, column: string | null, scope: CountScope, stop?: () => boolean,
 ): Promise<EnrichRowCounts> {
   const before = generation(sheetId, userId);
-  const counts = await countOnce(sheetId, userId, column, scope);
-  return generation(sheetId, userId) === before ? counts : countOnce(sheetId, userId, column, scope);
+  const counts = await countOnce(sheetId, userId, column, scope, stop);
+  return generation(sheetId, userId) === before || stop?.() ? counts : countOnce(sheetId, userId, column, scope, stop);
 }
 
 async function countOnce(
-  sheetId: string, userId: string, column: string | null, scope: CountScope,
+  sheetId: string, userId: string, column: string | null, scope: CountScope, stop?: () => boolean,
 ): Promise<EnrichRowCounts> {
   const filter = rowFilterSql(sheetId, userId, scope.mode);
   const selected = scope.mode === 'selected' ? ' AND row_index IN (SELECT value FROM json_each(?))' : '';
@@ -115,6 +116,7 @@ async function countOnce(
     if (next === undefined) return out;
     lo = next;
     await yieldToRequests();
+    if (stop?.()) return out;
   }
 }
 

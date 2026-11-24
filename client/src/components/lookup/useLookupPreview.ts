@@ -7,6 +7,6 @@ export type LookupPreviewState = PreviewState<LookupPreviewResult>
 
 // The Lookup dialog's preview: as the settings change, the server looks up the first rows that hold a value (a
 // pure read, free), one read at a time, an older answer never shown (hooks/useTypedReads.ts). A pick reads at
-// once; the column's name and the limit are typed. body null: nothing to preview yet.
+// once, typing after a pause (lib/typingWait.ts). body null: nothing to preview yet.
 export const useLookupPreview = (sheetId: string, body: LookupColumnBody | null): LookupPreviewState =>
-  usePreviewRead(sheetId, body, lookupAPI.preview, "Couldn't load the preview.", b => [b.column, b.limit])
+  usePreviewRead(sheetId, body, lookupAPI.preview, "Couldn't load the preview.")

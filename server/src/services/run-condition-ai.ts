@@ -30,8 +30,9 @@ export interface RuleCheckResult {
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
+// stop: the asker has gone (the box holds a newer rule): the scan ends early, its answer unread.
 export async function checkRuleOnSheet(
-  userId: string, sheetId: string, text: string, targets: number[] | null = null,
+  userId: string, sheetId: string, text: string, targets: number[] | null = null, stop?: () => boolean,
 ): Promise<{ ok: RuleCheckResult } | RunFail> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   let rule: CheckedRule;
@@ -40,7 +41,7 @@ export async function checkRuleOnSheet(
     throw e;
   }
   const scan = await scanRule({
-    sheetId, userId, tree: rule.tree, columns: rule.columns, targets, keepFirst: RULE_CHECK_SAMPLE_ROWS,
+    sheetId, userId, tree: rule.tree, columns: rule.columns, targets, keepFirst: RULE_CHECK_SAMPLE_ROWS, stop,
   });
   return {
     ok: {

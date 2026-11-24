@@ -1,11 +1,12 @@
 // The reads a box makes as a person types or clicks: a rule check, a preview, a search, an estimate. Each box
 // has its own TypedReads:
-//   - a read starts `waitMs` after the last change (TYPING_WAIT_MS for typing, 0 for a choice made by clicking);
+//   - a read starts `waitMs` after the last change (TYPING_WAIT_MS after a key, 0 for a click or a pick:
+//     lib/typingWait.ts);
 //   - one read of the box at a time: a change while one is on its way starts none, and once it ends the newest
-//     text is read, once (a server keeps running a read the page drops, so dropping it saves nothing);
-//   - an answer shows only while the box still holds what it was asked for: an older answer never shows;
-//   - `paced` (a heavy read of the whole sheet): the next read starts no sooner than the last one's own time
-//     after it ended, so one box keeps the server busy at most half the time.
+//     text is read, once (a server keeps running most reads the page drops, so dropping them saves nothing);
+//   - `cancels` (a read of the whole sheet that the server stops when the page drops it): a change aborts the read
+//     on its way instead, so the newest text is read after its own wait, not after an older text's read;
+//   - an answer shows only while the box still holds what it was asked for: an older answer never shows.
 // The box shows that it is checking from the first change (each hook does that itself).
 import { realClock, type Clock } from './clock'
 import { TYPING_WAIT_MS } from './constants'
@@ -19,7 +20,7 @@ export const readError = (error: unknown, fallback: string): string =>
 
 export interface TypedReadOptions {
   waitMs?: number
-  paced?: boolean
+  cancels?: boolean
 }
 
 export class TypedReads<T> {
@@ -27,8 +28,6 @@ export class TypedReads<T> {
   private pending: { key: string; read: Read<T>; at: number; waitMs: number } | null = null
   private flight: { key: string; ctrl: AbortController } | null = null
   private timer: unknown = null
-  private endedAt = -Infinity
-  private took = 0
   private stopped = false
 
   constructor(
@@ -39,11 +38,15 @@ export class TypedReads<T> {
 
   // The box now holds `key`. With `read`, its answer is read as above (`waitMs` for this change only, say 0 for a
   // click in a box that is also typed in). Without (an empty box, an answer already at hand), nothing is read: a
-  // read on its way still ends, and its answer is dropped.
+  // read on its way still ends (or, with `cancels`, is aborted), and its answer is dropped.
   ask(key: string, read: Read<T> | null, waitMs = this.opts.waitMs ?? TYPING_WAIT_MS): void {
     if (this.stopped) return
     const at = this.pending?.key === key ? this.pending.at : this.clock.now()
     this.latest = key
+    if (this.opts.cancels && this.flight && this.flight.key !== key) {
+      this.flight.ctrl.abort()
+      this.flight = null
+    }
     this.pending = read && this.flight?.key !== key ? { key, read, at, waitMs } : null
     this.schedule()
   }
@@ -65,9 +68,7 @@ export class TypedReads<T> {
     this.clearTimer()
     const p = this.pending
     if (!p || this.flight) return
-    const rest = this.opts.paced ? this.took : 0
-    const startAt = Math.max(p.at + p.waitMs, this.endedAt + rest)
-    const wait = startAt - this.clock.now()
+    const wait = p.at + p.waitMs - this.clock.now()
     if (wait <= 0) this.fire()
     else this.timer = this.clock.setTimeout(() => { this.timer = null; this.fire() }, wait)
   }
@@ -79,12 +80,9 @@ export class TypedReads<T> {
     const ctrl = new AbortController()
     const flight = { key: p.key, ctrl }
     this.flight = flight
-    const started = this.clock.now()
     const done = (a: ReadAnswer<T>) => {
       if (this.flight !== flight) return
       this.flight = null
-      this.endedAt = this.clock.now()
-      this.took = this.endedAt - started
       if (a.key === this.latest) this.answer(a)
       this.schedule()
     }

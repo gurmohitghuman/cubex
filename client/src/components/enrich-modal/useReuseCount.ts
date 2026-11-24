@@ -14,12 +14,13 @@ function lookupKey(r: EnrichRunRequest): string {
 // run found, at no cost (the server checks them as the run would). null while
 // unknown, for a run set to call every row again, and when the count failed:
 // the estimate then prices every row, which is never too low. It reads the
-// rows the run takes: paced by its own time, one at a time (lib/typedReads.ts).
+// rows the run takes: a newer draft aborts the count on its way and the server
+// stops it (lib/typedReads.ts).
 export function useReuseCount(sheetId: string, request: EnrichRunRequest | null): EnrichReuseCount | null {
   const [count, setCount] = useState<EnrichReuseCount | null>(null)
   const key = request && !request.fresh ? lookupKey(request) : ''
   // A failed count leaves null: priced as if every row calls.
-  const ask = useTypedReads<EnrichReuseCount>(a => { if (a.ok) setCount(a.value) }, { paced: true })
+  const ask = useTypedReads<EnrichReuseCount>(a => { if (a.ok) setCount(a.value) }, { cancels: true })
 
   useEffect(() => {
     setCount(null)
