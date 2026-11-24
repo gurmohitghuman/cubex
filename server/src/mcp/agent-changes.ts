@@ -39,6 +39,18 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'server',
+        summary: 'read_rows with include_status gives a condition_not_met cell a why: each part of the column\'s "Only '
+          + 'run if" the row fails now, with what the cell holds. Free, no AI.',
+        details: 'check_run_condition\'s sample rows that fail carry the same why. A row that passes the rule now '
+          + '(its cells changed since) says so: rerun it to fill it.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {

@@ -91,7 +91,7 @@ const DATE_OP = { on: 'date_eq', not_on: 'date_neq', before: 'date_lt', after: '
   on_or_before: 'date_lte', on_or_after: 'date_gte' } as const;
 const isDateCompare = (op: Compare['op']): op is DateCompareOp => op in DATE_OP;
 
-function comparePasses(c: Compare, data: Record<string, string>): boolean {
+export function comparePasses(c: Compare, data: Record<string, string>): boolean {
   // The row's own value: a row without the key (a column added since) reads as
   // empty, also for a column named like an inherited member ("constructor").
   const raw = cellOf(data, c.column);
