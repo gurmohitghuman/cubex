@@ -14,6 +14,7 @@ import { forgetUnlistedUndoColumns } from './run-undo/columns';
 import { movingBatch, trashRowRange } from '../services/trash-batch';
 import { forgetUnlistedTransformPasses } from '../services/column-transform-pass-moves';
 import { orderedUuid } from './ordered-id';
+import { rowsChanged } from './rows-changed';
 
 // A CSV import in progress, as journaled in import_jobs (migration 004): its
 // rows go in at first_row up to end_row, and appends from elsewhere land at
@@ -31,7 +32,11 @@ export async function deleteRowRange(sheetId: string, userId: string, first: num
       SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?
       ORDER BY row_index LIMIT ?
     )`);
-  await runInCheckpointedSlices(() => slice.run(sheetId, userId, first, end, HEAVY_SLICE_ROWS).changes > 0);
+  await runInCheckpointedSlices(() => {
+    const more = slice.run(sheetId, userId, first, end, HEAVY_SLICE_ROWS).changes > 0;
+    if (more) rowsChanged(sheetId);
+    return more;
+  });
 }
 
 // Deletes every stored AI/HTTP result of the sheet's runs, RESULTS_SLICE_ROWS a slice (a result can hold 16 KB).
@@ -93,6 +98,7 @@ export async function undoImport(job: ImportJob): Promise<void> {
       if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(job.sheet_id, job.user_id)) {
         db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
           .run(orderedUuid(), job.sheet_id, job.user_id);
+        rowsChanged(job.sheet_id);
       }
     }
     // The removed rows leave auto-run's fence exact (lib/autorun-mark.ts).

@@ -23,12 +23,13 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
     'list_tables',
     {
       description:
-        'List every table in the workspace with its sheets (tabs): ids, names, positions and row counts (each '
-        + 'counted in full, so slower on big sheets). get_workspace is the first look; use this to turn a table '
-        + 'or sheet name it left out into a sheet_id, then get_sheet for its columns or read_rows for its rows.',
+        'List every table in the workspace with its sheets (tabs): ids, names, positions and row counts. A '
+        + 'sheet still being counted after a change answers its last count with row_count_updating: true. '
+        + 'get_workspace is the first look; use this to turn a table or sheet name it left out into a sheet_id, '
+        + 'then get_sheet for its columns or read_rows for its rows.',
       inputSchema: {},
     },
-    async () => missingScope(ctx, 'read') ?? ok({ tables: listTablesWithSheets(ctx.userId) }),
+    async () => missingScope(ctx, 'read') ?? ok({ tables: await listTablesWithSheets(ctx.userId) }),
   );
 
   registerTool(server, 

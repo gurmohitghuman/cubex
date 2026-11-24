@@ -9,6 +9,7 @@ import { sheetRunBlock } from '../services/autorun-block';
 import { deleteRowsToTrash } from '../services/trash-rows';
 import { getTrashDays } from '../lib/trash/store';
 import { orderedUuid } from '../lib/ordered-id';
+import { rowsChanged } from '../lib/rows-changed';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -57,6 +58,7 @@ router.post('/:id/rows', (req: AuthRequest, res) => {
         newRowIndexes.push(nextIndex);
         nextIndex++;
       }
+      rowsChanged(id);
       touchSheet(id, req.userId!);
     }).immediate();
 

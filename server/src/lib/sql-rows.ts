@@ -3,6 +3,7 @@ import { stripControlAndC1Chars } from './csv-safety';
 import { stripInvisibleNameChars } from './name-safety';
 import { jsonPath } from './json-path';
 import { orderedUuid } from './ordered-id';
+import { rowsChanged } from './rows-changed';
 
 // A cell's JSON path (lib/json-path.ts, pure so lib/row-filter can build SQL without a database).
 export { jsonPath };
@@ -87,6 +88,8 @@ export function upsertCellsBatch(
         jsonPath(u.columnName), u.value,
       );
     }
+    // It adds a row where one was deleted since its result was made.
+    rowsChanged(sheetId);
   });
   tx.immediate();
 }
