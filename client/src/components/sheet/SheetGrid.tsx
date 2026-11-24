@@ -1,5 +1,5 @@
 // Over 200 lines: the grid's props and its run, column and setup actions, wired as one piece.
-import React from 'react'
+import React, { useRef } from 'react'
 import type { ColumnFilter, ColumnFilters } from '@/lib/filters'
 import { AGGridSpreadsheet } from '@/components/AGGridSpreadsheet'
 import { AIRun, HTTPRun, SheetData, Sheet } from '@/utils/api'
@@ -22,12 +22,10 @@ import type {
 import type { EnrichOpenTarget } from '@/components/enrich-modal/useOpenRequest'
 import { EnrichRerunConfirm } from './EnrichRerunConfirm'
 import { useColumnRunDialogs } from './ColumnRunDialogs'
-import { AnswerPanel } from '@/components/answer-panel/AnswerPanel'
-import { useAnswerPanel } from '@/hooks/sheet/useAnswerPanel'
 import { opensAnswer, opensTrace } from '@/components/answer-panel/answer-click'
 import { useWaterfallColumn } from '@/hooks/sheet/useWaterfallColumn'
 import { WaterfallRerunConfirm } from '@/components/waterfall/WaterfallRerunConfirm'
-import { TracePanel } from '@/components/waterfall/TracePanel'
+import { CellPanels, type CellPanelsHandle } from './CellPanels'
 import { useGridRunControls } from '@/hooks/sheet/useGridRunControls'
 import { RunControlConfirm } from './RunControlConfirm'
 import { UndoRunConfirm } from './UndoRunConfirm'
@@ -146,27 +144,14 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   const clean = useCleanColumnActions({ activeSheet, cleanColumns, reloadSheetData, onOpenClean })
   const formula = useFormulaColumnActions({ activeSheet, formulaColumns, reloadSheetData, onOpenFormula })
   const lookup = useLookupColumnActions({ activeSheet, lookupColumns, reloadSheetData, onOpenLookup })
-  // A click on an enrichment or HTTP API cell opens its answer; "Rerun this
-  // row" goes through the column menu's selected-rows run and its confirm.
-  const answers = useAnswerPanel({
-    activeSheet, reloadSheetData,
-    rowGeneration: () => (activeSheet ? rowGenerationRef?.current.get(activeSheet.id) : undefined),
-    onRerunRow: (column, row, generation) => enrich.onEnrichAction('selected', column, [row], generation, true),
-  })
+  // A click on an enrichment or HTTP API cell opens its answer beside the grid, on a waterfall cell its trace
+  // (CellPanels, whose state stays out of this component so the grid doesn't re-render when one opens).
+  const panels = useRef<CellPanelsHandle>(null)
   const handleCellClick = (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => {
-    if (opensTrace(columnTypes[columnName], value)) {
-      answers.cancelPending()
-      waterfall.traceClicked({ column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 },
-        info?.clicks ?? 1)
-      return
-    }
-    waterfall.cancelPendingTrace()
-    if (opensAnswer(columnTypes[columnName], value)) {
-      answers.clicked({ column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 },
-        info?.clicks ?? 1)
-      return
-    }
-    answers.cancelPending()
+    const cell = { column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 }
+    const click = { clicks: info?.clicks ?? 1, edit: info?.edit }
+    if (opensTrace(columnTypes[columnName], value)) { panels.current?.trace(cell, click); return }
+    if (opensAnswer(columnTypes[columnName], value)) { panels.current?.answer(cell, click); return }
     onCellClick(rowIndex, columnName, value)
   }
 
@@ -206,9 +191,13 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
         onCancel={run.controls.cancel} />
       <UndoRunConfirm pending={undo.pending} onConfirm={undo.confirm} onCancel={undo.cancel} />
       <EnrichRerunConfirm pending={enrich.pending} onConfirm={enrich.confirm} onCancel={enrich.cancel} />
-      <AnswerPanel {...answers.panel} />
+      <CellPanels ref={panels} activeSheet={activeSheet} reloadSheetData={reloadSheetData}
+        rowGenerationRef={rowGenerationRef}
+        onRerunAnswerRow={(column, row, generation) =>
+          enrich.onEnrichAction('selected', column, [row], generation, true)}
+        onRerunTraceRow={(column, row, generation) =>
+          waterfall.onWaterfallAction('selected', column, [row], generation, true)} />
       <WaterfallRerunConfirm pending={waterfall.pending} onConfirm={waterfall.confirm} onCancel={waterfall.cancel} />
-      <TracePanel {...waterfall.tracePanel} />
       <div className="flex-1 min-h-0">
         <AGGridSpreadsheet
           key={`${activeSheet?.id}_${forceUpdate}`}

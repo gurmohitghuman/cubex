@@ -33,14 +33,13 @@ test('open tab live-updates on v1 append (silent) and v1 sort (loud)', async ({ 
   expect(app.status()).toBe(201)
   await expect(page.locator(DATA_CELL(3)).first()).toHaveText('LIVE', { timeout: 15_000 })
 
-  // v1 patch of row 0 → silent reload repaints the cell in place. Silent
-  // reloads are spaced SILENT_RELOAD_MIN_GAP_MS (15s, useLiveSheetUpdates)
-  // apart, so this one lands ~15s after the append's reload above: a 15s
-  // timeout raced that gap by design and failed intermittently.
+  // v1 patch of row 0 → silent reload repaints the cell in place, right after
+  // the append's: the reload after it rests only 4x the last reload's own time,
+  // at least 1 s (reloadPacer.ts), so a person sees it in a few seconds.
   const rows = await (await v1.get(`/api/v1/sheets/${sheetId}/rows`)).json()
   const zzz = await v1.patch(`/api/v1/rows/${rows.rows[0].id}`, { data: { data: { val: 'ZZZ' } } })
   expect(zzz.status()).toBe(200)
-  await expect(page.locator(DATA_CELL(0)).first()).toHaveText('ZZZ', { timeout: 25_000 })
+  await expect(page.locator(DATA_CELL(0)).first()).toHaveText('ZZZ', { timeout: 5_000 })
 
   // v1 sort asc (LIVE < v1 < v2 < ZZZ) → row_generation moves → the tab does a
   // LOUD reload and row 0 becomes LIVE. This is the structural path: the tab's

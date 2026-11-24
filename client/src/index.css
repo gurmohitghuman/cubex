@@ -282,6 +282,20 @@
   animation: slideIn 0.3s ease-out;
 }
 
+/* A side panel (components/SidePanel.tsx) is on screen in its first frame: it slides only its last quarter in. */
+@keyframes cubeSidePanelIn {
+  from { transform: translateX(25%); }
+  to { transform: translateX(0); }
+}
+
+.cube-side-panel {
+  animation: cubeSidePanelIn 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cube-side-panel { animation: none; }
+}
+
 /* Loading spinner */
 @keyframes spin {
   to { transform: rotate(360deg); }

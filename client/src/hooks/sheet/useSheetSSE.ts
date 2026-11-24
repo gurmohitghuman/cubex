@@ -45,8 +45,7 @@ export const useSheetSSE = ({
   const runSheetRef = useRef<Map<string, string>>(new Map())
   // Throttle gate for progress-driven run-list refetches. A saturated run emits
   // a 'progress' event every ~400ms; refetching active runs on each one fired up
-  // to ~5 GETs/sec, which exhausted the global 1000/15min limiter in minutes and
-  // then 429'd autosave (silent edit loss). The header pill shows only
+  // to ~5 GETs/sec for nothing a person sees. The header pill shows only
   // presence/running state and the per-column badges only status — neither
   // changes on a progress tick — so throttling to once per 5s is ample to catch
   // a status drift (pause/resume) without the flood.
@@ -54,11 +53,10 @@ export const useSheetSSE = ({
   // Self-reference for the reconnect timeout — setupSSEConnection can't call
   // itself from inside its own useCallback body.
   const setupRef = useRef<(runId: string, type?: 'ai' | 'http') => void>(() => {})
-  // Pending reload/reconnect setTimeout IDs. Tracked so unmount cleanup can clear
+  // Pending reconnect setTimeout IDs. Tracked so unmount cleanup can clear
   // them — otherwise a timer scheduled during a connection blip outlives the
-  // component and fires against an unmounted/different sheet (orphan EventSource
-  // or a reloadSheet on a sheet the user has navigated away from). The
-  // currentSheetIdRef guards inside each timer don't cover the unmounted case.
+  // component and fires against an unmounted/different sheet (an orphan
+  // EventSource).
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   const [_activeAIRuns, setActiveAIRuns] = useState<Set<string>>(new Set())
 
@@ -84,7 +82,7 @@ export const useSheetSSE = ({
       // an in-flight batch can't repaint over the fresher post-run silent reload.
       bufferRef.current!.flushNow()
       handleTerminalStatus(data, runId, currentSheetId, runSheetId, {
-        sseRef, reconnectAttemptsRef, terminalRunsRef, runSheetRef, pendingTimersRef,
+        sseRef, reconnectAttemptsRef, terminalRunsRef, runSheetRef,
         currentSheetIdRef, setActiveAIRuns, fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheet,
       })
       // Only a genuine failure toasts ('cancelled' is deliberate → no lie).
