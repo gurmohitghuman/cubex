@@ -33,8 +33,8 @@ export const noTransition = (page: Page) => expect(page.locator('[data-transitio
 // Waits for every font the page has asked for so far.
 export const fontsLoaded = (page: Page) => page.evaluate(async () => { await document.fonts.ready })
 
-// The toolbar's menus fade out when they close (about 150 ms), and a click on a menu's button while one is
-// still fading out opens nothing: wait until none is left before opening the next (after Escape, say).
+// No menu open before opening the next one (a menu goes at once when it closes; it used to fade out for 150 ms, and
+// a click on its button meanwhile opened nothing).
 const noMenuOpen = (page: Page) => expect(page.getByRole('menu')).toHaveCount(0)
 
 // Opens a kind of column from the arrow beside AI Column ("Enrichment", "Waterfall", "HTTP API",

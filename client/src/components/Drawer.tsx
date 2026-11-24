@@ -33,8 +33,9 @@ export const Drawer: React.FC<DrawerProps> = ({ isOpen, onClose, children, panel
         </Transition.Child>
         <div className="fixed inset-0 overflow-hidden">
           <div className="absolute inset-y-0 right-0 flex max-w-full">
+            {/* On screen in its first frame: it slides only its last quarter in, as the side panels do. */}
             <Transition.Child as={Fragment} beforeEnter={beforeEnter} afterEnter={afterEnter}
-              enter="transform transition ease-out duration-150" enterFrom="translate-x-full" enterTo="translate-x-0"
+              enter="transform transition ease-out duration-150" enterFrom="translate-x-1/4" enterTo="translate-x-0"
               leave="transform transition ease-in duration-150" leaveFrom="translate-x-0" leaveTo="translate-x-full">
               <Dialog.Panel className={`w-screen ${panelClassName || 'max-w-md'} bg-white shadow-xl flex flex-col h-full`}>
                 {children}
