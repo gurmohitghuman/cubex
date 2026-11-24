@@ -21,6 +21,10 @@ This page is about events coming in. For Cubex telling your URL when a run finis
 
 From then on, each event adds a row below the existing data with the fields you picked. A **Webhook** column marks the rows that came in this way; open one to see the raw event. Rows that are already there are never changed.
 
+### Over the API or MCP
+
+Scripts and AI agents can do the same with an access key ([MCP and API](mcp.md#sheet-webhooks)): `manage_sheet_webhook` over MCP, or `/api/v1/sheets/:id/webhook` over REST. They can turn the webhook on or off, read how many events came in and the last error, rotate the URL, and add or remove fields by path (`$.plan.name`). Making a table or sheet with `webhook: true` gives it a webhook in the same call. Only a key that can change the sheet (`write`) sees the URL, and only until the first event, as in the panel.
+
 ## Making the URL reachable
 
 The sender has to be able to reach Cubex.

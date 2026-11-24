@@ -13,9 +13,12 @@ import { generateWebhookToken, revealWebhookSecret, sha256Hex } from './webhook-
 // one you browse on (a tunnel, a public domain in front of a LAN install).
 // Otherwise it's a path, and the browser resolves it against the address the
 // user is actually on (WebhookEndpoint.tsx).
-export function webhookUrlForSecret(secret: string): string {
-  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-  return `${base}/api/webhooks/${secret}`;
+// base: an API or MCP caller has no page to resolve a path against, so it gets
+// the absolute address it reached Cubex on (lib/file-links.ts linkBase), which
+// is PUBLIC_URL when that is set.
+export function webhookUrlForSecret(secret: string, base?: string): string {
+  const at = (base ?? process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
+  return `${at}/api/webhooks/${secret}`;
 }
 
 export interface WebhookSourceFull {

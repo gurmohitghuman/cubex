@@ -78,6 +78,9 @@ export const errWith = (message: string, extra: Record<string, unknown>): ErrRes
 
 // Scope gate: null when allowed, an isError result naming the missing scope
 // otherwise (so the agent can tell the user which token setting to change).
+// Where an address handed to this caller points (routes/mcp.ts sets it from the request: lib/file-links.ts).
+export const mcpLinkBase = (ctx: McpAuthCtx): string => ctx.linkBase ?? `http://localhost:${process.env.PORT || 3002}`;
+
 export function missingScope(ctx: McpAuthCtx, scope: AccessTokenScope): ErrResult | null {
   if (ctx.scopes.has(scope)) return null;
   return err(`This action requires the '${scope}' scope on your Cubex access token.`);
@@ -164,6 +167,8 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_trash', 'get_sheet_history',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
+  // Its get reads; every other action refuses a busy sheet itself (mcp/tools-sheet-webhook.ts).
+  'manage_sheet_webhook',
   // Only cancel_all names a sheet, and stopping its runs is allowed while it is
   // busy: a run still writing its placeholders is what holds it (as /runs/stop).
   'control_run',
