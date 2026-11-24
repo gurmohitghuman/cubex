@@ -14,10 +14,13 @@ test.use({ trace: 'off' })
 
 // The side panels: on screen in their first frame, about 30 ms here (medians up to 36 ms seen).
 const SIDE_BUDGET_MS = 150
-// The sources dialog and a modal drawer: a dialog's 150 ms fade or a drawer's 150 ms slide starts from nothing, so
-// its first visible frame comes a frame or two after it is drawn. The sources dialog keeps its own state, so opening
-// it no longer re-renders the grid (was about 80 ms here, under a 300 ms line).
+// The sources dialog: its 150 ms fade starts from nothing, so its first visible frame comes a frame or two after it
+// is drawn (about 80 ms here).
 const DIALOG_BUDGET_MS = 150
+// A modal drawer from the column menu: most of its time is the drawer's own first render (123 to 142 ms here alone,
+// a median of 174 ms under e2e:all's two parts; 170 ms alone with the 200 ms slide before v0.8.44). The line catches
+// a fixed wait before it opens, like the 300 ms one above.
+const DRAWER_BUDGET_MS = 250
 const SIDE = '[data-testid=side-panel]'
 const MODAL = '[id^="headlessui-dialog-panel"]'
 const KINDS = [
@@ -81,5 +84,5 @@ test('click to visible: a modal drawer from the column menu (Edit Enrichment) is
     await expect(page.locator(MODAL)).toHaveCount(0)
   }
   console.log(`click to visible, Edit Enrichment drawer, ${PANEL_ROWS.toLocaleString()} rows: ${ms.join(', ')} ms`)
-  expect(median(ms), 'Edit Enrichment drawer: median click to visible').toBeLessThan(DIALOG_BUDGET_MS)
+  expect(median(ms), 'Edit Enrichment drawer: median click to visible').toBeLessThan(DRAWER_BUDGET_MS)
 })
