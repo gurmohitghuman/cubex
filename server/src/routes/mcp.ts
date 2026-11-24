@@ -17,6 +17,7 @@ import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
+import { jsonTooDeep, TOO_DEEP } from '../lib/json-depth';
 import { authInfoFor, serveMcp } from '../mcp/http-entry';
 import {
   errorBody, FORBIDDEN_ORIGIN, INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_JSON, NOT_UTF8_JSON, PARSE_ERROR, requestIdOf,
@@ -78,6 +79,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   }
   const status = err.type === 'entity.too.large' ? 413 : 400;
   return res.status(status).json(errorBody(ProtocolErrorCode.ParseError, status === 413 ? TOO_LARGE : PARSE_ERROR));
+});
+// A body nested deeper than any tool takes: an invalid request (-32600) before a tool reads it (lib/json-depth.ts).
+router.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (jsonTooDeep(req.body)) return res.status(400).json(errorBody(ProtocolErrorCode.InvalidRequest, TOO_DEEP));
+  return next();
 });
 
 // A POST that isn't JSON: express.json left it unread, so it is refused here
