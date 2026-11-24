@@ -1,0 +1,58 @@
+name: Mac Escape
+
+# A test branch only, never for main: runs close-while-opening.spec.ts and sheet-toolbar.spec.ts on GitHub's macOS
+# runner, three times each, with the suite's Playwright and the newer one, and keeps each failure's trace.
+
+on:
+  push:
+    branches: [test/mac-escape]
+
+permissions:
+  contents: read
+
+jobs:
+  specs:
+    name: Escape specs on macOS (Playwright ${{ matrix.pw }})
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        pw: ['1.64.1', '1.65.1']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install, with Playwright ${{ matrix.pw }} and its Chromium
+        run: |
+          sw_vers
+          npm ci --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund @playwright/test@${{ matrix.pw }}
+          npx playwright install chromium
+          npm run build
+
+      - name: Run the specs three times
+        env:
+          E2E_SPEC: tests/e2e/(close-while-opening|sheet-toolbar)
+        run: |
+          failed=0
+          for i in 1 2 3; do
+            echo "::group::Run $i"
+            if ! npm run e2e -- --no-build --output "test-results/run-$i"; then failed=$((failed + 1)); fi
+            echo "::endgroup::"
+          done
+          echo "Runs that failed: $failed of 3"
+          [ "$failed" = 0 ]
+
+      - name: Keep the traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traces-${{ matrix.pw }}
+          path: test-results/
+          retention-days: 5
+          if-no-files-found: ignore
