@@ -195,7 +195,7 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `ai_visibility` | A ready-made table that asks AI engines a list of buyer questions and says whether each answer names a brand, plus the sites they cite, and weeks later checks again, keeping the old answers to compare. Asking is paid: estimate first, its default. See [AI visibility](#ai-visibility). |
 | `hiring_signals` | A ready-made table of the companies hiring for chosen role titles, checked again when you want: only roles never found before are added, and each company says what's new. A check is paid: estimate first, its default. See [Companies hiring](#companies-hiring). |
-| `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
+| `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`, or to call a setup on a file's rows and save its results. See [Big CSV files](#big-csv-files) and [Calling a setup on items](#calling-a-setup-on-items). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, refuse to start over a cost ceiling, stop at a spend limit, preview a few rows, target specific rows, or fill several typed columns at once. See [Cost ceiling and spend limits](#cost-ceiling-and-spend-limits). |
 | `run_http_enrichment` | Start an HTTP API column run, from a URL or a whole cURL command. Failed requests are retried; it can leave out empty values and add a response code column. |
 | `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
@@ -702,6 +702,8 @@ A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API
 - The answer is a `setup_call`. `get_setup_call` (with `wait_seconds`, up to 25) says where it is; once it has finished (`done`, `failed` or `cancelled`) it carries `results`: each item, in the order sent, with `outputs` by the columns the setup makes (`null` where a value is empty).
 - The call's id is a setup run's id: `control_setup_run` pauses, resumes or cancels it, a run webhook named with `webhook_id` reports it as `kind: "setup"` with that id as `run_id`, and `get_run_status` works on each step's `run_id`.
 - Results are kept 24 hours after the call finishes (`keep_until`; `SETUP_CALL_KEEP_HOURS` changes it). Then the working table is deleted and `get_setup_call` answers not found.
+- Results come 100 items at a time: `next_from` is where the next page starts (pass it as `results_from`), `null` after the last. `create_download_link` with `setup_call_id` (instead of `sheet_id`) saves every item's inputs and outputs as a CSV.
+- **More than 100 items: a file.** `create_upload_link` with `setup_id` (instead of `sheet_id`) and `max_cost_usd` gives a link for a CSV whose header names the setup's inputs: a column the setup doesn't read is ignored, an input the file lacks reads as empty. The call starts once the file is in, and curl prints the import's summary with the `setup_call`. Nobody sees an estimate first, so `max_cost_usd` is required: a file whose estimate could pass it starts nothing (curl prints the estimate), and so does a file with no rows. Price it first with `call_setup` on a few items. It needs the `write` and `run` scopes. Over REST, `POST /setups/:id/calls/file` takes the same file as multipart.
 
 ## Setup versions
 
@@ -946,7 +948,8 @@ Import the file into Postman, Insomnia or Swagger UI, or generate a client from 
 | `GET /sheets/:id/setup-runs` · `GET /setup-runs/:id` | The setups working on a sheet (newest first, `?setup_id=` for one setup's), or one of them, with the `choices` each was used with. `read` scope. |
 | `POST /setup-runs/:id/control` | `{"action": "pause"}` (or `resume`, `cancel`). `run` scope. |
 | `POST /setups/:id/calls` | `{"items": [{"Website": "acme.com"}], "models": {}, "estimate_only": true}`. Same as `call_setup` (1 to 100 items), but `estimate_only` defaults to `false` here. `200` with the estimate, `201` with the `setup_call`; over a `max_cost_usd` ceiling it answers `409` with `over_ceiling: true` and the `estimate`. `run` scope (and `secrets` for saved keys). |
-| `GET /setup-calls/:id` | A setup call: its status and steps, and once it has finished, `results` with each item's `outputs`. `404` once its results are gone, 24 hours after it finished. `read` scope. |
+| `POST /setups/:id/calls/file` | Multipart: the CSV in `file` (its header names the setup's inputs), `max_cost_usd` (required), `allow_unpriced`, `webhook_id`. The call starts once the rows are in: `201` with the `setup_call`, or `409` with `over_ceiling` and the `estimate`. `run` scope. |
+| `GET /setup-calls/:id` | A setup call: its status and steps, and once it has finished, `results` with each item's `outputs`, 100 at a time (`?results_from=` with the `next_from` of the page before, `?limit=`). `404` once its results are gone, 24 hours after it finished. `read` scope. |
 
 ### Setup versions
 

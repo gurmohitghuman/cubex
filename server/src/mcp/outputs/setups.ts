@@ -39,14 +39,14 @@ export const applySetup = obj({
 const setupCall = obj({
   id: str, setup_id: nul(str).describe('null when the setup was deleted'), setup_name: str, status: str, items: num,
   layer: num, layers: num, error_message: nul(str), created_at: str, updated_at: str,
-  keep_until: nul(str).describe('When the results go; null while it runs'), webhook_id: nul(str),
+  keep_until: nul(str), webhook_id: nul(str),
   max_cost_usd: opt(num),
   steps: z.array(obj({ column: str, kind: str, layer: num, state: str, run_id: nul(str), note: nul(str) })),
-  results: opt(z.array(obj({ item: num, outputs: info('Each column the setup makes: its value, null when empty') }))),
+  results: opt(z.array(obj({ item: num, outputs: info('Column: value, null when empty') }))), next_from: opt(nul(num)),
 });
 // estimate_only (its default): estimate, makes and items. Started: setup_call.
 export const callSetup = obj({
-  setup_call: opt(setupCall), estimate: opt(info('What it would cost, by column')),
+  setup_call: opt(info('The call, as get_setup_call answers it')), estimate: opt(info('What it would cost, by column')),
   makes: opt(strs).describe('The columns it would make'), items: opt(num),
 });
 export const getSetupCall = setupCall;
