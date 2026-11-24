@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { Copy, DatabaseZap, Globe, Loader2, RotateCcw } from 'lucide-react'
 import { DrawerBody, DrawerHeader } from '@/components/Drawer'
-import { SidePanel } from '@/components/SidePanel'
+import { PanelWait, SidePanel } from '@/components/SidePanel'
 import { JsonTree } from '@/components/json-mapping/JsonTree'
 import type { AnswerView } from '@/utils/api'
 import { AnswerSteps, Section } from './AnswerSteps'
@@ -15,7 +15,11 @@ export interface AnswerTarget {
 
 interface Props {
   target: AnswerTarget | null
+  // The answer on screen and the cell it was read for. `stale`: that is another cell than target, whose answer is on
+  // its way: it stays until then, and nothing acts on it.
   view: AnswerView | null
+  shownCell: AnswerTarget | null
+  stale: boolean
   loading: boolean
   error: string | null
   adding: boolean
@@ -27,6 +31,7 @@ interface Props {
   onAddField: (jsonPath: string, name: string) => void
   onRerun: () => void
   onCopy: () => void
+  slideIn?: boolean
 }
 
 const FREE_HINT = {
@@ -34,6 +39,7 @@ const FREE_HINT = {
   http: 'Add as column fills a new column from the responses you already have. Free: no new requests.',
 }
 const COPY_HINT = ' Click a key or a value to copy its path.'
+const WAITING = "Loading this row's answer"
 // A list job's answer: its results become rows elsewhere (once fields are
 // picked, once that sheet has room, or once a paused run there goes on or
 // stops), as the row's status cell says.
@@ -76,19 +82,21 @@ export const AnswerPanel: React.FC<Props> = (p) => {
     if (p.diagText) diagRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [p.diagText])
   const title = p.target ? `Row ${p.target.displayRow} · ${p.target.column}` : ''
+  const shownKey = p.shownCell ? `${p.shownCell.column}:${p.shownCell.row}:${p.shownCell.rowGeneration ?? ''}` : ''
   const headline = v ? foundLine(v) ?? (v.status === 'completed' ? statusLine(v) : null) : null
   return (
     <SidePanel isOpen={!!p.target} onClose={p.onClose} onDoubleClickThrough={p.onDoubleClickThrough}
       label={title} openKey={p.target ? `${p.target.sheetId}:${p.target.column}:${p.target.row}` : undefined}
-      panelClassName="max-w-lg">
+      panelClassName="max-w-lg" slideIn={p.slideIn}>
       <div className="flex flex-col h-full" data-testid="answer-panel">
         <DrawerHeader
           icon={v?.kind === 'http' ? <Globe className="h-5 w-5" /> : <DatabaseZap className="h-5 w-5" />}
           title={title}
           description={v ? (v.enrichment ? v.enrichment.toolName : 'HTTP API column') : undefined}
+          headerRight={p.loading && v ? <PanelWait label={WAITING} /> : undefined}
           onClose={p.onClose}
         />
-        <DrawerBody>
+        <DrawerBody topKey={shownKey}>
           {p.loading && !v && (
             <p className="text-sm text-gray-600 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />
               Loading the answer…</p>
@@ -144,8 +152,9 @@ export const AnswerPanel: React.FC<Props> = (p) => {
                   ? <p className="text-sm text-gray-500">Nothing was kept for this row.</p>
                   : (
                     <div className={`text-xs font-mono overflow-x-auto border border-gray-200 p-2${
-                      p.adding ? ' opacity-60 pointer-events-none' : ''}`} data-testid="answer-tree">
-                      <JsonTree key={p.target ? `${p.target.column}:${p.target.row}` : ''} value={v.answer} path="$"
+                      p.adding ? ' opacity-60 pointer-events-none' : p.stale ? ' pointer-events-none' : ''}`}
+                      data-testid="answer-tree">
+                      <JsonTree key={shownKey} value={v.answer} path="$"
                         mappingByPath={mapped} onPick={v.addsRowsTo ? undefined : p.onAddField}
                         pickLabel="Add as column" />
                     </div>
@@ -158,8 +167,9 @@ export const AnswerPanel: React.FC<Props> = (p) => {
           <div className="min-w-0">
             {enrich && (
               <>
-                <button type="button" className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
-                  onClick={p.onRerun} data-testid="answer-rerun">
+                <button type="button" onClick={p.onRerun} data-testid="answer-rerun" disabled={p.stale}
+                  title={p.stale ? WAITING : undefined}
+                  className="btn-secondary cube-wait-dim inline-flex items-center gap-1.5 whitespace-nowrap">
                   <RotateCcw className="h-4 w-4" /> Rerun this row
                 </button>
                 <p className="text-[11px] text-gray-500 mt-1">Calls treg again for this row, and it costs again.</p>
@@ -168,8 +178,9 @@ export const AnswerPanel: React.FC<Props> = (p) => {
           </div>
           <div className="flex items-center gap-2">
             {v && (
-              <button type="button" className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
-                onClick={p.onCopy} data-testid="answer-copy">
+              <button type="button" onClick={p.onCopy} data-testid="answer-copy" disabled={p.stale}
+                title={p.stale ? WAITING : undefined}
+                className="btn-secondary cube-wait-dim inline-flex items-center gap-1.5 whitespace-nowrap">
                 <Copy className="h-4 w-4" /> Copy diagnostics
               </button>
             )}
