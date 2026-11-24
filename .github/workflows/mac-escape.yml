@@ -35,6 +35,12 @@ jobs:
           npx playwright install chromium
           npm run build
 
+      - name: The debug spec (logs every Escape)
+        continue-on-error: true
+        env:
+          E2E_SPEC: tests/e2e/mac-escape-debug.spec.ts
+        run: npm run e2e -- --no-build --output test-results/debug
+
       - name: Run the specs three times
         env:
           E2E_SPEC: tests/e2e/(close-while-opening|sheet-toolbar)
