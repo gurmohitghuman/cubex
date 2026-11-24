@@ -159,21 +159,40 @@ test('more paused runs than the notice lists: the first three, then how many mor
 // whole header, and a hovered toast (the pointer on its way to a button under it) stays. Hovered here, so it is
 // still showing when "Resume all runs" is clicked. SHOTS=<dir> saves the screen with the toast showing.
 for (const size of [{ name: 'desktop', width: 1280, height: 720 }, { name: 'phone', width: 390, height: 844 }]) {
-  test(`${size.name}: a "Paused" toast shows below the header, and "Resume all runs" clicks while it shows`, async ({
+  const phone = size.width < 640
+  test(phone
+    ? 'phone: no "Paused" toast over the notice that says it, and "Resume all runs" clicks'
+    : `${size.name}: a "Paused" toast shows below the header, and "Resume all runs" clicks while it shows`, async ({
     page, context,
   }) => {
     test.setTimeout(90_000)
     await page.setViewportSize({ width: size.width, height: size.height })
     const { tableId, sheetId } = await sheetOf(8)
     await openSheet(page, context, api, tableId)
+    // Any "Paused:" toast at all, kept even after it goes (a toast lasts 4 s).
+    await page.evaluate(() => {
+      const w = window as unknown as { __pausedToast?: boolean }
+      w.__pausedToast = false
+      new MutationObserver(() => {
+        if ([...document.querySelectorAll('[data-rht-toaster] [role="status"]')]
+          .some(el => el.textContent?.includes('Paused:'))) w.__pausedToast = true
+      }).observe(document.body, { childList: true, subtree: true, characterData: true })
+    })
     const runId = await braked(sheetId, `/p-toast-${size.name}`, 'Toast')
     const shown = page.locator('[data-rht-toaster] [role="status"]').filter({ hasText: 'Paused:' })
-    await shown.hover()
     const resume = page.getByTitle('Resume all runs')
-    const header = page.locator('header').filter({ has: resume })
-    // The toast's bar (its message sits inside it).
-    const [t, h] = [await shown.locator('xpath=..').boundingBox(), await header.boundingBox()]
-    expect(t!.y, 'the toast starts below the header').toBeGreaterThanOrEqual(h!.y + h!.height)
+    if (phone) {
+      // The notice right below the header says it, with the run's Resume; a toast would lie over it.
+      await expectLine(page, runId, 'Toast', BRAKE)
+      await page.waitForTimeout(1500)
+      expect(await page.evaluate(() => (window as unknown as { __pausedToast?: boolean }).__pausedToast)).toBe(false)
+    } else {
+      await shown.hover()
+      const header = page.locator('header').filter({ has: resume })
+      // The toast's bar (its message sits inside it).
+      const [t, h] = [await shown.locator('xpath=..').boundingBox(), await header.boundingBox()]
+      expect(t!.y, 'the toast starts below the header').toBeGreaterThanOrEqual(h!.y + h!.height)
+    }
     if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/toast-${size.name}.png` })
     rx.on(`/p-toast-${size.name}`, OK)
     await resume.click({ timeout: 5_000 })
