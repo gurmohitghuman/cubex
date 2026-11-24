@@ -28,7 +28,8 @@ ok('a title has a letter or digit, in any script; with More filters it is not a 
   for (const t of ['SDR', 'Account Executive', '営業', 'Développeur', 'C++ dev', 'L2']) {
     assert.ok(searchesATitle(t, true), t)
   }
-  for (const t of [',', ' , ', '-', '—', '...', '']) assert.ok(!searchesATitle(t, true), t)
+  const longDash = String.fromCharCode(0x2014)
+  for (const t of [',', ' , ', '-', longDash, '...', '']) assert.ok(!searchesATitle(t, true), t)
   assert.ok(!searchesATitle('-intern', true))
   assert.ok(searchesATitle('-intern', false), 'the routed search has no words to leave out')
 })
