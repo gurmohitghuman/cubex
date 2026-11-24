@@ -121,6 +121,15 @@ function Move-Folder([string]$From, [string]$To) {
   }
 }
 
+# A file's SHA-256 in lowercase hex. .NET, not Get-FileHash: a Windows PowerShell started from PowerShell 7 inherits
+# its module path and then can't load the module Get-FileHash lives in.
+function Get-Sha256([string]$Path) {
+  $sha = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($Path)
+  try { [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+  finally { $stream.Dispose(); $sha.Dispose() }
+}
+
 # Windows can give a folder its short 8.3 alias (C:\Users\FIRST~1.LAS) and PowerShell's file commands trip over
 # those: name each existing folder on the path by its long name.
 function Get-LongPath([string]$Path) {
@@ -277,7 +286,7 @@ function Install-Node {
   if ($current -ne $version) {
     $zip = Join-Path $Tmp $file
     try { (New-WebClient).DownloadFile("$base/$file", $zip) } catch { Die 'Downloading Node.js failed.' }
-    if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $hash) {
+    if ((Get-Sha256 $zip) -ne $hash) {
       Die 'The Node.js download failed its checksum.'
     }
     $next = "$CubexHome\node.next"
@@ -365,7 +374,7 @@ function Get-LatestRelease {
 function Get-Source([string]$Source) {
   $next = "$CubexHome\app.next"
   $S.Prebuilt = $false
-  $ref = ''
+  $srcRef = '' # not $ref: PowerShell names ignore case, so $ref would hide the script's $Ref
   Remove-Tree $next
   New-Item -ItemType Directory -Path $next | Out-Null
   if ($Source) {
@@ -379,11 +388,11 @@ function Get-Source([string]$Source) {
     if ($LASTEXITCODE) { Die "Copying $Source failed (it must be a git checkout of Cubex)." }
     $S.SrcId = "local $(& git -C $Source rev-parse --short HEAD) $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
   } else {
-    $ref = if ($Ref -eq 'stable') { Get-LatestRelease } else { $Ref }
+    $srcRef = if ($Ref -eq 'stable') { Get-LatestRelease } else { $Ref }
     $sha = ''
-    $api = "https://api.github.com/repos/$Repo/commits/$ref"
+    $api = "https://api.github.com/repos/$Repo/commits/$srcRef"
     try { $sha = (New-WebClient 'application/vnd.github.sha').DownloadString($api).Trim() } catch { }
-    $S.SrcId = "$ref $(if ($sha) { $sha.Substring(0, 7) })"
+    $S.SrcId = "$srcRef $(if ($sha) { $sha.Substring(0, 7) })"
     $installed = "$CubexHome\app\.cubex-version"
     if ($sha -and -not $S.Force -and (Test-Path -LiteralPath $installed) -and
       (Get-Content -LiteralPath $installed -TotalCount 1) -eq $S.SrcId) {
@@ -391,10 +400,10 @@ function Get-Source([string]$Source) {
       return $false
     }
     $tarball = Join-Path $Tmp 'cubex.tar.gz'
-    $url = "https://codeload.github.com/$Repo/tar.gz/$(if ($sha) { $sha } else { $ref })"
-    try { (New-WebClient).DownloadFile($url, $tarball) } catch { Die "Downloading Cubex ($Repo, $ref) failed." }
+    $url = "https://codeload.github.com/$Repo/tar.gz/$(if ($sha) { $sha } else { $srcRef })"
+    try { (New-WebClient).DownloadFile($url, $tarball) } catch { Die "Downloading Cubex ($Repo, $srcRef) failed." }
     & $Tar -xzf $tarball -C $next --strip-components 1
-    if ($LASTEXITCODE) { Die "Unpacking Cubex ($Repo, $ref) failed." }
+    if ($LASTEXITCODE) { Die "Unpacking Cubex ($Repo, $srcRef) failed." }
     Ok "Downloaded Cubex ($($S.SrcId))"
   }
   if (-not (Test-Path -LiteralPath "$next\bin\cubex.ps1")) {
@@ -407,7 +416,7 @@ function Get-Source([string]$Source) {
     Stop-Unsupported ('Cubex doesn''t run on Windows on ARM yet: one of its parts (argon2) has no ready-made ARM64 ' +
       'build for Windows, and installing must never need a compiler. Until a release adds it, use install.sh in WSL2.')
   }
-  if (-not $Source) { $S.Prebuilt = Get-Prebuilt $ref $next }
+  if (-not $Source) { $S.Prebuilt = Get-Prebuilt $srcRef $next }
   $true
 }
 
@@ -431,7 +440,7 @@ function Get-Prebuilt([string]$RefTag, [string]$Next) {
   $archive = Join-Path $Tmp 'cubex-dist.tar.gz'
   try { (New-WebClient).DownloadFile("$base/cubex-dist.tar.gz", $archive) }
   catch { Die 'Downloading the Cubex build archive failed.' }
-  $got = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+  $got = Get-Sha256 $archive
   if ($got -ne $want) { Die 'The Cubex build archive failed its checksum.' }
   $entries = @(& $Tar -tzf $archive 2>$null)
   if ($LASTEXITCODE -or -not $entries) { Die 'Reading the Cubex build archive failed.' }
