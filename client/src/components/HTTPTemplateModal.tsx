@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import Modal from './Modal'
 import { HTTPTemplateBrowser, type HTTPTemplate } from './http-template/HTTPTemplateBrowser'
 import { HTTPTemplateSaveForm } from './http-template/HTTPTemplateSaveForm'
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 interface HTTPTemplateModalProps {
   isOpen: boolean
@@ -22,26 +23,21 @@ export default function HTTPTemplateModal({
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'browse' | 'save'>('browse')
 
-  const loadTemplates = async (search?: string) => {
-    try {
-      setLoading(true)
-      setTemplates(await httpAPI.getTemplates(search))
-    } catch (error) {
-      console.error('Error loading templates:', error)
-      toast.error('Failed to load templates')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { if (isOpen) loadTemplates() }, [isOpen])
-
-  // Debounce searches so typing doesn't fire a request per keystroke.
+  // Bumped after a save or a delete, to read the list again.
+  const [version, setVersion] = useState(0)
+  const ask = useTypedReads<HTTPTemplate[]>(a => {
+    if (a.ok) setTemplates(a.value)
+    else { console.error('Error loading templates:', a.error); toast.error('Failed to load templates') }
+    setLoading(false)
+  })
+  // While open, the templates for the search as it is typed (no search: at once): one read at a time, an older
+  // answer never shown (lib/typedReads.ts).
   useEffect(() => {
-    if (!searchQuery) { loadTemplates(); return }
-    const t = setTimeout(() => loadTemplates(searchQuery), 300)
-    return () => clearTimeout(t)
-  }, [searchQuery])
+    if (!isOpen) { ask('', null); return }
+    const q = searchQuery
+    setLoading(true)
+    ask(`${q}\n${version}`, () => httpAPI.getTemplates(q || undefined), q ? undefined : 0)
+  }, [isOpen, searchQuery, version, ask])
 
   const handleSelectTemplate = async (template: HTTPTemplate) => {
     try {
@@ -60,7 +56,7 @@ export default function HTTPTemplateModal({
     if (!confirm(`Are you sure you want to delete "${template.name}"?`)) return
     try {
       await httpAPI.deleteTemplate(template.id)
-      await loadTemplates(searchQuery)
+      setVersion(v => v + 1)
       // No success toast — the template row disappears from the list immediately.
     } catch (error) {
       console.error('Error deleting template:', error)
@@ -74,7 +70,7 @@ export default function HTTPTemplateModal({
       await httpAPI.createTemplate({ name, description, config: currentConfig, tags, is_draft: isDraft })
       toast.success('Template saved successfully')
       setActiveTab('browse')
-      await loadTemplates()
+      setVersion(v => v + 1)
     } catch (error) {
       console.error('Error saving template:', error)
       toast.error('Failed to save template')

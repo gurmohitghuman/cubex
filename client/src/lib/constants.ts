@@ -23,20 +23,28 @@ export const SILENT_RELOAD_PAGE_ROWS = 1000;
 export const SILENT_RELOAD_MAX_ROWS = 4000;
 export const SILENT_RELOAD_BELOW_ROWS = 1000;
 export const SILENT_RELOAD_LEAD_ROWS = 250;
+// A box that reads as a person types (a rule check, a preview, a search, an
+// estimate: lib/typedReads.ts and the grid's search) reads this long after
+// the last key. People type about 230 ms apart on average, so a pause this
+// long is most often the end of a word; the box says it is checking from the
+// first key, and one read of a box runs at a time.
+export const TYPING_WAIT_MS = 200;
+
 // Search (hooks/sheet/useSheetSearch.ts): a match outside the held rows loads
-// a window of SEARCH_JUMP_ROWS starting SEARCH_JUMP_LEAD_ROWS above it; the
-// typed text waits SEARCH_DEBOUNCE_MS of quiet before it searches; the
-// server caps the text (MAX_SEARCH_CHARS in server lib/constants-query.ts).
+// a window of SEARCH_JUMP_ROWS starting SEARCH_JUMP_LEAD_ROWS above it, tried
+// once more SEARCH_RETRY_MS later if a background reload took that load's
+// place; the server caps the text (MAX_SEARCH_CHARS in server
+// lib/constants-query.ts).
 export const SEARCH_JUMP_ROWS = 1000;
 export const SEARCH_JUMP_LEAD_ROWS = 100;
-export const SEARCH_DEBOUNCE_MS = 250;
+export const SEARCH_RETRY_MS = 250;
 export const MAX_SEARCH_CHARS = 200;
 
 // The "type it in" effect when a cell gets its value (aggrid/typingTicker.ts):
 // per character, capped per cell however long the value is, and how many cells
 // may type at once (past that, a big batch shows its values straight away).
 export const TYPING_MS_PER_CHAR = 20;
-export const TYPING_MAX_MS = 600;
+export const TYPING_MAX_MS = 150;
 export const TYPING_MAX_ACTIVE = 200;
 
 // AI run concurrency (in-run request fan-out). Mirrors server/src/lib/constants.ts
@@ -92,6 +100,8 @@ export const FIRST_ROWS_MAX = 1000;
 // rows" takes, and the highest per-row limit an estimate or run accepts.
 export const ENRICH_TEST_ROWS = 5;
 export const ENRICH_MAX_ROW_CAP_USD = 1000;
+export const ENRICH_PROVIDER_RATE_RETRIES = 5;
+export const ENRICH_PROVIDER_RATE_RETRIES_MAX = 10;
 // How often the drawer's Test and Run steps read a run's lean status while it
 // runs (GET /api/enrich/runs/:id); the grid itself follows the run over SSE.
 export const ENRICH_RUN_POLL_MS = 1500;
@@ -111,15 +121,8 @@ export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
 export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;
 
-// Clean data dialog: the preview (a free read of the first rows, before and
-// after) is asked for this long after the last change to the form.
-export const CLEAN_PREVIEW_DELAY_MS = 400;
-// Formula dialog: the same free preview, asked for this long after the last
-// keystroke in the formula (a formula is typed more than picked).
-export const FORMULA_PREVIEW_DELAY_MS = 500;
-// Lookup columns (server lib/constants-lookup.ts): the preview's wait after a change, "all matches"
-// (at most LOOKUP_LIST_MAX, LOOKUP_LIST_DEFAULT when not set), contains' shortest value.
-export const LOOKUP_PREVIEW_DELAY_MS = 400;
+// Lookup columns (server lib/constants-lookup.ts): "all matches" (at most LOOKUP_LIST_MAX,
+// LOOKUP_LIST_DEFAULT when not set), contains' shortest value.
 export const LOOKUP_LIST_MAX = 100;
 export const LOOKUP_LIST_DEFAULT = 10;
 export const LOOKUP_CONTAINS_MIN_CHARS = 3;
@@ -127,11 +130,9 @@ export const LOOKUP_CONTAINS_MIN_CHARS = 3;
 // Longest pasted cURL command the HTTP column dialog sends (mirrors server CURL_MAX_CHARS).
 export const CURL_MAX_CHARS = 100_000;
 
-// Remove duplicates dialog: the check (a free read of the whole sheet) is
-// asked for this long after the last change to the columns or keep choice.
-// Checking and removing a million rows can take longer than the client's
-// usual 30 s request timeout, so both wait up to DEDUPE_REQUEST_TIMEOUT_MS.
-export const DEDUPE_CHECK_DELAY_MS = 400;
+// Remove duplicates dialog: checking and removing a million rows can take
+// longer than the client's usual 30 s request timeout, so both wait up to
+// DEDUPE_REQUEST_TIMEOUT_MS.
 export const DEDUPE_REQUEST_TIMEOUT_MS = 10 * 60_000;
 // "Copy values to a new sheet" answers once every row is in: a million rows take
 // about as long as importing them, more than the usual 30 s request timeout.

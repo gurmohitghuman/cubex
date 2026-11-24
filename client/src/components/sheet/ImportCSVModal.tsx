@@ -85,16 +85,13 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({
     }, 200)
     try {
       const result = await sheetsAPI.importCSV(sheetId, selectedFile, replaceData, !!autorunOn && pauseAutorun)
-      setUploadProgress(100)
-
-      setTimeout(() => {
-        onImported({
-          rowsImported: result.rowsImported, newColumns: result.newColumns ?? [], autoDedupe: result.autoDedupe ?? null,
-          garbledCells: result.garbledCells ?? 0, garbledSamples: result.garbledSamples ?? {},
-        })
-        reset()
-        onClose()
-      }, 500)
+      // Done: the dialog closes at once, and the sheet shows the rows (its toast says how many).
+      onImported({
+        rowsImported: result.rowsImported, newColumns: result.newColumns ?? [], autoDedupe: result.autoDedupe ?? null,
+        garbledCells: result.garbledCells ?? 0, garbledSamples: result.garbledSamples ?? {},
+      })
+      reset()
+      onClose()
     } catch (error: any) {
       setUploadProgress(0)
       toast.error(error.response?.data?.error || 'Failed to import CSV')

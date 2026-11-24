@@ -22,6 +22,9 @@ Each unit test file gets 300 seconds. A file still running then fails by name, a
 are stopped. On a slow machine, give more with `UNIT_FILE_TIMEOUT_S=600 npm run test:unit`, or in PowerShell
 `$env:UNIT_FILE_TIMEOUT_S='600'; npm run test:unit; Remove-Item Env:UNIT_FILE_TIMEOUT_S`.
 
+CI splits the unit tests over 3 runners on each platform, each taking every third file of the sorted list.
+`UNIT_SHARD=2/3 npm run test:unit` runs the same files as the second runner.
+
 The end-to-end suite needs Playwright: run `npm install --no-save @playwright/test`, then `npx playwright install chromium`.
 
 Stack: Express and SQLite (better-sqlite3) on the server, React, Vite and AG Grid in the browser, Sidequest for background runs. Runs, autosave and column handling rely on rules that the comments at the top of those files explain; read them before changing anything there. How a release is cut: [docs/releasing.md](docs/releasing.md).

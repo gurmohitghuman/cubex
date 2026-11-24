@@ -1,3 +1,4 @@
+// Over 200 lines: one runner, from picking the files to the last result; most of it stops and reports a late file.
 // Runs the unit tests (tests/unit/*.test.ts), each in its own process with its own fresh database, all
 // inside ONE temp folder that is deleted afterwards: a run makes over a hundred databases and nothing
 // else removes them (they once filled a disk with thousands of folders). Plain Node, no shell, so it
@@ -7,12 +8,14 @@
 // the run, here and in CI, until the job's own limit. The slowest file takes a little over 2 minutes in CI.
 // Usage: node scripts/unit-tests.mjs [name...]   (only the tests whose file name contains a name)
 //        UNIT_FILE_TIMEOUT_S=<seconds> changes each file's limit (300 by default)
+//        UNIT_SHARD=k/n runs the k-th of n shares of those files, as CI's runners do (scripts/unit-shards.mjs)
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { filesOfShard, parseShard } from './unit-shards.mjs';
 
 const PREFIX = 'cubex-unit-';
 const DEFAULT_LIMIT_S = 300;
@@ -26,14 +29,20 @@ if (!Number.isFinite(LIMIT_S) || LIMIT_S <= 0 || LIMIT_S > MAX_LIMIT_S) {
   console.error(`UNIT_FILE_TIMEOUT_S must be a number of seconds over 0 and up to ${MAX_LIMIT_S}, not '${limitText}'`);
   process.exit(2);
 }
+let shard = null;
+try { shard = parseShard(process.env.UNIT_SHARD); } catch (err) { console.error(err.message); process.exit(2); }
 const names = process.argv.slice(2);
-const tests = fs.readdirSync(path.join(root, 'tests', 'unit'))
+const named = fs.readdirSync(path.join(root, 'tests', 'unit'))
   .filter(f => f.endsWith('.test.ts') && (!names.length || names.some(n => f.includes(n))))
   .sort();
-if (!tests.length) {
+if (!named.length) {
   console.error(`no unit test file name contains: ${names.join(' ')}`);
   process.exit(2);
 }
+const tests = filesOfShard(named, shard);
+const ofShard = shard ? ` of shard ${shard.k}/${shard.n}` : '';
+if (shard) console.log(`[shard ${shard.k}/${shard.n}] ${tests.length} of ${named.length} unit test files`);
+if (!tests.length) { console.log(`[done] no unit tests${ofShard}`); process.exit(0); }
 
 // Not realpath'd: tsx puts a socket in here and macOS caps socket paths near 104 characters.
 const base = path.resolve(os.tmpdir());
@@ -163,6 +172,8 @@ const failed = [];
 try {
   for (const [n, file] of tests.entries()) {
     if (interrupted) break;
+    // Each file's start and the run's time so far: a log that ends early names the file it was in.
+    console.log(`[${n + 1}/${tests.length}] tests/unit/${file}, ${Math.round((Date.now() - started) / 1000)} s in`);
     const status = await run(file, n);
     if (status === 'late' || status === 'late-part') {
       failed.push(`${file} (did not end within ${LIMIT_S} s)`);
@@ -191,7 +202,8 @@ if (interrupted) {
   process.exit(130);
 }
 if (failed.length) {
-  console.error(`[done] ${failed.length} of ${tests.length} unit tests failed (${secs}s):\n  ${failed.join('\n  ')}`);
+  const list = failed.join('\n  ');
+  console.error(`[done] ${failed.length} of ${tests.length} unit tests${ofShard} failed (${secs}s):\n  ${list}`);
   process.exit(1);
 }
-console.log(`[done] all ${tests.length} unit tests passed (${secs}s)`);
+console.log(`[done] all ${tests.length} unit tests${ofShard} passed (${secs}s)`);

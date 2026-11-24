@@ -79,6 +79,7 @@ export function applyRecall(
     conditions: r.conditions.map(c => ({ column: c.column, op: c.op as Condition['op'], value: c.value })),
     runIf: r.runIf ?? '',
     maxCostPerRowUsd: r.maxCostPerRowUsd, spendLimitUsd: null,
+    rateLimitRetries: r.rateLimitRetries ?? null,
     recall: null, list: recallList(built.list, r),
   }
 }

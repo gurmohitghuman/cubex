@@ -145,6 +145,7 @@ function build(s: Obj): SetupStep {
         }),
         runIf: strOrNull(s.runIf, 'runIf'), maxCostPerRowUsd: num(s.maxCostPerRowUsd, 'maxCostPerRowUsd'),
         concurrency: int(s.concurrency, 'concurrency'), fresh: bool(s.fresh, 'fresh'), autoRun: autoRun(s.autoRun),
+        ...(s.rateLimitRetries === undefined ? {} : { rateLimitRetries: int(s.rateLimitRetries, 'rateLimitRetries') }),
       };
     }
     case 'clean':

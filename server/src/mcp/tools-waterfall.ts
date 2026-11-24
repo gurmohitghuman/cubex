@@ -5,9 +5,9 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
-  ENRICH_DEFAULT_CONCURRENCY, ENRICH_TEST_ROWS, HTTP_MAX_CONCURRENCY, HTTP_RETRY_MAX, WATERFALL_LABEL_MAX_CHARS,
-  WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_STEPS, WATERFALL_PROMPT_MAX_CHARS, WATERFALL_DRY_ROWS,
-  WATERFALL_DRY_MAX_ROWS, WATERFALL_DRY_WAIT_SECONDS, FORMULA_MAX_CHARS,
+  ENRICH_DEFAULT_CONCURRENCY, ENRICH_PROVIDER_RATE_RETRIES, ENRICH_PROVIDER_RATE_RETRIES_MAX, ENRICH_TEST_ROWS,
+  HTTP_MAX_CONCURRENCY, HTTP_RETRY_MAX, WATERFALL_LABEL_MAX_CHARS, WATERFALL_MAX_ALTERNATIVES, WATERFALL_MAX_STEPS,
+  WATERFALL_PROMPT_MAX_CHARS, WATERFALL_DRY_ROWS, WATERFALL_DRY_MAX_ROWS, WATERFALL_DRY_WAIT_SECONDS, FORMULA_MAX_CHARS,
 } from '../lib/constants';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { RESULT_TYPES } from '../lib/waterfall/result-type';
@@ -154,6 +154,9 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       spend_limit_usd: money().optional().describe('The run\'s cap in dollars (default rows x the most a row costs)'),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once, 1-${HTTP_MAX_CONCURRENCY} (default ${ENRICH_DEFAULT_CONCURRENCY})`),
+      rate_limit_retries: z.number().int().min(0).max(ENRICH_PROVIDER_RATE_RETRIES_MAX).optional()
+        .describe(`Retries on provider 429s per step: each enrichment step and check counts its own, `
+          + `0-${ENRICH_PROVIDER_RATE_RETRIES_MAX} (default ${ENRICH_PROVIDER_RATE_RETRIES})`),
       fresh: lenientBoolean().optional().describe('true: call every step again instead of reusing answers'),
       estimate_only: lenientBoolean().optional().describe('Default TRUE: price it, create nothing'),
       dry_run: lenientBoolean().optional()

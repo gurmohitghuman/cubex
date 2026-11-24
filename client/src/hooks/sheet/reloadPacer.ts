@@ -10,6 +10,8 @@
 // So the tab spends at most a fifth of its time reloading, never more than one reload a second; a slow server or a
 // big window rests longer, up to 15 s. data_version is cumulative, so the reload after a rest shows every change
 // that landed during it.
+import { realClock, type Clock } from '../../lib/clock'
+
 export const RELOAD_REST_FACTOR = 4
 export const RELOAD_REST_MIN_MS = 1_000
 export const RELOAD_REST_MAX_MS = 15_000
@@ -22,18 +24,7 @@ export const RELOAD_WAIT_MAX_MS = 5 * 60_000
 export const reloadRest = (tookMs: number): number =>
   Math.min(RELOAD_REST_MAX_MS, Math.max(RELOAD_REST_MIN_MS, RELOAD_REST_FACTOR * tookMs))
 
-export interface PacerClock {
-  now: () => number
-  setTimeout: (fn: () => void, ms: number) => unknown
-  clearTimeout: (timer: unknown) => void
-}
-
-// Wrapped: the browser's timer functions throw when called as a method of another object.
-const realClock: PacerClock = {
-  now: () => Date.now(),
-  setTimeout: (fn, ms) => setTimeout(fn, ms),
-  clearTimeout: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
-}
+export type PacerClock = Clock
 
 interface Pace {
   busy: boolean

@@ -21,16 +21,9 @@ export const SetupVersionsDialog: React.FC<Props> = ({ sheetId, sheetName, onClo
   const close = () => { if (!s.busy) onClose() }
   // The button that opened a view goes with it: focus moves to the way back.
   const backRef = useRef<HTMLButtonElement>(null)
-  // Opened, it waits for a name: the box to type one in has focus. Again once the menu that opened it has
-  // closed (it hides the page while it closes), unless focus is in the dialog already.
+  // Opened, it waits for a name: the box to type one in has focus at once (the toolbar's menu opens it once it has
+  // closed, the sheet tab's menu isn't modal: neither takes focus back).
   const nameRef = useRef<HTMLInputElement | null>(null)
-  useEffect(() => {
-    if (!sheetId) return
-    const t = setTimeout(() => {
-      if (!document.activeElement?.closest('[data-testid="setup-versions-dialog"]')) nameRef.current?.focus()
-    }, 250)
-    return () => clearTimeout(t)
-  }, [sheetId])
   useEffect(() => { if (v.kind !== 'list') backRef.current?.focus() }, [v.kind])
   const plan = v.kind === 'compare' ? v.plan : null
   return (

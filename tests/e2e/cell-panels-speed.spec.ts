@@ -14,11 +14,12 @@ test.use({ trace: 'off' })
 
 // The side panels: on screen in their first frame, about 30 ms here (medians up to 36 ms seen).
 const SIDE_BUDGET_MS = 150
-// The sources dialog: its open re-renders the grid and its fade starts from nothing, about 80 ms here (medians up to
-// 98 ms seen in e2e:all). The waits sweep ("Every fixed wait in the app") brings it down, and this line with it.
-const DIALOG_BUDGET_MS = 300
-// Menus and the drawers opened from them: about 20 to 30 ms here (medians 18 to 32 seen), 130 to 350 ms before
-// menus stopped being modal and toolbar entries stopped waiting for their menu to fade out.
+// The sources dialog: its 150 ms fade starts from nothing, so its first visible frame comes a frame or two after it
+// is drawn (about 80 ms here).
+const DIALOG_BUDGET_MS = 150
+// Menus and the drawers opened from them: about 20 to 30 ms here (medians 18 to 32 seen). Before menus stopped being
+// modal they took 130 to 350 ms: the Edit Enrichment drawer's 123 to 174 ms was about 80 ms of whole-page restyle as
+// the modal column menu closed, about 50 ms of slide from fully off screen and about 20 ms of its own render.
 const MENU_BUDGET_MS = 100
 const SIDE = '[data-testid=side-panel]'
 const MODAL = '[id^="headlessui-dialog-panel"]'
@@ -76,11 +77,14 @@ test('click to visible: the column menu, a toolbar menu and the drawers they ope
     .locator('.ag-header-cell-text').first()
   const editEnrichment = page.getByRole('menuitem', { name: /Edit Enrichment/ })
   const opened = async (shown: Locator) => { await expect(shown).toBeVisible() }
-  const kinds: Array<{ name: string; panel: string; target: (p: Page) => Locator; prep?: () => Promise<void> }> = [
+  const kinds: Array<{
+    name: string; panel: string; target: (p: Page) => Locator; prep?: () => Promise<void>; content?: Locator
+  }> = [
     { name: 'column menu', panel: MENU, target: () => header },
     { name: 'Data menu', panel: MENU, target: p => p.getByTestId('data-menu') },
     { name: 'Edit Enrichment drawer, from the column menu', panel: MODAL, target: () => editEnrichment,
-      prep: async () => { await header.click(); await opened(editEnrichment) } },
+      prep: async () => { await header.click(); await opened(editEnrichment) },
+      content: page.getByTestId('enrich-drawer') },
     { name: 'History drawer, from the More menu', panel: MODAL, target: p => p.getByTestId('sheet-history'),
       prep: async () => {
         await page.getByTestId('more-menu').click()
@@ -96,6 +100,7 @@ test('click to visible: the column menu, a toolbar menu and the drawers they ope
       ms.push(o.ms)
       // A drawer is on screen in the frame it is first drawn: it slides in its last quarter, as the side panels.
       if (k.panel === MODAL) expect(o.ms - o.drawn, `${k.name}: drawn off screen first`).toBeLessThanOrEqual(2)
+      if (k.content) await expect(k.content).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(page.locator(k.panel)).toHaveCount(0)
     }

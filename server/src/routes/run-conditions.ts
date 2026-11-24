@@ -46,7 +46,10 @@ router.post('/run-conditions/sheets/:id/check', async (req: AuthRequest, res) =>
     if (typeof b.rule !== 'string' || b.rule.length > MAX_RULE_CHARS) {
       return res.status(400).json({ error: `The rule must be text of at most ${MAX_RULE_CHARS} characters.` });
     }
-    const out = await checkRuleOnSheet(req.userId!, req.params.id, b.rule);
+    // The box drops a check once the rule changes: stop scanning then.
+    let gone = false;
+    res.on('close', () => { gone = !res.writableEnded; });
+    const out = await checkRuleOnSheet(req.userId!, req.params.id, b.rule, null, () => gone);
     if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
     res.json(out.ok);
   } catch (error) {

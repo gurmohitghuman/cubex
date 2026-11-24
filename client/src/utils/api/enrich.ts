@@ -52,12 +52,12 @@ export const enrichAPI = {
   // conditions: the run's "Only run if"; rows failing them aren't counted.
   rowCounts: (
     sheetId: string, column: string | null, mode: EnrichRowsScope, rowIndexes?: number[],
-    conditions: Array<{ column: string; op: string; value: string }> = [], runIf = '',
+    conditions: Array<{ column: string; op: string; value: string }> = [], runIf = '', signal?: AbortSignal,
   ): Promise<EnrichRowCounts> =>
     api.post(`/enrich/sheets/${sheetId}/row-counts`, {
       column, mode, ...(mode === 'selected' ? { rowIndexes } : {}), ...(conditions.length ? { conditions } : {}),
       ...(runIf.trim() ? { runIf } : {}),
-    }, noServerToast).then(res => res.data),
+    }, { ...noServerToast, signal }).then(res => res.data),
 
   // The column menu's reruns, and their confirm's figures (a pure read).
   rerun: (sheetId: string, body: EnrichRerunRequest): Promise<EnrichRunStarted> =>

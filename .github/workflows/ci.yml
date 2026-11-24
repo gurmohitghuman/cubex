@@ -1,7 +1,8 @@
 name: CI
 
 # Runs on every push to main and every pull request: typecheck, unit tests,
-# build, on Linux and on native Windows. The Release workflow calls it too, on
+# build, on Linux and on native Windows (checks.yml, once for each, with the
+# unit tests split over 3 runners). The Release workflow calls it too, on
 # the commit being released. The Playwright e2e suite needs a browser and a
 # booted server, so it runs locally (npm run e2e:all), not here.
 
@@ -24,76 +25,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    # The Linux name is the required status check on main: keep it as is.
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.timeout }}
-    strategy:
-      # Both report, so a Windows-only failure is never hidden behind a Linux one.
-      fail-fast: false
-      matrix:
-        include:
-          # The unit step alone takes 13 to 17 minutes (main at 2ee71d1, in
-          # November 2026: 927 seconds), and a slower runner takes longer:
-          # 20 minutes once stopped a run in its unit tests with none failed,
-          # and 10 minutes once stopped one in its build step.
-          - os: ubuntu-latest
-            name: Typecheck + Unit tests + Build
-            timeout: 30
-          # Native Windows (no WSL): npm runs scripts through cmd.exe there, and
-          # installs and test processes start slower. Some Windows runners are
-          # about 1.8 times slower than others, which takes main's own 15-minute
-          # run past 25 minutes.
-          - os: windows-latest
-            name: Typecheck + Unit tests + Build (Windows)
-            timeout: 45
+  linux:
+    name: Linux
+    uses: ./.github/workflows/checks.yml
+    with:
+      os: ubuntu-latest
+      ref: ${{ inputs.ref }}
 
+  # Native Windows (no WSL): npm runs scripts through cmd.exe there, and
+  # installs and test processes start slower.
+  windows:
+    name: Windows
+    uses: ./.github/workflows/checks.yml
+    with:
+      os: windows-latest
+      ref: ${{ inputs.ref }}
+
+  # One result for each platform, under the name its single job had before the
+  # split. The Linux one is the required status check on main: keep its name as
+  # is. It runs whatever happened before it (always()), so a part that failed,
+  # was cancelled or was skipped makes it fail; a skipped result would count as
+  # passed.
+  linux-result:
+    name: Typecheck + Unit tests + Build
+    needs: linux
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Check out code
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.ref }}
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          # Pin a major. Passwords hash with Node's own crypto.argon2, which
-          # arrived in Node 24.7; the installers and the Docker image run
-          # Node 24 too. Its npm 11 is also what generates the lockfile.
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Install dependencies
-        # `npm ci` is stricter than `npm install`: it requires a
-        # package-lock.json, fails if the lock is out of sync, and never
-        # mutates package.json. The right thing for CI.
-        run: npm ci
-
-      - name: Typecheck (server + client)
-        # Hits both tsconfig.json files in one command.
-        run: npm run typecheck
-
-      - name: Unit tests
-        # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
-        # No server, no network; each test gets its own temp DB_PATH (scripts/unit-tests.mjs).
-        run: npm run test:unit
-
-      - name: Build (server + client)
-        # Catches the cases typecheck misses: SQL migrations missing from
-        # the copy step, broken Vite plugin config, missing dist outputs.
-        run: npm run build
-
-      - name: Verify build outputs exist
-        # Belt and braces: confirm the artifacts that production needs
-        # actually got produced. If the build "succeeds" but produces no
-        # dist/, the deploy will fail mysteriously. Bash on Windows too (Git Bash).
-        shell: bash
+      - name: Every Linux part passed
+        env:
+          RESULT: ${{ needs.linux.result }}
         run: |
-          set -e
-          test -f server/dist/index.js
-          test -f server/dist/package.json
-          test -d server/dist/db/migrations
-          test -f client/dist/index.html
-          ls server/dist/db/migrations/*.sql | wc -l | xargs -I{} test {} -gt 0
-          echo "✓ all build outputs present"
+          echo "Typecheck, build and the 3 unit test runners on Linux: $RESULT"
+          test "$RESULT" = success
+
+  windows-result:
+    name: Typecheck + Unit tests + Build (Windows)
+    needs: windows
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every Windows part passed
+        env:
+          RESULT: ${{ needs.windows.result }}
+        run: |
+          echo "Typecheck, build and the 3 unit test runners on Windows: $RESULT"
+          test "$RESULT" = success

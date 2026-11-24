@@ -90,6 +90,7 @@ export const ENRICH_FIRST_RETRY_MS = 1_000;
 export const ENRICH_PROVIDER_RATE_RETRY_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MS', 15_000);
 export const ENRICH_PROVIDER_RATE_RETRY_MAX_MS = envInt('ENRICH_PROVIDER_RATE_RETRY_MAX_MS', 120_000);
 export const ENRICH_PROVIDER_RATE_RETRIES = 5;
+export const ENRICH_PROVIDER_RATE_RETRIES_MAX = 10;
 // A provider's 5xx (or no answer from it) is asked again this many times.
 export const ENRICH_PROVIDER_RETRIES = 2;
 

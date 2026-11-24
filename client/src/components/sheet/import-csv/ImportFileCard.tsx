@@ -38,7 +38,7 @@ export const ImportFileCard: React.FC<Props> = ({ file, importing, progress, onR
           <span className="text-gray-900 font-medium">{Math.round(progress)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
-          <div className="bg-cube-black h-2 rounded-sm transition-all duration-300 ease-out"
+          <div className="bg-cube-black h-2 rounded-sm transition-all duration-150 ease-out"
             style={{ width: `${progress}%` }} />
         </div>
       </div>

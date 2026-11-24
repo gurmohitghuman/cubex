@@ -21,13 +21,15 @@ function check(label: string, cond: boolean, got?: unknown) {
   else { failures++; console.log('FAIL', label, got === undefined ? '' : JSON.stringify(got)) }
 }
 
-// Runs a formula over rows given by column name.
+// Runs a formula over rows given by column name. The formula closed before answering (the worker stopped) fails
+// here, saying so: a pass opens it again and goes on, so it isn't an empty answer.
 async function run(formula: string, columns: string[], rows: Array<Record<string, string>>): Promise<string[]> {
   const compiled = compileFormula(formula, columns)
   const sb = await FormulaSandbox.open(compiled)
   try {
-    const out = sb.runRows(rows.map(r => formulaRow(compiled.inputs.map(c => r[c] ?? ''))), 1000).outcomes
-    return out.map(o => (o.ok ? o.value : `ERR ${o.error}`))
+    const r = sb.runRows(rows.map(row => formulaRow(compiled.inputs.map(c => row[c] ?? ''))), 1000)
+    if (r.closed) throw new Error('The formula engine closed this formula before it answered (the worker stopped).')
+    return r.outcomes.map(o => (o.ok ? o.value : `ERR ${o.error}`))
   } finally { sb.dispose() }
 }
 

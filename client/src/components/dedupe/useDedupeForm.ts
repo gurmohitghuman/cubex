@@ -3,7 +3,6 @@ import {
   dedupeAPI, type CleanColumnView, type DedupeBody, type DedupeCheckResult, type DedupeColumn,
 } from '@/utils/api'
 import { guessDedupeMatch, isPeopleSheet, pickDedupeKeys, type DedupeKeep, type DedupeMatch } from '@/lib/dedupe'
-import { DEDUPE_CHECK_DELAY_MS } from '@/lib/constants'
 
 export interface DedupeCheckState {
   loading: boolean
@@ -15,9 +14,11 @@ export interface DedupeCheckState {
 
 const IDLE: DedupeCheckState = { loading: false, result: null, error: null }
 
-// The check: a moment after the choices stop changing, the server works out
-// what removing would do (a free read of the whole sheet). A newer choice, or
-// closing the dialog, aborts the older request, which stops the server's scan.
+// The check: when a choice changes, the server works out what removing would
+// do (a free read of the whole sheet), at once: the choices are clicked, not
+// typed. A newer choice, or closing the dialog, aborts the older request,
+// which stops the server's scan before the newer one starts
+// (services/dedupe-check.ts), so a burst of clicks never stacks up scans.
 function useDedupeCheck(sheetId: string, body: DedupeBody | null, nonce: number): DedupeCheckState {
   const [state, setState] = useState<DedupeCheckState>(IDLE)
   const key = body ? JSON.stringify(body) : ''
@@ -25,15 +26,13 @@ function useDedupeCheck(sheetId: string, body: DedupeBody | null, nonce: number)
     if (!key) { setState(IDLE); return }
     setState(s => ({ ...s, loading: true }))
     const ctrl = new AbortController()
-    const timer = setTimeout(() => {
-      dedupeAPI.check(sheetId, JSON.parse(key) as DedupeBody, ctrl.signal)
-        .then(result => setState({ loading: false, result, error: null }))
-        .catch(e => {
-          if (ctrl.signal.aborted) return
-          setState({ loading: false, result: null, error: e?.response?.data?.error ?? "Couldn't check the sheet." })
-        })
-    }, DEDUPE_CHECK_DELAY_MS)
-    return () => { clearTimeout(timer); ctrl.abort() }
+    dedupeAPI.check(sheetId, JSON.parse(key) as DedupeBody, ctrl.signal)
+      .then(result => { if (!ctrl.signal.aborted) setState({ loading: false, result, error: null }) })
+      .catch(e => {
+        if (ctrl.signal.aborted) return
+        setState({ loading: false, result: null, error: e?.response?.data?.error ?? "Couldn't check the sheet." })
+      })
+    return () => ctrl.abort()
   }, [sheetId, key, nonce])
   return state
 }

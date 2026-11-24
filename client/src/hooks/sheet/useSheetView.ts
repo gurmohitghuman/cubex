@@ -8,7 +8,7 @@ interface UseSheetViewArgs {
   activeSheet: Sheet | null
   sheetData: SheetData | null
   emptyFilter: Record<string, 'empty' | 'not_empty'>
-  setScrapedDataModal: (s: { isOpen: boolean; cell: SourcesCell | null }) => void
+  openSources: (cell: SourcesCell) => void
   // Sort is a one-time PHYSICAL reorder (Google Sheets semantics): the server
   // rewrites row_index, then we reload. There is no client-side live sort —
   // rows render in row_index order and never move when cell values change.
@@ -31,7 +31,7 @@ interface UseSheetViewArgs {
 
 export const useSheetView = ({
   activeSheet, sheetData, emptyFilter,
-  setScrapedDataModal, reloadSheet, waitForSaves, clearSelection, setIsLoading,
+  openSources, reloadSheet, waitForSaves, clearSelection, setIsLoading,
 }: UseSheetViewArgs) => {
   const filteredRows = useMemo(() => {
     if (!sheetData?.data?.rows) return []
@@ -85,8 +85,8 @@ export const useSheetView = ({
     // long-content cells use AG Grid's large-text popup editor (buildColumnDefs).
     if (!activeSheet || !columnName.endsWith(' (Data)')) return
     if (typeof value !== 'string' || !value.startsWith('📊')) return
-    setScrapedDataModal({ isOpen: true, cell: { sheetId: activeSheet.id, rowIndex, columnName } })
-  }, [activeSheet, setScrapedDataModal])
+    openSources({ sheetId: activeSheet.id, rowIndex, columnName })
+  }, [activeSheet, openSources])
 
   // Kept under its historical name to limit churn at the call sites: these are
   // the rows the grid renders — row_index order, empty-filter applied. No sort.

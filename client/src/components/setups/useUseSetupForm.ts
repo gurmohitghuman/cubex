@@ -5,6 +5,7 @@ import {
 } from '@/utils/api/setups'
 import { matchInput } from '@/lib/setups'
 import { setupRunsChanged } from '@/lib/setup-runs-signal'
+import { useTypedReads } from '@/hooks/useTypedReads'
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
 const AI_SUFFIX = / \((Output|Status)\)$/
@@ -85,23 +86,22 @@ export function useUseSetupForm(p: { sheetId: string; columns: string[]; open: b
     estimateOnly,
   })
   const key = JSON.stringify([setup?.id, inputs, names, models, test])
+  // The price, read as the names are typed and the choices change: one read at a time, an older answer never
+  // shown (lib/typedReads.ts).
+  const ask = useTypedReads<SetupEstimate | null>(a => {
+    if (a.ok) { setEstimate({ ...NO_ESTIMATE, result: a.value }); return }
+    const d = (a.error as any)?.response?.data ?? {}
+    setEstimate({ loading: false, result: null, error: errorOf(a.error, "Couldn't price it."),
+      missing: d.missing ?? [], taken: d.taken ?? [] })
+  })
   useEffect(() => {
-    if (!open || !setup) return
-    const ctl = new AbortController()
+    if (!open || !setup) { ask('', null); return }
     setEstimate(prev => ({ ...prev, loading: true }))
-    const t = setTimeout(() => {
-      setupsAPI.apply(sheetId, setup.id, body(true), ctl.signal)
-        .then(out => setEstimate({ ...NO_ESTIMATE, result: 'estimate' in out ? out.estimate : null }))
-        .catch(e => {
-          if (ctl.signal.aborted) return
-          const d = e?.response?.data ?? {}
-          setEstimate({ loading: false, result: null, error: errorOf(e, "Couldn't price it."),
-            missing: d.missing ?? [], taken: d.taken ?? [] })
-        })
-    }, 400)
-    return () => { clearTimeout(t); ctl.abort() }
+    const sent = body(true)
+    ask(`${sheetId}\n${key}`, signal => setupsAPI.apply(sheetId, setup.id, sent, signal)
+      .then(out => ('estimate' in out ? out.estimate : null)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, sheetId, key])
+  }, [open, sheetId, key, ask])
 
   const canStart = !!setup && !!estimate.result && !estimate.loading && !estimate.error && !starting
   const start = async () => {

@@ -106,7 +106,10 @@ router.post('/sheets/:id/row-counts', async (req: AuthRequest, res) => {
     const rule = checkRunRule(id, req.userId!, runIf.ok);
     if ('error' in rule) return res.status(400).json({ error: rule.error });
     const scope = { mode: rows.mode, rowIndexes: rows.rowIndexes, where, rule: rule.ok?.tree ?? null };
-    res.json(await enrichRowCounts(id, req.userId!, column, scope));
+    // The drawer drops a count once its scope changes: stop counting then.
+    let gone = false;
+    res.on('close', () => { gone = !res.writableEnded; });
+    res.json(await enrichRowCounts(id, req.userId!, column, scope, () => gone));
   } catch (error) {
     console.error('Enrichment row count error:', error);
     res.status(500).json({ error: 'Failed to count the rows' });

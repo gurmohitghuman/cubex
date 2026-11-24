@@ -16,7 +16,6 @@ type Pending = { sheetId: string; column: string | null; until: number; holder: 
 
 // How long a column on another sheet is looked for once that sheet opens (its grid loads first).
 const REVEAL_FOR_MS = 15_000
-const REVEAL_POLL_MS = 200
 
 // The waiting notice's link (components/sheet/WaitingRunsNotice.tsx), to the run that holds the column: its
 // column scrolled into view, and an enrichment's or a waterfall's own drawer opened. On another sheet (a
@@ -33,15 +32,18 @@ export function useGoToRun(o: Opts): (line: WaitingLine) => void {
     else if (h.kind === 'enrichment') openers.current.openEnrichment(h.runId)
   }, [])
 
+  // Looked for every frame (a lookup in the grid's columns), so the drawer opens on the frame the grid has it.
   useEffect(() => {
     if (!pending || pending.sheetId !== sheetId) return
-    const t = setInterval(() => {
+    let frame = 0
+    const look = () => {
       const shown = pending.column !== null && !!search()?.column(pending.column)
-      if (!shown && Date.now() <= pending.until) return
+      if (!shown && Date.now() <= pending.until) { frame = requestAnimationFrame(look); return }
       setPending(null)
       openDrawer(pending.holder)
-    }, REVEAL_POLL_MS)
-    return () => clearInterval(t)
+    }
+    frame = requestAnimationFrame(look)
+    return () => cancelAnimationFrame(frame)
   }, [pending, sheetId, search, openDrawer])
 
   return useCallback((line: WaitingLine) => {
