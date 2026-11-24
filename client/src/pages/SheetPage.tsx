@@ -9,6 +9,8 @@ import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetSampleGuide } from '@/components/sample/SampleGuide'
 import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityGuide'
 import { SheetHiringBanner } from '@/components/hiring/HiringBanner'
+import { SheetTestBanner } from '@/components/sheet-test/SheetTestBanner'
+import { useSheetTest } from '@/hooks/sheet/useSheetTest'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -267,6 +269,10 @@ export const SheetPage: React.FC = () => {
     },
   })
 
+  const sheetTest = useSheetTest({ table, setTable, activeSheet, selectSheet: sheetOps.selectSheet, sheetData,
+    selectedRowIndices: cellOps.selectedRowIndices, reload: id => { void silentReloadRef.current(id) } })
+  // Its column changes are being tried on a copy: the sheet takes no change (rows included) until the test ends.
+  const underTest = !!activeSheet && sheetData?.data.test?.sheet_id === activeSheet.id
   useTableRouting({
     tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
     setLoadedRowsCount, currentSheetIdRef, selectSheet: sheetOps.selectSheet,
@@ -306,6 +312,7 @@ export const SheetPage: React.FC = () => {
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
         onSetupVersions={() => { if (activeSheet) modals.openVersions(activeSheet.id) }}
+        testChanges={sheetTest.entry}
         sheetId={activeSheet?.id ?? null} sheetName={activeSheet?.name ?? ''}
         autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
@@ -322,6 +329,7 @@ export const SheetPage: React.FC = () => {
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetHiringBanner sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
+      <SheetTestBanner sheetData={sheetData} activeSheetId={activeSheet?.id ?? null} controls={sheetTest} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}
@@ -344,7 +352,7 @@ export const SheetPage: React.FC = () => {
         onCopySheet={s => { void sheetOps.copySheet(s) }}
         onSetupVersions={s => { if (s.id !== activeSheet?.id) sheetOps.selectSheet(s); modals.openVersions(s.id) }}
         onReorderSheets={sheetOps.reorderSheets}
-        onAddRows={cellOps.handleAddRows}
+        onAddRows={underTest ? undefined : cellOps.handleAddRows}
       />
       <SourcesDialog ref={sources} />
       <DescriptionDialog target={descriptions.target} initial={descriptions.initial} onClose={descriptions.close}

@@ -133,6 +133,9 @@ export interface AGGridSpreadsheetProps {
   onOpenSearch?: () => void
   // Registers the grid's search handle (useGridSearch). Null on unmount.
   registerSearch?: (api: GridSearchApi | null) => void
+  // The sheet is being tested on a copy (utils/api/sheet-test.ts): cells take no edits and no column is added here
+  // (the column menu's changes get the server's busy answer).
+  readOnly?: boolean
 }
 
 // A cell search found: its row (row_index) and column (name).

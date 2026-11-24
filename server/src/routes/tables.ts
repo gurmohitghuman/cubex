@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
-import { listSheets, getSheetForClient, getTableForClient } from '../lib/sheet-crud-helpers';
+import { listSheets, getSheetForClient, getTableForClient, listTestSheets } from '../lib/sheet-crud-helpers';
 import { sheetListKey } from '../lib/sheet-list-key';
 import { getTrashDays } from '../lib/trash/store';
 import {
@@ -73,8 +73,10 @@ router.get('/:id', (req: AuthRequest, res) => {
     if (!table) return res.status(404).json({ error: 'Table not found' });
 
     const sheets = listSheets(id, req.userId!);
-    // sheets_key seeds the sheet change-poll's tab-list check (lib/sheet-list-key.ts).
-    res.json({ ...(table as object), sheets, sheets_key: sheetListKey(id, req.userId!) });
+    // sheets_key seeds the sheet change-poll's tab-list check (lib/sheet-list-key.ts). test_sheets: copies of its
+    // sheets where column changes are being tried (services/sheet-test-*.ts), opened by id, never shown as tabs.
+    res.json({ ...(table as object), sheets, test_sheets: listTestSheets(id, req.userId!),
+      sheets_key: sheetListKey(id, req.userId!) });
   } catch (error) {
     console.error('Get table error:', error);
     res.status(500).json({ error: 'Failed to fetch table' });

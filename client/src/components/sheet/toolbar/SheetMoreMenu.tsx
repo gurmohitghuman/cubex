@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Bookmark, BookmarkPlus, GitCompare, History, MoreHorizontal, Settings2 } from 'lucide-react'
+import {
+  BarChart3, Bookmark, BookmarkPlus, FlaskConical, GitCompare, History, MoreHorizontal, Settings2,
+} from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -16,11 +18,17 @@ interface Props {
   // Save as setup with nothing ticked yet (the column menu opens it on a column).
   onSaveSetup: () => void
   onSetupVersions: () => void
+  // Try column changes on sample rows (hooks/sheet/useSheetTest.ts): the hint says which rows; off while one runs.
+  testChanges?: TestEntry
 }
+
+export interface TestEntry { onStart: () => void; hint: string; disabled: boolean }
 
 // The sheet header's ⋯ menu: setups (use one, save one, this sheet's versions,
 // manage them), what the sheet's runs cost (Usage) and its change log (History).
-export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup, onSaveSetup, onSetupVersions }) => {
+export const SheetMoreMenu: React.FC<Props> = ({
+  sheetId, sheetName, onUseSetup, onSaveSetup, onSetupVersions, testChanges,
+}) => {
   const navigate = useNavigate()
   const [drawer, setDrawer] = useState<'usage' | 'history' | null>(null)
   const focus = useMenuFocus()
@@ -41,6 +49,10 @@ export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup,
             testId="setups-menu-save" />
           <MenuEntry icon={GitCompare} label="This sheet's setup versions…" onSelect={focus.opening(onSetupVersions)}
             testId="setups-menu-versions" />
+          {testChanges && (
+            <MenuEntry icon={FlaskConical} label="Test changes on sample rows" hint={testChanges.hint}
+              onSelect={testChanges.onStart} disabled={testChanges.disabled} testId="sheet-test-start" />
+          )}
           <MenuEntry icon={Settings2} label="Manage setups" onSelect={() => navigate('/settings/setups')}
             testId="setups-menu-manage" />
           {sheetId && (

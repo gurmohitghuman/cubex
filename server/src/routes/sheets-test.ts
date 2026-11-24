@@ -11,6 +11,8 @@ import { addTestRows } from '../services/sheet-test-add';
 import { applySheetTest } from '../services/sheet-test-apply';
 import { discardSheetTest } from '../services/sheet-test-end';
 import { verifySheetOwnership } from '../lib/sql-helpers';
+import { SHEET_TEST_MAX_ROWS } from '../lib/constants';
+import { sheetRowsAt } from '../services/sheet-test-rows';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -36,10 +38,17 @@ router.get('/:id/test', guarded('read the test', (req, res) => {
   return res.json({ test: t ? testView(t) : null });
 }));
 
-// Body: { row_ids? , rows? } (the rows chosen, or how many from the top; 10 by default).
+// Body: { row_indexes?, row_ids?, rows? }: the rows selected in the grid (by place), the rows chosen, or how many
+// from the top (10 by default).
 router.post('/:id/test', guarded('start the test', async (req, res) => {
   const b = body(req);
-  const out = await startSheetTest(req.userId!, req.params.id, { rowIds: b.row_ids, rows: b.rows });
+  const at = b.row_indexes;
+  if (at !== undefined && (!Array.isArray(at) || !at.length || at.length > SHEET_TEST_MAX_ROWS
+    || at.some(i => !Number.isInteger(i) || (i as number) < 0))) {
+    return res.status(400).json({ error: `Select 1 to ${SHEET_TEST_MAX_ROWS} rows to test on.` });
+  }
+  const rowIds = at !== undefined ? sheetRowsAt(req.params.id, req.userId!, at as number[]) : b.row_ids;
+  const out = await startSheetTest(req.userId!, req.params.id, { rowIds, rows: b.rows });
   return reply(res, 'ok' in out ? { ok: { test: out.ok } } : out, 201);
 }));
 
