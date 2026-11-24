@@ -108,6 +108,18 @@ check('at most limit, closest first, in the given order among equals', () => {
   assert.deepEqual(closeMatches('abc', items, i => [i.name], 1).map(i => i.name), ['abc1'])
 })
 
+check('a name sharing a long start comes before a short name inside what was asked', () => {
+  const cols = ['Company', 'Company summary (Output)', 'Website'].map(name => ({ name }))
+  const near = (g: string) => closeMatches(g, cols, i => [i.name]).map(i => i.name)
+  // The v0.8.17 tool-pick check: asked for the AI column's (Data), the answer named "Company" first.
+  assert.deepEqual(near('Company summary (Data)'), ['Company summary (Output)', 'Company'])
+  // A short shared start is no reason: "Compa" (5) or "Webhook" (3 of "Website") don't qualify that way.
+  assert.deepEqual(closeMatches('Webhook URL', cols, i => [i.name]).map(i => i.name), [])
+  // The longer start ranks first.
+  const runs = ['Lead score (Output)', 'Lead source (Output)'].map(name => ({ name }))
+  assert.deepEqual(closeMatches('Lead scoring', runs, i => [i.name]).map(i => i.name)[0], 'Lead score (Output)')
+})
+
 check('suggestColumn reads the same edits: a swap now finds its column', () => {
   assert.equal(suggestColumn('Emial', ['Name', 'Email']), ' Did you mean "Email"?')
   assert.equal(suggestColumn('Payroll', ['Name', 'Email']), '')
