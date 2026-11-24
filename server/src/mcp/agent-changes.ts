@@ -39,6 +39,19 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['export_csv'],
+        summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
+          + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',
+        details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
+          + 'after spaces, like " -5", is left as it is.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
