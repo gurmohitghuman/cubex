@@ -9,7 +9,11 @@
 // With max_cost_usd, a start whose estimate could pass it (or that has a
 // column with no price, unless allow_unpriced) is refused and creates
 // nothing; each spending column then starts with what is left of it.
+import { db } from '../lib/db';
 import { verifySheetOwnership } from '../lib/sql-helpers';
+import { viewWhere } from '../lib/views/filters';
+import { activeWhere, type WhereItem } from '../lib/row-filter/where';
+import type { SavedFilters } from './row-filter';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { ceilingProblem, ceilingView } from '../lib/cost-ceiling';
 import { countOf, logSheetChange } from '../lib/change-log';
@@ -37,6 +41,13 @@ const ROW_WORDS: Record<ColumnRunMode, string> = {
 };
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
+function shownFilter(sheetId: string, userId: string): WhereItem[] | null {
+  const saved = db.prepare('SELECT empty_filter, column_filters, row_filter FROM sheets WHERE id = ? AND user_id = ?')
+    .get(sheetId, userId) as SavedFilters | undefined;
+  const where = viewWhere(saved);
+  return activeWhere(where).length ? where : null;
+}
+
 // The record's name, as lists show it: "Run columns: Score, Email" (cut short past a few).
 function nameOf(columns: string[]): string {
   const shown = columns.slice(0, 3).join(', ');
@@ -49,6 +60,9 @@ export async function runColumns(
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const hookProblem = webhookIdProblem(userId, input.webhookId);
   if (hookProblem) return bad(hookProblem);
+  // The app's "only rows in the current filter": the filter the sheet shows, as the grid reads it, kept as
+  // the run's where (a filter changed later doesn't change the run).
+  if (input.inFilter) input = { ...input, where: shownFilter(sheetId, userId) };
   const planned = planColumnRun(userId, sheetId, input, caller);
   if ('fail' in planned) return planned;
   const plan = planned.ok;

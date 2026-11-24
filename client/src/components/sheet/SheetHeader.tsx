@@ -35,6 +35,7 @@ interface SheetHeaderProps {
   viewNarrows: boolean
   viewName: string
   onRemoveDuplicates: () => void
+  onRunColumns: () => void
   // Auto-dedupe is on: the Remove duplicates button says so.
   autoDedupeOn?: boolean
   onSaveSetup: () => void
@@ -74,7 +75,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onDeleteSelectedRows,
   onImport,
   onExport, viewNarrows, viewName,
-  onRemoveDuplicates, autoDedupeOn,
+  onRemoveDuplicates, onRunColumns, autoDedupeOn,
   onSaveSetup,
   onUseSetup,
   onSetupVersions,
@@ -189,7 +190,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             <SheetDataMenu hasRows={hasRows} columnCount={columnCount} isExporting={isExporting}
               viewNarrows={viewNarrows} viewName={viewName} autoDedupeOn={!!autoDedupeOn} onImport={onImport}
               onExport={scope => onExport(scope, viewName)} onOpenWebhook={onOpenWebhook}
-              onRemoveDuplicates={onRemoveDuplicates} />
+              onRemoveDuplicates={onRemoveDuplicates} onRunColumns={onRunColumns} />
             <SheetMoreMenu sheetId={sheetId ?? null} sheetName={sheetName ?? ''} onUseSetup={onUseSetup}
               onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
 

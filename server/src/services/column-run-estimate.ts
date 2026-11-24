@@ -52,7 +52,8 @@ function viewOf(c: { column: string; layer: number }, e: RunControlEstimate): Co
     column: c.column, kind: e.kind, layer: c.layer + 1, rows: e.rows,
     low_usd: http || e.lowUsd === null ? null : round(e.lowUsd),
     high_usd: http || e.highUsd === null ? null : round(e.highUsd),
-    row_most_usd: e.rowMostUsd ?? null, sends_requests: http, at_most: false, note: e.note,
+    // An HTTP API column's note only says it sends a request a row with no price: sends_requests says that.
+    row_most_usd: e.rowMostUsd ?? null, sends_requests: http, at_most: false, note: http ? null : e.note,
   };
 }
 

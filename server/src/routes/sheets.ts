@@ -49,6 +49,8 @@ router.use('/:id', refuseChangesWhileBusy([
   '/runs/stop',
   // Using a setup: its estimate only reads, and its start checks the sheet itself (services/setup-apply.ts).
   /^\/setups\/[^/]+\/apply$/,
+  // Running chosen columns: the same (services/column-run.ts).
+  '/column-runs',
   // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
   /^\/setup-versions\/[^/]+\/restore$/,
 ]));
