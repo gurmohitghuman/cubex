@@ -136,7 +136,8 @@ await ok('at shutdown, a use still waiting is written at once', async () => {
   assert.equal(tokenUsesWaiting(), 0)
 })
 
-await ok('after a write refused and then made, busy_timeout is back as it was for the thread\'s other writes', async () => {
+await ok('after a write refused and then made, busy_timeout is back as it was for the thread\'s other writes',
+  async () => {
   const before = db.pragma('busy_timeout', { simple: true })
   const t = newToken()
   const other = new Database(process.env.DB_PATH!)
@@ -153,7 +154,8 @@ await ok('after a write refused and then made, busy_timeout is back as it was fo
   assert.ok(before === 5000, `busy_timeout is ${before}`)
 })
 
-await ok('a use is written in turn with the checkpoint worker: one write, after another connection\'s checkpoint', async () => {
+await ok('a use is written in turn with the checkpoint worker: one write, after another connection\'s checkpoint',
+  async () => {
   const t = newToken()
   const other = new Database(process.env.DB_PATH!)
   other.pragma('wal_checkpoint(PASSIVE)')
