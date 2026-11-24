@@ -1,19 +1,11 @@
 {
-  "release": "v0.8.43",
+  "release": "v0.8.44",
   "lines": [
     {
       "change": "changed",
       "tools": [
-        "hiring_signals"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "waterfall_column",
         "run_enrichment",
-        "apply_setup",
-        "control_run"
+        "waterfall_column"
       ]
     }
   ],
@@ -2463,6 +2455,11 @@
           "maxItems": 100,
           "type": "array"
         },
+        "rate_limit_retries": {
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
+        },
         "rows": {
           "enum": [
             "any",
@@ -3463,6 +3460,11 @@
             }
           },
           "type": "object"
+        },
+        "rate_limit_retries": {
+          "maximum": 10,
+          "minimum": 0,
+          "type": "integer"
         },
         "result_type": {
           "enum": [
