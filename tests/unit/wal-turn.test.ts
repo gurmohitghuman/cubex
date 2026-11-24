@@ -261,13 +261,20 @@ async function main() {
       assert.ok(r && !r.busy && r.log >= before.log && r.checkpointed === r.log, JSON.stringify(r))
       assert.equal(r.startOver, 'read-only')
       assert.ok(allCopied(), 'the WAL left as it was')
+      // The page asks the worker once, and after the skipped start-over never again: it goes on writing. On a disk
+      // whose checkpoints are slow, that one ask can take the call's time (it answers having only waited, nothing
+      // written), and the next call writes the pass.
       const t0 = performance.now()
-      const out = await call('F')
-      const ms = performance.now() - t0
+      const first = await call('F')
+      assert.ok('ok' in first, JSON.stringify(first))
+      const out = first.ok.next_cursor ? await call('F', first.ok.next_cursor) : first
+      if (out !== first) {
+        assert.ok(first.ok.updated === 0 && first.ok.note === TRANSFORM_WAITED_NOTE, JSON.stringify(first))
+      }
       assert.ok('ok' in out && out.ok.updated === ROWS && out.ok.next_cursor === undefined, JSON.stringify(out))
-      assert.ok(ms < 1000, `the page waited ${Math.round(ms)} ms`)
       assert.deepEqual(logged, [], 'nothing logged')
-      after('read-only', t0)
+      const { k, t } = after('read-only', t0)
+      assert.ok(t.asks === 1 && k.restarts === 0, JSON.stringify({ ...t, restarts: k.restarts }))
     } finally { startOverReadOnlyForTests(false) }
   })
   await closeWalCheckpointer()

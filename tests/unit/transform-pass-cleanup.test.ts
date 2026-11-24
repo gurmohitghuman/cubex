@@ -111,13 +111,13 @@ async function purged(id: number) {
 async function main() {
   await check('the pass completes', async () => {
     const id = sheet()
-    ok(await transformColumn(uid, { ...call(id), cursor: await stopped(id) }))
+    ok(await toTheEnd(uid, { ...call(id), cursor: await stopped(id) }))
     assert.equal(records(id), 0)
   })
   await check('restart: true runs to the end', async () => {
     const id = sheet()
     await stopped(id)
-    ok(await transformColumn(uid, { ...call(id), restart: true }))
+    ok(await toTheEnd(uid, { ...call(id), restart: true }))
     assert.equal(records(id), 0)
   })
   await check('its column is deleted for good', async () => {

@@ -3,8 +3,9 @@
 // as the closing one the call or job before asked for, and on a disk whose syncs stall that wait can take the call's
 // time, before its first page (it answers that it only waited, nothing written) or after one (it stopped at its
 // limit). Those two answers are the only ones gone on from; any other comes back as it is. Used where a test checks
-// what a pass writes, not how long a call takes: it answers the first call's answer with every call's rows added up
-// (created_column is the first call's: only it adds the column).
+// what a pass writes, not how long a call takes. A pass that ended in one call answers as it is; one that took more
+// answers the last call's answer with every call's rows added up, and the first call's created_column (only it adds
+// the column), so a test comparing the whole answer still checks every field of it.
 import transformMod from '../../server/src/services/column-transform'
 import type { TransformParams } from '../../server/src/services/column-transform'
 const { TRANSFORM_STOPPED_NOTE, TRANSFORM_WAITED_NOTE, transformColumn } =
@@ -14,7 +15,7 @@ type Outcome = Awaited<ReturnType<typeof transformColumn>>
 
 export async function toTheEnd(uid: string, p: TransformParams, most = 50): Promise<Outcome> {
   const first = await transformColumn(uid, p)
-  if (!('ok' in first)) return first
+  if (!('ok' in first) || !first.ok.next_cursor) return first
   let updated = first.ok.updated
   let out: Outcome = first
   for (let calls = 1; 'ok' in out && out.ok.next_cursor; calls++) {
@@ -26,5 +27,6 @@ export async function toTheEnd(uid: string, p: TransformParams, most = 50): Prom
     if (!('ok' in out)) return out
     updated += out.ok.updated
   }
-  return { ok: { updated, created_column: first.ok.created_column } }
+  if (!('ok' in out)) return out
+  return { ok: { ...out.ok, updated, created_column: first.ok.created_column } }
 }
