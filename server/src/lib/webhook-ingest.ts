@@ -11,6 +11,7 @@ import { settleRows } from '../services/auto-dedupe-settle';
 import { appendColumnsToOrder, getSheetColumns } from './sheet-columns';
 import { orderedUuid } from './ordered-id';
 import { isRepeat, rememberKey } from './webhook-idempotency';
+import { rowsChanged } from './rows-changed';
 
 // The append transaction for one inbound webhook delivery. This is the only
 // place an UNAUTHENTICATED request mutates your data, so every step is
@@ -190,6 +191,7 @@ export function appendWebhookDelivery(
       `INSERT INTO rows (id, sheet_id, user_id, row_index, data, updated_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
     ).run(rowId, source.sheet_id, source.user_id, rowIndex, dataJson).lastInsertRowid);
+    rowsChanged(source.sheet_id);
 
     // A column exists iff column_order lists it (lib/sheet-columns.ts). The
     // webhook's columns were listed when it was set up, but a CSV replace can

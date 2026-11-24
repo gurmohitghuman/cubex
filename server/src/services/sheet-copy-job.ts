@@ -31,6 +31,7 @@ import { orderedUuid } from '../lib/ordered-id';
 import { countOf, rewriteSheetChange } from '../lib/change-log';
 import { copiedPassMapper } from './column-transform-pass-moves';
 import { pageAfter } from './derived-write';
+import { rowsChanged } from '../lib/rows-changed';
 
 // What the two sheets are busy with, as their busy message says.
 export const COPYING_INTO = 'filling with copied values';
@@ -126,6 +127,7 @@ function copySlicer(job: SheetCopyJob): (most: number) => boolean {
       placed.push({ from: row.i, to: next });
       insert.run(orderedUuid(), sheetId, job.user_id, next++, JSON.stringify(cells));
     }
+    rowsChanged(sheetId);
     page = pageAfter(left, rows.length, placed.length);
     passes(placed);
     advance.run(placed[placed.length - 1].from, next, sheetId);

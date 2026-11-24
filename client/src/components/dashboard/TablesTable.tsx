@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -62,8 +62,16 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
 
           <div className="text-xs text-gray-500">{formatDate(table.created_at)}</div>
           <div className="text-xs text-gray-500">{formatDate(table.updated_at)}</div>
-          <div className="text-sm font-medium text-gray-700">
+          {/* Updating: the last count, while the server counts the rows again (they changed since). */}
+          <div
+            className={`flex items-center gap-1.5 text-sm font-medium ${
+              table.row_count_updating ? 'text-gray-400' : 'text-gray-700'}`}
+            data-testid="table-row-count"
+            data-table-id={table.id}
+            title={table.row_count_updating ? 'Counting the rows again' : undefined}
+          >
             {(table.row_count || 0).toLocaleString()}
+            {table.row_count_updating && <Loader2 className="h-3 w-3 animate-spin" aria-label="Updating" />}
           </div>
 
           {/* ⋯ actions menu */}

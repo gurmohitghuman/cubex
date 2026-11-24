@@ -18,6 +18,7 @@ import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialo
 import { HiringButton } from '@/components/hiring/HiringDialog'
 import { plural } from '@/lib/utils'
 import { SettingsButton } from '@/components/dashboard/SettingsButton'
+import { useTableRowCounts } from '@/hooks/useTableRowCounts'
 
 export const DashboardPage: React.FC = () => {
   const { logout } = useAuth()
@@ -32,6 +33,7 @@ export const DashboardPage: React.FC = () => {
   // dashboard owns it) rather than adding a second settingsAPI.get() —
   // undefined while loading so the checklist doesn't flash a wrong step-state.
   const [hasKey, setHasKey] = useState<boolean | undefined>(undefined)
+  useTableRowCounts(tables, setTables)
 
   useEffect(() => {
     tablesAPI.getAll()

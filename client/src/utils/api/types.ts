@@ -13,6 +13,9 @@ export interface Table {
   created_at: string
   updated_at: string
   row_count: number
+  // GET /tables: the table's rows changed since they were last counted, so row_count is that count and a new one is
+  // being made (the home waits for it, useTableRowCounts).
+  row_count_updating?: boolean
   sheets?: Sheet[]
   // Tab-list fingerprint from GET /tables/:id; seeds the change-poll's tab check.
   sheets_key?: string | null
