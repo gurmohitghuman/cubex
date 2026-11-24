@@ -147,10 +147,11 @@ function isAlone(q: Seq, s: string, parts: Parts, inRun: boolean): boolean {
 }
 
 // A Hebrew letter read from × and the character after it.
-const hebrewLetter = (q: Seq, s: string) => q.len === 2 && s[q.at] === TIMES && q.text >= '\u05D0' && q.text <= '\u05EA';
+const hebrewLetter = (q: Seq, s: string) =>
+  q.len === 2 && s[q.at] === TIMES && q.text >= '\u05D0' && q.text <= '\u05EA';
 // What joins the letters of a Hebrew abbreviation: gershayim written as " or '' (or ״), a geresh as '.
 const ABBREVIATION_MARKS = new Set(['"', "'", "''", '\u05F4']);
-// Whether sequences a and b are Hebrew letters joined into one abbreviation ("×©"×—" is ש"ח).
+// Whether sequences a and b are Hebrew letters joined into one abbreviation ("×©"×" and a long dash is ש"ח).
 const joined = (a: Seq | undefined, b: Seq | undefined, s: string) => !!a && !!b && hebrewLetter(a, s)
   && hebrewLetter(b, s) && ABBREVIATION_MARKS.has(s.slice(a.at + a.len, b.at));
 
