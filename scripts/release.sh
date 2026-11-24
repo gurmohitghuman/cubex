@@ -108,7 +108,7 @@ cmd_notes() {
     echo
     echo '- **One-line install:** run `cubex update`. Your data and settings stay, and if the new version'
     echo "  doesn't start, the previous one comes back."
-    echo "- **Docker:** in your checkout, run \`git fetch --tags && git checkout $next\`, then"
+    echo "- **Docker:** in your checkout, run \`git fetch --tags --force && git checkout $next\`, then"
     echo '  `docker compose up -d --build`.'
     echo '- **Coolify:** Redeploy.'
     echo
