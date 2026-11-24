@@ -180,3 +180,17 @@ for (const size of [{ name: 'desktop', width: 1280, height: 720 }, { name: 'phon
     expect(await finished(runId)).toBe('completed')
   })
 }
+
+// Resume all that a run refuses says which column's run and why, as the notice's own Resume does.
+test('Resume all names the column and the reason a resume was refused', async ({ page, context }) => {
+  test.setTimeout(90_000)
+  const { tableId, sheetId } = await sheetOf(7)
+  const runId = await braked(sheetId, '/refuse-resume-all', 'Lookup')
+  await openSheet(page, context, api, tableId)
+  await page.route(`**/api/http/jobs/${runId}/control`, route => route.fulfill({
+    status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'The provider key is gone.' }),
+  }))
+  await page.getByRole('button', { name: 'Resume', exact: true }).first().click()
+  await expect(page.getByText("Couldn't resume the run. Lookup: The provider key is gone.")).toBeVisible()
+  expect(await statusOf(sheetId, runId)).toBe('paused/provider_errors')
+})
